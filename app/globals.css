@@ -401,6 +401,68 @@ html[data-motion="reduced"] *::after {
   }
 }
 
+/* PDF attachments use a document card instead of a broken image preview. */
+.message-file-card {
+  color:var(--ink);
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--coral) 9%,transparent),transparent 55%),
+    var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  align-items:center;
+  gap:12px;
+  width:min(430px,100%);
+  margin-top:8px;
+  padding:12px;
+  text-decoration:none;
+  display:flex;
+}
+.message-file-card:hover {
+  border-color:color-mix(in srgb,var(--coral) 60%,var(--line));
+  transform:translateY(-1px);
+}
+.message-file-icon {
+  color:#fff;
+  background:linear-gradient(145deg,#ee6658,#b93346);
+  border-radius:9px;
+  place-items:center;
+  width:42px;
+  height:46px;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.04em;
+  flex:0 0 auto;
+  display:grid;
+  box-shadow:0 6px 14px #b9334633;
+}
+.message-file-card > span:nth-child(2),
+.file-preview > span:nth-child(2) {
+  min-width:0;
+  flex:1;
+  display:grid;
+  gap:3px;
+}
+.message-file-card strong,
+.file-preview strong {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.message-file-card small,
+.file-preview small {
+  color:var(--muted);
+}
+.message-file-card > b {
+  color:var(--muted);
+}
+.attachment-preview.file-preview {
+  align-items:center;
+  width:min(420px,calc(100% - 20px));
+  min-height:66px;
+  padding:9px 42px 9px 10px;
+  display:flex;
+}
+
 * {
   box-sizing:border-box;
 }

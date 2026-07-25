@@ -18,6 +18,7 @@ export interface PublicMessage {
   time: string;
   createdAt: string;
   image?: string;
+  file?: { url: string; name: string; type: "pdf" };
   link?: string;
   actionLabel?: string;
   audio?: string;
@@ -37,6 +38,13 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     }
   }
 
+  const attachmentUrl = message.attachment_key
+    ? `/hangout/api/uploads/${encodeURIComponent(message.attachment_key)}`
+    : undefined;
+  const isPdf = Boolean(message.attachment_key?.toLowerCase().endsWith(".pdf"));
+  const attachmentName =
+    message.attachment_key?.split("--").slice(1).join("--") || "document.pdf";
+
   return {
     id: message.id,
     channelId: message.channel_id || null,
@@ -53,9 +61,11 @@ export function publicMessage(message: StoredMessage): PublicMessage {
       timeZone: "UTC",
     }).format(new Date(message.created_at)),
     createdAt: message.created_at,
-    image: message.attachment_key
-      ? `/hangout/api/uploads/${encodeURIComponent(message.attachment_key)}`
-      : undefined,
+    image: attachmentUrl && !isPdf ? attachmentUrl : undefined,
+    file:
+      attachmentUrl && isPdf
+        ? { url: attachmentUrl, name: attachmentName, type: "pdf" }
+        : undefined,
     link: message.link || undefined,
     actionLabel: message.action_label || undefined,
     audio: message.audio_url || undefined,
@@ -193,7 +203,11 @@ export async function POST(request: Request) {
       ? body.botAvatar?.trim().slice(0, 4) || "✦"
       : user.avatar,
     color: body.asBot ? "#b8a6ff" : user.color,
-    content: content || "Shared an image",
+    content:
+      content ||
+      (attachmentKey?.toLowerCase().endsWith(".pdf")
+        ? "Shared a PDF document"
+        : "Shared an image"),
     attachment_key: attachmentKey,
     is_bot: body.asBot ? 1 : 0,
     created_at: new Date().toISOString(),
