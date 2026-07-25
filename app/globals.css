@@ -3173,3 +3173,129 @@ button {
     display:none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Voice controls, compacted. With screen share and camera added, the stacked
+   buttons grew tall enough to push themselves off the bottom of the sidebar and
+   to squeeze the member list out of the way.
+--------------------------------------------------------------------------- */
+
+/* The sidebar card must never grow past the viewport: the channel list gives
+   up space first, and the card itself stays a fixed, compact block. */
+.sidebar {
+  min-height:0;
+}
+
+.channel-nav {
+  min-height:0;
+  flex:1 1 auto;
+  overflow-y:auto;
+}
+
+.voice-card {
+  flex:0 0 auto;
+}
+
+.voice-card-controls {
+  grid-template-columns:repeat(4,1fr);
+  align-items:stretch;
+  gap:6px;
+  display:grid;
+}
+
+.voice-card-controls .mic-control,
+.voice-card-controls .leave-button {
+  min-width:0;
+  padding:9px 4px;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Quality select and the two share buttons share one row under the mic row. */
+.voice-card-controls .screen-share-controls {
+  grid-column:1 / -1;
+  grid-template-columns:auto 1fr 1fr;
+  align-items:center;
+  gap:6px;
+  display:grid;
+}
+
+.voice-card-controls .screen-share-controls select {
+  min-width:0;
+  padding:7px 6px;
+  font-size:11px;
+}
+
+.voice-card-controls .screen-share-controls button {
+  min-width:0;
+  padding:9px 6px;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.voice-card-controls .leave-button {
+  grid-column:1 / -1;
+}
+
+/* The in-voice card in the member panel: same information, far less height. */
+.voice-feature {
+  padding:12px 12px 10px;
+}
+
+.voice-feature-avatars {
+  height:32px;
+}
+
+.voice-feature-avatars span {
+  width:30px;
+  height:30px;
+}
+
+.voice-feature p {
+  margin:2px 0 8px;
+}
+
+.voice-feature .screen-share-controls.compact {
+  grid-template-columns:auto 1fr;
+  gap:6px;
+  margin-top:6px;
+  display:grid;
+}
+
+.voice-feature .screen-share-controls.compact select {
+  min-width:0;
+  padding:7px 6px;
+  font-size:11px;
+}
+
+.voice-feature .screen-share-controls.compact button {
+  min-width:0;
+  padding:9px 8px;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* A tile that has negotiated but has no media yet says so, instead of just
+   showing black. */
+.tile-connecting figcaption::after {
+  content:" · connecting…";
+  color:var(--muted);
+}
+
+@media (width<=760px) {
+  .voice-card-controls {
+    grid-template-columns:repeat(2,1fr);
+  }
+  .voice-card-controls .screen-share-controls {
+    grid-template-columns:1fr 1fr;
+  }
+  .voice-card-controls .screen-share-controls select {
+    grid-column:1 / -1;
+  }
+}
