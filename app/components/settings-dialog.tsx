@@ -23,6 +23,8 @@ interface SettingsDialogProps {
 }
 
 type Tab = "profile" | "password" | "invites" | "appearance";
+type Density = "compact" | "cozy" | "roomy";
+type Backdrop = "plain" | "glow" | "dots";
 
 export function SettingsDialog({
   user,
@@ -43,7 +45,39 @@ export function SettingsDialog({
   const [error, setError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || null);
   const [avatarKey, setAvatarKey] = useState<string | null | undefined>(undefined);
+  const [accent, setAccent] = useState("#9d8cf5");
+  const [density, setDensity] = useState<Density>("cozy");
+  const [backdrop, setBackdrop] = useState<Backdrop>("glow");
+  const [corners, setCorners] = useState(16);
+  const [motion, setMotion] = useState(true);
   const pictureRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const savedAccent = window.localStorage.getItem("huddle-accent");
+    const savedDensity = window.localStorage.getItem("huddle-density") as Density;
+    const savedBackdrop = window.localStorage.getItem("huddle-backdrop") as Backdrop;
+    const savedCorners = Number(window.localStorage.getItem("huddle-corners"));
+    const savedMotion = window.localStorage.getItem("huddle-motion");
+    if (savedAccent) setAccent(savedAccent);
+    if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
+    if (["plain", "glow", "dots"].includes(savedBackdrop)) setBackdrop(savedBackdrop);
+    if (savedCorners >= 4 && savedCorners <= 28) setCorners(savedCorners);
+    if (savedMotion) setMotion(savedMotion !== "reduced");
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--lavender", accent);
+    root.style.setProperty("--ui-corners", `${corners}px`);
+    root.dataset.density = density;
+    root.dataset.backdrop = backdrop;
+    root.dataset.motion = motion ? "full" : "reduced";
+    window.localStorage.setItem("huddle-accent", accent);
+    window.localStorage.setItem("huddle-density", density);
+    window.localStorage.setItem("huddle-backdrop", backdrop);
+    window.localStorage.setItem("huddle-corners", String(corners));
+    window.localStorage.setItem("huddle-motion", motion ? "full" : "reduced");
+  }, [accent, corners, density, backdrop, motion]);
 
   useEffect(() => {
     if (tab !== "invites") return;
@@ -348,6 +382,79 @@ export function SettingsDialog({
                   ☀ Light
                 </button>
               </div>
+
+              <span className="field-label">Accent colour</span>
+              <div className="accent-picker-row">
+                {["#9d8cf5", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"].map(
+                  (option) => (
+                    <button
+                      type="button"
+                      key={option}
+                      aria-label={`Use accent ${option}`}
+                      className={accent === option ? "active" : ""}
+                      style={{ background: option }}
+                      onClick={() => setAccent(option)}
+                    />
+                  ),
+                )}
+                <input
+                  type="color"
+                  value={accent}
+                  aria-label="Custom accent colour"
+                  onChange={(event) => setAccent(event.target.value)}
+                />
+              </div>
+
+              <span className="field-label">Message spacing</span>
+              <div className="appearance-choice-row">
+                {(["compact", "cozy", "roomy"] as const).map((option) => (
+                  <button
+                    type="button"
+                    className={density === option ? "active" : ""}
+                    key={option}
+                    onClick={() => setDensity(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+
+              <span className="field-label">Chat backdrop</span>
+              <div className="appearance-choice-row">
+                {(["plain", "glow", "dots"] as const).map((option) => (
+                  <button
+                    type="button"
+                    className={backdrop === option ? "active" : ""}
+                    key={option}
+                    onClick={() => setBackdrop(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+
+              <label className="appearance-range">
+                <span>Corner roundness <b>{corners}px</b></span>
+                <input
+                  type="range"
+                  min={4}
+                  max={28}
+                  value={corners}
+                  onChange={(event) => setCorners(Number(event.target.value))}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Interface motion</strong>
+                  <small>Animations and smooth scrolling</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={motion}
+                  onChange={(event) => setMotion(event.target.checked)}
+                />
+              </label>
             </>
           )}
 

@@ -25,6 +25,11 @@ import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
+import {
+  MusicSettingsCard,
+  MusicStatsCard,
+  type MusicSettings,
+} from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
 import { SettingsDialog } from "./components/settings-dialog";
 import { SlashMenu } from "./components/slash-menu";
@@ -80,6 +85,19 @@ interface Message {
     total?: number;
     expression?: string;
     details?: string[];
+    autoplay?: boolean;
+    automix?: boolean;
+    automix_blend_seconds?: number;
+    crossfade_seconds?: number;
+    audio_filter?: string | null;
+    artist_diversity?: boolean;
+    vibe_match?: boolean;
+    wrapped?: boolean;
+    plays?: number;
+    unique?: number;
+    hours?: number;
+    topSongs?: Array<[string, number]>;
+    topRequesters?: Array<[string, number]>;
   };
 }
 
@@ -399,7 +417,22 @@ export function ChatShell() {
   useEffect(() => {
     const preferred =
       window.localStorage.getItem("huddle-theme") === "light" ? "light" : "dark";
-    document.documentElement.dataset.theme = preferred;
+    const root = document.documentElement;
+    root.dataset.theme = preferred;
+    root.dataset.density =
+      window.localStorage.getItem("huddle-density") || "cozy";
+    root.dataset.backdrop =
+      window.localStorage.getItem("huddle-backdrop") || "glow";
+    root.dataset.motion =
+      window.localStorage.getItem("huddle-motion") || "full";
+    root.style.setProperty(
+      "--lavender",
+      window.localStorage.getItem("huddle-accent") || "#9d8cf5",
+    );
+    root.style.setProperty(
+      "--ui-corners",
+      `${Number(window.localStorage.getItem("huddle-corners")) || 16}px`,
+    );
     const frame = window.requestAnimationFrame(() => setTheme(preferred));
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -713,6 +746,44 @@ export function ChatShell() {
     }
 
     setNotice(`I don't know /${bare}. Type / to see what I do know.`);
+  }
+
+  async function runMusicUiCommand(
+    raw: string,
+  ): Promise<MusicSettings | void> {
+    if (!voice.channelId) {
+      setNotice("Join a voice room to control its music.");
+      return;
+    }
+    const name = raw.trim().split(/\s+/)[0].replace(/^\//, "");
+    const silent = new Set([
+      "autoplay",
+      "automix",
+      "artistdiversity",
+      "vibematch",
+      "automixblend",
+      "crossfade",
+      "filter",
+    ]).has(name);
+    try {
+      const data = await apiFetch<{ state?: MusicSettings }>(
+        "/api/music/command",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            command: raw,
+            voiceChannelId: voice.channelId,
+            textChannelId: activeChannelId,
+            silent,
+          }),
+        },
+      );
+      return data.state;
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "That music control failed.",
+      );
+    }
   }
 
   async function sendText(text: string, attachmentKey?: string) {
@@ -1285,6 +1356,15 @@ export function ChatShell() {
                               ııı
                             </span>
                           )}
+                          {person.bot && person.deafened && (
+                            <span
+                              className="bot-deafened-pill"
+                              title="The bot sends music but cannot hear the room"
+                              aria-label="Bot deafened"
+                            >
+                              🎧
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1587,6 +1667,24 @@ export function ChatShell() {
                     />
                   ) : message.kind === "dnd" && message.payload ? (
                     <DndCard {...message.payload} />
+                  ) : message.kind === "music-settings" && message.payload ? (
+                    <MusicSettingsCard
+                      settings={message.payload}
+                      disabled={
+                        message.payload.voiceChannelId !== voice.channelId
+                      }
+                      onCommand={runMusicUiCommand}
+                    />
+                  ) : message.kind === "music-stats" && message.payload ? (
+                    <MusicStatsCard
+                      wrapped={message.payload.wrapped}
+                      label={message.payload.label}
+                      plays={message.payload.plays}
+                      unique={message.payload.unique}
+                      hours={message.payload.hours}
+                      topSongs={message.payload.topSongs}
+                      topRequesters={message.payload.topRequesters}
+                    />
                   ) : (
                     <MessageBody text={message.text} />
                   )}

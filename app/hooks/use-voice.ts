@@ -28,6 +28,25 @@ const SCREEN_SHARE_CONSTRAINTS: Record<
   "1080p60": { width: 1920, height: 1080, frameRate: 60 },
 };
 
+const VOICE_BITRATE = 128_000;
+const SCREEN_AUDIO_BITRATE = 256_000;
+
+async function tuneAudioSender(
+  sender: RTCRtpSender,
+  maxBitrate: number,
+): Promise<void> {
+  if (sender.track?.kind !== "audio") return;
+  const parameters = sender.getParameters();
+  if (!parameters.encodings.length) parameters.encodings = [{}];
+  for (const encoding of parameters.encodings) {
+    encoding.maxBitrate = maxBitrate;
+    // Discontinuous transmission is useful for telephony, but its repeated
+    // noise-floor switching is distracting in a persistent friends' room.
+    encoding.dtx = "disabled";
+  }
+  await sender.setParameters(parameters).catch(() => undefined);
+}
+
 /**
  * Peer-to-peer voice, meshed.
  *
@@ -158,10 +177,16 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       peersRef.current.set(remoteId, peer);
 
       for (const track of localStreamRef.current?.getTracks() || []) {
-        peer.addTrack(track, localStreamRef.current as MediaStream);
+        const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
+        if (track.kind === "audio") {
+          void tuneAudioSender(sender, VOICE_BITRATE);
+        }
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {
-        peer.addTrack(track, screenStreamRef.current as MediaStream);
+        const sender = peer.addTrack(track, screenStreamRef.current as MediaStream);
+        if (track.kind === "audio") {
+          void tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+        }
       }
 
       peer.onicecandidate = (event) => {
@@ -345,7 +370,12 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
           once: true,
         });
         for (const [remoteId, peer] of peersRef.current) {
-          for (const track of stream.getTracks()) peer.addTrack(track, stream);
+          for (const track of stream.getTracks()) {
+            const sender = peer.addTrack(track, stream);
+            if (track.kind === "audio") {
+              await tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+            }
+          }
           await negotiatePeer(remoteId, peer);
         }
       } catch (shareError) {
