@@ -498,6 +498,9 @@ export function ChatShell() {
     const value = parts.join(" ").trim();
 
     if (MUSIC_COMMANDS.has(name)) {
+      // This runs synchronously from the composer submit gesture, before the
+      // resolver/network round trip, so the eventual track may autoplay.
+      player.prime();
       if (!voice.channelId) {
         setNotice(
           "Join a voice channel first — the music bot plays into the room you are in.",
@@ -1062,7 +1065,10 @@ export function ChatShell() {
                 <div key={channel.id}>
                   <button
                     className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""}`}
-                    onClick={() => void voice.join(channel.id)}
+                    onClick={() => {
+                      player.prime();
+                      void voice.join(channel.id);
+                    }}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       void renameChannel(channel);
@@ -1266,9 +1272,11 @@ export function ChatShell() {
               <button
                 className="join-button"
                 disabled={!voiceChannels.length}
-                onClick={() =>
-                  voiceChannels[0] && void voice.join(voiceChannels[0].id)
-                }
+                onClick={() => {
+                  if (!voiceChannels[0]) return;
+                  player.prime();
+                  void voice.join(voiceChannels[0].id);
+                }}
               >
                 Join {voiceChannels[0]?.name || "voice"}
               </button>
