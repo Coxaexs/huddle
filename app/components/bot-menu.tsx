@@ -83,8 +83,8 @@ export function BotMenu({
             <input
               type="range"
               min={0}
-              max={200}
-              step={5}
+              max={100}
+              step={1}
               value={voicePref.volume}
               onChange={(event) => onVoiceVolume(Number(event.target.value))}
             />

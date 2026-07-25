@@ -51,6 +51,7 @@ import {
   DND_LINK_COMMANDS,
   LOOKUP_COMMANDS,
   MUSIC_COMMANDS,
+  VOICE_REQUIRED_MUSIC_COMMANDS,
   matchCommands,
 } from "./lib/commands";
 
@@ -65,6 +66,7 @@ interface Message {
   text: string;
   bot?: boolean;
   image?: string;
+  file?: { url: string; name: string; type: "pdf" };
   link?: string;
   actionLabel?: string;
   audio?: string;
@@ -133,6 +135,12 @@ function Icon({
       {children}
     </button>
   );
+}
+
+/** Audio-taper curve: makes the whole 0–100 slider feel evenly useful. */
+function volumeGain(percent: number): number {
+  const normalized = Math.max(0, Math.min(1, percent / 100));
+  return normalized * normalized;
 }
 
 export function ChatShell() {
@@ -567,21 +575,30 @@ export function ChatShell() {
     const value = parts.join(" ").trim();
 
     if (MUSIC_COMMANDS.has(name)) {
-      // This runs synchronously from the composer submit gesture, before the
-      // resolver/network round trip, so the eventual track may autoplay.
-      player.prime();
-      if (!voice.channelId) {
+      const requiresPresence = VOICE_REQUIRED_MUSIC_COMMANDS.has(name);
+      if (requiresPresence && !voice.channelId) {
         setNotice(
-          "Join a voice channel first — the music bot plays into the room you are in.",
+          `Join a voice channel first to use /${name}. Room info, settings, stats and Wrapped work from anywhere.`,
         );
         return;
       }
+      const targetVoiceChannelId =
+        voice.channelId ||
+        voiceChannels.find((channel) => hub.players[channel.id]?.track)?.id ||
+        voiceChannels[0]?.id;
+      if (!targetVoiceChannelId) {
+        setNotice("This server does not have a voice room yet.");
+        return;
+      }
+      // Keep the permanent media element unlocked when a playback command is
+      // submitted from a user gesture.
+      if (requiresPresence) player.prime();
       try {
         await apiFetch("/api/music/command", {
           method: "POST",
           body: JSON.stringify({
             command: `/${name} ${value}`.trim(),
-            voiceChannelId: voice.channelId,
+            voiceChannelId: targetVoiceChannelId,
             textChannelId: activeChannelId,
           }),
         });
@@ -754,9 +771,15 @@ export function ChatShell() {
 
   async function runMusicUiCommand(
     raw: string,
+    roomHint?: string,
   ): Promise<MusicSettings | void> {
-    if (!voice.channelId) {
-      setNotice("Join a voice room to control its music.");
+    const targetVoiceChannelId =
+      roomHint ||
+      voice.channelId ||
+      voiceChannels.find((channel) => hub.players[channel.id]?.track)?.id ||
+      voiceChannels[0]?.id;
+    if (!targetVoiceChannelId) {
+      setNotice("This server does not have a voice room yet.");
       return;
     }
     const name = raw.trim().split(/\s+/)[0].replace(/^\//, "");
@@ -776,7 +799,7 @@ export function ChatShell() {
           method: "POST",
           body: JSON.stringify({
             command: raw,
-            voiceChannelId: voice.channelId,
+            voiceChannelId: targetVoiceChannelId,
             textChannelId: activeChannelId,
             silent,
           }),
@@ -820,7 +843,7 @@ export function ChatShell() {
       let attachmentKey: string | undefined;
       if (pendingFile) {
         const form = new FormData();
-        form.append("image", pendingFile);
+        form.append("file", pendingFile);
         const upload = await apiFetch<{ key: string }>("/api/uploads", {
           method: "POST",
           body: form,
@@ -886,16 +909,23 @@ export function ChatShell() {
     }
   }
 
-  function chooseImage(event: ChangeEvent<HTMLInputElement>) {
+  function chooseAttachment(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setNotice("Choose an image file.");
+    const isImage = file.type.startsWith("image/");
+    const isPdf =
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isImage && !isPdf) {
+      setNotice("Choose an image or PDF file.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setPendingImage(String(reader.result));
-    reader.readAsDataURL(file);
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = () => setPendingImage(String(reader.result));
+      reader.readAsDataURL(file);
+    } else {
+      setPendingImage(null);
+    }
     setPendingFile(file);
     event.target.value = "";
   }
@@ -1674,10 +1704,13 @@ export function ChatShell() {
                   ) : message.kind === "music-settings" && message.payload ? (
                     <MusicSettingsCard
                       settings={message.payload}
-                      disabled={
-                        message.payload.voiceChannelId !== voice.channelId
+                      disabled={!message.payload.voiceChannelId}
+                      onCommand={(command) =>
+                        runMusicUiCommand(
+                          command,
+                          message.payload?.voiceChannelId,
+                        )
                       }
-                      onCommand={runMusicUiCommand}
                     />
                   ) : message.kind === "music-stats" && message.payload ? (
                     <MusicStatsCard
@@ -1772,6 +1805,21 @@ export function ChatShell() {
                       alt="Shared attachment"
                     />
                   )}
+                  {message.file?.type === "pdf" && (
+                    <a
+                      className="message-file-card"
+                      href={message.file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="message-file-icon">PDF</span>
+                      <span>
+                        <strong>{message.file.name}</strong>
+                        <small>PDF document · open in a new tab</small>
+                      </span>
+                      <b aria-hidden="true">↗</b>
+                    </a>
+                  )}
                 </div>
 
                 <div className="message-actions">
@@ -1852,22 +1900,38 @@ export function ChatShell() {
               </button>
             </div>
           )}
+          {pendingFile && !pendingImage && (
+            <div className="attachment-preview file-preview">
+              <span className="message-file-icon">PDF</span>
+              <span>
+                <strong>{pendingFile.name}</strong>
+                <small>{(pendingFile.size / 1024 / 1024).toFixed(1)} MB</small>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPendingFile(null)}
+                aria-label="Remove attachment"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           <div className="composer">
             <button
               type="button"
               className="attach-button"
               onClick={() => fileRef.current?.click()}
-              aria-label="Attach an image"
+              aria-label="Attach an image or PDF"
             >
               +
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf,.pdf"
               hidden
-              onChange={chooseImage}
+              onChange={chooseAttachment}
             />
             <textarea
               ref={composerRef}
@@ -2134,7 +2198,7 @@ export function ChatShell() {
                 void element.play().catch(() => undefined);
               }
               // Per-person volume, on top of your own deafen switch.
-              element.volume = Math.max(0, Math.min(1, pref.volume / 100));
+              element.volume = volumeGain(pref.volume);
             }}
             muted={voice.deafened || pref.muted}
           />

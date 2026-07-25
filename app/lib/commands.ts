@@ -90,14 +90,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Music",
     voice: true,
   },
-  { name: "queue", description: "Show what is coming up", group: "Music", voice: true },
+  { name: "queue", description: "Show what is coming up", group: "Music" },
   {
     name: "nowplaying",
     description: "Show the player with a seek bar",
     group: "Music",
-    voice: true,
   },
-  { name: "history", description: "What this room played before", group: "Music", voice: true },
+  { name: "history", description: "What this room played before", group: "Music" },
   { name: "shuffle", description: "Shuffle the queue", group: "Music", voice: true },
   { name: "clear", description: "Empty the queue", group: "Music", voice: true },
   {
@@ -124,35 +123,31 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "grab",
     description: "Send the current track to your DMs",
     group: "Music",
-    voice: true,
   },
   {
     name: "search",
     args: "<song name>",
     description: "Search without playing anything yet",
     group: "Music",
-    voice: true,
   },
   {
     name: "lyrics",
     args: "[song name]",
     description: "Lyrics for the current track",
     group: "Music",
-    voice: true,
   },
   {
     name: "lyricsnow",
     description: "The line playing right now",
     group: "Music",
-    voice: true,
   },
-  { name: "autoplay", args: "<on|off>", description: "Keep playing smart related tracks", group: "Music", voice: true },
-  { name: "automix", args: "<on|off>", description: "Use smooth DJ-style transitions", group: "Music", voice: true },
-  { name: "like", description: "Teach the bot you like this track", group: "Music", voice: true },
-  { name: "dislike", description: "Keep this track out of autoplay", group: "Music", voice: true },
-  { name: "stats", description: "Listening stats for this room", group: "Music", voice: true },
-  { name: "wrapped", description: "This room's monthly music recap", group: "Music", voice: true },
-  { name: "settings", description: "View the room's music settings", group: "Music", voice: true },
+  { name: "autoplay", args: "<on|off>", description: "Keep playing smart related tracks", group: "Music" },
+  { name: "automix", args: "<on|off>", description: "Use smooth DJ-style transitions", group: "Music" },
+  { name: "like", description: "Teach the bot you like this track", group: "Music" },
+  { name: "dislike", description: "Keep this track out of autoplay", group: "Music" },
+  { name: "stats", description: "Listening stats for this room", group: "Music" },
+  { name: "wrapped", description: "This room's monthly music recap", group: "Music" },
+  { name: "settings", description: "View the room's music settings", group: "Music" },
 
   // ---- the same bot, but on Discord ----
   {
@@ -216,6 +211,13 @@ export const MUSIC_COMMANDS = new Set(
   SLASH_COMMANDS.filter((command) => command.group === "Music").map(
     (command) => command.name,
   ),
+);
+
+/** Commands that can change what everyone hears require actually joining voice. */
+export const VOICE_REQUIRED_MUSIC_COMMANDS = new Set(
+  SLASH_COMMANDS.filter(
+    (command) => command.group === "Music" && command.voice,
+  ).map((command) => command.name),
 );
 
 /** Handled by the bot's Discord side and reported back into the channel. */

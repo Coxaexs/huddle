@@ -33,7 +33,10 @@ export async function GET(request: Request) {
 
   const prefs: Record<string, { volume: number; muted: boolean }> = {};
   for (const row of (mine.results || []) as unknown as PrefRow[]) {
-    prefs[row.target_id] = { volume: row.volume, muted: Boolean(row.muted) };
+    prefs[row.target_id] = {
+      volume: Math.max(0, Math.min(100, row.volume)),
+      muted: Boolean(row.muted),
+    };
   }
 
   return Response.json({
@@ -96,7 +99,7 @@ export async function POST(request: Request) {
 
     const volume =
       typeof body.volume === "number"
-        ? Math.max(0, Math.min(200, Math.round(body.volume)))
+        ? Math.max(0, Math.min(100, Math.round(body.volume)))
         : (existing?.volume ?? 100);
     const muted =
       typeof body.muted === "boolean"

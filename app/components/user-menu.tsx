@@ -95,8 +95,8 @@ export function UserMenu({
             <input
               type="range"
               min={0}
-              max={200}
-              step={5}
+              max={100}
+              step={1}
               value={pref.volume}
               onChange={(event) => onVolume(Number(event.target.value))}
             />
