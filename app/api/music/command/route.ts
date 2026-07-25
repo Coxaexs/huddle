@@ -246,18 +246,7 @@ export async function POST(request: Request) {
             ? `❤️ Liked **${result.title}** — this now helps Smart Autoplay.`
             : `👎 Noted — Smart Autoplay will avoid **${result.title}**.`
           : `${name === "like" ? "Removed the like from" : "Removed the dislike from"} **${result.title}**.`;
-        await say(db, textChannelId, text, {
-          kind: "music-stats",
-          payload: {
-            wrapped: name === "wrapped",
-            label: report.label,
-            plays: report.plays || 0,
-            unique: report.unique || 0,
-            hours: report.hours || 0,
-            topSongs: report.topSongs || [],
-            topRequesters: report.topRequesters || [],
-          },
-        });
+        await say(db, textChannelId, text);
         return Response.json({ text, state });
       }
 

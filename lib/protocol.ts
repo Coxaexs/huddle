@@ -16,6 +16,12 @@ export interface VoiceParticipant extends PresenceUser {
   deafened: boolean;
   /** Muted for the whole Huddle by someone, not just for themselves. */
   serverMuted?: boolean;
+  /**
+   * MediaStream ids for this person's video, so receivers can tell a camera
+   * from a screen share without inspecting the tracks.
+   */
+  cameraStreamId?: string | null;
+  screenStreamId?: string | null;
   /** True for the music bot, which has no microphone. */
   bot?: boolean;
 }
@@ -73,7 +79,13 @@ export type ClientEvent =
   | { t: "subscribe"; channelId: string }
   | { t: "voice-join"; channelId: string }
   | { t: "voice-leave" }
-  | { t: "voice-state"; muted?: boolean; deafened?: boolean }
+  | {
+      t: "voice-state";
+      muted?: boolean;
+      deafened?: boolean;
+      cameraStreamId?: string | null;
+      screenStreamId?: string | null;
+    }
   | { t: "signal"; to: string; data: unknown }
   | { t: "player"; channelId: string; action: PlayerAction }
   | { t: "ping" };

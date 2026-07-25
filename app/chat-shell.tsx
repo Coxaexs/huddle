@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -45,6 +46,7 @@ import {
   type ScreenShareQuality,
 } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
+import { registerMedia, unlockAudio, unregisterMedia } from "./lib/devices";
 import {
   COMMAND_ALIASES,
   DISCORD_ONLY_COMMANDS,
@@ -162,7 +164,10 @@ export function ChatShell() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
-  const [membersOpen, setMembersOpen] = useState(true);
+  // On a phone the member list is an overlay, so it starts out of the way.
+  const [membersOpen, setMembersOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth > 760,
+  );
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
@@ -187,6 +192,28 @@ export function ChatShell() {
   activeChannelRef.current = activeChannelId;
 
   const inDmHome = activeServerId === DM_HOME;
+  const [touchInput, setTouchInput] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const apply = () => setTouchInput(coarse.matches);
+    apply();
+    coarse.addEventListener("change", apply);
+    return () => coarse.removeEventListener("change", apply);
+  }, []);
+
+  // Phones refuse to start any audio until the page has been touched. Every
+  // media element registers itself, so one gesture is enough for all of them.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("touchend", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("touchend", unlock);
+    };
+  }, []);
 
   // ------------------------------------------------------------- session
 
@@ -909,14 +936,14 @@ export function ChatShell() {
     }
   }
 
-  function chooseAttachment(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  /** Shared by the paperclip, a drop, and a paste. */
+  function acceptAttachment(file: File | undefined | null) {
     if (!file) return;
     const isImage = file.type.startsWith("image/");
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isImage && !isPdf) {
-      setNotice("Choose an image or PDF file.");
+      setNotice("Huddle takes images and PDFs.");
       return;
     }
     if (isImage) {
@@ -927,7 +954,27 @@ export function ChatShell() {
       setPendingImage(null);
     }
     setPendingFile(file);
+    composerRef.current?.focus();
+  }
+
+  function chooseAttachment(event: ChangeEvent<HTMLInputElement>) {
+    acceptAttachment(event.target.files?.[0]);
     event.target.value = "";
+  }
+
+  function onChannelDragOver(event: DragEvent<HTMLElement>) {
+    if (!activeChannelId) return;
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDragging(true);
+  }
+
+  function onChannelDrop(event: DragEvent<HTMLElement>) {
+    if (!activeChannelId) return;
+    event.preventDefault();
+    setDragging(false);
+    acceptAttachment(event.dataTransfer.files?.[0]);
   }
 
   async function createServer() {
@@ -1032,6 +1079,20 @@ export function ChatShell() {
     event.preventDefault();
     setBotMenu(null);
     setUserMenu({ member, x: event.clientX, y: event.clientY });
+  }
+
+  /**
+   * Touch screens have no right-click, so on a coarse pointer a plain tap opens
+   * the same menu. Handed to both onClick and onContextMenu.
+   */
+  function userMenuHandlers(member: Member) {
+    return {
+      onContextMenu: (event: MouseEvent) => openUserMenu(event, member),
+      onClick: (event: MouseEvent) => {
+        if (!touchInput) return;
+        openUserMenu(event, member);
+      },
+    };
   }
 
   function openBotMenu(event: MouseEvent, kind: "music" | "dnd") {
@@ -1526,6 +1587,16 @@ export function ChatShell() {
                   >
                     {voice.screenSharing ? "Stop sharing" : "Share screen"}
                   </button>
+                  <button
+                    className={voice.cameraOn ? "sharing" : ""}
+                    onClick={() =>
+                      voice.cameraOn
+                        ? voice.stopCamera()
+                        : void voice.startCamera()
+                    }
+                  >
+                    {voice.cameraOn ? "Turn camera off" : "Turn camera on"}
+                  </button>
                 </div>
                 <button className="leave-button" onClick={voice.leave}>
                   Leave
@@ -1548,7 +1619,21 @@ export function ChatShell() {
         )}
       </aside>
 
-      <section className="chat-panel">
+      <section
+        className={`chat-panel ${dragging ? "drop-target" : ""}`}
+        onDragOver={onChannelDragOver}
+        onDragLeave={(event) => {
+          // Ignore the flicker as the pointer crosses child elements.
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setDragging(false);
+        }}
+        onDrop={onChannelDrop}
+      >
+        {dragging && (
+          <div className="drop-overlay" aria-hidden="true">
+            <div>Drop to attach · images and PDFs</div>
+          </div>
+        )}
         <header className="chat-header">
           <button
             className="mobile-menu"
@@ -1664,12 +1749,18 @@ export function ChatShell() {
                   onContextMenu={(event) => {
                     if (author) openUserMenu(event, author);
                   }}
+                  onClick={(event) => {
+                    if (touchInput && author) openUserMenu(event, author);
+                  }}
                 />
                 <div className="message-body">
                   <div className="message-meta">
                     <strong
                       onContextMenu={(event) => {
                         if (author) openUserMenu(event, author);
+                      }}
+                      onClick={(event) => {
+                        if (touchInput && author) openUserMenu(event, author);
                       }}
                     >
                       {author?.displayName || message.author}
@@ -2041,13 +2132,45 @@ export function ChatShell() {
                 >
                   {voice.screenSharing ? "Stop" : "Share screen"}
                 </button>
+                <button
+                  className={voice.cameraOn ? "sharing" : ""}
+                  onClick={() =>
+                    voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
+                  }
+                >
+                  {voice.cameraOn ? "Camera off" : "Camera"}
+                </button>
               </div>
             </div>
 
-            {voice.remoteStreams.some((entry) =>
-              entry.stream.getVideoTracks().some((track) => track.readyState === "live"),
-            ) && (
+            {(voice.localVideos.length > 0 ||
+              voice.remoteStreams.some((entry) =>
+                entry.stream
+                  .getVideoTracks()
+                  .some((track) => track.readyState === "live"),
+              )) && (
               <div className="screen-share-grid">
+                {/* Your own camera and screen, so you can see what you are
+                    sending. Muted, or you would hear yourself. */}
+                {voice.localVideos.map(({ kind, stream }) => (
+                  <figure key={stream.id} className="self-tile">
+                    <video
+                      autoPlay
+                      playsInline
+                      muted
+                      className={kind === "camera" ? "mirrored" : ""}
+                      ref={(element) => {
+                        if (element && element.srcObject !== stream) {
+                          element.srcObject = stream;
+                          void element.play().catch(() => undefined);
+                        }
+                      }}
+                    />
+                    <figcaption>
+                      You · {kind === "camera" ? "camera" : "screen"}
+                    </figcaption>
+                  </figure>
+                ))}
                 {voice.remoteStreams
                   .filter((entry) =>
                     entry.stream
@@ -2072,6 +2195,11 @@ export function ChatShell() {
                         />
                         <figcaption>
                           {person?.displayName || "Screen share"}
+                          {person?.cameraStreamId === stream.id
+                            ? " · camera"
+                            : person?.screenStreamId === stream.id
+                              ? " · screen"
+                              : ""}
                         </figcaption>
                       </figure>
                     );
@@ -2129,7 +2257,7 @@ export function ChatShell() {
           <div
             className="member"
             key={member.id}
-            onContextMenu={(event) => openUserMenu(event, member)}
+            {...userMenuHandlers(member)}
             onDoubleClick={() => member.id !== user.id && void openDm(member.id)}
           >
             <Avatar
@@ -2160,7 +2288,7 @@ export function ChatShell() {
           <div
             className="member offline-member"
             key={member.id}
-            onContextMenu={(event) => openUserMenu(event, member)}
+            {...userMenuHandlers(member)}
           >
             <Avatar
               className="member-avatar"
@@ -2190,7 +2318,10 @@ export function ChatShell() {
             autoPlay
             playsInline
             ref={(element) => {
-              if (!element) return;
+              if (!element) {
+                return;
+              }
+              registerMedia(element);
               if (element.srcObject !== stream) {
                 element.srcObject = stream;
                 // Safari is more reliable when playback is requested after
@@ -2271,6 +2402,7 @@ export function ChatShell() {
           onUser={setUser}
           onClose={() => setSettingsOpen(false)}
           onSignOut={signOut}
+          onMicrophoneChange={() => void voice.switchMicrophone()}
         />
       )}
     </main>

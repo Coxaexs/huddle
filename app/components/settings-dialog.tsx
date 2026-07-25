@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { AVATAR_COLORS, type PublicUser } from "@/lib/users";
 import { apiFetch } from "../lib/client";
+import {
+  listDevices,
+  primeDeviceLabels,
+  saveDevice,
+  savedDevice,
+  supportsOutputSelection,
+  type DeviceLists,
+} from "../lib/devices";
 
 interface Invite {
   code: string;
@@ -20,9 +28,11 @@ interface SettingsDialogProps {
   onUser: (user: PublicUser) => void;
   onClose: () => void;
   onSignOut: () => void;
+  /** Called after the microphone choice changes, to swap it mid-call. */
+  onMicrophoneChange?: () => void;
 }
 
-type Tab = "profile" | "password" | "invites" | "appearance";
+type Tab = "profile" | "voice" | "password" | "invites" | "appearance";
 type Density = "compact" | "cozy" | "roomy";
 type Backdrop = "plain" | "aurora" | "dots";
 
@@ -33,8 +43,17 @@ export function SettingsDialog({
   onUser,
   onClose,
   onSignOut,
+  onMicrophoneChange,
 }: SettingsDialogProps) {
   const [tab, setTab] = useState<Tab>("profile");
+  const [devices, setDevices] = useState<DeviceLists>({
+    microphones: [],
+    speakers: [],
+    cameras: [],
+  });
+  const [micId, setMicId] = useState("");
+  const [speakerId, setSpeakerId] = useState("");
+  const [cameraId, setCameraId] = useState("");
   const [displayName, setDisplayName] = useState(user.displayName);
   const [avatar, setAvatar] = useState(user.avatar);
   const [color, setColor] = useState(user.color);
@@ -55,7 +74,7 @@ export function SettingsDialog({
   useEffect(() => {
     const savedAccent = window.localStorage.getItem("huddle-accent");
     const savedDensity = window.localStorage.getItem("huddle-density") as Density;
-    const savedBackdrop = window.localStorage.getItem("huddle-backdrop") as Backdrop;
+    const savedBackdrop = window.localStorage.getItem("huddle-backdrop") || "";
     const savedCorners = Number(window.localStorage.getItem("huddle-corners"));
     const savedMotion = window.localStorage.getItem("huddle-motion");
     if (savedAccent) setAccent(savedAccent);
@@ -63,7 +82,7 @@ export function SettingsDialog({
     // The old glow was the default. Do not carry it forward: gradients are
     // now an explicit opt-in appearance choice.
     if (["plain", "aurora", "dots"].includes(savedBackdrop)) {
-      setBackdrop(savedBackdrop);
+      setBackdrop(savedBackdrop as Backdrop);
     } else if (savedBackdrop === "glow") {
       setBackdrop("plain");
     }
@@ -84,6 +103,27 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle-corners", String(corners));
     window.localStorage.setItem("huddle-motion", motion ? "full" : "reduced");
   }, [accent, corners, density, backdrop, motion]);
+
+  useEffect(() => {
+    if (tab !== "voice") return;
+    setMicId(savedDevice("microphone"));
+    setSpeakerId(savedDevice("speaker"));
+    setCameraId(savedDevice("camera"));
+
+    let cancelled = false;
+    const refresh = () =>
+      listDevices()
+        .then((lists) => !cancelled && setDevices(lists))
+        .catch(() => undefined);
+    void refresh();
+    // Labels stay blank until the page has held a media permission once.
+    void primeDeviceLabels().then(refresh);
+    navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
+    return () => {
+      cancelled = true;
+      navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
+    };
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== "invites") return;
@@ -195,6 +235,7 @@ export function SettingsDialog({
           {(
             [
               ["profile", "Profile"],
+              ["voice", "Voice & Video"],
               ["password", "Password"],
               ["invites", "Invites"],
               ["appearance", "Appearance"],
@@ -294,6 +335,76 @@ export function SettingsDialog({
               <button type="button" className="primary" onClick={saveProfile}>
                 Save profile
               </button>
+            </>
+          )}
+
+          {tab === "voice" && (
+            <>
+              <p className="modal-hint">
+                Choices are remembered on this device. Changing the microphone
+                while you are in a call swaps it without dropping the call.
+              </p>
+
+              <label htmlFor="settings-mic">Microphone</label>
+              <select
+                id="settings-mic"
+                value={micId}
+                onChange={(event) => {
+                  setMicId(event.target.value);
+                  saveDevice("microphone", event.target.value);
+                  void onMicrophoneChange?.();
+                }}
+              >
+                <option value="">System default</option>
+                {devices.microphones.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))}
+              </select>
+
+              {supportsOutputSelection() ? (
+                <>
+                  <label htmlFor="settings-speaker">Output</label>
+                  <select
+                    id="settings-speaker"
+                    value={speakerId}
+                    onChange={(event) => {
+                      setSpeakerId(event.target.value);
+                      saveDevice("speaker", event.target.value);
+                    }}
+                  >
+                    <option value="">System default</option>
+                    {devices.speakers.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <p className="modal-hint">
+                  This browser plays through whichever output the system
+                  chooses — pick it there instead.
+                </p>
+              )}
+
+              <label htmlFor="settings-camera">Camera</label>
+              <select
+                id="settings-camera"
+                value={cameraId}
+                onChange={(event) => {
+                  setCameraId(event.target.value);
+                  saveDevice("camera", event.target.value);
+                }}
+              >
+                <option value="">System default</option>
+                {devices.cameras.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))}
+              </select>
             </>
           )}
 

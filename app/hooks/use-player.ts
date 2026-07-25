@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
+import { registerMedia, unregisterMedia } from "../lib/devices";
 
 interface UsePlayerOptions {
   /** The player for the voice room you are actually sitting in, if any. */
@@ -44,6 +45,9 @@ export function usePlayer({
       // No crossOrigin: the media hosts do not send CORS headers, and asking
       // for them makes the request fail outright.
       audioRef.current = audio;
+      // Joins the shared registry: follows the chosen speaker, and one screen
+      // tap can unlock it along with everyone's voice on a phone.
+      registerMedia(audio);
     }
     return audioRef.current;
   }, []);
@@ -126,6 +130,7 @@ export function usePlayer({
   useEffect(
     () => () => {
       audioRef.current?.pause();
+      unregisterMedia(audioRef.current);
       audioRef.current = null;
     },
     [],
