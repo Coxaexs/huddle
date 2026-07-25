@@ -35,7 +35,8 @@ export function usePlayer({
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = "auto";
-      audio.crossOrigin = "anonymous";
+      // No crossOrigin: the media hosts do not send CORS headers, and asking
+      // for them makes the request fail outright.
       audioRef.current = audio;
     }
     return audioRef.current;
