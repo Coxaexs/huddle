@@ -103,9 +103,11 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           placeholder={mode === "signup" ? "At least 8 characters" : "••••••••"}
         />
 
-        {mode === "signup" && !bootstrap && (
+        {mode === "signup" && (
           <>
-            <label htmlFor="huddle-invite">Invite code</label>
+            <label htmlFor="huddle-invite">
+              {bootstrap ? "Setup code" : "Invite code"}
+            </label>
             <input
               id="huddle-invite"
               value={invite}

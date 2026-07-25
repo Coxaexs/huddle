@@ -5,6 +5,8 @@ export interface HuddleBindings {
   UPLOADS?: R2Bucket;
   HUB?: DurableObjectNamespace;
   BOT_TOKEN?: string;
+  /** When set, the first account must present this code too. */
+  BOOTSTRAP_CODE?: string;
   MUSICWATCH_BASE_URL?: string;
   MUSICWATCH_PUBLIC_URL?: string;
   MUSICWATCH_PASSWORD?: string;

@@ -45,8 +45,19 @@ export async function POST(request: Request) {
     .first<{ count: number }>();
   const isFirstUser = (total?.count ?? 0) === 0;
 
-  // Every account after the first needs an invite code.
   const inviteCode = (body.invite || "").trim().toUpperCase();
+
+  // Huddle is on the public internet, so the very first signup can be gated
+  // too: set BOOTSTRAP_CODE and nobody can claim the place before you do.
+  const bootstrapCode = bindings().BOOTSTRAP_CODE?.trim().toUpperCase();
+  if (isFirstUser && bootstrapCode && inviteCode !== bootstrapCode) {
+    return Response.json(
+      { error: "This Huddle is waiting for its owner's setup code." },
+      { status: 403 },
+    );
+  }
+
+  // Every account after the first needs an invite code.
   if (!isFirstUser) {
     if (!inviteCode) {
       return Response.json(
