@@ -28,10 +28,12 @@ html[data-density="roomy"] .message {
   padding-top:15px;
   padding-bottom:15px;
 }
-html[data-backdrop="glow"] .messages {
+html[data-backdrop="aurora"] .messages {
   background-image:
-    radial-gradient(circle at 78% 12%, color-mix(in srgb, var(--lavender) 10%, transparent), transparent 31%),
-    radial-gradient(circle at 18% 82%, color-mix(in srgb, var(--mint) 7%, transparent), transparent 28%);
+    radial-gradient(circle at 82% 8%, color-mix(in srgb, #8b6df2 22%, transparent), transparent 38%),
+    radial-gradient(circle at 12% 88%, color-mix(in srgb, #42d39b 17%, transparent), transparent 36%),
+    linear-gradient(135deg, color-mix(in srgb, #7b63e6 6%, transparent), color-mix(in srgb, #3dba8c 5%, transparent));
+  background-attachment:local;
 }
 html[data-backdrop="dots"] .messages {
   background-image:radial-gradient(color-mix(in srgb, var(--muted) 20%, transparent) .7px, transparent .7px);

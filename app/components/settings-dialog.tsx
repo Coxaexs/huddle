@@ -24,7 +24,7 @@ interface SettingsDialogProps {
 
 type Tab = "profile" | "password" | "invites" | "appearance";
 type Density = "compact" | "cozy" | "roomy";
-type Backdrop = "plain" | "glow" | "dots";
+type Backdrop = "plain" | "aurora" | "dots";
 
 export function SettingsDialog({
   user,
@@ -47,7 +47,7 @@ export function SettingsDialog({
   const [avatarKey, setAvatarKey] = useState<string | null | undefined>(undefined);
   const [accent, setAccent] = useState("#9d8cf5");
   const [density, setDensity] = useState<Density>("cozy");
-  const [backdrop, setBackdrop] = useState<Backdrop>("glow");
+  const [backdrop, setBackdrop] = useState<Backdrop>("plain");
   const [corners, setCorners] = useState(16);
   const [motion, setMotion] = useState(true);
   const pictureRef = useRef<HTMLInputElement>(null);
@@ -60,7 +60,13 @@ export function SettingsDialog({
     const savedMotion = window.localStorage.getItem("huddle-motion");
     if (savedAccent) setAccent(savedAccent);
     if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
-    if (["plain", "glow", "dots"].includes(savedBackdrop)) setBackdrop(savedBackdrop);
+    // The old glow was the default. Do not carry it forward: gradients are
+    // now an explicit opt-in appearance choice.
+    if (["plain", "aurora", "dots"].includes(savedBackdrop)) {
+      setBackdrop(savedBackdrop);
+    } else if (savedBackdrop === "glow") {
+      setBackdrop("plain");
+    }
     if (savedCorners >= 4 && savedCorners <= 28) setCorners(savedCorners);
     if (savedMotion) setMotion(savedMotion !== "reduced");
   }, []);
@@ -421,14 +427,14 @@ export function SettingsDialog({
 
               <span className="field-label">Chat backdrop</span>
               <div className="appearance-choice-row">
-                {(["plain", "glow", "dots"] as const).map((option) => (
+                {(["plain", "aurora", "dots"] as const).map((option) => (
                   <button
                     type="button"
                     className={backdrop === option ? "active" : ""}
                     key={option}
                     onClick={() => setBackdrop(option)}
                   >
-                    {option}
+                    {option === "aurora" ? "Purple + green" : option}
                   </button>
                 ))}
               </div>
