@@ -71,12 +71,26 @@ The music bot's dashboard can see these rooms too. Set in its `.env`:
     HUDDLE_BASE_URL=http://127.0.0.1:8730/hangout
     HUDDLE_BOT_TOKEN=<same value as BOT_TOKEN in .dev.vars>
 
+## What else is in here
+
+Direct messages (the only thing not visible to everyone — the hub filters those
+broadcasts by audience), pinned messages, message deleting, profile pictures,
+GIFs, and a right-click menu on people for per-person volume, a personal mute,
+or a server mute that stops their microphone for everyone.
+
+Slash commands cover both bots. Anything under "Music" runs in your Huddle voice
+room; "Discord music" reaches the same bot but drives its Discord voice
+connection, because those features live in its ffmpeg pipeline.
+
 ## Configuration
 
 `.dev.vars` (not in git) holds the secrets:
 
     MUSICWATCH_PASSWORD   password for the music bot dashboard
     BOT_TOKEN             shared secret for /api/bot/* and /api/bots/messages
+    BOOTSTRAP_CODE        needed by the very first signup
+    TENOR_API_KEY         optional; enables GIF search in the composer
+    HUDDLE_ICE_SERVERS    optional; JSON RTCIceServer[] for a TURN server
 
 Everything else lives in `wrangler.jsonc`, overridden per-host by `--var` flags
 in the systemd unit.
