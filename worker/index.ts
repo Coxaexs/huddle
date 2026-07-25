@@ -51,6 +51,7 @@ export default {
       target.searchParams.set("username", user.username);
       target.searchParams.set("displayName", user.display_name);
       target.searchParams.set("avatar", user.avatar);
+      if (user.avatar_url) target.searchParams.set("avatarUrl", user.avatar_url);
       target.searchParams.set("color", user.color);
 
       return stub.fetch(target.toString(), {

@@ -29,6 +29,7 @@ interface Attachment {
   username: string;
   displayName: string;
   avatar: string;
+  avatarUrl: string | null;
   color: string;
   channelId: string | null;
   voiceChannelId: string | null;
@@ -41,6 +42,8 @@ const IDLE_LEAVE_MS = 60_000;
 
 export class HuddleHub extends DurableObject {
   private players = new Map<string, PlayerState>();
+  /** People muted for everyone, by user id. */
+  private forcedMutes = new Set<string>();
   private loaded: Promise<void> | null = null;
 
   private async load(): Promise<void> {
@@ -51,6 +54,8 @@ export class HuddleHub extends DurableObject {
         for (const [channelId, state] of Object.entries(stored || {})) {
           this.players.set(channelId, state);
         }
+        const mutes = await this.ctx.storage.get<string[]>("forcedMutes");
+        for (const userId of mutes || []) this.forcedMutes.add(userId);
       })();
     }
     return this.loaded;
@@ -76,13 +81,57 @@ export class HuddleHub extends DurableObject {
       const body = (await request.json()) as {
         channelId: string;
         message: unknown;
+        /** User ids allowed to see it; absent means everyone (DMs use this). */
+        audience?: string[] | null;
       };
+      this.broadcast(
+        {
+          t: "message",
+          channelId: body.channelId,
+          message: body.message,
+          serverNow: Date.now(),
+        },
+        { audience: body.audience },
+      );
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/event" && request.method === "POST") {
+      const body = (await request.json()) as {
+        channelId: string;
+        event: Record<string, unknown>;
+        audience?: string[] | null;
+      };
+      this.broadcast(
+        {
+          ...(body.event as object),
+          channelId: body.channelId,
+          serverNow: Date.now(),
+        } as ServerEvent,
+        { audience: body.audience },
+      );
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/force-mute" && request.method === "POST") {
+      const body = (await request.json()) as {
+        userId: string;
+        muted: boolean;
+      };
+      if (body.muted) this.forcedMutes.add(body.userId);
+      else this.forcedMutes.delete(body.userId);
+      await this.ctx.storage.put("forcedMutes", [...this.forcedMutes]);
+
       this.broadcast({
-        t: "message",
-        channelId: body.channelId,
-        message: body.message,
+        t: "force-mute",
+        userId: body.userId,
+        muted: body.muted,
         serverNow: Date.now(),
       });
+      // Refresh whichever room they are sitting in.
+      for (const { attachment } of this.sockets()) {
+        if (attachment.userId === body.userId && attachment.voiceChannelId) {
+          this.broadcastVoice(attachment.voiceChannelId);
+        }
+      }
       return Response.json({ ok: true });
     }
     if (url.pathname === "/structure" && request.method === "POST") {
@@ -126,6 +175,7 @@ export class HuddleHub extends DurableObject {
       username: url.searchParams.get("username") || "",
       displayName: url.searchParams.get("displayName") || "",
       avatar: url.searchParams.get("avatar") || "H",
+      avatarUrl: url.searchParams.get("avatarUrl") || null,
       color: url.searchParams.get("color") || "#ffd67c",
       channelId: null,
       voiceChannelId: null,
@@ -150,6 +200,7 @@ export class HuddleHub extends DurableObject {
       online: this.onlineUserIds(),
       voice: this.voiceRooms(),
       players: Object.fromEntries(this.players.entries()),
+      forcedMutes: [...this.forcedMutes],
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
@@ -288,9 +339,11 @@ export class HuddleHub extends DurableObject {
         username: attachment.username,
         displayName: attachment.displayName,
         avatar: attachment.avatar,
+        avatarUrl: attachment.avatarUrl,
         color: attachment.color,
-        muted: attachment.muted,
+        muted: attachment.muted || this.forcedMutes.has(attachment.userId),
         deafened: attachment.deafened,
+        serverMuted: this.forcedMutes.has(attachment.userId),
       }));
 
     // The music bot shows up as a member of the room whenever it is playing
@@ -329,12 +382,23 @@ export class HuddleHub extends DurableObject {
     return rooms;
   }
 
-  private broadcast(event: ServerEvent, skipConnectionId?: string): void {
+  private broadcast(
+    event: ServerEvent,
+    options?: { skipConnectionId?: string; audience?: string[] | null },
+  ): void {
     const payload = JSON.stringify(event);
+    const audience = options?.audience?.length
+      ? new Set(options.audience)
+      : null;
     for (const { socket, attachment } of this.sockets()) {
-      if (skipConnectionId && attachment.connectionId === skipConnectionId) {
+      if (
+        options?.skipConnectionId &&
+        attachment.connectionId === options.skipConnectionId
+      ) {
         continue;
       }
+      // DM traffic reaches only the two people in the conversation.
+      if (audience && !audience.has(attachment.userId)) continue;
       try {
         socket.send(payload);
       } catch {
@@ -404,6 +468,40 @@ export class HuddleHub extends DurableObject {
         state.positionMs = 0;
         state.updatedAt = now;
         state.paused = false;
+        break;
+      }
+      case "playnext":
+        if (!state.track) {
+          state.track = action.track;
+          state.positionMs = 0;
+          state.updatedAt = now;
+          state.paused = false;
+        } else {
+          state.queue.unshift(action.track);
+        }
+        break;
+      case "move": {
+        const from = Math.max(0, Math.min(state.queue.length - 1, action.from));
+        const to = Math.max(0, Math.min(state.queue.length - 1, action.to));
+        const [moved] = state.queue.splice(from, 1);
+        if (moved) state.queue.splice(to, 0, moved);
+        break;
+      }
+      case "skipto": {
+        // Everything before the chosen track is dropped, like Discord does.
+        const index = Math.max(0, Math.min(state.queue.length - 1, action.index));
+        state.queue.splice(0, index);
+        this.advance(state, now);
+        break;
+      }
+      case "removedupes": {
+        const seen = new Set<string>();
+        state.queue = state.queue.filter((track) => {
+          const key = `${track.title}|${track.artist}`.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         break;
       }
       case "enqueue":
@@ -491,6 +589,9 @@ export class HuddleHub extends DurableObject {
 
   private advance(state: PlayerState, now: number): void {
     const finished = state.track;
+    if (finished) {
+      state.history = [finished, ...(state.history || [])].slice(0, 25);
+    }
     const next = state.queue.shift() || null;
     if (!next && state.loop === "queue" && finished) {
       state.track = finished;

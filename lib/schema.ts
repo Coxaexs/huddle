@@ -9,6 +9,14 @@
 
 export const DEFAULT_SERVER_ID = "hangout";
 
+/**
+ * DM conversations live in the channels table so messages, pins and deletes all
+ * work the same way. `server_id` is NOT NULL from the first schema and SQLite
+ * cannot drop that, so DM channels carry this sentinel instead of a real server
+ * and every server listing filters it out.
+ */
+export const DM_SERVER_ID = "dm";
+
 /** Channels the original hardcoded UI shipped with, recreated as real rows. */
 const SEED_CHANNELS: Array<{
   id: string;
@@ -116,6 +124,26 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS channels_server_idx ON channels(server_id, kind, position)",
     ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS dm_members (
+        channel_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        PRIMARY KEY (channel_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS dm_members_user_idx ON dm_members(user_id)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS voice_prefs (
+        user_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        volume INTEGER NOT NULL DEFAULT 100,
+        muted INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, target_id)
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_mutes (
+        target_id TEXT PRIMARY KEY,
+        muted_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS channel_reads (
         user_id TEXT NOT NULL,
         channel_id TEXT NOT NULL,
@@ -135,6 +163,11 @@ async function migrate(db: D1Database): Promise<void> {
     ["user_id", "ALTER TABLE messages ADD COLUMN user_id TEXT"],
     ["kind", "ALTER TABLE messages ADD COLUMN kind TEXT"],
     ["payload", "ALTER TABLE messages ADD COLUMN payload TEXT"],
+    ["pinned_at", "ALTER TABLE messages ADD COLUMN pinned_at TEXT"],
+    ["pinned_by", "ALTER TABLE messages ADD COLUMN pinned_by TEXT"],
+    // Soft delete: open tabs need to be told to remove it, and a hard delete
+    // would leave them showing a message that no longer exists.
+    ["deleted_at", "ALTER TABLE messages ADD COLUMN deleted_at TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }
@@ -144,6 +177,11 @@ async function migrate(db: D1Database): Promise<void> {
       "CREATE INDEX IF NOT EXISTS messages_channel_id_time_idx ON messages(channel_id, created_at)",
     )
     .run();
+
+  const userColumns = await columnNames(db, "users");
+  if (!userColumns.has("avatar_url")) {
+    await db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
+  }
 
   await seedDefaultServer(db);
 }

@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { channelAudience, isDmMember } from "@/lib/dms";
 import { publishMessage } from "@/lib/hub-client";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
@@ -23,6 +24,7 @@ export interface PublicMessage {
   /** Rich cards (currently "nowplaying") render instead of plain text. */
   kind?: string;
   payload?: unknown;
+  pinned?: boolean;
 }
 
 export function publicMessage(message: StoredMessage): PublicMessage {
@@ -59,6 +61,7 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     audio: message.audio_url || undefined,
     kind: message.kind || undefined,
     payload,
+    pinned: Boolean(message.pinned_at),
   };
 }
 
@@ -77,18 +80,31 @@ export async function GET(request: Request) {
   const channelId = params.get("channelId")?.slice(0, 64);
   const channelName = params.get("channel")?.slice(0, 64);
 
+  // A DM is only readable by its two participants; every other channel is
+  // open to everyone in this Huddle.
+  if (channelId) {
+    const audience = await channelAudience(db, channelId);
+    if (audience && !audience.includes(user.id)) return unauthorized();
+  }
+
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
-                   is_bot, created_at, link, action_label, audio_url, kind, payload`;
+                   is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at`;
+  const pinnedOnly = params.get("pinned") === "1";
   const result = channelId
     ? await db
         .prepare(
-          `SELECT ${columns} FROM messages WHERE channel_id = ? ORDER BY created_at ASC LIMIT 200`,
+          `SELECT ${columns} FROM messages
+            WHERE channel_id = ? AND deleted_at IS NULL
+              ${pinnedOnly ? "AND pinned_at IS NOT NULL" : ""}
+            ORDER BY created_at ASC LIMIT 200`,
         )
         .bind(channelId)
         .all()
     : await db
         .prepare(
-          `SELECT ${columns} FROM messages WHERE channel = ? AND channel_id IS NULL ORDER BY created_at ASC LIMIT 200`,
+          `SELECT ${columns} FROM messages
+            WHERE channel = ? AND channel_id IS NULL AND deleted_at IS NULL
+            ORDER BY created_at ASC LIMIT 200`,
         )
         .bind(channelName || "general")
         .all();
@@ -139,13 +155,20 @@ export async function POST(request: Request) {
   // Resolve the channel, falling back to the home server's #general.
   let channelId = body.channelId?.slice(0, 64) || null;
   let channelName = body.channel?.slice(0, 64) || "general";
+  let audience: string[] | null = null;
   if (channelId) {
     const channel = await db
-      .prepare("SELECT name FROM channels WHERE id = ? AND kind = 'text'")
+      .prepare(
+        "SELECT name, kind FROM channels WHERE id = ? AND kind IN ('text', 'dm')",
+      )
       .bind(channelId)
-      .first<{ name: string }>();
+      .first<{ name: string; kind: string }>();
     if (!channel) {
       return Response.json({ error: "That channel is gone." }, { status: 404 });
+    }
+    if (channel.kind === "dm") {
+      if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
+      audience = await channelAudience(db, channelId);
     }
     channelName = channel.name;
   } else {
@@ -209,6 +232,6 @@ export async function POST(request: Request) {
     .run();
 
   const message = publicMessage(stored);
-  await publishMessage(channelId || channelName, message);
+  await publishMessage(channelId || channelName, message, audience);
   return Response.json({ message }, { status: 201 });
 }

@@ -1,8 +1,10 @@
+import { DM_SERVER_ID } from "./schema";
+
 export interface ChannelRow {
   id: string;
   server_id: string;
   name: string;
-  kind: "text" | "voice";
+  kind: "text" | "voice" | "dm";
   topic: string;
   position: number;
   created_at: string;
@@ -22,7 +24,7 @@ export interface PublicChannel {
   id: string;
   serverId: string;
   name: string;
-  kind: "text" | "voice";
+  kind: "text" | "voice" | "dm";
   topic: string;
 }
 
@@ -39,7 +41,8 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     id: channel.id,
     serverId: channel.server_id,
     name: channel.name,
-    kind: channel.kind === "voice" ? "voice" : "text",
+    kind:
+      channel.kind === "voice" ? "voice" : channel.kind === "dm" ? "dm" : "text",
     topic: channel.topic || "",
   };
 }
@@ -49,13 +52,15 @@ export async function listServers(db: D1Database): Promise<PublicServer[]> {
   const [servers, channels] = await Promise.all([
     db
       .prepare(
-        "SELECT id, name, icon, color, created_by, created_at, position FROM servers ORDER BY position ASC, created_at ASC",
+        "SELECT id, name, icon, color, created_by, created_at, position FROM servers WHERE id != ? ORDER BY position ASC, created_at ASC",
       )
+      .bind(DM_SERVER_ID)
       .all(),
     db
       .prepare(
-        "SELECT id, server_id, name, kind, topic, position, created_at FROM channels ORDER BY position ASC, created_at ASC",
+        "SELECT id, server_id, name, kind, topic, position, created_at FROM channels WHERE server_id != ? ORDER BY position ASC, created_at ASC",
       )
+      .bind(DM_SERVER_ID)
       .all(),
   ]);
 

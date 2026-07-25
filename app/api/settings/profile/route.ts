@@ -4,6 +4,7 @@ import {
   publicUser,
   unauthorized,
 } from "@/lib/auth";
+import { publishStructureChange } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ export async function PATCH(request: Request) {
     displayName?: string;
     avatar?: string;
     color?: string;
+    /** Upload key from /api/uploads, or null to go back to the letter tile. */
+    avatarKey?: string | null;
   };
 
   const displayName =
@@ -35,18 +38,29 @@ export async function PATCH(request: Request) {
     ? (body.color as string)
     : user.color;
 
+  const avatarUrl =
+    body.avatarKey === null
+      ? null
+      : body.avatarKey
+        ? `/hangout/api/uploads/${encodeURIComponent(body.avatarKey.slice(0, 240))}`
+        : user.avatar_url || null;
+
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ? WHERE id = ?",
     )
-    .bind(displayName, avatar, color, user.id)
+    .bind(displayName, avatar, color, avatarUrl, user.id)
     .run();
+
+  // Everyone's member list and every message avatar should update at once.
+  await publishStructureChange();
 
   return Response.json({
     user: publicUser({
       ...user,
       display_name: displayName,
       avatar,
+      avatar_url: avatarUrl,
       color,
     }),
   });

@@ -22,6 +22,7 @@ export interface User {
   username: string;
   display_name: string;
   avatar: string;
+  avatar_url?: string | null;
   color: string;
   is_admin: number;
   created_at: string;
@@ -34,6 +35,7 @@ export function publicUser(user: User): PublicUser {
     username: user.username,
     displayName: user.display_name,
     avatar: user.avatar,
+    avatarUrl: user.avatar_url || null,
     color: user.color,
     isAdmin: Boolean(user.is_admin),
   };
@@ -173,8 +175,8 @@ export async function currentUser(request: Request): Promise<User | null> {
   await ensureSchema(db);
   const row = await db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.color, u.is_admin,
-              u.created_at, u.last_seen_at, s.expires_at
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.color,
+              u.is_admin, u.created_at, u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,

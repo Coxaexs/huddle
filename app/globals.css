@@ -1861,3 +1861,373 @@ button {
 .profile-dot span.online {
   background:var(--mint);
 }
+
+/* ---------------------------------------------------------------------------
+   Profile pictures, DMs, pins, message actions, the user menu and GIFs.
+--------------------------------------------------------------------------- */
+
+/* Any avatar can carry a picture instead of a letter. */
+.avatar-image {
+  object-fit:cover;
+  border-radius:inherit;
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+.has-picture {
+  background:none !important;
+  overflow:hidden;
+}
+
+.profile-dot.has-picture,
+.member-avatar.has-picture,
+.tiny-avatar.has-picture,
+.avatar.has-picture {
+  position:relative;
+}
+
+.profile-dot.has-picture span,
+.member-avatar.has-picture i {
+  z-index:2;
+  position:absolute;
+  bottom:0;
+  right:0;
+}
+
+.picture-row {
+  align-items:center;
+  gap:14px;
+  display:flex;
+}
+
+.picture-preview {
+  color:#fff;
+  border-radius:50%;
+  place-items:center;
+  width:64px;
+  height:64px;
+  font-size:24px;
+  font-weight:800;
+  display:grid;
+  overflow:hidden;
+}
+
+.picture-preview img {
+  object-fit:cover;
+  width:100%;
+  height:100%;
+}
+
+.picture-actions {
+  gap:8px;
+  display:flex;
+}
+
+.picture-actions button {
+  color:#aaaeba;
+  cursor:pointer;
+  background:#17181e;
+  border:1px solid #4b4d5b;
+  border-radius:10px;
+  padding:8px 14px;
+}
+
+/* ---- direct messages ---- */
+
+.dm-channel {
+  gap:10px;
+}
+
+.dm-channel .tiny-avatar {
+  flex:none;
+}
+
+.dm-online {
+  background:var(--mint);
+  border-radius:50%;
+  width:8px;
+  height:8px;
+  margin-left:auto;
+  display:block;
+}
+
+.sidebar-empty {
+  color:var(--muted);
+  margin:8px 14px;
+  font-size:12px;
+  line-height:1.5;
+}
+
+/* ---- pinned messages ---- */
+
+.pins-panel {
+  z-index:20;
+  background:#202129;
+  border:1px solid #41434f;
+  border-radius:14px;
+  max-height:320px;
+  margin:0 18px;
+  padding:12px 14px;
+  position:absolute;
+  top:64px;
+  right:18px;
+  overflow-y:auto;
+  width:min(380px,80vw);
+  box-shadow:0 24px 60px #00000059;
+}
+
+.pins-head {
+  color:#f5f3ee;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:8px;
+  display:flex;
+}
+
+.pins-head button {
+  color:#aaaeba;
+  cursor:pointer;
+  background:none;
+  border:0;
+  font-size:18px;
+}
+
+.pin-item {
+  color:#d5d6de;
+  border-top:1px solid #41434f;
+  padding:10px 0;
+  font-size:13px;
+}
+
+.pin-item strong {
+  color:#fff;
+  display:block;
+}
+
+.pin-item p {
+  margin:4px 0;
+  line-height:1.45;
+}
+
+.pin-item button {
+  color:#aaaeba;
+  cursor:pointer;
+  background:none;
+  border:1px solid #4b4d5b;
+  border-radius:8px;
+  padding:4px 10px;
+  font-size:12px;
+}
+
+.pins-empty {
+  color:var(--muted);
+  margin:0;
+  font-size:13px;
+}
+
+.pin-tag {
+  font-size:11px;
+}
+
+.message.is-pinned {
+  background:#7b63e614;
+  border-radius:12px;
+}
+
+/* ---- per-message actions ---- */
+
+.message {
+  position:relative;
+}
+
+.message-actions {
+  opacity:0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  gap:2px;
+  padding:2px;
+  display:flex;
+  position:absolute;
+  top:-8px;
+  right:8px;
+  transition:opacity .12s ease;
+}
+
+[data-theme=dark] .message-actions {
+  background:#2c2d36;
+  border-color:#41434f;
+}
+
+.message:hover .message-actions {
+  opacity:1;
+}
+
+.message-actions button {
+  cursor:pointer;
+  background:none;
+  border:0;
+  border-radius:8px;
+  padding:4px 6px;
+  font-size:13px;
+}
+
+.message-actions button:hover {
+  background:#7b63e63d;
+}
+
+/* ---- user context menu ---- */
+
+.user-menu {
+  z-index:200;
+  color:#f5f3ee;
+  background:#202129;
+  border:1px solid #41434f;
+  border-radius:14px;
+  width:230px;
+  padding:8px;
+  position:fixed;
+  box-shadow:0 24px 60px #00000073;
+}
+
+.user-menu-head {
+  border-bottom:1px solid #41434f;
+  margin-bottom:6px;
+  padding:6px 8px 10px;
+}
+
+.user-menu-head strong {
+  display:block;
+}
+
+.user-menu-head span {
+  color:var(--muted);
+  font-size:12px;
+}
+
+.user-menu button {
+  color:#e6e7ee;
+  cursor:pointer;
+  text-align:left;
+  background:none;
+  border:0;
+  border-radius:8px;
+  width:100%;
+  padding:8px;
+  font-size:13px;
+}
+
+.user-menu button:hover {
+  background:#7b63e63d;
+}
+
+.user-menu button.danger {
+  color:var(--coral);
+}
+
+.user-menu-volume {
+  padding:8px;
+  font-size:12px;
+  display:block;
+}
+
+.user-menu-volume span {
+  color:var(--muted);
+  margin-bottom:6px;
+  display:block;
+}
+
+.user-menu-volume input {
+  width:100%;
+}
+
+.user-menu-divider {
+  background:#41434f;
+  height:1px;
+  margin:6px 0;
+}
+
+.user-menu-note {
+  color:var(--muted);
+  margin:4px 0 2px;
+  padding:0 8px;
+  font-size:11px;
+  line-height:1.4;
+}
+
+/* ---- GIFs ---- */
+
+.gif-picker {
+  background:#202129;
+  border:1px solid #41434f;
+  border-radius:16px;
+  max-height:360px;
+  margin-bottom:8px;
+  padding:10px;
+  overflow-y:auto;
+  box-shadow:0 24px 60px #00000059;
+}
+
+.gif-picker-head {
+  gap:8px;
+  display:flex;
+}
+
+.gif-picker-head input {
+  color:#fff;
+  background:#17181e;
+  border:1px solid #4b4d5b;
+  border-radius:10px;
+  outline:0;
+  flex:1;
+  height:38px;
+  padding:0 12px;
+}
+
+.gif-picker-head button {
+  color:#aaaeba;
+  cursor:pointer;
+  background:none;
+  border:0;
+  font-size:20px;
+}
+
+.gif-picker-hint {
+  color:var(--muted);
+  margin:10px 4px;
+  font-size:12px;
+  line-height:1.5;
+}
+
+.gif-grid {
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:6px;
+  margin-top:10px;
+  display:grid;
+}
+
+.gif-cell {
+  cursor:pointer;
+  background:none;
+  border:0;
+  border-radius:10px;
+  padding:0;
+  overflow:hidden;
+}
+
+.gif-cell img {
+  object-fit:cover;
+  width:100%;
+  height:96px;
+  display:block;
+}
+
+.message-gif {
+  border-radius:12px;
+  max-width:320px;
+}
+
+.embed-link {
+  display:inline-block;
+}
