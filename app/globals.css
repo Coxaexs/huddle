@@ -1378,6 +1378,72 @@ button {
   grid-column:span 2;
 }
 
+.screen-share-controls {
+  grid-column:span 2;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+.screen-share-controls select,
+.screen-share-controls button {
+  min-width:0;
+  border:1px solid #ffffff1f;
+  border-radius:8px;
+  padding:8px;
+  background:#ffffff0d;
+  color:inherit;
+}
+
+.screen-share-controls button {
+  cursor:pointer;
+  font-weight:700;
+}
+
+.screen-share-controls button.sharing {
+  background:#ff647c24;
+  border-color:#ff647c66;
+  color:#ff9dac;
+}
+
+.screen-share-controls.compact {
+  grid-column:auto;
+  width:100%;
+  margin-top:8px;
+}
+
+.screen-share-grid {
+  display:grid;
+  gap:10px;
+  margin:12px 0;
+}
+
+.screen-share-grid figure {
+  position:relative;
+  overflow:hidden;
+  border:1px solid #ffffff1f;
+  border-radius:12px;
+  background:#08090d;
+}
+
+.screen-share-grid video {
+  display:block;
+  width:100%;
+  aspect-ratio:16/9;
+  object-fit:contain;
+}
+
+.screen-share-grid figcaption {
+  position:absolute;
+  left:8px;
+  bottom:8px;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#090a0dcc;
+  color:#fff;
+  font-size:11px;
+}
+
 /* ---- slash command palette ---- */
 
 .slash-menu {
