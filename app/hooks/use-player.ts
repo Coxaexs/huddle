@@ -9,6 +9,8 @@ interface UsePlayerOptions {
   serverNow: () => number;
   deafened: boolean;
   onEnded: (trackId: string) => void;
+  /** True while the real server-side bot is publishing WebRTC audio. */
+  streamed?: boolean;
 }
 
 /** Re-seek the element when it drifts further than this from the hub clock. */
@@ -28,6 +30,7 @@ export function usePlayer({
   serverNow,
   deafened,
   onEnded,
+  streamed = false,
 }: UsePlayerOptions) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const trackIdRef = useRef<string | null>(null);
@@ -56,7 +59,7 @@ export function usePlayer({
   // Track changes: load the new source and drop in at the shared position.
   useEffect(() => {
     const track = state?.track || null;
-    if (!track) {
+    if (!track || streamed) {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.removeAttribute("src");
@@ -74,12 +77,12 @@ export function usePlayer({
       audio.currentTime = playbackPosition(state!, serverNow()) / 1000;
       if (!state!.paused) attempt(audio);
     }
-  }, [state, serverNow, ensureAudio, attempt]);
+  }, [state, serverNow, ensureAudio, attempt, streamed]);
 
   // Pause/resume and volume follow the room.
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !state?.track) return;
+    if (!audio || !state?.track || streamed) return;
     audio.volume = deafened ? 0 : Math.max(0, Math.min(1, state.volume / 100));
     if (state.paused && !audio.paused) {
       audio.pause();
@@ -87,7 +90,7 @@ export function usePlayer({
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
       attempt(audio);
     }
-  }, [state, deafened, serverNow, attempt]);
+  }, [state, deafened, serverNow, attempt, streamed]);
 
   // Ticks the visible position and corrects drift against the hub clock.
   useEffect(() => {
@@ -129,11 +132,12 @@ export function usePlayer({
 
   /** Called from a click, which is what the autoplay policy wants. */
   const unblock = useCallback(() => {
+    if (streamed) return;
     const audio = audioRef.current;
     if (!audio || !state?.track) return;
     audio.currentTime = playbackPosition(state, serverNow()) / 1000;
     attempt(audio);
-  }, [state, serverNow, attempt]);
+  }, [state, serverNow, attempt, streamed]);
 
   /**
    * Prime the permanent room audio element while a join/play click is still on
@@ -141,6 +145,7 @@ export function usePlayer({
    * later from the hub; reusing this unlocked element lets it start normally.
    */
   const prime = useCallback(() => {
+    if (streamed) return;
     const audio = ensureAudio();
     if (state?.track) {
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
@@ -163,7 +168,7 @@ export function usePlayer({
         }
       })
       .catch(() => setBlocked(true));
-  }, [ensureAudio, state, serverNow, attempt]);
+  }, [ensureAudio, state, serverNow, attempt, streamed]);
 
   return { position, blocked, unblock, prime };
 }

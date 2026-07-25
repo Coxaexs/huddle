@@ -248,12 +248,14 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   useEffect(() => {
     if (!channelId || !connectionId) return;
     const others = (rooms[channelId] || [])
-      .filter((person) => !person.bot && person.connectionId !== connectionId)
-      .map((person) => person.connectionId);
+      .filter((person) => person.connectionId !== connectionId);
 
-    for (const remoteId of others) {
+    for (const person of others) {
+      const remoteId = person.connectionId;
       if (peersRef.current.has(remoteId)) continue;
-      if (connectionId > remoteId) continue; // the other side calls us
+      // The server-side music publisher only answers offers, so listeners
+      // always call it. Browser peers retain deterministic caller ordering.
+      if (!person.bot && connectionId > remoteId) continue;
       const peer = createPeer(remoteId);
       void (async () => {
         try {
@@ -271,7 +273,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     }
 
     for (const remoteId of peersRef.current.keys()) {
-      if (!others.includes(remoteId)) closePeer(remoteId);
+      if (!others.some((person) => person.connectionId === remoteId)) {
+        closePeer(remoteId);
+      }
     }
   }, [rooms, channelId, connectionId, createPeer, closePeer, send]);
 

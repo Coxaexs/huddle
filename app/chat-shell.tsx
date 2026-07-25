@@ -324,9 +324,13 @@ export function ChatShell() {
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
+  const botStreaming = voiceParticipants.some(
+    (participant) => participant.bot,
+  );
 
   const player = usePlayer({
     state: roomPlayer,
+    streamed: botStreaming,
     serverNow: hub.serverNow,
     deafened: voice.deafened,
     onEnded: (trackId) => {
