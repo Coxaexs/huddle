@@ -2182,8 +2182,14 @@ export function ChatShell() {
                       (participant) =>
                         participant.connectionId === connectionId,
                     );
+                    const connecting =
+                      voice.peerStates[connectionId] !== undefined &&
+                      voice.peerStates[connectionId] !== "connected";
                     return (
-                      <figure key={`${connectionId}:${stream.id}`}>
+                      <figure
+                        key={`${connectionId}:${stream.id}`}
+                        className={connecting ? "tile-connecting" : ""}
+                      >
                         <video
                           autoPlay
                           playsInline

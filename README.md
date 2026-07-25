@@ -39,6 +39,10 @@ point `--persist-to` at the copy.
     npm run build
     sudo systemctl restart huddle.service
 
+`npm run build` is also what publishes `.dev.vars`: the build copies it to
+`dist/server/.dev.vars`, and that copy is the one wrangler actually reads.
+Editing the root `.dev.vars` without rebuilding changes nothing, silently.
+
 `wrangler dev` does not reliably pick up a rebuilt worker on its own, so the
 restart is required. Nothing else needs to move: the systemd unit already points
 at `dist/server/wrangler.json`, and the schema migrates itself on first request.
@@ -57,9 +61,17 @@ what the database stores. Passwords are PBKDF2-SHA256 through WebCrypto.
 ## Voice and music
 
 Voice rooms are a WebRTC mesh: browsers connect directly to each other and the
-hub Durable Object only relays the handshake. `HUDDLE_ICE_SERVERS` (a JSON array
-of `RTCIceServer`) can add a TURN server for friends behind strict NATs; without
-one, public STUN is used and most home connections work.
+hub Durable Object only relays the handshake. Turkish ISPs commonly use carrier-grade NAT, where STUN alone cannot connect the
+two ends: the call negotiates, the tiles appear, and then nothing is heard or
+seen. A TURN server is what fixes that, and one runs on this machine —
+`coturn`, reachable at `xray.deeppixel.online` (that hostname bypasses
+Cloudflare, which will not proxy TURN) on 3478/UDP+TCP and 5349/TLS, with the
+relay range 49160-49200/UDP forwarded through the router.
+
+`HUDDLE_ICE_SERVERS` holds the JSON array of `RTCIceServer` entries the browser
+is handed. `/api/voice/ice` reports whether it used that configuration or fell
+back to plain STUN, because a silent fallback looks exactly like a working setup
+until nobody can hear each other.
 
 Music is not streamed by the bot. `/play` resolves a track through the helper on
 :8731, and the hub publishes one position for the room; every listener plays the

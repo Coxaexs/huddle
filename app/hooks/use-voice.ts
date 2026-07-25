@@ -80,6 +80,8 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const [screenQuality, setScreenQuality] =
     useState<ScreenShareQuality>("1080p30");
   const [error, setError] = useState("");
+  /** Per-peer RTCPeerConnection state, so tiles can say "connecting". */
+  const [peerStates, setPeerStates] = useState<Record<string, string>>({});
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -92,6 +94,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
+  const restartedRef = useRef(new Set<string>());
   const negotiateRef = useRef<
     (remoteId: string, peer: RTCPeerConnection) => Promise<void>
   >(async () => {});
@@ -174,6 +177,12 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     const peer = peersRef.current.get(remoteId);
     peer?.close();
     peersRef.current.delete(remoteId);
+    restartedRef.current.delete(remoteId);
+    setPeerStates((current) => {
+      const next = { ...current };
+      delete next[remoteId];
+      return next;
+    });
     pendingCandidatesRef.current.delete(remoteId);
     analysersRef.current.delete(remoteId);
     setRemoteStreams((current) =>
@@ -233,9 +242,31 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       };
 
       peer.onconnectionstatechange = () => {
-        if (["failed", "closed"].includes(peer.connectionState)) {
-          closePeer(remoteId);
+        setPeerStates((current) => ({
+          ...current,
+          [remoteId]: peer.connectionState,
+        }));
+        if (peer.connectionState === "closed") closePeer(remoteId);
+      };
+
+      peer.oniceconnectionstatechange = () => {
+        if (peer.iceConnectionState !== "failed") return;
+        // One ICE restart covers a network that changed underneath us. If that
+        // does not take, say so: silence with no explanation is the worst
+        // possible failure mode here.
+        if (!restartedRef.current.has(remoteId)) {
+          restartedRef.current.add(remoteId);
+          try {
+            peer.restartIce();
+          } catch {
+            closePeer(remoteId);
+          }
+          return;
         }
+        setError(
+          "Could not reach someone in this room. Your network is blocking the direct connection and the relay could not take over.",
+        );
+        closePeer(remoteId);
       };
 
       return peer;
@@ -623,6 +654,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     deafened,
     speaking,
     remoteStreams,
+    peerStates,
     screenSharing,
     screenQuality,
     setScreenQuality,
