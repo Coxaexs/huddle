@@ -19,6 +19,8 @@ interface CommandBody {
   voiceChannelId?: string;
   /** Where the bot should reply. */
   textChannelId?: string;
+  /** Interactive cards update themselves and do not need a new chat reply. */
+  silent?: boolean;
 }
 
 /** Posts a bot message into the text channel and pushes it to open tabs. */
@@ -173,7 +175,62 @@ export async function POST(request: Request) {
             ? ` Blend: ${state.automix_blend_seconds || 8}s.`
             : ""
         }`;
-        await say(db, textChannelId, text);
+        if (!body.silent) await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "artistdiversity":
+      case "vibematch": {
+        const action =
+          name === "artistdiversity" ? "artist_diversity" : "vibe_match";
+        const normalized = value.toLowerCase();
+        const enabled = normalized
+          ? !["off", "false", "0", "no"].includes(normalized)
+          : undefined;
+        const state = await botRoomAction(voiceChannelId!, {
+          action,
+          enabled,
+        });
+        const text = `${name === "artistdiversity" ? "Artist diversity" : "Vibe matching"} is **${
+          state[action] ? "on" : "off"
+        }**.`;
+        if (!body.silent) await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "automixblend": {
+        const seconds = Math.max(4, Math.min(15, Number(value) || 8));
+        const state = await botRoomAction(voiceChannelId!, {
+          action: "automix_blend",
+          seconds,
+        });
+        const text = `AutoMix blend set to **${seconds}s**.`;
+        if (!body.silent) await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "crossfade": {
+        const seconds = Math.max(0, Math.min(10, Number(value) || 0));
+        const state = await botRoomAction(voiceChannelId!, {
+          action: "crossfade",
+          seconds,
+        });
+        const text = `Crossfade set to **${seconds}s**.`;
+        if (!body.silent) await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "filter": {
+        const preset = value.toLowerCase() || "off";
+        if (!["off", "bassboost", "nightcore", "slowed", "8d", "karaoke"].includes(preset)) {
+          throw new Error("Choose clean, bassboost, nightcore, slowed, 8d, or karaoke.");
+        }
+        const state = await botRoomAction(voiceChannelId!, {
+          action: "filter",
+          preset,
+        });
+        const text = `Music filter set to **${preset === "off" ? "clean" : preset}**.`;
+        if (!body.silent) await say(db, textChannelId, text);
         return Response.json({ text, state });
       }
 
@@ -189,7 +246,18 @@ export async function POST(request: Request) {
             ? `❤️ Liked **${result.title}** — this now helps Smart Autoplay.`
             : `👎 Noted — Smart Autoplay will avoid **${result.title}**.`
           : `${name === "like" ? "Removed the like from" : "Removed the dislike from"} **${result.title}**.`;
-        await say(db, textChannelId, text);
+        await say(db, textChannelId, text, {
+          kind: "music-stats",
+          payload: {
+            wrapped: name === "wrapped",
+            label: report.label,
+            plays: report.plays || 0,
+            unique: report.unique || 0,
+            hours: report.hours || 0,
+            topSongs: report.topSongs || [],
+            topRequesters: report.topRequesters || [],
+          },
+        });
         return Response.json({ text, state });
       }
 
@@ -216,7 +284,19 @@ export async function POST(request: Request) {
         ]
           .filter(Boolean)
           .join("\n");
-        await say(db, textChannelId, text);
+        await say(db, textChannelId, text, {
+          kind: "music-settings",
+          payload: {
+            voiceChannelId,
+            autoplay: Boolean(state.autoplay),
+            automix: Boolean(state.automix),
+            automix_blend_seconds: state.automix_blend_seconds || 8,
+            crossfade_seconds: state.crossfade_seconds || 0,
+            audio_filter: state.audio_filter || null,
+            artist_diversity: Boolean(state.artist_diversity),
+            vibe_match: Boolean(state.vibe_match),
+          },
+        });
         return Response.json({ text, state });
       }
 
