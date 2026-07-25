@@ -90,11 +90,57 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Roll dice, with advantage or disadvantage",
     group: "D&D",
   },
+  {
+    name: "spell",
+    args: "<fireball>",
+    description: "Look up a spell in the compendium",
+    group: "D&D",
+  },
+  {
+    name: "monster",
+    args: "<goblin>",
+    description: "Look up a monster",
+    group: "D&D",
+  },
+  {
+    name: "item",
+    args: "<longsword>",
+    description: "Look up an item",
+    group: "D&D",
+  },
+  {
+    name: "feat",
+    args: "<alert>",
+    description: "Look up a feat",
+    group: "D&D",
+  },
+  {
+    name: "race",
+    args: "<half-orc>",
+    description: "Look up a race",
+    group: "D&D",
+  },
+  {
+    name: "class",
+    args: "<paladin>",
+    description: "Look up a class",
+    group: "D&D",
+  },
   { name: "dnd", description: "Open the D&D companion", group: "D&D" },
   { name: "flip", description: "Flip a coin", group: "Huddle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
   { name: "help", description: "List every command", group: "Huddle" },
 ];
+
+/** Commands answered by the D&D companion's compendium. */
+export const LOOKUP_COMMANDS = new Set([
+  "spell",
+  "monster",
+  "item",
+  "feat",
+  "race",
+  "class",
+]);
 
 export const MUSIC_COMMANDS = new Set(
   SLASH_COMMANDS.filter((command) => command.group === "Music").map(

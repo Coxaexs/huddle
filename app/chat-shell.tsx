@@ -22,7 +22,12 @@ import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
 import { useVoice } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
-import { COMMAND_ALIASES, MUSIC_COMMANDS, matchCommands } from "./lib/commands";
+import {
+  COMMAND_ALIASES,
+  LOOKUP_COMMANDS,
+  MUSIC_COMMANDS,
+  matchCommands,
+} from "./lib/commands";
 
 interface Message {
   id: string | number;
@@ -392,6 +397,31 @@ export function ChatShell() {
           ? { link: musicDashboardUrl, actionLabel: "Open music dashboard" }
           : undefined,
       );
+      return;
+    }
+
+    if (LOOKUP_COMMANDS.has(name)) {
+      if (!value) {
+        setNotice(`Try \`/${name} ${name === "spell" ? "fireball" : "goblin"}\`.`);
+        return;
+      }
+      try {
+        const data = await apiFetch<{ text: string; link?: string }>(
+          "/api/integrations/dnd/lookup",
+          { method: "POST", body: JSON.stringify({ kind: name, query: value }) },
+        );
+        await postBotMessage(data.text, {
+          author: "D&D Bot",
+          avatar: "⚔",
+          link: data.link,
+          actionLabel: data.link ? "Open on 5e.tools" : undefined,
+        });
+      } catch (error) {
+        await postBotMessage(
+          error instanceof Error ? error.message : "That lookup failed.",
+          { author: "D&D Bot", avatar: "⚔" },
+        );
+      }
       return;
     }
 
