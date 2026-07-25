@@ -5,6 +5,8 @@ export interface PublicUser {
   username: string;
   displayName: string;
   avatar: string;
+  /** Uploaded profile picture; the letter tile is the fallback. */
+  avatarUrl?: string | null;
   color: string;
   isAdmin: boolean;
 }
@@ -14,6 +16,7 @@ export interface Member {
   username: string;
   displayName: string;
   avatar: string;
+  avatarUrl?: string | null;
   color: string;
   lastSeenAt: string;
 }

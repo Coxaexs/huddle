@@ -15,9 +15,14 @@ export function hub(): DurableObjectStub | null {
 /** Base URL is arbitrary — Durable Object fetches never leave the worker. */
 const INTERNAL = "https://huddle.hub";
 
+/**
+ * @param audience user ids allowed to receive it; omit for channels everyone
+ *   can read. Direct messages pass their two participants.
+ */
 export async function publishMessage(
   channelId: string,
   message: unknown,
+  audience?: string[] | null,
 ): Promise<void> {
   const stub = hub();
   if (!stub) return;
@@ -25,7 +30,40 @@ export async function publishMessage(
     .fetch(`${INTERNAL}/broadcast`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channelId, message }),
+      body: JSON.stringify({ channelId, message, audience }),
+    })
+    .catch(() => undefined);
+}
+
+/** Pushes a non-message channel event (a delete, a pin) to open tabs. */
+export async function publishMessageEvent(
+  channelId: string,
+  event: Record<string, unknown>,
+  audience?: string[] | null,
+): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId, event, audience }),
+    })
+    .catch(() => undefined);
+}
+
+/** Mutes someone for the whole Huddle, at their own microphone. */
+export async function forceMute(
+  userId: string,
+  muted: boolean,
+): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/force-mute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, muted }),
     })
     .catch(() => undefined);
 }

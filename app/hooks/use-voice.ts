@@ -29,6 +29,8 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
+  /** Muted for everyone by someone else; you cannot undo it yourself. */
+  const [forcedMute, setForcedMuteState] = useState(false);
   const [speaking, setSpeaking] = useState<Set<string>>(new Set());
   const [remoteStreams, setRemoteStreams] = useState<
     Array<{ connectionId: string; stream: MediaStream }>
@@ -269,14 +271,26 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     [leave, send, watchLevel],
   );
 
+  /** Applied when someone server-mutes you: the microphone actually stops. */
+  const setForcedMute = useCallback((next: boolean) => {
+    setForcedMuteState(next);
+    if (next) {
+      localStreamRef.current?.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      setMuted(true);
+    }
+  }, []);
+
   const toggleMute = useCallback(() => {
+    if (forcedMute) return;
     const next = !muted;
     localStreamRef.current?.getAudioTracks().forEach((track) => {
       track.enabled = !next;
     });
     setMuted(next);
     send({ t: "voice-state", muted: next });
-  }, [muted, send]);
+  }, [forcedMute, muted, send]);
 
   const toggleDeafen = useCallback(() => {
     const next = !deafened;
@@ -301,6 +315,8 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   return {
     channelId,
     muted,
+    forcedMute,
+    setForcedMute,
     deafened,
     speaking,
     remoteStreams,

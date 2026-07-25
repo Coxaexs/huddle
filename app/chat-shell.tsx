@@ -9,21 +9,32 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import type { PlayerState } from "@/lib/protocol";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import type { Member, PublicUser } from "@/lib/users";
 import { AuthGate } from "./components/auth-gate";
+import { Avatar } from "./components/avatar";
+import { GifPicker } from "./components/gif-picker";
+import { MessageBody } from "./components/message-body";
 import { NowPlaying } from "./components/now-playing";
 import { SettingsDialog } from "./components/settings-dialog";
 import { SlashMenu } from "./components/slash-menu";
+import {
+  UserMenu,
+  type UserMenuTarget,
+  type VoicePref,
+} from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
 import { useVoice } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
 import {
   COMMAND_ALIASES,
+  DISCORD_ONLY_COMMANDS,
+  DND_LINK_COMMANDS,
   LOOKUP_COMMANDS,
   MUSIC_COMMANDS,
   matchCommands,
@@ -32,6 +43,7 @@ import {
 interface Message {
   id: string | number;
   channelId?: string | null;
+  userId?: string | null;
   author: string;
   avatar: string;
   color: string;
@@ -43,8 +55,19 @@ interface Message {
   actionLabel?: string;
   audio?: string;
   kind?: string;
+  pinned?: boolean;
   payload?: { voiceChannelId?: string; trackId?: string; label?: string };
 }
+
+interface DmSummary {
+  channelId: string;
+  user: Member;
+  lastMessage: string | null;
+  lastAt: string | null;
+}
+
+/** The rail slot for direct messages, standing in for a server id. */
+const DM_HOME = "@me";
 
 function Icon({
   children,
@@ -77,9 +100,12 @@ export function ChatShell() {
 
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [dms, setDms] = useState<DmSummary[]>([]);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pins, setPins] = useState<Message[]>([]);
+  const [pinsOpen, setPinsOpen] = useState(false);
 
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -89,7 +115,10 @@ export function ChatShell() {
   const [membersOpen, setMembersOpen] = useState(true);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [gifOpen, setGifOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
+  const [voicePrefs, setVoicePrefs] = useState<Record<string, VoicePref>>({});
 
   const [musicWatchOnline, setMusicWatchOnline] = useState<boolean | null>(null);
   const [musicDashboardUrl, setMusicDashboardUrl] = useState<string | null>(null);
@@ -102,6 +131,8 @@ export function ChatShell() {
   const activeChannelRef = useRef<string | null>(null);
   activeChannelRef.current = activeChannelId;
 
+  const inDmHome = activeServerId === DM_HOME;
+
   // ------------------------------------------------------------- session
 
   const loadServers = useCallback(async () => {
@@ -113,6 +144,19 @@ export function ChatShell() {
   const loadMembers = useCallback(async () => {
     const data = await apiFetch<{ members: Member[] }>("/api/members");
     setMembers(data.members);
+  }, []);
+
+  const loadDms = useCallback(async () => {
+    const data = await apiFetch<{ conversations: DmSummary[] }>("/api/dms");
+    setDms(data.conversations);
+    return data.conversations;
+  }, []);
+
+  const loadPrefs = useCallback(async () => {
+    const data = await apiFetch<{ prefs: Record<string, VoicePref> }>(
+      "/api/voice/prefs",
+    );
+    setVoicePrefs(data.prefs || {});
   }, []);
 
   useEffect(() => {
@@ -131,12 +175,14 @@ export function ChatShell() {
     if (!user) return;
     void loadServers().catch(() => undefined);
     void loadMembers().catch(() => undefined);
-  }, [user, loadServers, loadMembers]);
+    void loadDms().catch(() => undefined);
+    void loadPrefs().catch(() => undefined);
+  }, [user, loadServers, loadMembers, loadDms, loadPrefs]);
 
-  // Pick up where you left off, or fall back to the first channel there is.
   useEffect(() => {
     if (!servers.length) return;
     setActiveServerId((current) => {
+      if (current === DM_HOME) return current;
       const remembered =
         current || window.localStorage.getItem("huddle-server") || "";
       return servers.some((server) => server.id === remembered)
@@ -149,7 +195,6 @@ export function ChatShell() {
     () => servers.find((server) => server.id === activeServerId) || null,
     [servers, activeServerId],
   );
-
   const textChannels = useMemo(
     () => activeServer?.channels.filter((c) => c.kind === "text") || [],
     [activeServer],
@@ -158,9 +203,14 @@ export function ChatShell() {
     () => activeServer?.channels.filter((c) => c.kind === "voice") || [],
     [activeServer],
   );
+  const membersById = useMemo(() => {
+    const map = new Map<string, Member>();
+    for (const member of members) map.set(member.id, member);
+    return map;
+  }, [members]);
 
   useEffect(() => {
-    if (!activeServerId) return;
+    if (!activeServerId || activeServerId === DM_HOME) return;
     window.localStorage.setItem("huddle-server", activeServerId);
     setActiveChannelId((current) => {
       if (current && textChannels.some((channel) => channel.id === current)) {
@@ -178,7 +228,7 @@ export function ChatShell() {
   }, [activeServerId, textChannels]);
 
   useEffect(() => {
-    if (activeServerId && activeChannelId) {
+    if (activeServerId && activeServerId !== DM_HOME && activeChannelId) {
       window.localStorage.setItem(
         `huddle-channel:${activeServerId}`,
         activeChannelId,
@@ -190,12 +240,30 @@ export function ChatShell() {
     () => textChannels.find((channel) => channel.id === activeChannelId) || null,
     [textChannels, activeChannelId],
   );
+  const activeDm = useMemo(
+    () => dms.find((dm) => dm.channelId === activeChannelId) || null,
+    [dms, activeChannelId],
+  );
+  const channelTitle = inDmHome
+    ? activeDm?.user.displayName || "Direct messages"
+    : activeChannel?.name || "no channel";
 
   // ------------------------------------------------------------ realtime
 
+  const refreshPins = useCallback(async (channelId: string) => {
+    const data = await apiFetch<{ messages: Message[] }>(
+      `/api/messages?channelId=${encodeURIComponent(channelId)}&pinned=1`,
+    ).catch(() => ({ messages: [] as Message[] }));
+    setPins(data.messages);
+  }, []);
+
   const handleIncomingMessage = useCallback(
     (channelId: string, message: unknown) => {
-      if (channelId !== activeChannelRef.current) return;
+      if (channelId !== activeChannelRef.current) {
+        // A DM you are not looking at still deserves to bubble up the list.
+        void loadDms().catch(() => undefined);
+        return;
+      }
       const incoming = message as Message;
       setMessages((current) =>
         current.some((existing) => existing.id === incoming.id)
@@ -203,15 +271,36 @@ export function ChatShell() {
           : [...current, incoming],
       );
     },
-    [],
+    [loadDms],
   );
 
   const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => {});
+  const forcedMuteRef = useRef<(userId: string, muted: boolean) => void>(
+    () => {},
+  );
 
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
     onSignal: (from, data) => voiceSignalRef.current(from, data),
-    onStructureChange: () => void loadServers().catch(() => undefined),
+    onStructureChange: () => {
+      void loadServers().catch(() => undefined);
+      void loadMembers().catch(() => undefined);
+    },
+    onMessageDeleted: (channelId, id) => {
+      if (channelId !== activeChannelRef.current) return;
+      setMessages((current) => current.filter((message) => message.id !== id));
+      setPins((current) => current.filter((message) => message.id !== id));
+    },
+    onMessagePinned: (channelId, id, pinned) => {
+      if (channelId !== activeChannelRef.current) return;
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === id ? { ...message, pinned } : message,
+        ),
+      );
+      void refreshPins(channelId);
+    },
+    onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
   });
 
   const voice = useVoice({
@@ -220,8 +309,10 @@ export function ChatShell() {
     send: hub.send,
   });
   voiceSignalRef.current = voice.handleSignal;
+  forcedMuteRef.current = (userId, muted) => {
+    if (user && userId === user.id) voice.setForcedMute(muted);
+  };
 
-  // The mesh only cares about the room you are actually in.
   const voiceParticipants = useMemo(
     () => (voice.channelId ? hub.voice[voice.channelId] || [] : []),
     [hub.voice, voice.channelId],
@@ -248,7 +339,10 @@ export function ChatShell() {
   // --------------------------------------------------------------- data
 
   useEffect(() => {
-    if (!user || !activeChannelId) return;
+    if (!user || !activeChannelId) {
+      setMessages([]);
+      return;
+    }
     let cancelled = false;
     apiFetch<{ messages: Message[] }>(
       `/api/messages?channelId=${encodeURIComponent(activeChannelId)}`,
@@ -257,11 +351,11 @@ export function ChatShell() {
         if (!cancelled) setMessages(data.messages);
       })
       .catch(() => undefined);
+    void refreshPins(activeChannelId);
     hub.send({ t: "subscribe", channelId: activeChannelId });
     return () => {
       cancelled = true;
     };
-    // hub.send is stable; re-subscribing on every hub tick would be noise.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeChannelId, hub.connected]);
 
@@ -280,7 +374,10 @@ export function ChatShell() {
   useEffect(() => {
     if (!user) return;
     fetch(apiUrl("/api/integrations/musicwatch"))
-      .then((response) => response.json() as Promise<{ online?: boolean; dashboardUrl?: string }>)
+      .then(
+        (response) =>
+          response.json() as Promise<{ online?: boolean; dashboardUrl?: string }>,
+      )
       .then((data) => {
         setMusicWatchOnline(Boolean(data.online));
         setMusicDashboardUrl(data.dashboardUrl || null);
@@ -288,7 +385,10 @@ export function ChatShell() {
       .catch(() => setMusicWatchOnline(false));
 
     fetch(apiUrl("/api/integrations/dnd"))
-      .then((response) => response.json() as Promise<{ online?: boolean; appUrl?: string }>)
+      .then(
+        (response) =>
+          response.json() as Promise<{ online?: boolean; appUrl?: string }>,
+      )
       .then((data) => {
         setDndOnline(Boolean(data.online));
         setDndUrl(data.appUrl || null);
@@ -324,6 +424,70 @@ export function ChatShell() {
     [],
   );
 
+  async function openDm(targetId: string) {
+    try {
+      const data = await apiFetch<{
+        channelId: string;
+        conversations: DmSummary[];
+      }>("/api/dms", {
+        method: "POST",
+        body: JSON.stringify({ userId: targetId }),
+      });
+      setDms(data.conversations);
+      setActiveServerId(DM_HOME);
+      setActiveChannelId(data.channelId);
+      setMobileNav(false);
+      composerRef.current?.focus();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not open that.");
+    }
+  }
+
+  async function deleteMessage(id: string | number) {
+    try {
+      await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+      setMessages((current) => current.filter((message) => message.id !== id));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete it.");
+    }
+  }
+
+  async function togglePin(message: Message) {
+    try {
+      const data = await apiFetch<{ pinned: boolean }>(
+        `/api/messages/${message.id}`,
+        { method: "PATCH", body: JSON.stringify({ pinned: !message.pinned }) },
+      );
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id ? { ...item, pinned: data.pinned } : item,
+        ),
+      );
+      if (activeChannelId) void refreshPins(activeChannelId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not pin it.");
+    }
+  }
+
+  async function saveVoicePref(
+    targetId: string,
+    patch: { volume?: number; muted?: boolean; serverMuted?: boolean },
+  ) {
+    if (patch.volume !== undefined || patch.muted !== undefined) {
+      setVoicePrefs((current) => ({
+        ...current,
+        [targetId]: {
+          volume: patch.volume ?? current[targetId]?.volume ?? 100,
+          muted: patch.muted ?? current[targetId]?.muted ?? false,
+        },
+      }));
+    }
+    await apiFetch("/api/voice/prefs", {
+      method: "POST",
+      body: JSON.stringify({ targetId, ...patch }),
+    }).catch((error: Error) => setNotice(error.message));
+  }
+
   async function runCommand(raw: string) {
     const [rawName, ...parts] = raw.trim().split(/\s+/);
     const bare = rawName.replace(/^\//, "").toLowerCase();
@@ -354,6 +518,27 @@ export function ChatShell() {
       return;
     }
 
+    if (DISCORD_ONLY_COMMANDS.has(name)) {
+      // These drive the bot's Discord voice connection, not Huddle playback.
+      try {
+        const data = await apiFetch<{ text?: string }>(
+          "/api/integrations/musicwatch/command",
+          {
+            method: "POST",
+            body: JSON.stringify({ command: `/${name} ${value}`.trim() }),
+          },
+        );
+        await postBotMessage(data.text || "Done on Discord.");
+      } catch (error) {
+        await postBotMessage(
+          error instanceof Error
+            ? error.message
+            : "The Discord music bot could not do that.",
+        );
+      }
+      return;
+    }
+
     if (name === "watch" || name === "reels") {
       await postBotMessage(
         name === "reels"
@@ -365,10 +550,7 @@ export function ChatShell() {
           "/api/integrations/musicwatch",
           {
             method: "POST",
-            body: JSON.stringify({
-              mode: name,
-              name: `${activeChannel?.name || "huddle"} · Huddle`,
-            }),
+            body: JSON.stringify({ mode: name, name: `${channelTitle} · Huddle` }),
           },
         );
         await postBotMessage(
@@ -388,7 +570,7 @@ export function ChatShell() {
       return;
     }
 
-    if (name === "music") {
+    if (name === "music" || name === "web") {
       await postBotMessage(
         musicWatchOnline
           ? "The music dashboard is online. It can see this Huddle's voice rooms as well as Discord."
@@ -397,6 +579,25 @@ export function ChatShell() {
           ? { link: musicDashboardUrl, actionLabel: "Open music dashboard" }
           : undefined,
       );
+      return;
+    }
+
+    if (name === "roll") {
+      try {
+        const data = await apiFetch<{ text?: string }>(
+          "/api/integrations/dnd/roll",
+          { method: "POST", body: JSON.stringify({ command: raw }) },
+        );
+        await postBotMessage(data.text || "The roll failed.", {
+          author: "D&D Bot",
+          avatar: "⚔",
+        });
+      } catch (error) {
+        await postBotMessage(
+          error instanceof Error ? error.message : "The roll failed.",
+          { author: "D&D Bot", avatar: "⚔" },
+        );
+      }
       return;
     }
 
@@ -425,29 +626,10 @@ export function ChatShell() {
       return;
     }
 
-    if (name === "roll") {
-      try {
-        const data = await apiFetch<{ text?: string; error?: string }>(
-          "/api/integrations/dnd/roll",
-          { method: "POST", body: JSON.stringify({ command: raw }) },
-        );
-        await postBotMessage(data.text || "The roll failed.", {
-          author: "D&D Bot",
-          avatar: "⚔",
-        });
-      } catch (error) {
-        await postBotMessage(
-          error instanceof Error ? error.message : "The roll failed.",
-          { author: "D&D Bot", avatar: "⚔" },
-        );
-      }
-      return;
-    }
-
-    if (name === "dnd") {
+    if (DND_LINK_COMMANDS.has(name)) {
       await postBotMessage(
         dndOnline
-          ? "The D&D bot companion is online. Open it for character sheets, dice, maps, the compendium, and the GM panel."
+          ? "Character sheets, inventory and the GM panel live in the D&D companion — open it here."
           : "The D&D companion looks offline right now.",
         {
           ...(dndUrl ? { link: dndUrl, actionLabel: "Open D&D companion" } : {}),
@@ -458,7 +640,7 @@ export function ChatShell() {
       return;
     }
 
-    if (name === "flip") {
+    if (name === "flip" || name === "coinflip") {
       await postBotMessage(Math.random() > 0.5 ? "Heads." : "Tails.");
       return;
     }
@@ -470,7 +652,7 @@ export function ChatShell() {
 
     if (name === "help") {
       await postBotMessage(
-        "Type / in the box to see every command with its arguments. Music commands need you to be in a voice channel.",
+        "Type / in the box to see every command with its arguments. Music commands need you to be in a voice channel; a few still run on Discord and say so.",
       );
       return;
     }
@@ -499,7 +681,6 @@ export function ChatShell() {
     setPendingImage(null);
     setPendingFile(null);
 
-    // Slash commands are instructions, not chat: they never post as you.
     if (text.startsWith("/") && !pendingFile) {
       await runCommand(text);
       return;
@@ -567,7 +748,6 @@ export function ChatShell() {
   function pickCommand(index: number) {
     const command = slashMatches[index];
     if (!command) return;
-    // Commands that take an argument stay open for you to type it.
     setDraft(command.args ? `/${command.name} ` : `/${command.name}`);
     composerRef.current?.focus();
     if (!command.args) {
@@ -594,10 +774,10 @@ export function ChatShell() {
     const name = window.prompt("Name your new server");
     if (!name?.trim()) return;
     try {
-      const data = await apiFetch<{ server: PublicServer; servers: PublicServer[] }>(
-        "/api/servers",
-        { method: "POST", body: JSON.stringify({ name }) },
-      );
+      const data = await apiFetch<{
+        server: PublicServer;
+        servers: PublicServer[];
+      }>("/api/servers", { method: "POST", body: JSON.stringify({ name }) });
       setServers(data.servers);
       setActiveServerId(data.server.id);
       setNotice(`${data.server.name} is live — everyone here is already in it.`);
@@ -607,7 +787,7 @@ export function ChatShell() {
   }
 
   async function createChannel(kind: "text" | "voice") {
-    if (!activeServerId) return;
+    if (!activeServerId || activeServerId === DM_HOME) return;
     const name = window.prompt(
       kind === "text" ? "New text channel name" : "New voice room name",
     );
@@ -688,8 +868,9 @@ export function ChatShell() {
     setSettingsOpen(false);
   }
 
-  function playerCommand(action: Parameters<typeof hub.send>[0]) {
-    hub.send(action);
+  function openUserMenu(event: MouseEvent, member: Member) {
+    event.preventDefault();
+    setUserMenu({ member, x: event.clientX, y: event.clientY });
   }
 
   // --------------------------------------------------------------- render
@@ -721,11 +902,21 @@ export function ChatShell() {
   const currentVoiceChannel = voiceChannels.find(
     (channel) => channel.id === voice.channelId,
   );
+  const prefFor = (id: string): VoicePref =>
+    voicePrefs[id] || { volume: 100, muted: false };
 
   return (
     <main className="app-shell">
       <aside className="rail" aria-label="Servers">
-        <button className="brand-mark" aria-label="Huddle home">
+        <button
+          className={`brand-mark ${inDmHome ? "active-space" : ""}`}
+          aria-label="Direct messages"
+          title="Direct messages"
+          onClick={() => {
+            setActiveServerId(DM_HOME);
+            setActiveChannelId(dms[0]?.channelId || null);
+          }}
+        >
           h
         </button>
         <div className="rail-divider" />
@@ -734,9 +925,7 @@ export function ChatShell() {
             key={server.id}
             className={`space-mark ${server.id === activeServerId ? "active-space" : ""}`}
             style={
-              server.id === activeServerId
-                ? { background: server.color }
-                : undefined
+              server.id === activeServerId ? { background: server.color } : undefined
             }
             aria-label={server.name}
             title={server.name}
@@ -754,250 +943,309 @@ export function ChatShell() {
           +
         </button>
         <div className="rail-spacer" />
-        <button
+        <Avatar
           className="profile-dot"
-          aria-label="Settings"
+          avatar={user.avatar}
+          avatarUrl={user.avatarUrl}
+          color={user.color}
           title="Settings"
-          style={{ background: user.color }}
           onClick={() => setSettingsOpen(true)}
         >
-          {user.avatar}
           <span className={hub.connected ? "online" : ""} />
-        </button>
+        </Avatar>
       </aside>
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
         <header className="space-header">
           <div>
-            <span className="eyebrow">PRIVATE SPACE</span>
-            <h1>{activeServer?.name || "Huddle"}</h1>
+            <span className="eyebrow">
+              {inDmHome ? "PRIVATE" : "PRIVATE SPACE"}
+            </span>
+            <h1>{inDmHome ? "Direct messages" : activeServer?.name || "Huddle"}</h1>
           </div>
-          <Icon label="Server settings" onClick={editServer}>
-            •••
-          </Icon>
+          {!inDmHome && (
+            <Icon label="Server settings" onClick={editServer}>
+              •••
+            </Icon>
+          )}
         </header>
 
-        <nav className="channel-nav" aria-label="Channels">
-          <div className="section-label">
-            <span>TEXT CHANNELS</span>
-            <button
-              aria-label="Add text channel"
-              onClick={() => createChannel("text")}
-            >
-              +
-            </button>
-          </div>
+        {inDmHome ? (
+          <nav className="channel-nav" aria-label="Conversations">
+            <div className="section-label">
+              <span>CONVERSATIONS</span>
+            </div>
+            {dms.map((dm) => (
+              <button
+                key={dm.channelId}
+                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""}`}
+                onClick={() => {
+                  setActiveChannelId(dm.channelId);
+                  setMobileNav(false);
+                }}
+                onContextMenu={(event) => openUserMenu(event, dm.user)}
+              >
+                <Avatar
+                  className="tiny-avatar"
+                  avatar={dm.user.avatar}
+                  avatarUrl={dm.user.avatarUrl}
+                  color={dm.user.color}
+                />
+                <span>{dm.user.displayName}</span>
+                {hub.online.has(dm.user.id) && <i className="dm-online" />}
+              </button>
+            ))}
+            {!dms.length && (
+              <p className="sidebar-empty">
+                Right-click someone in the member list to start a conversation.
+              </p>
+            )}
+          </nav>
+        ) : (
+          <nav className="channel-nav" aria-label="Channels">
+            <div className="section-label">
+              <span>TEXT CHANNELS</span>
+              <button
+                aria-label="Add text channel"
+                onClick={() => createChannel("text")}
+              >
+                +
+              </button>
+            </div>
 
-          {textChannels.map((channel) => (
-            <button
-              key={channel.id}
-              className={`channel ${activeChannelId === channel.id ? "selected" : ""}`}
-              onClick={() => {
-                setActiveChannelId(channel.id);
-                setMobileNav(false);
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                void renameChannel(channel);
-              }}
-            >
-              <span className="channel-hash">#</span>
-              <span>{channel.name}</span>
-              <span
-                className="channel-delete"
-                role="button"
-                aria-label={`Delete ${channel.name}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void deleteChannel(channel);
+            {textChannels.map((channel) => (
+              <button
+                key={channel.id}
+                className={`channel ${activeChannelId === channel.id ? "selected" : ""}`}
+                onClick={() => {
+                  setActiveChannelId(channel.id);
+                  setMobileNav(false);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  void renameChannel(channel);
                 }}
               >
-                ×
-              </span>
-            </button>
-          ))}
-
-          <div className="section-label voice-label">
-            <span>VOICE ROOMS</span>
-            <button
-              aria-label="Add voice room"
-              onClick={() => createChannel("voice")}
-            >
-              +
-            </button>
-          </div>
-
-          {voiceChannels.map((channel) => {
-            const people = hub.voice[channel.id] || [];
-            const playing = hub.players[channel.id]?.track;
-            return (
-              <div key={channel.id}>
-                <button
-                  className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""}`}
-                  onClick={() => void voice.join(channel.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    void renameChannel(channel);
+                <span className="channel-hash">#</span>
+                <span>{channel.name}</span>
+                <span
+                  className="channel-delete"
+                  role="button"
+                  aria-label={`Delete ${channel.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void deleteChannel(channel);
                   }}
                 >
-                  <span className="speaker-icon">◖))</span>
-                  <span>{channel.name}</span>
-                  {people.length > 0 && <span className="live-pill">LIVE</span>}
-                  <span
-                    className="channel-delete"
-                    role="button"
-                    aria-label={`Delete ${channel.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void deleteChannel(channel);
+                  ×
+                </span>
+              </button>
+            ))}
+
+            <div className="section-label voice-label">
+              <span>VOICE ROOMS</span>
+              <button
+                aria-label="Add voice room"
+                onClick={() => createChannel("voice")}
+              >
+                +
+              </button>
+            </div>
+
+            {voiceChannels.map((channel) => {
+              const people = hub.voice[channel.id] || [];
+              const playing = hub.players[channel.id]?.track;
+              return (
+                <div key={channel.id}>
+                  <button
+                    className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""}`}
+                    onClick={() => void voice.join(channel.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      void renameChannel(channel);
                     }}
                   >
-                    ×
-                  </span>
-                </button>
+                    <span className="speaker-icon">◖))</span>
+                    <span>{channel.name}</span>
+                    {people.length > 0 && <span className="live-pill">LIVE</span>}
+                    <span
+                      className="channel-delete"
+                      role="button"
+                      aria-label={`Delete ${channel.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteChannel(channel);
+                      }}
+                    >
+                      ×
+                    </span>
+                  </button>
 
-                {people.length > 0 && (
-                  <div className="voice-members">
-                    {people.map((person) => (
-                      <div
-                        className={`voice-member ${
-                          voice.speaking.has(
-                            person.connectionId === hub.connectionId
-                              ? "self"
-                              : person.connectionId,
-                          )
-                            ? "is-speaking"
-                            : ""
-                        }`}
-                        key={person.connectionId}
-                      >
-                        <span
-                          className="tiny-avatar"
-                          style={{ backgroundColor: person.color }}
+                  {people.length > 0 && (
+                    <div className="voice-members">
+                      {people.map((person) => (
+                        <div
+                          className={`voice-member ${
+                            voice.speaking.has(
+                              person.connectionId === hub.connectionId
+                                ? "self"
+                                : person.connectionId,
+                            )
+                              ? "is-speaking"
+                              : ""
+                          }`}
+                          key={person.connectionId}
+                          onContextMenu={(event) => {
+                            if (person.bot) return;
+                            const member = membersById.get(person.id);
+                            if (member) openUserMenu(event, member);
+                          }}
                         >
-                          {person.avatar}
-                        </span>
-                        <span>
-                          {person.connectionId === hub.connectionId
-                            ? "You"
-                            : person.displayName}
-                        </span>
-                        {person.muted && !person.bot && (
-                          <span className="muted-pill" aria-label="Muted">
-                            ⃠
+                          <Avatar
+                            className="tiny-avatar"
+                            avatar={person.avatar}
+                            avatarUrl={person.avatarUrl}
+                            color={person.color}
+                          />
+                          <span>
+                            {person.connectionId === hub.connectionId
+                              ? "You"
+                              : person.displayName}
                           </span>
-                        )}
-                        {person.bot && playing && (
-                          <span className="speaking-bars" aria-label="Playing">
-                            ııı
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                          {person.muted && !person.bot && (
+                            <span
+                              className="muted-pill"
+                              title={
+                                person.serverMuted
+                                  ? "Muted for everyone"
+                                  : "Muted"
+                              }
+                            >
+                              ⃠
+                            </span>
+                          )}
+                          {person.bot && playing && (
+                            <span className="speaking-bars" aria-label="Playing">
+                              ııı
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-          <div className="section-label bot-section-label">
-            <span>APPS &amp; BOTS</span>
-          </div>
-
-          <button
-            className="bot-app"
-            onClick={() => {
-              if (musicDashboardUrl) {
-                window.open(musicDashboardUrl, "_blank", "noopener,noreferrer");
-              } else {
-                setDraft("/play ");
-                composerRef.current?.focus();
-              }
-              setMobileNav(false);
-            }}
-          >
-            <span className="bot-app-icon">♫</span>
-            <span className="bot-app-copy">
-              <strong>Music + Watch</strong>
-              <small>
-                {musicWatchOnline === null
-                  ? "Checking server…"
-                  : musicWatchOnline
-                    ? "Online · /play in a voice room"
-                    : "Offline · needs your server"}
-              </small>
-            </span>
-            <i className={musicWatchOnline ? "online" : ""} />
-          </button>
-
-          <button
-            className="bot-app"
-            onClick={() => {
-              if (dndUrl) {
-                window.open(dndUrl, "_blank", "noopener,noreferrer");
-              } else {
-                setDraft("/dnd");
-              }
-              setMobileNav(false);
-            }}
-          >
-            <span className="bot-app-icon">⚔</span>
-            <span className="bot-app-copy">
-              <strong>D&amp;D Bot</strong>
-              <small>
-                {dndOnline === null
-                  ? "Checking server…"
-                  : dndOnline
-                    ? "Online · /dnd"
-                    : "Offline"}
-              </small>
-            </span>
-            <i className={dndOnline ? "online" : ""} />
-          </button>
-        </nav>
-
-        <div className="voice-card">
-          <div className="voice-card-top">
-            <span className={`voice-pulse ${voice.channelId ? "connected" : ""}`} />
-            <div>
-              <strong>
-                {voice.channelId ? "Voice connected" : "Voice is quiet"}
-              </strong>
-              <span>
-                {currentVoiceChannel
-                  ? `${currentVoiceChannel.name} · ${voiceParticipants.length} here`
-                  : "Pick a room to join"}
-              </span>
+            <div className="section-label bot-section-label">
+              <span>APPS &amp; BOTS</span>
             </div>
-          </div>
-          {voice.channelId ? (
-            <div className="voice-card-controls">
-              <button
-                className={`mic-control ${voice.muted ? "muted" : ""}`}
-                onClick={voice.toggleMute}
-              >
-                {voice.muted ? "Unmute" : "Mute"}
-              </button>
-              <button
-                className={`mic-control ${voice.deafened ? "muted" : ""}`}
-                onClick={voice.toggleDeafen}
-              >
-                {voice.deafened ? "Undeafen" : "Deafen"}
-              </button>
-              <button className="leave-button" onClick={voice.leave}>
-                Leave
-              </button>
-            </div>
-          ) : (
+
             <button
-              className="join-button"
-              disabled={!voiceChannels.length}
-              onClick={() => voiceChannels[0] && void voice.join(voiceChannels[0].id)}
+              className="bot-app"
+              onClick={() => {
+                if (musicDashboardUrl) {
+                  window.open(musicDashboardUrl, "_blank", "noopener,noreferrer");
+                } else {
+                  setDraft("/play ");
+                  composerRef.current?.focus();
+                }
+                setMobileNav(false);
+              }}
             >
-              Join {voiceChannels[0]?.name || "voice"}
+              <span className="bot-app-icon">♫</span>
+              <span className="bot-app-copy">
+                <strong>Music + Watch</strong>
+                <small>
+                  {musicWatchOnline === null
+                    ? "Checking server…"
+                    : musicWatchOnline
+                      ? "Online · /play in a voice room"
+                      : "Offline · needs your server"}
+                </small>
+              </span>
+              <i className={musicWatchOnline ? "online" : ""} />
             </button>
-          )}
-        </div>
+
+            <button
+              className="bot-app"
+              onClick={() => {
+                if (dndUrl) {
+                  window.open(dndUrl, "_blank", "noopener,noreferrer");
+                } else {
+                  setDraft("/dnd");
+                }
+                setMobileNav(false);
+              }}
+            >
+              <span className="bot-app-icon">⚔</span>
+              <span className="bot-app-copy">
+                <strong>D&amp;D Bot</strong>
+                <small>
+                  {dndOnline === null
+                    ? "Checking server…"
+                    : dndOnline
+                      ? "Online · /spell /monster /roll"
+                      : "Offline"}
+                </small>
+              </span>
+              <i className={dndOnline ? "online" : ""} />
+            </button>
+          </nav>
+        )}
+
+        {!inDmHome && (
+          <div className="voice-card">
+            <div className="voice-card-top">
+              <span className={`voice-pulse ${voice.channelId ? "connected" : ""}`} />
+              <div>
+                <strong>
+                  {voice.channelId ? "Voice connected" : "Voice is quiet"}
+                </strong>
+                <span>
+                  {currentVoiceChannel
+                    ? `${currentVoiceChannel.name} · ${voiceParticipants.length} here`
+                    : "Pick a room to join"}
+                </span>
+              </div>
+            </div>
+            {voice.channelId ? (
+              <div className="voice-card-controls">
+                <button
+                  className={`mic-control ${voice.muted ? "muted" : ""}`}
+                  onClick={voice.toggleMute}
+                  disabled={voice.forcedMute}
+                  title={voice.forcedMute ? "You are muted for everyone" : undefined}
+                >
+                  {voice.forcedMute
+                    ? "Server muted"
+                    : voice.muted
+                      ? "Unmute"
+                      : "Mute"}
+                </button>
+                <button
+                  className={`mic-control ${voice.deafened ? "muted" : ""}`}
+                  onClick={voice.toggleDeafen}
+                >
+                  {voice.deafened ? "Undeafen" : "Deafen"}
+                </button>
+                <button className="leave-button" onClick={voice.leave}>
+                  Leave
+                </button>
+              </div>
+            ) : (
+              <button
+                className="join-button"
+                disabled={!voiceChannels.length}
+                onClick={() =>
+                  voiceChannels[0] && void voice.join(voiceChannels[0].id)
+                }
+              >
+                Join {voiceChannels[0]?.name || "voice"}
+              </button>
+            )}
+          </div>
+        )}
       </aside>
 
       <section className="chat-panel">
@@ -1009,17 +1257,28 @@ export function ChatShell() {
           >
             ☰
           </button>
-          <span className="big-hash">#</span>
+          <span className="big-hash">{inDmHome ? "@" : "#"}</span>
           <div className="channel-heading">
-            <strong>{activeChannel?.name || "no channel"}</strong>
+            <strong>{channelTitle}</strong>
             <span>
-              {activeChannel?.topic ||
-                (activeChannel
-                  ? `Everything happening in ${activeChannel.name}`
-                  : "Create a channel to start talking")}
+              {inDmHome
+                ? activeDm
+                  ? `Just you and ${activeDm.user.displayName}`
+                  : "Pick a conversation"
+                : activeChannel?.topic ||
+                  (activeChannel
+                    ? `Everything happening in ${activeChannel.name}`
+                    : "Create a channel to start talking")}
             </span>
           </div>
           <div className="header-actions">
+            <Icon
+              label="Pinned messages"
+              active={pinsOpen}
+              onClick={() => setPinsOpen((open) => !open)}
+            >
+              📌
+            </Icon>
             <Icon
               label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
@@ -1039,111 +1298,185 @@ export function ChatShell() {
           </div>
         </header>
 
+        {pinsOpen && (
+          <div className="pins-panel">
+            <div className="pins-head">
+              <strong>Pinned in {channelTitle}</strong>
+              <button type="button" onClick={() => setPinsOpen(false)}>
+                ×
+              </button>
+            </div>
+            {pins.length ? (
+              pins.map((pin) => (
+                <div className="pin-item" key={pin.id}>
+                  <strong>{pin.author}</strong>
+                  <p>{pin.text}</p>
+                  <button type="button" onClick={() => void togglePin(pin)}>
+                    Unpin
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="pins-empty">
+                Nothing pinned yet. Hover a message and press the pin.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="messages" aria-live="polite">
           <div className="channel-intro">
-            <div className="intro-icon">#</div>
-            <h2>Welcome to #{activeChannel?.name || "huddle"}</h2>
-            <p>This is the start of the channel. Be excellent to each other.</p>
+            <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
+            <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
+            <p>
+              {inDmHome
+                ? "This conversation is only visible to the two of you."
+                : "This is the start of the channel. Be excellent to each other."}
+            </p>
           </div>
 
-          {messages.map((message) => (
-            <article className="message" key={message.id}>
-              <div
-                className={`avatar ${message.bot ? "bot-avatar" : ""}`}
-                style={{ backgroundColor: message.color }}
+          {messages.map((message) => {
+            const author = message.userId
+              ? membersById.get(message.userId)
+              : undefined;
+            const canDelete =
+              message.userId === user.id || message.bot || user.isAdmin;
+            return (
+              <article
+                className={`message ${message.pinned ? "is-pinned" : ""}`}
+                key={message.id}
               >
-                {message.avatar}
-              </div>
-              <div className="message-body">
-                <div className="message-meta">
-                  <strong>{message.author}</strong>
-                  {message.bot && <span className="bot-tag">BOT</span>}
-                  <time>{message.time}</time>
-                </div>
-                <p>{message.text}</p>
+                <Avatar
+                  className={`avatar ${message.bot ? "bot-avatar" : ""}`}
+                  avatar={author?.avatar || message.avatar}
+                  avatarUrl={author?.avatarUrl}
+                  color={author?.color || message.color}
+                  onContextMenu={(event) => {
+                    if (author) openUserMenu(event, author);
+                  }}
+                />
+                <div className="message-body">
+                  <div className="message-meta">
+                    <strong
+                      onContextMenu={(event) => {
+                        if (author) openUserMenu(event, author);
+                      }}
+                    >
+                      {author?.displayName || message.author}
+                    </strong>
+                    {message.bot && <span className="bot-tag">BOT</span>}
+                    <time>{message.time}</time>
+                    {message.pinned && (
+                      <span className="pin-tag" title="Pinned">
+                        📌
+                      </span>
+                    )}
+                  </div>
 
-                {message.kind === "nowplaying" &&
-                  message.payload?.voiceChannelId && (
-                    <NowPlaying
-                      state={hub.players[message.payload.voiceChannelId] || null}
-                      trackId={message.payload.trackId}
-                      trackLabel={message.payload.label}
-                      position={
-                        voice.channelId === message.payload.voiceChannelId
-                          ? player.position
-                          : 0
-                      }
-                      controllable={
-                        voice.channelId === message.payload.voiceChannelId
-                      }
-                      blocked={player.blocked}
-                      onUnblock={player.unblock}
-                      voiceChannelName={
-                        voiceChannels.find(
-                          (channel) =>
-                            channel.id === message.payload?.voiceChannelId,
-                        )?.name
-                      }
-                      onSeek={(positionMs) =>
-                        playerCommand({
-                          t: "player",
-                          channelId: message.payload!.voiceChannelId!,
-                          action: { name: "seek", positionMs },
-                        })
-                      }
-                      onToggle={() =>
-                        playerCommand({
-                          t: "player",
-                          channelId: message.payload!.voiceChannelId!,
-                          action: { name: "toggle" },
-                        })
-                      }
-                      onSkip={() =>
-                        playerCommand({
-                          t: "player",
-                          channelId: message.payload!.voiceChannelId!,
-                          action: { name: "skip" },
-                        })
-                      }
-                      onVolume={(volume) =>
-                        playerCommand({
-                          t: "player",
-                          channelId: message.payload!.voiceChannelId!,
-                          action: { name: "volume", volume },
-                        })
-                      }
+                  <MessageBody text={message.text} />
+
+                  {message.kind === "nowplaying" &&
+                    message.payload?.voiceChannelId && (
+                      <NowPlaying
+                        state={hub.players[message.payload.voiceChannelId] || null}
+                        trackId={message.payload.trackId}
+                        trackLabel={message.payload.label}
+                        position={
+                          voice.channelId === message.payload.voiceChannelId
+                            ? player.position
+                            : 0
+                        }
+                        controllable={
+                          voice.channelId === message.payload.voiceChannelId
+                        }
+                        blocked={player.blocked}
+                        onUnblock={player.unblock}
+                        voiceChannelName={
+                          voiceChannels.find(
+                            (channel) =>
+                              channel.id === message.payload?.voiceChannelId,
+                          )?.name
+                        }
+                        onSeek={(positionMs) =>
+                          hub.send({
+                            t: "player",
+                            channelId: message.payload!.voiceChannelId!,
+                            action: { name: "seek", positionMs },
+                          })
+                        }
+                        onToggle={() =>
+                          hub.send({
+                            t: "player",
+                            channelId: message.payload!.voiceChannelId!,
+                            action: { name: "toggle" },
+                          })
+                        }
+                        onSkip={() =>
+                          hub.send({
+                            t: "player",
+                            channelId: message.payload!.voiceChannelId!,
+                            action: { name: "skip" },
+                          })
+                        }
+                        onVolume={(volume) =>
+                          hub.send({
+                            t: "player",
+                            channelId: message.payload!.voiceChannelId!,
+                            action: { name: "volume", volume },
+                          })
+                        }
+                      />
+                    )}
+
+                  {message.link && (
+                    <a
+                      className="bot-action"
+                      href={message.link}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {message.actionLabel || "Open"}
+                      <span aria-hidden="true">↗</span>
+                    </a>
+                  )}
+                  {message.audio && (
+                    <audio
+                      className="message-audio"
+                      controls
+                      preload="none"
+                      src={message.audio}
                     />
                   )}
+                  {message.image && (
+                    <img
+                      className="message-image"
+                      src={message.image}
+                      alt="Shared attachment"
+                    />
+                  )}
+                </div>
 
-                {message.link && (
-                  <a
-                    className="bot-action"
-                    href={message.link}
-                    target="_blank"
-                    rel="noreferrer"
+                <div className="message-actions">
+                  <button
+                    type="button"
+                    title={message.pinned ? "Unpin" : "Pin"}
+                    onClick={() => void togglePin(message)}
                   >
-                    {message.actionLabel || "Open"}
-                    <span aria-hidden="true">↗</span>
-                  </a>
-                )}
-                {message.audio && (
-                  <audio
-                    className="message-audio"
-                    controls
-                    preload="none"
-                    src={message.audio}
-                  />
-                )}
-                {message.image && (
-                  <img
-                    className="message-image"
-                    src={message.image}
-                    alt="Shared attachment"
-                  />
-                )}
-              </div>
-            </article>
-          ))}
+                    📌
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      title="Delete"
+                      onClick={() => void deleteMessage(message.id)}
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
           <div ref={messageEndRef} />
         </div>
 
@@ -1173,6 +1506,16 @@ export function ChatShell() {
                 )
               }
               inVoice={Boolean(voice.channelId)}
+            />
+          )}
+
+          {gifOpen && (
+            <GifPicker
+              onClose={() => setGifOpen(false)}
+              onPick={(url) => {
+                setGifOpen(false);
+                void sendText(url);
+              }}
             />
           )}
 
@@ -1213,10 +1556,23 @@ export function ChatShell() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onComposerKeyDown}
-              placeholder={`Message #${activeChannel?.name || "huddle"}`}
-              aria-label={`Message ${activeChannel?.name || "huddle"}`}
+              placeholder={
+                activeChannelId
+                  ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
+                  : "Pick a channel first"
+              }
+              aria-label={`Message ${channelTitle}`}
               rows={1}
+              disabled={!activeChannelId}
             />
+            <button
+              type="button"
+              className="gif-button"
+              onClick={() => setGifOpen((open) => !open)}
+              aria-label="Add a GIF"
+            >
+              GIF
+            </button>
             <button
               type="button"
               className="gif-button"
@@ -1248,12 +1604,12 @@ export function ChatShell() {
             <div className="voice-feature">
               <div className="voice-feature-avatars">
                 {voiceParticipants.slice(0, 5).map((person) => (
-                  <span
+                  <Avatar
                     key={person.connectionId}
-                    style={{ background: person.color }}
-                  >
-                    {person.avatar}
-                  </span>
+                    avatar={person.avatar}
+                    avatarUrl={person.avatarUrl}
+                    color={person.color}
+                  />
                 ))}
               </div>
               <strong>{currentVoiceChannel?.name}</strong>
@@ -1266,8 +1622,13 @@ export function ChatShell() {
                 <button
                   className={`mic-control ${voice.muted ? "muted" : ""}`}
                   onClick={voice.toggleMute}
+                  disabled={voice.forcedMute}
                 >
-                  {voice.muted ? "Muted" : "Mic on"}
+                  {voice.forcedMute
+                    ? "Server muted"
+                    : voice.muted
+                      ? "Muted"
+                      : "Mic on"}
                 </button>
                 <button className="leave-outline" onClick={voice.leave}>
                   Leave
@@ -1285,28 +1646,28 @@ export function ChatShell() {
                   onUnblock={player.unblock}
                   voiceChannelName={currentVoiceChannel?.name}
                   onSeek={(positionMs) =>
-                    playerCommand({
+                    hub.send({
                       t: "player",
                       channelId: voice.channelId!,
                       action: { name: "seek", positionMs },
                     })
                   }
                   onToggle={() =>
-                    playerCommand({
+                    hub.send({
                       t: "player",
                       channelId: voice.channelId!,
                       action: { name: "toggle" },
                     })
                   }
                   onSkip={() =>
-                    playerCommand({
+                    hub.send({
                       t: "player",
                       channelId: voice.channelId!,
                       action: { name: "skip" },
                     })
                   }
                   onVolume={(volume) =>
-                    playerCommand({
+                    hub.send({
                       t: "player",
                       channelId: voice.channelId!,
                       action: { name: "volume", volume },
@@ -1322,13 +1683,29 @@ export function ChatShell() {
           <span>ONLINE — {onlineMembers.length}</span>
         </div>
         {onlineMembers.map((member) => (
-          <div className="member" key={member.id}>
-            <span className="member-avatar" style={{ background: member.color }}>
-              {member.avatar}
-            </span>
+          <div
+            className="member"
+            key={member.id}
+            onContextMenu={(event) => openUserMenu(event, member)}
+            onDoubleClick={() => member.id !== user.id && void openDm(member.id)}
+          >
+            <Avatar
+              className="member-avatar"
+              avatar={member.avatar}
+              avatarUrl={member.avatarUrl}
+              color={member.color}
+            />
             <div>
               <strong>{member.displayName}</strong>
-              <span>{member.id === user.id ? "Here now" : "Online"}</span>
+              <span>
+                {member.id === user.id
+                  ? "Here now"
+                  : prefFor(member.id).muted
+                    ? "Muted for you"
+                    : hub.forcedMutes.has(member.id)
+                      ? "Server muted"
+                      : "Online"}
+              </span>
             </div>
           </div>
         ))}
@@ -1337,10 +1714,17 @@ export function ChatShell() {
           <span>OFFLINE — {offlineMembers.length}</span>
         </div>
         {offlineMembers.map((member) => (
-          <div className="member offline-member" key={member.id}>
-            <span className="member-avatar" style={{ background: member.color }}>
-              {member.avatar}
-            </span>
+          <div
+            className="member offline-member"
+            key={member.id}
+            onContextMenu={(event) => openUserMenu(event, member)}
+          >
+            <Avatar
+              className="member-avatar"
+              avatar={member.avatar}
+              avatarUrl={member.avatarUrl}
+              color={member.color}
+            />
             <div>
               <strong>{member.displayName}</strong>
               <span>Away</span>
@@ -1350,18 +1734,50 @@ export function ChatShell() {
       </aside>
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
-      {voice.remoteStreams.map(({ connectionId, stream }) => (
-        <audio
-          key={connectionId}
-          autoPlay
-          ref={(element) => {
-            if (element && element.srcObject !== stream) {
-              element.srcObject = stream;
-            }
+      {voice.remoteStreams.map(({ connectionId, stream }) => {
+        const person = voiceParticipants.find(
+          (participant) => participant.connectionId === connectionId,
+        );
+        const pref = person ? prefFor(person.id) : { volume: 100, muted: false };
+        return (
+          <audio
+            key={connectionId}
+            autoPlay
+            ref={(element) => {
+              if (!element) return;
+              if (element.srcObject !== stream) element.srcObject = stream;
+              // Per-person volume, on top of your own deafen switch.
+              element.volume = Math.max(0, Math.min(1, pref.volume / 100));
+            }}
+            muted={voice.deafened || pref.muted}
+          />
+        );
+      })}
+
+      {userMenu && (
+        <UserMenu
+          target={userMenu}
+          isSelf={userMenu.member.id === user.id}
+          pref={prefFor(userMenu.member.id)}
+          serverMuted={hub.forcedMutes.has(userMenu.member.id)}
+          onClose={() => setUserMenu(null)}
+          onMessage={() => {
+            const id = userMenu.member.id;
+            setUserMenu(null);
+            void openDm(id);
           }}
-          muted={voice.deafened}
+          onLocalMute={(muted) => {
+            void saveVoicePref(userMenu.member.id, { muted });
+          }}
+          onVolume={(volume) => {
+            void saveVoicePref(userMenu.member.id, { volume });
+          }}
+          onServerMute={(muted) => {
+            void saveVoicePref(userMenu.member.id, { serverMuted: muted });
+            setUserMenu(null);
+          }}
         />
-      ))}
+      )}
 
       {settingsOpen && (
         <SettingsDialog

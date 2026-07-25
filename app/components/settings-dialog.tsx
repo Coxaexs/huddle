@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AVATAR_COLORS, type PublicUser } from "@/lib/users";
 import { apiFetch } from "../lib/client";
 
@@ -41,6 +41,9 @@ export function SettingsDialog({
   const [invites, setInvites] = useState<Invite[]>([]);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || null);
+  const [avatarKey, setAvatarKey] = useState<string | null | undefined>(undefined);
+  const pictureRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (tab !== "invites") return;
@@ -62,7 +65,12 @@ export function SettingsDialog({
     try {
       const data = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
         method: "PATCH",
-        body: JSON.stringify({ displayName, avatar, color }),
+        body: JSON.stringify({
+          displayName,
+          avatar,
+          color,
+          ...(avatarKey === undefined ? {} : { avatarKey }),
+        }),
       });
       onUser(data.user);
       setStatus("Saved.");
@@ -84,6 +92,26 @@ export function SettingsDialog({
       setStatus("Password changed. Other devices were signed out.");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save.");
+    }
+  }
+
+  async function choosePicture(file: File | undefined) {
+    if (!file) return;
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      const upload = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      setAvatarKey(upload.key);
+      setAvatarUrl(`/hangout/api/uploads/${encodeURIComponent(upload.key)}`);
+      setStatus("Picture ready — save the profile to keep it.");
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "That image did not upload.",
+      );
     }
   }
 
@@ -166,6 +194,49 @@ export function SettingsDialog({
                 onChange={(event) => setAvatar(event.target.value)}
               />
 
+              <span className="field-label">Profile picture</span>
+              <div className="picture-row">
+                <span
+                  className="picture-preview"
+                  style={{ background: avatarUrl ? undefined : color }}
+                >
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="" />
+                  ) : (
+                    avatar || displayName.slice(0, 1).toUpperCase()
+                  )}
+                </span>
+                <div className="picture-actions">
+                  <button
+                    type="button"
+                    onClick={() => pictureRef.current?.click()}
+                  >
+                    Upload
+                  </button>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAvatarUrl(null);
+                        setAvatarKey(null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={pictureRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(event) => {
+                    void choosePicture(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+
               <span className="field-label">Colour</span>
               <div className="color-row">
                 {AVATAR_COLORS.map((option) => (
@@ -178,13 +249,6 @@ export function SettingsDialog({
                     onClick={() => setColor(option)}
                   />
                 ))}
-              </div>
-
-              <div className="avatar-preview">
-                <span className="member-avatar" style={{ background: color }}>
-                  {avatar || displayName.slice(0, 1).toUpperCase()}
-                </span>
-                <span>{displayName || user.username}</span>
               </div>
 
               <button type="button" className="primary" onClick={saveProfile}>

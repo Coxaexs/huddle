@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { playerCommand, playerState, publishMessage } from "@/lib/hub-client";
 import { formatDuration, resolveTrack, trackLabel } from "@/lib/music";
+import { fetchLyrics, lineAt } from "@/lib/musicbot";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
@@ -144,17 +145,20 @@ export async function POST(request: Request) {
 
   try {
     switch (name) {
-      case "play": {
-        if (!value) throw new Error("Use `/play song name or URL`.");
+      case "play":
+      case "playnext": {
+        if (!value) throw new Error(`Use \`/${name} song name or URL\`.`);
         const before = await playerState(voiceChannelId!);
         const track = await resolveTrack(value, user.display_name);
-        const state = await playerCommand(voiceChannelId!, {
-          name: "play",
-          track,
-        });
+        const state = await playerCommand(
+          voiceChannelId!,
+          name === "playnext" ? { name: "playnext", track } : { name: "play", track },
+        );
 
         if (before?.track) {
-          const text = `Queued ${trackLabel(track)} (#${state?.queue.length ?? 1} in line).`;
+          const position =
+            name === "playnext" ? 1 : (state?.queue.length ?? 1);
+          const text = `Queued ${trackLabel(track)} (#${position} in line).`;
           await say(db, textChannelId, text);
           return Response.json({ text, state });
         }
@@ -256,6 +260,151 @@ export async function POST(request: Request) {
         const text = `Removed #${index} from the queue.`;
         await say(db, textChannelId, text);
         return Response.json({ text, state });
+      }
+
+      case "forward":
+      case "rewind": {
+        const state = await playerState(voiceChannelId!);
+        if (!state?.track) throw new Error("Nothing is playing.");
+        const step = (Number(value) || 15) * 1000;
+        const target = Math.max(
+          0,
+          playbackPosition(state) + (name === "forward" ? step : -step),
+        );
+        const next = await playerCommand(voiceChannelId!, {
+          name: "seek",
+          positionMs: target,
+        });
+        const text = `${name === "forward" ? "Skipped ahead" : "Went back"} to ${formatDuration(target / 1000)}.`;
+        await say(db, textChannelId, text);
+        return Response.json({ text, state: next });
+      }
+
+      case "replay": {
+        const state = await playerCommand(voiceChannelId!, {
+          name: "seek",
+          positionMs: 0,
+        });
+        const text = "Back to the start.";
+        await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "skipto": {
+        const index = Number(value);
+        if (!Number.isFinite(index) || index < 1) {
+          throw new Error("Use `/skipto 3` with the queue position.");
+        }
+        const state = await playerCommand(voiceChannelId!, {
+          name: "skipto",
+          index: index - 1,
+        });
+        const text = state?.track
+          ? `Jumped to ${trackLabel(state.track)}`
+          : "That position is past the end of the queue.";
+        await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "move": {
+        const [from, to] = value.split(/\s+/).map(Number);
+        if (!Number.isFinite(from) || !Number.isFinite(to)) {
+          throw new Error("Use `/move 3 1` — from position, then to position.");
+        }
+        const state = await playerCommand(voiceChannelId!, {
+          name: "move",
+          from: from - 1,
+          to: to - 1,
+        });
+        const text = `Moved #${from} to #${to}.`;
+        await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "removedupes": {
+        const before = await playerState(voiceChannelId!);
+        const state = await playerCommand(voiceChannelId!, { name: "removedupes" });
+        const dropped =
+          (before?.queue.length ?? 0) - (state?.queue.length ?? 0);
+        const text = dropped
+          ? `Removed ${dropped} duplicate${dropped === 1 ? "" : "s"}.`
+          : "No duplicates in the queue.";
+        await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "history": {
+        const state = await playerState(voiceChannelId!);
+        const played = (state?.history || [])
+          .slice(0, 10)
+          .map((track, index) => `${index + 1}. ${trackLabel(track)}`)
+          .join(" · ");
+        const text = played
+          ? `Played here recently: ${played}`
+          : "This room has not played anything yet.";
+        await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
+      case "grab": {
+        const state = await playerState(voiceChannelId!);
+        if (!state?.track) throw new Error("Nothing is playing to grab.");
+        const text = `${user.display_name} grabbed ${trackLabel(state.track)}`;
+        await say(db, textChannelId, text, {
+          link: state.track.pageUrl || undefined,
+          actionLabel: state.track.pageUrl ? "Open the track" : undefined,
+        });
+        return Response.json({ text, state });
+      }
+
+      case "search": {
+        if (!value) throw new Error("Use `/search song name`.");
+        const track = await resolveTrack(value, user.display_name);
+        const text = `Top hit for “${value}”: ${trackLabel(track)} (${formatDuration(track.duration)}). Use /play to start it.`;
+        await say(db, textChannelId, text, {
+          link: track.pageUrl || undefined,
+          actionLabel: track.pageUrl ? "Open the track" : undefined,
+        });
+        return Response.json({ text });
+      }
+
+      case "lyrics":
+      case "lyricsnow": {
+        const state = await playerState(voiceChannelId!);
+        const title = value || state?.track?.title;
+        if (!title) {
+          throw new Error("Nothing is playing — try `/lyrics song name`.");
+        }
+        const lyrics = await fetchLyrics(
+          title,
+          value ? null : state?.track?.artist,
+          state?.track?.duration,
+        );
+
+        if (name === "lyricsnow") {
+          if (!lyrics.lines.length) {
+            const text = `No synced lyrics for ${lyrics.track || title}.`;
+            await say(db, textChannelId, text);
+            return Response.json({ text });
+          }
+          const seconds = playbackPosition(state!) / 1000;
+          const line = lineAt(lyrics.lines, seconds) || "…";
+          const text = `♪ ${line}`;
+          await say(db, textChannelId, text);
+          return Response.json({ text });
+        }
+
+        const excerpt = lyrics.lines.length
+          ? lyrics.lines
+              .slice(0, 12)
+              .map((line) => line[1])
+              .join("\n")
+          : (lyrics.lyrics || "").split("\n").slice(0, 12).join("\n");
+        const text = excerpt
+          ? `${lyrics.track || title}${lyrics.artist ? ` — ${lyrics.artist}` : ""}\n${excerpt}`
+          : `No lyrics found for ${title}.`;
+        await say(db, textChannelId, text);
+        return Response.json({ text });
       }
 
       case "queue": {

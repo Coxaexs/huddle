@@ -15,6 +15,8 @@ export interface HuddleBindings {
   DND_PUBLIC_URL?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
+  /** Optional: enables GIF search in the composer. */
+  TENOR_API_KEY?: string;
 }
 
 export function bindings(): HuddleBindings {
@@ -38,4 +40,7 @@ export interface StoredMessage {
   audio_url?: string | null;
   kind?: string | null;
   payload?: string | null;
+  pinned_at?: string | null;
+  pinned_by?: string | null;
+  deleted_at?: string | null;
 }

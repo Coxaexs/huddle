@@ -5,6 +5,7 @@ export interface PresenceUser {
   username: string;
   displayName: string;
   avatar: string;
+  avatarUrl?: string | null;
   color: string;
 }
 
@@ -13,6 +14,8 @@ export interface VoiceParticipant extends PresenceUser {
   connectionId: string;
   muted: boolean;
   deafened: boolean;
+  /** Muted for the whole Huddle by someone, not just for themselves. */
+  serverMuted?: boolean;
   /** True for the music bot, which has no microphone. */
   bot?: boolean;
 }
@@ -32,6 +35,8 @@ export interface PlayerState {
   channelId: string;
   track: Track | null;
   queue: Track[];
+  /** Most recent first; what /history lists. */
+  history: Track[];
   paused: boolean;
   /** Playback position (ms) as of `updatedAt`. */
   positionMs: number;
@@ -45,6 +50,7 @@ export function emptyPlayer(channelId: string): PlayerState {
     channelId,
     track: null,
     queue: [],
+    history: [],
     paused: false,
     positionMs: 0,
     updatedAt: Date.now(),
@@ -75,6 +81,10 @@ export type ClientEvent =
 export type PlayerAction =
   | { name: "play"; track: Track; startNow?: boolean }
   | { name: "enqueue"; track: Track }
+  | { name: "playnext"; track: Track }
+  | { name: "move"; from: number; to: number }
+  | { name: "skipto"; index: number }
+  | { name: "removedupes" }
   | { name: "pause" }
   | { name: "resume" }
   | { name: "toggle" }
@@ -96,6 +106,7 @@ export type ServerEvent =
       online: string[];
       voice: Record<string, VoiceParticipant[]>;
       players: Record<string, PlayerState>;
+      forcedMutes: string[];
     }
   | { t: "presence"; online: string[]; serverNow: number }
   | { t: "message"; channelId: string; message: unknown; serverNow: number }
@@ -108,5 +119,14 @@ export type ServerEvent =
   | { t: "signal"; from: string; data: unknown; serverNow: number }
   | { t: "player"; state: PlayerState; serverNow: number }
   | { t: "structure"; serverNow: number }
+  | { t: "message-deleted"; channelId: string; id: string; serverNow: number }
+  | {
+      t: "message-pinned";
+      channelId: string;
+      id: string;
+      pinned: boolean;
+      serverNow: number;
+    }
+  | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
   | { t: "notice"; text: string; serverNow: number }
   | { t: "pong"; serverNow: number };

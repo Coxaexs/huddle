@@ -15,12 +15,17 @@ export interface HubState {
   online: Set<string>;
   voice: Record<string, VoiceParticipant[]>;
   players: Record<string, PlayerState>;
+  /** People muted for everyone. */
+  forcedMutes: Set<string>;
 }
 
 interface HubHandlers {
   onMessage?: (channelId: string, message: unknown) => void;
   onSignal?: (from: string, data: unknown) => void;
   onStructureChange?: () => void;
+  onMessageDeleted?: (channelId: string, id: string) => void;
+  onMessagePinned?: (channelId: string, id: string, pinned: boolean) => void;
+  onForceMute?: (userId: string, muted: boolean) => void;
 }
 
 /**
@@ -38,6 +43,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     online: new Set(),
     voice: {},
     players: {},
+    forcedMutes: new Set(),
   });
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -100,6 +106,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               online: new Set(payload.online),
               voice: payload.voice,
               players: payload.players,
+              forcedMutes: new Set(payload.forcedMutes || []),
             });
             break;
           case "presence":
@@ -131,6 +138,25 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "structure":
             handlersRef.current.onStructureChange?.();
+            break;
+          case "message-deleted":
+            handlersRef.current.onMessageDeleted?.(payload.channelId, payload.id);
+            break;
+          case "message-pinned":
+            handlersRef.current.onMessagePinned?.(
+              payload.channelId,
+              payload.id,
+              payload.pinned,
+            );
+            break;
+          case "force-mute":
+            setState((current) => {
+              const forcedMutes = new Set(current.forcedMutes);
+              if (payload.muted) forcedMutes.add(payload.userId);
+              else forcedMutes.delete(payload.userId);
+              return { ...current, forcedMutes };
+            });
+            handlersRef.current.onForceMute?.(payload.userId, payload.muted);
             break;
           default:
             break;

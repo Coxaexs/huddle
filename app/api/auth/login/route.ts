@@ -36,8 +36,8 @@ export async function POST(request: Request) {
 
   const row = await db
     .prepare(
-      `SELECT id, username, display_name, avatar, color, is_admin, created_at,
-              last_seen_at, password_hash
+      `SELECT id, username, display_name, avatar, avatar_url, color, is_admin,
+              created_at, last_seen_at, password_hash
          FROM users WHERE username_lower = ?`,
     )
     .bind(username)
