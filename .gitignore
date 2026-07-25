@@ -1,0 +1,25 @@
+node_modules/
+
+# Build output
+dist/
+dist-*/
+appledouble-quarantine/
+.vinext/
+*.tsbuildinfo
+
+# Local wrangler state: the live D1 database and R2 uploads
+state/
+
+# Secrets
+.dev.vars
+.env
+.env.*
+
+# macOS AppleDouble junk that breaks wrangler's asset scan
+._*
+.DS_Store
+.wrangler/
+
+# Local agent settings
+.claude/settings.local.json
+.claude/*.tmp.*

@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "huddle",
+  "main": "vinext/server/app-router-entry",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    // Served by the platform ahead of the worker; no ASSETS binding needed.
+    "directory": "./dist/client"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "site-creator-d1",
+      // Keep this id stable: `wrangler dev --persist-to state` keys the local
+      // SQLite file off it, and that file holds the real message history.
+      "database_id": "00000000-0000-4000-8000-000000000000"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "site-creator-r2"
+    }
+  ],
+  "vars": {
+    // Overridden per-host by the systemd unit; these are the defaults.
+    "MUSICWATCH_BASE_URL": "http://127.0.0.1:8722",
+    "MUSIC_HELPER_BASE_URL": "http://127.0.0.1:8731",
+    "DND_BASE_URL": "http://127.0.0.1:8000",
+    "MUSICWATCH_PUBLIC_URL": "https://deeppixel.online",
+    "DND_PUBLIC_URL": "https://dnd.deeppixel.online"
+  }
+}
