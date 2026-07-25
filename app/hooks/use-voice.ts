@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
+import {
+  cameraConstraints,
+  microphoneConstraints,
+  unlockAudio,
+} from "../lib/devices";
 
 interface SignalPayload {
   kind: "offer" | "answer" | "candidate";
@@ -42,7 +47,8 @@ async function tuneAudioSender(
     encoding.maxBitrate = maxBitrate;
     // Discontinuous transmission is useful for telephony, but its repeated
     // noise-floor switching is distracting in a persistent friends' room.
-    encoding.dtx = "disabled";
+    // Not in the DOM typings yet, but implemented where it matters.
+    (encoding as RTCRtpEncodingParameters & { dtx?: string }).dtx = "disabled";
   }
   await sender.setParameters(parameters).catch(() => undefined);
 }
@@ -66,12 +72,18 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     Array<{ connectionId: string; stream: MediaStream }>
   >([]);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  /** Your own video, so you can see what everyone else is seeing. */
+  const [localVideos, setLocalVideos] = useState<
+    Array<{ kind: "camera" | "screen"; stream: MediaStream }>
+  >([]);
   const [screenQuality, setScreenQuality] =
     useState<ScreenShareQuality>("1080p30");
   const [error, setError] = useState("");
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const iceServersRef = useRef<RTCIceServer[]>([
@@ -80,6 +92,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
+  const negotiateRef = useRef<
+    (remoteId: string, peer: RTCPeerConnection) => Promise<void>
+  >(async () => {});
   const participantCountRef = useRef(0);
   channelIdRef.current = channelId;
 
@@ -188,6 +203,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
           void tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
         }
       }
+      for (const track of cameraStreamRef.current?.getTracks() || []) {
+        peer.addTrack(track, cameraStreamRef.current as MediaStream);
+      }
 
       peer.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -245,6 +263,21 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
             to: from,
             data: { kind: "answer", description: answer } satisfies SignalPayload,
           });
+
+          // An answer can only carry the media the offer asked for. If we are
+          // already sending video that has no m-line yet — a camera or screen
+          // that was live before this person arrived — it needs its own round.
+          const unsent = peer
+            .getTransceivers()
+            .some(
+              (transceiver) =>
+                transceiver.sender.track &&
+                transceiver.currentDirection !== "sendrecv" &&
+                transceiver.currentDirection !== "sendonly",
+            );
+          if (unsent) {
+            await negotiateRef.current(from, peer).catch(() => undefined);
+          }
         } else if (data.kind === "answer" && data.description) {
           await peer.setRemoteDescription(data.description);
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
@@ -330,6 +363,29 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     },
     [send],
   );
+  negotiateRef.current = negotiatePeer;
+
+  /** Publishes which of your streams is the camera and which is the screen. */
+  const announceVideo = useCallback(() => {
+    send({
+      t: "voice-state",
+      cameraStreamId: cameraStreamRef.current?.id || null,
+      screenStreamId: screenStreamRef.current?.id || null,
+    });
+    setLocalVideos(
+      [
+        cameraStreamRef.current
+          ? { kind: "camera" as const, stream: cameraStreamRef.current }
+          : null,
+        screenStreamRef.current
+          ? { kind: "screen" as const, stream: screenStreamRef.current }
+          : null,
+      ].filter(Boolean) as Array<{
+        kind: "camera" | "screen";
+        stream: MediaStream;
+      }>,
+    );
+  }, [send]);
 
   const stopScreenShare = useCallback(() => {
     const stream = screenStreamRef.current;
@@ -338,13 +394,89 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     stream.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
     setScreenSharing(false);
+    announceVideo();
     for (const [remoteId, peer] of peersRef.current) {
       for (const sender of peer.getSenders()) {
         if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
       }
       void negotiatePeer(remoteId, peer).catch(() => closePeer(remoteId));
     }
-  }, [closePeer, negotiatePeer]);
+  }, [announceVideo, closePeer, negotiatePeer]);
+
+  const stopCamera = useCallback(() => {
+    const stream = cameraStreamRef.current;
+    if (!stream) return;
+    const trackIds = new Set(stream.getTracks().map((track) => track.id));
+    stream.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOn(false);
+    announceVideo();
+    for (const [remoteId, peer] of peersRef.current) {
+      for (const sender of peer.getSenders()) {
+        if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
+      }
+      void negotiatePeer(remoteId, peer).catch(() => closePeer(remoteId));
+    }
+  }, [announceVideo, closePeer, negotiatePeer]);
+
+  const startCamera = useCallback(async () => {
+    if (!channelIdRef.current) {
+      setError("Join a voice channel before turning your camera on.");
+      return;
+    }
+    stopCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: cameraConstraints(),
+      });
+      cameraStreamRef.current = stream;
+      setCameraOn(true);
+      announceVideo();
+      stream.getVideoTracks()[0]?.addEventListener("ended", stopCamera, {
+        once: true,
+      });
+      for (const [remoteId, peer] of peersRef.current) {
+        for (const track of stream.getTracks()) peer.addTrack(track, stream);
+        await negotiatePeer(remoteId, peer);
+      }
+    } catch (cameraError) {
+      if ((cameraError as DOMException)?.name !== "NotAllowedError") {
+        setError("Your camera could not start. Another app may be using it.");
+      } else {
+        setError("Camera access was blocked. Allow it in your browser settings.");
+      }
+    }
+  }, [announceVideo, negotiatePeer, stopCamera]);
+
+  /**
+   * Swaps the microphone without dropping the call: the new track replaces the
+   * old one in every peer connection, so nobody hears a reconnect.
+   */
+  const switchMicrophone = useCallback(async () => {
+    if (!localStreamRef.current) return;
+    try {
+      const replacement = await navigator.mediaDevices.getUserMedia({
+        audio: microphoneConstraints(),
+      });
+      const track = replacement.getAudioTracks()[0];
+      if (!track) return;
+      track.enabled = !muted;
+
+      for (const peer of peersRef.current.values()) {
+        for (const sender of peer.getSenders()) {
+          if (sender.track?.kind === "audio") {
+            await sender.replaceTrack(track).catch(() => undefined);
+          }
+        }
+      }
+      localStreamRef.current.getAudioTracks().forEach((old) => old.stop());
+      localStreamRef.current = replacement;
+      analysersRef.current.delete("self");
+      watchLevel("self", replacement);
+    } catch {
+      setError("That microphone could not be opened.");
+    }
+  }, [muted, watchLevel]);
 
   const startScreenShare = useCallback(
     async (quality: ScreenShareQuality = screenQuality) => {
@@ -366,6 +498,8 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         screenStreamRef.current = stream;
         setScreenQuality(quality);
         setScreenSharing(true);
+        // Publishes the stream id and puts it in your own view.
+        announceVideo();
         stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare, {
           once: true,
         });
@@ -384,12 +518,13 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         }
       }
     },
-    [negotiatePeer, screenQuality, stopScreenShare],
+    [announceVideo, negotiatePeer, screenQuality, stopScreenShare],
   );
 
   const leave = useCallback(() => {
     playRoomTone("leave");
     stopScreenShare();
+    stopCamera();
     for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -397,8 +532,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     setRemoteStreams([]);
     setSpeaking(new Set());
     setChannelId(null);
+    setLocalVideos([]);
     send({ t: "voice-leave" });
-  }, [closePeer, playRoomTone, send, stopScreenShare]);
+  }, [closePeer, playRoomTone, send, stopCamera, stopScreenShare]);
 
   const join = useCallback(
     async (nextChannelId: string) => {
@@ -411,12 +547,11 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: microphoneConstraints(),
         });
+        // Joining is a real gesture, which is the only moment a phone will let
+        // us start playing everyone else's audio.
+        unlockAudio();
         localStreamRef.current = stream;
         watchLevel("self", stream);
         setMuted(false);
@@ -474,6 +609,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   useEffect(() => () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     for (const peer of peersRef.current.values()) peer.close();
     peersRef.current.clear();
     void audioContextRef.current?.close();
@@ -492,6 +628,11 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     setScreenQuality,
     startScreenShare,
     stopScreenShare,
+    cameraOn,
+    startCamera,
+    stopCamera,
+    switchMicrophone,
+    localVideos,
     error,
     setError,
     join,

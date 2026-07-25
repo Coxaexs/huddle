@@ -35,6 +35,9 @@ interface Attachment {
   voiceChannelId: string | null;
   muted: boolean;
   deafened: boolean;
+  /** MediaStream ids so receivers can tell a camera from a screen share. */
+  cameraStreamId: string | null;
+  screenStreamId: string | null;
   bot: boolean;
 }
 
@@ -182,6 +185,8 @@ export class HuddleHub extends DurableObject {
       voiceChannelId: null,
       muted: false,
       deafened: false,
+      cameraStreamId: null,
+      screenStreamId: null,
       bot: url.searchParams.get("bot") === "1",
     };
     if (!attachment.userId) {
@@ -241,6 +246,8 @@ export class HuddleHub extends DurableObject {
         attachment.voiceChannelId = event.channelId;
         attachment.muted = false;
         attachment.deafened = false;
+        attachment.cameraStreamId = null;
+        attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);
         if (previous && previous !== event.channelId) {
           this.broadcastVoice(previous);
@@ -252,6 +259,8 @@ export class HuddleHub extends DurableObject {
       case "voice-leave": {
         const previous = attachment.voiceChannelId;
         attachment.voiceChannelId = null;
+        attachment.cameraStreamId = null;
+        attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);
         if (previous) this.broadcastVoice(previous);
         return;
@@ -261,6 +270,12 @@ export class HuddleHub extends DurableObject {
         if (typeof event.muted === "boolean") attachment.muted = event.muted;
         if (typeof event.deafened === "boolean") {
           attachment.deafened = event.deafened;
+        }
+        if (event.cameraStreamId !== undefined) {
+          attachment.cameraStreamId = event.cameraStreamId;
+        }
+        if (event.screenStreamId !== undefined) {
+          attachment.screenStreamId = event.screenStreamId;
         }
         socket.serializeAttachment(attachment);
         if (attachment.voiceChannelId) {
@@ -346,6 +361,8 @@ export class HuddleHub extends DurableObject {
         muted: attachment.muted || this.forcedMutes.has(attachment.userId),
         deafened: attachment.deafened,
         serverMuted: this.forcedMutes.has(attachment.userId),
+        cameraStreamId: attachment.cameraStreamId,
+        screenStreamId: attachment.screenStreamId,
         bot: attachment.bot || undefined,
       }));
     return participants;

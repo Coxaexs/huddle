@@ -2955,3 +2955,221 @@ button {
 .embed-link {
   display:inline-block;
 }
+
+/* ---------------------------------------------------------------------------
+   Camera, self-view, drag-and-drop, and a mobile layout that is actually usable
+   with a thumb. The phone rules live at the end so they win the cascade.
+--------------------------------------------------------------------------- */
+
+.self-tile video {
+  border:1px solid var(--lavender);
+}
+
+/* A camera looks wrong unmirrored to its own owner; a shared screen does not. */
+.self-tile video.mirrored {
+  transform:scaleX(-1);
+}
+
+.drop-overlay {
+  z-index:40;
+  -webkit-backdrop-filter:blur(2px);
+  backdrop-filter:blur(2px);
+  background:#7b63e61f;
+  border:2px dashed var(--lavender);
+  border-radius:16px;
+  place-items:center;
+  margin:8px;
+  display:grid;
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+
+.drop-overlay div {
+  background:var(--lavender);
+  color:#fff;
+  border-radius:12px;
+  padding:12px 18px;
+  font-weight:700;
+}
+
+.chat-panel {
+  position:relative;
+}
+
+@media (width<=760px) {
+  /* The rail becomes a bottom bar: servers, DMs and settings stay reachable
+     instead of disappearing with the desktop sidebar. */
+  .rail {
+    z-index:35;
+    background:#2c2d36;
+    border-top:1px solid #4a4b55;
+    flex-direction:row;
+    gap:10px;
+    height:64px;
+    padding:8px 12px;
+    display:flex;
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    overflow-x:auto;
+    overflow-y:hidden;
+  }
+
+  .rail-divider {
+    width:1px;
+    height:28px;
+    flex:none;
+  }
+
+  .rail-spacer {
+    min-width:4px;
+  }
+
+  .brand-mark,
+  .space-mark,
+  .profile-dot {
+    flex:none;
+    width:44px;
+    height:44px;
+    font-size:15px;
+  }
+
+  .brand-mark {
+    font-size:24px;
+  }
+
+  /* Room for the bar under everything that scrolls. */
+  .chat-panel {
+    padding-bottom:64px;
+  }
+
+  .sidebar,
+  .member-panel {
+    bottom:64px;
+  }
+
+  .sidebar {
+    top:0;
+  }
+
+  /* The member list slides in from the right, mirroring the channel drawer. */
+  .member-panel {
+    z-index:30;
+    width:min(86vw,320px);
+    padding:16px 14px;
+    position:fixed;
+    top:62px;
+    right:0;
+    box-shadow:-16px 0 40px #241f1c2e;
+  }
+
+  .messages {
+    padding:16px 14px 8px;
+  }
+
+  .message {
+    gap:10px;
+  }
+
+  /* Hover has no meaning on a touch screen: keep message actions visible. */
+  .message-actions {
+    opacity:1;
+    top:-6px;
+    right:4px;
+  }
+
+  .message-actions button {
+    min-width:36px;
+    min-height:32px;
+  }
+
+  .channel,
+  .voice-room,
+  .bot-app,
+  .member {
+    min-height:44px;
+  }
+
+  .channel-delete {
+    opacity:.5;
+    padding:0 10px;
+  }
+
+  .composer textarea {
+    /* Anything under 16px makes iOS zoom the page on focus. */
+    font-size:16px;
+  }
+
+  .composer button,
+  .gif-button,
+  .attach-button,
+  .send-button {
+    min-width:40px;
+    min-height:40px;
+  }
+
+  .voice-card-controls {
+    grid-template-columns:1fr 1fr;
+  }
+
+  .voice-card-controls button,
+  .screen-share-controls button,
+  .mic-control {
+    min-height:42px;
+  }
+
+  .screen-share-controls {
+    flex-wrap:wrap;
+  }
+
+  .screen-share-grid {
+    grid-template-columns:1fr;
+  }
+
+  .user-menu {
+    /* Thumb-sized rows, and never wider than the screen. */
+    width:min(280px,92vw);
+  }
+
+  .user-menu button {
+    padding:12px 10px;
+    font-size:14px;
+  }
+
+  .modal {
+    max-height:88vh;
+  }
+
+  .modal-tabs {
+    overflow-x:auto;
+  }
+
+  .modal-tabs button {
+    white-space:nowrap;
+  }
+
+  .gif-grid {
+    grid-template-columns:repeat(auto-fill,minmax(96px,1fr));
+  }
+
+  .now-playing {
+    max-width:100%;
+  }
+
+  .pins-panel {
+    width:min(92vw,380px);
+    right:8px;
+  }
+}
+
+/* Landscape phones are short: give the message list the room instead. */
+@media (width<=900px) and (height<=520px) {
+  .voice-card {
+    display:none;
+  }
+  .channel-intro {
+    display:none;
+  }
+}
