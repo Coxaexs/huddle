@@ -12,7 +12,9 @@ YDL_OPTIONS = {
     "no_warnings": True,
     "skip_download": True,
     "nocheckcertificate": True,
-    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    # Let current yt-dlp select its working client. Pinning the older
+    # android/web clients hides DASH audio-only formats on modern YouTube and
+    # leaves only low-quality itag 18.
 }
 
 
@@ -53,6 +55,8 @@ def resolve_track(query: str) -> dict:
             "thumbnail": result.get("thumbnail"),
             "page_url": result.get("webpage_url") or result.get("original_url"),
             "audio_url": stream_url,
+            "audio_format": formats[0].get("format_id") if formats else None,
+            "audio_bitrate": formats[0].get("abr") if formats else None,
         }
 
 

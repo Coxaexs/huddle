@@ -146,6 +146,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Music",
     voice: true,
   },
+  { name: "autoplay", args: "<on|off>", description: "Keep playing smart related tracks", group: "Music", voice: true },
+  { name: "automix", args: "<on|off>", description: "Use smooth DJ-style transitions", group: "Music", voice: true },
+  { name: "like", description: "Teach the bot you like this track", group: "Music", voice: true },
+  { name: "dislike", description: "Keep this track out of autoplay", group: "Music", voice: true },
+  { name: "stats", description: "Listening stats for this room", group: "Music", voice: true },
+  { name: "wrapped", description: "This room's monthly music recap", group: "Music", voice: true },
+  { name: "settings", description: "View the room's music settings", group: "Music", voice: true },
 
   // ---- the same bot, but on Discord ----
   {
@@ -153,8 +160,6 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Bring the bot into your Discord voice channel",
     group: "Discord music",
   },
-  { name: "autoplay", args: "<on|off>", description: "Keep playing similar tracks (Discord)", group: "Discord music" },
-  { name: "automix", args: "<on|off>", description: "Blend tracks together (Discord)", group: "Discord music" },
   { name: "karaoke", args: "<on|off>", description: "Duck the vocals (Discord)", group: "Discord music" },
   { name: "filter", args: "<preset>", description: "Audio filter preset (Discord)", group: "Discord music" },
   { name: "crossfade", args: "<seconds>", description: "Crossfade between tracks (Discord)", group: "Discord music" },
@@ -163,11 +168,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "247stop", description: "Stop keeping the bot there (Discord)", group: "Discord music" },
   { name: "247status", description: "Is 24/7 mode on? (Discord)", group: "Discord music" },
   { name: "randomplay", description: "Play something from the library (Discord)", group: "Discord music" },
-  { name: "dislike", description: "Never autoplay this track again (Discord)", group: "Discord music" },
   { name: "artist", args: "<name>", description: "Play an artist (Discord)", group: "Discord music" },
-  { name: "stats", description: "Listening stats (Discord)", group: "Discord music" },
-  { name: "wrapped", description: "Your listening wrapped (Discord)", group: "Discord music" },
-  { name: "settings", description: "Bot settings for the server (Discord)", group: "Discord music" },
 
   // ---- rooms and dashboards ----
   {

@@ -17,7 +17,13 @@ import type { PublicChannel, PublicServer } from "@/lib/servers";
 import type { Member, PublicUser } from "@/lib/users";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
+import {
+  BotMenu,
+  type BotMenuAction,
+} from "./components/bot-menu";
+import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
+import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
 import { NowPlaying } from "./components/now-playing";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -59,7 +65,22 @@ interface Message {
   audio?: string;
   kind?: string;
   pinned?: boolean;
-  payload?: { voiceChannelId?: string; trackId?: string; label?: string };
+  payload?: {
+    voiceChannelId?: string;
+    trackId?: string;
+    label?: string;
+    track?: string;
+    artist?: string;
+    lines?: Array<{ at: number; line: string; active: boolean }>;
+    type?: string;
+    name?: string;
+    subtitle?: string;
+    description?: string;
+    facts?: Array<{ label: string; value: string }>;
+    total?: number;
+    expression?: string;
+    details?: string[];
+  };
 }
 
 interface DmSummary {
@@ -121,6 +142,11 @@ export function ChatShell() {
   const [gifOpen, setGifOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
+  const [botMenu, setBotMenu] = useState<{
+    kind: "music" | "dnd";
+    x: number;
+    y: number;
+  } | null>(null);
   const [voicePrefs, setVoicePrefs] = useState<Record<string, VoicePref>>({});
 
   const [musicWatchOnline, setMusicWatchOnline] = useState<boolean | null>(null);
@@ -425,6 +451,8 @@ export function ChatShell() {
           link: options?.link,
           actionLabel: options?.actionLabel,
           audio: options?.audio,
+          kind: options?.kind,
+          payload: options?.payload,
         }),
       }).catch(() => undefined);
     },
@@ -531,7 +559,11 @@ export function ChatShell() {
     if (DISCORD_ONLY_COMMANDS.has(name)) {
       // These drive the bot's Discord voice connection, not Huddle playback.
       try {
-        const data = await apiFetch<{ text?: string }>(
+        const data = await apiFetch<{
+          text?: string;
+          kind?: string;
+          payload?: Message["payload"];
+        }>(
           "/api/integrations/musicwatch/command",
           {
             method: "POST",
@@ -594,13 +626,19 @@ export function ChatShell() {
 
     if (name === "roll") {
       try {
-        const data = await apiFetch<{ text?: string }>(
+        const data = await apiFetch<{
+          text?: string;
+          kind?: string;
+          payload?: Message["payload"];
+        }>(
           "/api/integrations/dnd/roll",
           { method: "POST", body: JSON.stringify({ command: raw }) },
         );
         await postBotMessage(data.text || "The roll failed.", {
           author: "D&D Bot",
           avatar: "⚔",
+          kind: data.kind,
+          payload: data.payload,
         });
       } catch (error) {
         await postBotMessage(
@@ -617,7 +655,12 @@ export function ChatShell() {
         return;
       }
       try {
-        const data = await apiFetch<{ text: string; link?: string }>(
+        const data = await apiFetch<{
+          text: string;
+          link?: string;
+          kind?: string;
+          payload?: Message["payload"];
+        }>(
           "/api/integrations/dnd/lookup",
           { method: "POST", body: JSON.stringify({ kind: name, query: value }) },
         );
@@ -626,6 +669,8 @@ export function ChatShell() {
           avatar: "⚔",
           link: data.link,
           actionLabel: data.link ? "Open on 5e.tools" : undefined,
+          kind: data.kind,
+          payload: data.payload,
         });
       } catch (error) {
         await postBotMessage(
@@ -880,7 +925,19 @@ export function ChatShell() {
 
   function openUserMenu(event: MouseEvent, member: Member) {
     event.preventDefault();
+    setBotMenu(null);
     setUserMenu({ member, x: event.clientX, y: event.clientY });
+  }
+
+  function openBotMenu(event: MouseEvent, kind: "music" | "dnd") {
+    event.preventDefault();
+    setUserMenu(null);
+    setBotMenu({ kind, x: event.clientX, y: event.clientY });
+  }
+
+  function prepareCommand(command: string) {
+    setDraft(command);
+    window.setTimeout(() => composerRef.current?.focus(), 0);
   }
 
   // --------------------------------------------------------------- render
@@ -914,6 +971,89 @@ export function ChatShell() {
   );
   const prefFor = (id: string): VoicePref =>
     voicePrefs[id] || { volume: 100, muted: false };
+  const currentPlayer = voice.channelId
+    ? hub.players[voice.channelId] || null
+    : null;
+  const musicBotActions: BotMenuAction[] = [
+    { label: "Play something…", onSelect: () => prepareCommand("/play ") },
+    { label: "Show queue", onSelect: () => prepareCommand("/queue") },
+    { label: "Lyrics now", onSelect: () => void runCommand("/lyricsnow") },
+    {
+      label: "Toggle Smart Autoplay",
+      onSelect: () => void runCommand("/autoplay"),
+    },
+    {
+      label: "Toggle AutoMix",
+      onSelect: () => void runCommand("/automix"),
+    },
+    { label: "Like this track", onSelect: () => void runCommand("/like") },
+    {
+      label: "Dislike this track",
+      onSelect: () => void runCommand("/dislike"),
+    },
+    { label: "Listening stats", onSelect: () => void runCommand("/stats") },
+    { label: "Room Wrapped", onSelect: () => void runCommand("/wrapped") },
+    { label: "Music settings", onSelect: () => void runCommand("/settings") },
+    ...(voice.channelId && currentPlayer?.track
+      ? [
+          {
+            label: currentPlayer.paused ? "Resume" : "Pause",
+            onSelect: () =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "toggle" },
+              }),
+          },
+          {
+            label: "Skip",
+            onSelect: () =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "skip" },
+              }),
+          },
+          {
+            label: "Stop playing",
+            danger: true,
+            onSelect: () =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "stop" },
+              }),
+          },
+        ]
+      : []),
+    ...(musicDashboardUrl
+      ? [
+          {
+            label: "Open dashboard",
+            onSelect: () =>
+              window.open(
+                musicDashboardUrl,
+                "_blank",
+                "noopener,noreferrer",
+              ),
+          },
+        ]
+      : []),
+  ];
+  const dndBotActions: BotMenuAction[] = [
+    { label: "Roll dice…", onSelect: () => prepareCommand("/roll ") },
+    { label: "Find a spell…", onSelect: () => prepareCommand("/spell ") },
+    { label: "Find a monster…", onSelect: () => prepareCommand("/monster ") },
+    ...(dndUrl
+      ? [
+          {
+            label: "Open dashboard",
+            onSelect: () =>
+              window.open(dndUrl, "_blank", "noopener,noreferrer"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <main className="app-shell">
@@ -1109,7 +1249,10 @@ export function ChatShell() {
                           }`}
                           key={person.connectionId}
                           onContextMenu={(event) => {
-                            if (person.bot) return;
+                            if (person.bot) {
+                              openBotMenu(event, "music");
+                              return;
+                            }
                             const member = membersById.get(person.id);
                             if (member) openUserMenu(event, member);
                           }}
@@ -1156,6 +1299,7 @@ export function ChatShell() {
 
             <button
               className="bot-app"
+              onContextMenu={(event) => openBotMenu(event, "music")}
               onClick={() => {
                 if (musicDashboardUrl) {
                   window.open(musicDashboardUrl, "_blank", "noopener,noreferrer");
@@ -1182,6 +1326,7 @@ export function ChatShell() {
 
             <button
               className="bot-app"
+              onContextMenu={(event) => openBotMenu(event, "dnd")}
               onClick={() => {
                 if (dndUrl) {
                   window.open(dndUrl, "_blank", "noopener,noreferrer");
@@ -1386,6 +1531,16 @@ export function ChatShell() {
               <article
                 className={`message ${message.pinned ? "is-pinned" : ""}`}
                 key={message.id}
+                onContextMenu={(event) => {
+                  if (message.bot) {
+                    openBotMenu(
+                      event,
+                      message.author.toLowerCase().includes("d&d")
+                        ? "dnd"
+                        : "music",
+                    );
+                  }
+                }}
               >
                 <Avatar
                   className={`avatar ${message.bot ? "bot-avatar" : ""}`}
@@ -1414,7 +1569,27 @@ export function ChatShell() {
                     )}
                   </div>
 
-                  <MessageBody text={message.text} />
+                  {message.kind === "lyricsnow" && message.payload?.lines ? (
+                    <LyricsNow
+                      track={message.payload.track}
+                      artist={message.payload.artist}
+                      lines={message.payload.lines}
+                      positionMs={
+                        message.payload.voiceChannelId === voice.channelId
+                          ? player.position
+                          : undefined
+                      }
+                      live={
+                        message.payload.voiceChannelId === voice.channelId &&
+                        hub.players[voice.channelId!]?.track?.id ===
+                          message.payload.trackId
+                      }
+                    />
+                  ) : message.kind === "dnd" && message.payload ? (
+                    <DndCard {...message.payload} />
+                  ) : (
+                    <MessageBody text={message.text} />
+                  )}
 
                   {message.kind === "nowplaying" &&
                     message.payload?.voiceChannelId && (
@@ -1430,7 +1605,7 @@ export function ChatShell() {
                         controllable={
                           voice.channelId === message.payload.voiceChannelId
                         }
-                        blocked={player.blocked}
+                        blocked={!botStreaming && player.blocked}
                         onUnblock={player.unblock}
                         voiceChannelName={
                           voiceChannels.find(
@@ -1744,7 +1919,7 @@ export function ChatShell() {
                   state={roomPlayer}
                   position={player.position}
                   controllable
-                  blocked={player.blocked}
+                  blocked={!botStreaming && player.blocked}
                   onUnblock={player.unblock}
                   voiceChannelName={currentVoiceChannel?.name}
                   onSeek={(positionMs) =>
@@ -1847,9 +2022,15 @@ export function ChatShell() {
           <audio
             key={`${connectionId}:${stream.id}`}
             autoPlay
+            playsInline
             ref={(element) => {
               if (!element) return;
-              if (element.srcObject !== stream) element.srcObject = stream;
+              if (element.srcObject !== stream) {
+                element.srcObject = stream;
+                // Safari is more reliable when playback is requested after
+                // srcObject is assigned, even with the autoPlay attribute.
+                void element.play().catch(() => undefined);
+              }
               // Per-person volume, on top of your own deafen switch.
               element.volume = Math.max(0, Math.min(1, pref.volume / 100));
             }}
@@ -1857,6 +2038,39 @@ export function ChatShell() {
           />
         );
         })}
+
+      {botMenu && (
+        <BotMenu
+          name={botMenu.kind === "music" ? "Music + Watch" : "D&D Bot"}
+          description={
+            botMenu.kind === "music"
+              ? "Music and watch-together bot"
+              : "Tabletop helper bot"
+          }
+          x={botMenu.x}
+          y={botMenu.y}
+          actions={
+            botMenu.kind === "music" ? musicBotActions : dndBotActions
+          }
+          voicePref={
+            botMenu.kind === "music" &&
+            voiceParticipants.some((person) => person.bot)
+              ? prefFor("bot:music")
+              : undefined
+          }
+          onVoiceMute={
+            botMenu.kind === "music"
+              ? (muted) => void saveVoicePref("bot:music", { muted })
+              : undefined
+          }
+          onVoiceVolume={
+            botMenu.kind === "music"
+              ? (volume) => void saveVoicePref("bot:music", { volume })
+              : undefined
+          }
+          onClose={() => setBotMenu(null)}
+        />
+      )}
 
       {userMenu && (
         <UserMenu

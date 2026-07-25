@@ -112,9 +112,54 @@ export async function POST(request: Request) {
         path === "spells"
           ? describeSpell(entry as unknown as Spell)
           : describeGeneric(String(entry.name || query), entry);
+      const spell = entry as unknown as Spell;
+      const genericSkip = new Set([
+        "name",
+        "source_url",
+        "description",
+        "text",
+        "entries",
+      ]);
+      const facts =
+        path === "spells"
+          ? [
+              { label: "Casting time", value: String(spell.casting_time || "—") },
+              { label: "Range", value: String(spell.range || "—") },
+              { label: "Components", value: String(spell.components || "—") },
+              { label: "Duration", value: String(spell.duration || "—") },
+            ]
+          : Object.entries(entry)
+              .filter(
+                ([key, value]) =>
+                  !genericSkip.has(key) &&
+                  (typeof value === "string" || typeof value === "number") &&
+                  String(value).length < 80,
+              )
+              .slice(0, 8)
+              .map(([key, value]) => ({
+                label: key.replace(/_/g, " "),
+                value: String(value),
+              }));
       return Response.json({
         text,
         link: typeof entry.source_url === "string" ? entry.source_url : undefined,
+        kind: "dnd",
+        payload: {
+          type: body.kind,
+          name: String(entry.name || query),
+          subtitle:
+            path === "spells"
+              ? spell.level === 0
+                ? `${spell.school || ""} cantrip`
+                : `Level ${spell.level} ${spell.school || ""}`.trim()
+              : String(entry.source || ""),
+          description: String(
+            entry.description || entry.text || "",
+          )
+            .split("\n")[0]
+            .slice(0, 1200),
+          facts,
+        },
       });
     }
 
