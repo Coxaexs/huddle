@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -9,15 +11,22 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-
-interface ChannelSummary {
-  name: string;
-  icon: string;
-  unread: number;
-}
+import type { PlayerState } from "@/lib/protocol";
+import type { PublicChannel, PublicServer } from "@/lib/servers";
+import type { Member, PublicUser } from "@/lib/users";
+import { AuthGate } from "./components/auth-gate";
+import { NowPlaying } from "./components/now-playing";
+import { SettingsDialog } from "./components/settings-dialog";
+import { SlashMenu } from "./components/slash-menu";
+import { useHub } from "./hooks/use-hub";
+import { usePlayer } from "./hooks/use-player";
+import { useVoice } from "./hooks/use-voice";
+import { apiFetch, apiUrl } from "./lib/client";
+import { COMMAND_ALIASES, MUSIC_COMMANDS, matchCommands } from "./lib/commands";
 
 interface Message {
   id: string | number;
+  channelId?: string | null;
   author: string;
   avatar: string;
   color: string;
@@ -28,22 +37,9 @@ interface Message {
   link?: string;
   actionLabel?: string;
   audio?: string;
+  kind?: string;
+  payload?: { voiceChannelId?: string; trackId?: string };
 }
-
-const channels: ChannelSummary[] = [
-  { name: "general", icon: "#", unread: 0 },
-  { name: "game-night", icon: "#", unread: 3 },
-  { name: "memes", icon: "#", unread: 0 },
-];
-
-const voicePeople = [
-  { name: "Maya", initial: "M", color: "#f4a7b9" },
-  { name: "Theo", initial: "T", color: "#8dd7d0" },
-];
-
-/** Huddle is mounted under /hangout, so every fetch needs the prefix. */
-const basePath = "/hangout";
-const apiUrl = (path: string) => `${basePath}${path}`;
 
 function Icon({
   children,
@@ -70,36 +66,199 @@ function Icon({
 }
 
 export function ChatShell() {
-  const [activeChannel, setActiveChannel] = useState("general");
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [bootstrap, setBootstrap] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  const [servers, setServers] = useState<PublicServer[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [activeServerId, setActiveServerId] = useState<string | null>(null);
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [username, setUsername] = useState<string | null>(null);
-  const [usernameDraft, setUsernameDraft] = useState("");
+
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<string | null>(null);
-  const [inVoice, setInVoice] = useState(false);
-  const [micOn, setMicOn] = useState(true);
-  const [voiceNotice, setVoiceNotice] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const [membersOpen, setMembersOpen] = useState(true);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
+
   const [musicWatchOnline, setMusicWatchOnline] = useState<boolean | null>(null);
   const [musicDashboardUrl, setMusicDashboardUrl] = useState<string | null>(null);
   const [dndOnline, setDndOnline] = useState<boolean | null>(null);
   const [dndUrl, setDndUrl] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const activeChannelRef = useRef<string | null>(null);
+  activeChannelRef.current = activeChannelId;
+
+  // ------------------------------------------------------------- session
+
+  const loadServers = useCallback(async () => {
+    const data = await apiFetch<{ servers: PublicServer[] }>("/api/servers");
+    setServers(data.servers);
+    return data.servers;
+  }, []);
+
+  const loadMembers = useCallback(async () => {
+    const data = await apiFetch<{ members: Member[] }>("/api/members");
+    setMembers(data.members);
+  }, []);
 
   useEffect(() => {
-    const savedName = window.localStorage.getItem("huddle-username")?.trim();
-    const frame = window.requestAnimationFrame(() => {
-      setUsername(savedName || "");
-      setUsernameDraft(savedName || "");
-    });
-    return () => window.cancelAnimationFrame(frame);
+    apiFetch<{ user: PublicUser | null; bootstrap: boolean }>(
+      "/api/auth/session",
+    )
+      .then((data) => {
+        setUser(data.user);
+        setBootstrap(data.bootstrap);
+      })
+      .catch(() => undefined)
+      .finally(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadServers().catch(() => undefined);
+    void loadMembers().catch(() => undefined);
+  }, [user, loadServers, loadMembers]);
+
+  // Pick up where you left off, or fall back to the first channel there is.
+  useEffect(() => {
+    if (!servers.length) return;
+    setActiveServerId((current) => {
+      const remembered =
+        current || window.localStorage.getItem("huddle-server") || "";
+      return servers.some((server) => server.id === remembered)
+        ? remembered
+        : servers[0].id;
+    });
+  }, [servers]);
+
+  const activeServer = useMemo(
+    () => servers.find((server) => server.id === activeServerId) || null,
+    [servers, activeServerId],
+  );
+
+  const textChannels = useMemo(
+    () => activeServer?.channels.filter((c) => c.kind === "text") || [],
+    [activeServer],
+  );
+  const voiceChannels = useMemo(
+    () => activeServer?.channels.filter((c) => c.kind === "voice") || [],
+    [activeServer],
+  );
+
+  useEffect(() => {
+    if (!activeServerId) return;
+    window.localStorage.setItem("huddle-server", activeServerId);
+    setActiveChannelId((current) => {
+      if (current && textChannels.some((channel) => channel.id === current)) {
+        return current;
+      }
+      const remembered = window.localStorage.getItem(
+        `huddle-channel:${activeServerId}`,
+      );
+      return (
+        textChannels.find((channel) => channel.id === remembered)?.id ||
+        textChannels[0]?.id ||
+        null
+      );
+    });
+  }, [activeServerId, textChannels]);
+
+  useEffect(() => {
+    if (activeServerId && activeChannelId) {
+      window.localStorage.setItem(
+        `huddle-channel:${activeServerId}`,
+        activeChannelId,
+      );
+    }
+  }, [activeServerId, activeChannelId]);
+
+  const activeChannel = useMemo(
+    () => textChannels.find((channel) => channel.id === activeChannelId) || null,
+    [textChannels, activeChannelId],
+  );
+
+  // ------------------------------------------------------------ realtime
+
+  const handleIncomingMessage = useCallback(
+    (channelId: string, message: unknown) => {
+      if (channelId !== activeChannelRef.current) return;
+      const incoming = message as Message;
+      setMessages((current) =>
+        current.some((existing) => existing.id === incoming.id)
+          ? current
+          : [...current, incoming],
+      );
+    },
+    [],
+  );
+
+  const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => {});
+
+  const hub = useHub(Boolean(user), {
+    onMessage: handleIncomingMessage,
+    onSignal: (from, data) => voiceSignalRef.current(from, data),
+    onStructureChange: () => void loadServers().catch(() => undefined),
+  });
+
+  const voice = useVoice({
+    connectionId: hub.connectionId,
+    rooms: hub.voice,
+    send: hub.send,
+  });
+  voiceSignalRef.current = voice.handleSignal;
+
+  // The mesh only cares about the room you are actually in.
+  const voiceParticipants = useMemo(
+    () => (voice.channelId ? hub.voice[voice.channelId] || [] : []),
+    [hub.voice, voice.channelId],
+  );
+
+  const roomPlayer: PlayerState | null = voice.channelId
+    ? hub.players[voice.channelId] || null
+    : null;
+
+  const player = usePlayer({
+    state: roomPlayer,
+    serverNow: hub.serverNow,
+    deafened: voice.deafened,
+    onEnded: (trackId) => {
+      if (!voice.channelId) return;
+      hub.send({
+        t: "player",
+        channelId: voice.channelId,
+        action: { name: "ended", trackId },
+      });
+    },
+  });
+
+  // --------------------------------------------------------------- data
+
+  useEffect(() => {
+    if (!user || !activeChannelId) return;
+    let cancelled = false;
+    apiFetch<{ messages: Message[] }>(
+      `/api/messages?channelId=${encodeURIComponent(activeChannelId)}`,
+    )
+      .then((data) => {
+        if (!cancelled) setMessages(data.messages);
+      })
+      .catch(() => undefined);
+    hub.send({ t: "subscribe", channelId: activeChannelId });
+    return () => {
+      cancelled = true;
+    };
+    // hub.send is stable; re-subscribing on every hub tick would be noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeChannelId, hub.connected]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -114,127 +273,120 @@ export function ChatShell() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
     fetch(apiUrl("/api/integrations/musicwatch"))
-      .then((response) => response.json())
+      .then((response) => response.json() as Promise<{ online?: boolean; dashboardUrl?: string }>)
       .then((data) => {
         setMusicWatchOnline(Boolean(data.online));
         setMusicDashboardUrl(data.dashboardUrl || null);
       })
       .catch(() => setMusicWatchOnline(false));
-  }, []);
 
-  useEffect(() => {
     fetch(apiUrl("/api/integrations/dnd"))
-      .then((response) => response.json())
+      .then((response) => response.json() as Promise<{ online?: boolean; appUrl?: string }>)
       .then((data) => {
         setDndOnline(Boolean(data.online));
         setDndUrl(data.appUrl || null);
       })
       .catch(() => setDndOnline(false));
-  }, []);
+  }, [user]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadMessages = () =>
-      fetch(apiUrl(`/api/messages?channel=${encodeURIComponent(activeChannel)}`))
-        .then((response) => response.json())
-        .then((data) => {
-          if (!cancelled && data.messages) setMessages(data.messages);
-        })
-        .catch(() => undefined);
+  // ------------------------------------------------------------- actions
 
-    loadMessages();
-    const poll = window.setInterval(loadMessages, 2500);
-    return () => {
-      cancelled = true;
-      window.clearInterval(poll);
-    };
-  }, [activeChannel]);
+  function applyTheme(next: "dark" | "light") {
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    window.localStorage.setItem("huddle-theme", next);
+  }
 
-  useEffect(
-    () => () => {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+  const postBotMessage = useCallback(
+    async (text: string, options?: Partial<Message>) => {
+      if (!activeChannelRef.current) return;
+      await apiFetch("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: activeChannelRef.current,
+          content: text,
+          asBot: true,
+          botName: options?.author || "Music + Watch",
+          botAvatar: options?.avatar || "♫",
+          link: options?.link,
+          actionLabel: options?.actionLabel,
+          audio: options?.audio,
+        }),
+      }).catch(() => undefined);
     },
     [],
   );
 
-  function currentTime() {
-    return new Intl.DateTimeFormat("en", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(new Date());
-  }
+  async function runCommand(raw: string) {
+    const [rawName, ...parts] = raw.trim().split(/\s+/);
+    const bare = rawName.replace(/^\//, "").toLowerCase();
+    const name = COMMAND_ALIASES[bare] || bare;
+    const value = parts.join(" ").trim();
 
-  function addBotMessage(text: string, options?: Partial<Message>) {
-    const message: Message = {
-      id: crypto.randomUUID(),
-      author: options?.author || "Music + Watch",
-      avatar: options?.avatar || "♫",
-      color: "#b8a6ff",
-      time: currentTime(),
-      text,
-      bot: true,
-      ...options,
-    };
-    setMessages((current) => [...current, message]);
+    if (MUSIC_COMMANDS.has(name)) {
+      if (!voice.channelId) {
+        setNotice(
+          "Join a voice channel first — the music bot plays into the room you are in.",
+        );
+        return;
+      }
+      try {
+        await apiFetch("/api/music/command", {
+          method: "POST",
+          body: JSON.stringify({
+            command: `/${name} ${value}`.trim(),
+            voiceChannelId: voice.channelId,
+            textChannelId: activeChannelId,
+          }),
+        });
+      } catch (error) {
+        setNotice(
+          error instanceof Error ? error.message : "That music command failed.",
+        );
+      }
+      return;
+    }
 
-    fetch(apiUrl("/api/messages"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        channel: activeChannel,
-        content: text,
-        author: message.author,
-        avatar: message.avatar,
-        color: message.color,
-        bot: true,
-        link: message.link,
-        actionLabel: message.actionLabel,
-        audio: message.audio,
-      }),
-    });
-  }
-
-  async function botReply(command: string) {
-    const normalized = command.trim().toLowerCase();
-
-    if (normalized.startsWith("/watch") || normalized.startsWith("/reels")) {
-      const mode = normalized.startsWith("/reels") ? "reels" : "watch";
-      addBotMessage(
-        mode === "reels"
+    if (name === "watch" || name === "reels") {
+      await postBotMessage(
+        name === "reels"
           ? "Creating a synchronized ReelsTogether room…"
           : "Creating a synchronized Watch Together room…",
       );
       try {
-        const response = await fetch(apiUrl("/api/integrations/musicwatch"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, name: `${activeChannel} · Huddle` }),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.url) throw new Error(data.error);
-        addBotMessage(
-          mode === "reels"
+        const data = await apiFetch<{ url: string }>(
+          "/api/integrations/musicwatch",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              mode: name,
+              name: `${activeChannel?.name || "huddle"} · Huddle`,
+            }),
+          },
+        );
+        await postBotMessage(
+          name === "reels"
             ? "Your shared reels room is ready. Everyone who opens this link joins the same synchronized feed."
             : "Your watch room is ready. Everyone who opens this link joins the same synchronized player.",
           {
             link: data.url,
-            actionLabel: mode === "reels" ? "Open reels room" : "Open watch room",
+            actionLabel: name === "reels" ? "Open reels room" : "Open watch room",
           },
         );
       } catch {
-        addBotMessage(
+        await postBotMessage(
           "I couldn’t reach the Music + Watch server. Start it on your server and set MUSICWATCH_BASE_URL in Huddle.",
         );
       }
       return;
     }
 
-    if (normalized.startsWith("/music")) {
-      addBotMessage(
+    if (name === "music") {
+      await postBotMessage(
         musicWatchOnline
-          ? "The music dashboard is online. Use /play in Huddle for browser playback, or open the dashboard for the full Music + Watch experience."
+          ? "The music dashboard is online. It can see this Huddle's voice rooms as well as Discord."
           : "The music server looks offline. Start musicwatchtogether first, then try again.",
         musicDashboardUrl
           ? { link: musicDashboardUrl, actionLabel: "Open music dashboard" }
@@ -243,93 +395,27 @@ export function ChatShell() {
       return;
     }
 
-    const musicCommand = normalized.split(/\s+/, 1)[0];
-    if (
-      new Set([
-        "/play",
-        "/join",
-        "/disconnect",
-        "/pause",
-        "/resume",
-        "/skip",
-        "/previous",
-        "/stop",
-        "/queue",
-        "/nowplaying",
-        "/np",
-        "/volume",
-        "/loop",
-        "/shuffle",
-        "/clear",
-        "/remove",
-        "/seek",
-        "/lyrics",
-        "/playlists",
-        "/filter",
-        "/crossfade",
-        "/autoplay",
-        "/automix",
-        "/karaoke",
-        "/sleep",
-      ]).has(musicCommand)
-    ) {
+    if (name === "roll") {
       try {
-        const response = await fetch(
-          apiUrl("/api/integrations/musicwatch/command"),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command }),
-          },
+        const data = await apiFetch<{ text?: string; error?: string }>(
+          "/api/integrations/dnd/roll",
+          { method: "POST", body: JSON.stringify({ command: raw }) },
         );
-        const data = await response.json();
-        if (!response.ok || !data.text) {
-          throw new Error(
-            data.error || "The music bot could not complete that command.",
-          );
-        }
-        addBotMessage(data.text, {
-          audio: data.audio,
-          link: data.link,
-          actionLabel: data.link ? "Open source" : undefined,
+        await postBotMessage(data.text || "The roll failed.", {
+          author: "D&D Bot",
+          avatar: "⚔",
         });
       } catch (error) {
-        addBotMessage(
-          error instanceof Error && error.message
-            ? error.message
-            : "The music command failed. Open the full dashboard to check the bot’s Discord voice connection.",
-          musicDashboardUrl
-            ? { link: musicDashboardUrl, actionLabel: "Open full dashboard" }
-            : undefined,
+        await postBotMessage(
+          error instanceof Error ? error.message : "The roll failed.",
+          { author: "D&D Bot", avatar: "⚔" },
         );
       }
       return;
     }
 
-    if (normalized.startsWith("/roll")) {
-      try {
-        const data = await (
-          await fetch(apiUrl("/api/integrations/dnd/roll"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command }),
-          })
-        ).json();
-        addBotMessage(data.text || data.error || "The roll failed.", {
-          author: "D&D Bot",
-          avatar: "⚔",
-        });
-      } catch {
-        addBotMessage("The D&D dice roller is unavailable.", {
-          author: "D&D Bot",
-          avatar: "⚔",
-        });
-      }
-      return;
-    }
-
-    if (normalized.startsWith("/dnd") || normalized.startsWith("/campaign")) {
-      addBotMessage(
+    if (name === "dnd") {
+      await postBotMessage(
         dndOnline
           ? "The D&D bot companion is online. Open it for character sheets, dice, maps, the compendium, and the GM panel."
           : "The D&D companion looks offline right now.",
@@ -342,83 +428,121 @@ export function ChatShell() {
       return;
     }
 
-    let text =
-      "I heard you. Try `/play`, `/queue`, `/watch`, `/reels`, `/music`, `/dnd`, `/roll`, `/flip`, or `/help`.";
-    if (normalized.startsWith("/flip")) {
-      text = Math.random() > 0.5 ? "Heads." : "Tails.";
-    } else if (normalized.startsWith("/help")) {
-      text =
-        "Music: `/join`, `/play`, `/pause`, `/resume`, `/skip`, `/previous`, `/stop`, `/disconnect`, `/queue`, `/nowplaying`, `/volume`, `/loop`, `/shuffle`, `/clear`, `/remove`, `/seek`, `/lyrics`, `/playlists`, `/filter`, `/crossfade`, `/autoplay`, `/automix`, `/karaoke`, `/sleep`. Rooms: `/watch`, `/reels`. Apps: `/music`, `/dnd`.";
+    if (name === "flip") {
+      await postBotMessage(Math.random() > 0.5 ? "Heads." : "Tails.");
+      return;
     }
 
-    window.setTimeout(() => {
-      addBotMessage(text);
-    }, 420);
+    if (name === "shrug") {
+      await sendText("¯\\_(ツ)_/¯");
+      return;
+    }
+
+    if (name === "help") {
+      await postBotMessage(
+        "Type / in the box to see every command with its arguments. Music commands need you to be in a voice channel.",
+      );
+      return;
+    }
+
+    setNotice(`I don't know /${bare}. Type / to see what I do know.`);
   }
 
-  function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    window.localStorage.setItem("huddle-theme", next);
+  async function sendText(text: string, attachmentKey?: string) {
+    if (!activeChannelId) return;
+    await apiFetch("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        channelId: activeChannelId,
+        content: text,
+        attachmentKey,
+      }),
+    });
   }
 
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text && !pendingImage) return;
+    if (!text && !pendingFile) return;
 
-    const optimistic: Message = {
-      id: Date.now(),
-      author: username || "Friend",
-      avatar: (username || "F").slice(0, 1).toUpperCase(),
-      color: "#ffd67c",
-      time: currentTime(),
-      text: text || "Shared an image",
-      image: pendingImage || undefined,
-    };
-    setMessages((current) => [...current, optimistic]);
     setDraft("");
     setPendingImage(null);
     setPendingFile(null);
+
+    // Slash commands are instructions, not chat: they never post as you.
+    if (text.startsWith("/") && !pendingFile) {
+      await runCommand(text);
+      return;
+    }
 
     try {
       let attachmentKey: string | undefined;
       if (pendingFile) {
         const form = new FormData();
         form.append("image", pendingFile);
-        const uploadResponse = await fetch(apiUrl("/api/uploads"), {
+        const upload = await apiFetch<{ key: string }>("/api/uploads", {
           method: "POST",
           body: form,
         });
-        if (uploadResponse.ok) {
-          attachmentKey = (await uploadResponse.json()).key;
-        }
+        attachmentKey = upload.key;
       }
-
-      await fetch(apiUrl("/api/messages"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channel: activeChannel,
-          content: text,
-          attachmentKey,
-          author: username || "Friend",
-          avatar: (username || "F").slice(0, 1).toUpperCase(),
-          color: "#ffd67c",
-        }),
-      });
-    } catch {
-      setVoiceNotice("Saved in this view; the shared message store is offline.");
+      await sendText(text, attachmentKey);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "That message did not send.",
+      );
     }
-
-    if (text.startsWith("/")) botReply(text);
   }
 
+  const slashOpen = draft.startsWith("/") && !draft.includes("\n");
+  const slashMatches = useMemo(
+    () => (slashOpen ? matchCommands(draft.split(/\s+/)[0]) : []),
+    [slashOpen, draft],
+  );
+  const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
+
+  useEffect(() => setSlashIndex(0), [draft]);
+
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashActive) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSlashIndex((index) => (index + 1) % slashMatches.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSlashIndex(
+          (index) => (index - 1 + slashMatches.length) % slashMatches.length,
+        );
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        pickCommand(slashIndex);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDraft("");
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      sendMessage();
+      void sendMessage();
+    }
+  }
+
+  function pickCommand(index: number) {
+    const command = slashMatches[index];
+    if (!command) return;
+    // Commands that take an argument stay open for you to type it.
+    setDraft(command.args ? `/${command.name} ` : `/${command.name}`);
+    composerRef.current?.focus();
+    if (!command.args) {
+      void runCommand(`/${command.name}`);
+      setDraft("");
     }
   }
 
@@ -426,7 +550,7 @@ export function ChatShell() {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setVoiceNotice("Choose an image file.");
+      setNotice("Choose an image file.");
       return;
     }
     const reader = new FileReader();
@@ -436,168 +560,315 @@ export function ChatShell() {
     event.target.value = "";
   }
 
-  async function toggleVoice() {
-    if (inVoice) {
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setInVoice(false);
-      setVoiceNotice("You left the voice room.");
-      return;
-    }
+  async function createServer() {
+    const name = window.prompt("Name your new server");
+    if (!name?.trim()) return;
     try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      setInVoice(true);
-      setMicOn(true);
-      setVoiceNotice("Microphone connected. Voice provider is ready to attach.");
-    } catch {
-      setVoiceNotice(
-        "Microphone access was blocked. You can allow it in browser settings.",
+      const data = await apiFetch<{ server: PublicServer; servers: PublicServer[] }>(
+        "/api/servers",
+        { method: "POST", body: JSON.stringify({ name }) },
       );
+      setServers(data.servers);
+      setActiveServerId(data.server.id);
+      setNotice(`${data.server.name} is live — everyone here is already in it.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not create it.");
     }
   }
 
-  function toggleMic() {
-    const next = !micOn;
-    streamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = next;
-    });
-    setMicOn(next);
+  async function createChannel(kind: "text" | "voice") {
+    if (!activeServerId) return;
+    const name = window.prompt(
+      kind === "text" ? "New text channel name" : "New voice room name",
+    );
+    if (!name?.trim()) return;
+    try {
+      const data = await apiFetch<{ channelId: string; servers: PublicServer[] }>(
+        "/api/channels",
+        {
+          method: "POST",
+          body: JSON.stringify({ serverId: activeServerId, name, kind }),
+        },
+      );
+      setServers(data.servers);
+      if (kind === "text") setActiveChannelId(data.channelId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not create it.");
+    }
   }
+
+  async function renameChannel(channel: PublicChannel) {
+    const name = window.prompt(`Rename ${channel.name}`, channel.name);
+    if (!name?.trim()) return;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/channels/${channel.id}`,
+        { method: "PATCH", body: JSON.stringify({ name }) },
+      );
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not rename it.");
+    }
+  }
+
+  async function deleteChannel(channel: PublicChannel) {
+    if (!window.confirm(`Delete ${channel.name} and everything in it?`)) return;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/channels/${channel.id}`,
+        { method: "DELETE" },
+      );
+      setServers(data.servers);
+      if (voice.channelId === channel.id) voice.leave();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete it.");
+    }
+  }
+
+  async function editServer() {
+    if (!activeServer) return;
+    const name = window.prompt("Rename this server", activeServer.name);
+    if (name === null) return;
+    if (!name.trim()) {
+      if (!window.confirm(`Delete ${activeServer.name}?`)) return;
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/servers/${activeServer.id}`,
+        { method: "DELETE" },
+      ).catch((error: Error) => {
+        setNotice(error.message);
+        return null;
+      });
+      if (data) {
+        setServers(data.servers);
+        setActiveServerId(data.servers[0]?.id || null);
+      }
+      return;
+    }
+    const data = await apiFetch<{ servers: PublicServer[] }>(
+      `/api/servers/${activeServer.id}`,
+      { method: "PATCH", body: JSON.stringify({ name }) },
+    ).catch(() => null);
+    if (data) setServers(data.servers);
+  }
+
+  async function signOut() {
+    await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    voice.leave();
+    setUser(null);
+    setSettingsOpen(false);
+  }
+
+  function playerCommand(action: Parameters<typeof hub.send>[0]) {
+    hub.send(action);
+  }
+
+  // --------------------------------------------------------------- render
+
+  if (!ready) {
+    return (
+      <main className="app-shell booting">
+        <div className="boot-card">Opening Huddle…</div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="app-shell">
+        <AuthGate
+          bootstrap={bootstrap}
+          onSignedIn={(signedIn) => {
+            setUser(signedIn);
+            setBootstrap(false);
+          }}
+        />
+      </main>
+    );
+  }
+
+  const onlineMembers = members.filter((member) => hub.online.has(member.id));
+  const offlineMembers = members.filter((member) => !hub.online.has(member.id));
+  const currentVoiceChannel = voiceChannels.find(
+    (channel) => channel.id === voice.channelId,
+  );
 
   return (
     <main className="app-shell">
-      <aside className="rail" aria-label="Spaces">
+      <aside className="rail" aria-label="Servers">
         <button className="brand-mark" aria-label="Huddle home">
           h
         </button>
         <div className="rail-divider" />
-        <button className="space-mark active-space" aria-label="The Hangout">
-          HG
-        </button>
-        <button className="space-mark add-space" aria-label="Add a space">
+        {servers.map((server) => (
+          <button
+            key={server.id}
+            className={`space-mark ${server.id === activeServerId ? "active-space" : ""}`}
+            style={
+              server.id === activeServerId
+                ? { background: server.color }
+                : undefined
+            }
+            aria-label={server.name}
+            title={server.name}
+            onClick={() => setActiveServerId(server.id)}
+          >
+            {server.icon}
+          </button>
+        ))}
+        <button
+          className="space-mark add-space"
+          aria-label="Create a server"
+          title="Create a server"
+          onClick={createServer}
+        >
           +
         </button>
         <div className="rail-spacer" />
         <button
           className="profile-dot"
-          aria-label="Change your username"
-          onClick={() => {
-            setUsernameDraft(username || "");
-            setUsername("");
-          }}
+          aria-label="Settings"
+          title="Settings"
+          style={{ background: user.color }}
+          onClick={() => setSettingsOpen(true)}
         >
-          {(username || "Y").slice(0, 1).toUpperCase()}
-          <span />
+          {user.avatar}
+          <span className={hub.connected ? "online" : ""} />
         </button>
       </aside>
-
-      {username === "" && (
-        <div className="username-gate" role="dialog" aria-modal="true">
-          <form
-            className="username-card"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const nextName = usernameDraft.trim().slice(0, 40);
-              if (!nextName) return;
-              window.localStorage.setItem("huddle-username", nextName);
-              setUsername(nextName);
-            }}
-          >
-            <span className="username-mark">h</span>
-            <p className="eyebrow">WELCOME TO THE HANGOUT</p>
-            <h2>What should we call you?</h2>
-            <p>This name appears beside your messages for everyone here.</p>
-            <label htmlFor="huddle-username">Username</label>
-            <input
-              id="huddle-username"
-              value={usernameDraft}
-              onChange={(event) => setUsernameDraft(event.target.value)}
-              maxLength={40}
-              autoFocus
-              placeholder="Your name"
-            />
-            <button type="submit" disabled={!usernameDraft.trim()}>
-              Enter the Hangout
-            </button>
-          </form>
-        </div>
-      )}
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
         <header className="space-header">
           <div>
             <span className="eyebrow">PRIVATE SPACE</span>
-            <h1>The Hangout</h1>
+            <h1>{activeServer?.name || "Huddle"}</h1>
           </div>
-          <Icon label="Space settings">•••</Icon>
+          <Icon label="Server settings" onClick={editServer}>
+            •••
+          </Icon>
         </header>
 
         <nav className="channel-nav" aria-label="Channels">
           <div className="section-label">
             <span>TEXT CHANNELS</span>
-            <button aria-label="Add text channel">+</button>
+            <button
+              aria-label="Add text channel"
+              onClick={() => createChannel("text")}
+            >
+              +
+            </button>
           </div>
 
-          {channels.map((channel) => (
+          {textChannels.map((channel) => (
             <button
-              key={channel.name}
-              className={`channel ${activeChannel === channel.name ? "selected" : ""}`}
+              key={channel.id}
+              className={`channel ${activeChannelId === channel.id ? "selected" : ""}`}
               onClick={() => {
-                setActiveChannel(channel.name);
+                setActiveChannelId(channel.id);
                 setMobileNav(false);
               }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                void renameChannel(channel);
+              }}
             >
-              <span className="channel-hash">{channel.icon}</span>
+              <span className="channel-hash">#</span>
               <span>{channel.name}</span>
-              {channel.unread > 0 && (
-                <span className="unread">{channel.unread}</span>
-              )}
+              <span
+                className="channel-delete"
+                role="button"
+                aria-label={`Delete ${channel.name}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void deleteChannel(channel);
+                }}
+              >
+                ×
+              </span>
             </button>
           ))}
 
           <div className="section-label voice-label">
             <span>VOICE ROOMS</span>
-            <button aria-label="Add voice room">+</button>
+            <button
+              aria-label="Add voice room"
+              onClick={() => createChannel("voice")}
+            >
+              +
+            </button>
           </div>
 
-          <button className="voice-room selected-voice">
-            <span className="speaker-icon">◖))</span>
-            <span>Kitchen Table</span>
-            <span className="live-pill">LIVE</span>
-          </button>
-
-          <div className="voice-members">
-            {voicePeople.map((person) => (
-              <div className="voice-member" key={person.name}>
-                <span
-                  className="tiny-avatar"
-                  style={{ backgroundColor: person.color }}
+          {voiceChannels.map((channel) => {
+            const people = hub.voice[channel.id] || [];
+            const playing = hub.players[channel.id]?.track;
+            return (
+              <div key={channel.id}>
+                <button
+                  className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""}`}
+                  onClick={() => void voice.join(channel.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    void renameChannel(channel);
+                  }}
                 >
-                  {person.initial}
-                </span>
-                <span>{person.name}</span>
-                <span className="speaking-bars" aria-label="Speaking">
-                  ııı
-                </span>
-              </div>
-            ))}
-            {inVoice && (
-              <div className="voice-member you-in-voice">
-                <span className="tiny-avatar" style={{ backgroundColor: "#ffd67c" }}>
-                  Y
-                </span>
-                <span>You</span>
-                <span className="speaking-bars">ıı</span>
-              </div>
-            )}
-          </div>
+                  <span className="speaker-icon">◖))</span>
+                  <span>{channel.name}</span>
+                  {people.length > 0 && <span className="live-pill">LIVE</span>}
+                  <span
+                    className="channel-delete"
+                    role="button"
+                    aria-label={`Delete ${channel.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void deleteChannel(channel);
+                    }}
+                  >
+                    ×
+                  </span>
+                </button>
 
-          <button className="voice-room">
-            <span className="speaker-icon">◖))</span>
-            <span>AFK Sofa</span>
-          </button>
+                {people.length > 0 && (
+                  <div className="voice-members">
+                    {people.map((person) => (
+                      <div
+                        className={`voice-member ${
+                          voice.speaking.has(
+                            person.connectionId === hub.connectionId
+                              ? "self"
+                              : person.connectionId,
+                          )
+                            ? "is-speaking"
+                            : ""
+                        }`}
+                        key={person.connectionId}
+                      >
+                        <span
+                          className="tiny-avatar"
+                          style={{ backgroundColor: person.color }}
+                        >
+                          {person.avatar}
+                        </span>
+                        <span>
+                          {person.connectionId === hub.connectionId
+                            ? "You"
+                            : person.displayName}
+                        </span>
+                        {person.muted && !person.bot && (
+                          <span className="muted-pill" aria-label="Muted">
+                            ⃠
+                          </span>
+                        )}
+                        {person.bot && playing && (
+                          <span className="speaking-bars" aria-label="Playing">
+                            ııı
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           <div className="section-label bot-section-label">
             <span>APPS &amp; BOTS</span>
@@ -609,7 +880,8 @@ export function ChatShell() {
               if (musicDashboardUrl) {
                 window.open(musicDashboardUrl, "_blank", "noopener,noreferrer");
               } else {
-                setDraft("/watch");
+                setDraft("/play ");
+                composerRef.current?.focus();
               }
               setMobileNav(false);
             }}
@@ -621,7 +893,7 @@ export function ChatShell() {
                 {musicWatchOnline === null
                   ? "Checking server…"
                   : musicWatchOnline
-                    ? "Online · /watch /reels"
+                    ? "Online · /play in a voice room"
                     : "Offline · needs your server"}
               </small>
             </span>
@@ -656,18 +928,45 @@ export function ChatShell() {
 
         <div className="voice-card">
           <div className="voice-card-top">
-            <span className={`voice-pulse ${inVoice ? "connected" : ""}`} />
+            <span className={`voice-pulse ${voice.channelId ? "connected" : ""}`} />
             <div>
-              <strong>{inVoice ? "Voice connected" : "Voice is live"}</strong>
-              <span>{inVoice ? "Kitchen Table" : "2 friends chatting"}</span>
+              <strong>
+                {voice.channelId ? "Voice connected" : "Voice is quiet"}
+              </strong>
+              <span>
+                {currentVoiceChannel
+                  ? `${currentVoiceChannel.name} · ${voiceParticipants.length} here`
+                  : "Pick a room to join"}
+              </span>
             </div>
           </div>
-          <button
-            className={inVoice ? "leave-button" : "join-button"}
-            onClick={toggleVoice}
-          >
-            {inVoice ? "Leave voice" : "Join voice"}
-          </button>
+          {voice.channelId ? (
+            <div className="voice-card-controls">
+              <button
+                className={`mic-control ${voice.muted ? "muted" : ""}`}
+                onClick={voice.toggleMute}
+              >
+                {voice.muted ? "Unmute" : "Mute"}
+              </button>
+              <button
+                className={`mic-control ${voice.deafened ? "muted" : ""}`}
+                onClick={voice.toggleDeafen}
+              >
+                {voice.deafened ? "Undeafen" : "Deafen"}
+              </button>
+              <button className="leave-button" onClick={voice.leave}>
+                Leave
+              </button>
+            </div>
+          ) : (
+            <button
+              className="join-button"
+              disabled={!voiceChannels.length}
+              onClick={() => voiceChannels[0] && void voice.join(voiceChannels[0].id)}
+            >
+              Join {voiceChannels[0]?.name || "voice"}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -682,21 +981,24 @@ export function ChatShell() {
           </button>
           <span className="big-hash">#</span>
           <div className="channel-heading">
-            <strong>{activeChannel}</strong>
+            <strong>{activeChannel?.name || "no channel"}</strong>
             <span>
-              {activeChannel === "general"
-                ? "Plans, chaos, and whatever else"
-                : `Everything happening in ${activeChannel}`}
+              {activeChannel?.topic ||
+                (activeChannel
+                  ? `Everything happening in ${activeChannel.name}`
+                  : "Create a channel to start talking")}
             </span>
           </div>
           <div className="header-actions">
             <Icon
               label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              onClick={toggleTheme}
+              onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
             >
               {theme === "dark" ? "☀" : "☾"}
             </Icon>
-            <Icon label="Search">⌕</Icon>
+            <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
+              ⚙
+            </Icon>
             <Icon
               label="Toggle member list"
               active={membersOpen}
@@ -710,11 +1012,8 @@ export function ChatShell() {
         <div className="messages" aria-live="polite">
           <div className="channel-intro">
             <div className="intro-icon">#</div>
-            <h2>Welcome to #{activeChannel}</h2>
+            <h2>Welcome to #{activeChannel?.name || "huddle"}</h2>
             <p>This is the start of the channel. Be excellent to each other.</p>
-          </div>
-          <div className="day-divider">
-            <span>Today</span>
           </div>
 
           {messages.map((message) => (
@@ -732,6 +1031,58 @@ export function ChatShell() {
                   <time>{message.time}</time>
                 </div>
                 <p>{message.text}</p>
+
+                {message.kind === "nowplaying" &&
+                  message.payload?.voiceChannelId && (
+                    <NowPlaying
+                      state={hub.players[message.payload.voiceChannelId] || null}
+                      position={
+                        voice.channelId === message.payload.voiceChannelId
+                          ? player.position
+                          : 0
+                      }
+                      controllable={
+                        voice.channelId === message.payload.voiceChannelId
+                      }
+                      blocked={player.blocked}
+                      onUnblock={player.unblock}
+                      voiceChannelName={
+                        voiceChannels.find(
+                          (channel) =>
+                            channel.id === message.payload?.voiceChannelId,
+                        )?.name
+                      }
+                      onSeek={(positionMs) =>
+                        playerCommand({
+                          t: "player",
+                          channelId: message.payload!.voiceChannelId!,
+                          action: { name: "seek", positionMs },
+                        })
+                      }
+                      onToggle={() =>
+                        playerCommand({
+                          t: "player",
+                          channelId: message.payload!.voiceChannelId!,
+                          action: { name: "toggle" },
+                        })
+                      }
+                      onSkip={() =>
+                        playerCommand({
+                          t: "player",
+                          channelId: message.payload!.voiceChannelId!,
+                          action: { name: "skip" },
+                        })
+                      }
+                      onVolume={(volume) =>
+                        playerCommand({
+                          t: "player",
+                          channelId: message.payload!.voiceChannelId!,
+                          action: { name: "volume", volume },
+                        })
+                      }
+                    />
+                  )}
+
                 {message.link && (
                   <a
                     className="bot-action"
@@ -747,48 +1098,52 @@ export function ChatShell() {
                   <audio
                     className="message-audio"
                     controls
-                    autoPlay
                     preload="none"
                     src={message.audio}
                   />
                 )}
-                {message.image &&
-                  (message.image.startsWith("data:") ||
-                  message.image.startsWith("/") ||
-                  message.image.startsWith("http") ? (
-                    <img
-                      className="message-image"
-                      src={message.image}
-                      alt="Shared attachment"
-                    />
-                  ) : (
-                    <div
-                      className="message-image sample-image"
-                      role="img"
-                      aria-label="A warmly colored shared photo preview"
-                      style={{ background: message.image }}
-                    >
-                      <span>shared image</span>
-                    </div>
-                  ))}
+                {message.image && (
+                  <img
+                    className="message-image"
+                    src={message.image}
+                    alt="Shared attachment"
+                  />
+                )}
               </div>
             </article>
           ))}
           <div ref={messageEndRef} />
         </div>
 
-        {voiceNotice && (
+        {(notice || voice.error) && (
           <button
             className="notice"
-            onClick={() => setVoiceNotice("")}
+            onClick={() => {
+              setNotice("");
+              voice.setError("");
+            }}
             aria-label="Dismiss notification"
           >
-            {voiceNotice}
+            {notice || voice.error}
             <span>×</span>
           </button>
         )}
 
         <form className="composer-wrap" onSubmit={sendMessage}>
+          {slashActive && (
+            <SlashMenu
+              query={draft.split(/\s+/)[0]}
+              highlighted={slashIndex}
+              onHighlight={setSlashIndex}
+              onPick={(command) =>
+                pickCommand(
+                  slashMatches.findIndex((item) => item.name === command.name),
+                )
+              }
+              inVoice={Boolean(voice.channelId)}
+            />
+          )}
+
           {pendingImage && (
             <div className="attachment-preview">
               <img src={pendingImage} alt="Attachment ready to send" />
@@ -822,20 +1177,24 @@ export function ChatShell() {
               onChange={chooseImage}
             />
             <textarea
+              ref={composerRef}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onComposerKeyDown}
-              placeholder={`Message #${activeChannel}`}
-              aria-label={`Message ${activeChannel}`}
+              placeholder={`Message #${activeChannel?.name || "huddle"}`}
+              aria-label={`Message ${activeChannel?.name || "huddle"}`}
               rows={1}
             />
             <button
               type="button"
               className="gif-button"
-              onClick={() => setDraft((value) => `${value} /roll`.trimStart())}
-              aria-label="Try the Watch Together bot"
+              onClick={() => {
+                setDraft("/");
+                composerRef.current?.focus();
+              }}
+              aria-label="Show commands"
             >
-              /watch
+              /
             </button>
             <button className="send-button" type="submit" aria-label="Send message">
               ↑
@@ -843,87 +1202,145 @@ export function ChatShell() {
           </div>
 
           <div className="composer-hint">
-            Enter to send · Shift + Enter for a new line · Try /watch
+            Enter to send · Shift + Enter for a new line · / for commands
           </div>
         </form>
       </section>
 
       <aside className={`member-panel ${membersOpen ? "" : "closed"}`}>
-        <div className="member-panel-title">
-          <span>IN VOICE — {inVoice ? 3 : 2}</span>
-        </div>
+        {voice.channelId && (
+          <>
+            <div className="member-panel-title">
+              <span>IN VOICE — {voiceParticipants.length}</span>
+            </div>
+            <div className="voice-feature">
+              <div className="voice-feature-avatars">
+                {voiceParticipants.slice(0, 5).map((person) => (
+                  <span
+                    key={person.connectionId}
+                    style={{ background: person.color }}
+                  >
+                    {person.avatar}
+                  </span>
+                ))}
+              </div>
+              <strong>{currentVoiceChannel?.name}</strong>
+              <p>
+                {voiceParticipants.length === 1
+                  ? "Just you so far"
+                  : `${voiceParticipants.length} in the room`}
+              </p>
+              <div className="voice-controls">
+                <button
+                  className={`mic-control ${voice.muted ? "muted" : ""}`}
+                  onClick={voice.toggleMute}
+                >
+                  {voice.muted ? "Muted" : "Mic on"}
+                </button>
+                <button className="leave-outline" onClick={voice.leave}>
+                  Leave
+                </button>
+              </div>
+            </div>
 
-        <div className="voice-feature">
-          <div className="voice-feature-avatars">
-            <span style={{ background: "#f4a7b9" }}>M</span>
-            <span style={{ background: "#8dd7d0" }}>T</span>
-            {inVoice && <span style={{ background: "#ffd67c" }}>Y</span>}
-          </div>
-          <strong>Kitchen Table</strong>
-          <p>{inVoice ? "You and 2 friends" : "2 friends are hanging out"}</p>
-          <div className="voice-controls">
-            {inVoice && (
-              <button
-                className={`mic-control ${micOn ? "" : "muted"}`}
-                onClick={toggleMic}
-              >
-                {micOn ? "Mic on" : "Muted"}
-              </button>
+            {roomPlayer?.track && (
+              <div className="member-player">
+                <NowPlaying
+                  state={roomPlayer}
+                  position={player.position}
+                  controllable
+                  blocked={player.blocked}
+                  onUnblock={player.unblock}
+                  voiceChannelName={currentVoiceChannel?.name}
+                  onSeek={(positionMs) =>
+                    playerCommand({
+                      t: "player",
+                      channelId: voice.channelId!,
+                      action: { name: "seek", positionMs },
+                    })
+                  }
+                  onToggle={() =>
+                    playerCommand({
+                      t: "player",
+                      channelId: voice.channelId!,
+                      action: { name: "toggle" },
+                    })
+                  }
+                  onSkip={() =>
+                    playerCommand({
+                      t: "player",
+                      channelId: voice.channelId!,
+                      action: { name: "skip" },
+                    })
+                  }
+                  onVolume={(volume) =>
+                    playerCommand({
+                      t: "player",
+                      channelId: voice.channelId!,
+                      action: { name: "volume", volume },
+                    })
+                  }
+                />
+              </div>
             )}
-            <button
-              className={inVoice ? "leave-outline" : "join-outline"}
-              onClick={toggleVoice}
-            >
-              {inVoice ? "Leave" : "Join"}
-            </button>
-          </div>
-        </div>
+          </>
+        )}
 
         <div className="member-panel-title online-title">
-          <span>ONLINE — 5</span>
+          <span>ONLINE — {onlineMembers.length}</span>
         </div>
-
-        {(
-          [
-            ["Maya", "Planning game night", "M", "#f4a7b9", "online"],
-            ["Theo", "Probably making tea", "T", "#8dd7d0", "online"],
-            ["You", "Here now", "Y", "#ffd67c", "online"],
-            ["Dicey", "Ready for /roll", "✦", "#b8a6ff", "bot"],
-            [
-              "Music + Watch",
-              musicWatchOnline ? "Ready for /watch" : "Waiting for your server",
-              "♫",
-              "#a99af5",
-              "bot",
-            ],
-          ] as const
-        ).map(([name, status, initial, color, kind]) => (
-          <div className="member" key={name}>
-            <span className="member-avatar" style={{ background: color }}>
-              {initial}
-              <i className={kind === "bot" ? "bot-status" : ""} />
+        {onlineMembers.map((member) => (
+          <div className="member" key={member.id}>
+            <span className="member-avatar" style={{ background: member.color }}>
+              {member.avatar}
             </span>
             <div>
-              <strong>{name}</strong>
-              <span>{status}</span>
+              <strong>{member.displayName}</strong>
+              <span>{member.id === user.id ? "Here now" : "Online"}</span>
             </div>
-            {kind === "bot" && <span className="bot-tag">BOT</span>}
           </div>
         ))}
 
         <div className="member-panel-title offline-title">
-          <span>OFFLINE — 1</span>
+          <span>OFFLINE — {offlineMembers.length}</span>
         </div>
-        <div className="member offline-member">
-          <span className="member-avatar" style={{ background: "#87909f" }}>
-            N
-          </span>
-          <div>
-            <strong>Noah</strong>
-            <span>Last seen yesterday</span>
+        {offlineMembers.map((member) => (
+          <div className="member offline-member" key={member.id}>
+            <span className="member-avatar" style={{ background: member.color }}>
+              {member.avatar}
+            </span>
+            <div>
+              <strong>{member.displayName}</strong>
+              <span>Away</span>
+            </div>
           </div>
-        </div>
+        ))}
       </aside>
+
+      {/* Remote voice audio. Hidden, but this is what you actually hear. */}
+      {voice.remoteStreams.map(({ connectionId, stream }) => (
+        <audio
+          key={connectionId}
+          autoPlay
+          ref={(element) => {
+            if (element && element.srcObject !== stream) {
+              element.srcObject = stream;
+            }
+          }}
+          muted={voice.deafened}
+        />
+      ))}
+
+      {settingsOpen && (
+        <SettingsDialog
+          user={user}
+          theme={theme}
+          onTheme={applyTheme}
+          onUser={setUser}
+          onClose={() => setSettingsOpen(false)}
+          onSignOut={signOut}
+        />
+      )}
     </main>
   );
 }
