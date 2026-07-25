@@ -46,7 +46,9 @@ at `dist/server/wrangler.json`, and the schema migrates itself on first request.
 ## Accounts
 
 The first account created owns the Huddle; everyone after it needs an invite
-code, made from Settings → Invites. Every member is automatically in every
+code, made from Settings → Invites. Because the app is reachable from the open
+internet, set `BOOTSTRAP_CODE` in `.dev.vars` before the first deploy — then
+even that first signup needs a code only you have. Every member is automatically in every
 server — there are no roles yet, on purpose.
 
 Sessions are cookies scoped to `/hangout`, holding a random token whose hash is
