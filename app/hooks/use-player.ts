@@ -13,6 +13,9 @@ interface UsePlayerOptions {
 
 /** Re-seek the element when it drifts further than this from the hub clock. */
 const DRIFT_TOLERANCE_MS = 1500;
+/** Four silent PCM samples. Playing it from a click unlocks this media element. */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA";
 
 /**
  * Plays the room's track locally, kept on the hub's clock.
@@ -132,5 +135,35 @@ export function usePlayer({
     attempt(audio);
   }, [state, serverNow, attempt]);
 
-  return { position, blocked, unblock };
+  /**
+   * Prime the permanent room audio element while a join/play click is still on
+   * the browser's user-activation stack. The real source may arrive seconds
+   * later from the hub; reusing this unlocked element lets it start normally.
+   */
+  const prime = useCallback(() => {
+    const audio = ensureAudio();
+    if (state?.track) {
+      audio.currentTime = playbackPosition(state, serverNow()) / 1000;
+      attempt(audio);
+      return;
+    }
+
+    audio.src = SILENT_WAV;
+    const silentSource = audio.src;
+    audio
+      .play()
+      .then(() => {
+        setBlocked(false);
+        // Do not clear a real track if hub state arrived while the promise was
+        // resolving.
+        if (audio.src === silentSource) {
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+        }
+      })
+      .catch(() => setBlocked(true));
+  }, [ensureAudio, state, serverNow, attempt]);
+
+  return { position, blocked, unblock, prime };
 }
