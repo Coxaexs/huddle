@@ -35,6 +35,7 @@ interface Attachment {
   voiceChannelId: string | null;
   muted: boolean;
   deafened: boolean;
+  bot: boolean;
 }
 
 /** How long after the last track ends before the bot leaves the room. */
@@ -181,6 +182,7 @@ export class HuddleHub extends DurableObject {
       voiceChannelId: null,
       muted: false,
       deafened: false,
+      bot: url.searchParams.get("bot") === "1",
     };
     if (!attachment.userId) {
       return new Response("Unauthorized", { status: 401 });
@@ -344,24 +346,8 @@ export class HuddleHub extends DurableObject {
         muted: attachment.muted || this.forcedMutes.has(attachment.userId),
         deafened: attachment.deafened,
         serverMuted: this.forcedMutes.has(attachment.userId),
+        bot: attachment.bot || undefined,
       }));
-
-    // The music bot shows up as a member of the room whenever it is playing
-    // there, exactly like it does in Discord.
-    const player = this.players.get(channelId);
-    if (player?.track) {
-      participants.push({
-        connectionId: `bot:${channelId}`,
-        id: "bot:music",
-        username: "musicbot",
-        displayName: "Music + Watch",
-        avatar: "♫",
-        color: "#a99af5",
-        muted: false,
-        deafened: false,
-        bot: true,
-      });
-    }
     return participants;
   }
 
