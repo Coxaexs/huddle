@@ -66,6 +66,7 @@ export function usePlayer({
         audioRef.current.load();
       }
       trackIdRef.current = null;
+      setBlocked(false);
       setPosition(0);
       return;
     }

@@ -94,5 +94,13 @@ export async function POST(request: Request) {
       : "";
   return Response.json({
     text: `Rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`,
+    kind: "dnd",
+    payload: {
+      type: "roll",
+      name: "Dice result",
+      expression: `${expression}${mode}`,
+      total,
+      details,
+    },
   });
 }
