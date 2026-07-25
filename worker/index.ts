@@ -11,11 +11,25 @@ import { hub } from "../lib/hub-client";
 
 export { HuddleHub } from "../lib/hub";
 
-const REALTIME_PATHS = new Set(["/hangout/api/realtime", "/api/realtime"]);
+const BASE_PATH = "/hangout";
+const REALTIME_PATHS = new Set([`${BASE_PATH}/api/realtime`, "/api/realtime"]);
+
+interface WorkerEnv {
+  ASSETS?: Fetcher;
+}
 
 export default {
-  async fetch(request: Request, env: unknown, ctx: ExecutionContext) {
+  async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
+
+    // Built assets are emitted without the basePath, so a request for
+    // /hangout/assets/x.js never matches the asset index on its own. Serving
+    // them here keeps the app working without a matching nginx alias.
+    if (env?.ASSETS && url.pathname.startsWith(`${BASE_PATH}/assets/`)) {
+      const target = new URL(request.url);
+      target.pathname = url.pathname.slice(BASE_PATH.length);
+      return env.ASSETS.fetch(new Request(target, request));
+    }
 
     if (REALTIME_PATHS.has(url.pathname)) {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {

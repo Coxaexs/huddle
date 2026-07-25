@@ -161,7 +161,11 @@ export async function POST(request: Request) {
 
         await say(db, textChannelId, `Now playing ${trackLabel(track)}`, {
           kind: "nowplaying",
-          payload: { voiceChannelId, trackId: track.id },
+          payload: {
+            voiceChannelId,
+            trackId: track.id,
+            label: trackLabel(track),
+          },
         });
         return Response.json({ text: `Now playing ${trackLabel(track)}`, state });
       }
@@ -277,7 +281,11 @@ export async function POST(request: Request) {
         }
         await say(db, textChannelId, `Now playing ${trackLabel(state.track)}`, {
           kind: "nowplaying",
-          payload: { voiceChannelId, trackId: state.track.id },
+          payload: {
+            voiceChannelId,
+            trackId: state.track.id,
+            label: trackLabel(state.track),
+          },
         });
         return Response.json({ text: summary(state), state });
       }

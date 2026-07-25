@@ -6,8 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "assets": {
-    // Served by the platform ahead of the worker; no ASSETS binding needed.
-    "directory": "./dist/client"
+    "directory": "./dist/client",
+    // Bound so the worker can serve /hangout/assets/* itself: the built asset
+    // paths have no basePath, so nothing else resolves them under /hangout.
+    "binding": "ASSETS"
   },
   "durable_objects": {
     "bindings": [{ "name": "HUB", "class_name": "HuddleHub" }]

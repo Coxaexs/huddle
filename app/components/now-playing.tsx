@@ -6,6 +6,10 @@ import { formatDuration } from "../lib/client";
 
 interface NowPlayingProps {
   state: PlayerState | null;
+  /** The track this card was posted for; when it no longer matches what the
+   *  room is playing, the card shows history instead of live controls. */
+  trackId?: string;
+  trackLabel?: string;
   /** Live position in ms, ticking locally between hub updates. */
   position: number;
   /** False when you are not in this voice room — the card becomes read-only. */
@@ -25,6 +29,8 @@ interface NowPlayingProps {
  */
 export function NowPlaying({
   state,
+  trackId,
+  trackLabel,
   position,
   controllable,
   blocked,
@@ -36,6 +42,7 @@ export function NowPlaying({
   voiceChannelName,
 }: NowPlayingProps) {
   const track = state?.track || null;
+  const stale = Boolean(trackId && track && track.id !== trackId);
   const durationMs = track?.duration ? track.duration * 1000 : 0;
   const current = state
     ? Math.min(position || playbackPosition(state), durationMs || position)
@@ -54,6 +61,17 @@ export function NowPlaying({
     },
     [controllable, durationMs, onSeek],
   );
+
+  if (stale || (!track && trackLabel)) {
+    return (
+      <div className="now-playing idle">
+        <div className="now-playing-title">{trackLabel || "That track finished."}</div>
+        <p className="now-playing-sub">
+          {track ? "Finished — the room has moved on." : "Finished."}
+        </p>
+      </div>
+    );
+  }
 
   if (!track) {
     return (

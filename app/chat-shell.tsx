@@ -38,7 +38,7 @@ interface Message {
   actionLabel?: string;
   audio?: string;
   kind?: string;
-  payload?: { voiceChannelId?: string; trackId?: string };
+  payload?: { voiceChannelId?: string; trackId?: string; label?: string };
 }
 
 function Icon({
@@ -1036,6 +1036,8 @@ export function ChatShell() {
                   message.payload?.voiceChannelId && (
                     <NowPlaying
                       state={hub.players[message.payload.voiceChannelId] || null}
+                      trackId={message.payload.trackId}
+                      trackLabel={message.payload.label}
                       position={
                         voice.channelId === message.payload.voiceChannelId
                           ? player.position
