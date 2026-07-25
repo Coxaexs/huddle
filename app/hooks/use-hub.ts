@@ -1,0 +1,165 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  ClientEvent,
+  PlayerState,
+  ServerEvent,
+  VoiceParticipant,
+} from "@/lib/protocol";
+import { basePath } from "../lib/client";
+
+export interface HubState {
+  connected: boolean;
+  connectionId: string | null;
+  online: Set<string>;
+  voice: Record<string, VoiceParticipant[]>;
+  players: Record<string, PlayerState>;
+}
+
+interface HubHandlers {
+  onMessage?: (channelId: string, message: unknown) => void;
+  onSignal?: (from: string, data: unknown) => void;
+  onStructureChange?: () => void;
+}
+
+/**
+ * One WebSocket to the hub for the whole app: presence, live messages, voice
+ * rooms, WebRTC signalling and the shared player all arrive on it.
+ *
+ * `serverNow` on every event gives us the hub's clock; the offset it implies is
+ * what makes playback positions line up between people whose laptops disagree
+ * about the time.
+ */
+export function useHub(enabled: boolean, handlers: HubHandlers) {
+  const [state, setState] = useState<HubState>({
+    connected: false,
+    connectionId: null,
+    online: new Set(),
+    voice: {},
+    players: {},
+  });
+
+  const socketRef = useRef<WebSocket | null>(null);
+  const clockOffsetRef = useRef(0);
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  const send = useCallback((event: ClientEvent) => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(event));
+      return true;
+    }
+    return false;
+  }, []);
+
+  /** The hub's idea of "now", in this browser's terms. */
+  const serverNow = useCallback(() => Date.now() + clockOffsetRef.current, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let disposed = false;
+    let retry: number | undefined;
+    let heartbeat: number | undefined;
+    let attempt = 0;
+
+    const connect = () => {
+      if (disposed) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(
+        `${protocol}//${window.location.host}${basePath}/api/realtime`,
+      );
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        attempt = 0;
+        setState((current) => ({ ...current, connected: true }));
+        heartbeat = window.setInterval(
+          () => send({ t: "ping" }),
+          25_000,
+        );
+      };
+
+      socket.onmessage = (event) => {
+        let payload: ServerEvent;
+        try {
+          payload = JSON.parse(event.data as string) as ServerEvent;
+        } catch {
+          return;
+        }
+        if ("serverNow" in payload && payload.serverNow) {
+          clockOffsetRef.current = payload.serverNow - Date.now();
+        }
+
+        switch (payload.t) {
+          case "ready":
+            setState({
+              connected: true,
+              connectionId: payload.connectionId,
+              online: new Set(payload.online),
+              voice: payload.voice,
+              players: payload.players,
+            });
+            break;
+          case "presence":
+            setState((current) => ({
+              ...current,
+              online: new Set(payload.online),
+            }));
+            break;
+          case "voice":
+            setState((current) => ({
+              ...current,
+              voice: { ...current.voice, [payload.channelId]: payload.participants },
+            }));
+            break;
+          case "player":
+            setState((current) => ({
+              ...current,
+              players: {
+                ...current.players,
+                [payload.state.channelId]: payload.state,
+              },
+            }));
+            break;
+          case "message":
+            handlersRef.current.onMessage?.(payload.channelId, payload.message);
+            break;
+          case "signal":
+            handlersRef.current.onSignal?.(payload.from, payload.data);
+            break;
+          case "structure":
+            handlersRef.current.onStructureChange?.();
+            break;
+          default:
+            break;
+        }
+      };
+
+      const reconnect = () => {
+        window.clearInterval(heartbeat);
+        setState((current) => ({ ...current, connected: false }));
+        if (disposed) return;
+        attempt += 1;
+        // Back off, but stay responsive for the usual case (a laptop lid).
+        retry = window.setTimeout(connect, Math.min(15_000, 500 * 2 ** attempt));
+      };
+
+      socket.onclose = reconnect;
+      socket.onerror = () => socket.close();
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(retry);
+      window.clearInterval(heartbeat);
+      socketRef.current?.close();
+      socketRef.current = null;
+    };
+  }, [enabled, send]);
+
+  return { ...state, send, serverNow };
+}

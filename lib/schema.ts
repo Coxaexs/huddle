@@ -1,0 +1,205 @@
+/**
+ * Schema for the Huddle D1 database.
+ *
+ * Migrations run on demand (once per worker isolate) rather than through a
+ * separate migration step, because the production database is a local
+ * `wrangler dev --persist-to state` SQLite file that nobody deploys against.
+ * Every statement here must therefore stay idempotent.
+ */
+
+export const DEFAULT_SERVER_ID = "hangout";
+
+/** Channels the original hardcoded UI shipped with, recreated as real rows. */
+const SEED_CHANNELS: Array<{
+  id: string;
+  name: string;
+  kind: "text" | "voice";
+  topic: string;
+}> = [
+  {
+    id: "general",
+    name: "general",
+    kind: "text",
+    topic: "Plans, chaos, and whatever else",
+  },
+  { id: "game-night", name: "game-night", kind: "text", topic: "" },
+  { id: "memes", name: "memes", kind: "text", topic: "" },
+  { id: "kitchen-table", name: "Kitchen Table", kind: "voice", topic: "" },
+  { id: "afk-sofa", name: "AFK Sofa", kind: "voice", topic: "" },
+];
+
+let migrated: Promise<void> | null = null;
+
+/** Runs the schema migration once per isolate. */
+export function ensureSchema(db: D1Database): Promise<void> {
+  if (!migrated) {
+    migrated = migrate(db).catch((error) => {
+      // Let the next request retry instead of poisoning the isolate.
+      migrated = null;
+      throw error;
+    });
+  }
+  return migrated;
+}
+
+async function columnNames(db: D1Database, table: string): Promise<Set<string>> {
+  const columns = await db.prepare(`PRAGMA table_info(${table})`).all();
+  return new Set(
+    ((columns.results || []) as Array<{ name: string }>).map((c) => c.name),
+  );
+}
+
+async function migrate(db: D1Database): Promise<void> {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        channel TEXT NOT NULL,
+        author TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        color TEXT NOT NULL,
+        content TEXT NOT NULL,
+        attachment_key TEXT,
+        is_bot INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS messages_channel_time_idx ON messages(channel, created_at)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        username_lower TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        color TEXT NOT NULL,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS invites (
+        code TEXT PRIMARY KEY,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        max_uses INTEGER NOT NULL DEFAULT 1,
+        uses INTEGER NOT NULL DEFAULT 0,
+        revoked INTEGER NOT NULL DEFAULT 0,
+        note TEXT
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        color TEXT NOT NULL,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS channels (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'text',
+        topic TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS channels_server_idx ON channels(server_id, kind, position)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS channel_reads (
+        user_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        read_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, channel_id)
+      )`),
+  ]);
+
+  // Columns added after the first release.
+  const messageColumns = await columnNames(db, "messages");
+  const messageMigrations: D1PreparedStatement[] = [];
+  for (const [column, ddl] of [
+    ["link", "ALTER TABLE messages ADD COLUMN link TEXT"],
+    ["action_label", "ALTER TABLE messages ADD COLUMN action_label TEXT"],
+    ["audio_url", "ALTER TABLE messages ADD COLUMN audio_url TEXT"],
+    ["channel_id", "ALTER TABLE messages ADD COLUMN channel_id TEXT"],
+    ["user_id", "ALTER TABLE messages ADD COLUMN user_id TEXT"],
+    ["kind", "ALTER TABLE messages ADD COLUMN kind TEXT"],
+    ["payload", "ALTER TABLE messages ADD COLUMN payload TEXT"],
+  ] as const) {
+    if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
+  }
+  if (messageMigrations.length) await db.batch(messageMigrations);
+  await db
+    .prepare(
+      "CREATE INDEX IF NOT EXISTS messages_channel_id_time_idx ON messages(channel_id, created_at)",
+    )
+    .run();
+
+  await seedDefaultServer(db);
+}
+
+/**
+ * Recreates the original hardcoded space as real rows and adopts the messages
+ * that were written before channels existed (they only carried a channel name).
+ */
+async function seedDefaultServer(db: D1Database): Promise<void> {
+  const now = new Date().toISOString();
+  const existing = await db
+    .prepare("SELECT COUNT(*) AS count FROM servers")
+    .first<{ count: number }>();
+  if (!existing?.count) {
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO servers (id, name, icon, color, created_by, created_at, position)
+         VALUES (?, ?, ?, ?, NULL, ?, 0)`,
+      )
+      .bind(DEFAULT_SERVER_ID, "The Hangout", "HG", "#7b63e6", now)
+      .run();
+
+    await db.batch(
+      SEED_CHANNELS.map((channel, index) =>
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO channels (id, server_id, name, kind, topic, position, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            channel.id,
+            DEFAULT_SERVER_ID,
+            channel.name,
+            channel.kind,
+            channel.topic,
+            index,
+            now,
+          ),
+      ),
+    );
+  }
+
+  // Legacy rows stored the channel *name*; point them at the matching channel.
+  await db
+    .prepare(
+      `UPDATE messages
+         SET channel_id = (
+           SELECT c.id FROM channels c
+            WHERE c.server_id = ?1 AND c.kind = 'text' AND c.name = messages.channel
+         )
+       WHERE channel_id IS NULL
+         AND EXISTS (
+           SELECT 1 FROM channels c
+            WHERE c.server_id = ?1 AND c.kind = 'text' AND c.name = messages.channel
+         )`,
+    )
+    .bind(DEFAULT_SERVER_ID)
+    .run();
+}

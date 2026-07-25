@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "huddle",
-  "main": "vinext/server/app-router-entry",
+  "main": "./worker/index.ts",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
@@ -9,6 +9,10 @@
     // Served by the platform ahead of the worker; no ASSETS binding needed.
     "directory": "./dist/client"
   },
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "HuddleHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HuddleHub"] }],
   "d1_databases": [
     {
       "binding": "DB",
