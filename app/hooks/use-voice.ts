@@ -17,6 +17,17 @@ interface UseVoiceOptions {
   send: (event: ClientEvent) => boolean;
 }
 
+export type ScreenShareQuality = "720p30" | "1080p30" | "1080p60";
+
+const SCREEN_SHARE_CONSTRAINTS: Record<
+  ScreenShareQuality,
+  { width: number; height: number; frameRate: number }
+> = {
+  "720p30": { width: 1280, height: 720, frameRate: 30 },
+  "1080p30": { width: 1920, height: 1080, frameRate: 30 },
+  "1080p60": { width: 1920, height: 1080, frameRate: 60 },
+};
+
 /**
  * Peer-to-peer voice, meshed.
  *
@@ -35,9 +46,13 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const [remoteStreams, setRemoteStreams] = useState<
     Array<{ connectionId: string; stream: MediaStream }>
   >([]);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [screenQuality, setScreenQuality] =
+    useState<ScreenShareQuality>("1080p30");
   const [error, setError] = useState("");
 
   const localStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const iceServersRef = useRef<RTCIceServer[]>([
@@ -46,6 +61,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
+  const participantCountRef = useRef(0);
   channelIdRef.current = channelId;
 
   useEffect(() => {
@@ -54,6 +70,31 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         if (data.iceServers?.length) iceServersRef.current = data.iceServers;
       })
       .catch(() => undefined);
+  }, []);
+
+  const playRoomTone = useCallback((kind: "join" | "leave") => {
+    try {
+      audioContextRef.current ||= new AudioContext();
+      const context = audioContextRef.current;
+      void context.resume();
+      const start = context.currentTime;
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.09, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+      gain.connect(context.destination);
+      const notes = kind === "join" ? [520, 700] : [620, 410];
+      notes.forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gain);
+        oscillator.start(start + index * 0.055);
+        oscillator.stop(start + 0.11 + index * 0.055);
+      });
+    } catch {
+      // Voice remains usable when Web Audio is unavailable.
+    }
   }, []);
 
   /** Watches a stream's level so the UI can show who is talking. */
@@ -119,6 +160,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       for (const track of localStreamRef.current?.getTracks() || []) {
         peer.addTrack(track, localStreamRef.current as MediaStream);
       }
+      for (const track of screenStreamRef.current?.getTracks() || []) {
+        peer.addTrack(track, screenStreamRef.current as MediaStream);
+      }
 
       peer.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -135,11 +179,14 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       peer.ontrack = (event) => {
         const [stream] = event.streams;
         if (!stream) return;
-        setRemoteStreams((current) => [
-          ...current.filter((entry) => entry.connectionId !== remoteId),
-          { connectionId: remoteId, stream },
-        ]);
-        watchLevel(remoteId, stream);
+        setRemoteStreams((current) => {
+          const exists = current.some(
+            (entry) =>
+              entry.connectionId === remoteId && entry.stream.id === stream.id,
+          );
+          return exists ? current : [...current, { connectionId: remoteId, stream }];
+        });
+        if (event.track.kind === "audio") watchLevel(remoteId, stream);
       };
 
       peer.onconnectionstatechange = () => {
@@ -228,7 +275,87 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     }
   }, [rooms, channelId, connectionId, createPeer, closePeer, send]);
 
+  useEffect(() => {
+    if (!channelId) {
+      participantCountRef.current = 0;
+      return;
+    }
+    const count = (rooms[channelId] || []).filter((person) => !person.bot).length;
+    const previous = participantCountRef.current;
+    if (previous && count !== previous) {
+      playRoomTone(count > previous ? "join" : "leave");
+    }
+    participantCountRef.current = count;
+  }, [channelId, rooms, playRoomTone]);
+
+  const negotiatePeer = useCallback(
+    async (remoteId: string, peer: RTCPeerConnection) => {
+      if (peer.signalingState !== "stable") return;
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      send({
+        t: "signal",
+        to: remoteId,
+        data: { kind: "offer", description: offer } satisfies SignalPayload,
+      });
+    },
+    [send],
+  );
+
+  const stopScreenShare = useCallback(() => {
+    const stream = screenStreamRef.current;
+    if (!stream) return;
+    const trackIds = new Set(stream.getTracks().map((track) => track.id));
+    stream.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setScreenSharing(false);
+    for (const [remoteId, peer] of peersRef.current) {
+      for (const sender of peer.getSenders()) {
+        if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
+      }
+      void negotiatePeer(remoteId, peer).catch(() => closePeer(remoteId));
+    }
+  }, [closePeer, negotiatePeer]);
+
+  const startScreenShare = useCallback(
+    async (quality: ScreenShareQuality = screenQuality) => {
+      if (!channelIdRef.current) {
+        setError("Join a voice channel before sharing your screen.");
+        return;
+      }
+      stopScreenShare();
+      try {
+        const profile = SCREEN_SHARE_CONSTRAINTS[quality];
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: profile.width, max: profile.width },
+            height: { ideal: profile.height, max: profile.height },
+            frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+          },
+          audio: true,
+        });
+        screenStreamRef.current = stream;
+        setScreenQuality(quality);
+        setScreenSharing(true);
+        stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare, {
+          once: true,
+        });
+        for (const [remoteId, peer] of peersRef.current) {
+          for (const track of stream.getTracks()) peer.addTrack(track, stream);
+          await negotiatePeer(remoteId, peer);
+        }
+      } catch (shareError) {
+        if ((shareError as DOMException)?.name !== "NotAllowedError") {
+          setError("Screen sharing could not start. Try a lower quality setting.");
+        }
+      }
+    },
+    [negotiatePeer, screenQuality, stopScreenShare],
+  );
+
   const leave = useCallback(() => {
+    playRoomTone("leave");
+    stopScreenShare();
     for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -237,7 +364,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     setSpeaking(new Set());
     setChannelId(null);
     send({ t: "voice-leave" });
-  }, [closePeer, send]);
+  }, [closePeer, playRoomTone, send, stopScreenShare]);
 
   const join = useCallback(
     async (nextChannelId: string) => {
@@ -261,14 +388,19 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         setMuted(false);
         setDeafened(false);
         setChannelId(nextChannelId);
+        participantCountRef.current = Math.max(
+          1,
+          (rooms[nextChannelId] || []).filter((person) => !person.bot).length + 1,
+        );
         send({ t: "voice-join", channelId: nextChannelId });
+        playRoomTone("join");
       } catch {
         setError(
           "Microphone access was blocked. Allow it in your browser settings to join voice.",
         );
       }
     },
-    [leave, send, watchLevel],
+    [leave, playRoomTone, rooms, send, watchLevel],
   );
 
   /** Applied when someone server-mutes you: the microphone actually stops. */
@@ -307,6 +439,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
 
   useEffect(() => () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     for (const peer of peersRef.current.values()) peer.close();
     peersRef.current.clear();
     void audioContextRef.current?.close();
@@ -320,6 +453,11 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     deafened,
     speaking,
     remoteStreams,
+    screenSharing,
+    screenQuality,
+    setScreenQuality,
+    startScreenShare,
+    stopScreenShare,
     error,
     setError,
     join,

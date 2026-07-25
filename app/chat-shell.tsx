@@ -29,7 +29,10 @@ import {
 } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
-import { useVoice } from "./hooks/use-voice";
+import {
+  useVoice,
+  type ScreenShareQuality,
+} from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
 import {
   COMMAND_ALIASES,
@@ -1229,6 +1232,32 @@ export function ChatShell() {
                 >
                   {voice.deafened ? "Undeafen" : "Deafen"}
                 </button>
+                <div className="screen-share-controls">
+                  <select
+                    aria-label="Screen share quality"
+                    value={voice.screenQuality}
+                    disabled={voice.screenSharing}
+                    onChange={(event) =>
+                      voice.setScreenQuality(
+                        event.target.value as ScreenShareQuality,
+                      )
+                    }
+                  >
+                    <option value="720p30">720p · 30 FPS</option>
+                    <option value="1080p30">1080p · 30 FPS</option>
+                    <option value="1080p60">1080p · 60 FPS</option>
+                  </select>
+                  <button
+                    className={voice.screenSharing ? "sharing" : ""}
+                    onClick={() =>
+                      voice.screenSharing
+                        ? voice.stopScreenShare()
+                        : void voice.startScreenShare()
+                    }
+                  >
+                    {voice.screenSharing ? "Stop sharing" : "Share screen"}
+                  </button>
+                </div>
                 <button className="leave-button" onClick={voice.leave}>
                   Leave
                 </button>
@@ -1634,7 +1663,68 @@ export function ChatShell() {
                   Leave
                 </button>
               </div>
+              <div className="screen-share-controls compact">
+                <select
+                  aria-label="Screen share quality"
+                  value={voice.screenQuality}
+                  disabled={voice.screenSharing}
+                  onChange={(event) =>
+                    voice.setScreenQuality(
+                      event.target.value as ScreenShareQuality,
+                    )
+                  }
+                >
+                  <option value="720p30">720p30</option>
+                  <option value="1080p30">1080p30</option>
+                  <option value="1080p60">1080p60</option>
+                </select>
+                <button
+                  className={voice.screenSharing ? "sharing" : ""}
+                  onClick={() =>
+                    voice.screenSharing
+                      ? voice.stopScreenShare()
+                      : void voice.startScreenShare()
+                  }
+                >
+                  {voice.screenSharing ? "Stop" : "Share screen"}
+                </button>
+              </div>
             </div>
+
+            {voice.remoteStreams.some((entry) =>
+              entry.stream.getVideoTracks().some((track) => track.readyState === "live"),
+            ) && (
+              <div className="screen-share-grid">
+                {voice.remoteStreams
+                  .filter((entry) =>
+                    entry.stream
+                      .getVideoTracks()
+                      .some((track) => track.readyState === "live"),
+                  )
+                  .map(({ connectionId, stream }) => {
+                    const person = voiceParticipants.find(
+                      (participant) =>
+                        participant.connectionId === connectionId,
+                    );
+                    return (
+                      <figure key={`${connectionId}:${stream.id}`}>
+                        <video
+                          autoPlay
+                          playsInline
+                          ref={(element) => {
+                            if (element && element.srcObject !== stream) {
+                              element.srcObject = stream;
+                            }
+                          }}
+                        />
+                        <figcaption>
+                          {person?.displayName || "Screen share"}
+                        </figcaption>
+                      </figure>
+                    );
+                  })}
+              </div>
+            )}
 
             {roomPlayer?.track && (
               <div className="member-player">
@@ -1734,14 +1824,16 @@ export function ChatShell() {
       </aside>
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
-      {voice.remoteStreams.map(({ connectionId, stream }) => {
+      {voice.remoteStreams
+        .filter(({ stream }) => stream.getAudioTracks().length > 0)
+        .map(({ connectionId, stream }) => {
         const person = voiceParticipants.find(
           (participant) => participant.connectionId === connectionId,
         );
         const pref = person ? prefFor(person.id) : { volume: 100, muted: false };
         return (
           <audio
-            key={connectionId}
+            key={`${connectionId}:${stream.id}`}
             autoPlay
             ref={(element) => {
               if (!element) return;
@@ -1752,7 +1844,7 @@ export function ChatShell() {
             muted={voice.deafened || pref.muted}
           />
         );
-      })}
+        })}
 
       {userMenu && (
         <UserMenu

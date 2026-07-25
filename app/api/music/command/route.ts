@@ -1,7 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { playerCommand, playerState, publishMessage } from "@/lib/hub-client";
-import { formatDuration, resolveTrack, trackLabel } from "@/lib/music";
-import { fetchLyrics, lineAt } from "@/lib/musicbot";
+import { formatDuration, resolveTracks, trackLabel } from "@/lib/music";
+import { fetchLyrics } from "@/lib/musicbot";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
@@ -149,21 +149,40 @@ export async function POST(request: Request) {
       case "playnext": {
         if (!value) throw new Error(`Use \`/${name} song name or URL\`.`);
         const before = await playerState(voiceChannelId!);
-        const track = await resolveTrack(value, user.display_name);
-        const state = await playerCommand(
-          voiceChannelId!,
-          name === "playnext" ? { name: "playnext", track } : { name: "play", track },
-        );
+        const tracks = await resolveTracks(value, user.display_name);
+        const [track, ...rest] = tracks;
+        let state: PlayerState | null = null;
+        if (name === "playnext") {
+          // Each playnext inserts at the front, so reverse the collection to
+          // preserve the Spotify/YouTube playlist's original order.
+          for (const item of [...tracks].reverse()) {
+            state = await playerCommand(voiceChannelId!, {
+              name: "playnext",
+              track: item,
+            });
+          }
+        } else {
+          state = await playerCommand(voiceChannelId!, { name: "play", track });
+          for (const item of rest) {
+            state = await playerCommand(voiceChannelId!, {
+              name: "enqueue",
+              track: item,
+            });
+          }
+        }
 
         if (before?.track) {
-          const position =
-            name === "playnext" ? 1 : (state?.queue.length ?? 1);
-          const text = `Queued ${trackLabel(track)} (#${position} in line).`;
+          const position = name === "playnext" ? 1 : (state?.queue.length ?? 1);
+          const extra = tracks.length > 1 ? ` and ${tracks.length - 1} more` : "";
+          const text = `Queued ${trackLabel(track)}${extra} (#${position} in line).`;
           await say(db, textChannelId, text);
           return Response.json({ text, state });
         }
 
-        await say(db, textChannelId, `Now playing ${trackLabel(track)}`, {
+        const extra = tracks.length > 1
+          ? ` · queued ${tracks.length - 1} more`
+          : "";
+        await say(db, textChannelId, `Now playing ${trackLabel(track)}${extra}`, {
           kind: "nowplaying",
           payload: {
             voiceChannelId,
@@ -359,7 +378,7 @@ export async function POST(request: Request) {
 
       case "search": {
         if (!value) throw new Error("Use `/search song name`.");
-        const track = await resolveTrack(value, user.display_name);
+        const [track] = await resolveTracks(value, user.display_name);
         const text = `Top hit for “${value}”: ${trackLabel(track)} (${formatDuration(track.duration)}). Use /play to start it.`;
         await say(db, textChannelId, text, {
           link: track.pageUrl || undefined,
@@ -388,8 +407,20 @@ export async function POST(request: Request) {
             return Response.json({ text });
           }
           const seconds = playbackPosition(state!) / 1000;
-          const line = lineAt(lyrics.lines, seconds) || "…";
-          const text = `♪ ${line}`;
+          let currentIndex = 0;
+          for (let index = 0; index < lyrics.lines.length; index += 1) {
+            if (lyrics.lines[index][0] <= seconds) currentIndex = index;
+            else break;
+          }
+          const start = Math.max(0, currentIndex - 2);
+          const end = Math.min(lyrics.lines.length, currentIndex + 3);
+          const text = lyrics.lines
+            .slice(start, end)
+            .map(([at, line], offset) => {
+              const active = start + offset === currentIndex;
+              return `${active ? "▶" : "  "} ${formatDuration(at)}  ${line}`;
+            })
+            .join("\n");
           await say(db, textChannelId, text);
           return Response.json({ text });
         }
