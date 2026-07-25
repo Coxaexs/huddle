@@ -422,7 +422,11 @@ export function ChatShell() {
     root.dataset.density =
       window.localStorage.getItem("huddle-density") || "cozy";
     root.dataset.backdrop =
-      window.localStorage.getItem("huddle-backdrop") || "glow";
+      ["plain", "aurora", "dots"].includes(
+        window.localStorage.getItem("huddle-backdrop") || "",
+      )
+        ? window.localStorage.getItem("huddle-backdrop")!
+        : "plain";
     root.dataset.motion =
       window.localStorage.getItem("huddle-motion") || "full";
     root.style.setProperty(
