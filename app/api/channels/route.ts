@@ -1,4 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { publishStructureChange } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -22,7 +24,14 @@ export async function POST(request: Request) {
     name?: string;
     kind?: string;
     topic?: string;
+    categoryId?: string;
   };
+  if (!(await can(db, user.id, body.serverId || "", Permission.MANAGE_CHANNELS))) {
+    return Response.json(
+      { error: "You do not have permission to manage channels here." },
+      { status: 403 },
+    );
+  }
   const kind = body.kind === "voice" ? "voice" : "text";
   // Text channels keep the discord-ish lowercase-with-dashes shape; voice
   // rooms are allowed to be pretty.
@@ -67,10 +76,20 @@ export async function POST(request: Request) {
     .bind(body.serverId, kind)
     .first<{ count: number }>();
 
+  // Only place it in a category that belongs to this server.
+  let categoryId: string | null = null;
+  if (body.categoryId) {
+    const category = await db
+      .prepare("SELECT id FROM categories WHERE id = ? AND server_id = ?")
+      .bind(body.categoryId, body.serverId)
+      .first();
+    if (category) categoryId = body.categoryId;
+  }
+
   const id = crypto.randomUUID();
   await db
     .prepare(
-      "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO channels (id, server_id, name, kind, topic, position, category_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -79,10 +98,12 @@ export async function POST(request: Request) {
       kind,
       body.topic?.trim().slice(0, 120) || "",
       position?.count ?? 0,
+      categoryId,
       new Date().toISOString(),
     )
     .run();
 
+  await publishStructureChange();
   return Response.json(
     { channelId: id, servers: await listServers(db) },
     { status: 201 },

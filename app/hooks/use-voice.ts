@@ -570,10 +570,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const join = useCallback(
     async (nextChannelId: string) => {
       setError("");
-      if (channelIdRef.current === nextChannelId) {
-        leave();
-        return;
-      }
+      // Re-selecting the room you are already in is a no-op: the stage view owns
+      // "leave" now (an explicit Disconnect button), so a click never drops you.
+      if (channelIdRef.current === nextChannelId) return;
       if (channelIdRef.current) leave();
 
       try {

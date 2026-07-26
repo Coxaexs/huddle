@@ -6,10 +6,13 @@ const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
 
 export function isImageUrl(value: string): boolean {
-  if (!/^https?:\/\//i.test(value.trim())) return false;
   const url = value.trim();
-  // Tenor and friends serve GIFs from paths that end in the extension.
-  return IMAGE_PATTERN.test(url) || /(^|\.)media\d*\.tenor\.com\//i.test(url);
+  // Custom stickers are served from our own uploads under a relative path.
+  if (/^\/hangout\/api\/uploads\//i.test(url)) return true;
+  if (!/^https?:\/\//i.test(url)) return false;
+  // Klipy and friends serve GIFs and stickers from paths that end in the
+  // extension (.gif, .webp, …).
+  return IMAGE_PATTERN.test(url);
 }
 
 /**

@@ -169,16 +169,28 @@ export async function POST(request: Request) {
   if (channelId) {
     const channel = await db
       .prepare(
-        "SELECT name, kind FROM channels WHERE id = ? AND kind IN ('text', 'dm')",
+        "SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN ('text', 'dm')",
       )
       .bind(channelId)
-      .first<{ name: string; kind: string }>();
+      .first<{ name: string; kind: string; server_id: string }>();
     if (!channel) {
       return Response.json({ error: "That channel is gone." }, { status: 404 });
     }
     if (channel.kind === "dm") {
       if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
       audience = await channelAudience(db, channelId);
+    } else {
+      // Banned members cannot post in the server they were banned from.
+      const banned = await db
+        .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
+        .bind(channel.server_id, user.id)
+        .first();
+      if (banned) {
+        return Response.json(
+          { error: "You are banned from this server." },
+          { status: 403 },
+        );
+      }
     }
     channelName = channel.name;
   } else {

@@ -1,9 +1,18 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { publishStructureChange } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+function forbidden(): Response {
+  return Response.json(
+    { error: "You do not have permission to manage channels here." },
+    { status: 403 },
+  );
+}
 
 export async function PATCH(
   request: Request,
@@ -24,6 +33,9 @@ export async function PATCH(
   const channel = await findChannel(db, id);
   if (!channel) {
     return Response.json({ error: "That channel is gone." }, { status: 404 });
+  }
+  if (!(await can(db, user.id, channel.server_id, Permission.MANAGE_CHANNELS))) {
+    return forbidden();
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -49,6 +61,7 @@ export async function PATCH(
     )
     .run();
 
+  await publishStructureChange();
   return Response.json({ servers: await listServers(db) });
 }
 
@@ -72,6 +85,9 @@ export async function DELETE(
   if (!channel) {
     return Response.json({ error: "That channel is gone." }, { status: 404 });
   }
+  if (!(await can(db, user.id, channel.server_id, Permission.MANAGE_CHANNELS))) {
+    return forbidden();
+  }
 
   const siblings = await db
     .prepare("SELECT COUNT(*) AS count FROM channels WHERE server_id = ? AND kind = ?")
@@ -89,5 +105,6 @@ export async function DELETE(
     db.prepare("DELETE FROM channels WHERE id = ?").bind(id),
   ]);
 
+  await publishStructureChange();
   return Response.json({ servers: await listServers(db) });
 }

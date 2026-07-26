@@ -15,8 +15,8 @@ export interface HuddleBindings {
   DND_PUBLIC_URL?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
-  /** Optional: enables GIF search in the composer. */
-  TENOR_API_KEY?: string;
+  /** Optional: enables GIF and sticker search (Klipy) in the composer. */
+  KLIPY_API_KEY?: string;
 }
 
 export function bindings(): HuddleBindings {
