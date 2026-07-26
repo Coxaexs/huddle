@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { forceMute } from "@/lib/hub-client";
-import { ensureSchema } from "@/lib/schema";
+import { can, Permission } from "@/lib/permissions";
+import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,14 @@ export async function POST(request: Request) {
   }
 
   if (typeof body.serverMuted === "boolean") {
+    // Server-muting is Huddle-wide moderation; gate it behind MODERATE on the
+    // home server (personal per-listener volume/mute below stays open to all).
+    if (!(await can(db, user.id, DEFAULT_SERVER_ID, Permission.MODERATE))) {
+      return Response.json(
+        { error: "You do not have permission to server-mute people." },
+        { status: 403 },
+      );
+    }
     if (body.serverMuted) {
       await db
         .prepare(

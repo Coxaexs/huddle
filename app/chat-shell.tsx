@@ -15,6 +15,11 @@ import {
 } from "react";
 import type { PlayerState } from "@/lib/protocol";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
+import {
+  ALL_PERMISSIONS,
+  hasPermission,
+  Permission,
+} from "@/lib/permissions";
 import type { Member, PublicUser } from "@/lib/users";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
@@ -34,6 +39,7 @@ import {
 import { NowPlaying } from "./components/now-playing";
 import { SettingsDialog } from "./components/settings-dialog";
 import { SlashMenu } from "./components/slash-menu";
+import { VoiceStage } from "./components/voice-stage";
 import {
   UserMenu,
   type UserMenuTarget,
@@ -155,6 +161,20 @@ export function ChatShell() {
   const [dms, setDms] = useState<DmSummary[]>([]);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  /** When set, the main column shows this voice channel's stage instead of text. */
+  const [stageChannelId, setStageChannelId] = useState<string | null>(null);
+  /** Channel id currently being dragged in the sidebar, for reordering. */
+  const [dragChannelId, setDragChannelId] = useState<string | null>(null);
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      return new Set(
+        JSON.parse(window.localStorage.getItem("huddle-collapsed-cats") || "[]"),
+      );
+    } catch {
+      return new Set();
+    }
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -291,6 +311,46 @@ export function ChatShell() {
     return map;
   }, [members]);
 
+  /**
+   * The signed-in member's effective permission bitmask on the active server,
+   * mirroring lib/permissions on the client so the UI can hide privileged
+   * affordances. The server still enforces every action.
+   */
+  const myPermissions = useMemo(() => {
+    if (!user || !activeServer) return 0;
+    if (user.isAdmin || activeServer.ownerId === user.id) return ALL_PERMISSIONS;
+    const myRoleIds = new Set(
+      membersById.get(user.id)?.roleIds?.[activeServer.id] || [],
+    );
+    let mask = 0;
+    for (const role of activeServer.roles) {
+      if (myRoleIds.has(role.id)) mask |= role.permissions;
+    }
+    if (mask & Permission.ADMINISTRATOR) return ALL_PERMISSIONS;
+    return mask;
+  }, [user, activeServer, membersById]);
+
+  const canManageChannels = hasPermission(myPermissions, Permission.MANAGE_CHANNELS);
+  const canManageServer = hasPermission(myPermissions, Permission.MANAGE_SERVER);
+  const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+
+  /** The top (highest-position) role colour for a member on the active server. */
+  const roleColorFor = useCallback(
+    (member: Member | undefined): string | null => {
+      if (!member || !activeServer) return null;
+      const ids = new Set(member.roleIds?.[activeServer.id] || []);
+      let best: { position: number; color: string } | null = null;
+      for (const role of activeServer.roles) {
+        if (!ids.has(role.id)) continue;
+        if (!best || role.position > best.position) {
+          best = { position: role.position, color: role.color };
+        }
+      }
+      return best?.color || null;
+    },
+    [activeServer],
+  );
+
   useEffect(() => {
     if (!activeServerId || activeServerId === DM_HOME) return;
     window.localStorage.setItem("huddle-server", activeServerId);
@@ -399,6 +459,11 @@ export function ChatShell() {
     () => (voice.channelId ? hub.voice[voice.channelId] || [] : []),
     [hub.voice, voice.channelId],
   );
+
+  // Leaving voice (Disconnect) closes the stage and returns to the text channel.
+  useEffect(() => {
+    if (!voice.channelId) setStageChannelId(null);
+  }, [voice.channelId]);
 
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
@@ -593,6 +658,21 @@ export function ChatShell() {
       method: "POST",
       body: JSON.stringify({ targetId, ...patch }),
     }).catch((error: Error) => setNotice(error.message));
+  }
+
+  async function moderateMember(userId: string, action: "kick" | "ban") {
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    const verb = action === "ban" ? "Ban" : "Kick";
+    if (!window.confirm(`${verb} this member from the server?`)) return;
+    try {
+      await apiFetch(`/api/members/${userId}`, {
+        method: "POST",
+        body: JSON.stringify({ serverId: activeServerId, action }),
+      });
+      setNotice(`${verb === "Ban" ? "Banned" : "Kicked"} · roles cleared.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not do that.");
+    }
   }
 
   async function runCommand(raw: string) {
@@ -993,7 +1073,10 @@ export function ChatShell() {
     }
   }
 
-  async function createChannel(kind: "text" | "voice") {
+  async function createChannel(
+    kind: "text" | "voice",
+    categoryId: string | null = null,
+  ) {
     if (!activeServerId || activeServerId === DM_HOME) return;
     const name = window.prompt(
       kind === "text" ? "New text channel name" : "New voice room name",
@@ -1004,7 +1087,7 @@ export function ChatShell() {
         "/api/channels",
         {
           method: "POST",
-          body: JSON.stringify({ serverId: activeServerId, name, kind }),
+          body: JSON.stringify({ serverId: activeServerId, name, kind, categoryId }),
         },
       );
       setServers(data.servers);
@@ -1135,6 +1218,338 @@ export function ChatShell() {
   const currentVoiceChannel = voiceChannels.find(
     (channel) => channel.id === voice.channelId,
   );
+  // The voice channel whose stage fills the main column, if any. Falls back to
+  // the connected room's channel across servers so switching servers keeps it.
+  const stageChannel =
+    (stageChannelId
+      ? voiceChannels.find((channel) => channel.id === stageChannelId) ||
+        servers
+          .flatMap((server) => server.channels)
+          .find((channel) => channel.id === stageChannelId)
+      : null) || null;
+
+  /** Open a voice channel's stage and join it (without ever leaving on re-click). */
+  function openVoiceChannel(channel: PublicChannel) {
+    player.prime();
+    setStageChannelId(channel.id);
+    setMobileNav(false);
+    if (voice.channelId !== channel.id) void voice.join(channel.id);
+  }
+
+  // Channels grouped into ordered categories plus an uncategorised bucket, both
+  // sorted by their stored position. This drives the Discord-style sidebar.
+  const channelLayout = useMemo(() => {
+    const all = activeServer?.channels.filter((c) => c.kind !== "dm") || [];
+    const byPos = (a: PublicChannel, b: PublicChannel) =>
+      a.position - b.position;
+    const categories = [...(activeServer?.categories || [])].sort(
+      (a, b) => a.position - b.position,
+    );
+    const uncategorised = all
+      .filter((c) => !c.categoryId)
+      .sort(byPos);
+    const grouped = categories.map((category) => ({
+      category,
+      channels: all.filter((c) => c.categoryId === category.id).sort(byPos),
+    }));
+    return { uncategorised, grouped };
+  }, [activeServer]);
+
+  function toggleCategory(id: string) {
+    setCollapsedCats((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      window.localStorage.setItem(
+        "huddle-collapsed-cats",
+        JSON.stringify([...next]),
+      );
+      return next;
+    });
+  }
+
+  async function addCategory() {
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    const name = window.prompt("New category name");
+    if (!name?.trim()) return;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>("/api/categories", {
+        method: "POST",
+        body: JSON.stringify({ serverId: activeServerId, name }),
+      });
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not create it.");
+    }
+  }
+
+  async function renameCategory(categoryId: string, current: string) {
+    const name = window.prompt("Rename category", current);
+    if (!name?.trim() || name === current) return;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/categories/${categoryId}`,
+        { method: "PATCH", body: JSON.stringify({ name }) },
+      );
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not rename it.");
+    }
+  }
+
+  async function deleteCategory(categoryId: string, name: string) {
+    if (!window.confirm(`Delete the "${name}" category? Its channels stay.`)) return;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/categories/${categoryId}`,
+        { method: "DELETE" },
+      );
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete it.");
+    }
+  }
+
+  /**
+   * Persist a drag: place the dragged channel into `targetCategoryId`, just
+   * before `beforeChannelId` (or at the end when null), then renumber every
+   * channel's position within its category and send the whole layout.
+   */
+  async function dropChannel(
+    draggedId: string,
+    targetCategoryId: string | null,
+    beforeChannelId: string | null,
+  ) {
+    if (!activeServerId || !canManageChannels) return;
+    const all = (activeServer?.channels.filter((c) => c.kind !== "dm") || []).map(
+      (c) => ({ ...c }),
+    );
+    const dragged = all.find((c) => c.id === draggedId);
+    if (!dragged || draggedId === beforeChannelId) return;
+
+    // Rebuild each category's ordered list from current positions.
+    const lists = new Map<string, PublicChannel[]>();
+    const keyOf = (id: string | null) => id ?? "__none__";
+    for (const channel of all) {
+      if (channel.id === draggedId) continue;
+      const key = keyOf(channel.categoryId);
+      const list = lists.get(key) || [];
+      list.push(channel);
+      lists.set(key, list);
+    }
+    for (const list of lists.values()) list.sort((a, b) => a.position - b.position);
+
+    dragged.categoryId = targetCategoryId;
+    const targetKey = keyOf(targetCategoryId);
+    const targetList = lists.get(targetKey) || [];
+    const index = beforeChannelId
+      ? targetList.findIndex((c) => c.id === beforeChannelId)
+      : -1;
+    if (index < 0) targetList.push(dragged);
+    else targetList.splice(index, 0, dragged);
+    lists.set(targetKey, targetList);
+
+    const payload: Array<{ id: string; categoryId: string | null; position: number }> =
+      [];
+    for (const [key, list] of lists) {
+      list.forEach((channel, position) => {
+        payload.push({
+          id: channel.id,
+          categoryId: key === "__none__" ? null : key,
+          position,
+        });
+      });
+    }
+
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        "/api/channels/reorder",
+        {
+          method: "POST",
+          body: JSON.stringify({ serverId: activeServerId, channels: payload }),
+        },
+      );
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not reorder.");
+    } finally {
+      setDragChannelId(null);
+    }
+  }
+
+  /** Drag handles for a channel row: drop places the dragged one before it. */
+  function channelDragProps(channel: PublicChannel) {
+    if (!canManageChannels) return {};
+    return {
+      draggable: true,
+      onDragStart: (event: DragEvent<HTMLElement>) => {
+        setDragChannelId(channel.id);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-huddle-channel", channel.id);
+      },
+      onDragEnd: () => setDragChannelId(null),
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (dragChannelId && dragChannelId !== channel.id) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        if (!dragChannelId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void dropChannel(dragChannelId, channel.categoryId, channel.id);
+      },
+    };
+  }
+
+  /** Drop onto a category (header or body) appends the channel to its end. */
+  function categoryDropProps(categoryId: string | null) {
+    if (!canManageChannels) return {};
+    return {
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (dragChannelId) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        if (!dragChannelId) return;
+        event.preventDefault();
+        void dropChannel(dragChannelId, categoryId, null);
+      },
+    };
+  }
+
+  function renderChannel(channel: PublicChannel) {
+    if (channel.kind === "voice") {
+      const people = hub.voice[channel.id] || [];
+      const playing = hub.players[channel.id]?.track;
+      return (
+        <div key={channel.id} {...channelDragProps(channel)}>
+          <button
+            className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""} ${stageChannelId === channel.id ? "viewing-voice" : ""}`}
+            onClick={() => openVoiceChannel(channel)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              void renameChannel(channel);
+            }}
+          >
+            <span className="speaker-icon">◖))</span>
+            <span>{channel.name}</span>
+            {people.length > 0 && <span className="live-pill">LIVE</span>}
+            {canManageChannels && (
+              <span
+                className="channel-delete"
+                role="button"
+                aria-label={`Delete ${channel.name}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void deleteChannel(channel);
+                }}
+              >
+                ×
+              </span>
+            )}
+          </button>
+
+          {people.length > 0 && (
+            <div className="voice-members">
+              {people.map((person) => (
+                <div
+                  className={`voice-member ${
+                    voice.speaking.has(
+                      person.connectionId === hub.connectionId
+                        ? "self"
+                        : person.connectionId,
+                    )
+                      ? "is-speaking"
+                      : ""
+                  }`}
+                  key={person.connectionId}
+                  onContextMenu={(event) => {
+                    if (person.bot) {
+                      openBotMenu(event, "music");
+                      return;
+                    }
+                    const member = membersById.get(person.id);
+                    if (member) openUserMenu(event, member);
+                  }}
+                >
+                  <Avatar
+                    className="tiny-avatar"
+                    avatar={person.avatar}
+                    avatarUrl={person.avatarUrl}
+                    color={person.color}
+                  />
+                  <span>
+                    {person.connectionId === hub.connectionId
+                      ? "You"
+                      : person.displayName}
+                  </span>
+                  {person.muted && !person.bot && (
+                    <span
+                      className="muted-pill"
+                      title={person.serverMuted ? "Muted for everyone" : "Muted"}
+                    >
+                      ⃠
+                    </span>
+                  )}
+                  {person.bot && playing && (
+                    <span className="speaking-bars" aria-label="Playing">
+                      ııı
+                    </span>
+                  )}
+                  {person.bot && person.deafened && (
+                    <span
+                      className="bot-deafened-pill"
+                      title="The bot sends music but cannot hear the room"
+                      aria-label="Bot deafened"
+                    >
+                      🎧
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={channel.id}
+        className={`channel ${activeChannelId === channel.id && !stageChannelId ? "selected" : ""}`}
+        {...channelDragProps(channel)}
+        onClick={() => {
+          setActiveChannelId(channel.id);
+          setStageChannelId(null);
+          setMobileNav(false);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void renameChannel(channel);
+        }}
+      >
+        <span className="channel-hash">#</span>
+        <span>{channel.name}</span>
+        {canManageChannels && (
+          <span
+            className="channel-delete"
+            role="button"
+            aria-label={`Delete ${channel.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void deleteChannel(channel);
+            }}
+          >
+            ×
+          </span>
+        )}
+      </button>
+    );
+  }
   const prefFor = (id: string): VoicePref =>
     voicePrefs[id] || { volume: 100, muted: false };
   const currentPlayer = voice.channelId
@@ -1297,6 +1712,7 @@ export function ChatShell() {
                 className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""}`}
                 onClick={() => {
                   setActiveChannelId(dm.channelId);
+                  setStageChannelId(null);
                   setMobileNav(false);
                 }}
                 onContextMenu={(event) => openUserMenu(event, dm.user)}
@@ -1320,148 +1736,86 @@ export function ChatShell() {
         ) : (
           <nav className="channel-nav" aria-label="Channels">
             <div className="section-label">
-              <span>TEXT CHANNELS</span>
-              <button
-                aria-label="Add text channel"
-                onClick={() => createChannel("text")}
-              >
-                +
-              </button>
-            </div>
-
-            {textChannels.map((channel) => (
-              <button
-                key={channel.id}
-                className={`channel ${activeChannelId === channel.id ? "selected" : ""}`}
-                onClick={() => {
-                  setActiveChannelId(channel.id);
-                  setMobileNav(false);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void renameChannel(channel);
-                }}
-              >
-                <span className="channel-hash">#</span>
-                <span>{channel.name}</span>
-                <span
-                  className="channel-delete"
-                  role="button"
-                  aria-label={`Delete ${channel.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void deleteChannel(channel);
-                  }}
-                >
-                  ×
-                </span>
-              </button>
-            ))}
-
-            <div className="section-label voice-label">
-              <span>VOICE ROOMS</span>
-              <button
-                aria-label="Add voice room"
-                onClick={() => createChannel("voice")}
-              >
-                +
-              </button>
-            </div>
-
-            {voiceChannels.map((channel) => {
-              const people = hub.voice[channel.id] || [];
-              const playing = hub.players[channel.id]?.track;
-              return (
-                <div key={channel.id}>
+              <span>CHANNELS</span>
+              {canManageChannels && (
+                <span className="section-actions">
                   <button
-                    className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""}`}
-                    onClick={() => {
-                      player.prime();
-                      void voice.join(channel.id);
-                    }}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      void renameChannel(channel);
-                    }}
+                    aria-label="Add category"
+                    title="Add category"
+                    onClick={() => void addCategory()}
                   >
-                    <span className="speaker-icon">◖))</span>
-                    <span>{channel.name}</span>
-                    {people.length > 0 && <span className="live-pill">LIVE</span>}
-                    <span
-                      className="channel-delete"
-                      role="button"
-                      aria-label={`Delete ${channel.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void deleteChannel(channel);
+                    ▾+
+                  </button>
+                  <button
+                    aria-label="Add text channel"
+                    title="Add text channel"
+                    onClick={() => createChannel("text")}
+                  >
+                    #+
+                  </button>
+                  <button
+                    aria-label="Add voice room"
+                    title="Add voice room"
+                    onClick={() => createChannel("voice")}
+                  >
+                    ◖))+
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {/* Uncategorised channels sit above every category, Discord-style. */}
+            <div className="category-body" {...categoryDropProps(null)}>
+              {channelLayout.uncategorised.map((channel) => renderChannel(channel))}
+            </div>
+
+            {channelLayout.grouped.map(({ category, channels }) => {
+              const collapsed = collapsedCats.has(category.id);
+              return (
+                <div className="category" key={category.id}>
+                  <div
+                    className="category-head"
+                    {...categoryDropProps(category.id)}
+                  >
+                    <button
+                      className="category-toggle"
+                      onClick={() => toggleCategory(category.id)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        if (canManageChannels)
+                          void renameCategory(category.id, category.name);
                       }}
                     >
-                      ×
-                    </span>
-                  </button>
-
-                  {people.length > 0 && (
-                    <div className="voice-members">
-                      {people.map((person) => (
-                        <div
-                          className={`voice-member ${
-                            voice.speaking.has(
-                              person.connectionId === hub.connectionId
-                                ? "self"
-                                : person.connectionId,
-                            )
-                              ? "is-speaking"
-                              : ""
-                          }`}
-                          key={person.connectionId}
-                          onContextMenu={(event) => {
-                            if (person.bot) {
-                              openBotMenu(event, "music");
-                              return;
-                            }
-                            const member = membersById.get(person.id);
-                            if (member) openUserMenu(event, member);
-                          }}
+                      <span className={`cat-caret ${collapsed ? "closed" : ""}`}>
+                        ▾
+                      </span>
+                      <span>{category.name}</span>
+                    </button>
+                    {canManageChannels && (
+                      <span className="category-actions">
+                        <button
+                          aria-label={`Add channel to ${category.name}`}
+                          title="Add text channel here"
+                          onClick={() => createChannel("text", category.id)}
                         >
-                          <Avatar
-                            className="tiny-avatar"
-                            avatar={person.avatar}
-                            avatarUrl={person.avatarUrl}
-                            color={person.color}
-                          />
-                          <span>
-                            {person.connectionId === hub.connectionId
-                              ? "You"
-                              : person.displayName}
-                          </span>
-                          {person.muted && !person.bot && (
-                            <span
-                              className="muted-pill"
-                              title={
-                                person.serverMuted
-                                  ? "Muted for everyone"
-                                  : "Muted"
-                              }
-                            >
-                              ⃠
-                            </span>
-                          )}
-                          {person.bot && playing && (
-                            <span className="speaking-bars" aria-label="Playing">
-                              ııı
-                            </span>
-                          )}
-                          {person.bot && person.deafened && (
-                            <span
-                              className="bot-deafened-pill"
-                              title="The bot sends music but cannot hear the room"
-                              aria-label="Bot deafened"
-                            >
-                              🎧
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                          +
+                        </button>
+                        <button
+                          aria-label={`Delete ${category.name}`}
+                          title="Delete category"
+                          onClick={() => void deleteCategory(category.id, category.name)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  {!collapsed && (
+                    <div className="category-body" {...categoryDropProps(category.id)}>
+                      {channels.map((channel) => renderChannel(channel))}
+                      {!channels.length && (
+                        <p className="category-empty">Drag channels here</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1642,18 +1996,24 @@ export function ChatShell() {
           >
             ☰
           </button>
-          <span className="big-hash">{inDmHome ? "@" : "#"}</span>
+          <span className="big-hash">
+            {stageChannel ? "◖))" : inDmHome ? "@" : "#"}
+          </span>
           <div className="channel-heading">
-            <strong>{channelTitle}</strong>
+            <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
             <span>
-              {inDmHome
-                ? activeDm
-                  ? `Just you and ${activeDm.user.displayName}`
-                  : "Pick a conversation"
-                : activeChannel?.topic ||
-                  (activeChannel
-                    ? `Everything happening in ${activeChannel.name}`
-                    : "Create a channel to start talking")}
+              {stageChannel
+                ? voiceParticipants.length === 1
+                  ? "Just you so far"
+                  : `${voiceParticipants.length} in the room`
+                : inDmHome
+                  ? activeDm
+                    ? `Just you and ${activeDm.user.displayName}`
+                    : "Pick a conversation"
+                  : activeChannel?.topic ||
+                    (activeChannel
+                      ? `Everything happening in ${activeChannel.name}`
+                      : "Create a channel to start talking")}
             </span>
           </div>
           <div className="header-actions">
@@ -1683,6 +2043,15 @@ export function ChatShell() {
           </div>
         </header>
 
+        {stageChannel ? (
+          <VoiceStage
+            channelName={stageChannel.name}
+            participants={voiceParticipants}
+            connectionId={hub.connectionId}
+            voice={voice}
+          />
+        ) : (
+          <>
         {pinsOpen && (
           <div className="pins-panel">
             <div className="pins-head">
@@ -1725,7 +2094,10 @@ export function ChatShell() {
               ? membersById.get(message.userId)
               : undefined;
             const canDelete =
-              message.userId === user.id || message.bot || user.isAdmin;
+              message.userId === user.id ||
+              message.bot ||
+              user.isAdmin ||
+              canModerate;
             return (
               <article
                 className={`message ${message.pinned ? "is-pinned" : ""}`}
@@ -1756,6 +2128,7 @@ export function ChatShell() {
                 <div className="message-body">
                   <div className="message-meta">
                     <strong
+                      style={{ color: roleColorFor(author) || undefined }}
                       onContextMenu={(event) => {
                         if (author) openUserMenu(event, author);
                       }}
@@ -1969,6 +2342,8 @@ export function ChatShell() {
           {gifOpen && (
             <GifPicker
               onClose={() => setGifOpen(false)}
+              serverId={inDmHome ? null : activeServerId}
+              canManageStickers={canManageChannels}
               onPick={(url) => {
                 setGifOpen(false);
                 void sendText(url);
@@ -2066,6 +2441,8 @@ export function ChatShell() {
             Enter to send · Shift + Enter for a new line · / for commands
           </div>
         </form>
+          </>
+        )}
       </section>
 
       <aside className={`member-panel ${membersOpen ? "" : "closed"}`}>
@@ -2143,74 +2520,14 @@ export function ChatShell() {
               </div>
             </div>
 
-            {(voice.localVideos.length > 0 ||
-              voice.remoteStreams.some((entry) =>
-                entry.stream
-                  .getVideoTracks()
-                  .some((track) => track.readyState === "live"),
-              )) && (
-              <div className="screen-share-grid">
-                {/* Your own camera and screen, so you can see what you are
-                    sending. Muted, or you would hear yourself. */}
-                {voice.localVideos.map(({ kind, stream }) => (
-                  <figure key={stream.id} className="self-tile">
-                    <video
-                      autoPlay
-                      playsInline
-                      muted
-                      className={kind === "camera" ? "mirrored" : ""}
-                      ref={(element) => {
-                        if (element && element.srcObject !== stream) {
-                          element.srcObject = stream;
-                          void element.play().catch(() => undefined);
-                        }
-                      }}
-                    />
-                    <figcaption>
-                      You · {kind === "camera" ? "camera" : "screen"}
-                    </figcaption>
-                  </figure>
-                ))}
-                {voice.remoteStreams
-                  .filter((entry) =>
-                    entry.stream
-                      .getVideoTracks()
-                      .some((track) => track.readyState === "live"),
-                  )
-                  .map(({ connectionId, stream }) => {
-                    const person = voiceParticipants.find(
-                      (participant) =>
-                        participant.connectionId === connectionId,
-                    );
-                    const connecting =
-                      voice.peerStates[connectionId] !== undefined &&
-                      voice.peerStates[connectionId] !== "connected";
-                    return (
-                      <figure
-                        key={`${connectionId}:${stream.id}`}
-                        className={connecting ? "tile-connecting" : ""}
-                      >
-                        <video
-                          autoPlay
-                          playsInline
-                          ref={(element) => {
-                            if (element && element.srcObject !== stream) {
-                              element.srcObject = stream;
-                            }
-                          }}
-                        />
-                        <figcaption>
-                          {person?.displayName || "Screen share"}
-                          {person?.cameraStreamId === stream.id
-                            ? " · camera"
-                            : person?.screenStreamId === stream.id
-                              ? " · screen"
-                              : ""}
-                        </figcaption>
-                      </figure>
-                    );
-                  })}
-              </div>
+            {stageChannelId !== voice.channelId && voice.channelId && (
+              <button
+                type="button"
+                className="open-stage-button"
+                onClick={() => setStageChannelId(voice.channelId)}
+              >
+                Open call view
+              </button>
             )}
 
             {roomPlayer?.track && (
@@ -2273,7 +2590,9 @@ export function ChatShell() {
               color={member.color}
             />
             <div>
-              <strong>{member.displayName}</strong>
+              <strong style={{ color: roleColorFor(member) || undefined }}>
+                {member.displayName}
+              </strong>
               <span>
                 {member.id === user.id
                   ? "Here now"
@@ -2303,7 +2622,9 @@ export function ChatShell() {
               color={member.color}
             />
             <div>
-              <strong>{member.displayName}</strong>
+              <strong style={{ color: roleColorFor(member) || undefined }}>
+                {member.displayName}
+              </strong>
               <span>Away</span>
             </div>
           </div>
@@ -2397,6 +2718,16 @@ export function ChatShell() {
             void saveVoicePref(userMenu.member.id, { serverMuted: muted });
             setUserMenu(null);
           }}
+          canModerate={canModerate}
+          canManage={canManageServer && !inDmHome}
+          onKick={() => {
+            void moderateMember(userMenu.member.id, "kick");
+            setUserMenu(null);
+          }}
+          onBan={() => {
+            void moderateMember(userMenu.member.id, "ban");
+            setUserMenu(null);
+          }}
         />
       )}
 
@@ -2409,6 +2740,9 @@ export function ChatShell() {
           onClose={() => setSettingsOpen(false)}
           onSignOut={signOut}
           onMicrophoneChange={() => void voice.switchMicrophone()}
+          server={inDmHome ? null : activeServer}
+          members={members}
+          canManageServer={canManageServer}
         />
       )}
     </main>

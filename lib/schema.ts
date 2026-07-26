@@ -150,6 +150,61 @@ async function migrate(db: D1Database): Promise<void> {
         read_at TEXT NOT NULL,
         PRIMARY KEY (user_id, channel_id)
       )`),
+    // Discord-style roles: a permission bitmask (see lib/permissions.ts) plus a
+    // colour that paints member names. `position` orders them; the highest one a
+    // member holds wins their name colour.
+    db.prepare(`CREATE TABLE IF NOT EXISTS roles (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#99aab5',
+        permissions INTEGER NOT NULL DEFAULT 0,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS roles_server_idx ON roles(server_id, position)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS member_roles (
+        server_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        role_id TEXT NOT NULL,
+        PRIMARY KEY (server_id, user_id, role_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS member_roles_user_idx ON member_roles(server_id, user_id)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS bans (
+        server_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        banned_by TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (server_id, user_id)
+      )`),
+    // Collapsible groups above channels. Channels point at one via category_id.
+    db.prepare(`CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS categories_server_idx ON categories(server_id, position)",
+    ),
+    // Custom (uploaded) stickers, one row per sticker, grouped by server. The
+    // image itself lives in R2 under `key`.
+    db.prepare(`CREATE TABLE IF NOT EXISTS stickers (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        key TEXT NOT NULL,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS stickers_server_idx ON stickers(server_id, created_at)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -181,6 +236,11 @@ async function migrate(db: D1Database): Promise<void> {
   const userColumns = await columnNames(db, "users");
   if (!userColumns.has("avatar_url")) {
     await db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
+  }
+
+  const channelColumns = await columnNames(db, "channels");
+  if (!channelColumns.has("category_id")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN category_id TEXT").run();
   }
 
   await seedDefaultServer(db);

@@ -2,7 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
-import { findChannel, listServers } from "@/lib/servers";
+import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,14 @@ function forbidden(): Response {
   );
 }
 
+async function loadCategory(db: D1Database, id: string) {
+  return db
+    .prepare("SELECT id, server_id, name FROM categories WHERE id = ?")
+    .bind(id)
+    .first<{ id: string; server_id: string; name: string }>();
+}
+
+/** Rename a category. */
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -30,41 +38,25 @@ export async function PATCH(
   await ensureSchema(db);
 
   const { id } = await context.params;
-  const channel = await findChannel(db, id);
-  if (!channel) {
-    return Response.json({ error: "That channel is gone." }, { status: 404 });
+  const category = await loadCategory(db, id);
+  if (!category) {
+    return Response.json({ error: "That category is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, channel.server_id, Permission.MANAGE_CHANNELS))) {
+  if (!(await can(db, user.id, category.server_id, Permission.MANAGE_CHANNELS))) {
     return forbidden();
   }
 
-  const body = (await request.json().catch(() => ({}))) as {
-    name?: string;
-    topic?: string;
-  };
-  const name =
-    channel.kind === "text"
-      ? body.name
-          ?.trim()
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9_-]/g, "")
-          .slice(0, 40)
-      : body.name?.trim().slice(0, 40);
-
+  const body = (await request.json().catch(() => ({}))) as { name?: string };
   await db
-    .prepare("UPDATE channels SET name = ?, topic = ? WHERE id = ?")
-    .bind(
-      name || channel.name,
-      body.topic?.trim().slice(0, 120) ?? channel.topic,
-      id,
-    )
+    .prepare("UPDATE categories SET name = ? WHERE id = ?")
+    .bind(body.name?.trim().slice(0, 40) || category.name, id)
     .run();
 
   await publishStructureChange();
   return Response.json({ servers: await listServers(db) });
 }
 
+/** Delete a category; its channels become uncategorised, not deleted. */
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -81,28 +73,19 @@ export async function DELETE(
   await ensureSchema(db);
 
   const { id } = await context.params;
-  const channel = await findChannel(db, id);
-  if (!channel) {
-    return Response.json({ error: "That channel is gone." }, { status: 404 });
+  const category = await loadCategory(db, id);
+  if (!category) {
+    return Response.json({ error: "That category is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, channel.server_id, Permission.MANAGE_CHANNELS))) {
+  if (!(await can(db, user.id, category.server_id, Permission.MANAGE_CHANNELS))) {
     return forbidden();
   }
 
-  const siblings = await db
-    .prepare("SELECT COUNT(*) AS count FROM channels WHERE server_id = ? AND kind = ?")
-    .bind(channel.server_id, channel.kind)
-    .first<{ count: number }>();
-  if (channel.kind === "text" && (siblings?.count ?? 0) <= 1) {
-    return Response.json(
-      { error: "Every server needs at least one text channel." },
-      { status: 400 },
-    );
-  }
-
   await db.batch([
-    db.prepare("DELETE FROM messages WHERE channel_id = ?").bind(id),
-    db.prepare("DELETE FROM channels WHERE id = ?").bind(id),
+    db
+      .prepare("UPDATE channels SET category_id = NULL WHERE category_id = ?")
+      .bind(id),
+    db.prepare("DELETE FROM categories WHERE id = ?").bind(id),
   ]);
 
   await publishStructureChange();

@@ -1,9 +1,18 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { publishStructureChange } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+function forbidden(): Response {
+  return Response.json(
+    { error: "You do not have permission to manage this server." },
+    { status: 403 },
+  );
+}
 
 export async function PATCH(
   request: Request,
@@ -34,6 +43,7 @@ export async function PATCH(
   if (!server) {
     return Response.json({ error: "That server is gone." }, { status: 404 });
   }
+  if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   await db
     .prepare("UPDATE servers SET name = ?, icon = ?, color = ? WHERE id = ?")
@@ -45,6 +55,7 @@ export async function PATCH(
     )
     .run();
 
+  await publishStructureChange();
   return Response.json({ servers: await listServers(db) });
 }
 
@@ -70,6 +81,7 @@ export async function DELETE(
       { status: 400 },
     );
   }
+  if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   const channels = await db
     .prepare("SELECT id FROM channels WHERE server_id = ?")
@@ -81,6 +93,11 @@ export async function DELETE(
 
   const statements = [
     db.prepare("DELETE FROM channels WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM categories WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM roles WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM member_roles WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM bans WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM stickers WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM servers WHERE id = ?").bind(id),
   ];
   for (const channelId of channelIds) {
@@ -90,5 +107,6 @@ export async function DELETE(
   }
   await db.batch(statements);
 
+  await publishStructureChange();
   return Response.json({ servers: await listServers(db) });
 }

@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { publishMessageEvent } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { channelAudience } from "@/lib/dms";
@@ -50,8 +51,19 @@ export async function DELETE(
 
   const mine = message.user_id === user.id;
   // Bot messages belong to the channel rather than a person, so anyone can
-  // clear them — this is a friends' Huddle, not a moderated server.
-  if (!mine && !message.is_bot && !user.is_admin) {
+  // clear them. Otherwise you need your own message or MODERATE in the server
+  // this message's channel belongs to.
+  let mayModerate = Boolean(user.is_admin);
+  if (!mine && !message.is_bot && !mayModerate && message.channel_id) {
+    const channel = await db
+      .prepare("SELECT server_id FROM channels WHERE id = ?")
+      .bind(message.channel_id)
+      .first<{ server_id: string }>();
+    if (channel) {
+      mayModerate = await can(db, user.id, channel.server_id, Permission.MODERATE);
+    }
+  }
+  if (!mine && !message.is_bot && !mayModerate) {
     return Response.json(
       { error: "You can only delete your own messages." },
       { status: 403 },

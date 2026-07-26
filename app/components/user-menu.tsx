@@ -24,6 +24,11 @@ interface UserMenuProps {
   onLocalMute: (muted: boolean) => void;
   onVolume: (volume: number) => void;
   onServerMute: (muted: boolean) => void;
+  /** Moderation affordances, shown only when the viewer has the permission. */
+  canModerate?: boolean;
+  canManage?: boolean;
+  onKick?: () => void;
+  onBan?: () => void;
 }
 
 /**
@@ -40,6 +45,10 @@ export function UserMenu({
   onLocalMute,
   onVolume,
   onServerMute,
+  canModerate = true,
+  canManage = false,
+  onKick,
+  onBan,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -102,18 +111,32 @@ export function UserMenu({
             />
           </label>
 
-          <div className="user-menu-divider" />
-          <button
-            type="button"
-            role="menuitem"
-            className="danger"
-            onClick={() => onServerMute(!serverMuted)}
-          >
-            {serverMuted ? "Unmute on server" : "Mute on server"}
-          </button>
-          <p className="user-menu-note">
-            Server mute stops their microphone for everyone.
-          </p>
+          {(canModerate || canManage) && <div className="user-menu-divider" />}
+          {canModerate && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={() => onServerMute(!serverMuted)}
+              >
+                {serverMuted ? "Unmute on server" : "Mute on server"}
+              </button>
+              <p className="user-menu-note">
+                Server mute stops their microphone for everyone.
+              </p>
+            </>
+          )}
+          {canManage && onKick && (
+            <button type="button" role="menuitem" className="danger" onClick={onKick}>
+              Kick from server
+            </button>
+          )}
+          {canManage && onBan && (
+            <button type="button" role="menuitem" className="danger" onClick={onBan}>
+              Ban from server
+            </button>
+          )}
         </>
       )}
 

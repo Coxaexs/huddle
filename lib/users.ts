@@ -19,6 +19,8 @@ export interface Member {
   avatarUrl?: string | null;
   color: string;
   lastSeenAt: string;
+  /** Role ids this member holds, keyed by server id. */
+  roleIds?: Record<string, string[]>;
 }
 
 /** Colors new accounts cycle through, matching the existing palette. */
