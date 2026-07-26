@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 
-const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
 
 export function isImageUrl(value: string): boolean {
@@ -15,11 +14,21 @@ export function isImageUrl(value: string): boolean {
   return IMAGE_PATTERN.test(url);
 }
 
+// Matches a URL or an @mention token, so both can be rendered specially.
+const TOKEN_PATTERN = /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,24})/g;
+
 /**
- * Message text with links made clickable, and any image or GIF link rendered
- * as the picture itself rather than a URL.
+ * Message text with links made clickable, @mentions highlighted, and any image
+ * or GIF link rendered as the picture itself rather than a URL.
  */
-export function MessageBody({ text }: { text: string }) {
+export function MessageBody({
+  text,
+  selfHandle,
+}: {
+  text: string;
+  /** The viewer's username, so a mention of them stands out more. */
+  selfHandle?: string;
+}) {
   const trimmed = text.trim();
 
   if (isImageUrl(trimmed) && !/\s/.test(trimmed)) {
@@ -34,12 +43,28 @@ export function MessageBody({ text }: { text: string }) {
   const images: string[] = [];
   let lastIndex = 0;
 
-  for (const match of text.matchAll(URL_PATTERN)) {
-    const url = match[0];
+  for (const match of text.matchAll(TOKEN_PATTERN)) {
+    const token = match[0];
     const index = match.index ?? 0;
     if (index > lastIndex) parts.push(text.slice(lastIndex, index));
-    lastIndex = index + url.length;
+    lastIndex = index + token.length;
 
+    if (match[2]) {
+      // @mention
+      const handle = token.slice(1).toLowerCase();
+      const isSelf = selfHandle && handle === selfHandle.toLowerCase();
+      parts.push(
+        <span
+          key={`m-${index}`}
+          className={`mention ${isSelf ? "mention-self" : ""}`}
+        >
+          {token}
+        </span>,
+      );
+      continue;
+    }
+
+    const url = token;
     if (isImageUrl(url)) {
       images.push(url);
       continue;

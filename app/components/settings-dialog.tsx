@@ -32,6 +32,11 @@ interface SettingsDialogProps {
   onSignOut: () => void;
   /** Called after the microphone choice changes, to swap it mid-call. */
   onMicrophoneChange?: () => void;
+  /** Push-to-talk state + setters, owned by the voice hook. */
+  pushToTalk?: boolean;
+  pttKey?: string;
+  onPushToTalk?: (enabled: boolean) => void;
+  onPttKey?: (code: string) => void;
   /** The active server, for the roles tab. */
   server?: PublicServer | null;
   members?: Member[];
@@ -57,10 +62,20 @@ export function SettingsDialog({
   onClose,
   onSignOut,
   onMicrophoneChange,
+  pushToTalk = false,
+  pttKey = "Space",
+  onPushToTalk,
+  onPttKey,
   server,
   members = [],
   canManageServer = false,
 }: SettingsDialogProps) {
+  const [capturingKey, setCapturingKey] = useState(false);
+  const [noise, setNoise] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.localStorage.getItem("huddle-noise") !== "off",
+  );
   const [tab, setTab] = useState<Tab>("profile");
   const [devices, setDevices] = useState<DeviceLists>({
     microphones: [],
@@ -85,6 +100,11 @@ export function SettingsDialog({
   const [backdrop, setBackdrop] = useState<Backdrop>("plain");
   const [corners, setCorners] = useState(16);
   const [motion, setMotion] = useState(true);
+  const [notify, setNotify] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.localStorage.getItem("huddle-notify") !== "off",
+  );
   const pictureRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -424,6 +444,53 @@ export function SettingsDialog({
                   </option>
                 ))}
               </select>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Noise suppression</strong>
+                  <small>Filter out keyboard and background noise</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={noise}
+                  onChange={(event) => {
+                    const on = event.target.checked;
+                    setNoise(on);
+                    window.localStorage.setItem("huddle-noise", on ? "on" : "off");
+                    void onMicrophoneChange?.();
+                  }}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Push to talk</strong>
+                  <small>Transmit only while holding a key</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={pushToTalk}
+                  onChange={(event) => onPushToTalk?.(event.target.checked)}
+                />
+              </label>
+
+              {pushToTalk && (
+                <button
+                  type="button"
+                  className="ptt-key-button"
+                  onClick={() => setCapturingKey(true)}
+                  onKeyDown={(event) => {
+                    if (!capturingKey) return;
+                    event.preventDefault();
+                    onPttKey?.(event.code);
+                    setCapturingKey(false);
+                  }}
+                >
+                  {capturingKey
+                    ? "Press a key…"
+                    : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
+                </button>
+              )}
             </>
           )}
 
@@ -589,6 +656,28 @@ export function SettingsDialog({
                   type="checkbox"
                   checked={motion}
                   onChange={(event) => setMotion(event.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Desktop notifications</strong>
+                  <small>Ping when someone @mentions you</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={notify}
+                  onChange={(event) => {
+                    const on = event.target.checked;
+                    setNotify(on);
+                    window.localStorage.setItem(
+                      "huddle-notify",
+                      on ? "on" : "off",
+                    );
+                    if (on && typeof Notification !== "undefined") {
+                      void Notification.requestPermission();
+                    }
+                  }}
                 />
               </label>
             </>

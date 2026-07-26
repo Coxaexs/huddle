@@ -205,6 +205,41 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS stickers_server_idx ON stickers(server_id, created_at)",
     ),
+    // Emoji reactions: one row per (message, user, emoji).
+    db.prepare(`CREATE TABLE IF NOT EXISTS reactions (
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (message_id, user_id, emoji)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS reactions_message_idx ON reactions(message_id)",
+    ),
+    // @mentions, written when a message names someone. Drives unread badges.
+    db.prepare(`CREATE TABLE IF NOT EXISTS mentions (
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (message_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS mentions_user_idx ON mentions(user_id, channel_id, created_at)",
+    ),
+    // Soundboard clips, short audio in R2 keyed by `key`, grouped by server.
+    db.prepare(`CREATE TABLE IF NOT EXISTS sounds (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        emoji TEXT NOT NULL DEFAULT '🔊',
+        key TEXT NOT NULL,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS sounds_server_idx ON sounds(server_id, created_at)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -223,6 +258,9 @@ async function migrate(db: D1Database): Promise<void> {
     // Soft delete: open tabs need to be told to remove it, and a hard delete
     // would leave them showing a message that no longer exists.
     ["deleted_at", "ALTER TABLE messages ADD COLUMN deleted_at TEXT"],
+    // The message this one is a reply to, and when it was last edited.
+    ["reply_to", "ALTER TABLE messages ADD COLUMN reply_to TEXT"],
+    ["edited_at", "ALTER TABLE messages ADD COLUMN edited_at TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }

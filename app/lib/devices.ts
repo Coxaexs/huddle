@@ -43,9 +43,13 @@ export function saveDevice(kind: DeviceKind, deviceId: string): void {
 /** Constraints for getUserMedia that honour the saved microphone. */
 export function microphoneConstraints(): MediaTrackConstraints {
   const deviceId = savedDevice("microphone");
+  // Noise suppression is on by default; the Voice settings toggle can disable it.
+  const noise =
+    typeof window === "undefined" ||
+    window.localStorage.getItem("huddle-noise") !== "off";
   return {
     echoCancellation: true,
-    noiseSuppression: true,
+    noiseSuppression: noise,
     autoGainControl: true,
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   };

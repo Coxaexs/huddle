@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { ScreenShareQuality } from "../hooks/use-voice";
+import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
+
+interface Sound {
+  id: string;
+  name: string;
+  emoji: string;
+  url: string;
+}
 
 /** The slice of the voice hook the stage needs to render and drive a call. */
 interface VoiceApi {
@@ -33,6 +41,9 @@ interface VoiceStageProps {
   participants: VoiceParticipant[];
   connectionId: string | null;
   voice: VoiceApi;
+  /** Server the room belongs to, for its soundboard. */
+  serverId: string | null;
+  canManageSounds: boolean;
 }
 
 interface VideoTile {
@@ -85,8 +96,11 @@ export function VoiceStage({
   participants,
   connectionId,
   voice,
+  serverId,
+  canManageSounds,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [soundboardOpen, setSoundboardOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const videoTiles: VideoTile[] = [];
@@ -273,6 +287,14 @@ export function VoiceStage({
         )}
       </div>
 
+      {soundboardOpen && (
+        <SoundboardDrawer
+          serverId={serverId}
+          channelId={voice.channelId}
+          canManage={canManageSounds}
+        />
+      )}
+
       <div className="voice-stage-bar">
         <div className="stage-bar-name">
           <span className="speaker-icon">◖))</span>
@@ -320,6 +342,14 @@ export function VoiceStage({
           >
             🖥
           </button>
+          <button
+            type="button"
+            className={`stage-btn ${soundboardOpen ? "on" : ""}`}
+            onClick={() => setSoundboardOpen((open) => !open)}
+            title="Soundboard"
+          >
+            🔊
+          </button>
           <select
             aria-label="Screen share quality"
             className="stage-quality"
@@ -343,6 +373,109 @@ export function VoiceStage({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The soundboard: browse and play a server's clips; upload new ones. */
+function SoundboardDrawer({
+  serverId,
+  channelId,
+  canManage,
+}: {
+  serverId: string | null;
+  channelId: string | null;
+  canManage: boolean;
+}) {
+  const [sounds, setSounds] = useState<Sound[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = useRef<() => void>(() => {});
+  load.current = () => {
+    if (!serverId) return;
+    apiFetch<{ sounds: Sound[] }>(
+      `/api/sounds?serverId=${encodeURIComponent(serverId)}`,
+    )
+      .then((data) => setSounds(data.sounds || []))
+      .catch(() => undefined);
+  };
+  useEffect(() => {
+    load.current();
+  }, [serverId]);
+
+  function play(sound: Sound) {
+    if (!channelId) return;
+    void apiFetch("/api/sounds/play", {
+      method: "POST",
+      body: JSON.stringify({ channelId, soundId: sound.id }),
+    }).catch(() => undefined);
+  }
+
+  async function upload(file: File | undefined | null) {
+    if (!file || !serverId) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const uploaded = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      await apiFetch("/api/sounds", {
+        method: "POST",
+        body: JSON.stringify({
+          serverId,
+          key: uploaded.key,
+          name: file.name.replace(/\.[^.]+$/, "").slice(0, 40),
+        }),
+      });
+      load.current();
+    } catch {
+      // Upload failures are surfaced by the picker being empty.
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="soundboard">
+      {sounds.map((sound) => (
+        <button
+          key={sound.id}
+          type="button"
+          className="soundboard-pad"
+          onClick={() => play(sound)}
+          title={sound.name}
+        >
+          <span className="soundboard-emoji">{sound.emoji}</span>
+          <span className="soundboard-name">{sound.name}</span>
+        </button>
+      ))}
+      {canManage && (
+        <button
+          type="button"
+          className="soundboard-pad add"
+          disabled={uploading || !serverId}
+          onClick={() => fileRef.current?.click()}
+        >
+          <span className="soundboard-emoji">{uploading ? "…" : "＋"}</span>
+          <span className="soundboard-name">Add</span>
+        </button>
+      )}
+      {!sounds.length && !canManage && (
+        <p className="soundboard-empty">No sounds yet.</p>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="audio/*"
+        hidden
+        onChange={(event) => {
+          void upload(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
     </div>
   );
 }

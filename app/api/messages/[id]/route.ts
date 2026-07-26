@@ -107,7 +107,39 @@ export async function PATCH(
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { pinned?: boolean };
+  const body = (await request.json().catch(() => ({}))) as {
+    pinned?: boolean;
+    content?: string;
+  };
+
+  // Editing the text is a separate operation from pinning, and only the author
+  // can do it.
+  if (typeof body.content === "string") {
+    if (message.user_id !== user.id) {
+      return Response.json(
+        { error: "You can only edit your own messages." },
+        { status: 403 },
+      );
+    }
+    const content = body.content.trim().slice(0, 4000);
+    if (!content) {
+      return Response.json({ error: "A message cannot be empty." }, { status: 400 });
+    }
+    const editedAt = new Date().toISOString();
+    await db
+      .prepare("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?")
+      .bind(content, editedAt, id)
+      .run();
+    if (message.channel_id) {
+      await publishMessageEvent(
+        message.channel_id,
+        { t: "message-edited", id, content, editedAt },
+        await channelAudience(db, message.channel_id),
+      );
+    }
+    return Response.json({ ok: true, content, editedAt });
+  }
+
   const pinned = body.pinned ?? !message.pinned_at;
 
   await db
