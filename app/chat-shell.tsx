@@ -360,6 +360,23 @@ export function ChatShell() {
     [activeServer],
   );
 
+  // Channels grouped into ordered categories plus an uncategorised bucket, both
+  // sorted by their stored position. This drives the Discord-style sidebar.
+  // NOTE: this hook must stay above the early returns below (React hook rules).
+  const channelLayout = useMemo(() => {
+    const all = activeServer?.channels.filter((c) => c.kind !== "dm") || [];
+    const byPos = (a: PublicChannel, b: PublicChannel) => a.position - b.position;
+    const categories = [...(activeServer?.categories || [])].sort(
+      (a, b) => a.position - b.position,
+    );
+    const uncategorised = all.filter((c) => !c.categoryId).sort(byPos);
+    const grouped = categories.map((category) => ({
+      category,
+      channels: all.filter((c) => c.categoryId === category.id).sort(byPos),
+    }));
+    return { uncategorised, grouped };
+  }, [activeServer]);
+
   useEffect(() => {
     if (!activeServerId || activeServerId === DM_HOME) return;
     window.localStorage.setItem("huddle-server", activeServerId);
@@ -1244,25 +1261,6 @@ export function ChatShell() {
     setMobileNav(false);
     if (voice.channelId !== channel.id) void voice.join(channel.id);
   }
-
-  // Channels grouped into ordered categories plus an uncategorised bucket, both
-  // sorted by their stored position. This drives the Discord-style sidebar.
-  const channelLayout = useMemo(() => {
-    const all = activeServer?.channels.filter((c) => c.kind !== "dm") || [];
-    const byPos = (a: PublicChannel, b: PublicChannel) =>
-      a.position - b.position;
-    const categories = [...(activeServer?.categories || [])].sort(
-      (a, b) => a.position - b.position,
-    );
-    const uncategorised = all
-      .filter((c) => !c.categoryId)
-      .sort(byPos);
-    const grouped = categories.map((category) => ({
-      category,
-      channels: all.filter((c) => c.categoryId === category.id).sort(byPos),
-    }));
-    return { uncategorised, grouped };
-  }, [activeServer]);
 
   function toggleCategory(id: string) {
     setCollapsedCats((current) => {
