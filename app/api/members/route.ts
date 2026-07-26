@@ -45,6 +45,8 @@ export async function GET(request: Request) {
       avatarUrl: member.avatar_url || null,
       color: member.color,
       lastSeenAt: member.last_seen_at,
+      createdAt: member.created_at,
+      isAdmin: Boolean(member.is_admin),
       roleIds: rolesByUser.get(member.id) || {},
     })),
   });

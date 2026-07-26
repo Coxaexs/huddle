@@ -24,10 +24,13 @@ const TOKEN_PATTERN = /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,24})/g;
 export function MessageBody({
   text,
   selfHandle,
+  onMention,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
   selfHandle?: string;
+  /** Called with the handle (no @) when a mention is clicked. */
+  onMention?: (handle: string) => void;
 }) {
   const trimmed = text.trim();
 
@@ -51,15 +54,18 @@ export function MessageBody({
 
     if (match[2]) {
       // @mention
-      const handle = token.slice(1).toLowerCase();
-      const isSelf = selfHandle && handle === selfHandle.toLowerCase();
+      const handle = token.slice(1);
+      const isSelf =
+        selfHandle && handle.toLowerCase() === selfHandle.toLowerCase();
       parts.push(
-        <span
+        <button
+          type="button"
           key={`m-${index}`}
           className={`mention ${isSelf ? "mention-self" : ""}`}
+          onClick={() => onMention?.(handle)}
         >
           {token}
-        </span>,
+        </button>,
       );
       continue;
     }

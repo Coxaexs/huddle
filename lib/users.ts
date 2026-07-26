@@ -19,6 +19,8 @@ export interface Member {
   avatarUrl?: string | null;
   color: string;
   lastSeenAt: string;
+  createdAt?: string;
+  isAdmin?: boolean;
   /** Role ids this member holds, keyed by server id. */
   roleIds?: Record<string, string[]>;
 }

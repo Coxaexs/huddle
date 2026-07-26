@@ -31,6 +31,7 @@ import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
+import { ProfileCard } from "./components/profile-card";
 import {
   MusicSettingsCard,
   MusicStatsCard,
@@ -282,6 +283,7 @@ export function ChatShell() {
   const [gifOpen, setGifOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
+  const [profileMember, setProfileMember] = useState<Member | null>(null);
   const [botMenu, setBotMenu] = useState<{
     kind: "music" | "dnd";
     x: number;
@@ -451,6 +453,28 @@ export function ChatShell() {
   const canManageChannels = hasPermission(myPermissions, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(myPermissions, Permission.MANAGE_SERVER);
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+
+  /** Roles a member holds on the active server, highest position first. */
+  const rolesForMember = useCallback(
+    (member: Member | undefined): PublicRole[] => {
+      if (!member || !activeServer) return [];
+      const ids = new Set(member.roleIds?.[activeServer.id] || []);
+      return activeServer.roles
+        .filter((role) => ids.has(role.id))
+        .sort((a, b) => b.position - a.position);
+    },
+    [activeServer],
+  );
+
+  function openProfile(member: Member) {
+    setUserMenu(null);
+    setProfileMember(member);
+  }
+  function openProfileByHandle(handle: string) {
+    const lower = handle.toLowerCase();
+    const member = members.find((m) => m.username.toLowerCase() === lower);
+    if (member) openProfile(member);
+  }
 
   /** The top (highest-position) role colour for a member on the active server. */
   const roleColorFor = useCallback(
@@ -2368,12 +2392,13 @@ export function ChatShell() {
                   )}
                   <div className="message-meta">
                     <strong
+                      className={author ? "clickable-name" : ""}
                       style={{ color: roleColorFor(author) || undefined }}
                       onContextMenu={(event) => {
                         if (author) openUserMenu(event, author);
                       }}
-                      onClick={(event) => {
-                        if (touchInput && author) openUserMenu(event, author);
+                      onClick={() => {
+                        if (author) openProfile(author);
                       }}
                     >
                       {author?.displayName || message.author}
@@ -2498,7 +2523,11 @@ export function ChatShell() {
                       </div>
                     </div>
                   ) : (
-                    <MessageBody text={message.text} selfHandle={user.username} />
+                    <MessageBody
+                      text={message.text}
+                      selfHandle={user.username}
+                      onMention={openProfileByHandle}
+                    />
                   )}
 
                   {message.kind === "nowplaying" &&
@@ -3002,10 +3031,10 @@ export function ChatShell() {
         </div>
         {onlineMembers.map((member) => (
           <div
-            className="member"
+            className="member clickable-name"
             key={member.id}
             {...userMenuHandlers(member)}
-            onDoubleClick={() => member.id !== user.id && void openDm(member.id)}
+            onClick={() => openProfile(member)}
           >
             <Avatar
               className="member-avatar"
@@ -3035,9 +3064,10 @@ export function ChatShell() {
         </div>
         {offlineMembers.map((member) => (
           <div
-            className="member offline-member"
+            className="member offline-member clickable-name"
             key={member.id}
             {...userMenuHandlers(member)}
+            onClick={() => openProfile(member)}
           >
             <Avatar
               className="member-avatar"
@@ -3152,6 +3182,21 @@ export function ChatShell() {
             void moderateMember(userMenu.member.id, "ban");
             setUserMenu(null);
           }}
+        />
+      )}
+
+      {profileMember && (
+        <ProfileCard
+          member={profileMember}
+          online={hub.online.has(profileMember.id)}
+          roles={rolesForMember(profileMember)}
+          isSelf={profileMember.id === user.id}
+          onMessage={() => {
+            const id = profileMember.id;
+            setProfileMember(null);
+            void openDm(id);
+          }}
+          onClose={() => setProfileMember(null)}
         />
       )}
 
