@@ -52,287 +52,489 @@ html[data-motion="reduced"] *::after {
 .bot-card,
 .dnd-card,
 .lyrics-now,
-.music-settings-card,
-.music-stats-card {
-  border-radius:var(--ui-corners) !important;
-}
-.bot-deafened-pill {
-  opacity:.78;
-  margin-left:auto;
-  font-size:11px;
-  filter:grayscale(.2);
-}
-
 /* Rich music command cards. */
 .music-settings-card,
-.music-stats-card {
+.music-stats-card,
+.music-queue-card,
+.music-history-card,
+.music-search-card {
   background:
-    linear-gradient(145deg, color-mix(in srgb, var(--lavender) 8%, transparent), transparent 42%),
-    color-mix(in srgb, var(--paper) 97%, var(--lavender));
-  border:1px solid color-mix(in srgb, var(--line) 78%, var(--lavender));
-  width:min(720px,100%);
-  margin-top:8px;
-  padding:18px;
-  overflow:hidden;
-  box-shadow:0 12px 30px #00000012;
+    linear-gradient(145deg, color-mix(in srgb, var(--lavender) 12%, transparent), transparent 45%),
+    color-mix(in srgb, var(--paper) 96%, var(--lavender));
+  border: 1px solid color-mix(in srgb, var(--line) 78%, var(--lavender));
+  border-radius: 16px;
+  width: min(720px, 100%);
+  margin-top: 10px;
+  padding: 20px;
+  overflow: hidden;
+  box-shadow: 0 14px 34px #00000018;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+.music-settings-card:hover,
+.music-stats-card:hover,
+.music-queue-card:hover,
+.music-history-card:hover,
+.music-search-card:hover {
+  box-shadow: 0 18px 40px #00000022;
+}
+
 .music-settings-card > header,
-.music-stats-card > header {
-  align-items:center;
-  gap:11px;
-  margin-bottom:15px;
-  display:flex;
+.music-stats-card > header,
+.music-queue-card > header,
+.music-history-card > header,
+.music-search-card > header {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  display: flex;
 }
 .music-settings-card header > div,
 .music-stats-card header > div {
-  min-width:0;
-  flex:1;
-  display:grid;
-  gap:2px;
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
 }
 .music-settings-card header strong,
 .music-stats-card header strong {
-  font-size:16px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 .music-settings-card header small,
 .music-stats-card header small {
-  color:var(--muted);
-  font-size:12px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .music-card-icon {
-  color:#fff;
-  background:linear-gradient(145deg,var(--lavender),color-mix(in srgb,var(--lavender) 60%,#ff8bd5));
-  border-radius:12px;
-  place-items:center;
-  width:38px;
-  height:38px;
-  font-size:19px;
-  font-weight:900;
-  display:grid;
-  box-shadow:0 7px 18px color-mix(in srgb,var(--lavender) 30%,transparent);
+  color: #fff;
+  background: linear-gradient(135deg, var(--lavender), color-mix(in srgb, var(--lavender) 60%, #ff79c6));
+  border-radius: 14px;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  font-size: 20px;
+  font-weight: 900;
+  display: grid;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--lavender) 40%, transparent);
 }
 .music-live-pill {
-  color:var(--muted);
-  background:color-mix(in srgb,var(--muted) 10%,transparent);
-  border-radius:999px;
-  padding:5px 9px;
-  font-size:10px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.08em;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .music-live-pill.live {
-  color:var(--mint);
-  background:color-mix(in srgb,var(--mint) 13%,transparent);
+  color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 15%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mint) 25%, transparent);
 }
+.music-live-pill.wrapped-pill {
+  color: #ff9d6c;
+  background: color-mix(in srgb, #ff9d6c 15%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, #ff9d6c 30%, transparent);
+  border: 1px solid color-mix(in srgb, #ff9d6c 30%, transparent);
+}
+
+.music-card-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-top: 14px;
+  margin-bottom: 8px;
+}
+
 .music-toggle-grid {
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px;
-  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  display: grid;
 }
 .music-setting-toggle {
-  color:inherit;
-  background:color-mix(in srgb,var(--panel) 90%,transparent);
-  border:1px solid var(--line);
-  border-radius:12px;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  padding:11px 12px;
-  text-align:left;
-  cursor:pointer;
-  display:flex;
+  color: inherit;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  transition: all 0.18s ease;
 }
 .music-setting-toggle:hover,
 .music-setting-toggle.active {
-  border-color:color-mix(in srgb,var(--lavender) 60%,var(--line));
-  background:color-mix(in srgb,var(--lavender) 12%,var(--panel));
+  border-color: color-mix(in srgb, var(--lavender) 70%, var(--line));
+  background: color-mix(in srgb, var(--lavender) 14%, var(--panel));
 }
 .music-setting-toggle span {
-  display:grid;
-  gap:2px;
+  display: grid;
+  gap: 2px;
 }
 .music-setting-toggle small {
-  color:var(--muted);
-  font-size:11px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .music-setting-toggle i {
-  background:var(--line);
-  border-radius:999px;
-  width:34px;
-  height:19px;
-  position:relative;
-  flex:0 0 auto;
-  transition:.18s ease;
+  background: var(--line);
+  border-radius: 999px;
+  width: 36px;
+  height: 20px;
+  position: relative;
+  flex: 0 0 auto;
+  transition: .18s ease;
 }
 .music-setting-toggle i::after {
-  content:"";
-  background:#fff;
-  border-radius:50%;
-  width:15px;
-  height:15px;
-  position:absolute;
-  left:2px;
-  top:2px;
-  box-shadow:0 1px 4px #0003;
-  transition:.18s ease;
+  content: "";
+  background: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  box-shadow: 0 1px 4px #0003;
+  transition: .18s ease;
 }
 .music-setting-toggle.active i {
-  background:var(--lavender);
+  background: var(--lavender);
 }
 .music-setting-toggle.active i::after {
-  transform:translateX(15px);
+  transform: translateX(16px);
 }
 .music-slider-grid {
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:16px;
-  margin-top:15px;
-  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+  display: grid;
 }
 .music-slider-grid label {
-  display:grid;
-  gap:8px;
-  color:var(--muted);
-  font-size:11px;
-  font-weight:800;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 .music-slider-grid label span {
-  display:flex;
-  justify-content:space-between;
+  display: flex;
+  justify-content: space-between;
 }
 .music-slider-grid b {
-  color:var(--ink);
+  color: var(--ink);
 }
 .music-slider-grid input,
 .appearance-range input {
-  width:100%;
-  accent-color:var(--lavender);
+  width: 100%;
+  accent-color: var(--lavender);
 }
 .music-filter-row {
-  flex-wrap:wrap;
-  gap:6px;
-  margin-top:15px;
-  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  display: flex;
 }
 .music-filter-row button,
 .music-quick-actions button {
-  color:var(--muted);
-  background:color-mix(in srgb,var(--panel) 82%,transparent);
-  border:1px solid var(--line);
-  border-radius:9px;
-  cursor:pointer;
-  padding:7px 10px;
-  font-size:11px;
-  font-weight:800;
-  text-transform:capitalize;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  transition: all 0.15s ease;
 }
 .music-filter-row button:hover,
 .music-filter-row button.active,
 .music-quick-actions button:hover {
-  color:var(--ink);
-  border-color:var(--lavender);
-  background:color-mix(in srgb,var(--lavender) 13%,var(--panel));
+  color: var(--ink);
+  border-color: var(--lavender);
+  background: color-mix(in srgb, var(--lavender) 16%, var(--panel));
+  transform: translateY(-1px);
 }
+
 .music-quick-actions {
-  border-top:1px solid var(--line);
-  flex-wrap:wrap;
-  gap:6px;
-  margin-top:15px;
-  padding-top:12px;
-  display:flex;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  display: flex;
 }
+
+/* Wrapped & Stats Styling */
 .music-stats-card.wrapped {
   background:
-    radial-gradient(circle at 90% 10%,#ffbd6b35,transparent 30%),
-    radial-gradient(circle at 10% 90%,color-mix(in srgb,var(--lavender) 25%,transparent),transparent 36%),
-    color-mix(in srgb,var(--paper) 96%,var(--lavender));
+    radial-gradient(circle at 90% 10%, #ff9d6c35, transparent 35%),
+    radial-gradient(circle at 10% 90%, color-mix(in srgb, var(--lavender) 30%, transparent), transparent 40%),
+    color-mix(in srgb, var(--paper) 95%, var(--lavender));
+  border-color: color-mix(in srgb, #ff9d6c 40%, var(--line));
 }
+
+.music-wrapped-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.music-highlight-badge {
+  background: color-mix(in srgb, var(--lavender) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--lavender) 30%, var(--line));
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.music-highlight-icon {
+  font-size: 18px;
+}
+.music-highlight-badge small {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 800;
+  display: block;
+}
+.music-highlight-badge strong {
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .music-stat-totals {
-  grid-template-columns:repeat(3,1fr);
-  gap:8px;
-  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+  display: grid;
 }
 .music-stat-totals > div {
-  background:color-mix(in srgb,var(--panel) 88%,transparent);
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:11px;
-  display:grid;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 12px;
+  display: grid;
+  gap: 2px;
 }
 .music-stat-totals b {
-  font-size:21px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
 }
 .music-stat-totals span {
-  color:var(--muted);
-  font-size:10px;
-  font-weight:800;
-  text-transform:uppercase;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 .music-chart,
 .music-requesters {
-  margin-top:16px;
+  margin-top: 18px;
 }
 .music-chart h4,
 .music-requesters h4 {
-  margin:0 0 9px;
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-  color:var(--muted);
+  margin: 0 0 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 800;
 }
 .music-chart-row {
-  grid-template-columns:22px minmax(0,1fr) 32px;
-  align-items:center;
-  gap:7px;
-  min-height:32px;
-  display:grid;
+  grid-template-columns: 28px minmax(0, 1fr) 40px auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  display: grid;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.music-chart-row:hover {
+  background: color-mix(in srgb, var(--lavender) 8%, transparent);
 }
 .music-chart-rank {
-  color:var(--muted);
-  font-size:11px;
-  font-weight:900;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
 }
-.music-chart-row > div {
-  min-width:0;
-  display:grid;
-  gap:4px;
+.music-chart-info {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
-.music-chart-row > div > span {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  font-size:12px;
-  font-weight:700;
+.music-chart-info > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
 }
-.music-chart-row i {
-  background:linear-gradient(90deg,var(--lavender),color-mix(in srgb,var(--lavender) 55%,#ff9d6c));
-  border-radius:99px;
-  height:3px;
+.music-chart-info i {
+  background: linear-gradient(90deg, var(--lavender), color-mix(in srgb, var(--lavender) 40%, #ff9d6c));
+  border-radius: 99px;
+  height: 4px;
+  transition: width 0.3s ease;
 }
-.music-chart-row > b {
-  font-size:11px;
-  text-align:right;
+.music-chart-count {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  text-align: right;
+}
+.music-play-track-btn {
+  background: color-mix(in srgb, var(--lavender) 15%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--lavender) 40%, var(--line));
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.music-play-track-btn:hover:not(:disabled) {
+  background: var(--lavender);
+  color: #fff;
+  transform: scale(1.04);
 }
 .music-empty {
-  color:var(--muted);
-  font-size:12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
 }
 .music-requesters {
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .music-requesters h4 {
-  width:100%;
+  width: 100%;
 }
-.music-requesters span {
-  background:color-mix(in srgb,var(--lavender) 11%,var(--panel));
-  border-radius:99px;
-  padding:5px 8px;
-  font-size:11px;
+.music-requester-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.music-requesters span b {
-  margin-left:6px;
+.music-requester-chip {
+  background: color-mix(in srgb, var(--lavender) 12%, var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.music-requester-chip b {
+  margin-left: 6px;
+  color: var(--lavender);
+}
+
+/* Queue, History & Search Card Components */
+.music-now-playing-banner {
+  background: color-mix(in srgb, var(--lavender) 15%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--lavender) 35%, var(--line));
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.music-eq-icon {
+  font-size: 20px;
+}
+.music-np-details {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.music-np-details small {
+  color: var(--lavender);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.music-np-details strong {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-np-details span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.music-queue-item-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.music-remove-btn {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.music-remove-btn:hover {
+  background: color-mix(in srgb, #ff5555 20%, transparent);
+  color: #ff5555;
+  border-color: #ff555566;
+}
+
+.music-search-result-body {
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+.music-search-details {
+  display: grid;
+  gap: 4px;
+}
+.music-search-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+.music-search-artist {
+  color: var(--muted);
+  font-size: 12px;
+}
+.music-search-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.music-action-btn {
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 99px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.music-action-btn:hover {
+  border-color: var(--lavender);
+  background: color-mix(in srgb, var(--lavender) 15%, var(--panel));
 }
 
 /* Expanded appearance settings. */

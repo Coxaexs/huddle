@@ -29,6 +29,9 @@ import { MessageBody } from "./components/message-body";
 import {
   MusicSettingsCard,
   MusicStatsCard,
+  MusicQueueCard,
+  MusicHistoryCard,
+  MusicSearchCard,
   type MusicSettings,
 } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
@@ -97,11 +100,17 @@ interface Message {
     artist_diversity?: boolean;
     vibe_match?: boolean;
     wrapped?: boolean;
+    label?: string;
     plays?: number;
     unique?: number;
     hours?: number;
     topSongs?: Array<[string, number]>;
     topRequesters?: Array<[string, number]>;
+    topArtist?: string | null;
+    topGenre?: string | null;
+    peakHour?: string | null;
+    streakDays?: number;
+    personality?: string | null;
   };
 }
 
@@ -1812,6 +1821,54 @@ export function ChatShell() {
                       hours={message.payload.hours}
                       topSongs={message.payload.topSongs}
                       topRequesters={message.payload.topRequesters}
+                      topArtist={message.payload.topArtist}
+                      topGenre={message.payload.topGenre}
+                      peakHour={message.payload.peakHour}
+                      streakDays={message.payload.streakDays}
+                      personality={message.payload.personality}
+                      disabled={!message.payload.voiceChannelId}
+                      onCommand={(command) =>
+                        runMusicUiCommand(
+                          command,
+                          message.payload?.voiceChannelId,
+                        )
+                      }
+                    />
+                  ) : message.kind === "music-queue" && message.payload ? (
+                    <MusicQueueCard
+                      currentTrack={message.payload.currentTrack}
+                      queue={message.payload.queue}
+                      totalTracks={message.payload.totalTracks}
+                      disabled={!message.payload.voiceChannelId}
+                      onCommand={(command) =>
+                        runMusicUiCommand(
+                          command,
+                          message.payload?.voiceChannelId,
+                        )
+                      }
+                    />
+                  ) : message.kind === "music-history" && message.payload ? (
+                    <MusicHistoryCard
+                      history={message.payload.history}
+                      disabled={!message.payload.voiceChannelId}
+                      onCommand={(command) =>
+                        runMusicUiCommand(
+                          command,
+                          message.payload?.voiceChannelId,
+                        )
+                      }
+                    />
+                  ) : message.kind === "music-search" && message.payload ? (
+                    <MusicSearchCard
+                      query={message.payload.query}
+                      track={message.payload.track}
+                      disabled={!message.payload.voiceChannelId}
+                      onCommand={(command) =>
+                        runMusicUiCommand(
+                          command,
+                          message.payload?.voiceChannelId,
+                        )
+                      }
                     />
                   ) : (
                     <MessageBody text={message.text} />
