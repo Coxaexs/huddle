@@ -4078,3 +4078,7 @@ button {
   text-align:left;
 }
 .ptt-key-button:hover { border-color:var(--lavender); }
+
+.mention-role-dot {
+  width:14px; height:14px; border-radius:50%; display:inline-block; flex:0 0 auto;
+}
