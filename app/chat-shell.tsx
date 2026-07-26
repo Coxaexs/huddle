@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import type { PlayerState } from "@/lib/protocol";
-import type { PublicChannel, PublicServer } from "@/lib/servers";
+import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import {
   ALL_PERMISSIONS,
   hasPermission,
@@ -137,6 +137,11 @@ const DM_HOME = "@me";
 
 /** The one-tap reactions shown on message hover. */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮"];
+
+/** An @-autocomplete option: a member or a role. */
+type MentionOption =
+  | { kind: "user"; member: Member }
+  | { kind: "role"; role: PublicRole };
 
 function Icon({
   children,
@@ -1248,23 +1253,30 @@ export function ChatShell() {
     const match = draft.match(/(?:^|\s)@([a-zA-Z0-9._-]*)$/);
     return match ? match[1].toLowerCase() : null;
   }, [draft]);
-  const mentionMatches = useMemo(() => {
+  const mentionMatches = useMemo<MentionOption[]>(() => {
     if (mentionQuery === null) return [];
-    return members
+    const roleOptions: MentionOption[] = (activeServer?.roles || [])
+      .filter((role) => role.name.toLowerCase().startsWith(mentionQuery))
+      .map((role) => ({ kind: "role", role }));
+    const memberOptions: MentionOption[] = members
       .filter(
         (member) =>
           member.username.toLowerCase().startsWith(mentionQuery) ||
           member.displayName.toLowerCase().startsWith(mentionQuery),
       )
-      .slice(0, 8);
-  }, [mentionQuery, members]);
+      .map((member) => ({ kind: "user", member }));
+    // Roles first (they're fewer and often what you want), then people.
+    return [...roleOptions, ...memberOptions].slice(0, 8);
+  }, [mentionQuery, members, activeServer]);
   const mentionActive = mentionQuery !== null && mentionMatches.length > 0;
 
   useEffect(() => setSlashIndex(0), [draft]);
 
-  function pickMention(member: Member) {
+  function pickMention(option: MentionOption) {
+    const handle =
+      option.kind === "user" ? option.member.username : option.role.name;
     setDraft((current) =>
-      current.replace(/@([a-zA-Z0-9._-]*)$/, `@${member.username} `),
+      current.replace(/@([a-zA-Z0-9._-]*)$/, `@${handle} `),
     );
     composerRef.current?.focus();
   }
@@ -2122,154 +2134,7 @@ export function ChatShell() {
               );
             })}
 
-            <div className="section-label bot-section-label">
-              <span>APPS &amp; BOTS</span>
-            </div>
-
-            <button
-              className="bot-app"
-              onContextMenu={(event) => openBotMenu(event, "music")}
-              onClick={() => {
-                if (musicDashboardUrl) {
-                  window.open(musicDashboardUrl, "_blank", "noopener,noreferrer");
-                } else {
-                  setDraft("/play ");
-                  composerRef.current?.focus();
-                }
-                setMobileNav(false);
-              }}
-            >
-              <span className="bot-app-icon">♫</span>
-              <span className="bot-app-copy">
-                <strong>Music + Watch</strong>
-                <small>
-                  {musicWatchOnline === null
-                    ? "Checking server…"
-                    : musicWatchOnline
-                      ? "Online · /play in a voice room"
-                      : "Offline · needs your server"}
-                </small>
-              </span>
-              <i className={musicWatchOnline ? "online" : ""} />
-            </button>
-
-            <button
-              className="bot-app"
-              onContextMenu={(event) => openBotMenu(event, "dnd")}
-              onClick={() => {
-                if (dndUrl) {
-                  window.open(dndUrl, "_blank", "noopener,noreferrer");
-                } else {
-                  setDraft("/dnd");
-                }
-                setMobileNav(false);
-              }}
-            >
-              <span className="bot-app-icon">⚔</span>
-              <span className="bot-app-copy">
-                <strong>D&amp;D Bot</strong>
-                <small>
-                  {dndOnline === null
-                    ? "Checking server…"
-                    : dndOnline
-                      ? "Online · /spell /monster /roll"
-                      : "Offline"}
-                </small>
-              </span>
-              <i className={dndOnline ? "online" : ""} />
-            </button>
           </nav>
-        )}
-
-        {!inDmHome && (
-          <div className="voice-card">
-            <div className="voice-card-top">
-              <span className={`voice-pulse ${voice.channelId ? "connected" : ""}`} />
-              <div>
-                <strong>
-                  {voice.channelId ? "Voice connected" : "Voice is quiet"}
-                </strong>
-                <span>
-                  {currentVoiceChannel
-                    ? `${currentVoiceChannel.name} · ${voiceParticipants.length} here`
-                    : "Pick a room to join"}
-                </span>
-              </div>
-            </div>
-            {voice.channelId ? (
-              <div className="voice-card-controls">
-                <button
-                  className={`mic-control ${voice.muted ? "muted" : ""}`}
-                  onClick={voice.toggleMute}
-                  disabled={voice.forcedMute}
-                  title={voice.forcedMute ? "You are muted for everyone" : undefined}
-                >
-                  {voice.forcedMute
-                    ? "Server muted"
-                    : voice.muted
-                      ? "Unmute"
-                      : "Mute"}
-                </button>
-                <button
-                  className={`mic-control ${voice.deafened ? "muted" : ""}`}
-                  onClick={voice.toggleDeafen}
-                >
-                  {voice.deafened ? "Undeafen" : "Deafen"}
-                </button>
-                <div className="screen-share-controls">
-                  <select
-                    aria-label="Screen share quality"
-                    value={voice.screenQuality}
-                    disabled={voice.screenSharing}
-                    onChange={(event) =>
-                      voice.setScreenQuality(
-                        event.target.value as ScreenShareQuality,
-                      )
-                    }
-                  >
-                    <option value="720p30">720p · 30 FPS</option>
-                    <option value="1080p30">1080p · 30 FPS</option>
-                    <option value="1080p60">1080p · 60 FPS</option>
-                  </select>
-                  <button
-                    className={voice.screenSharing ? "sharing" : ""}
-                    onClick={() =>
-                      voice.screenSharing
-                        ? voice.stopScreenShare()
-                        : void voice.startScreenShare()
-                    }
-                  >
-                    {voice.screenSharing ? "Stop sharing" : "Share screen"}
-                  </button>
-                  <button
-                    className={voice.cameraOn ? "sharing" : ""}
-                    onClick={() =>
-                      voice.cameraOn
-                        ? voice.stopCamera()
-                        : void voice.startCamera()
-                    }
-                  >
-                    {voice.cameraOn ? "Turn camera off" : "Turn camera on"}
-                  </button>
-                </div>
-                <button className="leave-button" onClick={voice.leave}>
-                  Leave
-                </button>
-              </div>
-            ) : (
-              <button
-                className="join-button"
-                disabled={!voiceChannels.length}
-                onClick={() => {
-                  if (!voiceChannels[0]) return;
-                  player.prime();
-                  void voice.join(voiceChannels[0].id);
-                }}
-              >
-                Join {voiceChannels[0]?.name || "voice"}
-              </button>
-            )}
-          </div>
         )}
       </aside>
 
@@ -2836,28 +2701,50 @@ export function ChatShell() {
 
           {mentionActive && (
             <div className="mention-menu">
-              {mentionMatches.map((member, index) => (
-                <button
-                  type="button"
-                  key={member.id}
-                  className={`mention-item ${
-                    index === slashIndex % mentionMatches.length ? "active" : ""
-                  }`}
-                  onMouseEnter={() => setSlashIndex(index)}
-                  onClick={() => pickMention(member)}
-                >
-                  <Avatar
-                    className="tiny-avatar"
-                    avatar={member.avatar}
-                    avatarUrl={member.avatarUrl}
-                    color={member.color}
-                  />
-                  <span style={{ color: roleColorFor(member) || undefined }}>
-                    {member.displayName}
-                  </span>
-                  <small style={{ color: "var(--muted)" }}>@{member.username}</small>
-                </button>
-              ))}
+              {mentionMatches.map((option, index) => {
+                const active = index === slashIndex % mentionMatches.length;
+                if (option.kind === "role") {
+                  return (
+                    <button
+                      type="button"
+                      key={`role:${option.role.id}`}
+                      className={`mention-item ${active ? "active" : ""}`}
+                      onMouseEnter={() => setSlashIndex(index)}
+                      onClick={() => pickMention(option)}
+                    >
+                      <span
+                        className="mention-role-dot"
+                        style={{ background: option.role.color }}
+                      />
+                      <span style={{ color: option.role.color }}>
+                        {option.role.name}
+                      </span>
+                      <small style={{ color: "var(--muted)" }}>role</small>
+                    </button>
+                  );
+                }
+                const member = option.member;
+                return (
+                  <button
+                    type="button"
+                    key={`user:${member.id}`}
+                    className={`mention-item ${active ? "active" : ""}`}
+                    onMouseEnter={() => setSlashIndex(index)}
+                    onClick={() => pickMention(option)}
+                  >
+                    <Avatar
+                      className="tiny-avatar"
+                      avatar={member.avatar}
+                      avatarUrl={member.avatarUrl}
+                      color={member.color}
+                    />
+                    <span style={{ color: roleColorFor(member) || undefined }}>
+                      {member.displayName}
+                    </span>
+                    <small style={{ color: "var(--muted)" }}>@{member.username}</small>
+                  </button>
+                );
+              })}
             </div>
           )}
 

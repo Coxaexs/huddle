@@ -293,6 +293,7 @@ export async function POST(request: Request) {
   let channelId = body.channelId?.slice(0, 64) || null;
   let channelName = body.channel?.slice(0, 64) || "general";
   let audience: string[] | null = null;
+  let serverId: string | null = null;
   if (channelId) {
     const channel = await db
       .prepare(
@@ -303,6 +304,7 @@ export async function POST(request: Request) {
     if (!channel) {
       return Response.json({ error: "That channel is gone." }, { status: 404 });
     }
+    serverId = channel.server_id;
     if (channel.kind === "dm") {
       if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
       audience = await channelAudience(db, channelId);
@@ -389,19 +391,34 @@ export async function POST(request: Request) {
   const message = publicMessage(stored);
 
   // Resolve @mentions to real members and record them (drives unread badges).
+  // A handle can be a username or a role name; a role expands to its members.
   const handles = content ? parseMentionHandles(content) : [];
   if (handles.length && channelId) {
-    const rows = await db
-      .prepare(
-        `SELECT id FROM users WHERE username_lower IN (${handles
-          .map(() => "?")
-          .join(",")})`,
-      )
-      .bind(...handles)
-      .all();
-    const mentionedIds = ((rows.results || []) as Array<{ id: string }>)
-      .map((r) => r.id)
-      .filter((id) => id !== user.id);
+    const placeholders = handles.map(() => "?").join(",");
+    const [userRows, roleRows] = await Promise.all([
+      db
+        .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
+        .bind(...handles)
+        .all(),
+      serverId
+        ? db
+            .prepare(
+              `SELECT mr.user_id AS id
+                 FROM roles r
+                 JOIN member_roles mr ON mr.role_id = r.id
+                WHERE r.server_id = ? AND LOWER(r.name) IN (${placeholders})`,
+            )
+            .bind(serverId, ...handles)
+            .all()
+        : Promise.resolve({ results: [] as Array<{ id: string }> }),
+    ]);
+    const mentionedIds = [
+      ...new Set(
+        [...(userRows.results || []), ...(roleRows.results || [])].map(
+          (r) => (r as { id: string }).id,
+        ),
+      ),
+    ].filter((id) => id !== user.id);
     if (mentionedIds.length) {
       await db.batch(
         mentionedIds.map((id) =>
