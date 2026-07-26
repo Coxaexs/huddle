@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>Choose what to share</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+        background: #1b1b21;
+        color: #f1eff7;
+      }
+      header {
+        padding: 16px 18px 8px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .tabs { display: flex; gap: 6px; padding: 0 18px 10px; }
+      .tabs button {
+        background: none; border: 0; color: #a8a5b1; font-weight: 600;
+        padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+      }
+      .tabs button.active { background: #2a2a33; color: #f1eff7; }
+      .grid {
+        display: grid; gap: 12px; padding: 4px 18px 84px;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      }
+      .cell {
+        background: #24242c; border: 2px solid transparent; border-radius: 12px;
+        overflow: hidden; cursor: pointer; padding: 0; text-align: left;
+        transition: border-color .12s ease, transform .12s ease;
+      }
+      .cell:hover { border-color: #a995ff; transform: translateY(-2px); }
+      .cell img.thumb { width: 100%; height: 118px; object-fit: cover; background: #000; display: block; }
+      .cap { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+      .cap img { width: 18px; height: 18px; border-radius: 4px; }
+      .cap span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      footer {
+        position: fixed; bottom: 0; left: 0; right: 0; padding: 12px 18px;
+        background: #1b1b21; border-top: 1px solid #33323b; text-align: right;
+      }
+      footer button {
+        background: #33323b; color: #f1eff7; border: 0; border-radius: 10px;
+        padding: 9px 18px; cursor: pointer; font-weight: 600;
+      }
+      .empty { padding: 30px 18px; color: #a8a5b1; }
+    </style>
+  </head>
+  <body>
+    <header>Choose what to share</header>
+    <div class="tabs">
+      <button id="tab-screens" class="active">Screens</button>
+      <button id="tab-windows">Windows</button>
+    </div>
+    <div class="grid" id="grid"><p class="empty">Loading sources…</p></div>
+    <footer><button id="cancel">Cancel</button></footer>
+
+    <script>
+      let all = [];
+      let tab = "screens";
+      const grid = document.getElementById("grid");
+
+      function render() {
+        const items = all.filter((s) => (tab === "screens" ? s.isScreen : !s.isScreen));
+        if (!items.length) {
+          grid.innerHTML = '<p class="empty">Nothing to show here.</p>';
+          return;
+        }
+        grid.innerHTML = "";
+        for (const s of items) {
+          const cell = document.createElement("button");
+          cell.className = "cell";
+          const icon = s.appIcon ? '<img src="' + s.appIcon + '" />' : "";
+          cell.innerHTML =
+            '<img class="thumb" src="' + s.thumbnail + '" />' +
+            '<div class="cap">' + icon + "<span>" + escapeHtml(s.name) + "</span></div>";
+          cell.addEventListener("click", () => window.picker.choose(s.id));
+          grid.appendChild(cell);
+        }
+      }
+
+      function escapeHtml(value) {
+        const div = document.createElement("div");
+        div.textContent = value;
+        return div.innerHTML;
+      }
+
+      function setTab(next) {
+        tab = next;
+        document.getElementById("tab-screens").classList.toggle("active", next === "screens");
+        document.getElementById("tab-windows").classList.toggle("active", next === "windows");
+        render();
+      }
+
+      document.getElementById("tab-screens").addEventListener("click", () => setTab("screens"));
+      document.getElementById("tab-windows").addEventListener("click", () => setTab("windows"));
+      document.getElementById("cancel").addEventListener("click", () => window.close());
+
+      window.picker.onSources((sources) => {
+        all = sources;
+        render();
+      });
+    </script>
+  </body>
+</html>
