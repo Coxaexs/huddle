@@ -139,6 +139,31 @@ export type ServerEvent =
       pinned: boolean;
       serverNow: number;
     }
+  | {
+      t: "message-edited";
+      channelId: string;
+      id: string;
+      content: string;
+      editedAt: string;
+      serverNow: number;
+    }
+  | {
+      t: "reaction";
+      channelId: string;
+      messageId: string;
+      emoji: string;
+      userId: string;
+      added: boolean;
+      serverNow: number;
+    }
+  | {
+      t: "soundboard";
+      channelId: string;
+      url: string;
+      name: string;
+      by: string;
+      serverNow: number;
+    }
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
   | { t: "notice"; text: string; serverNow: number }
   | { t: "pong"; serverNow: number };

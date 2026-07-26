@@ -5,12 +5,16 @@ const {
   BrowserWindow,
   session,
   desktopCapturer,
+  globalShortcut,
   ipcMain,
   Menu,
   shell,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+
+/** Global hotkey that toggles your mic even when Huddle isn't focused. */
+const MUTE_HOTKEY = "CommandOrControl+Shift+M";
 
 /**
  * Huddle desktop shell.
@@ -59,6 +63,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
+      preload: path.join(__dirname, "notify-preload.js"),
     },
   });
 
@@ -214,10 +219,24 @@ if (!app.requestSingleInstanceLock()) {
     configureSession();
     buildMenu();
     createWindow();
+
+    // Unread count → dock/taskbar badge.
+    ipcMain.on("set-badge", (_event, count) => {
+      const n = Number(count) || 0;
+      if (typeof app.setBadgeCount === "function") app.setBadgeCount(n);
+    });
+
+    // Global mute toggle, relayed to the web app.
+    globalShortcut.register(MUTE_HOTKEY, () => {
+      mainWindow?.webContents.send("hotkey", "toggle-mute");
+    });
+
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
+
+  app.on("will-quit", () => globalShortcut.unregisterAll());
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();

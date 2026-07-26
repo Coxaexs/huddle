@@ -25,6 +25,20 @@ interface HubHandlers {
   onStructureChange?: () => void;
   onMessageDeleted?: (channelId: string, id: string) => void;
   onMessagePinned?: (channelId: string, id: string, pinned: boolean) => void;
+  onMessageEdited?: (
+    channelId: string,
+    id: string,
+    content: string,
+    editedAt: string,
+  ) => void;
+  onReaction?: (
+    channelId: string,
+    messageId: string,
+    emoji: string,
+    userId: string,
+    added: boolean,
+  ) => void;
+  onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
 }
 
@@ -147,6 +161,31 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.channelId,
               payload.id,
               payload.pinned,
+            );
+            break;
+          case "message-edited":
+            handlersRef.current.onMessageEdited?.(
+              payload.channelId,
+              payload.id,
+              payload.content,
+              payload.editedAt,
+            );
+            break;
+          case "reaction":
+            handlersRef.current.onReaction?.(
+              payload.channelId,
+              payload.messageId,
+              payload.emoji,
+              payload.userId,
+              payload.added,
+            );
+            break;
+          case "soundboard":
+            handlersRef.current.onSoundboard?.(
+              payload.channelId,
+              payload.url,
+              payload.name,
+              payload.by,
             );
             break;
           case "force-mute":

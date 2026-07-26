@@ -83,6 +83,11 @@ interface Message {
   audio?: string;
   kind?: string;
   pinned?: boolean;
+  editedAt?: string;
+  replyTo?: string;
+  replyPreview?: { author: string; text: string } | null;
+  reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
+  mentions?: string[];
   payload?: {
     voiceChannelId?: string;
     trackId?: string;
@@ -130,6 +135,9 @@ interface DmSummary {
 /** The rail slot for direct messages, standing in for a server id. */
 const DM_HOME = "@me";
 
+/** The one-tap reactions shown on message hover. */
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮"];
+
 function Icon({
   children,
   label,
@@ -152,6 +160,56 @@ function Icon({
       {children}
     </button>
   );
+}
+
+/** Fires a desktop/web notification, unless the user turned them off. */
+function showNotification(title: string, body: string): void {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    if (window.localStorage.getItem("huddle-notify") === "off") return;
+    const notification = new Notification(title, { body });
+    notification.onclick = () => window.focus();
+  } catch {
+    // Notifications are best-effort.
+  }
+}
+
+/** Plays a soundboard clip locally (everyone in the room hears their own copy). */
+function playSound(url: string): void {
+  try {
+    const audio = new Audio(url);
+    audio.volume = 0.7;
+    void audio.play().catch(() => undefined);
+  } catch {
+    // Non-fatal: a blocked autoplay just means no sound this time.
+  }
+}
+
+type ReactionList = Array<{ emoji: string; count: number; mine: boolean }>;
+
+/** Folds a single reaction toggle into a message's aggregated reaction list. */
+function applyReaction(
+  reactions: ReactionList | undefined,
+  emoji: string,
+  isMine: boolean,
+  added: boolean,
+): ReactionList {
+  const list = (reactions || []).map((r) => ({ ...r }));
+  const entry = list.find((r) => r.emoji === emoji);
+  if (added) {
+    if (entry) {
+      entry.count += 1;
+      if (isMine) entry.mine = true;
+    } else {
+      list.push({ emoji, count: 1, mine: isMine });
+    }
+  } else if (entry) {
+    entry.count -= 1;
+    if (isMine) entry.mine = false;
+    if (entry.count <= 0) return list.filter((r) => r.emoji !== emoji);
+  }
+  return list;
 }
 
 /** Audio-taper curve: makes the whole 0–100 slider feel evenly useful. */
@@ -185,10 +243,27 @@ export function ChatShell() {
     }
   });
   const [messages, setMessages] = useState<Message[]>([]);
+  const [unread, setUnread] = useState<
+    Record<string, { unread: boolean; mentions: number }>
+  >({});
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
 
   const [draft, setDraft] = useState("");
+  const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    Array<{
+      id: string;
+      channelId: string;
+      channelName: string;
+      author: string;
+      snippet: string;
+    }>
+  >([]);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [notice, setNotice] = useState("");
@@ -270,6 +345,29 @@ export function ChatShell() {
     setVoicePrefs(data.prefs || {});
   }, []);
 
+  const loadUnread = useCallback(async () => {
+    const data = await apiFetch<{
+      channels: Record<string, { unread: boolean; mentions: number }>;
+    }>("/api/channels/reads").catch(() => ({ channels: {} }));
+    setUnread(data.channels || {});
+  }, []);
+
+  /** Clears a channel's unread flag locally and records it read on the server. */
+  const markChannelRead = useCallback((channelId: string) => {
+    setUnread((current) => {
+      if (!current[channelId]?.unread && !current[channelId]?.mentions) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[channelId];
+      return next;
+    });
+    void apiFetch("/api/channels/reads", {
+      method: "POST",
+      body: JSON.stringify({ channelId }),
+    }).catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     apiFetch<{ user: PublicUser | null; bootstrap: boolean }>(
       "/api/auth/session",
@@ -288,7 +386,13 @@ export function ChatShell() {
     void loadMembers().catch(() => undefined);
     void loadDms().catch(() => undefined);
     void loadPrefs().catch(() => undefined);
-  }, [user, loadServers, loadMembers, loadDms, loadPrefs]);
+    void loadUnread().catch(() => undefined);
+  }, [user, loadServers, loadMembers, loadDms, loadPrefs, loadUnread]);
+
+  // Opening a channel marks it read.
+  useEffect(() => {
+    if (activeChannelId) markChannelRead(activeChannelId);
+  }, [activeChannelId, markChannelRead]);
 
   useEffect(() => {
     if (!servers.length) return;
@@ -427,25 +531,41 @@ export function ChatShell() {
 
   const handleIncomingMessage = useCallback(
     (channelId: string, message: unknown) => {
+      const incoming = message as Message;
       if (channelId !== activeChannelRef.current) {
         // A DM you are not looking at still deserves to bubble up the list.
         void loadDms().catch(() => undefined);
+        const mentioned = Boolean(user && incoming.mentions?.includes(user.id));
+        setUnread((current) => ({
+          ...current,
+          [channelId]: {
+            unread: true,
+            mentions: (current[channelId]?.mentions || 0) + (mentioned ? 1 : 0),
+          },
+        }));
+        if (mentioned) {
+          showNotification(
+            `${incoming.author} mentioned you`,
+            incoming.text.slice(0, 140),
+          );
+        }
         return;
       }
-      const incoming = message as Message;
       setMessages((current) =>
         current.some((existing) => existing.id === incoming.id)
           ? current
           : [...current, incoming],
       );
     },
-    [loadDms],
+    [loadDms, user],
   );
 
   const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => {});
   const forcedMuteRef = useRef<(userId: string, muted: boolean) => void>(
     () => {},
   );
+  /** Current connected voice channel, for the soundboard event handler. */
+  const voiceChannelRef = useRef<string | null>(null);
 
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
@@ -468,6 +588,28 @@ export function ChatShell() {
       );
       void refreshPins(channelId);
     },
+    onMessageEdited: (channelId, id, content, editedAt) => {
+      if (channelId !== activeChannelRef.current) return;
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === id ? { ...message, text: content, editedAt } : message,
+        ),
+      );
+    },
+    onReaction: (channelId, messageId, emoji, userId, added) => {
+      if (channelId !== activeChannelRef.current) return;
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, reactions: applyReaction(message.reactions, emoji, userId === user?.id, added) }
+            : message,
+        ),
+      );
+    },
+    onSoundboard: (channelId, url) => {
+      if (channelId !== voiceChannelRef.current) return;
+      playSound(url);
+    },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
   });
 
@@ -477,6 +619,7 @@ export function ChatShell() {
     send: hub.send,
   });
   voiceSignalRef.current = voice.handleSignal;
+  voiceChannelRef.current = voice.channelId;
   forcedMuteRef.current = (userId, muted) => {
     if (user && userId === user.id) voice.setForcedMute(muted);
   };
@@ -490,6 +633,27 @@ export function ChatShell() {
   useEffect(() => {
     if (!voice.channelId) setStageChannelId(null);
   }, [voice.channelId]);
+
+  // Desktop shell: the global mute hotkey arrives as a DOM event.
+  useEffect(() => {
+    const onHotkey = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      if (action === "toggle-mute" && voice.channelId) voice.toggleMute();
+    };
+    window.addEventListener("huddle-hotkey", onHotkey);
+    return () => window.removeEventListener("huddle-hotkey", onHotkey);
+  }, [voice.channelId, voice.toggleMute]);
+
+  // Desktop shell: reflect the unread mention count on the dock/taskbar badge.
+  useEffect(() => {
+    const total = Object.values(unread).reduce(
+      (sum, entry) => sum + (entry.mentions || 0),
+      0,
+    );
+    (
+      window as unknown as { huddle?: { setBadge?: (n: number) => void } }
+    ).huddle?.setBadge?.(total);
+  }, [unread]);
 
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
@@ -948,14 +1112,95 @@ export function ChatShell() {
 
   async function sendText(text: string, attachmentKey?: string) {
     if (!activeChannelId) return;
+    const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
+    setReplyTarget(null);
     await apiFetch("/api/messages", {
       method: "POST",
       body: JSON.stringify({
         channelId: activeChannelId,
         content: text,
         attachmentKey,
+        replyTo,
       }),
     });
+  }
+
+  async function toggleReaction(messageId: string | number, emoji: string) {
+    const id = String(messageId);
+    // Optimistic: flip locally, then persist. The socket echo reconciles.
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              reactions: applyReaction(
+                message.reactions,
+                emoji,
+                true,
+                !message.reactions?.find((r) => r.emoji === emoji)?.mine,
+              ),
+            }
+          : message,
+      ),
+    );
+    await apiFetch(`/api/messages/${id}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    }).catch(() => undefined);
+  }
+
+  function beginEdit(message: Message) {
+    setEditingId(message.id);
+    setEditDraft(message.text);
+  }
+
+  async function saveEdit(message: Message) {
+    const content = editDraft.trim();
+    setEditingId(null);
+    if (!content || content === message.text) return;
+    setMessages((current) =>
+      current.map((m) =>
+        m.id === message.id
+          ? { ...m, text: content, editedAt: new Date().toISOString() }
+          : m,
+      ),
+    );
+    await apiFetch(`/api/messages/${message.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }).catch((error: Error) => setNotice(error.message));
+  }
+
+  async function runSearch(query: string) {
+    setSearchQuery(query);
+    if (query.trim().length < 2 || !activeServerId || inDmHome) {
+      setSearchResults([]);
+      return;
+    }
+    const data = await apiFetch<{
+      results: Array<{
+        id: string;
+        channelId: string;
+        channelName: string;
+        author: string;
+        snippet: string;
+      }>;
+    }>(
+      `/api/messages/search?serverId=${encodeURIComponent(activeServerId)}&q=${encodeURIComponent(query)}`,
+    ).catch(() => ({ results: [] }));
+    setSearchResults(data.results);
+  }
+
+  function jumpToMessage(channelId: string, messageId: string) {
+    setSearchOpen(false);
+    setStageChannelId(null);
+    setActiveChannelId(channelId);
+    // Scroll to the message once it's rendered.
+    window.setTimeout(() => {
+      document
+        .getElementById(`msg-${messageId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
   }
 
   async function sendMessage(event?: FormEvent) {
@@ -998,9 +1243,52 @@ export function ChatShell() {
   );
   const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
 
+  // @-mention autocomplete: matches an @handle being typed at the end of the draft.
+  const mentionQuery = useMemo(() => {
+    const match = draft.match(/(?:^|\s)@([a-zA-Z0-9._-]*)$/);
+    return match ? match[1].toLowerCase() : null;
+  }, [draft]);
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return members
+      .filter(
+        (member) =>
+          member.username.toLowerCase().startsWith(mentionQuery) ||
+          member.displayName.toLowerCase().startsWith(mentionQuery),
+      )
+      .slice(0, 8);
+  }, [mentionQuery, members]);
+  const mentionActive = mentionQuery !== null && mentionMatches.length > 0;
+
   useEffect(() => setSlashIndex(0), [draft]);
 
+  function pickMention(member: Member) {
+    setDraft((current) =>
+      current.replace(/@([a-zA-Z0-9._-]*)$/, `@${member.username} `),
+    );
+    composerRef.current?.focus();
+  }
+
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionActive) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSlashIndex((index) => (index + 1) % mentionMatches.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSlashIndex(
+          (index) => (index - 1 + mentionMatches.length) % mentionMatches.length,
+        );
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        pickMention(mentionMatches[slashIndex % mentionMatches.length]);
+        return;
+      }
+    }
     if (slashActive) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1527,7 +1815,9 @@ export function ChatShell() {
     return (
       <button
         key={channel.id}
-        className={`channel ${activeChannelId === channel.id && !stageChannelId ? "selected" : ""}`}
+        className={`channel ${activeChannelId === channel.id && !stageChannelId ? "selected" : ""} ${
+          unread[channel.id]?.unread ? "has-unread" : ""
+        }`}
         {...channelDragProps(channel)}
         onClick={() => {
           setActiveChannelId(channel.id);
@@ -1541,6 +1831,9 @@ export function ChatShell() {
       >
         <span className="channel-hash">#</span>
         <span>{channel.name}</span>
+        {(unread[channel.id]?.mentions ?? 0) > 0 && (
+          <span className="mention-badge">{unread[channel.id].mentions}</span>
+        )}
         {canManageChannels && (
           <span
             className="channel-delete"
@@ -2024,6 +2317,15 @@ export function ChatShell() {
             </span>
           </div>
           <div className="header-actions">
+            {!inDmHome && (
+              <Icon
+                label="Search messages"
+                active={searchOpen}
+                onClick={() => setSearchOpen((open) => !open)}
+              >
+                🔍
+              </Icon>
+            )}
             <Icon
               label="Pinned messages"
               active={pinsOpen}
@@ -2056,9 +2358,55 @@ export function ChatShell() {
             participants={voiceParticipants}
             connectionId={hub.connectionId}
             voice={voice}
+            serverId={stageChannel.serverId}
+            canManageSounds={canManageChannels}
           />
         ) : (
           <>
+        {searchOpen && (
+          <div className="search-panel">
+            <div className="search-head">
+              <input
+                autoFocus
+                value={searchQuery}
+                placeholder={`Search #${channelTitle}'s server…`}
+                onChange={(event) => void runSearch(event.target.value)}
+                aria-label="Search messages"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                aria-label="Close search"
+              >
+                ×
+              </button>
+            </div>
+            <div className="search-results">
+              {searchResults.map((result) => (
+                <button
+                  type="button"
+                  key={result.id}
+                  className="search-result"
+                  onClick={() => jumpToMessage(result.channelId, result.id)}
+                >
+                  <span className="search-result-meta">
+                    <span className="channel-hash">#</span>
+                    {result.channelName} · <strong>{result.author}</strong>
+                  </span>
+                  <span className="search-result-snippet">{result.snippet}</span>
+                </button>
+              ))}
+              {searchQuery.length >= 2 && !searchResults.length && (
+                <p className="pins-empty">Nothing matched that.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {pinsOpen && (
           <div className="pins-panel">
             <div className="pins-head">
@@ -2107,7 +2455,10 @@ export function ChatShell() {
               canModerate;
             return (
               <article
-                className={`message ${message.pinned ? "is-pinned" : ""}`}
+                id={`msg-${message.id}`}
+                className={`message ${message.pinned ? "is-pinned" : ""} ${
+                  user && message.mentions?.includes(user.id) ? "mentions-me" : ""
+                }`}
                 key={message.id}
                 onContextMenu={(event) => {
                   if (message.bot) {
@@ -2133,6 +2484,23 @@ export function ChatShell() {
                   }}
                 />
                 <div className="message-body">
+                  {message.replyTo && (
+                    <button
+                      type="button"
+                      className="reply-preview"
+                      onClick={() =>
+                        document
+                          .getElementById(`msg-${message.replyTo}`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                      }
+                    >
+                      <span className="reply-arrow">↩</span>
+                      <strong>{message.replyPreview?.author || "someone"}</strong>
+                      <span className="reply-snippet">
+                        {message.replyPreview?.text || "message"}
+                      </span>
+                    </button>
+                  )}
                   <div className="message-meta">
                     <strong
                       style={{ color: roleColorFor(author) || undefined }}
@@ -2147,6 +2515,11 @@ export function ChatShell() {
                     </strong>
                     {message.bot && <span className="bot-tag">BOT</span>}
                     <time>{message.time}</time>
+                    {message.editedAt && (
+                      <span className="edited-tag" title="Edited">
+                        (edited)
+                      </span>
+                    )}
                     {message.pinned && (
                       <span className="pin-tag" title="Pinned">
                         📌
@@ -2241,8 +2614,26 @@ export function ChatShell() {
                         )
                       }
                     />
+                  ) : editingId === message.id ? (
+                    <div className="message-edit">
+                      <textarea
+                        value={editDraft}
+                        autoFocus
+                        onChange={(event) => setEditDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setEditingId(null);
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            void saveEdit(message);
+                          }
+                        }}
+                      />
+                      <div className="message-edit-hint">
+                        Enter to save · Esc to cancel
+                      </div>
+                    </div>
                   ) : (
-                    <MessageBody text={message.text} />
+                    <MessageBody text={message.text} selfHandle={user.username} />
                   )}
 
                   {message.kind === "nowplaying" &&
@@ -2339,9 +2730,58 @@ export function ChatShell() {
                       <b aria-hidden="true">↗</b>
                     </a>
                   )}
+
+                  {message.reactions && message.reactions.length > 0 && (
+                    <div className="reactions">
+                      {message.reactions.map((reaction) => (
+                        <button
+                          type="button"
+                          key={reaction.emoji}
+                          className={`reaction ${reaction.mine ? "mine" : ""}`}
+                          onClick={() =>
+                            void toggleReaction(message.id, reaction.emoji)
+                          }
+                        >
+                          <span>{reaction.emoji}</span>
+                          <b>{reaction.count}</b>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="message-actions">
+                  <div className="quick-reactions">
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        title={`React ${emoji}`}
+                        onClick={() => void toggleReaction(message.id, emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    title="Reply"
+                    onClick={() => {
+                      setReplyTarget(message);
+                      composerRef.current?.focus();
+                    }}
+                  >
+                    ↩
+                  </button>
+                  {message.userId === user.id && !message.bot && (
+                    <button
+                      type="button"
+                      title="Edit"
+                      onClick={() => beginEdit(message)}
+                    >
+                      ✏
+                    </button>
+                  )}
                   <button
                     type="button"
                     title={message.pinned ? "Unpin" : "Pin"}
@@ -2394,6 +2834,33 @@ export function ChatShell() {
             />
           )}
 
+          {mentionActive && (
+            <div className="mention-menu">
+              {mentionMatches.map((member, index) => (
+                <button
+                  type="button"
+                  key={member.id}
+                  className={`mention-item ${
+                    index === slashIndex % mentionMatches.length ? "active" : ""
+                  }`}
+                  onMouseEnter={() => setSlashIndex(index)}
+                  onClick={() => pickMention(member)}
+                >
+                  <Avatar
+                    className="tiny-avatar"
+                    avatar={member.avatar}
+                    avatarUrl={member.avatarUrl}
+                    color={member.color}
+                  />
+                  <span style={{ color: roleColorFor(member) || undefined }}>
+                    {member.displayName}
+                  </span>
+                  <small style={{ color: "var(--muted)" }}>@{member.username}</small>
+                </button>
+              ))}
+            </div>
+          )}
+
           {gifOpen && (
             <GifPicker
               onClose={() => setGifOpen(false)}
@@ -2404,6 +2871,21 @@ export function ChatShell() {
                 void sendText(url);
               }}
             />
+          )}
+
+          {replyTarget && (
+            <div className="reply-bar">
+              <span>
+                Replying to <strong>{replyTarget.author}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setReplyTarget(null)}
+                aria-label="Cancel reply"
+              >
+                ×
+              </button>
+            </div>
           )}
 
           {pendingImage && (
@@ -2795,6 +3277,10 @@ export function ChatShell() {
           onClose={() => setSettingsOpen(false)}
           onSignOut={signOut}
           onMicrophoneChange={() => void voice.switchMicrophone()}
+          pushToTalk={voice.pushToTalk}
+          pttKey={voice.pttKey}
+          onPushToTalk={voice.setPushToTalk}
+          onPttKey={voice.setPttKey}
           server={inDmHome ? null : activeServer}
           members={members}
           canManageServer={canManageServer}

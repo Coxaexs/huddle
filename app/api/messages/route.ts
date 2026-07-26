@@ -26,6 +26,14 @@ export interface PublicMessage {
   kind?: string;
   payload?: unknown;
   pinned?: boolean;
+  editedAt?: string;
+  /** Id of the message this one replies to, plus a small preview of it. */
+  replyTo?: string;
+  replyPreview?: { author: string; text: string } | null;
+  /** Emoji reactions, aggregated. `mine` is set per requesting user. */
+  reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
+  /** User ids named in this message, for highlighting and unread badges. */
+  mentions?: string[];
 }
 
 export function publicMessage(message: StoredMessage): PublicMessage {
@@ -72,7 +80,18 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     kind: message.kind || undefined,
     payload,
     pinned: Boolean(message.pinned_at),
+    editedAt: message.edited_at || undefined,
+    replyTo: message.reply_to || undefined,
   };
+}
+
+/** Parses `@username` tokens from message text (used for mentions). */
+export function parseMentionHandles(text: string): string[] {
+  const handles = new Set<string>();
+  for (const match of text.matchAll(/(?:^|\s)@([a-zA-Z0-9._-]{2,24})/g)) {
+    handles.add(match[1].toLowerCase());
+  }
+  return [...handles];
 }
 
 /**
@@ -98,7 +117,8 @@ export async function GET(request: Request) {
   }
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
-                   is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at`;
+                   is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
+                   reply_to, edited_at`;
   const pinnedOnly = params.get("pinned") === "1";
   const result = channelId
     ? await db
@@ -119,11 +139,116 @@ export async function GET(request: Request) {
         .bind(channelName || "general")
         .all();
 
-  return Response.json({
-    messages: ((result.results || []) as unknown as StoredMessage[]).map(
-      publicMessage,
+  const stored = (result.results || []) as unknown as StoredMessage[];
+  const messages = stored.map(publicMessage);
+  await decorateMessages(db, user.id, stored, messages);
+
+  return Response.json({ messages });
+}
+
+/**
+ * Runs `${sql} (?, ?, …)` over `ids`, chunked to stay under D1's ~100 bound
+ * variable limit, and concatenates the rows.
+ */
+async function queryByIds<T>(
+  db: D1Database,
+  sql: string,
+  ids: string[],
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const rows = await db
+      .prepare(`${sql} (${chunk.map(() => "?").join(",")})`)
+      .bind(...chunk)
+      .all();
+    out.push(...((rows.results || []) as T[]));
+  }
+  return out;
+}
+
+/**
+ * Attaches reactions, reply previews and mentions to a page of messages in a
+ * few batch queries rather than one per row.
+ */
+async function decorateMessages(
+  db: D1Database,
+  userId: string,
+  stored: StoredMessage[],
+  messages: PublicMessage[],
+): Promise<void> {
+  if (!messages.length) return;
+  const ids = messages.map((m) => m.id);
+
+  const [reactionRows, mentionRows] = await Promise.all([
+    queryByIds<{ message_id: string; emoji: string; user_id: string }>(
+      db,
+      "SELECT message_id, emoji, user_id FROM reactions WHERE message_id IN",
+      ids,
     ),
-  });
+    queryByIds<{ message_id: string; user_id: string }>(
+      db,
+      "SELECT message_id, user_id FROM mentions WHERE message_id IN",
+      ids,
+    ),
+  ]);
+
+  // Aggregate reactions per message + emoji.
+  const byMessage = new Map<string, Map<string, { count: number; mine: boolean }>>();
+  for (const row of reactionRows) {
+    const emojis = byMessage.get(row.message_id) || new Map();
+    const entry = emojis.get(row.emoji) || { count: 0, mine: false };
+    entry.count += 1;
+    if (row.user_id === userId) entry.mine = true;
+    emojis.set(row.emoji, entry);
+    byMessage.set(row.message_id, emojis);
+  }
+  const mentionsByMessage = new Map<string, string[]>();
+  for (const row of mentionRows) {
+    const list = mentionsByMessage.get(row.message_id) || [];
+    list.push(row.user_id);
+    mentionsByMessage.set(row.message_id, list);
+  }
+
+  // Reply previews: resolve parents (mostly present in this same page).
+  const inPage = new Map(stored.map((m) => [m.id, m]));
+  const missing = [
+    ...new Set(
+      messages
+        .map((m) => m.replyTo)
+        .filter((id): id is string => Boolean(id) && !inPage.has(id as string)),
+    ),
+  ];
+  const fetched = new Map<string, { author: string; content: string }>();
+  if (missing.length) {
+    const rows = await queryByIds<{
+      id: string;
+      author: string;
+      content: string;
+    }>(db, "SELECT id, author, content FROM messages WHERE id IN", missing);
+    for (const row of rows) {
+      fetched.set(row.id, { author: row.author, content: row.content });
+    }
+  }
+
+  for (const message of messages) {
+    const emojis = byMessage.get(message.id);
+    if (emojis) {
+      message.reactions = [...emojis.entries()].map(([emoji, v]) => ({
+        emoji,
+        count: v.count,
+        mine: v.mine,
+      }));
+    }
+    const mentions = mentionsByMessage.get(message.id);
+    if (mentions) message.mentions = mentions;
+    if (message.replyTo) {
+      const parent = inPage.get(message.replyTo) || fetched.get(message.replyTo);
+      message.replyPreview = parent
+        ? { author: parent.author, text: parent.content.slice(0, 120) }
+        : null;
+    }
+  }
 }
 
 interface PostBody {
@@ -136,6 +261,8 @@ interface PostBody {
   audio?: string;
   kind?: string;
   payload?: unknown;
+  /** Id of a message in the same channel this one replies to. */
+  replyTo?: string;
   /** Apps answer in-channel as a bot; this is a private Huddle, so any
    *  signed-in member may do it (that is what /roll and /watch use). */
   asBot?: boolean;
@@ -228,14 +355,15 @@ export async function POST(request: Request) {
     audio_url: body.audio?.trim().slice(0, 8000) || null,
     kind: body.kind?.trim().slice(0, 32) || null,
     payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
+    reply_to: body.replyTo?.slice(0, 64) || null,
   };
 
   await db
     .prepare(
       `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
-        is_bot, created_at, link, action_label, audio_url, kind, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -254,10 +382,54 @@ export async function POST(request: Request) {
       stored.audio_url,
       stored.kind,
       stored.payload,
+      stored.reply_to,
     )
     .run();
 
   const message = publicMessage(stored);
+
+  // Resolve @mentions to real members and record them (drives unread badges).
+  const handles = content ? parseMentionHandles(content) : [];
+  if (handles.length && channelId) {
+    const rows = await db
+      .prepare(
+        `SELECT id FROM users WHERE username_lower IN (${handles
+          .map(() => "?")
+          .join(",")})`,
+      )
+      .bind(...handles)
+      .all();
+    const mentionedIds = ((rows.results || []) as Array<{ id: string }>)
+      .map((r) => r.id)
+      .filter((id) => id !== user.id);
+    if (mentionedIds.length) {
+      await db.batch(
+        mentionedIds.map((id) =>
+          db
+            .prepare(
+              "INSERT OR IGNORE INTO mentions (message_id, user_id, channel_id, created_at) VALUES (?, ?, ?, ?)",
+            )
+            .bind(stored.id, id, channelId, stored.created_at),
+        ),
+      );
+      message.mentions = mentionedIds;
+    }
+  }
+
+  // Resolve the reply preview for the pushed event, if any.
+  if (stored.reply_to) {
+    const parent = await db
+      .prepare("SELECT author, content FROM messages WHERE id = ?")
+      .bind(stored.reply_to)
+      .first<{ author: string; content: string }>();
+    if (parent) {
+      message.replyPreview = {
+        author: parent.author,
+        text: parent.content.slice(0, 120),
+      };
+    }
+  }
+
   await publishMessage(channelId || channelName, message, audience);
   return Response.json({ message }, { status: 201 });
 }

@@ -18,19 +18,24 @@ export async function POST(request: Request) {
   const isImage = upload.type.startsWith("image/");
   const isPdf =
     upload.type === "application/pdf" || upload.name.toLowerCase().endsWith(".pdf");
-  if (!isImage && !isPdf) {
+  const isAudio =
+    upload.type.startsWith("audio/") ||
+    /\.(mp3|ogg|wav|webm|m4a)$/i.test(upload.name);
+  if (!isImage && !isPdf && !isAudio) {
     return Response.json(
-      { error: "Huddle currently accepts images and PDF documents." },
+      { error: "Huddle accepts images, PDFs and short audio clips." },
       { status: 400 },
     );
   }
-  const maximum = isPdf ? 20 * 1024 * 1024 : 8 * 1024 * 1024;
+  const maximum = isPdf ? 20 * 1024 * 1024 : isAudio ? 3 * 1024 * 1024 : 8 * 1024 * 1024;
   if (upload.size > maximum) {
     return Response.json(
       {
         error: isPdf
           ? "PDFs must be smaller than 20 MB."
-          : "Images must be smaller than 8 MB.",
+          : isAudio
+            ? "Sound clips must be smaller than 3 MB."
+            : "Images must be smaller than 8 MB.",
       },
       { status: 413 },
     );

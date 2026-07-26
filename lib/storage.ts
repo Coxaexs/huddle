@@ -43,4 +43,6 @@ export interface StoredMessage {
   pinned_at?: string | null;
   pinned_by?: string | null;
   deleted_at?: string | null;
+  reply_to?: string | null;
+  edited_at?: string | null;
 }

@@ -64,6 +64,19 @@ async function tuneAudioSender(
 export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  /** Push-to-talk: when on, the mic is open only while the PTT key is held. */
+  const [pushToTalk, setPushToTalkState] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("huddle-ptt") === "on",
+  );
+  const [pttKey, setPttKeyState] = useState(
+    () =>
+      (typeof window !== "undefined" &&
+        window.localStorage.getItem("huddle-ptt-key")) ||
+      "Space",
+  );
+  const [pttHeld, setPttHeld] = useState(false);
   const [deafened, setDeafened] = useState(false);
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
@@ -100,6 +113,50 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
   >(async () => {});
   const participantCountRef = useRef(0);
   channelIdRef.current = channelId;
+
+  // Central mic gate: the track is live only when not force-muted and either
+  // (push-to-talk held) or (not muted). Runs after any of those change so it
+  // reconciles the direct track toggles elsewhere.
+  useEffect(() => {
+    const on = !forcedMute && (pushToTalk ? pttHeld : !muted);
+    localStreamRef.current
+      ?.getAudioTracks()
+      .forEach((track) => (track.enabled = on));
+  }, [channelId, pushToTalk, pttHeld, muted, forcedMute]);
+
+  // Push-to-talk keyboard binding (works while the window is focused; the
+  // desktop app relays a global hotkey to pttPress/pttRelease below).
+  useEffect(() => {
+    if (!pushToTalk || !channelId) return;
+    const down = (event: KeyboardEvent) => {
+      if (event.code === pttKey && !event.repeat) {
+        event.preventDefault();
+        setPttHeld(true);
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code === pttKey) setPttHeld(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      setPttHeld(false);
+    };
+  }, [pushToTalk, channelId, pttKey]);
+
+  const setPushToTalk = useCallback((enabled: boolean) => {
+    setPushToTalkState(enabled);
+    window.localStorage.setItem("huddle-ptt", enabled ? "on" : "off");
+    if (!enabled) setPttHeld(false);
+  }, []);
+  const setPttKey = useCallback((code: string) => {
+    setPttKeyState(code);
+    window.localStorage.setItem("huddle-ptt-key", code);
+  }, []);
+  const pttPress = useCallback(() => setPttHeld(true), []);
+  const pttRelease = useCallback(() => setPttHeld(false), []);
 
   useEffect(() => {
     apiFetch<{ iceServers: RTCIceServer[] }>("/api/voice/ice")
@@ -671,5 +728,12 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     toggleMute,
     toggleDeafen,
     handleSignal,
+    pushToTalk,
+    pttKey,
+    pttHeld,
+    setPushToTalk,
+    setPttKey,
+    pttPress,
+    pttRelease,
   };
 }

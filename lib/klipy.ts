@@ -82,8 +82,11 @@ export async function klipySearch(
 ): Promise<KlipyItem[]> {
   const clean = query.trim().slice(0, 80);
   const path = clean ? "search" : "trending";
+  // Guard against a key pasted with trailing junk: the real token has no
+  // whitespace, so keep only up to the first space.
+  const token = key.trim().split(/\s/)[0];
   const endpoint = new URL(
-    `https://api.klipy.com/api/v1/${encodeURIComponent(key)}/${kind}/${path}`,
+    `https://api.klipy.com/api/v1/${encodeURIComponent(token)}/${kind}/${path}`,
   );
   endpoint.searchParams.set("per_page", "24");
   endpoint.searchParams.set("page", "1");
