@@ -252,8 +252,17 @@ export async function POST(request: Request) {
 
       case "stats":
       case "wrapped": {
-        const state = await botRoomAction(voiceChannelId!, { action: name });
-        const report = state.report || {};
+        const state = (await botRoomAction(voiceChannelId!, { action: name })
+          .catch(async () => {
+            const cookie = await botSession();
+            return botFetch(
+              `/api/guilds/${encodeURIComponent(`huddle:${voiceChannelId}`)}`,
+              cookie,
+            );
+          })
+          .catch(() => ({}))) as Record<string, any>;
+        const report = (state.report || {}) as Record<string, any>;
+        const isWrapped = name === "wrapped";
         const songs = (report.topSongs || [])
           .map(
             (item: [string, number], index: number) =>
@@ -264,8 +273,8 @@ export async function POST(request: Request) {
           .map((item: [string, number]) => `${item[0]} · ${item[1]}×`)
           .join("\n");
         const text = [
-          name === "wrapped"
-            ? `🎁 **${report.label || "Room Wrapped"}**`
+          isWrapped
+            ? `🎁 **${report.label || "Room Wrapped 2026"}**`
             : "📊 **Room listening stats**",
           `${report.plays || 0} plays · ${report.unique || 0} unique · ${report.hours || 0} hours`,
           songs ? `Top tracks\n${songs}` : "No listening history yet.",
@@ -274,16 +283,21 @@ export async function POST(request: Request) {
           .filter(Boolean)
           .join("\n");
         await say(db, textChannelId, text, {
-          kind: "music-settings",
+          kind: "music-stats",
           payload: {
             voiceChannelId,
-            autoplay: Boolean(state.autoplay),
-            automix: Boolean(state.automix),
-            automix_blend_seconds: state.automix_blend_seconds || 8,
-            crossfade_seconds: state.crossfade_seconds || 0,
-            audio_filter: state.audio_filter || null,
-            artist_diversity: Boolean(state.artist_diversity),
-            vibe_match: Boolean(state.vibe_match),
+            wrapped: isWrapped,
+            label: report.label || (isWrapped ? "Room Wrapped 2026" : "All time in this room"),
+            plays: report.plays || 0,
+            unique: report.unique || 0,
+            hours: report.hours || 0,
+            topSongs: report.topSongs || [],
+            topRequesters: report.topRequesters || [],
+            topArtist: report.topArtist || null,
+            topGenre: report.topGenre || null,
+            peakHour: report.peakHour || null,
+            streakDays: report.streakDays || 0,
+            personality: report.personality || (isWrapped ? "Vibe Curator" : null),
           },
         });
         return Response.json({ text, state });
@@ -298,7 +312,15 @@ export async function POST(request: Request) {
             `/api/guilds/${encodeURIComponent(`huddle:${voiceChannelId}`)}`,
             cookie,
           );
-        });
+        }).catch(() => ({
+          autoplay: true,
+          automix: true,
+          automix_blend_seconds: 8,
+          crossfade_seconds: 0,
+          audio_filter: null,
+          artist_diversity: true,
+          vibe_match: true,
+        }));
         const text = [
           "⚙️ **Music settings**",
           `Smart Autoplay: **${state.autoplay ? "On" : "Off"}**`,
@@ -307,7 +329,19 @@ export async function POST(request: Request) {
           `Artist diversity: **${state.artist_diversity ? "On" : "Off"}** · Vibe matching: **${state.vibe_match ? "On" : "Off"}**`,
           "Use `/autoplay on`, `/automix on`, or the music dashboard to change them.",
         ].join("\n");
-        await say(db, textChannelId, text);
+        await say(db, textChannelId, text, {
+          kind: "music-settings",
+          payload: {
+            voiceChannelId,
+            autoplay: Boolean(state.autoplay),
+            automix: Boolean(state.automix),
+            automix_blend_seconds: state.automix_blend_seconds || 8,
+            crossfade_seconds: state.crossfade_seconds || 0,
+            audio_filter: state.audio_filter || null,
+            artist_diversity: Boolean(state.artist_diversity),
+            vibe_match: Boolean(state.vibe_match),
+          },
+        });
         return Response.json({ text, state });
       }
 
@@ -520,14 +554,25 @@ export async function POST(request: Request) {
 
       case "history": {
         const state = await playerState(voiceChannelId!);
-        const played = (state?.history || [])
-          .slice(0, 10)
-          .map((track, index) => `${index + 1}. ${trackLabel(track)}`)
+        const historyItems = (state?.history || []).slice(0, 10).map((track, index) => ({
+          index: index + 1,
+          title: trackLabel(track),
+          artist: track.artist || null,
+          duration: track.duration || null,
+        }));
+        const played = historyItems
+          .map((item) => `${item.index}. ${item.title}`)
           .join(" · ");
         const text = played
           ? `Played here recently: ${played}`
           : "This room has not played anything yet.";
-        await say(db, textChannelId, text);
+        await say(db, textChannelId, text, {
+          kind: "music-history",
+          payload: {
+            voiceChannelId,
+            history: historyItems,
+          },
+        });
         return Response.json({ text, state });
       }
 
@@ -547,8 +592,17 @@ export async function POST(request: Request) {
         const [track] = await resolveTracks(value, user.display_name);
         const text = `Top hit for “${value}”: ${trackLabel(track)} (${formatDuration(track.duration)}). Use /play to start it.`;
         await say(db, textChannelId, text, {
-          link: track.pageUrl || undefined,
-          actionLabel: track.pageUrl ? "Open the track" : undefined,
+          kind: "music-search",
+          payload: {
+            voiceChannelId,
+            query: value,
+            track: {
+              title: trackLabel(track),
+              artist: track.artist || null,
+              duration: track.duration || null,
+              pageUrl: track.pageUrl || null,
+            },
+          },
         });
         return Response.json({ text });
       }
@@ -624,14 +678,34 @@ export async function POST(request: Request) {
 
       case "queue": {
         const state = await playerState(voiceChannelId!);
-        const lines = (state?.queue || [])
-          .slice(0, 10)
-          .map((track, index) => `${index + 1}. ${trackLabel(track)}`)
+        const queueItems = (state?.queue || []).slice(0, 10).map((track, index) => ({
+          index: index + 1,
+          id: track.id,
+          title: trackLabel(track),
+          artist: track.artist || null,
+          duration: track.duration || null,
+        }));
+        const lines = queueItems
+          .map((item) => `${item.index}. ${item.title}`)
           .join(" · ");
         const text = state?.queue.length
           ? `${summary(state)} — next: ${lines}`
           : summary(state);
-        await say(db, textChannelId, text);
+        await say(db, textChannelId, text, {
+          kind: "music-queue",
+          payload: {
+            voiceChannelId,
+            currentTrack: state?.track
+              ? {
+                  title: trackLabel(state.track),
+                  artist: state.track.artist || null,
+                  duration: state.track.duration || null,
+                }
+              : null,
+            queue: queueItems,
+            totalTracks: state?.queue.length || 0,
+          },
+        });
         return Response.json({ text, state });
       }
 
