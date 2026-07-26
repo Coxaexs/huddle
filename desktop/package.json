@@ -1,0 +1,64 @@
+{
+  "name": "huddle-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Huddle desktop app (Electron shell around deeppixel.online/hangout)",
+  "author": "coxaexs",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "online.deeppixel.huddle",
+    "productName": "Huddle",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": ["src/**/*", "package.json"],
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Huddle uses your camera for video calls.",
+        "NSMicrophoneUsageDescription": "Huddle uses your microphone for voice chat.",
+        "NSScreenCaptureUsageDescription": "Huddle needs screen recording to share your screen."
+      }
+    },
+    "dmg": {
+      "title": "Huddle"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Huddle"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Network",
+      "target": ["AppImage"]
+    }
+  }
+}
