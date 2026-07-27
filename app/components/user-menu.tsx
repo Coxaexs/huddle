@@ -29,6 +29,9 @@ interface UserMenuProps {
   canManage?: boolean;
   onKick?: () => void;
   onBan?: () => void;
+  /** Shown instead of Ban when this person is already banned. */
+  banned?: boolean;
+  onUnban?: () => void;
 }
 
 /**
@@ -49,6 +52,8 @@ export function UserMenu({
   canManage = false,
   onKick,
   onBan,
+  banned = false,
+  onUnban,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -132,11 +137,23 @@ export function UserMenu({
               Kick from server
             </button>
           )}
-          {canManage && onBan && (
-            <button type="button" role="menuitem" className="danger" onClick={onBan}>
-              Ban from server
-            </button>
-          )}
+          {canManage &&
+            (banned
+              ? onUnban && (
+                  <button type="button" role="menuitem" onClick={onUnban}>
+                    Unban
+                  </button>
+                )
+              : onBan && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="danger"
+                    onClick={onBan}
+                  >
+                    Ban from server
+                  </button>
+                ))}
         </>
       )}
 
