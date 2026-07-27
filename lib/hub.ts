@@ -257,14 +257,52 @@ export class HuddleHub extends DurableObject {
 
       case "voice-join": {
         const previous = attachment.voiceChannelId;
+
+        // One person occupies one seat: a second tab joining takes over, and
+        // the others are dropped so nobody appears in the room twice.
+        const evicted = new Set<string>();
+        if (!attachment.bot) {
+          for (const entry of this.sockets()) {
+            const other = entry.attachment;
+            if (other.bot) continue;
+            if (other.userId !== attachment.userId) continue;
+            if (other.connectionId === attachment.connectionId) continue;
+            if (!other.voiceChannelId) continue;
+
+            const room = other.voiceChannelId;
+            other.voiceChannelId = null;
+            other.cameraStreamId = null;
+            other.screenStreamId = null;
+            entry.socket.serializeAttachment(other);
+            evicted.add(room);
+            try {
+              entry.socket.send(
+                JSON.stringify({
+                  t: "voice-evicted",
+                  channelId: room,
+                  serverNow: Date.now(),
+                }),
+              );
+            } catch {
+              // A socket going away is already leaving the room.
+            }
+          }
+        }
+
         attachment.voiceChannelId = event.channelId;
         attachment.muted = false;
         attachment.deafened = false;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);
+
         if (previous && previous !== event.channelId) {
           this.broadcastVoice(previous);
+        }
+        for (const room of evicted) {
+          if (room !== event.channelId && room !== previous) {
+            this.broadcastVoice(room);
+          }
         }
         this.broadcastVoice(event.channelId);
         return;

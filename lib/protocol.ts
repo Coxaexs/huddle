@@ -193,5 +193,12 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
+  | {
+      /** This tab was dropped from voice because the same account joined
+       *  from somewhere else. */
+      t: "voice-evicted";
+      channelId: string;
+      serverNow: number;
+    }
   | { t: "notice"; text: string; serverNow: number }
   | { t: "pong"; serverNow: number };
