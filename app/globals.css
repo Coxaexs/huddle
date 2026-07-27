@@ -4197,3 +4197,112 @@ button.mention:hover { filter:brightness(1.1); text-decoration:underline; }
   cursor:pointer;
 }
 .profile-message:hover { filter:brightness(1.05); }
+
+/* ---------------------------------------------------------------------------
+   Unread state: bright channel + left pill, red mention badge, DM rail avatars.
+--------------------------------------------------------------------------- */
+/* Unread channels read as "white"; read ones stay the muted default. */
+.channel.has-unread,
+.voice-room.has-unread {
+  color:var(--ink);
+  font-weight:750;
+}
+.channel.has-unread .channel-hash { color:var(--ink); }
+
+/* The little pill on the left edge, like Discord's unread marker. */
+.unread-pill {
+  position:absolute;
+  left:-5px;
+  top:50%;
+  transform:translateY(-50%);
+  width:4px;
+  height:9px;
+  border-radius:0 4px 4px 0;
+  background:var(--ink);
+}
+.channel.selected .unread-pill,
+.channel.has-unread:hover .unread-pill { height:20px; }
+
+/* Mentions are loud: red pill with the count. */
+.mention-badge {
+  margin-left:auto;
+  min-width:18px;
+  height:18px;
+  padding:0 6px;
+  border-radius:9px;
+  background:#f23f43;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--panel) 70%, transparent);
+}
+
+/* Unread DMs on the server rail: the sender's picture + a count. */
+.rail-dm {
+  position:relative;
+  width:44px;
+  height:44px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:none;
+  cursor:pointer;
+  flex:0 0 auto;
+}
+.rail-dm-avatar {
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+  font-size:17px;
+  color:#1c1c22;
+  overflow:hidden;
+  transition:border-radius .15s ease;
+}
+.rail-dm:hover .rail-dm-avatar { border-radius:15px; }
+.rail-dm-avatar .avatar-image { width:100%; height:100%; object-fit:cover; }
+.rail-badge {
+  position:absolute;
+  right:-2px;
+  bottom:-2px;
+  min-width:18px;
+  height:18px;
+  padding:0 5px;
+  border-radius:9px;
+  background:#f23f43;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:2px solid #2c2d36;
+  line-height:1;
+}
+.brand-mark { position:relative; }
+
+/* @-menu sections and two-column rows. */
+.mention-section {
+  padding:8px 12px 4px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.05em;
+  color:var(--muted);
+}
+.mention-primary { font-weight:650; }
+.mention-note {
+  margin-left:auto;
+  color:var(--muted);
+  font-size:12px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:55%;
+}

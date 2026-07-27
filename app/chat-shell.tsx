@@ -250,7 +250,7 @@ export function ChatShell() {
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [unread, setUnread] = useState<
-    Record<string, { unread: boolean; mentions: number }>
+    Record<string, { unread: boolean; count: number; mentions: number }>
   >({});
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -354,7 +354,7 @@ export function ChatShell() {
 
   const loadUnread = useCallback(async () => {
     const data = await apiFetch<{
-      channels: Record<string, { unread: boolean; mentions: number }>;
+      channels: Record<string, { unread: boolean; count: number; mentions: number }>;
     }>("/api/channels/reads").catch(() => ({ channels: {} }));
     setUnread(data.channels || {});
   }, []);
@@ -510,6 +510,16 @@ export function ChatShell() {
     return { uncategorised, grouped };
   }, [activeServer]);
 
+  // DMs with unread messages, surfaced as avatars on the server rail.
+  const dmUnread = useMemo(
+    () =>
+      dms
+        .map((dm) => ({ dm, count: unread[dm.channelId]?.count || 0 }))
+        .filter((entry) => entry.count > 0),
+    [dms, unread],
+  );
+  const dmUnreadTotal = dmUnread.reduce((sum, entry) => sum + entry.count, 0);
+
   useEffect(() => {
     if (!activeServerId || activeServerId === DM_HOME) return;
     window.localStorage.setItem("huddle-server", activeServerId);
@@ -565,10 +575,13 @@ export function ChatShell() {
         // A DM you are not looking at still deserves to bubble up the list.
         void loadDms().catch(() => undefined);
         const mentioned = Boolean(user && incoming.mentions?.includes(user.id));
+        // Your own messages (echoed back) never count as unread.
+        if (user && incoming.userId === user.id) return;
         setUnread((current) => ({
           ...current,
           [channelId]: {
             unread: true,
+            count: (current[channelId]?.count || 0) + 1,
             mentions: (current[channelId]?.mentions || 0) + (mentioned ? 1 : 0),
           },
         }));
@@ -1865,6 +1878,7 @@ export function ChatShell() {
           void renameChannel(channel);
         }}
       >
+        {unread[channel.id]?.unread && <span className="unread-pill" />}
         <span className="channel-hash">#</span>
         <span>{channel.name}</span>
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
@@ -1982,10 +1996,38 @@ export function ChatShell() {
           onClick={() => {
             setActiveServerId(DM_HOME);
             setActiveChannelId(dms[0]?.channelId || null);
+            setStageChannelId(null);
           }}
         >
           h
+          {dmUnreadTotal > 0 && !inDmHome && (
+            <span className="rail-badge">{dmUnreadTotal}</span>
+          )}
         </button>
+
+        {/* Unread DMs ride the rail like Discord: sender's picture + count. */}
+        {dmUnread.map(({ dm, count }) => (
+          <button
+            key={dm.channelId}
+            className="rail-dm"
+            title={`${dm.user.displayName} · ${count} new`}
+            aria-label={`${dm.user.displayName}, ${count} unread`}
+            onClick={() => {
+              setActiveServerId(DM_HOME);
+              setActiveChannelId(dm.channelId);
+              setStageChannelId(null);
+            }}
+          >
+            <Avatar
+              className="rail-dm-avatar"
+              avatar={dm.user.avatar}
+              avatarUrl={dm.user.avatarUrl}
+              color={dm.user.color}
+            />
+            <span className="rail-badge">{count}</span>
+          </button>
+        ))}
+
         <div className="rail-divider" />
         {servers.map((server) => (
           <button
@@ -2045,7 +2087,9 @@ export function ChatShell() {
             {dms.map((dm) => (
               <button
                 key={dm.channelId}
-                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""}`}
+                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${
+                  unread[dm.channelId]?.unread ? "has-unread" : ""
+                }`}
                 onClick={() => {
                   setActiveChannelId(dm.channelId);
                   setStageChannelId(null);
@@ -2053,6 +2097,7 @@ export function ChatShell() {
                 }}
                 onContextMenu={(event) => openUserMenu(event, dm.user)}
               >
+                {unread[dm.channelId]?.unread && <span className="unread-pill" />}
                 <Avatar
                   className="tiny-avatar"
                   avatar={dm.user.avatar}
@@ -2061,6 +2106,11 @@ export function ChatShell() {
                 />
                 <span>{dm.user.displayName}</span>
                 {hub.online.has(dm.user.id) && <i className="dm-online" />}
+                {(unread[dm.channelId]?.count ?? 0) > 0 && (
+                  <span className="mention-badge">
+                    {unread[dm.channelId].count}
+                  </span>
+                )}
               </button>
             ))}
             {!dms.length && (
@@ -2732,46 +2782,68 @@ export function ChatShell() {
             <div className="mention-menu">
               {mentionMatches.map((option, index) => {
                 const active = index === slashIndex % mentionMatches.length;
+                // Section headers, printed when the kind changes.
+                const previous = mentionMatches[index - 1];
+                const header =
+                  !previous || previous.kind !== option.kind ? (
+                    <div className="mention-section" key={`h:${option.kind}`}>
+                      {option.kind === "user" ? "MEMBERS" : "ROLES"}
+                    </div>
+                  ) : null;
+
                 if (option.kind === "role") {
                   return (
+                    <div key={`role:${option.role.id}`}>
+                      {header}
+                      <button
+                        type="button"
+                        className={`mention-item ${active ? "active" : ""}`}
+                        onMouseEnter={() => setSlashIndex(index)}
+                        onClick={() => pickMention(option)}
+                      >
+                        <span
+                          className="mention-role-dot"
+                          style={{ background: option.role.color }}
+                        />
+                        <span
+                          className="mention-primary"
+                          style={{ color: option.role.color }}
+                        >
+                          @{option.role.name}
+                        </span>
+                        <span className="mention-note">
+                          Notify everyone with this role
+                        </span>
+                      </button>
+                    </div>
+                  );
+                }
+
+                const member = option.member;
+                return (
+                  <div key={`user:${member.id}`}>
+                    {header}
                     <button
                       type="button"
-                      key={`role:${option.role.id}`}
                       className={`mention-item ${active ? "active" : ""}`}
                       onMouseEnter={() => setSlashIndex(index)}
                       onClick={() => pickMention(option)}
                     >
-                      <span
-                        className="mention-role-dot"
-                        style={{ background: option.role.color }}
+                      <Avatar
+                        className="tiny-avatar"
+                        avatar={member.avatar}
+                        avatarUrl={member.avatarUrl}
+                        color={member.color}
                       />
-                      <span style={{ color: option.role.color }}>
-                        {option.role.name}
+                      <span
+                        className="mention-primary"
+                        style={{ color: roleColorFor(member) || undefined }}
+                      >
+                        {member.displayName}
                       </span>
-                      <small style={{ color: "var(--muted)" }}>role</small>
+                      <span className="mention-note">@{member.username}</span>
                     </button>
-                  );
-                }
-                const member = option.member;
-                return (
-                  <button
-                    type="button"
-                    key={`user:${member.id}`}
-                    className={`mention-item ${active ? "active" : ""}`}
-                    onMouseEnter={() => setSlashIndex(index)}
-                    onClick={() => pickMention(option)}
-                  >
-                    <Avatar
-                      className="tiny-avatar"
-                      avatar={member.avatar}
-                      avatarUrl={member.avatarUrl}
-                      color={member.color}
-                    />
-                    <span style={{ color: roleColorFor(member) || undefined }}>
-                      {member.displayName}
-                    </span>
-                    <small style={{ color: "var(--muted)" }}>@{member.username}</small>
-                  </button>
+                  </div>
                 );
               })}
             </div>

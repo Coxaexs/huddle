@@ -17,75 +17,59 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
-  const [reads, lastMessages, mentions, dmMemberships] = await Promise.all([
-    db
-      .prepare("SELECT channel_id, read_at FROM channel_reads WHERE user_id = ?")
-      .bind(user.id)
-      .all(),
+  // Unread counts per channel: messages newer than this user's read mark (or
+  // every message when they have never opened it), excluding their own.
+  const [counts, mentions] = await Promise.all([
     db
       .prepare(
-        `SELECT channel_id, MAX(created_at) AS last_at
-           FROM messages
-          WHERE channel_id IS NOT NULL AND deleted_at IS NULL
-          GROUP BY channel_id`,
-      )
-      .all(),
-    db
-      .prepare(
-        "SELECT channel_id, created_at FROM mentions WHERE user_id = ?",
+        `SELECT m.channel_id AS channel_id, COUNT(*) AS count
+           FROM messages m
+           LEFT JOIN channel_reads r
+             ON r.channel_id = m.channel_id AND r.user_id = ?1
+          WHERE m.channel_id IS NOT NULL
+            AND m.deleted_at IS NULL
+            AND (m.user_id IS NULL OR m.user_id != ?1)
+            AND (r.read_at IS NULL OR m.created_at > r.read_at)
+          GROUP BY m.channel_id`,
       )
       .bind(user.id)
       .all(),
     db
-      .prepare("SELECT channel_id FROM dm_members WHERE user_id = ?")
+      .prepare(
+        `SELECT mn.channel_id AS channel_id, COUNT(*) AS count
+           FROM mentions mn
+           LEFT JOIN channel_reads r
+             ON r.channel_id = mn.channel_id AND r.user_id = ?1
+          WHERE mn.user_id = ?1
+            AND (r.read_at IS NULL OR mn.created_at > r.read_at)
+          GROUP BY mn.channel_id`,
+      )
       .bind(user.id)
       .all(),
   ]);
 
-  const readAt = new Map<string, string>();
-  for (const row of (reads.results || []) as Array<{
+  const result: Record<
+    string,
+    { unread: boolean; count: number; mentions: number }
+  > = {};
+  for (const row of (counts.results || []) as Array<{
     channel_id: string;
-    read_at: string;
+    count: number;
   }>) {
-    readAt.set(row.channel_id, row.read_at);
-  }
-  const lastAt = new Map<string, string>();
-  for (const row of (lastMessages.results || []) as Array<{
-    channel_id: string;
-    last_at: string;
-  }>) {
-    lastAt.set(row.channel_id, row.last_at);
-  }
-  const dmChannels = new Set(
-    ((dmMemberships.results || []) as Array<{ channel_id: string }>).map(
-      (r) => r.channel_id,
-    ),
-  );
-
-  const result: Record<string, { unread: boolean; mentions: number }> = {};
-  const ensure = (id: string) => (result[id] ||= { unread: false, mentions: 0 });
-
-  for (const [channelId, last] of lastAt) {
-    const seen = readAt.get(channelId);
-    if (!seen || last > seen) ensure(channelId).unread = true;
+    result[row.channel_id] = { unread: true, count: row.count, mentions: 0 };
   }
   for (const row of (mentions.results || []) as Array<{
     channel_id: string;
-    created_at: string;
+    count: number;
   }>) {
-    const seen = readAt.get(row.channel_id);
-    if (!seen || row.created_at > seen) {
-      const entry = ensure(row.channel_id);
-      entry.mentions += 1;
-      entry.unread = true;
-    }
+    const entry = (result[row.channel_id] ||= {
+      unread: true,
+      count: 0,
+      mentions: 0,
+    });
+    entry.mentions = row.count;
+    entry.unread = true;
   }
-
-  // DM channels the user isn't a member of should never leak in.
-  for (const id of Object.keys(result)) {
-    if (!lastAt.has(id)) delete result[id];
-  }
-  void dmChannels;
 
   return Response.json({ channels: result });
 }
