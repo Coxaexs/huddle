@@ -18,6 +18,8 @@ export interface PublicMessage {
   time: string;
   createdAt: string;
   image?: string;
+  /** Additional image attachments beyond `image`. */
+  images?: string[];
   file?: { url: string; name: string; type: "pdf" };
   link?: string;
   actionLabel?: string;
@@ -82,7 +84,23 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     pinned: Boolean(message.pinned_at),
     editedAt: message.edited_at || undefined,
     replyTo: message.reply_to || undefined,
+    images: extraAttachments(message.attachments),
   };
+}
+
+/** Parses the extra-attachments JSON column into public URLs. */
+function extraAttachments(raw: string | null | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const keys = JSON.parse(raw) as unknown;
+    if (!Array.isArray(keys)) return undefined;
+    const urls = keys
+      .filter((key): key is string => typeof key === "string")
+      .map((key) => `/hangout/api/uploads/${encodeURIComponent(key)}`);
+    return urls.length ? urls : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Parses `@username` tokens from message text (used for mentions). */
@@ -118,7 +136,7 @@ export async function GET(request: Request) {
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
-                   reply_to, edited_at`;
+                   reply_to, edited_at, attachments`;
   const pinnedOnly = params.get("pinned") === "1";
   const result = channelId
     ? await db
@@ -263,6 +281,8 @@ interface PostBody {
   payload?: unknown;
   /** Id of a message in the same channel this one replies to. */
   replyTo?: string;
+  /** Extra uploaded keys beyond `attachmentKey`. */
+  attachmentKeys?: string[];
   /** Apps answer in-channel as a bot; this is a private Huddle, so any
    *  signed-in member may do it (that is what /roll and /watch use). */
   asBot?: boolean;
@@ -284,7 +304,17 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as PostBody;
   const content = body.content?.trim().slice(0, 4000) || "";
-  const attachmentKey = body.attachmentKey?.slice(0, 240) || null;
+  // The first key stays in attachment_key; any extras go to the JSON column,
+  // so existing rows and older clients keep rendering the same way.
+  const allKeys = [
+    ...(body.attachmentKey ? [body.attachmentKey] : []),
+    ...(Array.isArray(body.attachmentKeys) ? body.attachmentKeys : []),
+  ]
+    .filter((key): key is string => typeof key === "string" && key.length > 0)
+    .slice(0, 10)
+    .map((key) => key.slice(0, 240));
+  const attachmentKey = allKeys[0] || null;
+  const extraKeys = allKeys.slice(1);
   if (!content && !attachmentKey) {
     return Response.json({ error: "A message cannot be empty." }, { status: 400 });
   }
@@ -358,14 +388,15 @@ export async function POST(request: Request) {
     kind: body.kind?.trim().slice(0, 32) || null,
     payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
     reply_to: body.replyTo?.slice(0, 64) || null,
+    attachments: extraKeys.length ? JSON.stringify(extraKeys) : null,
   };
 
   await db
     .prepare(
       `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
-        is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -385,6 +416,7 @@ export async function POST(request: Request) {
       stored.kind,
       stored.payload,
       stored.reply_to,
+      stored.attachments,
     )
     .run();
 

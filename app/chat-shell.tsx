@@ -78,6 +78,7 @@ interface Message {
   text: string;
   bot?: boolean;
   image?: string;
+  images?: string[];
   file?: { url: string; name: string; type: "pdf" };
   link?: string;
   actionLabel?: string;
@@ -270,8 +271,10 @@ export function ChatShell() {
       snippet: string;
     }>
   >([]);
-  const [pendingImage, setPendingImage] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  /** Files staged in the composer; images carry a data-URL preview. */
+  const [pendingFiles, setPendingFiles] = useState<
+    Array<{ id: string; file: File; preview: string | null }>
+  >([]);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   // On a phone the member list is an overlay, so it starts out of the way.
@@ -284,6 +287,8 @@ export function ChatShell() {
   const [slashIndex, setSlashIndex] = useState(0);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
+  /** Image opened fullscreen in the lightbox. */
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const [botMenu, setBotMenu] = useState<{
     kind: "music" | "dnd";
     x: number;
@@ -675,6 +680,17 @@ export function ChatShell() {
   useEffect(() => {
     if (!voice.channelId) setStageChannelId(null);
   }, [voice.channelId]);
+
+  // Esc closes the image lightbox. (KeyboardEvent here is React's type, so the
+  // DOM one needs qualifying.)
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   // Desktop shell: the global mute hotkey arrives as a DOM event.
   useEffect(() => {
@@ -1152,16 +1168,21 @@ export function ChatShell() {
     }
   }
 
-  async function sendText(text: string, attachmentKey?: string) {
+  async function sendText(text: string, attachmentKeys?: string | string[]) {
     if (!activeChannelId) return;
     const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
     setReplyTarget(null);
+    const keys =
+      typeof attachmentKeys === "string"
+        ? [attachmentKeys]
+        : attachmentKeys || [];
     await apiFetch("/api/messages", {
       method: "POST",
       body: JSON.stringify({
         channelId: activeChannelId,
         content: text,
-        attachmentKey,
+        attachmentKey: keys[0],
+        attachmentKeys: keys.slice(1),
         replyTo,
       }),
     });
@@ -1248,29 +1269,30 @@ export function ChatShell() {
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text && !pendingFile) return;
+    const files = pendingFiles;
+    if (!text && !files.length) return;
 
     setDraft("");
-    setPendingImage(null);
-    setPendingFile(null);
+    setPendingFiles([]);
 
-    if (text.startsWith("/") && !pendingFile) {
+    if (text.startsWith("/") && !files.length) {
       await runCommand(text);
       return;
     }
 
     try {
-      let attachmentKey: string | undefined;
-      if (pendingFile) {
+      // Upload every staged file, then send one message carrying them all.
+      const keys: string[] = [];
+      for (const entry of files) {
         const form = new FormData();
-        form.append("file", pendingFile);
+        form.append("file", entry.file);
         const upload = await apiFetch<{ key: string }>("/api/uploads", {
           method: "POST",
           body: form,
         });
-        attachmentKey = upload.key;
+        keys.push(upload.key);
       }
-      await sendText(text, attachmentKey);
+      await sendText(text, keys);
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "That message did not send.",
@@ -1379,29 +1401,42 @@ export function ChatShell() {
     }
   }
 
-  /** Shared by the paperclip, a drop, and a paste. */
-  function acceptAttachment(file: File | undefined | null) {
-    if (!file) return;
-    const isImage = file.type.startsWith("image/");
-    const isPdf =
-      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!isImage && !isPdf) {
-      setNotice("Huddle takes images and PDFs.");
-      return;
+  /** Shared by the paperclip, a drop, and a paste. Accepts several at once. */
+  function acceptAttachment(files: FileList | File[] | undefined | null) {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
+    const MAX = 10;
+
+    for (const file of list) {
+      const isImage = file.type.startsWith("image/");
+      const isPdf =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isImage && !isPdf) {
+        setNotice("Huddle takes images and PDFs.");
+        continue;
+      }
+      const id = `${file.name}:${file.size}:${crypto.randomUUID()}`;
+      setPendingFiles((current) =>
+        current.length >= MAX ? current : [...current, { id, file, preview: null }],
+      );
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = () =>
+          setPendingFiles((current) =>
+            current.map((entry) =>
+              entry.id === id
+                ? { ...entry, preview: String(reader.result) }
+                : entry,
+            ),
+          );
+        reader.readAsDataURL(file);
+      }
     }
-    if (isImage) {
-      const reader = new FileReader();
-      reader.onload = () => setPendingImage(String(reader.result));
-      reader.readAsDataURL(file);
-    } else {
-      setPendingImage(null);
-    }
-    setPendingFile(file);
     composerRef.current?.focus();
   }
 
   function chooseAttachment(event: ChangeEvent<HTMLInputElement>) {
-    acceptAttachment(event.target.files?.[0]);
+    acceptAttachment(event.target.files);
     event.target.value = "";
   }
 
@@ -1417,7 +1452,7 @@ export function ChatShell() {
     if (!activeChannelId) return;
     event.preventDefault();
     setDragging(false);
-    acceptAttachment(event.dataTransfer.files?.[0]);
+    acceptAttachment(event.dataTransfer.files);
   }
 
   async function createServer() {
@@ -2577,6 +2612,7 @@ export function ChatShell() {
                       text={message.text}
                       selfHandle={user.username}
                       onMention={openProfileByHandle}
+                      onImage={setLightbox}
                     />
                   )}
 
@@ -2657,7 +2693,26 @@ export function ChatShell() {
                       className="message-image"
                       src={message.image}
                       alt="Shared attachment"
+                      onClick={() => setLightbox(message.image!)}
                     />
+                  )}
+                  {message.images && message.images.length > 0 && (
+                    <div
+                      className={`attachment-grid count-${Math.min(
+                        message.images.length,
+                        4,
+                      )}`}
+                    >
+                      {message.images.map((url) => (
+                        <img
+                          key={url}
+                          className="message-image"
+                          src={url}
+                          alt="Shared attachment"
+                          onClick={() => setLightbox(url)}
+                        />
+                      ))}
+                    </div>
                   )}
                   {message.file?.type === "pdf" && (
                     <a
@@ -2876,35 +2931,39 @@ export function ChatShell() {
             </div>
           )}
 
-          {pendingImage && (
-            <div className="attachment-preview">
-              <img src={pendingImage} alt="Attachment ready to send" />
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingImage(null);
-                  setPendingFile(null);
-                }}
-                aria-label="Remove attachment"
-              >
-                ×
-              </button>
-            </div>
-          )}
-          {pendingFile && !pendingImage && (
-            <div className="attachment-preview file-preview">
-              <span className="message-file-icon">PDF</span>
-              <span>
-                <strong>{pendingFile.name}</strong>
-                <small>{(pendingFile.size / 1024 / 1024).toFixed(1)} MB</small>
-              </span>
-              <button
-                type="button"
-                onClick={() => setPendingFile(null)}
-                aria-label="Remove attachment"
-              >
-                ×
-              </button>
+          {pendingFiles.length > 0 && (
+            <div className="attachment-row">
+              {pendingFiles.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`attachment-preview ${entry.preview ? "" : "file-preview"}`}
+                >
+                  {entry.preview ? (
+                    <img src={entry.preview} alt={entry.file.name} />
+                  ) : (
+                    <>
+                      <span className="message-file-icon">PDF</span>
+                      <span>
+                        <strong>{entry.file.name}</strong>
+                        <small>
+                          {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+                        </small>
+                      </span>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingFiles((current) =>
+                        current.filter((item) => item.id !== entry.id),
+                      )
+                    }
+                    aria-label={`Remove ${entry.file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -2921,6 +2980,7 @@ export function ChatShell() {
               ref={fileRef}
               type="file"
               accept="image/*,application/pdf,.pdf"
+              multiple
               hidden
               onChange={chooseAttachment}
             />
@@ -2929,6 +2989,14 @@ export function ChatShell() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onComposerKeyDown}
+              onPaste={(event) => {
+                // Pasting a screenshot attaches it instead of doing nothing.
+                const files = Array.from(event.clipboardData.files || []);
+                if (files.length) {
+                  event.preventDefault();
+                  acceptAttachment(files);
+                }
+              }}
               placeholder={
                 activeChannelId
                   ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
@@ -3255,6 +3323,34 @@ export function ChatShell() {
             setUserMenu(null);
           }}
         />
+      )}
+
+      {lightbox && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            className="lightbox-close"
+            aria-label="Close image"
+            onClick={() => setLightbox(null)}
+          >
+            ×
+          </button>
+          <img src={lightbox} alt="" onClick={(event) => event.stopPropagation()} />
+          <a
+            className="lightbox-open"
+            href={lightbox}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+          >
+            Open original ↗
+          </a>
+        </div>
       )}
 
       {profileMember && (

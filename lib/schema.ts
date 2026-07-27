@@ -261,6 +261,9 @@ async function migrate(db: D1Database): Promise<void> {
     // The message this one is a reply to, and when it was last edited.
     ["reply_to", "ALTER TABLE messages ADD COLUMN reply_to TEXT"],
     ["edited_at", "ALTER TABLE messages ADD COLUMN edited_at TEXT"],
+    // Extra attachment keys (JSON array). `attachment_key` stays as the first
+    // one so older clients and existing rows keep working.
+    ["attachments", "ALTER TABLE messages ADD COLUMN attachments TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }
