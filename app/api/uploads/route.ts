@@ -1,4 +1,7 @@
+import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const bucket = bindings().UPLOADS;
@@ -8,6 +11,9 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
+  // Uploads write to shared storage, so they need a signed-in member.
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
 
   const form = await request.formData();
   // `image` remains accepted for profile pictures and older clients.
@@ -30,6 +36,10 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  // These must stay at or below nginx's `client_max_body_size` for
+  // /hangout/ (see /etc/nginx/snippets/huddle.conf) — nginx rejects a body
+  // over its limit with its own 413 before the request reaches us, which
+  // looks like an unexplained failure in the UI.
   const maximum = isPdf
     ? 20 * 1024 * 1024
     : isClip
@@ -38,15 +48,12 @@ export async function POST(request: Request) {
         ? 3 * 1024 * 1024
         : 8 * 1024 * 1024;
   if (upload.size > maximum) {
+    const megabytes = Math.round(maximum / 1024 / 1024);
     return Response.json(
       {
-        error: isPdf
-          ? "PDFs must be smaller than 20 MB."
-          : isClip
-            ? "Clips must be smaller than 40 MB."
-            : isAudio
-              ? "Sound clips must be smaller than 3 MB."
-              : "Images must be smaller than 8 MB.",
+        error: `${
+          isPdf ? "PDFs" : isClip ? "Clips" : isAudio ? "Sound clips" : "Images"
+        } must be smaller than ${megabytes} MB.`,
       },
       { status: 413 },
     );

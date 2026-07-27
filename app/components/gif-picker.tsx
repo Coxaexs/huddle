@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
+import { EmojiPicker } from "./emoji-picker";
 
 interface MediaItem {
   id: string;
@@ -248,49 +249,19 @@ export function GifPicker({
       )}
 
       {tab === "emoji" && (
-        <>
-          {canManageStickers && (
-            <div className="gif-picker-head">
-              <button
-                type="button"
-                className="sticker-upload"
-                disabled={uploading || !serverId}
-                onClick={() => fileRef.current?.click()}
-              >
-                {uploading ? "Uploading…" : "+ Add emoji"}
-              </button>
-            </div>
-          )}
-          <div className="emoji-grid">
-            {customEmojis.map((emoji) => (
-              <div key={emoji.id} className="emoji-cell-wrap">
-                <button
-                  type="button"
-                  className="emoji-cell"
-                  title={`:${emoji.name}:`}
-                  onClick={() => onInsert?.(`:${emoji.name}: `)}
-                >
-                  <img src={emoji.url} alt={emoji.name} />
-                </button>
-                {canManageStickers && (
-                  <button
-                    type="button"
-                    className="gif-cell-delete"
-                    aria-label={`Remove :${emoji.name}:`}
-                    onClick={() => void removeEmoji(emoji.id)}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-            {!customEmojis.length && (
-              <p className="gif-picker-hint">
-                No custom emoji yet. Add one and type <code>:name:</code>.
-              </p>
-            )}
-          </div>
-        </>
+        <EmojiPicker
+          serverId={serverId}
+          canManageEmojis={canManageStickers}
+          onPickEmoji={(codeOrUrl, isCustom) => {
+            if (isCustom) {
+              onInsert?.(`${codeOrUrl} `);
+            } else {
+              onInsert?.(`${codeOrUrl} `);
+            }
+          }}
+          onClose={onClose}
+          onRequestUploadEmoji={() => fileRef.current?.click()}
+        />
       )}
 
       {tab === "server" && canManageStickers && (

@@ -23,6 +23,13 @@ export async function apiFetch<T>(
     error?: string;
   };
   if (!response.ok) {
+    // A 413 from the reverse proxy is an HTML page, not our JSON, so it would
+    // otherwise surface as a bare status code.
+    if (response.status === 413 && !data?.error) {
+      throw new Error(
+        "That file is too large to upload. Try a smaller one.",
+      );
+    }
     throw new Error(data?.error || `Request failed (${response.status}).`);
   }
   return data;
