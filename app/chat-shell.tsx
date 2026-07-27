@@ -31,6 +31,8 @@ import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
+import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
+import { BattlemapBoard } from "./components/battlemap";
 import { PollCard } from "./components/poll-card";
 import { ProfileCard } from "./components/profile-card";
 import {
@@ -177,6 +179,23 @@ function Icon({
   );
 }
 
+/** Opens a one-shot file dialog and resolves with the chosen image. */
+function pickImageFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = () => resolve(input.files?.[0] || null);
+    // A cancelled dialog fires nothing in some browsers; resolve on focus back.
+    window.addEventListener(
+      "focus",
+      () => window.setTimeout(() => resolve(input.files?.[0] || null), 400),
+      { once: true },
+    );
+    input.click();
+  });
+}
+
 /** Fires a desktop/web notification, unless the user turned them off. */
 function showNotification(title: string, body: string): void {
   try {
@@ -307,10 +326,21 @@ export function ChatShell() {
   const [emojis, setEmojis] = useState<
     Array<{ id: string; serverId: string; name: string; url: string }>
   >([]);
+  /** Per-channel notification level; absent means "all". */
+  const [channelPrefs, setChannelPrefs] = useState<Record<string, string>>({});
+  const [channelMenu, setChannelMenu] = useState<{
+    channel: PublicChannel;
+    x: number;
+    y: number;
+  } | null>(null);
   /** The message whose thread is open in the side panel. */
   const [threadRoot, setThreadRoot] = useState<Message | null>(null);
   const [threadMessages, setThreadMessages] = useState<Message[]>([]);
   const [threadDraft, setThreadDraft] = useState("");
+  /** The shared battlemap for the voice room you are viewing. */
+  const [battlemap, setBattlemap] = useState<Battlemap | null>(null);
+  const [battlemapGm, setBattlemapGm] = useState(false);
+  const [battlemapHidden, setBattlemapHidden] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   /** Your own presence, mirrored locally so the dot reacts instantly. */
   const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
@@ -385,6 +415,13 @@ export function ChatShell() {
     setVoicePrefs(data.prefs || {});
   }, []);
 
+  const loadChannelPrefs = useCallback(async () => {
+    const data = await apiFetch<{ prefs: Record<string, string> }>(
+      "/api/channels/prefs",
+    ).catch(() => ({ prefs: {} }));
+    setChannelPrefs(data.prefs || {});
+  }, []);
+
   const loadEmojis = useCallback(async () => {
     const data = await apiFetch<{
       emojis: Array<{ id: string; serverId: string; name: string; url: string }>;
@@ -435,7 +472,17 @@ export function ChatShell() {
     void loadPrefs().catch(() => undefined);
     void loadUnread().catch(() => undefined);
     void loadEmojis().catch(() => undefined);
-  }, [user, loadServers, loadMembers, loadDms, loadPrefs, loadUnread, loadEmojis]);
+    void loadChannelPrefs().catch(() => undefined);
+  }, [
+    user,
+    loadServers,
+    loadMembers,
+    loadDms,
+    loadPrefs,
+    loadUnread,
+    loadEmojis,
+    loadChannelPrefs,
+  ]);
 
   // Opening a channel marks it read.
   useEffect(() => {
@@ -625,6 +672,13 @@ export function ChatShell() {
         const mentioned = Boolean(user && incoming.mentions?.includes(user.id));
         // Your own messages (echoed back) never count as unread.
         if (user && incoming.userId === user.id) return;
+
+        // Per-channel level: "nothing" stays silent, "mentions" only lights up
+        // when you are named.
+        const level = channelPrefsRef.current[channelId] || "all";
+        if (level === "nothing") return;
+        if (level === "mentions" && !mentioned) return;
+
         setUnread((current) => ({
           ...current,
           [channelId]: {
@@ -678,6 +732,12 @@ export function ChatShell() {
   /** The open thread, readable from socket handlers without re-subscribing. */
   const threadRootRef = useRef<Message | null>(null);
   threadRootRef.current = threadRoot;
+  /** Notification levels, readable from socket handlers. */
+  const channelPrefsRef = useRef<Record<string, string>>({});
+  channelPrefsRef.current = channelPrefs;
+  /** The voice channel whose stage is open, for battlemap events. */
+  const stageChannelRef = useRef<string | null>(null);
+  stageChannelRef.current = stageChannelId;
 
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
@@ -735,6 +795,45 @@ export function ChatShell() {
     onPoll: (channelId, pollId, counts) => {
       if (channelId !== activeChannelRef.current) return;
       setPollCounts((current) => ({ ...current, [pollId]: counts }));
+    },
+    onBattlemap: (channelId, payload) => {
+      if (channelId !== stageChannelRef.current) return;
+      if (payload.action === "open") {
+        setBattlemap((payload.map as Battlemap) || null);
+        setBattlemapHidden(false);
+        return;
+      }
+      if (payload.action === "close") {
+        setBattlemap(null);
+        return;
+      }
+      setBattlemap((current) => {
+        if (!current) return current;
+        if (payload.action === "token") {
+          const moved = payload.token as MapToken;
+          return {
+            ...current,
+            tokens: current.tokens.map((t) => (t.id === moved.id ? moved : t)),
+          };
+        }
+        if (payload.action === "tokens") {
+          return { ...current, tokens: (payload.tokens as MapToken[]) || [] };
+        }
+        if (payload.action === "stroke") {
+          const stroke = payload.stroke as MapStroke;
+          return current.strokes.some((s) => s.id === stroke.id)
+            ? current
+            : { ...current, strokes: [...current.strokes, stroke] };
+        }
+        if (payload.action === "cleared") {
+          return {
+            ...current,
+            tokens: (payload.tokens as MapToken[]) || [],
+            strokes: (payload.strokes as MapStroke[]) || [],
+          };
+        }
+        return current;
+      });
     },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
   });
@@ -801,6 +900,78 @@ export function ChatShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, myStatus]);
+
+  // Opening a voice stage pulls in whatever map is on the table there.
+  useEffect(() => {
+    if (!stageChannelId) {
+      setBattlemap(null);
+      setBattlemapGm(false);
+      return;
+    }
+    let cancelled = false;
+    apiFetch<{ map: Battlemap | null; gm: boolean }>(
+      `/api/battlemap?channelId=${encodeURIComponent(stageChannelId)}`,
+    )
+      .then((data) => {
+        if (cancelled) return;
+        setBattlemap(data.map);
+        setBattlemapGm(Boolean(data.gm));
+        setBattlemapHidden(false);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [stageChannelId]);
+
+  /** GM: put a map on the table (optionally with an uploaded image). */
+  async function openBattlemap() {
+    if (!stageChannelId) return;
+    const name = window.prompt("Map name", "Battlemap");
+    if (name === null) return;
+    let imageKey: string | null = null;
+    if (window.confirm("Upload a map image? (Cancel for a blank grid)")) {
+      const picked = await pickImageFile();
+      if (picked) {
+        const form = new FormData();
+        form.append("file", picked);
+        const upload = await apiFetch<{ key: string }>("/api/uploads", {
+          method: "POST",
+          body: form,
+        }).catch(() => null);
+        imageKey = upload?.key || null;
+      }
+    }
+    await apiFetch("/api/battlemap", {
+      method: "POST",
+      body: JSON.stringify({
+        channelId: stageChannelId,
+        action: "open",
+        name: name || "Battlemap",
+        imageKey,
+      }),
+    }).catch((error: Error) => setNotice(error.message));
+  }
+
+  /** Adds a token for yourself, using your avatar. */
+  async function addMyToken() {
+    if (!stageChannelId || !user) return;
+    await apiFetch("/api/battlemap", {
+      method: "POST",
+      body: JSON.stringify({
+        channelId: stageChannelId,
+        action: "add-token",
+        token: {
+          label: user.displayName,
+          color: user.color,
+          avatarUrl: user.avatarUrl || null,
+          ownerId: user.id,
+          x: 2,
+          y: 2,
+        },
+      }),
+    }).catch((error: Error) => setNotice(error.message));
+  }
 
   // Typing indicators fade out on their own a few seconds after the last keypress.
   useEffect(() => {
@@ -2046,7 +2217,7 @@ export function ChatShell() {
             onClick={() => openVoiceChannel(channel)}
             onContextMenu={(event) => {
               event.preventDefault();
-              void renameChannel(channel);
+              setChannelMenu({ channel, x: event.clientX, y: event.clientY });
             }}
           >
             <span className="speaker-icon">◖))</span>
@@ -2145,7 +2316,7 @@ export function ChatShell() {
         }}
         onContextMenu={(event) => {
           event.preventDefault();
-          void renameChannel(channel);
+          setChannelMenu({ channel, x: event.clientX, y: event.clientY });
         }}
       >
         {unread[channel.id]?.unread && <span className="unread-pill" />}
@@ -2637,6 +2808,46 @@ export function ChatShell() {
             voice={voice}
             serverId={stageChannel.serverId}
             canManageSounds={canManageChannels}
+            battlemapOpen={Boolean(battlemap) && !battlemapHidden}
+            onToggleBattlemap={() => {
+              if (!battlemap) {
+                if (battlemapGm) void openBattlemap();
+                else setNotice("No map is on the table yet.");
+                return;
+              }
+              setBattlemapHidden((hidden) => !hidden);
+            }}
+            battlemap={
+              battlemap && !battlemapHidden ? (
+                <BattlemapBoard
+                  channelId={stageChannel.id}
+                  map={battlemap}
+                  gm={battlemapGm}
+                  userId={user.id}
+                  onClose={() => setBattlemapHidden(true)}
+                  onAddMyToken={() => void addMyToken()}
+                  onLocalToken={(token) =>
+                    setBattlemap((current) =>
+                      current
+                        ? {
+                            ...current,
+                            tokens: current.tokens.map((t) =>
+                              t.id === token.id ? token : t,
+                            ),
+                          }
+                        : current,
+                    )
+                  }
+                  onLocalStroke={(stroke) =>
+                    setBattlemap((current) =>
+                      current
+                        ? { ...current, strokes: [...current.strokes, stroke] }
+                        : current,
+                    )
+                  }
+                />
+              ) : null
+            }
             onClip={async (clip) => {
               if (!activeChannelId) {
                 setNotice("Open a text channel to post the clip into.");
@@ -3847,6 +4058,105 @@ export function ChatShell() {
             setUserMenu(null);
           }}
         />
+      )}
+
+      {channelMenu && (
+        <>
+          <div
+            className="menu-shade"
+            onClick={() => setChannelMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setChannelMenu(null);
+            }}
+          />
+          <div
+            className="user-menu"
+            role="menu"
+            style={{
+              left: Math.min(channelMenu.x, (globalThis.innerWidth || 1200) - 240),
+              top: Math.min(channelMenu.y, (globalThis.innerHeight || 800) - 280),
+            }}
+          >
+            <div className="user-menu-head">
+              <strong>
+                {channelMenu.channel.kind === "voice" ? "◖))" : "#"}{" "}
+                {channelMenu.channel.name}
+              </strong>
+              <span>Notifications</span>
+            </div>
+            {(
+              [
+                ["all", "All messages"],
+                ["mentions", "Only @mentions"],
+                ["nothing", "Nothing"],
+              ] as const
+            ).map(([level, label]) => {
+              const current = channelPrefs[channelMenu.channel.id] || "all";
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  role="menuitem"
+                  className={current === level ? "active" : ""}
+                  onClick={() => {
+                    const id = channelMenu.channel.id;
+                    setChannelPrefs((prefs) => {
+                      const next = { ...prefs };
+                      if (level === "all") delete next[id];
+                      else next[id] = level;
+                      return next;
+                    });
+                    if (level !== "all") {
+                      // Muting clears whatever was already lit up.
+                      setUnread((current) => {
+                        const next = { ...current };
+                        if (level === "nothing") delete next[id];
+                        return next;
+                      });
+                    }
+                    void apiFetch("/api/channels/prefs", {
+                      method: "POST",
+                      body: JSON.stringify({ channelId: id, level }),
+                    }).catch(() => undefined);
+                    setChannelMenu(null);
+                  }}
+                >
+                  {current === level ? "● " : "○ "}
+                  {label}
+                </button>
+              );
+            })}
+            {canManageChannels && (
+              <>
+                <div className="user-menu-divider" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const channel = channelMenu.channel;
+                    setChannelMenu(null);
+                    void renameChannel(channel);
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger"
+                  onClick={() => {
+                    const channel = channelMenu.channel;
+                    setChannelMenu(null);
+                    void deleteChannel(channel);
+                  }}
+                >
+                  Delete channel
+                </button>
+              </>
+            )}
+          </div>
+        </>
       )}
 
       {lightbox && (

@@ -48,6 +48,10 @@ interface VoiceStageProps {
   canManageSounds: boolean;
   /** Posts a captured clip into the active text channel. */
   onClip?: (clip: Blob) => Promise<void>;
+  /** The battlemap panel, rendered by the shell which owns its state. */
+  battlemap?: React.ReactNode;
+  onToggleBattlemap?: () => void;
+  battlemapOpen?: boolean;
 }
 
 interface VideoTile {
@@ -103,6 +107,9 @@ export function VoiceStage({
   serverId,
   canManageSounds,
   onClip,
+  battlemap,
+  onToggleBattlemap,
+  battlemapOpen,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
@@ -180,6 +187,7 @@ export function VoiceStage({
 
   return (
     <div className="voice-stage">
+      {battlemap}
       <div className="voice-stage-body">
         {focused ? (
           <div className="voice-focus" ref={wrapperRef}>
@@ -356,6 +364,16 @@ export function VoiceStage({
           >
             🔊
           </button>
+          {onToggleBattlemap && (
+            <button
+              type="button"
+              className={`stage-btn ${battlemapOpen ? "on" : ""}`}
+              onClick={onToggleBattlemap}
+              title="Battlemap"
+            >
+              🗺
+            </button>
+          )}
           <button
             type="button"
             className={`stage-btn ${clipping === "done" ? "on" : ""}`}

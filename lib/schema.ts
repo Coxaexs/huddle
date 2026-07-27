@@ -272,6 +272,30 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS poll_votes_poll_idx ON poll_votes(poll_id)",
     ),
+    // Per-channel notification level: all | mentions | nothing.
+    db.prepare(`CREATE TABLE IF NOT EXISTS channel_prefs (
+        user_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        level TEXT NOT NULL DEFAULT 'all',
+        PRIMARY KEY (user_id, channel_id)
+      )`),
+    // A shared battlemap per voice channel. Tokens and paint strokes are JSON
+    // blobs: moves fly over the socket and only land here when they settle.
+    db.prepare(`CREATE TABLE IF NOT EXISTS battlemaps (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        image_key TEXT,
+        grid INTEGER NOT NULL DEFAULT 20,
+        tokens TEXT NOT NULL DEFAULT '[]',
+        strokes TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS battlemaps_channel_idx ON battlemaps(channel_id, active)",
+    ),
   ]);
 
   // Columns added after the first release.
