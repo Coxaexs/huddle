@@ -202,7 +202,7 @@ export function BattlemapBoard({
                   void act({
                     action: "add-token",
                     token: {
-                      label: window.prompt("Token name", "Goblin") || "Token",
+                      label: "Goblin",
                       x: Math.round(map.grid / 2),
                       y: Math.round(rows / 2),
                     },
@@ -308,9 +308,7 @@ export function BattlemapBoard({
               onContextMenu={(event) => {
                 if (!gm) return;
                 event.preventDefault();
-                if (window.confirm(`Remove ${token.label}?`)) {
-                  void act({ action: "remove-token", tokenId: token.id });
-                }
+                void act({ action: "remove-token", tokenId: token.id });
               }}
             >
               {token.avatarUrl ? (

@@ -45,6 +45,10 @@ import {
 } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
 import { SettingsDialog } from "./components/settings-dialog";
+import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
+import { UserFooter } from "./components/user-footer";
+import { ServerSettingsDialog } from "./components/server-settings-dialog";
+import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
 import { VoiceStage } from "./components/voice-stage";
 import {
@@ -104,7 +108,7 @@ interface Message {
     voiceChannelId?: string;
     trackId?: string;
     label?: string;
-    track?: string;
+    track?: { title: string; artist?: string | null; duration?: number | null; pageUrl?: string | null } | string;
     artist?: string;
     lines?: Array<{ at: number; line: string; active: boolean }>;
     type?: string;
@@ -123,7 +127,6 @@ interface Message {
     artist_diversity?: boolean;
     vibe_match?: boolean;
     wrapped?: boolean;
-    label?: string;
     plays?: number;
     unique?: number;
     hours?: number;
@@ -134,6 +137,11 @@ interface Message {
     peakHour?: string | null;
     streakDays?: number;
     personality?: string | null;
+    currentTrack?: any;
+    queue?: any;
+    totalTracks?: number;
+    history?: any;
+    query?: string;
   };
 }
 
@@ -311,6 +319,7 @@ export function ChatShell() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
@@ -358,6 +367,36 @@ export function ChatShell() {
   const [musicDashboardUrl, setMusicDashboardUrl] = useState<string | null>(null);
   const [dndOnline, setDndOnline] = useState<boolean | null>(null);
   const [dndUrl, setDndUrl] = useState<string | null>(null);
+
+  // Custom modal dialog & server settings states
+  const [dialogOptions, setDialogOptions] = useState<DialogOptions | null>(null);
+  const [dialogCallback, setDialogCallback] = useState<((val?: string) => void) | null>(null);
+  const [serverMenuOpen, setServerMenuOpen] = useState(false);
+  const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
+
+  const showCustomPrompt = (options: {
+    title: string;
+    message?: string;
+    defaultValue?: string;
+    placeholder?: string;
+    confirmText?: string;
+    onConfirm: (val?: string) => void;
+  }) => {
+    setDialogOptions({ ...options, type: "prompt" });
+    setDialogCallback(() => options.onConfirm);
+  };
+
+  const showCustomConfirm = (options: {
+    title: string;
+    message?: string;
+    isDanger?: boolean;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }) => {
+    setDialogOptions({ ...options, type: "confirm" });
+    setDialogCallback(() => () => options.onConfirm());
+  };
 
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -927,30 +966,43 @@ export function ChatShell() {
   /** GM: put a map on the table (optionally with an uploaded image). */
   async function openBattlemap() {
     if (!stageChannelId) return;
-    const name = window.prompt("Map name", "Battlemap");
-    if (name === null) return;
-    let imageKey: string | null = null;
-    if (window.confirm("Upload a map image? (Cancel for a blank grid)")) {
-      const picked = await pickImageFile();
-      if (picked) {
-        const form = new FormData();
-        form.append("file", picked);
-        const upload = await apiFetch<{ key: string }>("/api/uploads", {
-          method: "POST",
-          body: form,
-        }).catch(() => null);
-        imageKey = upload?.key || null;
-      }
-    }
-    await apiFetch("/api/battlemap", {
-      method: "POST",
-      body: JSON.stringify({
-        channelId: stageChannelId,
-        action: "open",
-        name: name || "Battlemap",
-        imageKey,
-      }),
-    }).catch((error: Error) => setNotice(error.message));
+    showCustomPrompt({
+      title: "New Battlemap",
+      message: "Enter a name for the new battlemap:",
+      defaultValue: "Battlemap",
+      confirmText: "Create Map",
+      onConfirm: (name) => {
+        if (!name?.trim()) return;
+        showCustomConfirm({
+          title: "Map Background",
+          message: "Would you like to upload a map background image?",
+          confirmText: "Upload Image",
+          cancelText: "Blank Grid",
+          onConfirm: async () => {
+            const picked = await pickImageFile();
+            let imageKey: string | null = null;
+            if (picked) {
+              const form = new FormData();
+              form.append("file", picked);
+              const upload = await apiFetch<{ key: string }>("/api/uploads", {
+                method: "POST",
+                body: form,
+              }).catch(() => null);
+              imageKey = upload?.key || null;
+            }
+            await apiFetch("/api/battlemap", {
+              method: "POST",
+              body: JSON.stringify({
+                channelId: stageChannelId,
+                action: "open",
+                name: name.trim(),
+                imageKey,
+              }),
+            }).catch((error: Error) => setNotice(error.message));
+          },
+        });
+      },
+    });
   }
 
   /** Adds a token for yourself, using your avatar. */
@@ -1257,16 +1309,23 @@ export function ChatShell() {
   async function moderateMember(userId: string, action: "kick" | "ban") {
     if (!activeServerId || activeServerId === DM_HOME) return;
     const verb = action === "ban" ? "Ban" : "Kick";
-    if (!window.confirm(`${verb} this member from the server?`)) return;
-    try {
-      await apiFetch(`/api/members/${userId}`, {
-        method: "POST",
-        body: JSON.stringify({ serverId: activeServerId, action }),
-      });
-      setNotice(`${verb === "Ban" ? "Banned" : "Kicked"} · roles cleared.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not do that.");
-    }
+    showCustomConfirm({
+      title: `${verb} Member?`,
+      message: `Are you sure you want to ${action} this member from the server?`,
+      isDanger: true,
+      confirmText: `${verb} Member`,
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/api/members/${userId}`, {
+            method: "POST",
+            body: JSON.stringify({ serverId: activeServerId, action }),
+          });
+          setNotice(`${verb === "Ban" ? "Banned" : "Kicked"} · roles cleared.`);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not do that.");
+        }
+      },
+    });
   }
 
   async function runCommand(raw: string) {
@@ -1862,19 +1921,26 @@ export function ChatShell() {
   }
 
   async function createServer() {
-    const name = window.prompt("Name your new server");
-    if (!name?.trim()) return;
-    try {
-      const data = await apiFetch<{
-        server: PublicServer;
-        servers: PublicServer[];
-      }>("/api/servers", { method: "POST", body: JSON.stringify({ name }) });
-      setServers(data.servers);
-      setActiveServerId(data.server.id);
-      setNotice(`${data.server.name} is live — everyone here is already in it.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not create it.");
-    }
+    showCustomPrompt({
+      title: "Create Server",
+      message: "Enter a name for your new server:",
+      placeholder: "e.g. My Cool Server",
+      confirmText: "Create Server",
+      onConfirm: async (name) => {
+        if (!name?.trim()) return;
+        try {
+          const data = await apiFetch<{
+            server: PublicServer;
+            servers: PublicServer[];
+          }>("/api/servers", { method: "POST", body: JSON.stringify({ name: name.trim() }) });
+          setServers(data.servers);
+          setActiveServerId(data.server.id);
+          setNotice(`${data.server.name} is live — everyone here is already in it.`);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not create it.");
+        }
+      },
+    });
   }
 
   async function createChannel(
@@ -1882,77 +1948,75 @@ export function ChatShell() {
     categoryId: string | null = null,
   ) {
     if (!activeServerId || activeServerId === DM_HOME) return;
-    const name = window.prompt(
-      kind === "text" ? "New text channel name" : "New voice room name",
-    );
-    if (!name?.trim()) return;
-    try {
-      const data = await apiFetch<{ channelId: string; servers: PublicServer[] }>(
-        "/api/channels",
-        {
-          method: "POST",
-          body: JSON.stringify({ serverId: activeServerId, name, kind, categoryId }),
-        },
-      );
-      setServers(data.servers);
-      if (kind === "text") setActiveChannelId(data.channelId);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not create it.");
-    }
+    showCustomPrompt({
+      title: kind === "text" ? "Create Text Channel" : "Create Voice Room",
+      message: `Enter name for the new ${kind === "text" ? "text channel" : "voice room"}:`,
+      placeholder: kind === "text" ? "general" : "Voice Lounge",
+      confirmText: "Create Channel",
+      onConfirm: async (name) => {
+        if (!name?.trim()) return;
+        try {
+          const data = await apiFetch<{ channelId: string; servers: PublicServer[] }>(
+            "/api/channels",
+            {
+              method: "POST",
+              body: JSON.stringify({ serverId: activeServerId, name: name.trim(), kind, categoryId }),
+            },
+          );
+          setServers(data.servers);
+          if (kind === "text") setActiveChannelId(data.channelId);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not create it.");
+        }
+      },
+    });
   }
 
   async function renameChannel(channel: PublicChannel) {
-    const name = window.prompt(`Rename ${channel.name}`, channel.name);
-    if (!name?.trim()) return;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/channels/${channel.id}`,
-        { method: "PATCH", body: JSON.stringify({ name }) },
-      );
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not rename it.");
-    }
+    showCustomPrompt({
+      title: `Rename Channel`,
+      message: `Enter a new name for ${channel.name}:`,
+      defaultValue: channel.name,
+      confirmText: "Save Name",
+      onConfirm: async (name) => {
+        if (!name?.trim()) return;
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
+          );
+          setServers(data.servers);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not rename it.");
+        }
+      },
+    });
   }
 
   async function deleteChannel(channel: PublicChannel) {
-    if (!window.confirm(`Delete ${channel.name} and everything in it?`)) return;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/channels/${channel.id}`,
-        { method: "DELETE" },
-      );
-      setServers(data.servers);
-      if (voice.channelId === channel.id) voice.leave();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not delete it.");
-    }
+    showCustomConfirm({
+      title: `Delete '${channel.name}'?`,
+      message: "Are you sure? All messages in this channel will be permanently removed.",
+      isDanger: true,
+      confirmText: "Delete Channel",
+      onConfirm: async () => {
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "DELETE" },
+          );
+          setServers(data.servers);
+          if (voice.channelId === channel.id) voice.leave();
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not delete it.");
+        }
+      },
+    });
   }
 
   async function editServer() {
     if (!activeServer) return;
-    const name = window.prompt("Rename this server", activeServer.name);
-    if (name === null) return;
-    if (!name.trim()) {
-      if (!window.confirm(`Delete ${activeServer.name}?`)) return;
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/servers/${activeServer.id}`,
-        { method: "DELETE" },
-      ).catch((error: Error) => {
-        setNotice(error.message);
-        return null;
-      });
-      if (data) {
-        setServers(data.servers);
-        setActiveServerId(data.servers[0]?.id || null);
-      }
-      return;
-    }
-    const data = await apiFetch<{ servers: PublicServer[] }>(
-      `/api/servers/${activeServer.id}`,
-      { method: "PATCH", body: JSON.stringify({ name }) },
-    ).catch(() => null);
-    if (data) setServers(data.servers);
+    setServerSettingsOpen(true);
   }
 
   async function signOut() {
@@ -2055,44 +2119,65 @@ export function ChatShell() {
 
   async function addCategory() {
     if (!activeServerId || activeServerId === DM_HOME) return;
-    const name = window.prompt("New category name");
-    if (!name?.trim()) return;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>("/api/categories", {
-        method: "POST",
-        body: JSON.stringify({ serverId: activeServerId, name }),
-      });
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not create it.");
-    }
+    showCustomPrompt({
+      title: "Add Category",
+      message: "Enter name for the new category:",
+      placeholder: "e.g. Text Channels",
+      confirmText: "Create Category",
+      onConfirm: async (name) => {
+        if (!name?.trim()) return;
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>("/api/categories", {
+            method: "POST",
+            body: JSON.stringify({ serverId: activeServerId, name: name.trim() }),
+          });
+          setServers(data.servers);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not create it.");
+        }
+      },
+    });
   }
 
   async function renameCategory(categoryId: string, current: string) {
-    const name = window.prompt("Rename category", current);
-    if (!name?.trim() || name === current) return;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/categories/${categoryId}`,
-        { method: "PATCH", body: JSON.stringify({ name }) },
-      );
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not rename it.");
-    }
+    showCustomPrompt({
+      title: "Rename Category",
+      message: `Enter new name for category "${current}":`,
+      defaultValue: current,
+      confirmText: "Save Name",
+      onConfirm: async (name) => {
+        if (!name?.trim() || name.trim() === current) return;
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/categories/${categoryId}`,
+            { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
+          );
+          setServers(data.servers);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not rename it.");
+        }
+      },
+    });
   }
 
   async function deleteCategory(categoryId: string, name: string) {
-    if (!window.confirm(`Delete the "${name}" category? Its channels stay.`)) return;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/categories/${categoryId}`,
-        { method: "DELETE" },
-      );
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not delete it.");
-    }
+    showCustomConfirm({
+      title: `Delete Category '${name}'?`,
+      message: `Are you sure you want to delete the "${name}" category? Channels inside it will remain uncategorized.`,
+      isDanger: true,
+      confirmText: "Delete Category",
+      onConfirm: async () => {
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/categories/${categoryId}`,
+            { method: "DELETE" },
+          );
+          setServers(data.servers);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not delete it.");
+        }
+      },
+    });
   }
 
   /**
@@ -2518,13 +2603,18 @@ export function ChatShell() {
             <button
               type="button"
               onClick={() => {
-                const text = window.prompt(
-                  "Custom status",
-                  myCustomStatus || "",
-                );
-                if (text === null) return;
-                void savePresence({ customStatus: text });
                 setStatusOpen(false);
+                showCustomPrompt({
+                  title: "Set Custom Status",
+                  message: "What's on your mind?",
+                  defaultValue: myCustomStatus || "",
+                  placeholder: "e.g. In a meeting / Coding...",
+                  confirmText: "Save Status",
+                  onConfirm: (text) => {
+                    if (text === undefined) return;
+                    void savePresence({ customStatus: text });
+                  },
+                });
               }}
             >
               <span className="status-dot" style={{ background: "transparent" }}>
@@ -2574,7 +2664,7 @@ export function ChatShell() {
       </aside>
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
-        <header className="space-header">
+        <header className="space-header" style={{ position: "relative" }}>
           <div>
             <span className="eyebrow">
               {inDmHome ? "PRIVATE" : "PRIVATE SPACE"}
@@ -2582,9 +2672,82 @@ export function ChatShell() {
             <h1>{inDmHome ? "Direct messages" : activeServer?.name || "Huddle"}</h1>
           </div>
           {!inDmHome && (
-            <Icon label="Server settings" onClick={editServer}>
+            <Icon label="Server settings" onClick={() => setServerMenuOpen((o) => !o)}>
               •••
             </Icon>
+          )}
+
+          {serverMenuOpen && !inDmHome && activeServer && (
+            <div className="server-menu-dropdown" role="menu">
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  setServerSettingsOpen(true);
+                }}
+              >
+                <span>⚙️ Server Settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  showCustomPrompt({
+                    title: "Rename Server",
+                    message: "Enter a new name for this server:",
+                    defaultValue: activeServer.name,
+                    confirmText: "Save Name",
+                    onConfirm: async (name) => {
+                      if (!name?.trim()) return;
+                      const data = await apiFetch<{ servers: PublicServer[] }>(
+                        `/api/servers/${activeServer.id}`,
+                        { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
+                      ).catch(() => null);
+                      if (data) setServers(data.servers);
+                    },
+                  });
+                }}
+              >
+                <span>✎ Rename Server</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  createChannel("text");
+                }}
+              >
+                <span>➕ Create Channel</span>
+              </button>
+              <div className="server-menu-divider" />
+              {canManageServer && (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    setServerMenuOpen(false);
+                    showCustomConfirm({
+                      title: `Delete '${activeServer.name}'?`,
+                      message: "Are you sure? This will permanently delete the server and all channels.",
+                      isDanger: true,
+                      confirmText: "Delete Server",
+                      onConfirm: async () => {
+                        const data = await apiFetch<{ servers: PublicServer[] }>(
+                          `/api/servers/${activeServer.id}`,
+                          { method: "DELETE" },
+                        ).catch(() => null);
+                        if (data) {
+                          setServers(data.servers);
+                          setActiveServerId(data.servers[0]?.id || null);
+                        }
+                      },
+                    });
+                  }}
+                >
+                  <span>🗑️ Delete Server</span>
+                </button>
+              )}
+            </div>
           )}
         </header>
 
@@ -2719,6 +2882,20 @@ export function ChatShell() {
 
           </nav>
         )}
+
+        {user && (
+          <UserFooter
+            user={user}
+            status={myStatus}
+            customStatus={myCustomStatus || undefined}
+            muted={voice.muted}
+            deafened={voice.deafened}
+            onToggleMute={voice.toggleMute}
+            onToggleDeafen={voice.toggleDeafen}
+            onOpenStatusMenu={() => setStatusOpen((o) => !o)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        )}
       </aside>
 
       <section
@@ -2765,6 +2942,33 @@ export function ChatShell() {
             </span>
           </div>
           <div className="header-actions">
+            {inDmHome && activeChannelId && (
+              <div className="dm-call-actions">
+                <button
+                  type="button"
+                  className="dm-call-btn"
+                  onClick={() => {
+                    setStageChannelId(activeChannelId);
+                    void voice.join(activeChannelId);
+                  }}
+                  title="Start Voice Call"
+                >
+                  🎙️ Start Call
+                </button>
+                <button
+                  type="button"
+                  className="dm-call-btn"
+                  onClick={() => {
+                    setStageChannelId(activeChannelId);
+                    void voice.join(activeChannelId);
+                    void voice.startCamera();
+                  }}
+                  title="Start Video Call"
+                >
+                  📹 Video Call
+                </button>
+              </div>
+            )}
             {!inDmHome && (
               <Icon
                 label="Search messages"
@@ -3042,7 +3246,7 @@ export function ChatShell() {
 
                   {message.kind === "lyricsnow" && message.payload?.lines ? (
                     <LyricsNow
-                      track={message.payload.track}
+                      track={typeof message.payload.track === "string" ? message.payload.track : message.payload.track?.title}
                       artist={message.payload.artist}
                       lines={message.payload.lines}
                       positionMs={
@@ -3118,7 +3322,7 @@ export function ChatShell() {
                   ) : message.kind === "music-search" && message.payload ? (
                     <MusicSearchCard
                       query={message.payload.query}
-                      track={message.payload.track}
+                      track={typeof message.payload.track === "object" ? message.payload.track : undefined}
                       disabled={!message.payload.voiceChannelId}
                       onCommand={(command) =>
                         runMusicUiCommand(
@@ -3507,6 +3711,19 @@ export function ChatShell() {
             />
           )}
 
+          {emojiOpen && (
+            <EmojiPicker
+              serverId={inDmHome ? null : activeServerId}
+              canManageEmojis={canManageChannels}
+              onPickEmoji={(codeOrUrl) => {
+                setEmojiOpen(false);
+                setDraft((current) => current + codeOrUrl + " ");
+                composerRef.current?.focus();
+              }}
+              onClose={() => setEmojiOpen(false)}
+            />
+          )}
+
           {replyTarget && (
             <div className="reply-bar">
               <span>
@@ -3602,8 +3819,23 @@ export function ChatShell() {
             />
             <button
               type="button"
+              className="composer-emoji-btn"
+              onClick={() => {
+                setEmojiOpen((open) => !open);
+                setGifOpen(false);
+              }}
+              aria-label="Open Emoji Picker"
+              title="Open Emoji Picker"
+            >
+              😀
+            </button>
+            <button
+              type="button"
               className="gif-button"
-              onClick={() => setGifOpen((open) => !open)}
+              onClick={() => {
+                setGifOpen((open) => !open);
+                setEmojiOpen(false);
+              }}
               aria-label="Add a GIF"
             >
               GIF
@@ -3651,13 +3883,23 @@ export function ChatShell() {
         <aside className="thread-panel" aria-label="Thread">
           <header className="thread-head">
             <strong>🧵 Thread</strong>
-            <button
-              type="button"
-              onClick={() => setThreadRoot(null)}
-              aria-label="Close thread"
-            >
-              ×
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                className="thread-quit-btn"
+                onClick={() => setThreadRoot(null)}
+                aria-label="Quit thread"
+              >
+                Quit Thread
+              </button>
+              <button
+                type="button"
+                onClick={() => setThreadRoot(null)}
+                aria-label="Close thread"
+              >
+                ×
+              </button>
+            </div>
           </header>
 
           <div className="thread-body">
@@ -4218,6 +4460,37 @@ export function ChatShell() {
           server={inDmHome ? null : activeServer}
           members={members}
           canManageServer={canManageServer}
+        />
+      )}
+
+      {serverSettingsOpen && activeServer && (
+        <ServerSettingsDialog
+          server={activeServer}
+          members={members}
+          canManageServer={canManageServer}
+          onClose={() => setServerSettingsOpen(false)}
+          onServerUpdated={() => void loadServers().catch(() => undefined)}
+          onServerDeleted={() => {
+            void loadServers().catch(() => undefined);
+            setActiveServerId(servers[0]?.id || null);
+          }}
+          onRequestPrompt={showCustomPrompt}
+          onRequestConfirm={showCustomConfirm}
+        />
+      )}
+
+      {dialogOptions && (
+        <CustomDialog
+          options={dialogOptions}
+          onConfirm={(val) => {
+            dialogCallback?.(val);
+            setDialogOptions(null);
+            setDialogCallback(null);
+          }}
+          onCancel={() => {
+            setDialogOptions(null);
+            setDialogCallback(null);
+          }}
         />
       )}
     </main>
