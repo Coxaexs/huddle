@@ -53,6 +53,8 @@ interface HubHandlers {
     },
   ) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
+  /** This tab lost voice because the account joined from elsewhere. */
+  onVoiceEvicted?: () => void;
 }
 
 /**
@@ -233,6 +235,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               return { ...current, forcedMutes };
             });
             handlersRef.current.onForceMute?.(payload.userId, payload.muted);
+            break;
+          case "voice-evicted":
+            handlersRef.current.onVoiceEvicted?.();
             break;
           default:
             break;

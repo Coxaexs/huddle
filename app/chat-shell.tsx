@@ -769,6 +769,8 @@ export function ChatShell() {
   );
   /** Current connected voice channel, for the soundboard event handler. */
   const voiceChannelRef = useRef<string | null>(null);
+  /** Tears this tab out of voice when the account joins from another one. */
+  const voiceEvictedRef = useRef<() => void>(() => {});
   /** The open thread, readable from socket handlers without re-subscribing. */
   const threadRootRef = useRef<Message | null>(null);
   threadRootRef.current = threadRoot;
@@ -876,6 +878,11 @@ export function ChatShell() {
       });
     },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
+    onVoiceEvicted: () => {
+      // The hub already removed this tab from the room; tear the call down
+      // locally so the microphone and peer connections actually stop.
+      voiceEvictedRef.current();
+    },
   });
 
   const voice = useVoice({
@@ -885,6 +892,12 @@ export function ChatShell() {
   });
   voiceSignalRef.current = voice.handleSignal;
   voiceChannelRef.current = voice.channelId;
+  voiceEvictedRef.current = () => {
+    if (!voice.channelId) return;
+    voice.leave();
+    setStageChannelId(null);
+    setNotice("You joined this voice room from another tab or device.");
+  };
   forcedMuteRef.current = (userId, muted) => {
     if (user && userId === user.id) voice.setForcedMute(muted);
   };
