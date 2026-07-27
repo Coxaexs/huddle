@@ -128,6 +128,17 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     (remoteId: string, peer: RTCPeerConnection) => Promise<void>
   >(async () => {});
   const participantCountRef = useRef(0);
+  /** Signals that arrived before this tab finished joining. */
+  const earlySignalsRef = useRef<Array<{ from: string; raw: unknown; at: number }>>(
+    [],
+  );
+  /** When each peer connection was (re)built, so the watchdog can spot stalls. */
+  const peerSinceRef = useRef(new Map<string, number>());
+  /** Latest roster, readable from the watchdog without re-subscribing. */
+  const roomsRef = useRef(rooms);
+  roomsRef.current = rooms;
+  /** Lets the replay effect call the handler without depending on its identity. */
+  const handleSignalRef = useRef<(from: string, raw: unknown) => void>(() => {});
   // "Clip that!": a rolling buffer of the last CLIP_SECONDS of the room.
   const clipRecorderRef = useRef<MediaRecorder | null>(null);
   const clipChunksRef = useRef<Array<{ at: number; data: Blob }>>([]);
@@ -388,6 +399,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         iceServers: iceServersRef.current,
       });
       peersRef.current.set(remoteId, peer);
+      peerSinceRef.current.set(remoteId, Date.now());
 
       for (const track of localStreamRef.current?.getTracks() || []) {
         const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
@@ -465,8 +477,27 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
 
   const handleSignal = useCallback(
     async (from: string, raw: unknown) => {
-      if (!channelIdRef.current) return;
+      // Signalling can beat this tab's own join by a hair on a fast network.
+      // Hold anything early and replay it once we are in the room, rather than
+      // dropping it — a dropped offer means that pair never connects at all.
+      if (!channelIdRef.current) {
+        earlySignalsRef.current.push({ from, raw, at: Date.now() });
+        return;
+      }
       const data = raw as SignalPayload;
+
+      // An offer for a peer that has gone bad means the other side rebuilt the
+      // connection; throw ours away so the fresh handshake can land.
+      const existing = peersRef.current.get(from);
+      if (
+        existing &&
+        data.kind === "offer" &&
+        (existing.connectionState === "failed" ||
+          existing.connectionState === "closed")
+      ) {
+        closePeer(from);
+      }
+
       const peer = createPeer(from);
 
       try {
@@ -521,20 +552,13 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     },
     [closePeer, createPeer, send],
   );
+  handleSignalRef.current = handleSignal;
 
-  /** Offer to everyone already in the room whose id sorts below ours. */
-  useEffect(() => {
-    if (!channelId || !connectionId) return;
-    const others = (rooms[channelId] || [])
-      .filter((person) => person.connectionId !== connectionId);
-
-    for (const person of others) {
-      const remoteId = person.connectionId;
-      if (peersRef.current.has(remoteId)) continue;
-      // The server-side music publisher only answers offers, so listeners
-      // always call it. Browser peers retain deterministic caller ordering.
-      if (!person.bot && connectionId > remoteId) continue;
+  /** Builds the connection and sends the opening offer. */
+  const callPeer = useCallback(
+    (remoteId: string) => {
       const peer = createPeer(remoteId);
+      peerSinceRef.current.set(remoteId, Date.now());
       void (async () => {
         try {
           const offer = await peer.createOffer();
@@ -548,6 +572,30 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
           closePeer(remoteId);
         }
       })();
+    },
+    [closePeer, createPeer, send],
+  );
+
+  /** Offer to everyone already in the room whose id sorts below ours. */
+  useEffect(() => {
+    if (!channelId || !connectionId) return;
+    const others = (rooms[channelId] || [])
+      .filter((person) => person.connectionId !== connectionId);
+
+    for (const person of others) {
+      const remoteId = person.connectionId;
+      if (peersRef.current.has(remoteId)) continue;
+      // The server-side music publisher only answers offers, so listeners
+      // always call it. Browser peers retain deterministic caller ordering.
+      if (!person.bot && connectionId > remoteId) {
+        // They place the call. Start their clock so the watchdog waits a
+        // sensible while before stepping in, instead of offering instantly.
+        if (!peerSinceRef.current.has(remoteId)) {
+          peerSinceRef.current.set(remoteId, Date.now());
+        }
+        continue;
+      }
+      callPeer(remoteId);
     }
 
     for (const remoteId of peersRef.current.keys()) {
@@ -555,7 +603,66 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         closePeer(remoteId);
       }
     }
-  }, [rooms, channelId, connectionId, createPeer, closePeer, send]);
+  }, [rooms, channelId, connectionId, callPeer, closePeer]);
+
+  // Replay anything that arrived a moment before we were ready to handle it.
+  useEffect(() => {
+    if (!channelId) return;
+    const pending = earlySignalsRef.current.splice(0);
+    const fresh = pending.filter((entry) => Date.now() - entry.at < 15_000);
+    for (const entry of fresh) void handleSignalRef.current(entry.from, entry.raw);
+  }, [channelId]);
+
+  /**
+   * Watchdog: a mesh call can lose a single pair — an offer that never landed,
+   * or a connection that failed after a network blip — and nothing else would
+   * ever rebuild it, because the roster has not changed. That is the state
+   * where people say "I cannot hear them" and a refresh fixes it.
+   *
+   * Every few seconds, rebuild any connection that is missing, failed, or has
+   * been trying for too long.
+   */
+  useEffect(() => {
+    if (!channelId || !connectionId) return;
+    const timer = window.setInterval(() => {
+      const others = (roomsRef.current[channelId] || []).filter(
+        (person) => person.connectionId !== connectionId,
+      );
+
+      for (const person of others) {
+        const remoteId = person.connectionId;
+        const peer = peersRef.current.get(remoteId);
+        // Mirrors the roster effect's rule, so both agree on who dials.
+        const weCall = person.bot || connectionId <= remoteId;
+        // The side that would normally place the call retries first; the other
+        // waits longer, so a pair does not both re-offer at the same moment.
+        const graceMs = weCall ? 8000 : 14000;
+        const since = peerSinceRef.current.get(remoteId) ?? 0;
+
+        if (!peer) {
+          if (Date.now() - since > graceMs) callPeer(remoteId);
+          continue;
+        }
+
+        const state = peer.connectionState;
+        if (state === "connected") {
+          // Healthy again: allow a future ICE restart if it drops later.
+          restartedRef.current.delete(remoteId);
+          peerSinceRef.current.set(remoteId, Date.now());
+          continue;
+        }
+        if (
+          state === "failed" ||
+          state === "closed" ||
+          Date.now() - since > graceMs * 2
+        ) {
+          closePeer(remoteId);
+          peerSinceRef.current.set(remoteId, Date.now() - graceMs);
+        }
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [channelId, connectionId, callPeer, closePeer]);
 
   useEffect(() => {
     if (!channelId) {
@@ -749,8 +856,11 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     analysersRef.current.clear();
+    peerSinceRef.current.clear();
+    earlySignalsRef.current = [];
     setRemoteStreams([]);
     setSpeaking(new Set());
+    channelIdRef.current = null;
     setChannelId(null);
     setLocalVideos([]);
     send({ t: "voice-leave" });
@@ -775,6 +885,9 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         watchLevel("self", stream);
         setMuted(false);
         setDeafened(false);
+        // Set the ref before announcing the join. React updates it on the next
+        // render, which can lose a race with the first offer coming back.
+        channelIdRef.current = nextChannelId;
         setChannelId(nextChannelId);
         participantCountRef.current = Math.max(
           1,
