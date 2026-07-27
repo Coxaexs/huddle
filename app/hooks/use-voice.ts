@@ -8,6 +8,7 @@ import {
   microphoneConstraints,
   unlockAudio,
 } from "../lib/devices";
+import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
 
 interface SignalPayload {
   kind: "offer" | "answer" | "candidate";
@@ -79,6 +80,19 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       "Space",
   );
   const [pttHeld, setPttHeld] = useState(false);
+  /** Toggle shortcuts, stored as `Ctrl+Shift+KeyM` style combos. */
+  const [muteKey, setMuteKeyState] = useState(
+    () =>
+      (typeof window !== "undefined" &&
+        window.localStorage.getItem("huddle-mute-key")) ||
+      "Ctrl+Shift+KeyM",
+  );
+  const [deafenKey, setDeafenKeyState] = useState(
+    () =>
+      (typeof window !== "undefined" &&
+        window.localStorage.getItem("huddle-deafen-key")) ||
+      "Ctrl+Shift+KeyD",
+  );
   const [deafened, setDeafened] = useState(false);
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
@@ -811,6 +825,39 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     send({ t: "voice-state", deafened: next, muted: next ? true : muted });
   }, [deafened, muted, send]);
 
+  const setMuteKey = useCallback((combo: string) => {
+    setMuteKeyState(combo);
+    window.localStorage.setItem("huddle-mute-key", combo);
+  }, []);
+  const setDeafenKey = useCallback((combo: string) => {
+    setDeafenKeyState(combo);
+    window.localStorage.setItem("huddle-deafen-key", combo);
+  }, []);
+
+  /**
+   * Mute and deafen shortcuts. They only apply while you are in a room, and
+   * never while you are typing, so a single-key combo cannot fire mid-message.
+   * On the desktop app the global accelerator is swallowed by Electron before
+   * it reaches here, so the two cannot both fire for one press.
+   */
+  useEffect(() => {
+    if (!channelId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+      if (muteKey && matchesCombo(event, muteKey)) {
+        event.preventDefault();
+        toggleMute();
+        return;
+      }
+      if (deafenKey && matchesCombo(event, deafenKey)) {
+        event.preventDefault();
+        toggleDeafen();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [channelId, muteKey, deafenKey, toggleMute, toggleDeafen]);
+
   useEffect(() => () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -851,6 +898,10 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
     pushToTalk,
     pttKey,
     pttHeld,
+    muteKey,
+    deafenKey,
+    setMuteKey,
+    setDeafenKey,
     setPushToTalk,
     setPttKey,
     pttPress,
