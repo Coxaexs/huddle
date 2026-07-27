@@ -226,10 +226,27 @@ if (!app.requestSingleInstanceLock()) {
       if (typeof app.setBadgeCount === "function") app.setBadgeCount(n);
     });
 
-    // Global mute toggle, relayed to the web app.
-    globalShortcut.register(MUTE_HOTKEY, () => {
-      mainWindow?.webContents.send("hotkey", "toggle-mute");
-    });
+    // Global mute toggle, relayed to the web app. The accelerator follows
+    // whatever is chosen in Settings; this is just the starting point.
+    let muteHotkey = "";
+    const bindMuteHotkey = (accelerator) => {
+      if (accelerator === muteHotkey) return;
+      if (muteHotkey) globalShortcut.unregister(muteHotkey);
+      muteHotkey = "";
+      if (!accelerator) return;
+      try {
+        const ok = globalShortcut.register(accelerator, () => {
+          mainWindow?.webContents.send("hotkey", "toggle-mute");
+        });
+        if (ok) muteHotkey = accelerator;
+      } catch {
+        // An accelerator the OS refuses just leaves the shortcut unbound.
+      }
+    };
+    bindMuteHotkey(MUTE_HOTKEY);
+    ipcMain.on("set-mute-hotkey", (_event, accelerator) =>
+      bindMuteHotkey(accelerator),
+    );
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

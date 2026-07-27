@@ -5,6 +5,7 @@ import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { AVATAR_COLORS, type Member, type PublicUser } from "@/lib/users";
 import { apiFetch } from "../lib/client";
+import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
   listDevices,
   primeDeviceLabels,
@@ -37,6 +38,11 @@ interface SettingsDialogProps {
   pttKey?: string;
   onPushToTalk?: (enabled: boolean) => void;
   onPttKey?: (code: string) => void;
+  /** Mute / deafen toggle shortcuts. */
+  muteKey?: string;
+  deafenKey?: string;
+  onMuteKey?: (combo: string) => void;
+  onDeafenKey?: (combo: string) => void;
   /** The active server, for the roles tab. */
   server?: PublicServer | null;
   members?: Member[];
@@ -66,6 +72,10 @@ export function SettingsDialog({
   pttKey = "Space",
   onPushToTalk,
   onPttKey,
+  muteKey = "Ctrl+Shift+KeyM",
+  deafenKey = "Ctrl+Shift+KeyD",
+  onMuteKey,
+  onDeafenKey,
   server,
   members = [],
   canManageServer = false,
@@ -491,6 +501,22 @@ export function SettingsDialog({
                     : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
                 </button>
               )}
+
+              <span className="field-label">Shortcuts</span>
+              <p className="modal-hint">
+                These work while you are in a voice room, and are ignored while
+                you are typing. Hold modifiers and press a key to rebind.
+              </p>
+              <ComboButton
+                label="Toggle mute"
+                combo={muteKey}
+                onChange={(combo) => onMuteKey?.(combo)}
+              />
+              <ComboButton
+                label="Toggle deafen"
+                combo={deafenKey}
+                onChange={(combo) => onDeafenKey?.(combo)}
+              />
             </>
           )}
 
@@ -702,6 +728,51 @@ export function SettingsDialog({
         </footer>
       </div>
     </div>
+  );
+}
+
+/**
+ * A button that records the next key combination pressed. Modifier-only
+ * presses are ignored so you can hold Ctrl+Shift before choosing the letter,
+ * and Escape cancels without changing anything.
+ */
+function ComboButton({
+  label,
+  combo,
+  onChange,
+}: {
+  label: string;
+  combo: string;
+  onChange: (combo: string) => void;
+}) {
+  const [listening, setListening] = useState(false);
+
+  useEffect(() => {
+    if (!listening) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.code === "Escape") {
+        setListening(false);
+        return;
+      }
+      if (isModifierOnly(event.code)) return;
+      onChange(comboFromEvent(event));
+      setListening(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [listening, onChange]);
+
+  return (
+    <button
+      type="button"
+      className={`ptt-key-button ${listening ? "listening" : ""}`}
+      onClick={() => setListening(true)}
+    >
+      <span>{label}</span>
+      <kbd>{listening ? "Press keys… (Esc to cancel)" : comboLabel(combo)}</kbd>
+    </button>
   );
 }
 

@@ -64,6 +64,7 @@ import {
 } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
 import { registerMedia, unlockAudio, unregisterMedia } from "./lib/devices";
+import { comboToAccelerator } from "./lib/hotkeys";
 import {
   COMMAND_ALIASES,
   DISCORD_ONLY_COMMANDS,
@@ -1099,6 +1100,16 @@ export function ChatShell() {
     window.addEventListener("huddle-hotkey", onHotkey);
     return () => window.removeEventListener("huddle-hotkey", onHotkey);
   }, [voice.channelId, voice.toggleMute]);
+
+  // Desktop shell: keep its global mute shortcut in step with the setting, so
+  // the same combo works when the window is not focused.
+  useEffect(() => {
+    (
+      window as unknown as {
+        huddle?: { setMuteHotkey?: (accelerator: string) => void };
+      }
+    ).huddle?.setMuteHotkey?.(comboToAccelerator(voice.muteKey));
+  }, [voice.muteKey]);
 
   // Desktop shell: reflect the unread mention count on the dock/taskbar badge.
   useEffect(() => {
@@ -4457,6 +4468,10 @@ export function ChatShell() {
           pttKey={voice.pttKey}
           onPushToTalk={voice.setPushToTalk}
           onPttKey={voice.setPttKey}
+          muteKey={voice.muteKey}
+          deafenKey={voice.deafenKey}
+          onMuteKey={voice.setMuteKey}
+          onDeafenKey={voice.setDeafenKey}
           server={inDmHome ? null : activeServer}
           members={members}
           canManageServer={canManageServer}
