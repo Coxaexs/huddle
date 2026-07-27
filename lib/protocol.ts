@@ -180,6 +180,18 @@ export type ServerEvent =
       voters: number;
       serverNow: number;
     }
+  | {
+      /** Shared battlemap: opened, closed, a token moved, paint added. */
+      t: "battlemap";
+      channelId: string;
+      action: "open" | "close" | "token" | "tokens" | "stroke" | "cleared";
+      map?: unknown;
+      token?: unknown;
+      tokens?: unknown;
+      stroke?: unknown;
+      strokes?: unknown;
+      serverNow: number;
+    }
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
   | { t: "notice"; text: string; serverNow: number }
   | { t: "pong"; serverNow: number };

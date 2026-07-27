@@ -41,6 +41,17 @@ interface HubHandlers {
   onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
   onTyping?: (channelId: string, userId: string, displayName: string) => void;
   onPoll?: (channelId: string, pollId: string, counts: number[]) => void;
+  onBattlemap?: (
+    channelId: string,
+    payload: {
+      action: string;
+      map?: unknown;
+      token?: unknown;
+      tokens?: unknown;
+      stroke?: unknown;
+      strokes?: unknown;
+    },
+  ) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
 }
 
@@ -203,6 +214,16 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.pollId,
               payload.counts,
             );
+            break;
+          case "battlemap":
+            handlersRef.current.onBattlemap?.(payload.channelId, {
+              action: payload.action,
+              map: payload.map,
+              token: payload.token,
+              tokens: payload.tokens,
+              stroke: payload.stroke,
+              strokes: payload.strokes,
+            });
             break;
           case "force-mute":
             setState((current) => {
