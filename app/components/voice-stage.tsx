@@ -34,6 +34,8 @@ interface VoiceApi {
   toggleMute: () => void;
   toggleDeafen: () => void;
   leave: () => void;
+  takeClip: () => Promise<Blob | null>;
+  clipSeconds: number;
 }
 
 interface VoiceStageProps {
@@ -44,6 +46,8 @@ interface VoiceStageProps {
   /** Server the room belongs to, for its soundboard. */
   serverId: string | null;
   canManageSounds: boolean;
+  /** Posts a captured clip into the active text channel. */
+  onClip?: (clip: Blob) => Promise<void>;
 }
 
 interface VideoTile {
@@ -98,9 +102,11 @@ export function VoiceStage({
   voice,
   serverId,
   canManageSounds,
+  onClip,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
+  const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const videoTiles: VideoTile[] = [];
@@ -349,6 +355,29 @@ export function VoiceStage({
             title="Soundboard"
           >
             🔊
+          </button>
+          <button
+            type="button"
+            className={`stage-btn ${clipping === "done" ? "on" : ""}`}
+            disabled={clipping === "working" || !onClip}
+            title={`Clip the last ${voice.clipSeconds}s and post it to chat`}
+            onClick={async () => {
+              setClipping("working");
+              try {
+                const clip = await voice.takeClip();
+                if (clip && onClip) {
+                  await onClip(clip);
+                  setClipping("done");
+                  window.setTimeout(() => setClipping("idle"), 2500);
+                } else {
+                  setClipping("idle");
+                }
+              } catch {
+                setClipping("idle");
+              }
+            }}
+          >
+            {clipping === "working" ? "…" : clipping === "done" ? "✓" : "✂"}
           </button>
           <select
             aria-label="Screen share quality"

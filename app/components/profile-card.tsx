@@ -82,6 +82,9 @@ export function ProfileCard({
             </span>
           </div>
           <div className="profile-handle">@{member.username}</div>
+          {member.customStatus && (
+            <div className="profile-custom-status">{member.customStatus}</div>
+          )}
 
           {roles.length > 0 && (
             <div className="profile-section">

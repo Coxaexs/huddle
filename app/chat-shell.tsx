@@ -20,7 +20,7 @@ import {
   hasPermission,
   Permission,
 } from "@/lib/permissions";
-import type { Member, PublicUser } from "@/lib/users";
+import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
 import {
@@ -31,6 +31,7 @@ import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
+import { PollCard } from "./components/poll-card";
 import { ProfileCard } from "./components/profile-card";
 import {
   MusicSettingsCard,
@@ -90,7 +91,14 @@ interface Message {
   replyPreview?: { author: string; text: string } | null;
   reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
   mentions?: string[];
+  threadId?: string;
+  threadCount?: number;
   payload?: {
+    /** Poll cards. */
+    pollId?: string;
+    question?: string;
+    options?: string[];
+    multi?: boolean;
     voiceChannelId?: string;
     trackId?: string;
     label?: string;
@@ -289,6 +297,26 @@ export function ChatShell() {
   const [profileMember, setProfileMember] = useState<Member | null>(null);
   /** Image opened fullscreen in the lightbox. */
   const [lightbox, setLightbox] = useState<string | null>(null);
+  /** Who is typing where: channelId -> userId -> {name, at}. */
+  const [typing, setTyping] = useState<
+    Record<string, Record<string, { name: string; at: number }>>
+  >({});
+  const lastTypingSentRef = useRef(0);
+  /** Live vote tallies pushed over the socket, keyed by poll id. */
+  const [pollCounts, setPollCounts] = useState<Record<string, number[]>>({});
+  const [emojis, setEmojis] = useState<
+    Array<{ id: string; serverId: string; name: string; url: string }>
+  >([]);
+  /** The message whose thread is open in the side panel. */
+  const [threadRoot, setThreadRoot] = useState<Message | null>(null);
+  const [threadMessages, setThreadMessages] = useState<Message[]>([]);
+  const [threadDraft, setThreadDraft] = useState("");
+  const [statusOpen, setStatusOpen] = useState(false);
+  /** Your own presence, mirrored locally so the dot reacts instantly. */
+  const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
+  const [myCustomStatus, setMyCustomStatus] = useState<string | null>(null);
+  /** True while auto-idle is holding you at "idle" after inactivity. */
+  const autoIdleRef = useRef(false);
   const [botMenu, setBotMenu] = useState<{
     kind: "music" | "dnd";
     x: number;
@@ -357,6 +385,13 @@ export function ChatShell() {
     setVoicePrefs(data.prefs || {});
   }, []);
 
+  const loadEmojis = useCallback(async () => {
+    const data = await apiFetch<{
+      emojis: Array<{ id: string; serverId: string; name: string; url: string }>;
+    }>("/api/emojis").catch(() => ({ emojis: [] }));
+    setEmojis(data.emojis || []);
+  }, []);
+
   const loadUnread = useCallback(async () => {
     const data = await apiFetch<{
       channels: Record<string, { unread: boolean; count: number; mentions: number }>;
@@ -399,7 +434,8 @@ export function ChatShell() {
     void loadDms().catch(() => undefined);
     void loadPrefs().catch(() => undefined);
     void loadUnread().catch(() => undefined);
-  }, [user, loadServers, loadMembers, loadDms, loadPrefs, loadUnread]);
+    void loadEmojis().catch(() => undefined);
+  }, [user, loadServers, loadMembers, loadDms, loadPrefs, loadUnread, loadEmojis]);
 
   // Opening a channel marks it read.
   useEffect(() => {
@@ -515,6 +551,13 @@ export function ChatShell() {
     return { uncategorised, grouped };
   }, [activeServer]);
 
+  /** Custom emoji by name, for rendering `:name:` anywhere it appears. */
+  const emojiMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const emoji of emojis) map[emoji.name] = emoji.url;
+    return map;
+  }, [emojis]);
+
   // DMs with unread messages, surfaced as avatars on the server rail.
   const dmUnread = useMemo(
     () =>
@@ -598,6 +641,25 @@ export function ChatShell() {
         }
         return;
       }
+      // Thread replies belong in the thread panel, not the channel flow; the
+      // root message just gains a reply.
+      if (incoming.threadId) {
+        setThreadMessages((current) =>
+          threadRootRef.current &&
+          String(threadRootRef.current.id) === incoming.threadId &&
+          !current.some((m) => m.id === incoming.id)
+            ? [...current, incoming]
+            : current,
+        );
+        setMessages((current) =>
+          current.map((m) =>
+            String(m.id) === incoming.threadId
+              ? { ...m, threadCount: (m.threadCount || 0) + 1 }
+              : m,
+          ),
+        );
+        return;
+      }
       setMessages((current) =>
         current.some((existing) => existing.id === incoming.id)
           ? current
@@ -613,6 +675,9 @@ export function ChatShell() {
   );
   /** Current connected voice channel, for the soundboard event handler. */
   const voiceChannelRef = useRef<string | null>(null);
+  /** The open thread, readable from socket handlers without re-subscribing. */
+  const threadRootRef = useRef<Message | null>(null);
+  threadRootRef.current = threadRoot;
 
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
@@ -620,6 +685,7 @@ export function ChatShell() {
     onStructureChange: () => {
       void loadServers().catch(() => undefined);
       void loadMembers().catch(() => undefined);
+      void loadEmojis().catch(() => undefined);
     },
     onMessageDeleted: (channelId, id) => {
       if (channelId !== activeChannelRef.current) return;
@@ -657,6 +723,19 @@ export function ChatShell() {
       if (channelId !== voiceChannelRef.current) return;
       playSound(url);
     },
+    onTyping: (channelId, userId, displayName) => {
+      setTyping((current) => ({
+        ...current,
+        [channelId]: {
+          ...(current[channelId] || {}),
+          [userId]: { name: displayName, at: Date.now() },
+        },
+      }));
+    },
+    onPoll: (channelId, pollId, counts) => {
+      if (channelId !== activeChannelRef.current) return;
+      setPollCounts((current) => ({ ...current, [pollId]: counts }));
+    },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
   });
 
@@ -680,6 +759,102 @@ export function ChatShell() {
   useEffect(() => {
     if (!voice.channelId) setStageChannelId(null);
   }, [voice.channelId]);
+
+  // Adopt the stored presence once the member list arrives.
+  useEffect(() => {
+    if (!user) return;
+    const me = membersById.get(user.id);
+    if (!me) return;
+    setMyStatus((current) =>
+      current === "online" && me.status ? (me.status as PresenceStatus) : current,
+    );
+    setMyCustomStatus((current) => current ?? me.customStatus ?? null);
+  }, [user, membersById]);
+
+  // Auto-idle: go idle after 10 minutes without input, and come back on
+  // activity — but never override a status you picked yourself.
+  useEffect(() => {
+    if (!user) return;
+    let timer = 0;
+    const goIdle = () => {
+      if (myStatus !== "online") return;
+      autoIdleRef.current = true;
+      void savePresence({ status: "idle" });
+    };
+    const bump = () => {
+      window.clearTimeout(timer);
+      if (autoIdleRef.current && myStatus === "idle") {
+        autoIdleRef.current = false;
+        void savePresence({ status: "online" });
+      }
+      timer = window.setTimeout(goIdle, 10 * 60 * 1000);
+    };
+    bump();
+    for (const type of ["pointerdown", "keydown", "focus"]) {
+      window.addEventListener(type, bump);
+    }
+    return () => {
+      window.clearTimeout(timer);
+      for (const type of ["pointerdown", "keydown", "focus"]) {
+        window.removeEventListener(type, bump);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, myStatus]);
+
+  // Typing indicators fade out on their own a few seconds after the last keypress.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const cutoff = Date.now() - 6000;
+      setTyping((current) => {
+        let changed = false;
+        const next: typeof current = {};
+        for (const [channelId, people] of Object.entries(current)) {
+          const live: Record<string, { name: string; at: number }> = {};
+          for (const [userId, entry] of Object.entries(people)) {
+            if (entry.at > cutoff) live[userId] = entry;
+            else changed = true;
+          }
+          if (Object.keys(live).length) next[channelId] = live;
+        }
+        return changed ? next : current;
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /** The status to show for a member: offline unless their socket is up. */
+  function presenceOf(member: Member): PresenceStatus | "offline" {
+    const own = member.id === user?.id;
+    const status = (own ? myStatus : member.status) || "online";
+    if (status === "invisible") return own ? "invisible" : "offline";
+    return hub.online.has(member.id) ? status : "offline";
+  }
+
+  async function savePresence(patch: {
+    status?: PresenceStatus;
+    customStatus?: string | null;
+  }) {
+    if (patch.status) setMyStatus(patch.status);
+    if (patch.customStatus !== undefined) setMyCustomStatus(patch.customStatus);
+    await apiFetch("/api/settings/presence", {
+      method: "POST",
+      body: JSON.stringify(patch),
+    }).catch(() => undefined);
+  }
+
+  /** Display names of everyone typing in the channel you are looking at. */
+  const typingNames = Object.entries(typing[activeChannelId || ""] || {})
+    .filter(([userId]) => userId !== user?.id)
+    .map(([, entry]) => entry.name);
+
+  /** Tells the room you are typing, at most once every few seconds. */
+  function noteTyping() {
+    const now = Date.now();
+    if (!activeChannelId || now - lastTypingSentRef.current < 3000) return;
+    lastTypingSentRef.current = now;
+    hub.send({ t: "typing", channelId: activeChannelId });
+  }
 
   // Esc closes the image lightbox. (KeyboardEvent here is React's type, so the
   // DOM one needs qualifying.)
@@ -928,6 +1103,30 @@ export function ChatShell() {
     const bare = rawName.replace(/^\//, "").toLowerCase();
     const name = COMMAND_ALIASES[bare] || bare;
     const value = parts.join(" ").trim();
+
+    // /poll Question? | option | option
+    if (name === "poll") {
+      const [question, ...options] = value.split("|").map((part) => part.trim());
+      if (!question || options.filter(Boolean).length < 2) {
+        setNotice("Try: /poll Pizza or burger? | Pizza | Burger");
+        return;
+      }
+      try {
+        await apiFetch("/api/polls", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: activeChannelId,
+            question,
+            options: options.filter(Boolean),
+          }),
+        });
+      } catch (error) {
+        setNotice(
+          error instanceof Error ? error.message : "Could not create the poll.",
+        );
+      }
+      return;
+    }
 
     if (MUSIC_COMMANDS.has(name)) {
       const requiresPresence = VOICE_REQUIRED_MUSIC_COMMANDS.has(name);
@@ -1210,6 +1409,42 @@ export function ChatShell() {
       method: "POST",
       body: JSON.stringify({ emoji }),
     }).catch(() => undefined);
+  }
+
+  async function openThread(message: Message) {
+    setThreadRoot(message);
+    setThreadDraft("");
+    const data = await apiFetch<{ messages: Message[] }>(
+      `/api/messages?threadId=${encodeURIComponent(String(message.id))}`,
+    ).catch(() => ({ messages: [] as Message[] }));
+    setThreadMessages(data.messages);
+  }
+
+  async function sendThreadReply() {
+    const text = threadDraft.trim();
+    if (!text || !threadRoot || !activeChannelId) return;
+    setThreadDraft("");
+    try {
+      const data = await apiFetch<{ message: Message }>("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: activeChannelId,
+          content: text,
+          threadId: String(threadRoot.id),
+        }),
+      });
+      setThreadMessages((current) => [...current, data.message]);
+      // Bump the reply count on the root message in the main view.
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === threadRoot.id
+            ? { ...m, threadCount: (m.threadCount || 0) + 1 }
+            : m,
+        ),
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Reply did not send.");
+    }
   }
 
   function beginEdit(message: Message) {
@@ -2087,15 +2322,83 @@ export function ChatShell() {
           +
         </button>
         <div className="rail-spacer" />
+
+        {statusOpen && (
+          <div className="status-menu" role="menu">
+            {(Object.keys(PRESENCE) as PresenceStatus[]).map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={myStatus === key ? "active" : ""}
+                onClick={() => {
+                  autoIdleRef.current = false;
+                  void savePresence({ status: key });
+                  setStatusOpen(false);
+                }}
+              >
+                <span
+                  className="status-dot"
+                  style={{ background: PRESENCE[key].color }}
+                />
+                {PRESENCE[key].label}
+              </button>
+            ))}
+            <div className="status-menu-divider" />
+            <button
+              type="button"
+              onClick={() => {
+                const text = window.prompt(
+                  "Custom status",
+                  myCustomStatus || "",
+                );
+                if (text === null) return;
+                void savePresence({ customStatus: text });
+                setStatusOpen(false);
+              }}
+            >
+              <span className="status-dot" style={{ background: "transparent" }}>
+                ✎
+              </span>
+              {myCustomStatus ? "Edit status" : "Set a status"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusOpen(false);
+                setSettingsOpen(true);
+              }}
+            >
+              <span className="status-dot" style={{ background: "transparent" }}>
+                ⚙
+              </span>
+              Settings
+            </button>
+          </div>
+        )}
+
         <Avatar
           className="profile-dot"
           avatar={user.avatar}
           avatarUrl={user.avatarUrl}
           color={user.color}
-          title="Settings"
-          onClick={() => setSettingsOpen(true)}
+          title={
+            myCustomStatus ||
+            `${PRESENCE[myStatus].label} · click for status, right-click for settings`
+          }
+          onClick={() => setStatusOpen((open) => !open)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setSettingsOpen(true);
+          }}
         >
-          <span className={hub.connected ? "online" : ""} />
+          <span
+            className="presence-dot"
+            style={{
+              background: hub.connected
+                ? PRESENCE[myStatus].color
+                : PRESENCE.invisible.color,
+            }}
+          />
         </Avatar>
       </aside>
 
@@ -2334,6 +2637,30 @@ export function ChatShell() {
             voice={voice}
             serverId={stageChannel.serverId}
             canManageSounds={canManageChannels}
+            onClip={async (clip) => {
+              if (!activeChannelId) {
+                setNotice("Open a text channel to post the clip into.");
+                return;
+              }
+              const form = new FormData();
+              form.append(
+                "file",
+                new File([clip], `clip-${Date.now()}.webm`, { type: clip.type }),
+              );
+              const upload = await apiFetch<{ key: string }>("/api/uploads", {
+                method: "POST",
+                body: form,
+              });
+              await apiFetch("/api/messages", {
+                method: "POST",
+                body: JSON.stringify({
+                  channelId: activeChannelId,
+                  content: `📎 Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
+                  audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
+                }),
+              });
+              setNotice("Clip posted.");
+            }}
           />
         ) : (
           <>
@@ -2589,6 +2916,14 @@ export function ChatShell() {
                         )
                       }
                     />
+                  ) : message.kind === "poll" && message.payload?.pollId ? (
+                    <PollCard
+                      pollId={message.payload.pollId}
+                      question={message.payload.question || message.text}
+                      options={message.payload.options || []}
+                      multi={message.payload.multi}
+                      liveCounts={pollCounts[message.payload.pollId]}
+                    />
                   ) : editingId === message.id ? (
                     <div className="message-edit">
                       <textarea
@@ -2613,6 +2948,7 @@ export function ChatShell() {
                       selfHandle={user.username}
                       onMention={openProfileByHandle}
                       onImage={setLightbox}
+                      emojis={emojiMap}
                     />
                   )}
 
@@ -2730,6 +3066,17 @@ export function ChatShell() {
                     </a>
                   )}
 
+                  {(message.threadCount ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      className="thread-link"
+                      onClick={() => void openThread(message)}
+                    >
+                      🧵 {message.threadCount}{" "}
+                      {message.threadCount === 1 ? "reply" : "replies"}
+                    </button>
+                  )}
+
                   {message.reactions && message.reactions.length > 0 && (
                     <div className="reactions">
                       {message.reactions.map((reaction) => (
@@ -2741,7 +3088,15 @@ export function ChatShell() {
                             void toggleReaction(message.id, reaction.emoji)
                           }
                         >
-                          <span>{reaction.emoji}</span>
+                          {emojiMap[reaction.emoji.replace(/^:|:$/g, "")] ? (
+                            <img
+                              className="custom-emoji"
+                              src={emojiMap[reaction.emoji.replace(/^:|:$/g, "")]}
+                              alt={reaction.emoji}
+                            />
+                          ) : (
+                            <span>{reaction.emoji}</span>
+                          )}
                           <b>{reaction.count}</b>
                         </button>
                       ))}
@@ -2761,6 +3116,19 @@ export function ChatShell() {
                         {emoji}
                       </button>
                     ))}
+                    {/* The server's own emoji, right where you react. */}
+                    {emojis.slice(0, 4).map((emoji) => (
+                      <button
+                        key={emoji.id}
+                        type="button"
+                        title={`React :${emoji.name}:`}
+                        onClick={() =>
+                          void toggleReaction(message.id, `:${emoji.name}:`)
+                        }
+                      >
+                        <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
+                      </button>
+                    ))}
                   </div>
                   <button
                     type="button"
@@ -2771,6 +3139,13 @@ export function ChatShell() {
                     }}
                   >
                     ↩
+                  </button>
+                  <button
+                    type="button"
+                    title="Reply in thread"
+                    onClick={() => void openThread(message)}
+                  >
+                    🧵
                   </button>
                   {message.userId === user.id && !message.bot && (
                     <button
@@ -2913,6 +3288,11 @@ export function ChatShell() {
                 setGifOpen(false);
                 void sendText(url);
               }}
+              onInsert={(text) => {
+                setDraft((current) => current + text);
+                composerRef.current?.focus();
+              }}
+              onEmojiChange={() => void loadEmojis().catch(() => undefined)}
             />
           )}
 
@@ -2987,7 +3367,10 @@ export function ChatShell() {
             <textarea
               ref={composerRef}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                if (event.target.value.trim()) noteTyping();
+              }}
               onKeyDown={onComposerKeyDown}
               onPaste={(event) => {
                 // Pasting a screenshot attaches it instead of doing nothing.
@@ -3031,12 +3414,131 @@ export function ChatShell() {
           </div>
 
           <div className="composer-hint">
-            Enter to send · Shift + Enter for a new line · / for commands
+            {typingNames.length > 0 ? (
+              <span className="typing-line">
+                <span className="typing-dots">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {typingNames.length === 1
+                  ? `${typingNames[0]} is typing…`
+                  : typingNames.length === 2
+                    ? `${typingNames[0]} and ${typingNames[1]} are typing…`
+                    : `${typingNames.length} people are typing…`}
+              </span>
+            ) : (
+              "Enter to send · Shift + Enter for a new line · / for commands"
+            )}
           </div>
         </form>
           </>
         )}
       </section>
+
+      {threadRoot && (
+        <aside className="thread-panel" aria-label="Thread">
+          <header className="thread-head">
+            <strong>🧵 Thread</strong>
+            <button
+              type="button"
+              onClick={() => setThreadRoot(null)}
+              aria-label="Close thread"
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="thread-body">
+            <article className="message thread-root">
+              <Avatar
+                className="avatar"
+                avatar={threadRoot.avatar}
+                avatarUrl={
+                  threadRoot.userId
+                    ? membersById.get(threadRoot.userId)?.avatarUrl
+                    : undefined
+                }
+                color={threadRoot.color}
+              />
+              <div className="message-body">
+                <div className="message-meta">
+                  <strong>{threadRoot.author}</strong>
+                  <time>{threadRoot.time}</time>
+                </div>
+                <MessageBody
+                  text={threadRoot.text}
+                  selfHandle={user.username}
+                  onMention={openProfileByHandle}
+                  onImage={setLightbox}
+                  emojis={emojiMap}
+                />
+              </div>
+            </article>
+
+            <div className="thread-divider">
+              {threadMessages.length}{" "}
+              {threadMessages.length === 1 ? "reply" : "replies"}
+            </div>
+
+            {threadMessages.map((reply) => {
+              const author = reply.userId
+                ? membersById.get(reply.userId)
+                : undefined;
+              return (
+                <article className="message" key={reply.id}>
+                  <Avatar
+                    className="avatar"
+                    avatar={author?.avatar || reply.avatar}
+                    avatarUrl={author?.avatarUrl}
+                    color={author?.color || reply.color}
+                  />
+                  <div className="message-body">
+                    <div className="message-meta">
+                      <strong style={{ color: roleColorFor(author) || undefined }}>
+                        {author?.displayName || reply.author}
+                      </strong>
+                      <time>{reply.time}</time>
+                    </div>
+                    <MessageBody
+                      text={reply.text}
+                      selfHandle={user.username}
+                      onMention={openProfileByHandle}
+                      onImage={setLightbox}
+                      emojis={emojiMap}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <form
+            className="thread-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void sendThreadReply();
+            }}
+          >
+            <textarea
+              value={threadDraft}
+              rows={1}
+              placeholder="Reply in thread…"
+              aria-label="Reply in thread"
+              onChange={(event) => setThreadDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendThreadReply();
+                }
+              }}
+            />
+            <button type="submit" aria-label="Send reply">
+              ↑
+            </button>
+          </form>
+        </aside>
+      )}
 
       <aside className={`member-panel ${membersOpen ? "" : "closed"}`}>
         {voice.channelId && (
@@ -3181,19 +3683,41 @@ export function ChatShell() {
               avatar={member.avatar}
               avatarUrl={member.avatarUrl}
               color={member.color}
-            />
+            >
+              <span
+                className="presence-dot"
+                title={
+                  PRESENCE[
+                    (presenceOf(member) === "offline"
+                      ? "invisible"
+                      : presenceOf(member)) as PresenceStatus
+                  ].label
+                }
+                style={{
+                  background:
+                    presenceOf(member) === "offline"
+                      ? PRESENCE.invisible.color
+                      : PRESENCE[presenceOf(member) as PresenceStatus].color,
+                }}
+              />
+            </Avatar>
             <div>
               <strong style={{ color: roleColorFor(member) || undefined }}>
                 {member.displayName}
               </strong>
               <span>
-                {member.id === user.id
-                  ? "Here now"
-                  : prefFor(member.id).muted
-                    ? "Muted for you"
-                    : hub.forcedMutes.has(member.id)
-                      ? "Server muted"
-                      : "Online"}
+                {(member.id === user.id ? myCustomStatus : member.customStatus) ||
+                  (member.id === user.id
+                    ? "Here now"
+                    : prefFor(member.id).muted
+                      ? "Muted for you"
+                      : hub.forcedMutes.has(member.id)
+                        ? "Server muted"
+                        : PRESENCE[
+                            (presenceOf(member) === "offline"
+                              ? "invisible"
+                              : presenceOf(member)) as PresenceStatus
+                          ].label)}
               </span>
             </div>
           </div>

@@ -27,6 +27,8 @@ export interface User {
   is_admin: number;
   created_at: string;
   last_seen_at: string;
+  status?: string | null;
+  custom_status?: string | null;
 }
 
 export function publicUser(user: User): PublicUser {

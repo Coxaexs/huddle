@@ -202,6 +202,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "dnd", description: "Open the D&D companion", group: "D&D" },
 
   // ---- Huddle itself ----
+  {
+    name: "poll",
+    description: "Start a poll: /poll Question? | option | option",
+    group: "Huddle",
+    args: "Question? | option | option",
+  },
   { name: "flip", description: "Flip a coin", group: "Huddle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
   { name: "help", description: "How commands work here", group: "Huddle" },

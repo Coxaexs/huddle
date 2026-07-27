@@ -240,6 +240,38 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS sounds_server_idx ON sounds(server_id, created_at)",
     ),
+    // Custom server emoji, written as :name: and rendered as the image.
+    db.prepare(`CREATE TABLE IF NOT EXISTS emojis (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        key TEXT NOT NULL,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS emojis_server_idx ON emojis(server_id, name)",
+    ),
+    // Polls live beside the message that renders them.
+    db.prepare(`CREATE TABLE IF NOT EXISTS polls (
+        id TEXT PRIMARY KEY,
+        message_id TEXT,
+        channel_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        options TEXT NOT NULL,
+        multi INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS poll_votes (
+        poll_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        choice INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, user_id, choice)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS poll_votes_poll_idx ON poll_votes(poll_id)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -264,6 +296,9 @@ async function migrate(db: D1Database): Promise<void> {
     // Extra attachment keys (JSON array). `attachment_key` stays as the first
     // one so older clients and existing rows keep working.
     ["attachments", "ALTER TABLE messages ADD COLUMN attachments TEXT"],
+    // Thread replies carry the id of the message that started the thread;
+    // channel history hides them so threads stay out of the main flow.
+    ["thread_id", "ALTER TABLE messages ADD COLUMN thread_id TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }
@@ -275,9 +310,19 @@ async function migrate(db: D1Database): Promise<void> {
     .run();
 
   const userColumns = await columnNames(db, "users");
-  if (!userColumns.has("avatar_url")) {
-    await db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
+  const userMigrations: D1PreparedStatement[] = [];
+  for (const [column, ddl] of [
+    ["avatar_url", "ALTER TABLE users ADD COLUMN avatar_url TEXT"],
+    // Presence: online | idle | dnd | invisible, plus a free-text status.
+    [
+      "status",
+      "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'online'",
+    ],
+    ["custom_status", "ALTER TABLE users ADD COLUMN custom_status TEXT"],
+  ] as const) {
+    if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
+  if (userMigrations.length) await db.batch(userMigrations);
 
   const channelColumns = await columnNames(db, "channels");
   if (!channelColumns.has("category_id")) {

@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     db
       .prepare(
         `SELECT id, username, display_name, avatar, avatar_url, color, is_admin,
-                created_at, last_seen_at
+                created_at, last_seen_at, status, custom_status
            FROM users ORDER BY display_name COLLATE NOCASE ASC`,
       )
       .all(),
@@ -47,6 +47,8 @@ export async function GET(request: Request) {
       lastSeenAt: member.last_seen_at,
       createdAt: member.created_at,
       isAdmin: Boolean(member.is_admin),
+      status: member.status || "online",
+      customStatus: member.custom_status || null,
       roleIds: rolesByUser.get(member.id) || {},
     })),
   });

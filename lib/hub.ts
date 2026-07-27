@@ -241,6 +241,20 @@ export class HuddleHub extends DurableObject {
         socket.serializeAttachment(attachment);
         return;
 
+      case "typing":
+        // Fire-and-forget: everyone else in the channel sees it for a moment.
+        this.broadcast(
+          {
+            t: "typing",
+            channelId: event.channelId,
+            userId: attachment.userId,
+            displayName: attachment.displayName,
+            serverNow: Date.now(),
+          },
+          { skipConnectionId: attachment.connectionId },
+        );
+        return;
+
       case "voice-join": {
         const previous = attachment.voiceChannelId;
         attachment.voiceChannelId = event.channelId;

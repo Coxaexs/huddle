@@ -47,4 +47,6 @@ export interface StoredMessage {
   edited_at?: string | null;
   /** JSON array of extra R2 keys beyond `attachment_key`. */
   attachments?: string | null;
+  /** Set on thread replies: the id of the message that started the thread. */
+  thread_id?: string | null;
 }

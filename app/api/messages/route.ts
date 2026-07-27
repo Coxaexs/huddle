@@ -36,6 +36,10 @@ export interface PublicMessage {
   reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
   /** User ids named in this message, for highlighting and unread badges. */
   mentions?: string[];
+  /** Set on thread replies. */
+  threadId?: string;
+  /** On a thread's root message: how many replies it has. */
+  threadCount?: number;
 }
 
 export function publicMessage(message: StoredMessage): PublicMessage {
@@ -85,6 +89,7 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     editedAt: message.edited_at || undefined,
     replyTo: message.reply_to || undefined,
     images: extraAttachments(message.attachments),
+    threadId: message.thread_id || undefined,
   };
 }
 
@@ -126,6 +131,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const channelId = params.get("channelId")?.slice(0, 64);
   const channelName = params.get("channel")?.slice(0, 64);
+  const threadId = params.get("threadId")?.slice(0, 64);
 
   // A DM is only readable by its two participants; every other channel is
   // open to everyone in this Huddle.
@@ -138,11 +144,22 @@ export async function GET(request: Request) {
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
                    reply_to, edited_at, attachments`;
   const pinnedOnly = params.get("pinned") === "1";
-  const result = channelId
+  // A thread request returns that thread's replies; otherwise channel history,
+  // which hides replies so threads stay out of the main flow.
+  const result = threadId
     ? await db
         .prepare(
           `SELECT ${columns} FROM messages
-            WHERE channel_id = ? AND deleted_at IS NULL
+            WHERE thread_id = ? AND deleted_at IS NULL
+            ORDER BY created_at ASC LIMIT 200`,
+        )
+        .bind(threadId)
+        .all()
+    : channelId
+    ? await db
+        .prepare(
+          `SELECT ${columns} FROM messages
+            WHERE channel_id = ? AND deleted_at IS NULL AND thread_id IS NULL
               ${pinnedOnly ? "AND pinned_at IS NOT NULL" : ""}
             ORDER BY created_at ASC LIMIT 200`,
         )
@@ -172,12 +189,13 @@ async function queryByIds<T>(
   db: D1Database,
   sql: string,
   ids: string[],
+  suffix = "",
 ): Promise<T[]> {
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
     const rows = await db
-      .prepare(`${sql} (${chunk.map(() => "?").join(",")})`)
+      .prepare(`${sql} (${chunk.map(() => "?").join(",")}) ${suffix}`)
       .bind(...chunk)
       .all();
     out.push(...((rows.results || []) as T[]));
@@ -198,7 +216,7 @@ async function decorateMessages(
   if (!messages.length) return;
   const ids = messages.map((m) => m.id);
 
-  const [reactionRows, mentionRows] = await Promise.all([
+  const [reactionRows, mentionRows, threadRows] = await Promise.all([
     queryByIds<{ message_id: string; emoji: string; user_id: string }>(
       db,
       "SELECT message_id, emoji, user_id FROM reactions WHERE message_id IN",
@@ -209,7 +227,15 @@ async function decorateMessages(
       "SELECT message_id, user_id FROM mentions WHERE message_id IN",
       ids,
     ),
+    queryByIds<{ thread_id: string; count: number }>(
+      db,
+      `SELECT thread_id, COUNT(*) AS count FROM messages
+        WHERE deleted_at IS NULL AND thread_id IN`,
+      ids,
+      "GROUP BY thread_id",
+    ),
   ]);
+  const threadCounts = new Map(threadRows.map((r) => [r.thread_id, r.count]));
 
   // Aggregate reactions per message + emoji.
   const byMessage = new Map<string, Map<string, { count: number; mine: boolean }>>();
@@ -260,6 +286,8 @@ async function decorateMessages(
     }
     const mentions = mentionsByMessage.get(message.id);
     if (mentions) message.mentions = mentions;
+    const threadCount = threadCounts.get(message.id);
+    if (threadCount) message.threadCount = threadCount;
     if (message.replyTo) {
       const parent = inPage.get(message.replyTo) || fetched.get(message.replyTo);
       message.replyPreview = parent
@@ -283,6 +311,8 @@ interface PostBody {
   replyTo?: string;
   /** Extra uploaded keys beyond `attachmentKey`. */
   attachmentKeys?: string[];
+  /** Posting into a thread: the id of the message that started it. */
+  threadId?: string;
   /** Apps answer in-channel as a bot; this is a private Huddle, so any
    *  signed-in member may do it (that is what /roll and /watch use). */
   asBot?: boolean;
@@ -389,14 +419,16 @@ export async function POST(request: Request) {
     payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
     reply_to: body.replyTo?.slice(0, 64) || null,
     attachments: extraKeys.length ? JSON.stringify(extraKeys) : null,
+    thread_id: body.threadId?.slice(0, 64) || null,
   };
 
   await db
     .prepare(
       `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
-        is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to, attachments)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to, attachments,
+        thread_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -417,6 +449,7 @@ export async function POST(request: Request) {
       stored.payload,
       stored.reply_to,
       stored.attachments,
+      stored.thread_id,
     )
     .run();
 

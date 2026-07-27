@@ -21,12 +21,14 @@ export function isImageUrl(value: string): boolean {
  * the longer fences (**, ~~, ||, __) are listed before the single-character one.
  */
 const INLINE_PATTERN =
-  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,24})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)/g;
+  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,24})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)/g;
 
 interface RenderOptions {
   selfHandle?: string;
   onMention?: (handle: string) => void;
   onImage?: (url: string) => void;
+  /** Custom emoji by name, so `:name:` can render as the image. */
+  emojis?: Record<string, string>;
 }
 
 /** Hidden until clicked, like Discord's ||spoiler||. */
@@ -130,6 +132,17 @@ function renderInline(
           {renderInline(token.slice(1, -1), options, images, `${key}i`)}
         </em>,
       );
+    } else if (match[10]) {
+      // :custom_emoji: — falls back to the literal text when unknown.
+      const name = token.slice(1, -1);
+      const url = options.emojis?.[name];
+      parts.push(
+        url ? (
+          <img key={key} className="custom-emoji" src={url} alt={token} title={token} />
+        ) : (
+          token
+        ),
+      );
     }
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
@@ -168,6 +181,7 @@ export function MessageBody({
   selfHandle,
   onMention,
   onImage,
+  emojis,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
@@ -176,8 +190,10 @@ export function MessageBody({
   onMention?: (handle: string) => void;
   /** Called with an image URL when one is clicked (opens the lightbox). */
   onImage?: (url: string) => void;
+  /** Custom emoji by name for `:name:`. */
+  emojis?: Record<string, string>;
 }) {
-  const options: RenderOptions = { selfHandle, onMention, onImage };
+  const options: RenderOptions = { selfHandle, onMention, onImage, emojis };
   const trimmed = text.trim();
 
   // A message that is nothing but an image link renders as just the image.
