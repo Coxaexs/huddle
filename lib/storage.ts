@@ -45,4 +45,6 @@ export interface StoredMessage {
   deleted_at?: string | null;
   reply_to?: string | null;
   edited_at?: string | null;
+  /** JSON array of extra R2 keys beyond `attachment_key`. */
+  attachments?: string | null;
 }

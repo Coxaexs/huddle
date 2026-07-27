@@ -4306,3 +4306,127 @@ button.mention:hover { filter:brightness(1.1); text-decoration:underline; }
   text-overflow:ellipsis;
   max-width:55%;
 }
+
+/* ---------------------------------------------------------------------------
+   Markdown: code, quotes, spoilers. Plus lightbox and multi-attachments.
+--------------------------------------------------------------------------- */
+.inline-code {
+  background:color-mix(in srgb, var(--ink) 12%, transparent);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:1px 5px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:.88em;
+}
+.code-block {
+  position:relative;
+  background:color-mix(in srgb, var(--ink) 10%, var(--panel));
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px 14px;
+  margin:6px 0;
+  overflow-x:auto;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:13px;
+  line-height:1.5;
+}
+.code-block code { white-space:pre; }
+.code-lang {
+  position:absolute;
+  top:6px;
+  right:10px;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.tok-comment { color:#7f848e; font-style:italic; }
+.tok-string  { color:#98c379; }
+.tok-number  { color:#d19a66; }
+.tok-keyword { color:#c678dd; font-weight:600; }
+
+.messages blockquote {
+  border-left:3px solid var(--lavender);
+  margin:3px 0;
+  padding:1px 0 1px 10px;
+  color:var(--ink);
+  opacity:.92;
+}
+
+.spoiler {
+  background:color-mix(in srgb, var(--ink) 82%, transparent);
+  color:transparent;
+  border-radius:4px;
+  padding:0 3px;
+  cursor:pointer;
+  transition:background .12s ease, color .12s ease;
+}
+.spoiler * { visibility:hidden; }
+.spoiler.revealed {
+  background:color-mix(in srgb, var(--ink) 10%, transparent);
+  color:inherit;
+  cursor:auto;
+}
+.spoiler.revealed * { visibility:visible; }
+
+/* Attachments: several images tile; one fills the usual width. */
+.attachment-grid { display:grid; gap:4px; max-width:520px; margin-top:6px; }
+.attachment-grid.count-1 { grid-template-columns:1fr; }
+.attachment-grid.count-2 { grid-template-columns:1fr 1fr; }
+.attachment-grid.count-3,
+.attachment-grid.count-4 { grid-template-columns:1fr 1fr; }
+.attachment-grid .message-image {
+  width:100%;
+  height:100%;
+  max-height:220px;
+  object-fit:cover;
+  margin:0;
+  border-radius:8px;
+}
+.message-image { cursor:zoom-in; }
+.attachment-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.attachment-row .attachment-preview { margin:0; }
+
+/* Fullscreen image viewer. */
+.lightbox {
+  position:fixed;
+  inset:0;
+  z-index:200;
+  background:rgba(0,0,0,.86);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:40px;
+  cursor:zoom-out;
+}
+.lightbox img {
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  border-radius:8px;
+  cursor:default;
+}
+.lightbox-close {
+  position:absolute;
+  top:18px;
+  right:24px;
+  width:40px;
+  height:40px;
+  border:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.14);
+  color:#fff;
+  font-size:24px;
+  cursor:pointer;
+}
+.lightbox-open {
+  position:absolute;
+  bottom:22px;
+  color:#fff;
+  background:rgba(255,255,255,.14);
+  padding:8px 16px;
+  border-radius:999px;
+  text-decoration:none;
+  font-size:13px;
+}
