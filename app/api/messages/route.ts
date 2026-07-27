@@ -6,6 +6,9 @@ import { bindings, type StoredMessage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
+/** How many messages a channel (or thread) loads at once. */
+const HISTORY_LIMIT = 200;
+
 export interface PublicMessage {
   id: string;
   channelId: string | null;
@@ -144,14 +147,15 @@ export async function GET(request: Request) {
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
                    reply_to, edited_at, attachments`;
   const pinnedOnly = params.get("pinned") === "1";
-  // A thread request returns that thread's replies; otherwise channel history,
-  // which hides replies so threads stay out of the main flow.
+  // Take the *newest* page and flip it back into reading order. Selecting
+  // ASC would return the oldest 200, so once a channel passed that many
+  // messages every new one became invisible after a reload.
   const result = threadId
     ? await db
         .prepare(
           `SELECT ${columns} FROM messages
             WHERE thread_id = ? AND deleted_at IS NULL
-            ORDER BY created_at ASC LIMIT 200`,
+            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
         )
         .bind(threadId)
         .all()
@@ -161,7 +165,7 @@ export async function GET(request: Request) {
           `SELECT ${columns} FROM messages
             WHERE channel_id = ? AND deleted_at IS NULL AND thread_id IS NULL
               ${pinnedOnly ? "AND pinned_at IS NOT NULL" : ""}
-            ORDER BY created_at ASC LIMIT 200`,
+            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
         )
         .bind(channelId)
         .all()
@@ -169,12 +173,12 @@ export async function GET(request: Request) {
         .prepare(
           `SELECT ${columns} FROM messages
             WHERE channel = ? AND channel_id IS NULL AND deleted_at IS NULL
-            ORDER BY created_at ASC LIMIT 200`,
+            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
         )
         .bind(channelName || "general")
         .all();
 
-  const stored = (result.results || []) as unknown as StoredMessage[];
+  const stored = ((result.results || []) as unknown as StoredMessage[]).reverse();
   const messages = stored.map(publicMessage);
   await decorateMessages(db, user.id, stored, messages);
 
