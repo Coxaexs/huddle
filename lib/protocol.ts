@@ -88,6 +88,7 @@ export type ClientEvent =
     }
   | { t: "signal"; to: string; data: unknown }
   | { t: "player"; channelId: string; action: PlayerAction }
+  | { t: "typing"; channelId: string }
   | { t: "ping" };
 
 export type PlayerAction =
@@ -162,6 +163,21 @@ export type ServerEvent =
       url: string;
       name: string;
       by: string;
+      serverNow: number;
+    }
+  | {
+      t: "typing";
+      channelId: string;
+      userId: string;
+      displayName: string;
+      serverNow: number;
+    }
+  | {
+      t: "poll";
+      channelId: string;
+      pollId: string;
+      counts: number[];
+      voters: number;
       serverNow: number;
     }
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }

@@ -21,9 +21,25 @@ export interface Member {
   lastSeenAt: string;
   createdAt?: string;
   isAdmin?: boolean;
+  /** Presence the member chose: online | idle | dnd | invisible. */
+  status?: PresenceStatus;
+  customStatus?: string | null;
   /** Role ids this member holds, keyed by server id. */
   roleIds?: Record<string, string[]>;
 }
+
+export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";
+
+/** Label + dot colour for each presence status. */
+export const PRESENCE: Record<
+  PresenceStatus,
+  { label: string; color: string }
+> = {
+  online: { label: "Online", color: "#3ba55d" },
+  idle: { label: "Idle", color: "#faa81a" },
+  dnd: { label: "Do not disturb", color: "#ed4245" },
+  invisible: { label: "Invisible", color: "#80848e" },
+};
 
 /** Colors new accounts cycle through, matching the existing palette. */
 export const AVATAR_COLORS = [

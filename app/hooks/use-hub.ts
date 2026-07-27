@@ -39,6 +39,8 @@ interface HubHandlers {
     added: boolean,
   ) => void;
   onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
+  onTyping?: (channelId: string, userId: string, displayName: string) => void;
+  onPoll?: (channelId: string, pollId: string, counts: number[]) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
 }
 
@@ -186,6 +188,20 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.url,
               payload.name,
               payload.by,
+            );
+            break;
+          case "typing":
+            handlersRef.current.onTyping?.(
+              payload.channelId,
+              payload.userId,
+              payload.displayName,
+            );
+            break;
+          case "poll":
+            handlersRef.current.onPoll?.(
+              payload.channelId,
+              payload.pollId,
+              payload.counts,
             );
             break;
           case "force-mute":

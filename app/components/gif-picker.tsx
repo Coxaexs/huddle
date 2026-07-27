@@ -11,7 +11,7 @@ interface MediaItem {
   url: string;
 }
 
-type Tab = "gif" | "sticker" | "server";
+type Tab = "gif" | "sticker" | "server" | "emoji";
 
 interface GifPickerProps {
   onPick: (url: string) => void;
@@ -19,6 +19,10 @@ interface GifPickerProps {
   serverId: string | null;
   /** Whether this member may upload/remove server stickers. */
   canManageStickers: boolean;
+  /** Inserts text (an `:emoji:` shortcode) into the composer. */
+  onInsert?: (text: string) => void;
+  /** Called after emoji change so the shell can reload them. */
+  onEmojiChange?: () => void;
 }
 
 /**
@@ -31,8 +35,13 @@ export function GifPicker({
   onClose,
   serverId,
   canManageStickers,
+  onInsert,
+  onEmojiChange,
 }: GifPickerProps) {
   const [tab, setTab] = useState<Tab>("gif");
+  const [customEmojis, setCustomEmojis] = useState<
+    Array<{ id: string; name: string; url: string }>
+  >([]);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<MediaItem[]>([]);
   const [hint, setHint] = useState("");
@@ -40,8 +49,57 @@ export function GifPicker({
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const loadEmojis = useRef<() => void>(() => {});
+  loadEmojis.current = () => {
+    if (!serverId) return;
+    apiFetch<{ emojis: Array<{ id: string; name: string; url: string }> }>(
+      `/api/emojis?serverId=${encodeURIComponent(serverId)}`,
+    )
+      .then((data) => setCustomEmojis(data.emojis || []))
+      .catch(() => undefined);
+  };
   useEffect(() => {
-    if (tab === "server") return; // server stickers load in their own effect
+    if (tab === "emoji") loadEmojis.current();
+  }, [tab, serverId]);
+
+  async function uploadEmoji(file: File | undefined | null) {
+    if (!file || !serverId) return;
+    const name = window.prompt(
+      "Emoji name (letters, numbers, underscore)",
+      file.name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9_]/g, ""),
+    );
+    if (!name) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const uploaded = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      await apiFetch("/api/emojis", {
+        method: "POST",
+        body: JSON.stringify({ serverId, key: uploaded.key, name }),
+      });
+      loadEmojis.current();
+      onEmojiChange?.();
+    } catch (failure) {
+      setHint(failure instanceof Error ? failure.message : "Could not add it.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeEmoji(id: string) {
+    await apiFetch(`/api/emojis?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }).catch(() => undefined);
+    loadEmojis.current();
+    onEmojiChange?.();
+  }
+
+  useEffect(() => {
+    if (tab === "server" || tab === "emoji") return; // these load separately
     let cancelled = false;
     setLoading(true);
     const timer = window.setTimeout(() => {
@@ -162,6 +220,13 @@ export function GifPicker({
         </button>
         <button
           type="button"
+          className={tab === "emoji" ? "active" : ""}
+          onClick={() => setTab("emoji")}
+        >
+          Emoji
+        </button>
+        <button
+          type="button"
           className="gif-picker-close"
           onClick={onClose}
           aria-label="Close picker"
@@ -170,7 +235,7 @@ export function GifPicker({
         </button>
       </div>
 
-      {tab !== "server" && (
+      {(tab === "gif" || tab === "sticker") && (
         <div className="gif-picker-head">
           <input
             value={query}
@@ -180,6 +245,52 @@ export function GifPicker({
             autoFocus
           />
         </div>
+      )}
+
+      {tab === "emoji" && (
+        <>
+          {canManageStickers && (
+            <div className="gif-picker-head">
+              <button
+                type="button"
+                className="sticker-upload"
+                disabled={uploading || !serverId}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploading ? "Uploading…" : "+ Add emoji"}
+              </button>
+            </div>
+          )}
+          <div className="emoji-grid">
+            {customEmojis.map((emoji) => (
+              <div key={emoji.id} className="emoji-cell-wrap">
+                <button
+                  type="button"
+                  className="emoji-cell"
+                  title={`:${emoji.name}:`}
+                  onClick={() => onInsert?.(`:${emoji.name}: `)}
+                >
+                  <img src={emoji.url} alt={emoji.name} />
+                </button>
+                {canManageStickers && (
+                  <button
+                    type="button"
+                    className="gif-cell-delete"
+                    aria-label={`Remove :${emoji.name}:`}
+                    onClick={() => void removeEmoji(emoji.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {!customEmojis.length && (
+              <p className="gif-picker-hint">
+                No custom emoji yet. Add one and type <code>:name:</code>.
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       {tab === "server" && canManageStickers && (
@@ -192,22 +303,26 @@ export function GifPicker({
           >
             {uploading ? "Uploading…" : "+ Add sticker"}
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(event) => {
-              void uploadSticker(event.target.files?.[0]);
-              event.target.value = "";
-            }}
-          />
         </div>
       )}
 
+      {/* One hidden input serves both upload tabs. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (tab === "emoji") void uploadEmoji(file);
+          else void uploadSticker(file);
+          event.target.value = "";
+        }}
+      />
+
       {hint && <p className="gif-picker-hint">{hint}</p>}
 
-      <div className="gif-grid">
+      <div className="gif-grid" hidden={tab === "emoji"}>
         {items.map((item) => (
           <div key={item.id} className="gif-cell-wrap">
             <button

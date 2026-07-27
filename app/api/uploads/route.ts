@@ -20,22 +20,33 @@ export async function POST(request: Request) {
     upload.type === "application/pdf" || upload.name.toLowerCase().endsWith(".pdf");
   const isAudio =
     upload.type.startsWith("audio/") ||
-    /\.(mp3|ogg|wav|webm|m4a)$/i.test(upload.name);
-  if (!isImage && !isPdf && !isAudio) {
+    /\.(mp3|ogg|wav|m4a)$/i.test(upload.name);
+  // Voice clips are webm (audio, or audio+video when someone was sharing).
+  const isClip =
+    upload.type.startsWith("video/") || /\.(webm|mp4)$/i.test(upload.name);
+  if (!isImage && !isPdf && !isAudio && !isClip) {
     return Response.json(
-      { error: "Huddle accepts images, PDFs and short audio clips." },
+      { error: "Huddle accepts images, PDFs, audio and short clips." },
       { status: 400 },
     );
   }
-  const maximum = isPdf ? 20 * 1024 * 1024 : isAudio ? 3 * 1024 * 1024 : 8 * 1024 * 1024;
+  const maximum = isPdf
+    ? 20 * 1024 * 1024
+    : isClip
+      ? 40 * 1024 * 1024
+      : isAudio
+        ? 3 * 1024 * 1024
+        : 8 * 1024 * 1024;
   if (upload.size > maximum) {
     return Response.json(
       {
         error: isPdf
           ? "PDFs must be smaller than 20 MB."
-          : isAudio
-            ? "Sound clips must be smaller than 3 MB."
-            : "Images must be smaller than 8 MB.",
+          : isClip
+            ? "Clips must be smaller than 40 MB."
+            : isAudio
+              ? "Sound clips must be smaller than 3 MB."
+              : "Images must be smaller than 8 MB.",
       },
       { status: 413 },
     );
