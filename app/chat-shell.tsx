@@ -338,6 +338,8 @@ export function ChatShell() {
   >([]);
   /** Per-channel notification level; absent means "all". */
   const [channelPrefs, setChannelPrefs] = useState<Record<string, string>>({});
+  /** Members banned from the active server, so the menu can offer Unban. */
+  const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
   const [channelMenu, setChannelMenu] = useState<{
     channel: PublicChannel;
     x: number;
@@ -954,6 +956,28 @@ export function ChatShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, myStatus]);
 
+  // Who is banned here, so the member menu can offer Unban. Only people who
+  // can manage the server may read the list, so failures are silent.
+  useEffect(() => {
+    if (!user || !activeServerId || activeServerId === DM_HOME || !canManageServer) {
+      setBannedIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    apiFetch<{ bans: Array<{ userId: string }> }>(
+      `/api/bans?serverId=${encodeURIComponent(activeServerId)}`,
+    )
+      .then((data) => {
+        if (!cancelled) {
+          setBannedIds(new Set((data.bans || []).map((ban) => ban.userId)));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, activeServerId, canManageServer]);
+
   // Opening a voice stage pulls in whatever map is on the table there.
   useEffect(() => {
     if (!stageChannelId) {
@@ -1330,13 +1354,20 @@ export function ChatShell() {
     }).catch((error: Error) => setNotice(error.message));
   }
 
-  async function moderateMember(userId: string, action: "kick" | "ban") {
+  async function moderateMember(
+    userId: string,
+    action: "kick" | "ban" | "unban",
+  ) {
     if (!activeServerId || activeServerId === DM_HOME) return;
-    const verb = action === "ban" ? "Ban" : "Kick";
+    const verb =
+      action === "ban" ? "Ban" : action === "unban" ? "Unban" : "Kick";
     showCustomConfirm({
       title: `${verb} Member?`,
-      message: `Are you sure you want to ${action} this member from the server?`,
-      isDanger: true,
+      message:
+        action === "unban"
+          ? "They will be able to read and post here again."
+          : `Are you sure you want to ${action} this member from the server?`,
+      isDanger: action !== "unban",
       confirmText: `${verb} Member`,
       onConfirm: async () => {
         try {
@@ -1344,7 +1375,17 @@ export function ChatShell() {
             method: "POST",
             body: JSON.stringify({ serverId: activeServerId, action }),
           });
-          setNotice(`${verb === "Ban" ? "Banned" : "Kicked"} · roles cleared.`);
+          setBannedIds((current) => {
+            const next = new Set(current);
+            if (action === "ban") next.add(userId);
+            else if (action === "unban") next.delete(userId);
+            return next;
+          });
+          setNotice(
+            action === "unban"
+              ? "Unbanned · they can post here again."
+              : `${verb === "Ban" ? "Banned" : "Kicked"} · roles cleared.`,
+          );
         } catch (error) {
           setNotice(error instanceof Error ? error.message : "Could not do that.");
         }
@@ -4321,6 +4362,11 @@ export function ChatShell() {
           }}
           onBan={() => {
             void moderateMember(userMenu.member.id, "ban");
+            setUserMenu(null);
+          }}
+          banned={bannedIds.has(userMenu.member.id)}
+          onUnban={() => {
+            void moderateMember(userMenu.member.id, "unban");
             setUserMenu(null);
           }}
         />

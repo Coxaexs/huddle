@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -58,6 +58,17 @@ interface CustomEmoji {
   url: string;
 }
 
+interface ServerBan {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  avatarUrl: string | null;
+  color: string;
+  bannedAt: string;
+  bannedBy: string | null;
+}
+
 const BANNER_COLORS = [
   { label: "Dark", value: "linear-gradient(135deg, #1e1f29, #111218)" },
   { label: "Soul", value: "linear-gradient(135deg, #ff4081, #ff80ab)" },
@@ -96,8 +107,43 @@ export function ServerSettingsDialog({
   const [activeRole, setActiveRole] = useState<PublicRole | null>(roles[0] || null);
   const [roleSearch, setRoleSearch] = useState("");
 
-  // Bans search state
+  // Bans state
   const [banSearch, setBanSearch] = useState("");
+  const [bans, setBans] = useState<ServerBan[]>([]);
+  const [loadingBans, setLoadingBans] = useState(false);
+
+  const loadBans = useCallback(async () => {
+    setLoadingBans(true);
+    try {
+      const data = await apiFetch<{ bans: ServerBan[] }>(
+        `/api/bans?serverId=${encodeURIComponent(server.id)}`,
+      );
+      setBans(data.bans || []);
+    } catch {
+      setBans([]);
+    } finally {
+      setLoadingBans(false);
+    }
+  }, [server.id]);
+
+  useEffect(() => {
+    if (tab === "bans") void loadBans();
+  }, [tab, loadBans]);
+
+  async function unban(ban: ServerBan) {
+    try {
+      await apiFetch(`/api/members/${ban.userId}`, {
+        method: "POST",
+        body: JSON.stringify({ serverId: server.id, action: "unban" }),
+      });
+      setBans((current) => current.filter((b) => b.userId !== ban.userId));
+      setNotice(`${ban.displayName} can rejoin the conversation.`);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not lift that ban.",
+      );
+    }
+  }
 
   useEffect(() => {
     setServerName(server.name);
@@ -760,19 +806,95 @@ export function ServerSettingsDialog({
                   onChange={(e) => setBanSearch(e.target.value)}
                 />
               </div>
-              <button type="button" className="discord-btn primary-indigo">
-                Search
+              <button
+                type="button"
+                className="discord-btn primary-indigo"
+                onClick={() => void loadBans()}
+              >
+                Refresh
               </button>
             </div>
 
-            {/* Empty State Graphic (SS 4) */}
-            <div className="bans-empty-card">
-              <div className="ban-hammer-illustration">
-                <span className="hammer-emoji">🔨⚡</span>
-              </div>
-              <h2>NO BANS</h2>
-              <p>You haven't banned anybody... but if and when you must, do not hesitate!</p>
-            </div>
+            {(() => {
+              const term = banSearch.trim().toLowerCase();
+              const shown = term
+                ? bans.filter(
+                    (ban) =>
+                      ban.username.toLowerCase().includes(term) ||
+                      ban.displayName.toLowerCase().includes(term) ||
+                      ban.userId.toLowerCase().includes(term),
+                  )
+                : bans;
+
+              if (loadingBans) {
+                return <p className="pane-subtitle">Loading the ban list…</p>;
+              }
+
+              if (!bans.length) {
+                return (
+                  <div className="bans-empty-card">
+                    <div className="ban-hammer-illustration">
+                      <span className="hammer-emoji">🔨⚡</span>
+                    </div>
+                    <h2>NO BANS</h2>
+                    <p>
+                      You haven&apos;t banned anybody... but if and when you must,
+                      do not hesitate!
+                    </p>
+                  </div>
+                );
+              }
+
+              if (!shown.length) {
+                return <p className="pane-subtitle">Nobody matched that search.</p>;
+              }
+
+              return (
+                <ul className="ban-list">
+                  {shown.map((ban) => (
+                    <li key={ban.userId} className="ban-row">
+                      <span
+                        className="ban-avatar"
+                        style={{
+                          background: ban.avatarUrl ? undefined : ban.color,
+                        }}
+                      >
+                        {ban.avatarUrl ? (
+                          <img src={ban.avatarUrl} alt="" />
+                        ) : (
+                          ban.avatar
+                        )}
+                      </span>
+                      <span className="ban-who">
+                        <strong>{ban.displayName}</strong>
+                        <small>
+                          @{ban.username}
+                          {ban.bannedBy ? ` · banned by ${ban.bannedBy}` : ""}
+                          {ban.bannedAt
+                            ? ` · ${new Date(ban.bannedAt).toLocaleDateString()}`
+                            : ""}
+                        </small>
+                      </span>
+                      <button
+                        type="button"
+                        className="discord-btn"
+                        onClick={() =>
+                          onRequestConfirm({
+                            title: `Unban ${ban.displayName}?`,
+                            message:
+                              "They will be able to read and post here again.",
+                            confirmText: "Unban",
+                            onConfirm: () => void unban(ban),
+                          })
+                        }
+                      >
+                        Unban
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
           </div>
         )}
 
