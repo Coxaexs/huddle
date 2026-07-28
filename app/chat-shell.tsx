@@ -109,6 +109,7 @@ import {
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
 import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
+import { useActivityDetector } from "./hooks/use-activity-detector";
 
 interface Message {
   id: string | number;
@@ -1299,6 +1300,17 @@ export function ChatShell() {
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
+
+  useActivityDetector({
+    user,
+    onUpdateSpotify: (spotifyAct) => {
+      if (!user) return;
+      setUser((u) => (u ? { ...u, spotifyActivity: spotifyAct } : u));
+      setMembers((prev) =>
+        prev.map((m) => (m.id === user.id ? { ...m, spotifyActivity: spotifyAct } : m)),
+      );
+    },
+  });
 
   const activeSlashCommand = useMemo(() => {
     if (!draft.startsWith("/")) return undefined;

@@ -12,7 +12,12 @@ export interface ActivityApp {
   enabled: boolean;
 }
 
-export function useActivityDetector(user: PublicUser | null) {
+interface UseActivityDetectorOptions {
+  user: PublicUser | null;
+  onUpdateSpotify?: (activity: SpotifyActivity | null) => void;
+}
+
+export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetectorOptions) {
   const [activeAppId, setActiveAppId] = useState<string>("spotify");
   const [masterEnabled, setMasterEnabled] = useState(true);
   const [spotifyEnabled, setSpotifyEnabled] = useState(true);
@@ -24,43 +29,59 @@ export function useActivityDetector(user: PublicUser | null) {
     { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode", enabled: true },
   ]);
 
-  // Automatic Web Media Session API listener for Spotify / browser music
+  // Automatic Web Media Session API & browser media detector for Spotify / music
   useEffect(() => {
     if (!user || !masterEnabled || !spotifyEnabled) return;
 
     let lastSong = "";
+
     const checkMediaSession = async () => {
+      let song = "";
+      let artist = "";
+      let albumArt = "";
+
+      // 1. Check navigator.mediaSession metadata
       if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
         const meta = navigator.mediaSession.metadata;
-        const song = meta.title || "Currently Playing";
-        const artist = meta.artist || "Spotify";
-        const albumArt = meta.artwork?.[0]?.src || "";
+        if (meta.title) {
+          song = meta.title;
+          artist = meta.artist || "Spotify";
+          albumArt = meta.artwork?.[0]?.src || "";
+        }
+      }
 
-        if (song !== lastSong) {
-          lastSong = song;
-          const spotifyAct: SpotifyActivity = {
-            song,
-            artist,
-            albumArt,
-            isPlaying: true,
-          };
+      // 2. If activeAppId is spotify and no mediaSession found, set active Spotify status
+      if (!song && activeAppId === "spotify") {
+        song = "Listening to Spotify";
+        artist = "Spotify Desktop / Web Player";
+      }
 
-          try {
-            await apiFetch("/api/settings/profile", {
-              method: "PATCH",
-              body: JSON.stringify({ spotifyActivity: spotifyAct }),
-            });
-          } catch {
-            // ignore silent sync errors
-          }
+      if (song && song !== lastSong) {
+        lastSong = song;
+        const spotifyAct: SpotifyActivity = {
+          song,
+          artist,
+          albumArt,
+          isPlaying: true,
+        };
+
+        onUpdateSpotify?.(spotifyAct);
+
+        try {
+          await apiFetch("/api/settings/profile", {
+            method: "PATCH",
+            body: JSON.stringify({ spotifyActivity: spotifyAct }),
+          });
+        } catch {
+          // ignore silent sync errors
         }
       }
     };
 
-    const interval = setInterval(checkMediaSession, 5000);
-    checkMediaSession();
+    const interval = setInterval(checkMediaSession, 4000);
+    void checkMediaSession();
     return () => clearInterval(interval);
-  }, [user, masterEnabled, spotifyEnabled]);
+  }, [user, masterEnabled, spotifyEnabled, activeAppId, onUpdateSpotify]);
 
   return {
     masterEnabled,
