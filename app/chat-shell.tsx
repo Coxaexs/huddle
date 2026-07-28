@@ -57,6 +57,7 @@ import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { BattlemapBoard } from "./components/battlemap";
+import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
 import { PollCard } from "./components/poll-card";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
@@ -1282,6 +1283,19 @@ export function ChatShell() {
     lastTypingSentRef.current = now;
     hub.send({ t: "typing", channelId: activeChannelId });
   }
+
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setQuickSwitcherOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Esc closes the image lightbox. (KeyboardEvent here is React's type, so the
   // DOM one needs qualifying.)
@@ -5045,6 +5059,34 @@ export function ChatShell() {
           }}
         />
       )}
+
+      <QuickSwitcher
+        open={quickSwitcherOpen}
+        onClose={() => setQuickSwitcherOpen(false)}
+        servers={servers}
+        channels={channels}
+        dms={dms}
+        onSelect={(target: QuickSwitcherTarget) => {
+          if (target.type === "channel") {
+            if (target.serverId && target.serverId !== activeServerId) {
+              setActiveServerId(target.serverId);
+            }
+            if (target.kind === "voice") {
+              setStageChannelId(target.id);
+              void voice.join(target.id);
+            } else {
+              setActiveChannelId(target.id);
+              setStageChannelId(null);
+            }
+          } else if (target.type === "dm") {
+            setActiveServerId(DM_HOME);
+            setActiveChannelId(target.id);
+            setStageChannelId(null);
+          } else if (target.type === "server") {
+            setActiveServerId(target.id);
+          }
+        }}
+      />
     </main>
   );
 }
