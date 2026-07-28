@@ -46,6 +46,7 @@ import {
   Vote,
   ChevronDown,
   X,
+  User,
 } from "lucide-react";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
@@ -3151,6 +3152,18 @@ export function ChatShell() {
               type="button"
               onClick={() => {
                 setStatusOpen(false);
+                setProfileSettingsOpen(true);
+              }}
+            >
+              <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
+                <User size={14} />
+              </span>
+              Edit Profile
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusOpen(false);
                 setSettingsOpen(true);
               }}
             >
@@ -3725,12 +3738,35 @@ export function ChatShell() {
             </div>
             {pins.length ? (
               pins.map((pin) => (
-                <div className="pin-item" key={pin.id}>
-                  <strong>{pin.author}</strong>
-                  <p>{pin.text}</p>
-                  <button type="button" onClick={() => void togglePin(pin)}>
-                    Unpin
-                  </button>
+                <div
+                  className="pin-item cursor-pointer hover:bg-white/5 p-2.5 rounded-lg transition-colors border border-transparent hover:border-white/10 my-1"
+                  key={pin.id}
+                  onClick={() => {
+                    const el = document.getElementById(`msg-${pin.id}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      el.classList.add("jump-flash");
+                      setTimeout(() => {
+                        el.classList.remove("jump-flash");
+                      }, 2000);
+                    }
+                  }}
+                  title="Click to jump to message"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <strong className="text-xs text-white">{pin.author}</strong>
+                    <button
+                      type="button"
+                      className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void togglePin(pin);
+                      }}
+                    >
+                      Unpin
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-300 line-clamp-3">{pin.text}</p>
                 </div>
               ))
             ) : (
@@ -5237,7 +5273,16 @@ export function ChatShell() {
         onClose={() => setQuickSwitcherOpen(false)}
         servers={servers}
         channels={servers.flatMap((s) => s.channels || [])}
-        dms={dms.map((d) => ({ id: d.channelId, user: d.user }))}
+        dms={dms.map((d) => ({
+          id: d.channelId,
+          user: {
+            id: d.user.id,
+            displayName: d.user.displayName,
+            username: d.user.username,
+            avatar: d.user.avatar,
+            avatarUrl: d.user.avatarUrl || undefined,
+          },
+        }))}
         onSelect={(target: QuickSwitcherTarget) => {
           if (target.type === "channel") {
             if (target.serverId && target.serverId !== activeServerId) {

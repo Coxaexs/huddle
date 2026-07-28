@@ -87,8 +87,9 @@ export async function POST(request: Request) {
     httpMetadata: { contentType },
   });
 
+  const url = `/hangout/api/uploads/${encodeURIComponent(key)}`;
   return Response.json(
-    { key, name: safeName || fallbackName, type: contentType },
+    { key, url, name: safeName || fallbackName, type: contentType },
     { status: 201 },
   );
 }

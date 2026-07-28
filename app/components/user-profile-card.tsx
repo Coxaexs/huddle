@@ -104,13 +104,12 @@ export function UserProfileCard({
           avatar={member.avatar}
           avatarUrl={member.avatarUrl}
           color={member.color}
-        >
-          <span
-            className="profile-presence-dot"
-            style={{ background: statusInfo.color }}
-            title={statusInfo.label}
-          />
-        </Avatar>
+        />
+        <span
+          className="profile-presence-dot"
+          style={{ background: statusInfo.color }}
+          title={statusInfo.label}
+        />
       </div>
 
       <div className="profile-card-body">
