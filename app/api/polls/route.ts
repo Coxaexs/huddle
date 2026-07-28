@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     question?: string;
     options?: string[];
     multi?: boolean;
+    isPrivate?: boolean;
   };
   const channelId = body.channelId?.slice(0, 64);
   const question = body.question?.trim().slice(0, 200);
@@ -54,11 +55,12 @@ export async function POST(request: Request) {
   const pollId = crypto.randomUUID();
   const messageId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const isPrivate = Boolean(body.isPrivate);
 
   await db
     .prepare(
-      `INSERT INTO polls (id, message_id, channel_id, question, options, multi, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO polls (id, message_id, channel_id, question, options, multi, is_private, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       pollId,
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
       question,
       JSON.stringify(options),
       body.multi ? 1 : 0,
+      isPrivate ? 1 : 0,
       user.id,
       now,
     )
@@ -85,7 +88,13 @@ export async function POST(request: Request) {
     is_bot: 0,
     created_at: now,
     kind: "poll",
-    payload: JSON.stringify({ pollId, question, options, multi: Boolean(body.multi) }),
+    payload: JSON.stringify({
+      pollId,
+      question,
+      options,
+      multi: Boolean(body.multi),
+      isPrivate,
+    }),
   };
 
   await db
@@ -121,35 +130,57 @@ export async function POST(request: Request) {
   return Response.json({ pollId, message }, { status: 201 });
 }
 
-/** Current tallies for a poll, plus what the caller voted for. */
+/** Current tallies for a poll, voters, and user votes. */
 export async function GET(request: Request) {
   const db = bindings().DB;
-  if (!db) return Response.json({ counts: [], mine: [] });
+  if (!db) return Response.json({ counts: [], mine: [], isPrivate: false, voters: [] });
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
 
   const pollId = new URL(request.url).searchParams.get("pollId") || "";
   const poll = await db
-    .prepare("SELECT options FROM polls WHERE id = ?")
+    .prepare("SELECT options, is_private FROM polls WHERE id = ?")
     .bind(pollId)
-    .first<{ options: string }>();
+    .first<{ options: string; is_private?: number }>();
   if (!poll) return Response.json({ error: "No such poll." }, { status: 404 });
 
   const size = (JSON.parse(poll.options) as string[]).length;
+  const isPrivate = Boolean(poll.is_private);
+
   const rows = await db
-    .prepare("SELECT user_id, choice FROM poll_votes WHERE poll_id = ?")
+    .prepare(
+      `SELECT v.user_id, v.choice, u.display_name, u.username
+         FROM poll_votes v
+         LEFT JOIN users u ON u.id = v.user_id
+        WHERE v.poll_id = ?`,
+    )
     .bind(pollId)
     .all();
 
   const counts = new Array(size).fill(0) as number[];
   const mine: number[] = [];
+  const voters: Array<Array<{ id: string; name: string }>> = Array.from(
+    { length: size },
+    () => [],
+  );
+
   for (const row of (rows.results || []) as Array<{
     user_id: string;
     choice: number;
+    display_name?: string;
+    username?: string;
   }>) {
-    if (row.choice >= 0 && row.choice < size) counts[row.choice] += 1;
+    if (row.choice >= 0 && row.choice < size) {
+      counts[row.choice] += 1;
+      if (!isPrivate) {
+        voters[row.choice].push({
+          id: row.user_id,
+          name: row.display_name || row.username || "Anonymous",
+        });
+      }
+    }
     if (row.user_id === user.id) mine.push(row.choice);
   }
-  return Response.json({ counts, mine });
+  return Response.json({ counts, mine, isPrivate, voters });
 }

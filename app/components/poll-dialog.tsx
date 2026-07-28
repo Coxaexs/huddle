@@ -6,17 +6,19 @@ import { Vote, Plus, Trash2, X } from "lucide-react";
 interface PollDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (question: string, options: string[]) => void;
+  onSubmit: (question: string, options: string[], isPrivate: boolean) => void;
 }
 
 export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<string[]>(["", ""]);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   useEffect(() => {
     if (open) {
       setQuestion("");
       setOptions(["", ""]);
+      setIsPrivate(false);
     }
   }, [open]);
 
@@ -48,7 +50,7 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit(question.trim(), validOptions);
+    onSubmit(question.trim(), validOptions, isPrivate);
     onClose();
   };
 
@@ -115,6 +117,23 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
                   <Plus size={16} /> Add Option
                 </button>
               )}
+            </div>
+
+            <div className="form-group border-t border-white/10 pt-3 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  className="w-4 h-4 accent-indigo-500 rounded"
+                />
+                🔒 Private Mode (Anonymous voting, hide voter names)
+              </label>
+              <p className="text-[11px] text-gray-400 pl-6">
+                {isPrivate
+                  ? "Voters' identities will be hidden. Only total votes will be shown."
+                  : "Public Mode (Default): Everyone can see who voted for each option."}
+              </p>
             </div>
           </div>
 
