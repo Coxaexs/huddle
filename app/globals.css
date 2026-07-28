@@ -1688,10 +1688,11 @@ button {
   padding:7px 10px;
   display:grid;
   position:relative;
+  transition: background-color 0.15s ease;
 }
 
 .message:hover {
-  background:#f7f4f1;
+  background:#edeae6;
 }
 
 .avatar {
@@ -2466,7 +2467,7 @@ button {
 [data-theme=dark] .channel:hover,
 [data-theme=dark] .voice-room:hover,
 [data-theme=dark] .message:hover {
-  background:#27272f;
+  background:#2b2b35;
 }
 [data-theme=dark] .voice-card,
 [data-theme=dark] .voice-feature {
@@ -3442,25 +3443,6 @@ button {
 
 /* ---- per-message actions ---- */
 
-.message {
-  position:relative;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  margin-left: -16px;
-  margin-right: -16px;
-  padding-left: 16px;
-  padding-right: 16px;
-  border-radius: 6px;
-  transition: background-color 0.15s ease;
-}
-
-.message:hover {
-  background-color: rgba(255, 255, 255, 0.03);
-}
-
-[data-theme=dark] .message:hover {
-  background-color: rgba(255, 255, 255, 0.04);
-}
 
 .message-actions {
   opacity:0;
