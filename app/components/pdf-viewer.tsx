@@ -190,10 +190,25 @@ async function makeFilledPdf(
   source: ArrayBuffer,
   values: Record<string, PdfValue>,
 ) {
-  const pdf = await import("pdf-lib");
+  const [pdf, fontkitModule, fontResponse] = await Promise.all([
+    import("pdf-lib"),
+    import("@pdf-lib/fontkit"),
+    fetch(`${basePath}/pdf-form-font.ttf`, { credentials: "same-origin" }),
+  ]);
+  if (!fontResponse.ok) {
+    throw new Error("The Unicode PDF font could not be loaded.");
+  }
   const document = await pdf.PDFDocument.load(source.slice(0));
+  document.registerFontkit(fontkitModule.default);
+  const unicodeFont = await document.embedFont(
+    await fontResponse.arrayBuffer(),
+    // pdf-lib's subset font appearances are not painted by every PDF viewer
+    // (notably Poppler). Embed the complete font so saved text stays portable.
+    { subset: false },
+  );
+  const form = document.getForm();
   const byName = new Map(
-    document.getForm().getFields().map((field) => [field.getName(), field]),
+    form.getFields().map((field) => [field.getName(), field]),
   );
 
   for (const [name, value] of Object.entries(values)) {
@@ -216,9 +231,13 @@ async function makeFilledPdf(
     }
   }
 
-  // Keep the AcroForm interactive. pdf-lib regenerates appearances during
-  // save, so the value tree and what other viewers paint stay in agreement.
-  return document.save({ useObjectStreams: false });
+  // Keep the AcroForm interactive and regenerate dirty appearances with a
+  // Unicode font so Turkish and other non-WinAnsi text remain visible.
+  form.updateFieldAppearances(unicodeFont);
+  return document.save({
+    useObjectStreams: false,
+    updateFieldAppearances: false,
+  });
 }
 
 function PdfPage({
