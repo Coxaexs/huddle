@@ -5,11 +5,13 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
 } from "react";
+import { basePath } from "../lib/client";
 
 type PdfLib = typeof import("pdf-lib");
-
+type PdfJs = typeof import("pdfjs-dist");
 type PdfValue = string | boolean;
 
 interface PdfField {
@@ -19,6 +21,41 @@ interface PdfField {
   options?: string[];
   multiline?: boolean;
   readOnly?: boolean;
+}
+
+interface PdfAnnotation {
+  id: string;
+  subtype?: string;
+  fieldName?: string;
+  fieldType?: string;
+  rect?: number[];
+  readOnly?: boolean;
+  multiLine?: boolean;
+  checkBox?: boolean;
+  radioButton?: boolean;
+  buttonValue?: string;
+}
+
+interface PdfViewport {
+  width: number;
+  height: number;
+  convertToViewportRectangle: (rect: number[]) => number[];
+}
+
+interface PdfPageProxy {
+  pageNumber: number;
+  getViewport: (options: { scale: number }) => PdfViewport;
+  getAnnotations: (options: { intent: string }) => Promise<PdfAnnotation[]>;
+  render: (options: Record<string, unknown>) => {
+    promise: Promise<void>;
+    cancel: () => void;
+  };
+}
+
+interface PdfDocumentProxy {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPageProxy>;
+  destroy: () => Promise<void>;
 }
 
 interface PdfViewerProps {
@@ -118,20 +155,202 @@ async function makeFilledPdf(
       (field instanceof pdf.PDFDropdown ||
         field instanceof pdf.PDFOptionList ||
         field instanceof pdf.PDFRadioGroup) &&
-      typeof value === "string" &&
-      value
+      typeof value === "string"
     ) {
-      field.select(value);
+      if (value) field.select(value);
+      else if ("clear" in field && typeof field.clear === "function") field.clear();
     }
   }
 
+  // Keep the AcroForm interactive. pdf-lib regenerates appearances during
+  // save, so the value tree and what other viewers paint stay in agreement.
   return document.save({ useObjectStreams: false });
+}
+
+function PdfPage({
+  page,
+  pdfjs,
+  scale,
+  fieldsByName,
+  values,
+  onValue,
+}: {
+  page: PdfPageProxy;
+  pdfjs: PdfJs;
+  scale: number;
+  fieldsByName: Map<string, PdfField>;
+  values: Record<string, PdfValue>;
+  onValue: (field: PdfField, value: PdfValue) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [annotations, setAnnotations] = useState<PdfAnnotation[]>([]);
+  const viewport = useMemo(() => page.getViewport({ scale }), [page, scale]);
+
+  useEffect(() => {
+    let disposed = false;
+    void page
+      .getAnnotations({ intent: "display" })
+      .then((result) => !disposed && setAnnotations(result))
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, [page]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) return;
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(viewport.width * ratio);
+    canvas.height = Math.floor(viewport.height * ratio);
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+
+    const task = page.render({
+      canvas,
+      canvasContext: context,
+      viewport,
+      transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
+      annotationMode: pdfjs.AnnotationMode.DISABLE,
+    });
+    void task.promise.catch((renderError) => {
+      if ((renderError as { name?: string })?.name !== "RenderingCancelledException") {
+        console.error("PDF page render failed", renderError);
+      }
+    });
+    return () => task.cancel();
+  }, [page, pdfjs, viewport]);
+
+  return (
+    <section
+      className="pdf-page"
+      style={{ width: viewport.width, height: viewport.height }}
+      aria-label={`Page ${page.pageNumber}`}
+    >
+      <canvas ref={canvasRef} />
+      <div className="pdf-form-layer">
+        {annotations.map((annotation) => {
+          if (
+            annotation.subtype !== "Widget" ||
+            !annotation.fieldName ||
+            !annotation.rect
+          ) {
+            return null;
+          }
+          const field = fieldsByName.get(annotation.fieldName);
+          if (!field) return null;
+          const converted = viewport.convertToViewportRectangle(annotation.rect);
+          const left = Math.min(converted[0], converted[2]);
+          const top = Math.min(converted[1], converted[3]);
+          const width = Math.abs(converted[2] - converted[0]);
+          const height = Math.abs(converted[3] - converted[1]);
+          if (width < 2 || height < 2) return null;
+          const style = {
+            left,
+            top,
+            width,
+            height,
+            "--pdf-field-size": `${Math.max(8, Math.min(22, height * 0.62))}px`,
+          } as CSSProperties;
+          const readOnly = field.readOnly || annotation.readOnly;
+
+          if (annotation.radioButton) {
+            const option = annotation.buttonValue || "";
+            return (
+              <label
+                className="pdf-page-radio"
+                style={style}
+                key={annotation.id}
+                title={friendlyName(field.name)}
+              >
+                <input
+                  type="radio"
+                  name={`pdf-${field.name}`}
+                  checked={String(values[field.name] || "") === option}
+                  disabled={readOnly}
+                  onChange={() => onValue(field, option)}
+                />
+              </label>
+            );
+          }
+          if (field.kind === "checkbox" || annotation.checkBox) {
+            return (
+              <label
+                className="pdf-page-checkbox"
+                style={style}
+                key={annotation.id}
+                title={friendlyName(field.name)}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(values[field.name])}
+                  disabled={readOnly}
+                  onChange={(event) => onValue(field, event.target.checked)}
+                />
+              </label>
+            );
+          }
+          if (field.kind === "select") {
+            return (
+              <select
+                className="pdf-page-select"
+                style={style}
+                key={annotation.id}
+                aria-label={friendlyName(field.name)}
+                value={String(values[field.name] || "")}
+                disabled={readOnly}
+                onChange={(event) => onValue(field, event.target.value)}
+              >
+                <option value="" />
+                {field.options?.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            );
+          }
+          if (field.multiline || annotation.multiLine) {
+            return (
+              <textarea
+                className="pdf-page-input multiline"
+                style={style}
+                key={annotation.id}
+                aria-label={friendlyName(field.name)}
+                value={String(values[field.name] || "")}
+                readOnly={readOnly}
+                onChange={(event) => onValue(field, event.target.value)}
+              />
+            );
+          }
+          return (
+            <input
+              className="pdf-page-input"
+              style={style}
+              key={annotation.id}
+              type="text"
+              aria-label={friendlyName(field.name)}
+              value={String(values[field.name] || "")}
+              readOnly={readOnly}
+              onChange={(event) => onValue(field, event.target.value)}
+            />
+          );
+        })}
+      </div>
+      <span className="pdf-page-number">{page.pageNumber}</span>
+    </section>
+  );
 }
 
 export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
   const sourceRef = useRef<ArrayBuffer | null>(null);
-  const generatedUrlRef = useRef<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState(url);
+  const documentRef = useRef<PdfDocumentProxy | null>(null);
+  const initialValuesRef = useRef<Record<string, PdfValue>>({});
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [pdfjs, setPdfjs] = useState<PdfJs | null>(null);
+  const [pages, setPages] = useState<PdfPageProxy[]>([]);
   const [fields, setFields] = useState<PdfField[]>([]);
   const [values, setValues] = useState<Record<string, PdfValue>>({});
   const [query, setQuery] = useState("");
@@ -140,6 +359,9 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [fitScale, setFitScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,16 +373,36 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
         const response = await fetch(url, { credentials: "same-origin" });
         if (!response.ok) throw new Error("The PDF could not be loaded.");
         const source = await response.arrayBuffer();
-        const pdf = await import("pdf-lib");
-        const document = await pdf.PDFDocument.load(source.slice(0));
-        const detected = readFields(document, pdf);
-        if (cancelled) return;
-
-        sourceRef.current = source;
-        setFields(detected);
-        setValues(
-          Object.fromEntries(detected.map((field) => [field.name, field.value])),
+        const [formPdf, renderer] = await Promise.all([
+          import("pdf-lib"),
+          import("pdfjs-dist"),
+        ]);
+        renderer.GlobalWorkerOptions.workerSrc = `${basePath}/pdf.worker.min.mjs`;
+        const formDocument = await formPdf.PDFDocument.load(source.slice(0));
+        const detected = readFields(formDocument, formPdf);
+        const renderDocument = (await renderer
+          .getDocument({ data: new Uint8Array(source.slice(0)) })
+          .promise) as unknown as PdfDocumentProxy;
+        const loadedPages = await Promise.all(
+          Array.from({ length: renderDocument.numPages }, (_, index) =>
+            renderDocument.getPage(index + 1),
+          ),
         );
+        if (cancelled) {
+          await renderDocument.destroy();
+          return;
+        }
+        const initial = Object.fromEntries(
+          detected.map((field) => [field.name, field.value]),
+        );
+        sourceRef.current = source;
+        documentRef.current = renderDocument;
+        initialValuesRef.current = initial;
+        setPdfjs(renderer);
+        setPages(loadedPages);
+        setFields(detected);
+        setValues(initial);
+        setFieldsOpen(window.innerWidth > 900);
       } catch (loadError) {
         if (!cancelled) {
           setError(
@@ -177,9 +419,9 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
     void load();
     return () => {
       cancelled = true;
-      if (generatedUrlRef.current) {
-        URL.revokeObjectURL(generatedUrlRef.current);
-      }
+      const document = documentRef.current;
+      documentRef.current = null;
+      if (document) void document.destroy();
     };
   }, [url]);
 
@@ -191,6 +433,25 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    const container = previewRef.current;
+    const first = pages[0];
+    if (!container || !first) return;
+    const resize = () => {
+      const natural = first.getViewport({ scale: 1 }).width;
+      const available = Math.max(240, container.clientWidth - 28);
+      setFitScale(Math.max(0.35, Math.min(1.65, available / natural)));
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [pages]);
+
+  const fieldsByName = useMemo(
+    () => new Map(fields.map((field) => [field.name, field])),
+    [fields],
+  );
   const visibleFields = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return fields.filter((field) => {
@@ -209,45 +470,29 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
       );
     });
   }, [fields, query, showEmpty, values]);
+  const changedCount = useMemo(
+    () =>
+      fields.reduce(
+        (count, field) =>
+          values[field.name] !== initialValuesRef.current[field.name]
+            ? count + 1
+            : count,
+        0,
+      ),
+    [fields, values],
+  );
 
   function setValue(field: PdfField, value: PdfValue) {
     setValues((current) => ({ ...current, [field.name]: value }));
     setStatus("");
   }
 
-  async function build() {
-    if (!sourceRef.current) throw new Error("The PDF is still loading.");
-    return makeFilledPdf(sourceRef.current, values);
-  }
-
-  async function applyPreview() {
-    try {
-      setWorking(true);
-      setError("");
-      const bytes = await build();
-      const blobUrl = URL.createObjectURL(
-        new Blob([Uint8Array.from(bytes)], { type: "application/pdf" }),
-      );
-      if (generatedUrlRef.current) URL.revokeObjectURL(generatedUrlRef.current);
-      generatedUrlRef.current = blobUrl;
-      setPreviewUrl(blobUrl);
-      setStatus("Preview updated with your field values.");
-    } catch (previewError) {
-      setError(
-        previewError instanceof Error
-          ? previewError.message
-          : "The preview could not be updated.",
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
-
   async function saveCopy() {
     try {
       setWorking(true);
       setError("");
-      const bytes = await build();
+      if (!sourceRef.current) throw new Error("The PDF is still loading.");
+      const bytes = await makeFilledPdf(sourceRef.current, values);
       const blobUrl = URL.createObjectURL(
         new Blob([Uint8Array.from(bytes)], { type: "application/pdf" }),
       );
@@ -256,7 +501,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
       link.download = downloadName(name);
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
-      setStatus(`Saved ${downloadName(name)}.`);
+      setStatus(`Saved ${downloadName(name)} with ${changedCount} changed fields.`);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -272,12 +517,14 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
     if (event.target === event.currentTarget) onClose();
   }
 
+  const pageScale = fitScale * zoom;
+
   return (
     <div
       className="pdf-workspace-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`PDF viewer: ${name}`}
+      aria-label={`PDF editor: ${name}`}
       onMouseDown={stopBackdrop}
     >
       <section className="pdf-workspace">
@@ -288,24 +535,48 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
               <strong>{name}</strong>
               <small>
                 {loading
-                  ? "Reading form fields…"
-                  : fields.length
-                    ? `${fields.length} fillable fields detected`
-                    : "PDF document"}
+                  ? "Preparing editable pages…"
+                  : `${pages.length} pages · ${fields.length} fillable fields · ${changedCount} changed`}
               </small>
             </span>
           </div>
           <div className="pdf-workspace-actions">
-            <a href={url} target="_blank" rel="noreferrer">
-              Open original ↗
-            </a>
+            <div className="pdf-zoom" aria-label="PDF zoom controls">
+              <button
+                type="button"
+                onClick={() => setZoom((current) => Math.max(0.6, current - 0.15))}
+                aria-label="Zoom out"
+              >
+                −
+              </button>
+              <button type="button" onClick={() => setZoom(1)}>
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom((current) => Math.min(2, current + 0.15))}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+            </div>
             <button
               type="button"
-              className="secondary"
-              disabled={working || loading || !sourceRef.current}
-              onClick={() => void applyPreview()}
+              className={`pdf-fields-toggle ${fieldsOpen ? "active" : ""}`}
+              onClick={() => setFieldsOpen((open) => !open)}
             >
-              {working ? "Working…" : "Apply preview"}
+              Fields <span>{fields.length}</span>
+            </button>
+            <button
+              type="button"
+              className="secondary pdf-reset"
+              disabled={working || !changedCount}
+              onClick={() => {
+                setValues(initialValuesRef.current);
+                setStatus("All unsaved edits were reset.");
+              }}
+            >
+              Reset
             </button>
             <button
               type="button"
@@ -313,7 +584,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
               disabled={working || loading || !sourceRef.current}
               onClick={() => void saveCopy()}
             >
-              Save filled copy
+              {working ? "Saving…" : "Save copy"}
             </button>
             <button
               type="button"
@@ -326,16 +597,37 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
           </div>
         </header>
 
-        <div className="pdf-workspace-body">
-          <div className="pdf-preview">
-            <iframe title={name} src={previewUrl} />
+        <div className={`pdf-workspace-body ${fieldsOpen ? "fields-open" : ""}`}>
+          <div className="pdf-preview" ref={previewRef}>
+            {loading && <div className="pdf-loading">Rendering editable pages…</div>}
+            {!loading && error && !pages.length && (
+              <div className="pdf-loading error">{error}</div>
+            )}
+            {pdfjs && pages.length > 0 && (
+              <div className="pdf-pages">
+                {pages.map((page) => (
+                  <PdfPage
+                    key={page.pageNumber}
+                    page={page}
+                    pdfjs={pdfjs}
+                    scale={pageScale}
+                    fieldsByName={fieldsByName}
+                    values={values}
+                    onValue={setValue}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
-          <aside className="pdf-fields">
+          <aside className={`pdf-fields ${fieldsOpen ? "open" : ""}`}>
+            <div className="pdf-fields-mobile-grip" aria-hidden="true" />
             <div className="pdf-fields-head">
               <div>
-                <strong>Fillable fields</strong>
-                <small>Your original attachment is never overwritten.</small>
+                <strong>All form fields</strong>
+                <small>
+                  These stay synchronized with the fields directly on each page.
+                </small>
               </div>
               <input
                 type="search"
@@ -355,16 +647,6 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
             </div>
 
             <div className="pdf-field-list">
-              {loading && <div className="pdf-field-state">Reading this PDF…</div>}
-              {!loading && error && !fields.length && (
-                <div className="pdf-field-state error">{error}</div>
-              )}
-              {!loading && !error && !fields.length && (
-                <div className="pdf-field-state">
-                  This PDF has no supported fillable fields. You can still read
-                  it here or open the original.
-                </div>
-              )}
               {!loading &&
                 visibleFields.map((field) => (
                   <label className="pdf-field" key={field.name}>
@@ -375,9 +657,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
                           type="checkbox"
                           checked={Boolean(values[field.name])}
                           disabled={field.readOnly}
-                          onChange={(event) =>
-                            setValue(field, event.target.checked)
-                          }
+                          onChange={(event) => setValue(field, event.target.checked)}
                         />
                         {Boolean(values[field.name]) ? "Checked" : "Not checked"}
                       </span>
@@ -385,9 +665,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
                       <select
                         value={String(values[field.name] || "")}
                         disabled={field.readOnly}
-                        onChange={(event) =>
-                          setValue(field, event.target.value)
-                        }
+                        onChange={(event) => setValue(field, event.target.value)}
                       >
                         <option value="">Choose…</option>
                         {field.options?.map((option) => (
@@ -401,18 +679,14 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
                         rows={3}
                         value={String(values[field.name] || "")}
                         readOnly={field.readOnly}
-                        onChange={(event) =>
-                          setValue(field, event.target.value)
-                        }
+                        onChange={(event) => setValue(field, event.target.value)}
                       />
                     ) : (
                       <input
                         type="text"
                         value={String(values[field.name] || "")}
                         readOnly={field.readOnly}
-                        onChange={(event) =>
-                          setValue(field, event.target.value)
-                        }
+                        onChange={(event) => setValue(field, event.target.value)}
                       />
                     )}
                     {field.readOnly && <small>Read only</small>}
@@ -422,14 +696,21 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
                 <div className="pdf-field-state">No matching fields.</div>
               )}
             </div>
-
-            {(status || (error && fields.length > 0)) && (
-              <div className={`pdf-workspace-status ${error ? "error" : ""}`}>
-                {error || status}
-              </div>
-            )}
           </aside>
         </div>
+
+        {(status || (error && pages.length > 0)) && (
+          <button
+            type="button"
+            className={`pdf-workspace-status ${error ? "error" : ""}`}
+            onClick={() => {
+              setStatus("");
+              setError("");
+            }}
+          >
+            {error || status} ×
+          </button>
+        )}
       </section>
     </div>
   );
