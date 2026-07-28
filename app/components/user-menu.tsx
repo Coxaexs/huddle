@@ -32,6 +32,11 @@ interface UserMenuProps {
   /** Shown instead of Ban when this person is already banned. */
   banned?: boolean;
   onUnban?: () => void;
+  /** Voice channels this person can be moved into (moderators only). */
+  voiceChannels?: Array<{ id: string; name: string }>;
+  /** The voice channel this person is currently sitting in, if any. */
+  targetVoiceChannelId?: string | null;
+  onMove?: (channelId: string) => void;
 }
 
 /**
@@ -54,6 +59,9 @@ export function UserMenu({
   onBan,
   banned = false,
   onUnban,
+  voiceChannels = [],
+  targetVoiceChannelId = null,
+  onMove,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -131,6 +139,28 @@ export function UserMenu({
                 Server mute stops their microphone for everyone.
               </p>
             </>
+          )}
+          {canModerate && onMove && targetVoiceChannelId && (
+            <div className="user-menu-move">
+              <span className="user-menu-move-label">Move to voice channel</span>
+              {voiceChannels
+                .filter((channel) => channel.id !== targetVoiceChannelId)
+                .map((channel) => (
+                  <button
+                    key={channel.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => onMove(channel.id)}
+                  >
+                    ◖)) {channel.name}
+                  </button>
+                ))}
+              {voiceChannels.filter(
+                (channel) => channel.id !== targetVoiceChannelId,
+              ).length === 0 && (
+                <p className="user-menu-note">No other voice channels here.</p>
+              )}
+            </div>
           )}
           {canManage && onKick && (
             <button type="button" role="menuitem" className="danger" onClick={onKick}>

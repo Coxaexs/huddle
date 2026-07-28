@@ -89,13 +89,18 @@ export async function POST(request: Request) {
   if (!channelId) {
     return Response.json({ error: "Which channel?" }, { status: 400 });
   }
-  const gm = await isGm(db, user.id, channelId);
+  // The GM check is three DB reads; only run it for actions that actually need
+  // it. Painting and moving your own token — the rapid-fire ones during play —
+  // then cost nothing extra. Cached so an action never checks twice.
+  let gmCache: boolean | undefined;
+  const gm = async (): Promise<boolean> =>
+    (gmCache ??= await isGm(db, user.id, channelId));
   const forbidden = () =>
     Response.json({ error: "Only the GM can do that." }, { status: 403 });
 
   // ---- open a new map -----------------------------------------------------
   if (body.action === "open") {
-    if (!gm) return forbidden();
+    if (!(await gm())) return forbidden();
     const id = crypto.randomUUID();
     const grid = Math.max(5, Math.min(60, Number(body.grid) || 20));
     await db.batch([
@@ -131,7 +136,7 @@ export async function POST(request: Request) {
 
   // ---- close --------------------------------------------------------------
   if (body.action === "close") {
-    if (!gm) return forbidden();
+    if (!(await gm())) return forbidden();
     await db
       .prepare("UPDATE battlemaps SET active = 0 WHERE id = ?")
       .bind(row.id)
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
 
   // ---- add / remove tokens (GM) -------------------------------------------
   if (body.action === "add-token") {
-    if (!gm) return forbidden();
+    if (!(await gm())) return forbidden();
     const token: MapToken = {
       id: crypto.randomUUID(),
       label: (body.token?.label || "Token").slice(0, 40),
@@ -170,7 +175,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "remove-token") {
-    if (!gm) return forbidden();
+    if (!(await gm())) return forbidden();
     const tokens = map.tokens.filter((token) => token.id !== body.tokenId);
     await db
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
@@ -190,7 +195,9 @@ export async function POST(request: Request) {
     if (!token) {
       return Response.json({ error: "No such token." }, { status: 404 });
     }
-    if (!gm && token.ownerId && token.ownerId !== user.id) {
+    // Ownership is checked first so moving your own (or a free) token never
+    // pays for the GM lookup — that is the rapid-fire case while dragging.
+    if (token.ownerId && token.ownerId !== user.id && !(await gm())) {
       return Response.json(
         { error: "That is not your character." },
         { status: 403 },
@@ -242,7 +249,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "clear") {
-    if (!gm) return forbidden();
+    if (!(await gm())) return forbidden();
     const clearTokens = body.what === "tokens" || body.what === "all";
     const clearStrokes = body.what === "strokes" || body.what === "all";
     await db

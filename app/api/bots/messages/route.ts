@@ -17,6 +17,9 @@ interface BotMessageBody {
   audio?: string;
   kind?: string;
   payload?: unknown;
+  /** Optional: attribute this reply to a slash command and its caller. */
+  commandText?: string;
+  commandBy?: string;
 }
 
 /** Lets an external bot (music, D&D, …) post into a Huddle channel. */
@@ -80,13 +83,15 @@ export async function POST(request: Request) {
     audio_url: body.audio?.trim().slice(0, 8000) || null,
     kind: body.kind?.trim().slice(0, 32) || null,
     payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
+    command_text: body.commandText?.trim().slice(0, 200) || null,
+    command_by: body.commandBy?.trim().slice(0, 80) || null,
   };
 
   await runtime.DB.prepare(
     `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
-        is_bot, created_at, link, action_label, audio_url, kind, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?)`,
+        is_bot, created_at, link, action_label, audio_url, kind, payload, command_text, command_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       stored.id,
@@ -103,6 +108,8 @@ export async function POST(request: Request) {
       stored.audio_url,
       stored.kind,
       stored.payload,
+      stored.command_text,
+      stored.command_by,
     )
     .run();
 

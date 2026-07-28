@@ -50,6 +50,20 @@ export class HuddleHub extends DurableObject {
   private forcedMutes = new Set<string>();
   private loaded: Promise<void> | null = null;
 
+  constructor(ctx: DurableObjectState, env: unknown) {
+    super(ctx, env as never);
+    // Answer the client keepalive ping in the runtime itself, so an idle tab's
+    // ping never wakes this object from hibernation to run JS. The pong carries
+    // no serverNow on purpose — the client only takes the clock from real
+    // events, and ignores a missing one — so a static reply is safe.
+    this.ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair(
+        JSON.stringify({ t: "ping" }),
+        JSON.stringify({ t: "pong" }),
+      ),
+    );
+  }
+
   private async load(): Promise<void> {
     if (!this.loaded) {
       this.loaded = (async () => {
@@ -137,6 +151,34 @@ export class HuddleHub extends DurableObject {
         }
       }
       return Response.json({ ok: true });
+    }
+    if (url.pathname === "/move-voice" && request.method === "POST") {
+      const body = (await request.json()) as {
+        userId: string;
+        channelId: string;
+      };
+      // Only tabs of that account currently sitting in a voice room get moved;
+      // the client does the real join so WebRTC renegotiates for the new room.
+      let moved = false;
+      for (const { socket, attachment } of this.sockets()) {
+        if (attachment.bot) continue;
+        if (attachment.userId !== body.userId) continue;
+        if (!attachment.voiceChannelId) continue;
+        if (attachment.voiceChannelId === body.channelId) continue;
+        try {
+          socket.send(
+            JSON.stringify({
+              t: "voice-move",
+              channelId: body.channelId,
+              serverNow: Date.now(),
+            } satisfies ServerEvent),
+          );
+          moved = true;
+        } catch {
+          // A socket going away will simply not be moved.
+        }
+      }
+      return Response.json({ ok: true, moved });
     }
     if (url.pathname === "/structure" && request.method === "POST") {
       this.broadcast({ t: "structure", serverNow: Date.now() });

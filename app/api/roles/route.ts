@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission, ALL_PERMISSIONS } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -73,6 +74,12 @@ export async function POST(request: Request) {
     )
     .run();
 
+  await recordAudit(db, {
+    serverId,
+    actor: user,
+    action: "role.create",
+    targetName: name,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) }, { status: 201 });
+  return Response.json({ servers: await listServers(db, user.id) }, { status: 201 });
 }

@@ -12,14 +12,28 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
+  // Scope the roster to a server's real members when asked; otherwise (DMs,
+  // legacy callers) return everyone in the Huddle.
+  const serverId = new URL(request.url).searchParams.get("serverId") || null;
   const [result, roleRows] = await Promise.all([
-    db
-      .prepare(
-        `SELECT id, username, display_name, avatar, avatar_url, color, is_admin,
-                created_at, last_seen_at, status, custom_status
-           FROM users ORDER BY display_name COLLATE NOCASE ASC`,
-      )
-      .all(),
+    serverId
+      ? db
+          .prepare(
+            `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.color, u.is_admin,
+                    u.created_at, u.last_seen_at, u.status, u.custom_status
+               FROM users u
+               JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
+              ORDER BY u.display_name COLLATE NOCASE ASC`,
+          )
+          .bind(serverId)
+          .all()
+      : db
+          .prepare(
+            `SELECT id, username, display_name, avatar, avatar_url, color, is_admin,
+                    created_at, last_seen_at, status, custom_status
+               FROM users ORDER BY display_name COLLATE NOCASE ASC`,
+          )
+          .all(),
     db.prepare("SELECT server_id, user_id, role_id FROM member_roles").all(),
   ]);
 

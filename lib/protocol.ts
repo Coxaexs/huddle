@@ -200,5 +200,12 @@ export type ServerEvent =
       channelId: string;
       serverNow: number;
     }
+  | {
+      /** A moderator moved this account into another voice channel; the tab
+       *  should join `channelId` for real (renegotiating WebRTC). */
+      t: "voice-move";
+      channelId: string;
+      serverNow: number;
+    }
   | { t: "notice"; text: string; serverNow: number }
   | { t: "pong"; serverNow: number };

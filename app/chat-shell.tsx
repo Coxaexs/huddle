@@ -83,8 +83,13 @@ interface Message {
   avatar: string;
   color: string;
   time: string;
+  /** ISO timestamp, used to group bursts of messages from the same author. */
+  createdAt?: string;
   text: string;
   bot?: boolean;
+  /** On a bot reply to a slash command: what was run, and by whom. */
+  commandText?: string;
+  commandBy?: string;
   image?: string;
   images?: string[];
   file?: { url: string; name: string; type: "pdf" };
@@ -374,6 +379,7 @@ export function ChatShell() {
   // Custom modal dialog & server settings states
   const [dialogOptions, setDialogOptions] = useState<DialogOptions | null>(null);
   const [dialogCallback, setDialogCallback] = useState<((val?: string) => void) | null>(null);
+  const [dialogCancel, setDialogCancel] = useState<(() => void) | null>(null);
   const [serverMenuOpen, setServerMenuOpen] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
 
@@ -387,6 +393,7 @@ export function ChatShell() {
   }) => {
     setDialogOptions({ ...options, type: "prompt" });
     setDialogCallback(() => options.onConfirm);
+    setDialogCancel(null);
   };
 
   const showCustomConfirm = (options: {
@@ -396,9 +403,12 @@ export function ChatShell() {
     confirmText?: string;
     cancelText?: string;
     onConfirm: () => void;
+    /** Runs when the cancel button (or backdrop) dismisses the dialog. */
+    onCancel?: () => void;
   }) => {
     setDialogOptions({ ...options, type: "confirm" });
     setDialogCallback(() => () => options.onConfirm());
+    setDialogCancel(() => options.onCancel || null);
   };
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -406,6 +416,11 @@ export function ChatShell() {
   const messageEndRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<string | null>(null);
   activeChannelRef.current = activeChannelId;
+  const activeServerRef = useRef<string | null>(null);
+  activeServerRef.current = activeServerId;
+  /** The slash command being handled, consumed by the first bot reply so it
+   *  can show "who used what" in place of keeping the original message. */
+  const pendingCommandRef = useRef<{ text: string; by: string } | null>(null);
 
   const inDmHome = activeServerId === DM_HOME;
   const [touchInput, setTouchInput] = useState(false);
@@ -440,7 +455,14 @@ export function ChatShell() {
   }, []);
 
   const loadMembers = useCallback(async () => {
-    const data = await apiFetch<{ members: Member[] }>("/api/members");
+    // Scope the roster to the server you are looking at; DMs (no server) still
+    // see everyone so mentions and profiles keep resolving.
+    const serverId = activeServerRef.current;
+    const query =
+      serverId && serverId !== DM_HOME
+        ? `?serverId=${encodeURIComponent(serverId)}`
+        : "";
+    const data = await apiFetch<{ members: Member[] }>(`/api/members${query}`);
     setMembers(data.members);
   }, []);
 
@@ -530,6 +552,11 @@ export function ChatShell() {
   useEffect(() => {
     if (activeChannelId) markChannelRead(activeChannelId);
   }, [activeChannelId, markChannelRead]);
+
+  // Switching servers re-scopes the member roster to that server's members.
+  useEffect(() => {
+    if (user) void loadMembers().catch(() => undefined);
+  }, [user, activeServerId, loadMembers]);
 
   useEffect(() => {
     if (!servers.length) return;
@@ -773,6 +800,8 @@ export function ChatShell() {
   const voiceChannelRef = useRef<string | null>(null);
   /** Tears this tab out of voice when the account joins from another one. */
   const voiceEvictedRef = useRef<() => void>(() => {});
+  /** Joins another voice channel when a moderator moves this account. */
+  const voiceMoveRef = useRef<(channelId: string) => void>(() => {});
   /** The open thread, readable from socket handlers without re-subscribing. */
   const threadRootRef = useRef<Message | null>(null);
   threadRootRef.current = threadRoot;
@@ -783,14 +812,28 @@ export function ChatShell() {
   const stageChannelRef = useRef<string | null>(null);
   stageChannelRef.current = stageChannelId;
 
-  const hub = useHub(Boolean(user), {
-    onMessage: handleIncomingMessage,
-    onSignal: (from, data) => voiceSignalRef.current(from, data),
-    onStructureChange: () => {
+  /**
+   * A burst of structure changes (renaming several channels, a role edit that
+   * touches many rows) would otherwise trigger a full servers+members+emojis
+   * reload for each event on every open tab. Coalesce them into one reload.
+   */
+  const structureReloadRef = useRef<number | null>(null);
+  const reloadStructureSoon = useCallback(() => {
+    if (structureReloadRef.current) return;
+    structureReloadRef.current = window.setTimeout(() => {
+      structureReloadRef.current = null;
       void loadServers().catch(() => undefined);
       void loadMembers().catch(() => undefined);
       void loadEmojis().catch(() => undefined);
-    },
+    }, 400);
+    // loadEmojis/loadServers/loadMembers are stable useCallbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hub = useHub(Boolean(user), {
+    onMessage: handleIncomingMessage,
+    onSignal: (from, data) => voiceSignalRef.current(from, data),
+    onStructureChange: reloadStructureSoon,
     onMessageDeleted: (channelId, id) => {
       if (channelId !== activeChannelRef.current) return;
       setMessages((current) => current.filter((message) => message.id !== id));
@@ -885,6 +928,7 @@ export function ChatShell() {
       // locally so the microphone and peer connections actually stop.
       voiceEvictedRef.current();
     },
+    onVoiceMove: (channelId) => voiceMoveRef.current(channelId),
   });
 
   const voice = useVoice({
@@ -899,6 +943,14 @@ export function ChatShell() {
     voice.leave();
     setStageChannelId(null);
     setNotice("You joined this voice room from another tab or device.");
+  };
+  voiceMoveRef.current = (channelId) => {
+    // A moderator moved us: open that room's stage and actually join it, which
+    // renegotiates WebRTC with the new set of people.
+    setStageChannelId(channelId);
+    void voice.join(channelId);
+    const name = voiceChannels.find((channel) => channel.id === channelId)?.name;
+    setNotice(name ? `You were moved to ${name}.` : "You were moved to another voice channel.");
   };
   forcedMuteRef.current = (userId, muted) => {
     if (user && userId === user.id) voice.setForcedMute(muted);
@@ -1002,41 +1054,61 @@ export function ChatShell() {
   }, [stageChannelId]);
 
   /** GM: put a map on the table (optionally with an uploaded image). */
+  /** Creates the map on the server, uploading a background first if given. */
+  async function createBattlemap(name: string, picked: File | null) {
+    if (!stageChannelId) return;
+    try {
+      let imageKey: string | null = null;
+      if (picked) {
+        const form = new FormData();
+        form.append("file", picked);
+        // Let a failed upload surface instead of silently opening a blank map —
+        // that looked like "the battlemap upload is broken".
+        const upload = await apiFetch<{ key: string }>("/api/uploads", {
+          method: "POST",
+          body: form,
+        });
+        imageKey = upload.key;
+      }
+      await apiFetch("/api/battlemap", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: stageChannelId,
+          action: "open",
+          name: name.trim() || "Battlemap",
+          imageKey,
+        }),
+      });
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not open the battlemap.",
+      );
+    }
+  }
+
   async function openBattlemap() {
     if (!stageChannelId) return;
     showCustomPrompt({
       title: "New Battlemap",
       message: "Enter a name for the new battlemap:",
       defaultValue: "Battlemap",
-      confirmText: "Create Map",
+      confirmText: "Next",
       onConfirm: (name) => {
-        if (!name?.trim()) return;
+        const mapName = name?.trim() || "Battlemap";
         showCustomConfirm({
           title: "Map Background",
-          message: "Would you like to upload a map background image?",
+          message:
+            "Upload a background image, or start on a blank grid. You can add tokens either way.",
           confirmText: "Upload Image",
           cancelText: "Blank Grid",
+          // "Upload Image": pick a file, then open with it.
           onConfirm: async () => {
             const picked = await pickImageFile();
-            let imageKey: string | null = null;
-            if (picked) {
-              const form = new FormData();
-              form.append("file", picked);
-              const upload = await apiFetch<{ key: string }>("/api/uploads", {
-                method: "POST",
-                body: form,
-              }).catch(() => null);
-              imageKey = upload?.key || null;
-            }
-            await apiFetch("/api/battlemap", {
-              method: "POST",
-              body: JSON.stringify({
-                channelId: stageChannelId,
-                action: "open",
-                name: name.trim(),
-                imageKey,
-              }),
-            }).catch((error: Error) => setNotice(error.message));
+            await createBattlemap(mapName, picked);
+          },
+          // "Blank Grid" previously did nothing — now it opens an empty map.
+          onCancel: () => {
+            void createBattlemap(mapName, null);
           },
         });
       },
@@ -1271,6 +1343,9 @@ export function ChatShell() {
   const postBotMessage = useCallback(
     async (text: string, options?: Partial<Message>) => {
       if (!activeChannelRef.current) return;
+      // The first bot reply after a command carries the invocation header.
+      const invocation = pendingCommandRef.current;
+      pendingCommandRef.current = null;
       await apiFetch("/api/messages", {
         method: "POST",
         body: JSON.stringify({
@@ -1284,6 +1359,8 @@ export function ChatShell() {
           audio: options?.audio,
           kind: options?.kind,
           payload: options?.payload,
+          commandText: options?.commandText || invocation?.text,
+          commandBy: options?.commandBy || invocation?.by,
         }),
       }).catch(() => undefined);
     },
@@ -1393,11 +1470,31 @@ export function ChatShell() {
     });
   }
 
+  /** Moderator action: move a member into another voice channel. */
+  async function moveMember(userId: string, channelId: string) {
+    try {
+      await apiFetch("/api/voice/move", {
+        method: "POST",
+        body: JSON.stringify({ userId, channelId }),
+      });
+      const name = voiceChannels.find((channel) => channel.id === channelId)?.name;
+      setNotice(name ? `Moved them to ${name}.` : "Moved them.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not move them.");
+    }
+  }
+
   async function runCommand(raw: string) {
     const [rawName, ...parts] = raw.trim().split(/\s+/);
     const bare = rawName.replace(/^\//, "").toLowerCase();
     const name = COMMAND_ALIASES[bare] || bare;
     const value = parts.join(" ").trim();
+
+    // Remember who ran what, so the bot's reply can show it instead of us
+    // posting the raw slash text as its own message.
+    pendingCommandRef.current = user
+      ? { text: raw.trim().slice(0, 200), by: user.displayName }
+      : null;
 
     // /poll Question? | option | option
     if (name === "poll") {
@@ -1449,6 +1546,8 @@ export function ChatShell() {
             command: `/${name} ${value}`.trim(),
             voiceChannelId: targetVoiceChannelId,
             textChannelId: activeChannelId,
+            commandText: raw.trim().slice(0, 200),
+            commandBy: user?.displayName,
           }),
         });
       } catch (error) {
@@ -1985,26 +2084,94 @@ export function ChatShell() {
     acceptAttachment(event.dataTransfer.files);
   }
 
-  async function createServer() {
+  /** Leaves a server: drops membership and falls back to another server. */
+  async function leaveServer(serverId: string) {
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        "/api/servers/membership",
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "leave", serverId }),
+        },
+      );
+      setServers(data.servers);
+      setServerSettingsOpen(false);
+      setActiveServerId(data.servers[0]?.id || DM_HOME);
+      setNotice("You left the server.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not leave.");
+    }
+  }
+
+  /** Redeems a server invite code and jumps into the joined server. */
+  async function joinServerByCode() {
     showCustomPrompt({
-      title: "Create Server",
-      message: "Enter a name for your new server:",
-      placeholder: "e.g. My Cool Server",
-      confirmText: "Create Server",
-      onConfirm: async (name) => {
-        if (!name?.trim()) return;
+      title: "Join a Server",
+      message: "Paste the invite code a friend gave you:",
+      placeholder: "e.g. HX3F-9K2Q",
+      confirmText: "Join Server",
+      onConfirm: async (code) => {
+        if (!code?.trim()) return;
         try {
           const data = await apiFetch<{
-            server: PublicServer;
+            serverId: string;
             servers: PublicServer[];
-          }>("/api/servers", { method: "POST", body: JSON.stringify({ name: name.trim() }) });
+            alreadyMember?: boolean;
+          }>("/api/servers/membership", {
+            method: "POST",
+            body: JSON.stringify({ action: "join", code: code.trim() }),
+          });
           setServers(data.servers);
-          setActiveServerId(data.server.id);
-          setNotice(`${data.server.name} is live — everyone here is already in it.`);
+          setActiveServerId(data.serverId);
+          setNotice(
+            data.alreadyMember
+              ? "You are already in that server."
+              : "Joined the server.",
+          );
         } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not create it.");
+          setNotice(error instanceof Error ? error.message : "Could not join.");
         }
       },
+    });
+  }
+
+  function createServer() {
+    // "+" now offers both making a server and joining one by invite.
+    showCustomConfirm({
+      title: "Add a Server",
+      message: "Create your own server, or join one with an invite code.",
+      confirmText: "Create New",
+      cancelText: "Join with Code",
+      onConfirm: () => {
+        showCustomPrompt({
+          title: "Create Server",
+          message: "Enter a name for your new server:",
+          placeholder: "e.g. My Cool Server",
+          confirmText: "Create Server",
+          onConfirm: async (name) => {
+            if (!name?.trim()) return;
+            try {
+              const data = await apiFetch<{
+                server: PublicServer;
+                servers: PublicServer[];
+              }>("/api/servers", {
+                method: "POST",
+                body: JSON.stringify({ name: name.trim() }),
+              });
+              setServers(data.servers);
+              setActiveServerId(data.server.id);
+              setNotice(
+                `${data.server.name} is live — invite people from its settings.`,
+              );
+            } catch (error) {
+              setNotice(
+                error instanceof Error ? error.message : "Could not create it.",
+              );
+            }
+          },
+        });
+      },
+      onCancel: () => void joinServerByCode(),
     });
   }
 
@@ -2578,7 +2745,13 @@ export function ChatShell() {
   ];
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${mobileNav ? "nav-open" : ""}`}>
+      {/* Tapping outside the drawer on a phone closes it. */}
+      <div
+        className="mobile-nav-backdrop"
+        onClick={() => setMobileNav(false)}
+        aria-hidden="true"
+      />
       <aside className="rail" aria-label="Servers">
         <button
           className={`brand-mark ${inDmHome ? "active-space" : ""}`}
@@ -3225,7 +3398,7 @@ export function ChatShell() {
             </p>
           </div>
 
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const author = message.userId
               ? membersById.get(message.userId)
               : undefined;
@@ -3234,10 +3407,35 @@ export function ChatShell() {
               message.bot ||
               user.isAdmin ||
               canModerate;
+            // Collapse the avatar/name header when the same author sends a
+            // burst of messages close together — but never for replies,
+            // command answers or rich cards, which each need their own header.
+            const prev = index > 0 ? messages[index - 1] : undefined;
+            const sameAuthor =
+              !!prev &&
+              Boolean(prev.bot) === Boolean(message.bot) &&
+              (message.bot
+                ? prev.author === message.author
+                : !!prev.userId && prev.userId === message.userId);
+            const closeInTime =
+              !!prev && message.createdAt && prev.createdAt
+                ? new Date(message.createdAt).getTime() -
+                    new Date(prev.createdAt).getTime() <
+                  7 * 60 * 1000
+                : true;
+            const continuation =
+              sameAuthor &&
+              closeInTime &&
+              !message.replyTo &&
+              !message.commandText &&
+              !message.kind &&
+              !prev?.kind;
             return (
               <article
                 id={`msg-${message.id}`}
-                className={`message ${message.pinned ? "is-pinned" : ""} ${
+                className={`message ${continuation ? "continuation" : ""} ${
+                  message.pinned ? "is-pinned" : ""
+                } ${
                   user && message.mentions?.includes(user.id) ? "mentions-me" : ""
                 }`}
                 key={message.id}
@@ -3252,19 +3450,33 @@ export function ChatShell() {
                   }
                 }}
               >
-                <Avatar
-                  className={`avatar ${message.bot ? "bot-avatar" : ""}`}
-                  avatar={author?.avatar || message.avatar}
-                  avatarUrl={author?.avatarUrl}
-                  color={author?.color || message.color}
-                  onContextMenu={(event) => {
-                    if (author) openUserMenu(event, author);
-                  }}
-                  onClick={(event) => {
-                    if (touchInput && author) openUserMenu(event, author);
-                  }}
-                />
+                {continuation ? (
+                  <span className="message-gutter" aria-hidden="true">
+                    <time>{message.time}</time>
+                  </span>
+                ) : (
+                  <Avatar
+                    className={`avatar ${message.bot ? "bot-avatar" : ""}`}
+                    avatar={author?.avatar || message.avatar}
+                    avatarUrl={author?.avatarUrl}
+                    color={author?.color || message.color}
+                    onContextMenu={(event) => {
+                      if (author) openUserMenu(event, author);
+                    }}
+                    onClick={(event) => {
+                      if (touchInput && author) openUserMenu(event, author);
+                    }}
+                  />
+                )}
                 <div className="message-body">
+                  {message.commandText && (
+                    <div className="command-invocation">
+                      <span className="reply-arrow">↩</span>
+                      <strong>{message.commandBy || "someone"}</strong>
+                      <span className="command-used">used</span>
+                      <code>{message.commandText}</code>
+                    </div>
+                  )}
                   {message.replyTo && (
                     <button
                       type="button"
@@ -3282,32 +3494,34 @@ export function ChatShell() {
                       </span>
                     </button>
                   )}
-                  <div className="message-meta">
-                    <strong
-                      className={author ? "clickable-name" : ""}
-                      style={{ color: roleColorFor(author) || undefined }}
-                      onContextMenu={(event) => {
-                        if (author) openUserMenu(event, author);
-                      }}
-                      onClick={() => {
-                        if (author) openProfile(author);
-                      }}
-                    >
-                      {author?.displayName || message.author}
-                    </strong>
-                    {message.bot && <span className="bot-tag">BOT</span>}
-                    <time>{message.time}</time>
-                    {message.editedAt && (
-                      <span className="edited-tag" title="Edited">
-                        (edited)
-                      </span>
-                    )}
-                    {message.pinned && (
-                      <span className="pin-tag" title="Pinned">
-                        📌
-                      </span>
-                    )}
-                  </div>
+                  {!continuation && (
+                    <div className="message-meta">
+                      <strong
+                        className={author ? "clickable-name" : ""}
+                        style={{ color: roleColorFor(author) || undefined }}
+                        onContextMenu={(event) => {
+                          if (author) openUserMenu(event, author);
+                        }}
+                        onClick={() => {
+                          if (author) openProfile(author);
+                        }}
+                      >
+                        {author?.displayName || message.author}
+                      </strong>
+                      {message.bot && <span className="bot-tag">BOT</span>}
+                      <time>{message.time}</time>
+                      {message.editedAt && (
+                        <span className="edited-tag" title="Edited">
+                          (edited)
+                        </span>
+                      )}
+                      {message.pinned && (
+                        <span className="pin-tag" title="Pinned">
+                          📌
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {message.kind === "lyricsnow" && message.payload?.lines ? (
                     <LyricsNow
@@ -4369,6 +4583,25 @@ export function ChatShell() {
             void moderateMember(userMenu.member.id, "unban");
             setUserMenu(null);
           }}
+          voiceChannels={
+            canModerate && !inDmHome
+              ? voiceChannels.map((channel) => ({
+                  id: channel.id,
+                  name: channel.name,
+                }))
+              : []
+          }
+          targetVoiceChannelId={
+            voiceChannels.find((channel) =>
+              (hub.voice[channel.id] || []).some(
+                (person) => person.id === userMenu.member.id,
+              ),
+            )?.id || null
+          }
+          onMove={(channelId) => {
+            void moveMember(userMenu.member.id, channelId);
+            setUserMenu(null);
+          }}
         />
       )}
 
@@ -4550,6 +4783,8 @@ export function ChatShell() {
           }}
           onRequestPrompt={showCustomPrompt}
           onRequestConfirm={showCustomConfirm}
+          isOwner={Boolean(user && activeServer.ownerId === user.id)}
+          onLeaveServer={() => void leaveServer(activeServer.id)}
         />
       )}
 
@@ -4560,10 +4795,13 @@ export function ChatShell() {
             dialogCallback?.(val);
             setDialogOptions(null);
             setDialogCallback(null);
+            setDialogCancel(null);
           }}
           onCancel={() => {
+            dialogCancel?.();
             setDialogOptions(null);
             setDialogCallback(null);
+            setDialogCancel(null);
           }}
         />
       )}

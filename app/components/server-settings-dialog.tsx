@@ -28,7 +28,51 @@ interface ServerSettingsDialogProps {
     confirmText?: string;
     onConfirm: () => void;
   }) => void;
+  /** True when the viewer created this server (owners delete; others leave). */
+  isOwner?: boolean;
+  /** Leave this server (non-owners only). */
+  onLeaveServer?: () => void;
 }
+
+interface ServerInvite {
+  code: string;
+  createdAt: string;
+  maxUses: number;
+  uses: number;
+  revoked: boolean;
+  note: string;
+  spent: boolean;
+}
+
+interface AuditEntry {
+  id: string;
+  actorId: string | null;
+  actorName: string;
+  action: string;
+  targetId: string | null;
+  targetName: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
+/** Human-friendly label for an audit action verb. */
+const AUDIT_LABELS: Record<string, string> = {
+  "server.create": "created the server",
+  "server.update": "updated server settings",
+  "channel.create": "created a channel",
+  "channel.update": "edited a channel",
+  "channel.delete": "deleted a channel",
+  "role.create": "created a role",
+  "role.update": "edited a role",
+  "role.delete": "deleted a role",
+  "member.join": "joined",
+  "member.leave": "left",
+  "member.kick": "kicked a member",
+  "member.move": "moved a member",
+  "member.ban": "banned a member",
+  "member.unban": "unbanned a member",
+  "invite.create": "created an invite",
+};
 
 type Tab =
   | "profile"
@@ -91,6 +135,8 @@ export function ServerSettingsDialog({
   onServerDeleted,
   onRequestPrompt,
   onRequestConfirm,
+  isOwner = false,
+  onLeaveServer,
 }: ServerSettingsDialogProps) {
   const [tab, setTab] = useState<Tab>("profile");
   const [serverName, setServerName] = useState(server.name);
@@ -129,6 +175,75 @@ export function ServerSettingsDialog({
   useEffect(() => {
     if (tab === "bans") void loadBans();
   }, [tab, loadBans]);
+
+  // Audit log state
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const loadAudit = useCallback(async () => {
+    setLoadingAudit(true);
+    try {
+      const data = await apiFetch<{ entries: AuditEntry[] }>(
+        `/api/audit?serverId=${encodeURIComponent(server.id)}`,
+      );
+      setAudit(data.entries || []);
+    } catch {
+      setAudit([]);
+    } finally {
+      setLoadingAudit(false);
+    }
+  }, [server.id]);
+  useEffect(() => {
+    if (tab === "audit_log") void loadAudit();
+  }, [tab, loadAudit]);
+
+  // Server invites state
+  const [invites, setInvites] = useState<ServerInvite[]>([]);
+  const [loadingInvites, setLoadingInvites] = useState(false);
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const loadInvites = useCallback(async () => {
+    setLoadingInvites(true);
+    try {
+      const data = await apiFetch<{ invites: ServerInvite[] }>(
+        `/api/invites?serverId=${encodeURIComponent(server.id)}`,
+      );
+      setInvites(data.invites || []);
+    } catch {
+      setInvites([]);
+    } finally {
+      setLoadingInvites(false);
+    }
+  }, [server.id]);
+  useEffect(() => {
+    if (tab === "invites") void loadInvites();
+  }, [tab, loadInvites]);
+
+  async function createServerInvite() {
+    setCreatingInvite(true);
+    try {
+      await apiFetch("/api/invites", {
+        method: "POST",
+        body: JSON.stringify({ serverId: server.id, maxUses: 0 }),
+      });
+      await loadInvites();
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not create an invite.",
+      );
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function revokeInvite(code: string) {
+    try {
+      await apiFetch(`/api/invites?code=${encodeURIComponent(code)}`, {
+        method: "DELETE",
+      });
+      await loadInvites();
+    } catch {
+      // Best effort; the list reload would show it still there.
+    }
+  }
 
   async function unban(ban: ServerBan) {
     try {
@@ -487,9 +602,10 @@ export function ServerSettingsDialog({
           Server Template
         </button>
 
-        {canManageServer && (
-          <>
-            <div className="sidebar-divider" />
+        <div className="sidebar-divider" />
+        {/* Owners delete their server; everyone else can leave it. */}
+        {isOwner ? (
+          canManageServer && (
             <button
               type="button"
               className="sidebar-item danger-item"
@@ -497,7 +613,24 @@ export function ServerSettingsDialog({
             >
               Delete Server 🗑️
             </button>
-          </>
+          )
+        ) : (
+          <button
+            type="button"
+            className="sidebar-item danger-item"
+            onClick={() =>
+              onRequestConfirm({
+                title: `Leave ${server.name}?`,
+                message:
+                  "You will need a fresh invite to come back. Your messages stay.",
+                isDanger: true,
+                confirmText: "Leave Server",
+                onConfirm: () => onLeaveServer?.(),
+              })
+            }
+          >
+            Leave Server 🚪
+          </button>
         )}
       </aside>
 
@@ -898,8 +1031,133 @@ export function ServerSettingsDialog({
           </div>
         )}
 
+        {/* Invites: server-scoped codes that let people join THIS server. */}
+        {tab === "invites" && (
+          <div className="tab-pane invites-pane">
+            <h1 className="pane-title">Invite People</h1>
+            <p className="pane-subtitle">
+              Share one of these codes to let someone join {server.name}. A code
+              with no use limit works until you revoke it.
+            </p>
+            <button
+              type="button"
+              className="discord-btn primary-indigo"
+              onClick={() => void createServerInvite()}
+              disabled={creatingInvite}
+            >
+              {creatingInvite ? "Creating…" : "Create Invite Code"}
+            </button>
+
+            {loadingInvites ? (
+              <p className="pane-subtitle">Loading invites…</p>
+            ) : !invites.length ? (
+              <p className="pane-subtitle">No invites yet — create one above.</p>
+            ) : (
+              <ul className="invite-list">
+                {invites.map((invite) => (
+                  <li key={invite.code} className="invite-row">
+                    <code className="invite-code">{invite.code}</code>
+                    <span className="invite-meta">
+                      {invite.revoked
+                        ? "revoked"
+                        : invite.spent
+                          ? "used up"
+                          : invite.maxUses > 0
+                            ? `${invite.uses}/${invite.maxUses} uses`
+                            : `${invite.uses} uses · unlimited`}
+                    </span>
+                    <div className="invite-actions">
+                      <button
+                        type="button"
+                        className="discord-btn"
+                        onClick={() =>
+                          void navigator.clipboard
+                            ?.writeText(invite.code)
+                            .then(() => setNotice("Invite code copied."))
+                            .catch(() => undefined)
+                        }
+                      >
+                        Copy
+                      </button>
+                      {!invite.revoked && (
+                        <button
+                          type="button"
+                          className="discord-btn danger-btn"
+                          onClick={() => void revokeInvite(invite.code)}
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Audit log: a real trail of moderation and structure changes. */}
+        {tab === "audit_log" && (
+          <div className="tab-pane audit-pane">
+            <div className="bans-search-row">
+              <div>
+                <h1 className="pane-title">Audit Log</h1>
+                <p className="pane-subtitle">
+                  Who did what in {server.name}, newest first.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="discord-btn primary-indigo"
+                onClick={() => void loadAudit()}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {loadingAudit ? (
+              <p className="pane-subtitle">Loading the audit log…</p>
+            ) : !audit.length ? (
+              <div className="empty-illustration-box">
+                <p>Nothing has happened here yet.</p>
+              </div>
+            ) : (
+              <ul className="audit-list">
+                {audit.map((entry) => (
+                  <li key={entry.id} className="audit-row">
+                    <span className="audit-dot" aria-hidden="true">
+                      •
+                    </span>
+                    <span className="audit-text">
+                      <strong>{entry.actorName}</strong>{" "}
+                      {AUDIT_LABELS[entry.action] || entry.action}
+                      {entry.targetName ? (
+                        <>
+                          {" "}
+                          <em>{entry.targetName}</em>
+                        </>
+                      ) : null}
+                      {entry.detail ? (
+                        <span className="audit-detail"> ({entry.detail})</span>
+                      ) : null}
+                    </span>
+                    <time className="audit-time">
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* Fallback for other sidebar items */}
-        {tab !== "profile" && tab !== "emoji" && tab !== "roles" && tab !== "bans" && (
+        {tab !== "profile" &&
+          tab !== "emoji" &&
+          tab !== "roles" &&
+          tab !== "bans" &&
+          tab !== "invites" &&
+          tab !== "audit_log" && (
           <div className="tab-pane fallback-pane">
             <h1 className="pane-title">
               {tab.replace("_", " ").toUpperCase()}

@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   await publishStructureChange();
   return Response.json(
-    { categoryId: id, servers: await listServers(db) },
+    { categoryId: id, servers: await listServers(db, user.id) },
     { status: 201 },
   );
 }

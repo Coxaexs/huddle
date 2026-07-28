@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { ensureSchema } from "@/lib/schema";
-import { listServers } from "@/lib/servers";
+import { addServerMember, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
 
   await ensureSchema(db);
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }
 
 export async function POST(request: Request) {
@@ -71,6 +72,16 @@ export async function POST(request: Request) {
     )
     .run();
 
+  // The creator is the first (and, at first, only) member — new servers no
+  // longer sweep in every account automatically.
+  await addServerMember(db, id, user.id);
+  await recordAudit(db, {
+    serverId: id,
+    actor: user,
+    action: "server.create",
+    targetName: name,
+  });
+
   // A brand new server is useless without somewhere to talk.
   await db.batch([
     db
@@ -85,7 +96,7 @@ export async function POST(request: Request) {
       .bind(crypto.randomUUID(), id, now),
   ]);
 
-  const servers = await listServers(db);
+  const servers = await listServers(db, user.id);
   return Response.json(
     { server: servers.find((server) => server.id === id), servers },
     { status: 201 },

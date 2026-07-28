@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -103,9 +104,17 @@ export async function POST(request: Request) {
     )
     .run();
 
+  await recordAudit(db, {
+    serverId: body.serverId || "",
+    actor: user,
+    action: "channel.create",
+    targetId: id,
+    targetName: name,
+    detail: kind,
+  });
   await publishStructureChange();
   return Response.json(
-    { channelId: id, servers: await listServers(db) },
+    { channelId: id, servers: await listServers(db, user.id) },
     { status: 201 },
   );
 }

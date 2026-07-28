@@ -49,4 +49,7 @@ export interface StoredMessage {
   attachments?: string | null;
   /** Set on thread replies: the id of the message that started the thread. */
   thread_id?: string | null;
+  /** On a bot answer to a slash command: the command run and who ran it. */
+  command_text?: string | null;
+  command_by?: string | null;
 }
