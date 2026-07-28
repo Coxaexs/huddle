@@ -884,8 +884,12 @@ export function SettingsDialog({
                         onClick={async () => {
                           if (!spotifyUserInput.trim()) return;
                           try {
+                            const un = spotifyUserInput.trim();
+                            if (typeof window !== "undefined") {
+                              window.localStorage.setItem("huddle-spotify-username", un);
+                            }
                             const res = await apiFetch<{ song?: string; artist?: string; albumArt?: string }>(
-                              `/api/integrations/spotify?username=${encodeURIComponent(spotifyUserInput.trim())}`
+                              `/api/integrations/spotify?username=${encodeURIComponent(un)}`
                             );
                             if (res.song) {
                               const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
@@ -896,7 +900,7 @@ export function SettingsDialog({
                               setStatus(`Synced! Currently playing: ${res.song} by ${res.artist}`);
                               onUser({ ...user, spotifyActivity: act });
                             } else {
-                              setStatus("Connected! Play a song on Spotify to broadcast it live.");
+                              setStatus("Connected! Play a song on Spotify / Last.fm to broadcast it live.");
                             }
                           } catch {
                             setError("Could not connect to Spotify scrobbler.");
