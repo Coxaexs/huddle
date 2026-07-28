@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
+import type { RoomActivity } from "@/lib/activities";
 import type { ScreenShareQuality } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
+import { RoomActivities } from "./room-activities";
 
 interface Sound {
   id: string;
@@ -46,6 +48,10 @@ interface VoiceStageProps {
   /** Server the room belongs to, for its soundboard. */
   serverId: string | null;
   canManageSounds: boolean;
+  userId: string;
+  userName: string;
+  activity: RoomActivity | null;
+  onActivity: (activity: RoomActivity | null) => void;
   /** Posts a captured clip into the active text channel. */
   onClip?: (clip: Blob) => Promise<void>;
   /** The battlemap panel, rendered by the shell which owns its state. */
@@ -106,6 +112,10 @@ export function VoiceStage({
   voice,
   serverId,
   canManageSounds,
+  userId,
+  userName,
+  activity,
+  onActivity,
   onClip,
   battlemap,
   onToggleBattlemap,
@@ -113,6 +123,7 @@ export function VoiceStage({
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
+  const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -188,6 +199,16 @@ export function VoiceStage({
   return (
     <div className="voice-stage">
       {battlemap}
+      <RoomActivities
+        channelId={voice.channelId || ""}
+        channelName={channelName}
+        userId={userId}
+        userName={userName}
+        activity={activity}
+        onActivity={onActivity}
+        open={activitiesOpen}
+        onOpen={setActivitiesOpen}
+      />
       <div className="voice-stage-body">
         {focused ? (
           <div className="voice-focus" ref={wrapperRef}>
@@ -374,6 +395,14 @@ export function VoiceStage({
               🗺
             </button>
           )}
+          <button
+            type="button"
+            className={`stage-btn ${activitiesOpen ? "on" : ""}`}
+            onClick={() => setActivitiesOpen((open) => !open)}
+            title="Room activities"
+          >
+            ✨
+          </button>
           <button
             type="button"
             className={`stage-btn ${clipping === "done" ? "on" : ""}`}

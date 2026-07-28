@@ -52,6 +52,10 @@ interface HubHandlers {
       strokes?: unknown;
     },
   ) => void;
+  onActivity?: (
+    channelId: string,
+    payload: { action: "update" | "close"; activity?: unknown },
+  ) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
   /** This tab lost voice because the account joined from elsewhere. */
   onVoiceEvicted?: () => void;
@@ -227,6 +231,12 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               tokens: payload.tokens,
               stroke: payload.stroke,
               strokes: payload.strokes,
+            });
+            break;
+          case "activity":
+            handlersRef.current.onActivity?.(payload.channelId, {
+              action: payload.action,
+              activity: payload.activity,
             });
             break;
           case "force-mute":
