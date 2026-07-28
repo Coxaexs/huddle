@@ -3087,8 +3087,8 @@ export function ChatShell() {
                 setSettingsOpen(true);
               }}
             >
-              <span className="status-dot" style={{ background: "transparent" }}>
-                ⚙
+              <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
+                <Settings size={14} />
               </span>
               Settings
             </button>
