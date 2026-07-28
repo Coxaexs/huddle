@@ -59,6 +59,7 @@ import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { BattlemapBoard } from "./components/battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
+import { ToastContainer } from "./components/toast";
 import { PollCard } from "./components/poll-card";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
@@ -5100,6 +5101,8 @@ export function ChatShell() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+
+      <ToastContainer />
     </main>
   );
 }
