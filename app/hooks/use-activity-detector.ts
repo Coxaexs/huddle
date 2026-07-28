@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { apiFetch } from "../lib/client";
 import type { PublicUser, SpotifyActivity } from "@/lib/users";
 
@@ -33,6 +33,16 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode", enabled: true },
   ]);
 
+  // Use refs to avoid re-render loops — callbacks and user identity are stable
+  const onUpdateRef = useRef(onUpdateSpotify);
+  onUpdateRef.current = onUpdateSpotify;
+
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
+
+  const lastSongRef = useRef("");
+  const isSyncingRef = useRef(false);
+
   const saveSpotifyUsername = (username: string) => {
     setSpotifyUsername(username);
     if (typeof window !== "undefined") {
@@ -40,96 +50,58 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     }
   };
 
-  const syncSpotifyTrack = async (trackQuery?: string) => {
-    if (!user) return;
-    try {
-      let endpoint = "";
-      if (trackQuery) {
-        endpoint = `/api/integrations/spotify?track=${encodeURIComponent(trackQuery)}`;
-      } else if (spotifyUsername) {
-        endpoint = `/api/integrations/spotify?username=${encodeURIComponent(spotifyUsername)}`;
-      }
-
-      if (!endpoint) return;
-
-      const data = await apiFetch<{
-        song?: string;
-        artist?: string;
-        albumArt?: string;
-        isPlaying?: boolean;
-      }>(endpoint);
-
-      if (data.song) {
-        const spotifyAct: SpotifyActivity = {
-          song: data.song,
-          artist: data.artist || "Spotify",
-          albumArt: data.albumArt || undefined,
-          isPlaying: data.isPlaying ?? true,
-        };
-
-        onUpdateSpotify?.(spotifyAct);
-
-        await apiFetch("/api/settings/profile", {
-          method: "PATCH",
-          body: JSON.stringify({ spotifyActivity: spotifyAct }),
-        });
-      }
-    } catch {
-      // silent catch
-    }
-  };
-
-  // Automatic Web Media Session API & Spotify sync loop
+  // Stable media session check — runs on a long interval, uses refs to avoid dep churn
   useEffect(() => {
     if (!user || !masterEnabled || !spotifyEnabled) return;
 
-    let lastSong = "";
-
     const checkMediaSession = async () => {
-      let song = "";
-      let artist = "";
-      let albumArt = "";
+      // Prevent overlapping syncs
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
 
-      // 1. Read navigator.mediaSession metadata
-      if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
-        const meta = navigator.mediaSession.metadata;
-        if (meta.title && meta.title.trim()) {
-          song = meta.title.trim();
-          artist = meta.artist ? meta.artist.trim() : "Spotify";
-          albumArt = meta.artwork?.[0]?.src || "";
+      try {
+        let song = "";
+        let artist = "";
+        let albumArt = "";
+
+        // Check navigator.mediaSession metadata (works for Spotify Web Player, YouTube Music, etc.)
+        if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
+          const meta = navigator.mediaSession.metadata;
+          if (meta.title && meta.title.trim()) {
+            song = meta.title.trim();
+            artist = meta.artist ? meta.artist.trim() : "Spotify";
+            albumArt = meta.artwork?.[0]?.src || "";
+          }
         }
-      }
 
-      // 2. If mediaSession metadata found
-      if (song && song !== lastSong) {
-        lastSong = song;
-        const spotifyAct: SpotifyActivity = {
-          song,
-          artist,
-          albumArt,
-          isPlaying: true,
-        };
+        // Only sync if the song actually changed
+        if (song && song !== lastSongRef.current) {
+          lastSongRef.current = song;
+          const spotifyAct: SpotifyActivity = { song, artist, albumArt, isPlaying: true };
 
-        onUpdateSpotify?.(spotifyAct);
+          // Fire callback via ref (no re-render dependency)
+          onUpdateRef.current?.(spotifyAct);
 
-        try {
-          await apiFetch("/api/settings/profile", {
-            method: "PATCH",
-            body: JSON.stringify({ spotifyActivity: spotifyAct }),
-          });
-        } catch {
-          // ignore
+          try {
+            await apiFetch("/api/settings/profile", {
+              method: "PATCH",
+              body: JSON.stringify({ spotifyActivity: spotifyAct }),
+            });
+          } catch {
+            // ignore
+          }
         }
-      } else if (!song && spotifyUsername) {
-        // 3. Sync via Spotify / Last.fm account API
-        void syncSpotifyTrack();
+      } finally {
+        isSyncingRef.current = false;
       }
     };
 
-    const interval = setInterval(checkMediaSession, 4000);
+    // Poll every 15 seconds (not 4!) to avoid resource exhaustion
+    const interval = setInterval(checkMediaSession, 15_000);
     void checkMediaSession();
     return () => clearInterval(interval);
-  }, [user, masterEnabled, spotifyEnabled, spotifyUsername, onUpdateSpotify]);
+    // Only re-subscribe when these booleans change — NOT on callback/user object changes
+  }, [!!user, masterEnabled, spotifyEnabled]);
 
   return {
     masterEnabled,
@@ -140,7 +112,6 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     setAppsEnabled,
     spotifyUsername,
     saveSpotifyUsername,
-    syncSpotifyTrack,
     detectedApps,
     setDetectedApps,
     activeAppId,
