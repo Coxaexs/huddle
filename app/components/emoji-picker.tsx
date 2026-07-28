@@ -1,6 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  Search,
+  X,
+  Star,
+  Image as ImageIcon,
+  Smile,
+  User,
+  Sparkles,
+  Utensils,
+  Trophy,
+  Globe,
+  Hash,
+  Flag,
+} from "lucide-react";
 import { apiFetch } from "../lib/client";
 
 interface EmojiItem {
@@ -18,6 +32,19 @@ interface EmojiPickerProps {
   canManageEmojis?: boolean;
   onRequestUploadEmoji?: () => void;
 }
+
+const CATEGORIES = [
+  { id: "favorites", icon: <Star size={16} />, label: "Favorites" },
+  { id: "server", icon: <ImageIcon size={16} />, label: "Server Emojis" },
+  { id: "smileys", icon: <Smile size={16} />, label: "Smileys & Emotion" },
+  { id: "people", icon: <User size={16} />, label: "People & Body" },
+  { id: "animals", icon: <Sparkles size={16} />, label: "Animals & Nature" },
+  { id: "food", icon: <Utensils size={16} />, label: "Food & Drink" },
+  { id: "activities", icon: <Trophy size={16} />, label: "Activities" },
+  { id: "travel", icon: <Globe size={16} />, label: "Travel & Places" },
+  { id: "symbols", icon: <Hash size={16} />, label: "Symbols" },
+  { id: "flags", icon: <Flag size={16} />, label: "Flags" },
+];
 
 const EMOJI_DATASET: Array<{ name: string; symbol: string; category: string }> = [
   // Smileys & Emotion
@@ -264,19 +291,6 @@ const EMOJI_DATASET: Array<{ name: string; symbol: string; category: string }> =
   { name: "flag_jp", symbol: "🇯🇵", category: "Flags" },
 ];
 
-const CATEGORIES = [
-  { id: "favorites", icon: "⭐", label: "Favorites" },
-  { id: "server", icon: "🖼️", label: "Server Emojis" },
-  { id: "smileys", icon: "😀", label: "Smileys & Emotion" },
-  { id: "people", icon: "👋", label: "People & Body" },
-  { id: "animals", icon: "🐶", label: "Animals & Nature" },
-  { id: "food", icon: "🍕", label: "Food & Drink" },
-  { id: "activities", icon: "⚽", label: "Activities" },
-  { id: "travel", icon: "🚗", label: "Travel & Places" },
-  { id: "symbols", icon: "🔣", label: "Symbols" },
-  { id: "flags", icon: "🚩", label: "Flags" },
-];
-
 export function EmojiPicker({
   serverId,
   onPickEmoji,
@@ -359,7 +373,7 @@ export function EmojiPicker({
     >
       <div className="emoji-picker-search-bar">
         <div className="search-input-wrap">
-          <span className="search-icon">🔍</span>
+          <Search size={14} className="search-icon" />
           <input
             type="text"
             value={search}
@@ -373,7 +387,7 @@ export function EmojiPicker({
             onClick={onClose}
             aria-label="Close"
           >
-            ×
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -400,7 +414,9 @@ export function EmojiPicker({
           {(activeCategory === "server" || search || customEmojis.length > 0) && (
             <div className="emoji-section">
               <div className="emoji-section-header">
-                <span>🖼️ Server Emojis</span>
+                <span className="flex items-center gap-1">
+                  <ImageIcon size={14} /> Server Emojis
+                </span>
                 {canManageEmojis && onRequestUploadEmoji && (
                   <button
                     type="button"
@@ -445,7 +461,9 @@ export function EmojiPicker({
           {!search && activeCategory === "favorites" && (
             <div className="emoji-section">
               <div className="emoji-section-header">
-                <span>⭐ Favorites</span>
+                <span className="flex items-center gap-1">
+                  <Star size={14} /> Favorites
+                </span>
               </div>
               <div className="emoji-grid">
                 {favoriteItems.map((item) => (
@@ -473,7 +491,9 @@ export function EmojiPicker({
           {/* All Unicode Emojis */}
           <div className="emoji-section">
             <div className="emoji-section-header">
-              <span>😀 All Emojis ({filteredUnicode.length})</span>
+              <span className="flex items-center gap-1">
+                <Smile size={14} /> All Emojis ({filteredUnicode.length})
+              </span>
             </div>
             <div className="emoji-grid">
               {filteredUnicode.map((item) => (

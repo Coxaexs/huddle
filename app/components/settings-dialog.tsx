@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Sun, Moon } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { AVATAR_COLORS, type Member, type PublicUser } from "@/lib/users";
@@ -603,17 +604,17 @@ export function SettingsDialog({
               <div className="theme-row">
                 <button
                   type="button"
-                  className={theme === "dark" ? "active" : ""}
+                  className={`flex items-center gap-1.5 justify-center ${theme === "dark" ? "active" : ""}`}
                   onClick={() => onTheme("dark")}
                 >
-                  ☾ Dark
+                  <Moon size={16} /> Dark
                 </button>
                 <button
                   type="button"
-                  className={theme === "light" ? "active" : ""}
+                  className={`flex items-center gap-1.5 justify-center ${theme === "light" ? "active" : ""}`}
                   onClick={() => onTheme("light")}
                 >
-                  ☀ Light
+                  <Sun size={16} /> Light
                 </button>
               </div>
 

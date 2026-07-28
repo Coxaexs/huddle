@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Search, Trash2 } from "lucide-react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -608,10 +609,11 @@ export function ServerSettingsDialog({
           canManageServer && (
             <button
               type="button"
-              className="sidebar-item danger-item"
+              className="sidebar-item danger-item flex items-center justify-between"
               onClick={handleDeleteServer}
             >
-              Delete Server 🗑️
+              <span>Delete Server</span>
+              <Trash2 size={16} />
             </button>
           )
         ) : (
@@ -836,7 +838,7 @@ export function ServerSettingsDialog({
 
             <div className="roles-toolbar">
               <div className="search-wrap">
-                <span className="search-icon">🔍</span>
+                <Search size={14} className="search-icon" />
                 <input
                   type="text"
                   className="discord-search-input"
@@ -930,7 +932,7 @@ export function ServerSettingsDialog({
 
             <div className="bans-search-row">
               <div className="search-wrap">
-                <span className="search-icon">🔍</span>
+                <Search size={14} className="search-icon" />
                 <input
                   type="text"
                   className="discord-search-input"

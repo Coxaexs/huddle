@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check } from "lucide-react";
 import { Avatar } from "./avatar";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
@@ -100,15 +101,7 @@ export function UserFooter({
             title={muted ? "Unmute Microphone" : "Mute Microphone"}
             aria-label={muted ? "Unmute Microphone" : "Mute Microphone"}
           >
-            {muted ? (
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
-              </svg>
-            )}
+            {muted ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
           <button
             type="button"
@@ -117,7 +110,7 @@ export function UserFooter({
             aria-label="Input options"
             title="Input options"
           >
-            ▾
+            <ChevronDown size={14} />
           </button>
 
           {micMenuOpen && (
@@ -134,7 +127,7 @@ export function UserFooter({
                       setMicMenuOpen(false);
                     }}
                   >
-                    {mic.deviceId === selectedMicId && "✓ "}
+                    {mic.deviceId === selectedMicId && <Check size={14} className="mr-1 inline" />}
                     {mic.label || `Microphone (${mic.deviceId.slice(0, 5)})`}
                   </button>
                 ))
@@ -154,16 +147,7 @@ export function UserFooter({
             title={deafened ? "Undeafen" : "Deafen"}
             aria-label={deafened ? "Undeafen" : "Deafen"}
           >
-            {deafened ? (
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h3v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3v8h3c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/>
-                <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.5" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                <path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h3v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3v8h3c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/>
-              </svg>
-            )}
+            {deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
           </button>
           <button
             type="button"
@@ -172,7 +156,7 @@ export function UserFooter({
             aria-label="Output options"
             title="Output options"
           >
-            ▾
+            <ChevronDown size={14} />
           </button>
 
           {deafenMenuOpen && (
@@ -189,7 +173,7 @@ export function UserFooter({
                       setDeafenMenuOpen(false);
                     }}
                   >
-                    {spk.deviceId === selectedSpeakerId && "✓ "}
+                    {spk.deviceId === selectedSpeakerId && <Check size={14} className="mr-1 inline" />}
                     {spk.label || `Speaker (${spk.deviceId.slice(0, 5)})`}
                   </button>
                 ))
@@ -208,9 +192,7 @@ export function UserFooter({
           title="User Settings"
           aria-label="User Settings"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-          </svg>
+          <Settings size={18} />
         </button>
       </div>
     </footer>

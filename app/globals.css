@@ -1334,12 +1334,18 @@ button {
   background:0 0;
   border:0;
   border-radius:10px;
-  place-items:center;
   width:34px;
   height:34px;
   font-size:17px;
   font-weight:800;
-  display:grid;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.icon-button svg {
+  display: block;
+  flex-shrink: 0;
+  margin: auto;
 }
 .icon-button:hover,
 .icon-button.active {
@@ -2100,6 +2106,15 @@ button {
   flex:none;
   width:34px;
   height:34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.attach-button svg,
+.send-button svg {
+  display: block;
+  flex-shrink: 0;
+  margin: auto;
 }
 
 .attach-button {
@@ -3459,6 +3474,13 @@ button {
   border-radius:8px;
   padding:4px 6px;
   font-size:13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.message-actions button svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .message-actions button:hover {
@@ -4225,6 +4247,14 @@ button {
   font-size:18px;
   cursor:pointer;
   transition:background .15s ease, transform .1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stage-btn svg {
+  display: block;
+  flex-shrink: 0;
+  margin: auto;
 }
 .stage-btn:hover { transform:translateY(-1px); }
 .stage-btn.on { background:var(--lavender); color:#fff; }
@@ -7042,6 +7072,9 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   font-size: 20px;
   cursor: pointer;
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .picker-close-x:hover {
   color: #fff;
@@ -7055,6 +7088,9 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   padding: 4px 6px;
   border-radius: 6px;
   transition: background 0.15s ease, transform 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .composer-emoji-btn:hover {
   background: rgba(255, 255, 255, 0.1);
