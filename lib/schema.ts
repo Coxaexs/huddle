@@ -390,6 +390,8 @@ async function migrate(db: D1Database): Promise<void> {
       "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'online'",
     ],
     ["custom_status", "ALTER TABLE users ADD COLUMN custom_status TEXT"],
+    ["bio", "ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"],
+    ["banner_url", "ALTER TABLE users ADD COLUMN banner_url TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -398,6 +400,9 @@ async function migrate(db: D1Database): Promise<void> {
   const channelColumns = await columnNames(db, "channels");
   if (!channelColumns.has("category_id")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN category_id TEXT").run();
+  }
+  if (!channelColumns.has("slowmode")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN slowmode INTEGER NOT NULL DEFAULT 0").run();
   }
 
   const serverColumns = await columnNames(db, "servers");

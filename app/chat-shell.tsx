@@ -106,6 +106,7 @@ import {
   findCommand,
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
+import { UserProfileCard } from "./components/user-profile-card";
 
 interface Message {
   id: string | number;
@@ -678,9 +679,10 @@ export function ChatShell() {
     [activeServer],
   );
 
-  function openProfile(member: Member) {
+  function openProfile(member: Member, e?: React.MouseEvent) {
     setUserMenu(null);
-    setProfileMember(member);
+    const pos = e ? { x: e.clientX, y: e.clientY } : undefined;
+    setProfileCardTarget({ member, pos });
   }
   function openProfileByHandle(handle: string) {
     const lower = handle.toLowerCase();
@@ -1293,6 +1295,7 @@ export function ChatShell() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
+  const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
 
   const activeSlashCommand = useMemo(() => {
     if (!draft.startsWith("/")) return undefined;
@@ -2397,6 +2400,50 @@ export function ChatShell() {
           setServers(data.servers);
         } catch (error) {
           setNotice(error instanceof Error ? error.message : "Could not rename it.");
+        }
+      },
+    });
+  }
+
+  async function editChannelTopic(channel: PublicChannel) {
+    showCustomPrompt({
+      title: `Edit Channel Topic`,
+      message: `Set topic description for #${channel.name}:`,
+      defaultValue: channel.topic || "",
+      placeholder: "e.g. Plans, chaos, and meme sharing",
+      confirmText: "Save Topic",
+      onConfirm: async (topic) => {
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "PATCH", body: JSON.stringify({ topic: topic?.trim() || "" }) },
+          );
+          setServers(data.servers);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not save topic.");
+        }
+      },
+    });
+  }
+
+  async function editChannelSlowmode(channel: PublicChannel) {
+    showCustomPrompt({
+      title: `Set Channel Slowmode Cooldown`,
+      message: `Enter slowmode cooldown in seconds (0 to disable, e.g. 5, 10, 30):`,
+      defaultValue: String(channel.slowmode || 0),
+      placeholder: "0",
+      confirmText: "Set Slowmode",
+      onConfirm: async (val) => {
+        const sec = parseInt(val || "0", 10) || 0;
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "PATCH", body: JSON.stringify({ slowmode: sec }) },
+          );
+          setServers(data.servers);
+          setNotice(sec > 0 ? `Slowmode set to ${sec}s` : "Slowmode disabled");
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not set slowmode.");
         }
       },
     });
@@ -5030,6 +5077,28 @@ export function ChatShell() {
                 <button
                   type="button"
                   role="menuitem"
+                  onClick={() => {
+                    const channel = channelMenu.channel;
+                    setChannelMenu(null);
+                    void editChannelTopic(channel);
+                  }}
+                >
+                  Edit Topic
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const channel = channelMenu.channel;
+                    setChannelMenu(null);
+                    void editChannelSlowmode(channel);
+                  }}
+                >
+                  Set Slowmode
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
                   className="danger"
                   onClick={() => {
                     const channel = channelMenu.channel;
@@ -5201,6 +5270,25 @@ export function ChatShell() {
           void runCommand(text);
         }}
       />
+
+      {profileCardTarget && (
+        <UserProfileCard
+          member={profileCardTarget.member}
+          roles={activeServer?.roles || []}
+          userRoles={
+            profileCardTarget.member.roleIds?.[activeServerId || ""] || []
+          }
+          position={profileCardTarget.pos}
+          onClose={() => setProfileCardTarget(null)}
+          onDirectMessage={(targetUserId) => {
+            void openDm(targetUserId);
+          }}
+          onMention={(username) => {
+            setDraft((curr) => curr + `@${username} `);
+            composerRef.current?.focus();
+          }}
+        />
+      )}
 
       <ToastContainer />
     </main>
