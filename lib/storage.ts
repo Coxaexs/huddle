@@ -17,6 +17,9 @@ export interface HuddleBindings {
   HUDDLE_ICE_SERVERS?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
+  /** Last.fm API key for live scrobbler integration. */
+  LASTFM_API_KEY?: string;
+  LASTFM_SECRET?: string;
 }
 
 export function bindings(): HuddleBindings {
