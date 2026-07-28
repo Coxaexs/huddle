@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -427,6 +428,13 @@ export function ChatShell() {
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const unreadRef = useRef(unread);
+  unreadRef.current = unread;
+  const initialChannelScrollRef = useRef<{
+    channelId: string;
+    unreadCount: number;
+  } | null>(null);
+  const [messagesLoadedFor, setMessagesLoadedFor] = useState<string | null>(null);
   const activeChannelRef = useRef<string | null>(null);
   activeChannelRef.current = activeChannelId;
   const activeServerRef = useRef<string | null>(null);
@@ -563,7 +571,12 @@ export function ChatShell() {
 
   // Opening a channel marks it read.
   useEffect(() => {
-    if (activeChannelId) markChannelRead(activeChannelId);
+    if (!activeChannelId) return;
+    initialChannelScrollRef.current = {
+      channelId: activeChannelId,
+      unreadCount: unreadRef.current[activeChannelId]?.count || 0,
+    };
+    markChannelRead(activeChannelId);
   }, [activeChannelId, markChannelRead]);
 
   // Switching servers re-scopes the member roster to that server's members.
@@ -1317,14 +1330,20 @@ export function ChatShell() {
   useEffect(() => {
     if (!user || !activeChannelId) {
       setMessages([]);
+      setMessagesLoadedFor(null);
       return;
     }
     let cancelled = false;
+    setMessages([]);
+    setMessagesLoadedFor(null);
     apiFetch<{ messages: Message[] }>(
       `/api/messages?channelId=${encodeURIComponent(activeChannelId)}`,
     )
       .then((data) => {
-        if (!cancelled) setMessages(data.messages);
+        if (!cancelled) {
+          setMessages(data.messages);
+          setMessagesLoadedFor(activeChannelId);
+        }
       })
       .catch(() => undefined);
     void refreshPins(activeChannelId);
@@ -1335,9 +1354,26 @@ export function ChatShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeChannelId, hub.connected]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!activeChannelId || messagesLoadedFor !== activeChannelId) return;
+    const initial = initialChannelScrollRef.current;
+    if (initial?.channelId === activeChannelId) {
+      initialChannelScrollRef.current = null;
+      if (initial.unreadCount > 0 && messages.length > 0) {
+        const firstUnreadIndex = Math.max(
+          0,
+          messages.length - initial.unreadCount,
+        );
+        document
+          .getElementById(`msg-${messages[firstUnreadIndex].id}`)
+          ?.scrollIntoView({ behavior: "auto", block: "center" });
+        return;
+      }
+      messageEndRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [activeChannelId, messages, messagesLoadedFor]);
 
   useEffect(() => {
     const preferred =
