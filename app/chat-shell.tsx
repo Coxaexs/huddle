@@ -102,7 +102,9 @@ import {
   MUSIC_COMMANDS,
   VOICE_REQUIRED_MUSIC_COMMANDS,
   matchCommands,
+  findCommand,
 } from "./lib/commands";
+import { PollDialog } from "./components/poll-dialog";
 
 interface Message {
   id: string | number;
@@ -1289,6 +1291,12 @@ export function ChatShell() {
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
+
+  const activeSlashCommand = useMemo(() => {
+    if (!draft.startsWith("/")) return undefined;
+    return findCommand(draft);
+  }, [draft]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -4179,6 +4187,16 @@ export function ChatShell() {
         )}
 
         <form className="composer-wrap" onSubmit={sendMessage}>
+          {activeSlashCommand && draft.startsWith("/") && (
+            <div className="active-command-helper">
+              <span className="command-title">/{activeSlashCommand.name}</span>
+              {activeSlashCommand.args && (
+                <span className="command-args">{activeSlashCommand.args}</span>
+              )}
+              <span className="command-desc">— {activeSlashCommand.description}</span>
+            </div>
+          )}
+
           {slashActive && (
             <SlashMenu
               query={draft.split(/\s+/)[0]}
@@ -4413,12 +4431,9 @@ export function ChatShell() {
             <button
               type="button"
               className="composer-emoji-btn"
-              onClick={() => {
-                setDraft("/poll ");
-                composerRef.current?.focus();
-              }}
+              onClick={() => setPollDialogOpen(true)}
               aria-label="Create a Poll"
-              title="Create a Poll (/poll)"
+              title="Create a Poll"
             >
               <Vote size={18} />
             </button>
@@ -5153,6 +5168,15 @@ export function ChatShell() {
       <KeyboardShortcutsDialog
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+
+      <PollDialog
+        open={pollDialogOpen}
+        onClose={() => setPollDialogOpen(false)}
+        onSubmit={(question, options) => {
+          const text = `/poll ${question} | ${options.join(" | ")}`;
+          void runCommand(text);
+        }}
       />
 
       <ToastContainer />
