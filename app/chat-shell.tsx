@@ -5279,9 +5279,21 @@ export function ChatShell() {
       <PollDialog
         open={pollDialogOpen}
         onClose={() => setPollDialogOpen(false)}
-        onSubmit={(question, options) => {
-          const text = `/poll ${question} | ${options.join(" | ")}`;
-          void runCommand(text);
+        onSubmit={async (question, options, isPrivate) => {
+          if (!activeChannelId) return;
+          try {
+            await apiFetch("/api/polls", {
+              method: "POST",
+              body: JSON.stringify({
+                channelId: activeChannelId,
+                question,
+                options,
+                isPrivate,
+              }),
+            });
+          } catch (err) {
+            setNotice(err instanceof Error ? err.message : "Failed to create poll");
+          }
         }}
       />
 

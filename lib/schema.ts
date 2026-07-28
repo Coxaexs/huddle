@@ -407,6 +407,11 @@ async function migrate(db: D1Database): Promise<void> {
     await db.prepare("ALTER TABLE channels ADD COLUMN slowmode INTEGER NOT NULL DEFAULT 0").run();
   }
 
+  const pollColumns = await columnNames(db, "polls");
+  if (!pollColumns.has("is_private")) {
+    await db.prepare("ALTER TABLE polls ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run();
+  }
+
   const serverColumns = await columnNames(db, "servers");
   const serverMigrations: D1PreparedStatement[] = [];
   for (const [column, ddl] of [
