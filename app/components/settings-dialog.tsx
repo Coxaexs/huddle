@@ -1,8 +1,100 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Sun, Moon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Sun, Moon, Mic, Volume2 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+
+function MicTest({ selectedMicId }: { selectedMicId: string }) {
+  const [testing, setTesting] = useState(false);
+  const [level, setLevel] = useState(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animRef = useRef<number | null>(null);
+
+  const stopTest = useCallback(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      void audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+    setTesting(false);
+    setLevel(0);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopTest();
+    };
+  }, [stopTest]);
+
+  const startTest = async () => {
+    if (testing) {
+      stopTest();
+      return;
+    }
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioCtxRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      setTesting(true);
+
+      const update = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        const normalized = Math.min(100, Math.round((avg / 128) * 100));
+        setLevel(normalized);
+        animRef.current = requestAnimationFrame(update);
+      };
+      update();
+    } catch {
+      stopTest();
+    }
+  };
+
+  return (
+    <div className="mic-test-container">
+      <div className="mic-test-header">
+        <label className="flex items-center gap-1.5 font-semibold text-sm">
+          <Mic size={16} /> Mic Test
+        </label>
+        <button
+          type="button"
+          className={`discord-btn ${testing ? "danger-red" : "primary-indigo"}`}
+          onClick={() => void startTest()}
+        >
+          {testing ? "Stop Testing" : "Test Microphone"}
+        </button>
+      </div>
+      <div className="mic-test-bar-wrap">
+        <div
+          className="mic-test-bar-fill"
+          style={{ width: `${level}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { AVATAR_COLORS, type Member, type PublicUser } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -417,6 +509,8 @@ export function SettingsDialog({
                   </option>
                 ))}
               </select>
+
+              <MicTest selectedMicId={micId} />
 
               {supportsOutputSelection() ? (
                 <>
