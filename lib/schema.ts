@@ -312,6 +312,17 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS battlemaps_channel_idx ON battlemaps(channel_id, active)",
     ),
+    // One shared activity surface per voice room. Each activity owns a bounded
+    // JSON state; the optional secret keeps Draw & Guess prompts off viewers.
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_activities (
+        channel_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        state_json TEXT NOT NULL DEFAULT '{}',
+        secret TEXT,
+        created_by TEXT NOT NULL,
+        created_by_name TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
     // A real moderation/audit trail, one row per notable server action.
     db.prepare(`CREATE TABLE IF NOT EXISTS audit_log (
         id TEXT PRIMARY KEY,

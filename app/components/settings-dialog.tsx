@@ -110,6 +110,7 @@ export function SettingsDialog({
   const [backdrop, setBackdrop] = useState<Backdrop>("plain");
   const [corners, setCorners] = useState(16);
   const [motion, setMotion] = useState(true);
+  const [cute, setCute] = useState(false);
   const [notify, setNotify] = useState(
     () =>
       typeof window === "undefined" ||
@@ -123,6 +124,7 @@ export function SettingsDialog({
     const savedBackdrop = window.localStorage.getItem("huddle-backdrop") || "";
     const savedCorners = Number(window.localStorage.getItem("huddle-corners"));
     const savedMotion = window.localStorage.getItem("huddle-motion");
+    const savedCute = window.localStorage.getItem("huddle-cute");
     if (savedAccent) setAccent(savedAccent);
     if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
     // The old glow was the default. Do not carry it forward: gradients are
@@ -134,6 +136,7 @@ export function SettingsDialog({
     }
     if (savedCorners >= 4 && savedCorners <= 28) setCorners(savedCorners);
     if (savedMotion) setMotion(savedMotion !== "reduced");
+    setCute(savedCute === "on");
   }, []);
 
   useEffect(() => {
@@ -143,12 +146,14 @@ export function SettingsDialog({
     root.dataset.density = density;
     root.dataset.backdrop = backdrop;
     root.dataset.motion = motion ? "full" : "reduced";
+    root.dataset.cute = cute ? "on" : "off";
     window.localStorage.setItem("huddle-accent", accent);
     window.localStorage.setItem("huddle-density", density);
     window.localStorage.setItem("huddle-backdrop", backdrop);
     window.localStorage.setItem("huddle-corners", String(corners));
     window.localStorage.setItem("huddle-motion", motion ? "full" : "reduced");
-  }, [accent, corners, density, backdrop, motion]);
+    window.localStorage.setItem("huddle-cute", cute ? "on" : "off");
+  }, [accent, corners, density, backdrop, motion, cute]);
 
   useEffect(() => {
     if (tab !== "voice") return;
@@ -682,6 +687,18 @@ export function SettingsDialog({
                   type="checkbox"
                   checked={motion}
                   onChange={(event) => setMotion(event.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch cute-appearance-switch">
+                <span>
+                  <strong>Cozy Huddle ✨</strong>
+                  <small>Room pet, sparkles, tiny charms, and celebrations</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={cute}
+                  onChange={(event) => setCute(event.target.checked)}
                 />
               </label>
 

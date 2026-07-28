@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import type { PlayerState } from "@/lib/protocol";
+import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import {
   ALL_PERMISSIONS,
@@ -368,6 +369,8 @@ export function ChatShell() {
   const [battlemap, setBattlemap] = useState<Battlemap | null>(null);
   const [battlemapGm, setBattlemapGm] = useState(false);
   const [battlemapHidden, setBattlemapHidden] = useState(false);
+  /** Whiteboard, watch party, game, tier list, or timer open in voice. */
+  const [roomActivity, setRoomActivity] = useState<RoomActivity | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   /** Your own presence, mirrored locally so the dot reacts instantly. */
   const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
@@ -932,6 +935,31 @@ export function ChatShell() {
         return current;
       });
     },
+    onActivity: (channelId, payload) => {
+      if (channelId !== stageChannelRef.current) return;
+      if (payload.action === "close") {
+        setRoomActivity(null);
+        return;
+      }
+      const incoming = (payload.activity as RoomActivity) || null;
+      setRoomActivity((current) => {
+        // The Draw & Guess prompt is returned only to its drawer. Public
+        // socket updates must not make that prompt disappear mid-round.
+        if (
+          incoming?.kind === "drawguess" &&
+          incoming.state.drawerId === user?.id &&
+          current?.kind === "drawguess" &&
+          current.state.drawerId === user?.id &&
+          current.state.word
+        ) {
+          return {
+            ...incoming,
+            state: { ...incoming.state, word: current.state.word },
+          };
+        }
+        return incoming;
+      });
+    },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
     onVoiceEvicted: () => {
       // The hub already removed this tab from the room; tear the call down
@@ -1058,6 +1086,27 @@ export function ChatShell() {
         setBattlemapHidden(false);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [stageChannelId]);
+
+  // The activity surface is persisted per voice room, just like the map.
+  useEffect(() => {
+    if (!stageChannelId) {
+      setRoomActivity(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch<{ activity: RoomActivity | null }>(
+      `/api/activities?channelId=${encodeURIComponent(stageChannelId)}`,
+    )
+      .then((data) => {
+        if (!cancelled) setRoomActivity(data.activity);
+      })
+      .catch(() => {
+        if (!cancelled) setRoomActivity(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -1305,6 +1354,8 @@ export function ChatShell() {
         : "plain";
     root.dataset.motion =
       window.localStorage.getItem("huddle-motion") || "full";
+    root.dataset.cute =
+      window.localStorage.getItem("huddle-cute") === "on" ? "on" : "off";
     root.style.setProperty(
       "--lavender",
       window.localStorage.getItem("huddle-accent") || "#9d8cf5",
@@ -1594,6 +1645,12 @@ export function ChatShell() {
     }
 
     if (name === "watch" || name === "reels") {
+      if (!voice.channelId) {
+        await postBotMessage(
+          "Join a Huddle voice room first so everyone there gets the same activity.",
+        );
+        return;
+      }
       await postBotMessage(
         name === "reels"
           ? "Creating a synchronized ReelsTogether room…"
@@ -1607,10 +1664,29 @@ export function ChatShell() {
             body: JSON.stringify({ mode: name, name: `${channelTitle} · Huddle` }),
           },
         );
+        if (name === "watch") {
+          const opened = await apiFetch<{ activity: RoomActivity }>(
+            "/api/activities",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                channelId: voice.channelId,
+                action: "open",
+                kind: "watch",
+                state: {
+                  url: data.url,
+                  title: `${channelTitle} Watch Party`,
+                },
+              }),
+            },
+          );
+          setRoomActivity(opened.activity);
+          setStageChannelId(voice.channelId);
+        }
         await postBotMessage(
           name === "reels"
             ? "Your shared reels room is ready. Everyone who opens this link joins the same synchronized feed."
-            : "Your watch room is ready. Everyone who opens this link joins the same synchronized player.",
+            : "Watch Together is now live inside your Huddle voice room. The link still works outside Huddle too.",
           {
             link: data.url,
             actionLabel: name === "reels" ? "Open reels room" : "Open watch room",
@@ -3313,6 +3389,10 @@ export function ChatShell() {
             voice={voice}
             serverId={stageChannel.serverId}
             canManageSounds={canManageChannels}
+            userId={user.id}
+            userName={user.displayName}
+            activity={roomActivity}
+            onActivity={setRoomActivity}
             battlemapOpen={Boolean(battlemap) && !battlemapHidden}
             onToggleBattlemap={() => {
               if (!battlemap) {

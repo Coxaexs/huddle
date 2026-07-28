@@ -4048,6 +4048,465 @@ button {
   color:var(--ink);
   padding:0 8px;
 }
+
+/* ---------------------------------------------------------------------------
+   Live room activities: WatchTogether, canvas, tier lists, game and timer.
+--------------------------------------------------------------------------- */
+.room-activity {
+  position:relative;
+  flex:0 1 68%;
+  min-height:280px;
+  max-height:760px;
+  margin:12px 14px 0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  color:var(--ink);
+  background:
+    radial-gradient(90% 140% at 0 0, color-mix(in srgb,var(--lavender) 13%,transparent), transparent 55%),
+    var(--panel);
+  border:1px solid color-mix(in srgb,var(--lavender) 38%,var(--line));
+  border-radius:18px;
+  box-shadow:0 15px 50px rgba(0,0,0,.18);
+}
+.room-activity-head {
+  min-height:58px;
+  padding:9px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--paper) 80%,transparent);
+}
+.room-activity-head > div {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+.room-activity-head > div:first-child > span {
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  font-size:21px;
+  border-radius:11px;
+  background:var(--lavender-soft);
+}
+.room-activity-head > div:first-child > div {
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+.room-activity-head strong,
+.room-activity-head small {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.room-activity-head small { color:var(--muted); font-size:11px; }
+.room-activity-head button,
+.room-activity-head a {
+  min-height:34px;
+  padding:0 10px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:9px;
+  text-decoration:none;
+  font:700 11px/1 inherit;
+  cursor:pointer;
+}
+.room-activity-head .danger { color:var(--coral); }
+.activity-picker {
+  flex:1;
+  min-height:0;
+  padding:16px;
+  display:grid;
+  grid-template-columns:repeat(5,minmax(120px,1fr));
+  gap:10px;
+  overflow:auto;
+}
+.activity-picker button {
+  min-height:140px;
+  padding:16px 12px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  color:var(--ink);
+  text-align:center;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:15px;
+  cursor:pointer;
+  transition:transform .14s ease,border-color .14s ease,background .14s ease;
+}
+.activity-picker button:hover {
+  transform:translateY(-3px);
+  border-color:var(--lavender);
+  background:var(--lavender-soft);
+}
+.activity-picker button > span { font-size:30px; }
+.activity-picker button small { color:var(--muted); line-height:1.35; }
+.activity-live-pill {
+  position:absolute;
+  top:18px;
+  right:185px;
+  color:var(--mint);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.1em;
+  pointer-events:none;
+}
+.activity-by {
+  position:absolute;
+  right:13px;
+  bottom:7px;
+  color:var(--muted);
+  font-size:9px;
+  opacity:.75;
+  pointer-events:none;
+}
+.activity-error {
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  z-index:5;
+  max-width:min(520px,90%);
+  padding:9px 13px;
+  color:#fff;
+  background:var(--coral);
+  border:0;
+  border-radius:999px;
+  cursor:pointer;
+}
+
+/* The existing bot page owns playback and synchronization; Huddle supplies
+   only the surrounding room chrome. */
+.watch-embed {
+  flex:1;
+  min-height:0;
+  padding:6px;
+  background:#0e0e16;
+}
+.watch-embed iframe {
+  width:100%;
+  height:100%;
+  border:0;
+  border-radius:11px;
+  background:#0e0e16;
+}
+
+.activity-canvas-shell {
+  flex:1;
+  min-height:0;
+  padding:9px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.activity-draw-tools {
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.activity-draw-tools > button:not(.activity-tool-text) {
+  width:24px;
+  height:24px;
+  padding:0;
+  border:2px solid transparent;
+  border-radius:50%;
+  cursor:pointer;
+}
+.activity-draw-tools > button.active {
+  border-color:var(--ink) !important;
+  box-shadow:0 0 0 2px var(--paper);
+}
+.activity-draw-tools input[type=range] { width:90px; accent-color:var(--lavender); }
+.activity-tool-text {
+  min-height:30px;
+  margin-left:auto;
+  padding:0 10px;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:8px;
+  cursor:pointer;
+}
+.activity-canvas {
+  flex:1;
+  min-height:180px;
+  width:100%;
+  color:var(--muted);
+  background:color-mix(in srgb,var(--paper) 96%,white);
+  border:1px solid var(--line);
+  border-radius:13px;
+  touch-action:none;
+}
+.activity-canvas.editable { cursor:crosshair; }
+
+.tier-board {
+  flex:1;
+  min-height:0;
+  padding:12px;
+  overflow:auto;
+}
+.tier-add { display:flex; gap:8px; margin-bottom:10px; }
+.tier-add input {
+  flex:1;
+  min-width:0;
+  height:38px;
+  padding:0 11px;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:9px;
+}
+.tier-add button,
+.draw-guess button,
+.synced-timer button {
+  padding:0 13px;
+  min-height:38px;
+  color:#fff;
+  background:var(--lavender);
+  border:0;
+  border-radius:9px;
+  font-weight:800;
+  cursor:pointer;
+}
+.tier-rows { display:grid; gap:5px; }
+.tier-row {
+  min-height:58px;
+  display:grid;
+  grid-template-columns:58px 1fr;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+}
+.tier-row > strong {
+  display:grid;
+  place-items:center;
+  color:#17181e;
+  font-size:20px;
+}
+.tier-row > div {
+  min-width:0;
+  padding:7px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+}
+.tier-item {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:6px 7px 6px 9px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:8px;
+}
+.tier-item select {
+  width:31px;
+  color:transparent;
+  background:transparent;
+  border:0;
+  cursor:pointer;
+}
+.tier-pool > strong { color:var(--muted); background:var(--panel); }
+.tier-pool small { color:var(--muted); }
+
+.synced-timer {
+  flex:1;
+  min-height:260px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  background:
+    radial-gradient(circle at 50% 55%,color-mix(in srgb,var(--lavender) 22%,transparent),transparent 42%);
+}
+.timer-sparkle { font-size:34px; }
+.synced-timer > strong {
+  font:800 clamp(58px,10vw,118px)/1 Georgia,serif;
+  letter-spacing:-.04em;
+}
+.synced-timer > small { color:var(--muted); font-size:15px; }
+.synced-timer > div { display:flex; gap:8px; margin-top:14px; }
+.synced-timer select {
+  padding:0 10px;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:9px;
+}
+.synced-timer.finished { animation:timerGlow 1s ease-in-out infinite alternate; }
+@keyframes timerGlow {
+  to { background-color:color-mix(in srgb,var(--mint) 13%,transparent); }
+}
+
+.draw-guess {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+.draw-guess-status {
+  min-height:46px;
+  padding:6px 11px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+}
+.draw-guess-status > span { color:var(--muted); font-size:11px; }
+.draw-guess-status > strong { flex:1; text-align:center; letter-spacing:.03em; }
+.draw-guess-status button { min-height:32px; }
+.draw-guess-body {
+  flex:1;
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 240px;
+}
+.draw-guess-body > aside {
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  border-left:1px solid var(--line);
+}
+.guess-feed { flex:1; min-height:0; padding:10px; overflow:auto; }
+.guess-feed p { margin:0 0 7px; font-size:12px; }
+.guess-feed p strong { color:var(--lavender); }
+.guess-feed p.correct {
+  padding:7px;
+  color:var(--mint);
+  background:color-mix(in srgb,var(--mint) 10%,transparent);
+  border-radius:8px;
+}
+.draw-guess-body form {
+  padding:9px;
+  display:flex;
+  gap:6px;
+  border-top:1px solid var(--line);
+}
+.draw-guess-body form input {
+  min-width:0;
+  flex:1;
+  padding:0 9px;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:8px;
+}
+
+@media(max-width:900px) {
+  .room-activity { flex-basis:72%; margin:7px 7px 0; }
+  .activity-picker { grid-template-columns:repeat(2,minmax(130px,1fr)); }
+  .activity-live-pill,.activity-by { display:none; }
+  .draw-guess-body { grid-template-columns:1fr; grid-template-rows:minmax(220px,1fr) 150px; }
+  .draw-guess-body > aside { border-left:0; border-top:1px solid var(--line); }
+}
+@media(max-width:560px) {
+  .room-activity { min-height:320px; max-height:76%; border-radius:13px; }
+  .room-activity-head > div:first-child > span { display:none; }
+  .room-activity-head a { display:none; }
+  .activity-picker { grid-template-columns:1fr; }
+  .activity-picker button { min-height:92px; }
+  .activity-draw-tools > button:nth-of-type(n+7):not(.activity-tool-text) { display:none; }
+}
+
+/* Optional Cozy Huddle layer. It is device-local and off by default. */
+html[data-cute="on"] .cute-appearance-switch {
+  border-color:color-mix(in srgb,#ef86bb 60%,var(--line));
+  background:
+    linear-gradient(120deg,color-mix(in srgb,#ef86bb 12%,transparent),color-mix(in srgb,#91e5bd 10%,transparent)),
+    var(--panel);
+}
+html[data-cute="on"] .voice-stage::before {
+  content:"✦  ·  ✧  ·  ✦";
+  position:absolute;
+  top:72px;
+  right:24px;
+  z-index:1;
+  color:#ef86bb;
+  letter-spacing:.55em;
+  opacity:.6;
+  pointer-events:none;
+  animation:cuteTwinkle 2.8s ease-in-out infinite alternate;
+}
+html[data-cute="on"] .voice-stage::after {
+  content:"🐈";
+  position:absolute;
+  right:28px;
+  bottom:72px;
+  z-index:8;
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  font-size:30px;
+  filter:drop-shadow(0 7px 8px rgba(0,0,0,.28));
+  pointer-events:none;
+  transform-origin:50% 100%;
+  animation:roomPet 3.4s ease-in-out infinite;
+}
+html[data-cute="on"] .voice-stage { position:relative; }
+html[data-cute="on"] .stage-tile.is-speaking {
+  box-shadow:
+    0 0 0 3px var(--mint),
+    0 0 25px color-mix(in srgb,#ef86bb 35%,transparent);
+}
+html[data-cute="on"] .message:hover {
+  background:
+    radial-gradient(circle at 98% 18%,color-mix(in srgb,#ef86bb 12%,transparent),transparent 23%),
+    var(--message-hover,transparent);
+}
+html[data-cute="on"] .synced-timer.finished::before,
+html[data-cute="on"] .synced-timer.finished::after {
+  content:"🎊  ✨  🎉  ✨  🎊";
+  position:absolute;
+  top:25%;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:clamp(18px,4vw,34px);
+  white-space:nowrap;
+  pointer-events:none;
+  animation:confettiFloat 1.4s ease-in-out infinite alternate;
+}
+html[data-cute="on"] .synced-timer.finished::after {
+  top:auto;
+  bottom:19%;
+  animation-delay:-.7s;
+}
+html[data-cute="on"] .synced-timer { position:relative; overflow:hidden; }
+@keyframes roomPet {
+  0%,100% { transform:translateY(0) rotate(-2deg); }
+  50% { transform:translateY(-6px) rotate(3deg); }
+}
+@keyframes cuteTwinkle {
+  from { opacity:.25; transform:scale(.96); }
+  to { opacity:.85; transform:scale(1.05); }
+}
+@keyframes confettiFloat {
+  from { transform:translate(-50%,5px) rotate(-2deg); opacity:.55; }
+  to { transform:translate(-50%,-7px) rotate(2deg); opacity:1; }
+}
+html[data-motion="reduced"][data-cute="on"] .voice-stage::before,
+html[data-motion="reduced"][data-cute="on"] .voice-stage::after,
+html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::before,
+html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
+  animation:none;
+}
 .open-stage-button {
   width:100%;
   margin:10px 0 4px;

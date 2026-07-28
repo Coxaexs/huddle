@@ -192,6 +192,14 @@ export type ServerEvent =
       strokes?: unknown;
       serverNow: number;
     }
+  | {
+      /** The activity surface shared by everyone in a voice room. */
+      t: "activity";
+      channelId: string;
+      action: "update" | "close";
+      activity?: unknown;
+      serverNow: number;
+    }
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
   | {
       /** This tab was dropped from voice because the same account joined
