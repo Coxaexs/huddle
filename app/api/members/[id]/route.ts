@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -49,9 +50,9 @@ export async function POST(
   }
   // Owners and global admins are untouchable.
   const target = await db
-    .prepare("SELECT is_admin FROM users WHERE id = ?")
+    .prepare("SELECT is_admin, display_name FROM users WHERE id = ?")
     .bind(targetId)
-    .first<{ is_admin: number }>();
+    .first<{ is_admin: number; display_name: string }>();
   const server = await db
     .prepare("SELECT created_by FROM servers WHERE id = ?")
     .bind(serverId)
@@ -75,17 +76,38 @@ export async function POST(
         .prepare("DELETE FROM bans WHERE server_id = ? AND user_id = ?")
         .bind(serverId, targetId),
     );
-  } else if (body.action === "ban") {
+  } else {
+    // Both kick and ban remove the person from the server now that membership
+    // is real; a ban also records a persistent block.
     statements.push(
       db
-        .prepare(
-          "INSERT OR REPLACE INTO bans (server_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(serverId, targetId, user.id, new Date().toISOString()),
+        .prepare("DELETE FROM server_members WHERE server_id = ? AND user_id = ?")
+        .bind(serverId, targetId),
     );
+    if (body.action === "ban") {
+      statements.push(
+        db
+          .prepare(
+            "INSERT OR REPLACE INTO bans (server_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?)",
+          )
+          .bind(serverId, targetId, user.id, new Date().toISOString()),
+      );
+    }
   }
   await db.batch(statements);
 
+  await recordAudit(db, {
+    serverId,
+    actor: user,
+    action:
+      body.action === "ban"
+        ? "member.ban"
+        : body.action === "unban"
+          ? "member.unban"
+          : "member.kick",
+    targetId,
+    targetName: target?.display_name || "Unknown member",
+  });
   await publishStructureChange();
   return Response.json({ ok: true });
 }

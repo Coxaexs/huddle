@@ -53,7 +53,7 @@ export async function PATCH(
     .run();
 
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }
 
 /** Delete a category; its channels become uncategorised, not deleted. */
@@ -89,5 +89,5 @@ export async function DELETE(
   ]);
 
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }

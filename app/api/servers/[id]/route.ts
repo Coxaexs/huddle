@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
@@ -55,8 +56,14 @@ export async function PATCH(
     )
     .run();
 
+  await recordAudit(db, {
+    serverId: id,
+    actor: user,
+    action: "server.update",
+    targetName: body.name?.trim().slice(0, 40) || server.name,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }
 
 export async function DELETE(
@@ -96,8 +103,10 @@ export async function DELETE(
     db.prepare("DELETE FROM categories WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM roles WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM member_roles WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM server_members WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM bans WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM stickers WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM audit_log WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM servers WHERE id = ?").bind(id),
   ];
   for (const channelId of channelIds) {
@@ -108,5 +117,5 @@ export async function DELETE(
   await db.batch(statements);
 
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }

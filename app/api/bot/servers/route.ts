@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   await ensureSchema(runtime.DB);
 
   const [servers, state] = await Promise.all([
-    listServers(runtime.DB),
+    listServers(runtime.DB, null),
     hubState(),
   ]);
 

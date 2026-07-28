@@ -68,6 +68,29 @@ export async function forceMute(
     .catch(() => undefined);
 }
 
+/**
+ * Moves a member into another voice channel by asking their tab(s) to join it.
+ * Returns whether any of their tabs were actually in voice to move.
+ */
+export async function moveVoiceUser(
+  userId: string,
+  channelId: string,
+): Promise<boolean> {
+  const stub = hub();
+  if (!stub) return false;
+  try {
+    const response = await stub.fetch(`${INTERNAL}/move-voice`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, channelId }),
+    });
+    if (!response.ok) return false;
+    return ((await response.json()) as { moved?: boolean }).moved ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** Tells every open tab that servers or channels changed and to reload them. */
 export async function publishStructureChange(): Promise<void> {
   const stub = hub();

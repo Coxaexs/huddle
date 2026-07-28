@@ -43,6 +43,9 @@ export interface PublicMessage {
   threadId?: string;
   /** On a thread's root message: how many replies it has. */
   threadCount?: number;
+  /** On a bot answer to a slash command: the command run and who ran it. */
+  commandText?: string;
+  commandBy?: string;
 }
 
 export function publicMessage(message: StoredMessage): PublicMessage {
@@ -93,6 +96,8 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     replyTo: message.reply_to || undefined,
     images: extraAttachments(message.attachments),
     threadId: message.thread_id || undefined,
+    commandText: message.command_text || undefined,
+    commandBy: message.command_by || undefined,
   };
 }
 
@@ -145,7 +150,7 @@ export async function GET(request: Request) {
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
-                   reply_to, edited_at, attachments`;
+                   reply_to, edited_at, attachments, thread_id, command_text, command_by`;
   const pinnedOnly = params.get("pinned") === "1";
   // Take the *newest* page and flip it back into reading order. Selecting
   // ASC would return the oldest 200, so once a channel passed that many
@@ -322,6 +327,9 @@ interface PostBody {
   asBot?: boolean;
   botName?: string;
   botAvatar?: string;
+  /** When a bot message answers a slash command: the command and who ran it. */
+  commandText?: string;
+  commandBy?: string;
 }
 
 export async function POST(request: Request) {
@@ -424,6 +432,9 @@ export async function POST(request: Request) {
     reply_to: body.replyTo?.slice(0, 64) || null,
     attachments: extraKeys.length ? JSON.stringify(extraKeys) : null,
     thread_id: body.threadId?.slice(0, 64) || null,
+    // Command attribution only makes sense on a bot answer.
+    command_text: body.asBot ? body.commandText?.trim().slice(0, 200) || null : null,
+    command_by: body.asBot ? body.commandBy?.trim().slice(0, 80) || null : null,
   };
 
   await db
@@ -431,8 +442,8 @@ export async function POST(request: Request) {
       `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
         is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to, attachments,
-        thread_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        thread_id, command_text, command_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -454,6 +465,8 @@ export async function POST(request: Request) {
       stored.reply_to,
       stored.attachments,
       stored.thread_id,
+      stored.command_text,
+      stored.command_by,
     )
     .run();
 

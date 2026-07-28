@@ -86,33 +86,110 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
   };
 }
 
-/** The whole tree in one round trip — this is a handful of rows, not a feed. */
-export async function listServers(db: D1Database): Promise<PublicServer[]> {
+/** True if the user belongs to the server. */
+export async function isServerMember(
+  db: D1Database,
+  serverId: string,
+  userId: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      "SELECT 1 AS ok FROM server_members WHERE server_id = ? AND user_id = ?",
+    )
+    .bind(serverId, userId)
+    .first<{ ok: number }>();
+  return Boolean(row);
+}
+
+/** Adds a member (idempotent). */
+export async function addServerMember(
+  db: D1Database,
+  serverId: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+    )
+    .bind(serverId, userId, new Date().toISOString())
+    .run();
+}
+
+/** Removes a member and clears any roles they held in that server. */
+export async function removeServerMember(
+  db: D1Database,
+  serverId: string,
+  userId: string,
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare("DELETE FROM server_members WHERE server_id = ? AND user_id = ?")
+      .bind(serverId, userId),
+    db
+      .prepare("DELETE FROM member_roles WHERE server_id = ? AND user_id = ?")
+      .bind(serverId, userId),
+  ]);
+}
+
+/**
+ * The whole tree in one round trip — a handful of rows, not a feed. Pass a
+ * `userId` to get only the servers that member belongs to; pass `null` (the
+ * bot's cross-server view) to get every server.
+ */
+export async function listServers(
+  db: D1Database,
+  userId: string | null,
+): Promise<PublicServer[]> {
+  // When scoped to a member, every sub-query is limited to the servers they
+  // belong to. This keeps the payload (broadcast to every tab on a structure
+  // change) and the rows scanned proportional to one person's servers, not the
+  // whole Huddle.
+  const memberFilter = userId
+    ? "server_id IN (SELECT server_id FROM server_members WHERE user_id = ?2)"
+    : "server_id != ?2"; // ?2 stands in for DM here; keeps bindings uniform.
+  const scoped = (sql: (filter: string) => string) =>
+    userId
+      ? db.prepare(sql(memberFilter)).bind(DM_SERVER_ID, userId).all()
+      : db.prepare(sql("server_id != ?2")).bind(DM_SERVER_ID, DM_SERVER_ID).all();
+
   const [servers, channels, categories, roles] = await Promise.all([
-    db
-      .prepare(
-        "SELECT id, name, icon, color, created_by, created_at, position FROM servers WHERE id != ? ORDER BY position ASC, created_at ASC",
-      )
-      .bind(DM_SERVER_ID)
-      .all(),
-    db
-      .prepare(
-        "SELECT id, server_id, name, kind, topic, position, category_id, created_at FROM channels WHERE server_id != ? ORDER BY position ASC, created_at ASC",
-      )
-      .bind(DM_SERVER_ID)
-      .all(),
-    db
-      .prepare(
-        "SELECT id, server_id, name, position FROM categories WHERE server_id != ? ORDER BY position ASC",
-      )
-      .bind(DM_SERVER_ID)
-      .all(),
-    db
-      .prepare(
-        "SELECT id, server_id, name, color, permissions, position FROM roles WHERE server_id != ? ORDER BY position DESC, name ASC",
-      )
-      .bind(DM_SERVER_ID)
-      .all(),
+    userId
+      ? db
+          .prepare(
+            `SELECT s.id, s.name, s.icon, s.color, s.created_by, s.created_at, s.position
+               FROM servers s
+               JOIN server_members m ON m.server_id = s.id AND m.user_id = ?
+              WHERE s.id != ?
+              ORDER BY s.position ASC, s.created_at ASC`,
+          )
+          .bind(userId, DM_SERVER_ID)
+          .all()
+      : db
+          .prepare(
+            `SELECT id, name, icon, color, created_by, created_at, position
+               FROM servers WHERE id != ?
+              ORDER BY position ASC, created_at ASC`,
+          )
+          .bind(DM_SERVER_ID)
+          .all(),
+    scoped(
+      (filter) =>
+        `SELECT id, server_id, name, kind, topic, position, category_id, created_at
+           FROM channels WHERE server_id != ?1 AND ${filter}
+          ORDER BY position ASC, created_at ASC`,
+    ),
+    scoped(
+      (filter) =>
+        `SELECT id, server_id, name, position
+           FROM categories WHERE server_id != ?1 AND ${filter}
+          ORDER BY position ASC`,
+    ),
+    scoped(
+      (filter) =>
+        `SELECT id, server_id, name, color, permissions, position
+           FROM roles WHERE server_id != ?1 AND ${filter}
+          ORDER BY position DESC, name ASC`,
+    ),
   ]);
 
   const channelsByServer = new Map<string, PublicChannel[]>();

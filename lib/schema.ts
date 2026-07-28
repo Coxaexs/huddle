@@ -129,6 +129,22 @@ async function migrate(db: D1Database): Promise<void> {
         user_id TEXT NOT NULL,
         PRIMARY KEY (channel_id, user_id)
       )`),
+    // Real server membership. Before this table everyone was implicitly in every
+    // server; now a server only shows to people who actually belong to it.
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_members (
+        server_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        joined_at TEXT NOT NULL,
+        PRIMARY KEY (server_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_members_user_idx ON server_members(user_id)",
+    ),
+    // Tiny key/value store for one-off migration flags.
+    db.prepare(`CREATE TABLE IF NOT EXISTS meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )`),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS dm_members_user_idx ON dm_members(user_id)",
     ),
@@ -296,6 +312,21 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS battlemaps_channel_idx ON battlemaps(channel_id, active)",
     ),
+    // A real moderation/audit trail, one row per notable server action.
+    db.prepare(`CREATE TABLE IF NOT EXISTS audit_log (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        actor_id TEXT,
+        actor_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_id TEXT,
+        target_name TEXT,
+        detail TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS audit_log_server_idx ON audit_log(server_id, created_at)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -323,6 +354,11 @@ async function migrate(db: D1Database): Promise<void> {
     // Thread replies carry the id of the message that started the thread;
     // channel history hides them so threads stay out of the main flow.
     ["thread_id", "ALTER TABLE messages ADD COLUMN thread_id TEXT"],
+    // A bot reply to a slash command records the command it answers and the
+    // display name of whoever ran it, so the original slash text need not be
+    // kept as its own message.
+    ["command_text", "ALTER TABLE messages ADD COLUMN command_text TEXT"],
+    ["command_by", "ALTER TABLE messages ADD COLUMN command_by TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }
@@ -353,7 +389,44 @@ async function migrate(db: D1Database): Promise<void> {
     await db.prepare("ALTER TABLE channels ADD COLUMN category_id TEXT").run();
   }
 
+  // Invites can now target a specific server, so redeeming one joins you to it.
+  const inviteColumns = await columnNames(db, "invites");
+  if (!inviteColumns.has("server_id")) {
+    await db.prepare("ALTER TABLE invites ADD COLUMN server_id TEXT").run();
+  }
+
   await seedDefaultServer(db);
+  await backfillServerMembers(db);
+}
+
+/**
+ * One-time backfill: the app used to treat every account as a member of every
+ * server. To preserve that on upgrade, put every existing user into every
+ * existing server exactly once. The `meta` flag stops it re-adding people who
+ * later leave a server.
+ */
+async function backfillServerMembers(db: D1Database): Promise<void> {
+  const done = await db
+    .prepare("SELECT value FROM meta WHERE key = 'members_backfilled'")
+    .first<{ value: string }>();
+  if (done) return;
+
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at)
+         SELECT s.id, u.id, ?1
+           FROM servers s CROSS JOIN users u
+          WHERE s.id != ?2`,
+    )
+    .bind(now, DM_SERVER_ID)
+    .run();
+  await db
+    .prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('members_backfilled', ?)",
+    )
+    .bind(now)
+    .run();
 }
 
 /**

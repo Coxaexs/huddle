@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission, ALL_PERMISSIONS } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -79,8 +80,14 @@ export async function PATCH(
     .bind(name, color, permissions, position, id)
     .run();
 
+  await recordAudit(db, {
+    serverId: role.server_id,
+    actor: user,
+    action: "role.update",
+    targetName: name,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }
 
 /** Delete a role and drop every assignment of it. */
@@ -113,6 +120,12 @@ export async function DELETE(
     db.prepare("DELETE FROM roles WHERE id = ?").bind(id),
   ]);
 
+  await recordAudit(db, {
+    serverId: role.server_id,
+    actor: user,
+    action: "role.delete",
+    targetName: role.name,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }

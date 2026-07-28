@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -61,8 +62,15 @@ export async function PATCH(
     )
     .run();
 
+  await recordAudit(db, {
+    serverId: channel.server_id,
+    actor: user,
+    action: "channel.update",
+    targetId: id,
+    targetName: name || channel.name,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }
 
 export async function DELETE(
@@ -105,6 +113,14 @@ export async function DELETE(
     db.prepare("DELETE FROM channels WHERE id = ?").bind(id),
   ]);
 
+  await recordAudit(db, {
+    serverId: channel.server_id,
+    actor: user,
+    action: "channel.delete",
+    targetId: id,
+    targetName: channel.name,
+    detail: channel.kind,
+  });
   await publishStructureChange();
-  return Response.json({ servers: await listServers(db) });
+  return Response.json({ servers: await listServers(db, user.id) });
 }

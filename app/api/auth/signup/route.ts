@@ -8,7 +8,7 @@ import {
   validateUsername,
   type User,
 } from "@/lib/auth";
-import { ensureSchema } from "@/lib/schema";
+import { DEFAULT_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +46,8 @@ export async function POST(request: Request) {
   const isFirstUser = (total?.count ?? 0) === 0;
 
   const inviteCode = (body.invite || "").trim().toUpperCase();
+  /** If the invite targets a specific server, the new account joins it too. */
+  let inviteServerId: string | null = null;
 
   // Huddle is on the public internet, so the very first signup can be gated
   // too: set BOOTSTRAP_CODE and nobody can claim the place before you do.
@@ -67,10 +69,16 @@ export async function POST(request: Request) {
     }
     const invite = await db
       .prepare(
-        "SELECT code, max_uses, uses, revoked FROM invites WHERE code = ?",
+        "SELECT code, server_id, max_uses, uses, revoked FROM invites WHERE code = ?",
       )
       .bind(inviteCode)
-      .first<{ code: string; max_uses: number; uses: number; revoked: number }>();
+      .first<{
+        code: string;
+        server_id: string | null;
+        max_uses: number;
+        uses: number;
+        revoked: number;
+      }>();
     if (
       !invite ||
       invite.revoked ||
@@ -81,6 +89,7 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+    inviteServerId = invite.server_id;
   }
 
   const taken = await db
@@ -129,6 +138,21 @@ export async function POST(request: Request) {
       .bind(inviteCode)
       .run();
   }
+
+  // Everyone lands in the home server; a server-scoped invite also drops them
+  // into that server. The first account is a member of the home server too.
+  const now2 = new Date().toISOString();
+  const memberships = new Set<string>([DEFAULT_SERVER_ID]);
+  if (inviteServerId) memberships.add(inviteServerId);
+  await db.batch(
+    [...memberships].map((serverId) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+        )
+        .bind(serverId, user.id, now2),
+    ),
+  );
 
   const token = await createSession(db, user.id);
   return Response.json(

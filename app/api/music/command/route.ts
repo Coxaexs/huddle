@@ -21,14 +21,18 @@ interface CommandBody {
   textChannelId?: string;
   /** Interactive cards update themselves and do not need a new chat reply. */
   silent?: boolean;
+  /** The raw slash command and who ran it, shown on the bot's first reply. */
+  commandText?: string;
+  commandBy?: string;
 }
 
 /** Posts a bot message into the text channel and pushes it to open tabs. */
-async function say(
+async function sayRaw(
   db: D1Database,
   textChannelId: string | null,
   text: string,
   extra?: { kind?: string; payload?: unknown; link?: string; actionLabel?: string },
+  invocation?: { text: string; by: string } | null,
 ): Promise<void> {
   if (!textChannelId) return;
   const channel = await db
@@ -53,14 +57,16 @@ async function say(
     audio_url: null,
     kind: extra?.kind || null,
     payload: extra?.payload ? JSON.stringify(extra.payload) : null,
+    command_text: invocation?.text || null,
+    command_by: invocation?.by || null,
   };
 
   await db
     .prepare(
       `INSERT INTO messages
          (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
-          is_bot, created_at, link, action_label, audio_url, kind, payload)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?, ?, NULL, ?, ?)`,
+          is_bot, created_at, link, action_label, audio_url, kind, payload, command_text, command_by)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?, ?, NULL, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -75,6 +81,8 @@ async function say(
       stored.action_label,
       stored.kind,
       stored.payload,
+      stored.command_text,
+      stored.command_by,
     )
     .run();
 
@@ -135,6 +143,23 @@ export async function POST(request: Request) {
   const name = rawName.replace(/^\//, "").toLowerCase();
   const value = parts.join(" ").trim();
   const textChannelId = body.textChannelId || null;
+
+  // Attribute the bot's first reply to whoever ran the command, then stop —
+  // later replies in the same command are follow-ups, not the invocation.
+  let invocation: { text: string; by: string } | null =
+    body.commandText && body.commandBy
+      ? { text: body.commandText.slice(0, 200), by: body.commandBy.slice(0, 80) }
+      : null;
+  const say = (
+    db2: D1Database,
+    channelId: string | null,
+    text: string,
+    extra?: { kind?: string; payload?: unknown; link?: string; actionLabel?: string },
+  ): Promise<void> => {
+    const once = invocation;
+    invocation = null;
+    return sayRaw(db2, channelId, text, extra, once);
+  };
 
   // Everything except a plain status read needs a voice room, the same way
   // Discord refuses to play into thin air.
