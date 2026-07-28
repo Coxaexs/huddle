@@ -32,6 +32,8 @@ export interface ServerRow {
   name: string;
   icon: string;
   color: string;
+  icon_url?: string | null;
+  banner_url?: string | null;
   created_by: string | null;
   created_at: string;
   position: number;
@@ -67,6 +69,8 @@ export interface PublicServer {
   name: string;
   icon: string;
   color: string;
+  iconUrl?: string | null;
+  bannerUrl?: string | null;
   ownerId: string | null;
   channels: PublicChannel[];
   categories: PublicCategory[];
@@ -156,7 +160,7 @@ export async function listServers(
     userId
       ? db
           .prepare(
-            `SELECT s.id, s.name, s.icon, s.color, s.created_by, s.created_at, s.position
+            `SELECT s.id, s.name, s.icon, s.color, s.icon_url, s.banner_url, s.created_by, s.created_at, s.position
                FROM servers s
                JOIN server_members m ON m.server_id = s.id AND m.user_id = ?
               WHERE s.id != ?
@@ -166,7 +170,7 @@ export async function listServers(
           .all()
       : db
           .prepare(
-            `SELECT id, name, icon, color, created_by, created_at, position
+            `SELECT id, name, icon, color, icon_url, banner_url, created_by, created_at, position
                FROM servers WHERE id != ?
               ORDER BY position ASC, created_at ASC`,
           )
@@ -224,6 +228,8 @@ export async function listServers(
     name: server.name,
     icon: server.icon,
     color: server.color,
+    iconUrl: server.icon_url || null,
+    bannerUrl: server.banner_url || null,
     ownerId: server.created_by,
     channels: channelsByServer.get(server.id) || [],
     categories: categoriesByServer.get(server.id) || [],

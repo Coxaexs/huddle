@@ -44,6 +44,7 @@ import {
   PhoneCall,
   Video,
   Vote,
+  ChevronDown,
   X,
 } from "lucide-react";
 import { AuthGate } from "./components/auth-gate";
@@ -3033,7 +3034,15 @@ export function ChatShell() {
             title={server.name}
             onClick={() => setActiveServerId(server.id)}
           >
-            {server.icon}
+            {server.iconUrl ? (
+              <img
+                src={server.iconUrl}
+                alt={server.name}
+                style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+              />
+            ) : (
+              server.icon
+            )}
           </button>
         ))}
         <button
@@ -3131,6 +3140,19 @@ export function ChatShell() {
       </aside>
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
+        {activeServer?.bannerUrl && !inDmHome && (
+          <div
+            className="server-banner-header"
+            style={{
+              backgroundImage: `url(${activeServer.bannerUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              height: "120px",
+              width: "100%",
+              flexShrink: 0,
+            }}
+          />
+        )}
         <header className="space-header" style={{ position: "relative" }}>
           <div>
             <span className="eyebrow">
@@ -3319,9 +3341,10 @@ export function ChatShell() {
                           void renameCategory(category.id, category.name);
                       }}
                     >
-                      <span className={`cat-caret ${collapsed ? "closed" : ""}`}>
-                        ▾
-                      </span>
+                      <ChevronDown
+                        size={14}
+                        className={`cat-caret transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                      />
                       <span>{category.name}</span>
                     </button>
                     {canManageChannels && (

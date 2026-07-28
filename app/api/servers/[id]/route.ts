@@ -35,23 +35,27 @@ export async function PATCH(
     name?: string;
     icon?: string;
     color?: string;
+    iconUrl?: string | null;
+    bannerUrl?: string | null;
   };
 
   const server = await db
-    .prepare("SELECT id, name, icon, color FROM servers WHERE id = ?")
+    .prepare("SELECT id, name, icon, color, icon_url, banner_url FROM servers WHERE id = ?")
     .bind(id)
-    .first<{ id: string; name: string; icon: string; color: string }>();
+    .first<{ id: string; name: string; icon: string; color: string; icon_url?: string; banner_url?: string }>();
   if (!server) {
     return Response.json({ error: "That server is gone." }, { status: 404 });
   }
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   await db
-    .prepare("UPDATE servers SET name = ?, icon = ?, color = ? WHERE id = ?")
+    .prepare("UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ? WHERE id = ?")
     .bind(
       body.name?.trim().slice(0, 40) || server.name,
       body.icon?.trim().slice(0, 2).toUpperCase() || server.icon,
       body.color?.trim().slice(0, 24) || server.color,
+      body.iconUrl !== undefined ? body.iconUrl : server.icon_url || null,
+      body.bannerUrl !== undefined ? body.bannerUrl : server.banner_url || null,
       id,
     )
     .run();

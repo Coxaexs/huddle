@@ -400,6 +400,16 @@ async function migrate(db: D1Database): Promise<void> {
     await db.prepare("ALTER TABLE channels ADD COLUMN category_id TEXT").run();
   }
 
+  const serverColumns = await columnNames(db, "servers");
+  const serverMigrations: D1PreparedStatement[] = [];
+  for (const [column, ddl] of [
+    ["icon_url", "ALTER TABLE servers ADD COLUMN icon_url TEXT"],
+    ["banner_url", "ALTER TABLE servers ADD COLUMN banner_url TEXT"],
+  ] as const) {
+    if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
+  }
+  if (serverMigrations.length) await db.batch(serverMigrations);
+
   // Invites can now target a specific server, so redeeming one joins you to it.
   const inviteColumns = await columnNames(db, "invites");
   if (!inviteColumns.has("server_id")) {
