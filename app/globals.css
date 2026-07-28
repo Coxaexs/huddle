@@ -7405,11 +7405,122 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   overflow: hidden;
 }
 
-.mic-test-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #23a55a 0%, #5865f2 70%, #f23f43 100%);
-  border-radius: 999px;
-  transition: width 0.05s ease-out;
+/* Keyboard Shortcuts Cheat Sheet Modal (Ctrl+/) */
+.shortcuts-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
+
+.shortcuts-dialog-card {
+  width: 100%;
+  max-width: 540px;
+  background: #2b2d31;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcuts-dialog-header {
+  padding: 16px 20px;
+  background: #1e1f22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shortcuts-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f2f3f5;
+}
+
+.shortcuts-dialog-header .close-btn {
+  background: transparent;
+  border: none;
+  color: #949ba4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shortcuts-dialog-header .close-btn:hover {
+  color: #ffffff;
+}
+
+.shortcuts-dialog-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.shortcuts-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcuts-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b5bac1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.shortcut-desc {
+  font-size: 14px;
+  color: #dbdee1;
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shortcut-keys kbd {
+  background: #1e1f22;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f2f3f5;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
 
 
