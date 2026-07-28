@@ -193,8 +193,9 @@ export async function currentUser(request: Request): Promise<User | null> {
   await ensureSchema(db);
   const row = await db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.color,
-              u.is_admin, u.created_at, u.last_seen_at, s.expires_at
+      `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
+              u.bio, u.pronouns, u.spotify_activity, u.color, u.is_admin, u.created_at,
+              u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,

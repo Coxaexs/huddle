@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sun, Moon, Mic, Volume2 } from "lucide-react";
+import { Sun, Moon, Mic, Volume2, Activity } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 
 function MicTest({ selectedMicId }: { selectedMicId: string }) {
@@ -145,6 +145,7 @@ interface SettingsDialogProps {
 
 type Tab =
   | "profile"
+  | "activities"
   | "voice"
   | "password"
   | "invites"
@@ -209,6 +210,15 @@ export function SettingsDialog({
       typeof window === "undefined" ||
       window.localStorage.getItem("huddle-notify") !== "off",
   );
+  const [activityShare, setActivityShare] = useState(true);
+  const [spotifyShare, setSpotifyShare] = useState(true);
+  const [appShare, setAppShare] = useState(true);
+  const [currentAppId, setCurrentAppId] = useState("spotify");
+  const [detectedApps, setDetectedApps] = useState([
+    { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify" },
+    { id: "vscode", name: "Visual Studio Code", type: "coding", details: "Editing Huddle codebase" },
+    { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode" },
+  ]);
   const pictureRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -379,6 +389,7 @@ export function SettingsDialog({
           {(
             [
               ["profile", "Profile"],
+              ["activities", "Activities & Privacy"],
               ["voice", "Voice & Video"],
               ["password", "Password"],
               ["invites", "Invites"],
@@ -819,6 +830,100 @@ export function SettingsDialog({
                 />
               </label>
             </>
+          )}
+
+          {tab === "activities" && (
+            <div className="space-y-4">
+              <label className="appearance-switch">
+                <span>
+                  <strong>Display current activity as a status message</strong>
+                  <small>Huddle will automatically update your profile status when you play a game or listen to Spotify</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={activityShare}
+                  onChange={(e) => setActivityShare(e.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Share Spotify / Music Listening</strong>
+                  <small>Show live Spotify song titles, artists, and album art on your profile card automatically</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={spotifyShare}
+                  onChange={(e) => setSpotifyShare(e.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong>Share Desktop Games & App Activity</strong>
+                  <small>Display detected active desktop apps, games, or coding sessions</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={appShare}
+                  onChange={(e) => setAppShare(e.target.checked)}
+                />
+              </label>
+
+              <div className="border-t border-white/10 pt-4 mt-4">
+                <h4 className="text-xs font-bold text-gray-300 uppercase mb-3">
+                  DETECTED APPLICATIONS & CURRENT ACTIVITY
+                </h4>
+                
+                <div className="space-y-2">
+                  {detectedApps.map((app) => (
+                    <div
+                      key={app.id}
+                      className="bg-black/30 p-3 rounded-lg border border-white/10 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-white">{app.name}</span>
+                          {currentAppId === app.id && (
+                            <span className="text-[10px] bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-0.5 rounded-full font-bold">
+                              ACTIVE NOW
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">{app.details}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="discord-btn secondary-gray text-xs py-1 px-2.5"
+                          onClick={() => {
+                            const newName = window.prompt("Correct / Edit Activity Name:", app.name);
+                            if (newName && newName.trim()) {
+                              setDetectedApps((prev) =>
+                                prev.map((a) => (a.id === app.id ? { ...a, name: newName.trim() } : a))
+                              );
+                            }
+                          }}
+                        >
+                          Edit / Correct
+                        </button>
+
+                        {currentAppId !== app.id && (
+                          <button
+                            type="button"
+                            className="discord-btn primary-indigo text-xs py-1 px-2.5"
+                            onClick={() => setCurrentAppId(app.id)}
+                          >
+                            Set Active
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
 
           {tab === "roles" && server && (

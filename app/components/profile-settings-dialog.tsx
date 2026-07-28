@@ -307,12 +307,11 @@ export function ProfileSettingsDialog({
                   avatar={user.avatar}
                   avatarUrl={avatarUrl || user.avatarUrl}
                   color={user.color}
-                >
-                  <span
-                    className="profile-presence-dot"
-                    style={{ background: "#3ba55d" }}
-                  />
-                </Avatar>
+                />
+                <span
+                  className="profile-presence-dot"
+                  style={{ background: "#3ba55d" }}
+                />
               </div>
 
               <div className="profile-card-body">

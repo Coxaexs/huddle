@@ -186,18 +186,6 @@ export function UserFooter({
           )}
         </div>
 
-        {/* Edit Profile User button */}
-        {onOpenProfileSettings && (
-          <button
-            type="button"
-            className="user-footer-btn profile-btn"
-            onClick={onOpenProfileSettings}
-            title="Edit Profile"
-            aria-label="Edit Profile"
-          >
-            <User size={18} />
-          </button>
-        )}
 
         {/* User Settings Gear button */}
         <button

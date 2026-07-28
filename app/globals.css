@@ -8045,6 +8045,32 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   align-items: center;
 }
 
+/* Jump to Message Flash Highlight */
+@keyframes jumpFlashAnim {
+  0% {
+    background-color: rgba(88, 101, 242, 0.45);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.message.jump-flash {
+  animation: jumpFlashAnim 2s ease-out;
+  border-left: 3px solid #5865f2;
+}
+
+.pin-item {
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.pin-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
 
 
 
