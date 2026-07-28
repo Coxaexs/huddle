@@ -107,6 +107,7 @@ import {
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
+import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
 
 interface Message {
   id: string | number;
@@ -1295,6 +1296,7 @@ export function ChatShell() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
 
   const activeSlashCommand = useMemo(() => {
@@ -3439,6 +3441,7 @@ export function ChatShell() {
             onToggleDeafen={voice.toggleDeafen}
             onOpenStatusMenu={() => setStatusOpen((o) => !o)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenProfileSettings={() => setProfileSettingsOpen(true)}
           />
         )}
       </aside>
@@ -5234,7 +5237,7 @@ export function ChatShell() {
         onClose={() => setQuickSwitcherOpen(false)}
         servers={servers}
         channels={servers.flatMap((s) => s.channels || [])}
-        dms={dms}
+        dms={dms.map((d) => ({ id: d.channelId, user: d.user }))}
         onSelect={(target: QuickSwitcherTarget) => {
           if (target.type === "channel") {
             if (target.serverId && target.serverId !== activeServerId) {
@@ -5261,6 +5264,17 @@ export function ChatShell() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+
+      {profileSettingsOpen && user && (
+        <ProfileSettingsDialog
+          user={user}
+          onClose={() => setProfileSettingsOpen(false)}
+          onProfileUpdated={(updatedUser) => {
+            setUser(updatedUser);
+            void loadMembers();
+          }}
+        />
+      )}
 
       <PollDialog
         open={pollDialogOpen}

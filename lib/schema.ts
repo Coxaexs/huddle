@@ -392,6 +392,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["custom_status", "ALTER TABLE users ADD COLUMN custom_status TEXT"],
     ["bio", "ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"],
     ["banner_url", "ALTER TABLE users ADD COLUMN banner_url TEXT"],
+    ["pronouns", "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''"],
+    ["spotify_activity", "ALTER TABLE users ADD COLUMN spotify_activity TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
