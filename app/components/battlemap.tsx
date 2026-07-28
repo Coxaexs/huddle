@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Pencil, Plus, X, Hand, Eraser, Map } from "lucide-react";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
 
@@ -148,7 +149,7 @@ export function BattlemapBoard({
   return (
     <div className="battlemap">
       <div className="battlemap-bar">
-        <strong>🗺 {map.name}</strong>
+        <strong className="flex items-center gap-1.5"><Map size={16} /> {map.name}</strong>
         <div className="battlemap-tools">
           <button
             type="button"
@@ -156,7 +157,7 @@ export function BattlemapBoard({
             onClick={() => setMode("move")}
             title="Move tokens"
           >
-            ✋
+            <Hand size={14} />
           </button>
           <button
             type="button"
@@ -164,7 +165,7 @@ export function BattlemapBoard({
             onClick={() => setMode("paint")}
             title="Paint"
           >
-            ✏️
+            <Pencil size={14} />
           </button>
           {mode === "paint" && (
             <>
@@ -209,14 +210,14 @@ export function BattlemapBoard({
                   })
                 }
               >
-                ➕
+                <Plus size={14} />
               </button>
               <button
                 type="button"
                 title="Clear paint"
                 onClick={() => void act({ action: "clear", what: "strokes" })}
               >
-                🧽
+                <Eraser size={14} />
               </button>
               <button
                 type="button"
@@ -224,13 +225,13 @@ export function BattlemapBoard({
                 title="Close the map for everyone"
                 onClick={() => void act({ action: "close" })}
               >
-                ✕
+                <X size={14} />
               </button>
             </>
           )}
           {!gm && (
             <button type="button" title="Hide the map for me" onClick={onClose}>
-              ✕
+              <X size={14} />
             </button>
           )}
         </div>

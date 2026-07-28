@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, type MouseEvent } from "react";
+import { Volume2 } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { formatDuration } from "../lib/client";
 
@@ -151,7 +152,7 @@ export function NowPlaying({
             ⏭
           </button>
           <label className="now-playing-volume">
-            <span aria-hidden="true">🔊</span>
+            <Volume2 size={16} aria-hidden="true" />
             <input
               type="range"
               min={0}

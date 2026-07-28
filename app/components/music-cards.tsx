@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Settings, Search, Plus, X, BarChart2, Trash2 } from "lucide-react";
 
 export interface MusicSettings {
   voiceChannelId?: string;
@@ -73,7 +74,7 @@ export function MusicSettingsCard({
     <section className="music-settings-card">
       <header>
         <span className="music-card-icon" aria-hidden="true">
-          ⚙️
+          <Settings size={18} />
         </span>
         <div>
           <strong>Music room settings</strong>
@@ -377,8 +378,8 @@ export function MusicStatsCard({
               📊 Listening Stats
             </button>
           )}
-          <button type="button" onClick={() => void onCommand("/settings")}>
-            ⚙️ Room Settings
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}>
+            <Settings size={14} /> Room Settings
           </button>
           <button type="button" onClick={() => void onCommand("/lyricsnow")}>
             ♪ Lyrics
@@ -490,7 +491,7 @@ export function MusicQueueCard({
                     onClick={() => void handleAction(`/remove ${item.index}`)}
                     title={`Remove #${item.index}`}
                   >
-                    ✕
+                    <X size={14} />
                   </button>
                 </div>
               )}
@@ -505,8 +506,8 @@ export function MusicQueueCard({
         <div className="music-quick-actions">
           <button type="button" onClick={() => void handleAction("/shuffle")}>⤨ Shuffle</button>
           <button type="button" onClick={() => void handleAction("/removedupes")}>⟳ Remove Dupes</button>
-          <button type="button" onClick={() => void handleAction("/clear")}>🗑 Clear Queue</button>
-          <button type="button" onClick={() => void onCommand("/settings")}>⚙️ Settings</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/clear")}><Trash2 size={14} /> Clear Queue</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
         </div>
       )}
     </section>
@@ -617,7 +618,7 @@ export function MusicSearchCard({
     <section className="music-search-card">
       <header>
         <span className="music-card-icon" aria-hidden="true">
-          🔍
+          <Search size={18} />
         </span>
         <div>
           <strong>Search Result</strong>
@@ -643,11 +644,11 @@ export function MusicSearchCard({
             </button>
             <button
               type="button"
-              className="music-action-btn"
+              className="music-action-btn flex items-center gap-1"
               disabled={disabled || busyAction === `/playnext ${track.title}`}
               onClick={() => void handleAction(`/playnext ${track.title}`)}
             >
-              ➕ Queue Next
+              <Plus size={14} /> Queue Next
             </button>
             <button
               type="button"

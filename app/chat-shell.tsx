@@ -23,6 +23,28 @@ import {
   Permission,
 } from "@/lib/permissions";
 import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
+import {
+  Search,
+  Pin,
+  Sun,
+  Moon,
+  Settings,
+  Users,
+  Menu,
+  Pencil,
+  Plus,
+  Trash2,
+  Hash,
+  Volume2,
+  Reply,
+  MessageSquare,
+  Smile,
+  Paperclip,
+  ArrowUp,
+  PhoneCall,
+  Video,
+  X,
+} from "lucide-react";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
 import {
@@ -2783,7 +2805,7 @@ export function ChatShell() {
                       title="The bot sends music but cannot hear the room"
                       aria-label="Bot deafened"
                     >
-                      🎧
+                      <Volume2 size={12} />
                     </span>
                   )}
                 </div>
@@ -2812,7 +2834,7 @@ export function ChatShell() {
         }}
       >
         {unread[channel.id]?.unread && <span className="unread-pill" />}
-        <span className="channel-hash">#</span>
+        <Hash size={16} className="channel-hash shrink-0" />
         <span>{channel.name}</span>
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>
@@ -3099,7 +3121,9 @@ export function ChatShell() {
                   setServerSettingsOpen(true);
                 }}
               >
-                <span>⚙️ Server Settings</span>
+                <span className="flex items-center gap-2">
+                  <Settings size={16} /> Server Settings
+                </span>
               </button>
               <button
                 type="button"
@@ -3121,7 +3145,9 @@ export function ChatShell() {
                   });
                 }}
               >
-                <span>✎ Rename Server</span>
+                <span className="flex items-center gap-2">
+                  <Pencil size={16} /> Rename Server
+                </span>
               </button>
               <button
                 type="button"
@@ -3130,7 +3156,9 @@ export function ChatShell() {
                   createChannel("text");
                 }}
               >
-                <span>➕ Create Channel</span>
+                <span className="flex items-center gap-2">
+                  <Plus size={16} /> Create Channel
+                </span>
               </button>
               <div className="server-menu-divider" />
               {canManageServer && (
@@ -3157,7 +3185,9 @@ export function ChatShell() {
                     });
                   }}
                 >
-                  <span>🗑️ Delete Server</span>
+                  <span className="flex items-center gap-2">
+                    <Trash2 size={16} /> Delete Server
+                  </span>
                 </button>
               )}
             </div>
@@ -3332,7 +3362,7 @@ export function ChatShell() {
             aria-label="Open channels"
             onClick={() => setMobileNav((open) => !open)}
           >
-            ☰
+            <Menu size={20} />
           </button>
           <span className="big-hash">
             {stageChannel ? "◖))" : inDmHome ? "@" : "#"}
@@ -3359,18 +3389,18 @@ export function ChatShell() {
               <div className="dm-call-actions">
                 <button
                   type="button"
-                  className="dm-call-btn"
+                  className="dm-call-btn flex items-center gap-1.5"
                   onClick={() => {
                     setStageChannelId(activeChannelId);
                     void voice.join(activeChannelId);
                   }}
                   title="Start Voice Call"
                 >
-                  🎙️ Start Call
+                  <PhoneCall size={15} /> Start Call
                 </button>
                 <button
                   type="button"
-                  className="dm-call-btn"
+                  className="dm-call-btn flex items-center gap-1.5"
                   onClick={() => {
                     setStageChannelId(activeChannelId);
                     void voice.join(activeChannelId);
@@ -3378,7 +3408,7 @@ export function ChatShell() {
                   }}
                   title="Start Video Call"
                 >
-                  📹 Video Call
+                  <Video size={15} /> Video Call
                 </button>
               </div>
             )}
@@ -3388,7 +3418,7 @@ export function ChatShell() {
                 active={searchOpen}
                 onClick={() => setSearchOpen((open) => !open)}
               >
-                🔍
+                <Search size={18} />
               </Icon>
             )}
             <Icon
@@ -3396,23 +3426,23 @@ export function ChatShell() {
               active={pinsOpen}
               onClick={() => setPinsOpen((open) => !open)}
             >
-              📌
+              <Pin size={18} />
             </Icon>
             <Icon
               label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
             >
-              {theme === "dark" ? "☀" : "☾"}
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </Icon>
             <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
-              ⚙
+              <Settings size={18} />
             </Icon>
             <Icon
               label="Toggle member list"
               active={membersOpen}
               onClick={() => setMembersOpen((open) => !open)}
             >
-              ♙
+              <Users size={18} />
             </Icon>
           </div>
         </header>
@@ -3695,8 +3725,8 @@ export function ChatShell() {
                         </span>
                       )}
                       {message.pinned && (
-                        <span className="pin-tag" title="Pinned">
-                          📌
+                        <span className="pin-tag flex items-center gap-1" title="Pinned">
+                          <Pin size={12} />
                         </span>
                       )}
                     </div>
@@ -3946,10 +3976,10 @@ export function ChatShell() {
                   {(message.threadCount ?? 0) > 0 && (
                     <button
                       type="button"
-                      className="thread-link"
+                      className="thread-link inline-flex items-center gap-1.5"
                       onClick={() => void openThread(message)}
                     >
-                      🧵 {message.threadCount}{" "}
+                      <MessageSquare size={14} /> {message.threadCount}{" "}
                       {message.threadCount === 1 ? "reply" : "replies"}
                     </button>
                   )}
@@ -4029,14 +4059,14 @@ export function ChatShell() {
                       composerRef.current?.focus();
                     }}
                   >
-                    ↩
+                    <Reply size={16} />
                   </button>
                   <button
                     type="button"
                     title="Reply in thread"
                     onClick={() => void openThread(message)}
                   >
-                    🧵
+                    <MessageSquare size={16} />
                   </button>
                   {message.userId === user.id && !message.bot && (
                     <button
@@ -4044,7 +4074,7 @@ export function ChatShell() {
                       title="Edit"
                       onClick={() => beginEdit(message)}
                     >
-                      ✏
+                      <Pencil size={16} />
                     </button>
                   )}
                   <button
@@ -4052,7 +4082,7 @@ export function ChatShell() {
                     title={message.pinned ? "Unpin" : "Pin"}
                     onClick={() => void togglePin(message)}
                   >
-                    📌
+                    <Pin size={16} />
                   </button>
                   {canDelete && (
                     <button
@@ -4060,7 +4090,7 @@ export function ChatShell() {
                       title="Delete"
                       onClick={() => void deleteMessage(message.id)}
                     >
-                      🗑
+                      <Trash2 size={16} />
                     </button>
                   )}
                 </div>
@@ -4303,7 +4333,7 @@ export function ChatShell() {
               aria-label="Open Emoji Picker"
               title="Open Emoji Picker"
             >
-              😀
+              <Smile size={18} />
             </button>
             <button
               type="button"
@@ -4328,7 +4358,7 @@ export function ChatShell() {
               /
             </button>
             <button className="send-button" type="submit" aria-label="Send message">
-              ↑
+              <ArrowUp size={18} />
             </button>
           </div>
 
@@ -4358,7 +4388,7 @@ export function ChatShell() {
       {threadRoot && (
         <aside className="thread-panel" aria-label="Thread">
           <header className="thread-head">
-            <strong>🧵 Thread</strong>
+            <strong className="flex items-center gap-1.5"><MessageSquare size={16} /> Thread</strong>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <button
                 type="button"

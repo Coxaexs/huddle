@@ -1,6 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  Mic,
+  MicOff,
+  Headphones,
+  Volume2,
+  VolumeX,
+  Video,
+  VideoOff,
+  Monitor,
+  Map,
+  Sparkles,
+  Scissors,
+  Check,
+  Loader2,
+  Maximize2,
+  PhoneOff,
+} from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import type { ScreenShareQuality } from "../hooks/use-voice";
@@ -230,7 +247,7 @@ export function VoiceStage({
                   }}
                   aria-label="Toggle fullscreen"
                 >
-                  ⤢
+                  <Maximize2 size={16} />
                 </button>
               </div>
             </div>
@@ -311,7 +328,7 @@ export function VoiceStage({
                         className="tile-muted"
                         title={person.serverMuted ? "Muted for everyone" : "Muted"}
                       >
-                        🔇
+                        <MicOff size={14} />
                       </span>
                     )}
                   </figcaption>
@@ -332,7 +349,7 @@ export function VoiceStage({
 
       <div className="voice-stage-bar">
         <div className="stage-bar-name">
-          <span className="speaker-icon">◖))</span>
+          <Volume2 size={18} className="speaker-icon inline" />
           <strong>{channelName}</strong>
         </div>
         <div className="stage-bar-controls">
@@ -345,7 +362,7 @@ export function VoiceStage({
               voice.forcedMute ? "Server muted" : voice.muted ? "Unmute" : "Mute"
             }
           >
-            {voice.muted ? "🔇" : "🎙"}
+            {voice.muted ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
           <button
             type="button"
@@ -353,7 +370,7 @@ export function VoiceStage({
             onClick={voice.toggleDeafen}
             title={voice.deafened ? "Undeafen" : "Deafen"}
           >
-            {voice.deafened ? "🔈" : "🎧"}
+            {voice.deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
           </button>
           <button
             type="button"
@@ -363,7 +380,7 @@ export function VoiceStage({
             }
             title={voice.cameraOn ? "Turn camera off" : "Turn camera on"}
           >
-            {voice.cameraOn ? "📹" : "📷"}
+            {voice.cameraOn ? <VideoOff size={18} /> : <Video size={18} />}
           </button>
           <button
             type="button"
@@ -375,7 +392,7 @@ export function VoiceStage({
             }
             title={voice.screenSharing ? "Stop sharing" : "Share your screen"}
           >
-            🖥
+            <Monitor size={18} />
           </button>
           <button
             type="button"
@@ -383,7 +400,7 @@ export function VoiceStage({
             onClick={() => setSoundboardOpen((open) => !open)}
             title="Soundboard"
           >
-            🔊
+            <Volume2 size={18} />
           </button>
           {onToggleBattlemap && (
             <button
@@ -392,7 +409,7 @@ export function VoiceStage({
               onClick={onToggleBattlemap}
               title="Battlemap"
             >
-              🗺
+              <Map size={18} />
             </button>
           )}
           <button
@@ -401,7 +418,7 @@ export function VoiceStage({
             onClick={() => setActivitiesOpen((open) => !open)}
             title="Room activities"
           >
-            ✨
+            <Sparkles size={18} />
           </button>
           <button
             type="button"
@@ -424,7 +441,7 @@ export function VoiceStage({
               }
             }}
           >
-            {clipping === "working" ? "…" : clipping === "done" ? "✓" : "✂"}
+            {clipping === "working" ? <Loader2 size={18} className="animate-spin" /> : clipping === "done" ? <Check size={18} /> : <Scissors size={18} />}
           </button>
           <select
             aria-label="Screen share quality"
@@ -445,7 +462,7 @@ export function VoiceStage({
             onClick={voice.leave}
             title="Disconnect"
           >
-            📞
+            <PhoneOff size={18} />
           </button>
         </div>
       </div>
