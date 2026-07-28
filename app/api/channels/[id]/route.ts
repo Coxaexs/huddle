@@ -42,6 +42,7 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     topic?: string;
+    slowmode?: number;
   };
   const name =
     channel.kind === "text"
@@ -54,10 +55,11 @@ export async function PATCH(
       : body.name?.trim().slice(0, 40);
 
   await db
-    .prepare("UPDATE channels SET name = ?, topic = ? WHERE id = ?")
+    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ? WHERE id = ?")
     .bind(
       name || channel.name,
       body.topic?.trim().slice(0, 120) ?? channel.topic,
+      typeof body.slowmode === "number" ? Math.max(0, Math.min(300, body.slowmode)) : (channel as { slowmode?: number }).slowmode || 0,
       id,
     )
     .run();

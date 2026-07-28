@@ -45,6 +45,7 @@ export interface PublicChannel {
   name: string;
   kind: "text" | "voice" | "dm";
   topic: string;
+  slowmode?: number;
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -85,6 +86,7 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     kind:
       channel.kind === "voice" ? "voice" : channel.kind === "dm" ? "dm" : "text",
     topic: channel.topic || "",
+    slowmode: (channel as { slowmode?: number }).slowmode || 0,
     position: channel.position,
     categoryId: channel.category_id || null,
   };
@@ -178,7 +180,7 @@ export async function listServers(
           .all(),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, kind, topic, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, slowmode, position, category_id, created_at
            FROM channels WHERE server_id != ?1 AND ${filter}
           ORDER BY position ASC, created_at ASC`,
     ),
