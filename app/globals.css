@@ -4096,8 +4096,23 @@ button {
 }
 .video-tile { cursor:pointer; }
 .video-tile:hover { transform:translateY(-2px); }
+@keyframes speakingPulse {
+  0% {
+    box-shadow: 0 0 0 2px rgba(35, 165, 90, 0.6), 0 0 12px rgba(35, 165, 90, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(35, 165, 90, 0.9), 0 0 24px rgba(35, 165, 90, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(35, 165, 90, 0.6), 0 0 12px rgba(35, 165, 90, 0.4);
+  }
+}
+
 .avatar-tile { background:color-mix(in srgb, var(--panel) 70%, var(--ink)); }
-.avatar-tile.is-speaking { border-color:var(--mint); }
+.avatar-tile.is-speaking {
+  border-color: #23a55a;
+  animation: speakingPulse 1.4s infinite ease-in-out;
+}
 .avatar-tile-inner { display:flex; align-items:center; justify-content:center; }
 .stage-avatar {
   width:88px;
