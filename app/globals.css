@@ -1357,7 +1357,8 @@ button {
   flex:1;
   min-height:0;
   padding:20px 11px;
-  overflow:hidden;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
 }
 
 .section-label {
@@ -2172,7 +2173,8 @@ button {
   min-height:0;
   padding:23px 18px;
   transition:all .18s;
-  overflow:hidden;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
 }
 
 .member-panel.closed {
@@ -7599,6 +7601,35 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 .toast-close:hover {
   color: #ffffff;
 }
+
+/* Search Filter Pills */
+.search-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+}
+
+.search-filter-pills button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5865f2;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.search-filter-pills button:hover {
+  background: #5865f2;
+  color: #ffffff;
+  border-color: transparent;
+}
+
 
 
 
