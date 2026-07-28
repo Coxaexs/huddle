@@ -3444,10 +3444,27 @@ button {
 
 .message {
   position:relative;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.message:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme=dark] .message:hover {
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .message-actions {
   opacity:0;
+  pointer-events: none;
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:10px;
@@ -3456,8 +3473,10 @@ button {
   display:flex;
   position:absolute;
   top:-8px;
-  right:8px;
-  transition:opacity .12s ease;
+  right:24px;
+  transform: translateY(4px) scale(0.95);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 [data-theme=dark] .message-actions {
@@ -3467,6 +3486,8 @@ button {
 
 .message:hover .message-actions {
   opacity:1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
 }
 
 .message-actions button {
@@ -3479,6 +3500,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: #b5bac1;
+  transition: background-color 0.12s ease, color 0.12s ease, transform 0.1s ease;
 }
 .message-actions button svg {
   display: block;
@@ -3486,7 +3509,9 @@ button {
 }
 
 .message-actions button:hover {
-  background:#7b63e63d;
+  background: rgba(88, 101, 242, 0.2);
+  color: #c9cdfb;
+  transform: scale(1.1);
 }
 
 /* The ⋯ tap target is desktop-hidden (hover shows the bar there instead). */
