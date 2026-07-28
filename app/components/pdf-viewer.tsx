@@ -64,6 +64,60 @@ interface PdfViewerProps {
   onClose: () => void;
 }
 
+function ensurePdfRuntimeCompatibility() {
+  type CompatibleBytes = typeof Uint8Array & {
+    fromBase64?: (value: string) => Uint8Array;
+  };
+  type CompatibleBytesInstance = Uint8Array & {
+    toHex?: () => string;
+  };
+  const bytesPrototype = Uint8Array.prototype as CompatibleBytesInstance;
+  if (typeof bytesPrototype.toHex !== "function") {
+    Object.defineProperty(bytesPrototype, "toHex", {
+      configurable: true,
+      writable: true,
+      value(this: Uint8Array) {
+        let result = "";
+        for (const byte of this) result += byte.toString(16).padStart(2, "0");
+        return result;
+      },
+    });
+  }
+  const bytesConstructor = Uint8Array as CompatibleBytes;
+  if (typeof bytesConstructor.fromBase64 !== "function") {
+    Object.defineProperty(bytesConstructor, "fromBase64", {
+      configurable: true,
+      writable: true,
+      value(value: string) {
+        const decoded = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+        return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+      },
+    });
+  }
+
+  type CompatibleMap = Map<unknown, unknown> & {
+    getOrInsertComputed?: (
+      key: unknown,
+      callback: (key: unknown) => unknown,
+    ) => unknown;
+  };
+  const prototype = Map.prototype as CompatibleMap;
+  if (typeof prototype.getOrInsertComputed !== "function") {
+    Object.defineProperty(prototype, "getOrInsertComputed", {
+      configurable: true,
+      writable: true,
+      value(
+        this: Map<unknown, unknown>,
+        key: unknown,
+        callback: (key: unknown) => unknown,
+      ) {
+        if (!this.has(key)) this.set(key, callback(key));
+        return this.get(key);
+      },
+    });
+  }
+}
+
 function downloadName(name: string) {
   const stem = name.replace(/\.pdf$/i, "") || "document";
   return `${stem}-filled.pdf`;
@@ -208,13 +262,19 @@ function PdfPage({
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
 
-    const task = page.render({
-      canvas,
-      canvasContext: context,
-      viewport,
-      transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
-      annotationMode: pdfjs.AnnotationMode.DISABLE,
-    });
+    let task: ReturnType<PdfPageProxy["render"]>;
+    try {
+      task = page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+        transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
+        annotationMode: pdfjs.AnnotationMode.DISABLE,
+      });
+    } catch (renderError) {
+      console.error("PDF page render failed", renderError);
+      return;
+    }
     void task.promise.catch((renderError) => {
       if ((renderError as { name?: string })?.name !== "RenderingCancelledException") {
         console.error("PDF page render failed", renderError);
@@ -370,6 +430,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
       try {
         setLoading(true);
         setError("");
+        ensurePdfRuntimeCompatibility();
         const response = await fetch(url, { credentials: "same-origin" });
         if (!response.ok) throw new Error("The PDF could not be loaded.");
         const source = await response.arrayBuffer();
@@ -421,7 +482,9 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
       cancelled = true;
       const document = documentRef.current;
       documentRef.current = null;
-      if (document) void document.destroy();
+      if (document && typeof document.destroy === "function") {
+        void document.destroy();
+      }
     };
   }, [url]);
 
