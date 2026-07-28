@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal } from "lucide-react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -871,24 +871,25 @@ export function ServerSettingsDialog({
                   onClick={() => setActiveRole(role)}
                 >
                   <div className="role-name-col">
-                    <span className="drag-dots">⋮⋮</span>
+                    <span className="drag-dots"><GripVertical size={14} /></span>
                     <span
                       className="role-shield-icon"
                       style={{ color: role.color || "#99aab5" }}
                     >
-                      🛡️
+                      <Shield size={16} />
                     </span>
                     <strong>{role.name}</strong>
                   </div>
-                  <div className="role-members-col">
-                    <span>{members.length} 👤</span>
+                  <div className="role-members-col flex items-center gap-1">
+                    <span>{members.length}</span>
+                    <Users size={14} />
                   </div>
                   <div className="role-actions-col">
                     <button type="button" className="icon-action-btn" title="Edit Role">
-                      ✎
+                      <Pencil size={14} />
                     </button>
                     <button type="button" className="icon-action-btn" title="More">
-                      •••
+                      <MoreHorizontal size={14} />
                     </button>
                   </div>
                 </div>
