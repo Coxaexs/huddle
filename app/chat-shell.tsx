@@ -58,6 +58,7 @@ import { MessageBody } from "./components/message-body";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { BattlemapBoard } from "./components/battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
+import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { PollCard } from "./components/poll-card";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
@@ -1285,12 +1286,19 @@ export function ChatShell() {
   }
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setQuickSwitcherOpen((o) => !o);
+      } else if (
+        ((e.ctrlKey || e.metaKey) && e.key === "/") ||
+        (e.key === "?" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName))
+      ) {
+        e.preventDefault();
+        setShortcutsOpen((o) => !o);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -5086,6 +5094,11 @@ export function ChatShell() {
             setActiveServerId(target.id);
           }
         }}
+      />
+
+      <KeyboardShortcutsDialog
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
       />
     </main>
   );
