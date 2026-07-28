@@ -142,12 +142,70 @@ export function ServerSettingsDialog({
   const [tab, setTab] = useState<Tab>("profile");
   const [serverName, setServerName] = useState(server.name);
   const [serverColor, setServerColor] = useState(server.color || "#7b63e6");
+  const [serverIconUrl, setServerIconUrl] = useState(server.iconUrl || "");
+  const [serverBannerUrl, setServerBannerUrl] = useState(server.bannerUrl || "");
   const [bannerGradient, setBannerGradient] = useState(BANNER_COLORS[0].value);
   const [emojis, setEmojis] = useState<CustomEmoji[]>([]);
   const [loadingEmojis, setLoadingEmojis] = useState(false);
   const [uploadingEmoji, setUploadingEmoji] = useState(false);
   const [notice, setNotice] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const iconFileInputRef = useRef<HTMLInputElement>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleSaveProfile() {
+    try {
+      await apiFetch(`/api/servers/${server.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: serverName,
+          color: serverColor,
+          iconUrl: serverIconUrl || null,
+          bannerUrl: serverBannerUrl || null,
+        }),
+      });
+      onServerUpdated();
+      setNotice("Server profile saved successfully!");
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Failed to save server profile");
+    }
+  }
+
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await apiFetch<{ key: string; url: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      setServerIconUrl(res.url);
+      setNotice("Server icon uploaded! Click 'Save Changes' to apply.");
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Icon upload failed");
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await apiFetch<{ key: string; url: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      setServerBannerUrl(res.url);
+      setNotice("Server banner uploaded! Click 'Save Changes' to apply.");
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Banner upload failed");
+    }
+  };
 
   // Roles state
   const [roles, setRoles] = useState<PublicRole[]>(server.roles || []);
@@ -289,20 +347,6 @@ export function ServerSettingsDialog({
   useEffect(() => {
     if (tab === "emoji") loadEmojis();
   }, [tab, server.id]);
-
-  const handleSaveProfile = async () => {
-    if (!serverName.trim()) return;
-    try {
-      await apiFetch(`/api/servers/${server.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: serverName.trim(), color: serverColor }),
-      });
-      onServerUpdated();
-      setNotice("Server Profile updated!");
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Failed to update profile");
-    }
-  };
 
   const handleDeleteServer = () => {
     onRequestConfirm({
@@ -660,25 +704,69 @@ export function ServerSettingsDialog({
                 />
               </div>
 
+              <input
+                ref={iconFileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleIconUpload}
+              />
+              <input
+                ref={bannerFileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleBannerUpload}
+              />
+
               <div className="form-field">
-                <label>Icon</label>
-                <p className="field-hint">We recommend an image of at least 512x512.</p>
+                <label>Server Icon (Photo)</label>
+                <p className="field-hint">Upload a custom image/photo for your server icon (minimum 512x512 recommended).</p>
                 <div className="button-group">
                   <button
                     type="button"
                     className="discord-btn primary-indigo"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => iconFileInputRef.current?.click()}
                   >
-                    Change Server Icon
+                    Upload Server Icon
                   </button>
-                  <button type="button" className="discord-btn secondary-gray">
-                    Remove Icon
-                  </button>
+                  {serverIconUrl && (
+                    <button
+                      type="button"
+                      className="discord-btn secondary-gray"
+                      onClick={() => setServerIconUrl("")}
+                    >
+                      Remove Icon
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="form-field">
-                <label>Banner Gradient</label>
+                <label>Server Banner Image</label>
+                <p className="field-hint">Upload a custom header banner image for your server sidebar.</p>
+                <div className="button-group">
+                  <button
+                    type="button"
+                    className="discord-btn primary-indigo"
+                    onClick={() => bannerFileInputRef.current?.click()}
+                  >
+                    Upload Server Banner
+                  </button>
+                  {serverBannerUrl && (
+                    <button
+                      type="button"
+                      className="discord-btn secondary-gray"
+                      onClick={() => setServerBannerUrl("")}
+                    >
+                      Remove Banner
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label>Or Pick Banner Gradient</label>
                 <div className="banner-swatches">
                   {BANNER_COLORS.map((b) => (
                     <button
@@ -686,7 +774,10 @@ export function ServerSettingsDialog({
                       type="button"
                       className={`banner-swatch ${bannerGradient === b.value ? "selected" : ""}`}
                       style={{ background: b.value }}
-                      onClick={() => setBannerGradient(b.value)}
+                      onClick={() => {
+                        setBannerGradient(b.value);
+                        setServerBannerUrl("");
+                      }}
                       title={b.label}
                     />
                   ))}
@@ -718,19 +809,25 @@ export function ServerSettingsDialog({
               )}
             </div>
 
-            {/* Right Side Live Server Preview Card (SS 1) */}
+            {/* Right Side Live Server Preview Card */}
             <div className="pane-right-preview">
               <div className="server-card-preview">
                 <div
                   className="server-card-banner"
-                  style={{ background: bannerGradient }}
+                  style={{
+                    background: serverBannerUrl ? `url(${serverBannerUrl}) center/cover no-repeat` : bannerGradient,
+                  }}
                 />
                 <div className="server-card-content">
                   <div
                     className="server-card-avatar"
-                    style={{ background: serverColor }}
+                    style={{ background: serverColor, overflow: "hidden" }}
                   >
-                    <span>{server.icon || serverName.slice(0, 2).toUpperCase()}</span>
+                    {serverIconUrl ? (
+                      <img src={serverIconUrl} alt={serverName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <span>{server.icon || serverName.slice(0, 2).toUpperCase()}</span>
+                    )}
                   </div>
                   <h3 className="server-card-name">{serverName}</h3>
                   <div className="server-card-stats">
