@@ -36,6 +36,8 @@ export function ProfileSettingsDialog({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
+  const [spotifyQuery, setSpotifyQuery] = useState("");
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -243,6 +245,43 @@ export function ProfileSettingsDialog({
 
               {hasSpotify && (
                 <div className="bg-black/30 p-3 rounded-lg border border-white/10 space-y-3 mt-2">
+                  <div>
+                    <label className="text-xs text-green-400 font-bold block mb-1">
+                      Paste Spotify Song Link or Search Track
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="discord-text-input text-xs"
+                        placeholder="Paste Spotify link (https://open.spotify.com/track/...) or song title..."
+                        value={spotifyQuery}
+                        onChange={(e) => setSpotifyQuery(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="discord-btn primary-indigo text-xs whitespace-nowrap"
+                        onClick={async () => {
+                          if (!spotifyQuery.trim()) return;
+                          try {
+                            const res = await apiFetch<{ song?: string; artist?: string; albumArt?: string }>(
+                              `/api/integrations/spotify?track=${encodeURIComponent(spotifyQuery.trim())}`
+                            );
+                            if (res.song) {
+                              setSpotifySong(res.song);
+                              setSpotifyArtist(res.artist || "Spotify");
+                              if (res.albumArt) setSpotifyCover(res.albumArt);
+                              setNotice(`Fetched track: ${res.song} by ${res.artist}`);
+                            }
+                          } catch {
+                            setNotice("Could not fetch Spotify link details");
+                          }
+                        }}
+                      >
+                        Fetch Track
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-xs text-gray-400">Song Name</label>
                     <input

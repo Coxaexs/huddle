@@ -910,13 +910,13 @@ export function SettingsDialog({
 
                   <div>
                     <label className="text-xs text-gray-300 block mb-1">
-                      Quick Track Search / Set Current Song
+                      Paste Spotify Song Link / Search Track
                     </label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         className="discord-text-input text-xs"
-                        placeholder="Search song title & artist (e.g. Starboy - The Weeknd)..."
+                        placeholder="Paste Spotify link (https://open.spotify.com/track/...) or search song title..."
                         value={trackSearchInput}
                         onChange={(e) => setTrackSearchInput(e.target.value)}
                       />
