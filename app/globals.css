@@ -7624,11 +7624,192 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   transition: background 0.12s ease, color 0.12s ease;
 }
 
-.search-filter-pills button:hover {
-  background: #5865f2;
-  color: #ffffff;
-  border-color: transparent;
+/* Poll Creation Modal */
+.poll-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
+
+.poll-dialog-card {
+  width: 100%;
+  max-width: 520px;
+  background: #2b2d31;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.poll-dialog-header {
+  padding: 16px 20px;
+  background: #1e1f22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.poll-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f2f3f5;
+}
+
+.poll-dialog-header .close-btn {
+  background: transparent;
+  border: none;
+  color: #949ba4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.poll-dialog-header .close-btn:hover {
+  color: #ffffff;
+}
+
+.poll-dialog-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.poll-dialog-body .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.poll-dialog-body label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b5bac1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.poll-input {
+  width: 100%;
+  background: #1e1f22;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #f2f3f5;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.poll-input:focus {
+  border-color: #5865f2;
+}
+
+.poll-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.poll-option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.poll-remove-btn {
+  background: rgba(242, 63, 67, 0.15);
+  border: 1px solid rgba(242, 63, 67, 0.3);
+  color: #f23f43;
+  border-radius: 6px;
+  width: 36px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.poll-remove-btn:hover {
+  background: #f23f43;
+  color: #ffffff;
+}
+
+.poll-add-btn {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  color: #dbdee1;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  transition: background 0.15s ease;
+}
+.poll-add-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.poll-dialog-footer {
+  padding: 14px 20px;
+  background: #1e1f22;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Active Command Helper Bar */
+.active-command-helper {
+  background: #1e1f22;
+  border: 1px solid rgba(88, 101, 242, 0.4);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #dbdee1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.active-command-helper .command-title {
+  font-weight: 700;
+  color: #5865f2;
+}
+
+.active-command-helper .command-args {
+  font-style: italic;
+  color: #a3a6aa;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.active-command-helper .command-desc {
+  color: #949ba4;
+}
+
 
 
 

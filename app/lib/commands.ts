@@ -281,3 +281,9 @@ export function matchCommands(query: string): SlashCommand[] {
       command.description.toLowerCase().includes(term),
   );
 }
+
+export function findCommand(query: string): SlashCommand | undefined {
+  const clean = query.trim().split(/\s+/)[0].replace(/^\//, "").toLowerCase();
+  if (!clean) return undefined;
+  return SLASH_COMMANDS.find((cmd) => cmd.name.toLowerCase() === clean);
+}
