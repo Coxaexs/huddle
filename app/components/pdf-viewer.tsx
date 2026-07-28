@@ -377,7 +377,7 @@ export function PdfViewer({ url, name, onClose }: PdfViewerProps) {
           import("pdf-lib"),
           import("pdfjs-dist"),
         ]);
-        renderer.GlobalWorkerOptions.workerSrc = `${basePath}/pdf.worker.min.mjs`;
+        renderer.GlobalWorkerOptions.workerSrc = `${basePath}/pdf.worker.mjs`;
         const formDocument = await formPdf.PDFDocument.load(source.slice(0));
         const detected = readFields(formDocument, formPdf);
         const renderDocument = (await renderer
