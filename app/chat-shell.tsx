@@ -5073,7 +5073,7 @@ export function ChatShell() {
         open={quickSwitcherOpen}
         onClose={() => setQuickSwitcherOpen(false)}
         servers={servers}
-        channels={channels}
+        channels={servers.flatMap((s) => s.channels || [])}
         dms={dms}
         onSelect={(target: QuickSwitcherTarget) => {
           if (target.type === "channel") {
