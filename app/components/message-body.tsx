@@ -242,6 +242,20 @@ export function MessageBody({
 
     lines.forEach((line, lineIndex) => {
       const key = `${segmentIndex}-${lineIndex}`;
+      // # / ## / ### headings (a space after the hashes is required, so a bare
+      // "#channel" is left alone).
+      const heading = line.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) {
+        flush(`p${key}`);
+        const level = heading[1].length;
+        const Tag = (`h${level}` as "h1" | "h2" | "h3");
+        blocks.push(
+          <Tag key={`h${key}`} className={`message-heading h${level}`}>
+            {renderInline(heading[2], options, images, key)}
+          </Tag>,
+        );
+        return;
+      }
       if (/^>\s?/.test(line)) {
         flush(`p${key}`);
         blocks.push(
