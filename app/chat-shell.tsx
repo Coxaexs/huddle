@@ -43,6 +43,7 @@ import {
   ArrowUp,
   PhoneCall,
   Video,
+  Vote,
   X,
 } from "lucide-react";
 import { AuthGate } from "./components/auth-gate";
@@ -3571,6 +3572,46 @@ export function ChatShell() {
                 ×
               </button>
             </div>
+            <div className="search-filter-pills">
+              <button
+                type="button"
+                onClick={() => {
+                  const q = searchQuery.includes("from:") ? searchQuery : `from: ${searchQuery}`.trim();
+                  setSearchQuery(q);
+                }}
+              >
+                from:
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = searchQuery.includes("in:") ? searchQuery : `in: ${searchQuery}`.trim();
+                  setSearchQuery(q);
+                }}
+              >
+                in:
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = searchQuery.includes("has:link") ? searchQuery : `${searchQuery} has:link`.trim();
+                  setSearchQuery(q);
+                  void runSearch(q);
+                }}
+              >
+                has:link
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = searchQuery.includes("has:file") ? searchQuery : `${searchQuery} has:file`.trim();
+                  setSearchQuery(q);
+                  void runSearch(q);
+                }}
+              >
+                has:file
+              </button>
+            </div>
             <div className="search-results">
               {searchResults.map((result) => (
                 <button
@@ -4368,6 +4409,18 @@ export function ChatShell() {
               aria-label="Add a GIF"
             >
               GIF
+            </button>
+            <button
+              type="button"
+              className="composer-emoji-btn"
+              onClick={() => {
+                setDraft("/poll ");
+                composerRef.current?.focus();
+              }}
+              aria-label="Create a Poll"
+              title="Create a Poll (/poll)"
+            >
+              <Vote size={18} />
             </button>
             <button
               type="button"
