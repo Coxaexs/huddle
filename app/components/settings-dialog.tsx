@@ -213,6 +213,8 @@ export function SettingsDialog({
   const [activityShare, setActivityShare] = useState(true);
   const [spotifyShare, setSpotifyShare] = useState(true);
   const [appShare, setAppShare] = useState(true);
+  const [spotifyUserInput, setSpotifyUserInput] = useState("");
+  const [trackSearchInput, setTrackSearchInput] = useState("");
   const [currentAppId, setCurrentAppId] = useState("spotify");
   const [detectedApps, setDetectedApps] = useState([
     { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify" },
@@ -857,6 +859,96 @@ export function SettingsDialog({
                   onChange={(e) => setSpotifyShare(e.target.checked)}
                 />
               </label>
+
+              {spotifyShare && (
+                <div className="bg-green-950/20 border border-green-500/30 p-3 rounded-lg space-y-3 mt-2">
+                  <h4 className="text-xs font-bold text-green-400 uppercase tracking-wider flex items-center gap-2">
+                    <Activity size={14} /> SPOTIFY REAL-TIME TRACK SYNC
+                  </h4>
+
+                  <div>
+                    <label className="text-xs text-gray-300 block mb-1">
+                      Spotify / Last.fm Account Sync (Automatic Scrobbler)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="discord-text-input text-xs"
+                        placeholder="Enter Spotify / Last.fm username..."
+                        value={spotifyUserInput}
+                        onChange={(e) => setSpotifyUserInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="discord-btn primary-indigo text-xs whitespace-nowrap"
+                        onClick={async () => {
+                          if (!spotifyUserInput.trim()) return;
+                          try {
+                            const res = await apiFetch<{ song?: string; artist?: string; albumArt?: string }>(
+                              `/api/integrations/spotify?username=${encodeURIComponent(spotifyUserInput.trim())}`
+                            );
+                            if (res.song) {
+                              const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
+                              await apiFetch("/api/settings/profile", {
+                                method: "PATCH",
+                                body: JSON.stringify({ spotifyActivity: act }),
+                              });
+                              setStatus(`Synced! Currently playing: ${res.song} by ${res.artist}`);
+                              onUser({ ...user, spotifyActivity: act });
+                            } else {
+                              setStatus("Connected! Play a song on Spotify to broadcast it live.");
+                            }
+                          } catch {
+                            setError("Could not connect to Spotify scrobbler.");
+                          }
+                        }}
+                      >
+                        Connect & Sync
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-300 block mb-1">
+                      Quick Track Search / Set Current Song
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="discord-text-input text-xs"
+                        placeholder="Search song title & artist (e.g. Starboy - The Weeknd)..."
+                        value={trackSearchInput}
+                        onChange={(e) => setTrackSearchInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="discord-btn secondary-gray text-xs whitespace-nowrap"
+                        onClick={async () => {
+                          if (!trackSearchInput.trim()) return;
+                          try {
+                            const res = await apiFetch<{ song?: string; artist?: string; albumArt?: string }>(
+                              `/api/integrations/spotify?track=${encodeURIComponent(trackSearchInput.trim())}`
+                            );
+                            if (res.song) {
+                              const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
+                              await apiFetch("/api/settings/profile", {
+                                method: "PATCH",
+                                body: JSON.stringify({ spotifyActivity: act }),
+                              });
+                              onUser({ ...user, spotifyActivity: act });
+                              setStatus(`Now playing: ${res.song} by ${res.artist}`);
+                            }
+                          } catch {
+                            setError("Track search failed.");
+                          }
+                        }}
+                      >
+                        Set Song
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <label className="appearance-switch">
                 <span>

@@ -22,6 +22,10 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
   const [masterEnabled, setMasterEnabled] = useState(true);
   const [spotifyEnabled, setSpotifyEnabled] = useState(true);
   const [appsEnabled, setAppsEnabled] = useState(true);
+  const [spotifyUsername, setSpotifyUsername] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("huddle-spotify-username") || "";
+  });
 
   const [detectedApps, setDetectedApps] = useState<ActivityApp[]>([
     { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify", enabled: true },
@@ -29,7 +33,53 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode", enabled: true },
   ]);
 
-  // Automatic Web Media Session API & browser media detector for Spotify / music
+  const saveSpotifyUsername = (username: string) => {
+    setSpotifyUsername(username);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("huddle-spotify-username", username);
+    }
+  };
+
+  const syncSpotifyTrack = async (trackQuery?: string) => {
+    if (!user) return;
+    try {
+      let endpoint = "";
+      if (trackQuery) {
+        endpoint = `/api/integrations/spotify?track=${encodeURIComponent(trackQuery)}`;
+      } else if (spotifyUsername) {
+        endpoint = `/api/integrations/spotify?username=${encodeURIComponent(spotifyUsername)}`;
+      }
+
+      if (!endpoint) return;
+
+      const data = await apiFetch<{
+        song?: string;
+        artist?: string;
+        albumArt?: string;
+        isPlaying?: boolean;
+      }>(endpoint);
+
+      if (data.song) {
+        const spotifyAct: SpotifyActivity = {
+          song: data.song,
+          artist: data.artist || "Spotify",
+          albumArt: data.albumArt || undefined,
+          isPlaying: data.isPlaying ?? true,
+        };
+
+        onUpdateSpotify?.(spotifyAct);
+
+        await apiFetch("/api/settings/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ spotifyActivity: spotifyAct }),
+        });
+      }
+    } catch {
+      // silent catch
+    }
+  };
+
+  // Automatic Web Media Session API & Spotify sync loop
   useEffect(() => {
     if (!user || !masterEnabled || !spotifyEnabled) return;
 
@@ -40,22 +90,17 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
       let artist = "";
       let albumArt = "";
 
-      // 1. Check navigator.mediaSession metadata
+      // 1. Read navigator.mediaSession metadata
       if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
         const meta = navigator.mediaSession.metadata;
-        if (meta.title) {
-          song = meta.title;
-          artist = meta.artist || "Spotify";
+        if (meta.title && meta.title.trim()) {
+          song = meta.title.trim();
+          artist = meta.artist ? meta.artist.trim() : "Spotify";
           albumArt = meta.artwork?.[0]?.src || "";
         }
       }
 
-      // 2. If activeAppId is spotify and no mediaSession found, set active Spotify status
-      if (!song && activeAppId === "spotify") {
-        song = "Listening to Spotify";
-        artist = "Spotify Desktop / Web Player";
-      }
-
+      // 2. If mediaSession metadata found
       if (song && song !== lastSong) {
         lastSong = song;
         const spotifyAct: SpotifyActivity = {
@@ -73,15 +118,18 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
             body: JSON.stringify({ spotifyActivity: spotifyAct }),
           });
         } catch {
-          // ignore silent sync errors
+          // ignore
         }
+      } else if (!song && spotifyUsername) {
+        // 3. Sync via Spotify / Last.fm account API
+        void syncSpotifyTrack();
       }
     };
 
     const interval = setInterval(checkMediaSession, 4000);
     void checkMediaSession();
     return () => clearInterval(interval);
-  }, [user, masterEnabled, spotifyEnabled, activeAppId, onUpdateSpotify]);
+  }, [user, masterEnabled, spotifyEnabled, spotifyUsername, onUpdateSpotify]);
 
   return {
     masterEnabled,
@@ -90,6 +138,9 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     setSpotifyEnabled,
     appsEnabled,
     setAppsEnabled,
+    spotifyUsername,
+    saveSpotifyUsername,
+    syncSpotifyTrack,
     detectedApps,
     setDetectedApps,
     activeAppId,
