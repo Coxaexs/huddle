@@ -1,14 +1,22 @@
 /** Shapes and constants shared by the browser and the worker. */
 
+export interface SpotifyActivity {
+  song: string;
+  artist: string;
+  albumArt?: string;
+  isPlaying?: boolean;
+}
+
 export interface PublicUser {
   id: string;
   username: string;
   displayName: string;
   avatar: string;
-  /** Uploaded profile picture; the letter tile is the fallback. */
   avatarUrl?: string | null;
   bannerUrl?: string | null;
   bio?: string;
+  pronouns?: string;
+  spotifyActivity?: SpotifyActivity | null;
   color: string;
   isAdmin: boolean;
 }
@@ -21,6 +29,8 @@ export interface Member {
   avatarUrl?: string | null;
   bannerUrl?: string | null;
   bio?: string;
+  pronouns?: string;
+  spotifyActivity?: SpotifyActivity | null;
   color: string;
   lastSeenAt: string;
   createdAt?: string;

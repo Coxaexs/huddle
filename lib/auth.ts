@@ -23,6 +23,10 @@ export interface User {
   display_name: string;
   avatar: string;
   avatar_url?: string | null;
+  banner_url?: string | null;
+  bio?: string;
+  pronouns?: string;
+  spotify_activity?: string | null;
   color: string;
   is_admin: number;
   created_at: string;
@@ -32,12 +36,24 @@ export interface User {
 }
 
 export function publicUser(user: User): PublicUser {
+  let spotifyAct = null;
+  if (user.spotify_activity) {
+    try {
+      spotifyAct = JSON.parse(user.spotify_activity);
+    } catch {
+      spotifyAct = null;
+    }
+  }
   return {
     id: user.id,
     username: user.username,
     displayName: user.display_name,
     avatar: user.avatar,
     avatarUrl: user.avatar_url || null,
+    bannerUrl: user.banner_url || null,
+    bio: user.bio || "",
+    pronouns: user.pronouns || "",
+    spotifyActivity: spotifyAct,
     color: user.color,
     isAdmin: Boolean(user.is_admin),
   };

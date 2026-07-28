@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check } from "lucide-react";
+import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check, User } from "lucide-react";
 import { Avatar } from "./avatar";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
@@ -16,6 +16,7 @@ interface UserFooterProps {
   onToggleDeafen: () => void;
   onOpenStatusMenu: (e: React.MouseEvent) => void;
   onOpenSettings: () => void;
+  onOpenProfileSettings?: () => void;
   microphones?: Array<{ deviceId: string; label: string }>;
   speakers?: Array<{ deviceId: string; label: string }>;
   selectedMicId?: string;
@@ -34,6 +35,7 @@ export function UserFooter({
   onToggleDeafen,
   onOpenStatusMenu,
   onOpenSettings,
+  onOpenProfileSettings,
   microphones = [],
   speakers = [],
   selectedMicId,
@@ -183,6 +185,19 @@ export function UserFooter({
             </div>
           )}
         </div>
+
+        {/* Edit Profile User button */}
+        {onOpenProfileSettings && (
+          <button
+            type="button"
+            className="user-footer-btn profile-btn"
+            onClick={onOpenProfileSettings}
+            title="Edit Profile"
+            aria-label="Edit Profile"
+          >
+            <User size={18} />
+          </button>
+        )}
 
         {/* User Settings Gear button */}
         <button

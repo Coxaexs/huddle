@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessageSquare, AtSign, ShieldAlert, Calendar, X } from "lucide-react";
+import { MessageSquare, AtSign, ShieldAlert, Calendar, X, Music } from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE } from "@/lib/users";
 import { Avatar } from "./avatar";
@@ -117,10 +117,32 @@ export function UserProfileCard({
         <div className="profile-card-header">
           <h2 className="profile-display-name">{member.displayName}</h2>
           <span className="profile-username">@{member.username}</span>
+          {member.pronouns && (
+            <span className="text-xs text-indigo-300 ml-2">({member.pronouns})</span>
+          )}
           {member.customStatus && (
             <div className="profile-custom-status">💬 {member.customStatus}</div>
           )}
         </div>
+
+        {member.spotifyActivity && (
+          <div className="bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
+            <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0">
+              <Music size={20} className="animate-pulse" />
+            </div>
+            <div className="overflow-hidden text-xs">
+              <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
+                LISTENING TO SPOTIFY
+              </div>
+              <div className="font-semibold text-white truncate">
+                {member.spotifyActivity.song}
+              </div>
+              <div className="text-gray-400 truncate">
+                by {member.spotifyActivity.artist}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="profile-card-divider" />
 
