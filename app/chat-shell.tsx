@@ -318,6 +318,10 @@ export function ChatShell() {
   >([]);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
+  /** On touch screens, which message's action bar is currently revealed. */
+  const [openActionsId, setOpenActionsId] = useState<string | number | null>(
+    null,
+  );
   // On a phone the member list is an overlay, so it starts out of the way.
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
@@ -2527,8 +2531,39 @@ export function ChatShell() {
     if (channel.kind === "voice") {
       const people = hub.voice[channel.id] || [];
       const playing = hub.players[channel.id]?.track;
+      // Merge channel-reorder drag props with a drop zone that accepts a
+      // dragged voice member (a moderator moving someone into this room).
+      const chanProps = channelDragProps(channel);
+      const voiceDropProps = {
+        onDragOver: (event: DragEvent<HTMLElement>) => {
+          if (
+            event.dataTransfer.types.includes(
+              "application/x-huddle-voice-member",
+            )
+          ) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            return;
+          }
+          chanProps.onDragOver?.(event);
+        },
+        onDrop: (event: DragEvent<HTMLElement>) => {
+          const personId = event.dataTransfer.getData(
+            "application/x-huddle-voice-member",
+          );
+          if (personId) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!people.some((person) => person.id === personId)) {
+              void moveMember(personId, channel.id);
+            }
+            return;
+          }
+          chanProps.onDrop?.(event);
+        },
+      };
       return (
-        <div key={channel.id} {...channelDragProps(channel)}>
+        <div key={channel.id} {...chanProps} {...voiceDropProps}>
           <button
             className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""} ${stageChannelId === channel.id ? "viewing-voice" : ""}`}
             onClick={() => openVoiceChannel(channel)}
@@ -2560,6 +2595,8 @@ export function ChatShell() {
               {people.map((person) => (
                 <div
                   className={`voice-member ${
+                    canModerate && !person.bot ? "draggable-member" : ""
+                  } ${
                     voice.speaking.has(
                       person.connectionId === hub.connectionId
                         ? "self"
@@ -2569,7 +2606,27 @@ export function ChatShell() {
                       : ""
                   }`}
                   key={person.connectionId}
+                  // Moderators can drag a person onto another voice channel to
+                  // move them there.
+                  draggable={canModerate && !person.bot}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(
+                      "application/x-huddle-voice-member",
+                      person.id,
+                    );
+                  }}
                   onContextMenu={(event) => {
+                    if (person.bot) {
+                      openBotMenu(event, "music");
+                      return;
+                    }
+                    const member = membersById.get(person.id);
+                    if (member) openUserMenu(event, member);
+                  }}
+                  onClick={(event) => {
+                    // Touch has no right-click: a tap opens the same menu.
+                    if (!touchInput) return;
                     if (person.bot) {
                       openBotMenu(event, "music");
                       return;
@@ -3435,7 +3492,7 @@ export function ChatShell() {
                 id={`msg-${message.id}`}
                 className={`message ${continuation ? "continuation" : ""} ${
                   message.pinned ? "is-pinned" : ""
-                } ${
+                } ${openActionsId === message.id ? "actions-open" : ""} ${
                   user && message.mentions?.includes(user.id) ? "mentions-me" : ""
                 }`}
                 key={message.id}
@@ -3798,6 +3855,20 @@ export function ChatShell() {
                   )}
                 </div>
 
+                {/* Touch-only: reveal this message's actions on tap instead of
+                    showing every message's full bar at once. */}
+                <button
+                  type="button"
+                  className="message-actions-toggle"
+                  aria-label="Message actions"
+                  onClick={() =>
+                    setOpenActionsId((current) =>
+                      current === message.id ? null : message.id,
+                    )
+                  }
+                >
+                  ⋯
+                </button>
                 <div className="message-actions">
                   <div className="quick-reactions">
                     {QUICK_REACTIONS.map((emoji) => (
@@ -4792,16 +4863,21 @@ export function ChatShell() {
         <CustomDialog
           options={dialogOptions}
           onConfirm={(val) => {
-            dialogCallback?.(val);
+            // Clear first, THEN run the callback: a callback that opens another
+            // dialog (name → background) would otherwise be wiped by these
+            // resets, which is why "Next" appeared to do nothing.
+            const callback = dialogCallback;
             setDialogOptions(null);
             setDialogCallback(null);
             setDialogCancel(null);
+            callback?.(val);
           }}
           onCancel={() => {
-            dialogCancel?.();
+            const cancel = dialogCancel;
             setDialogOptions(null);
             setDialogCallback(null);
             setDialogCancel(null);
+            cancel?.();
           }}
         />
       )}

@@ -1036,6 +1036,9 @@ button {
   font-size:12px;
   display:flex;
 }
+/* A moderator can drag this person onto another voice room. */
+.voice-member.draggable-member { cursor:grab; }
+.voice-member.draggable-member:active { cursor:grabbing; }
 
 .tiny-avatar {
   color:#44404a;
@@ -3024,6 +3027,27 @@ button {
   background:#7b63e63d;
 }
 
+/* The ⋯ tap target is desktop-hidden (hover shows the bar there instead). */
+.message-actions-toggle {
+  display:none;
+  position:absolute;
+  top:-6px;
+  right:6px;
+  z-index:3;
+  width:30px;
+  height:26px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--panel);
+  color:var(--muted);
+  font-size:16px;
+  line-height:1;
+  cursor:pointer;
+}
+[data-theme=dark] .message-actions-toggle { background:#2c2d36; border-color:#41434f; }
+
 /* ---- user context menu ---- */
 
 .user-menu {
@@ -3313,12 +3337,33 @@ button {
     gap:10px;
   }
 
-  /* Hover has no meaning on a touch screen: keep message actions visible. */
+  /* Hover has no meaning on a touch screen. Instead of every message showing
+     its full bar at once (a wall of emoji), a ⋯ button reveals one message's
+     actions at a time as a tidy wrapping popover. */
+  .message-actions-toggle { display:flex; }
   .message-actions {
-    opacity:1;
-    top:-6px;
+    opacity:0;
+    pointer-events:none;
+    top:22px;
     right:4px;
+    left:auto;
+    max-width:min(90vw,340px);
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    z-index:6;
+    box-shadow:0 12px 30px #00000055;
   }
+  .message.actions-open .message-actions {
+    opacity:1;
+    pointer-events:auto;
+  }
+  .message.actions-open .message-actions-toggle {
+    background:var(--lavender);
+    color:#fff;
+    border-color:var(--lavender);
+  }
+  .message-actions button { padding:6px 8px; font-size:16px; }
+  .quick-reactions { display:flex; flex-wrap:wrap; gap:2px; }
 
   .message-actions button {
     min-width:36px;
