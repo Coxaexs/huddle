@@ -888,22 +888,23 @@ export function SettingsDialog({
                             if (typeof window !== "undefined") {
                               window.localStorage.setItem("huddle-spotify-username", un);
                             }
-                            const res = await apiFetch<{ song?: string; artist?: string; albumArt?: string }>(
-                              `/api/integrations/spotify?username=${encodeURIComponent(un)}`
-                            );
-                            if (res.song) {
+                            const resp = await fetch(`/hangout/api/integrations/spotify?username=${encodeURIComponent(un)}`);
+                            const res = await resp.json() as { song?: string; artist?: string; albumArt?: string; error?: string; message?: string; isPlaying?: boolean };
+                            if (res.error) {
+                              setError(res.error);
+                            } else if (res.song) {
                               const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
                               await apiFetch("/api/settings/profile", {
                                 method: "PATCH",
                                 body: JSON.stringify({ spotifyActivity: act }),
                               });
-                              setStatus(`Synced! Currently playing: ${res.song} by ${res.artist}`);
+                              setStatus(`🎵 Now playing: ${res.song} by ${res.artist}`);
                               onUser({ ...user, spotifyActivity: act });
                             } else {
-                              setStatus("Connected! Play a song on Spotify / Last.fm to broadcast it live.");
+                              setStatus(res.message || "Connected! Play a song on Spotify to broadcast it.");
                             }
-                          } catch {
-                            setError("Could not connect to Spotify scrobbler.");
+                          } catch (err) {
+                            setError(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
                           }
                         }}
                       >
