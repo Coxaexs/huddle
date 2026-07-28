@@ -34,6 +34,7 @@ import { MessageBody } from "./components/message-body";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { BattlemapBoard } from "./components/battlemap";
 import { PollCard } from "./components/poll-card";
+import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
 import {
   MusicSettingsCard,
@@ -335,6 +336,11 @@ export function ChatShell() {
   const [profileMember, setProfileMember] = useState<Member | null>(null);
   /** Image opened fullscreen in the lightbox. */
   const [lightbox, setLightbox] = useState<string | null>(null);
+  /** PDF opened in the in-Huddle reader and form editor. */
+  const [pdfViewer, setPdfViewer] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
   /** Who is typing where: channelId -> userId -> {name, at}. */
   const [typing, setTyping] = useState<
     Record<string, Record<string, { name: string; at: number }>>
@@ -3802,19 +3808,23 @@ export function ChatShell() {
                     </div>
                   )}
                   {message.file?.type === "pdf" && (
-                    <a
+                    <button
+                      type="button"
                       className="message-file-card"
-                      href={message.file.url}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() =>
+                        setPdfViewer({
+                          url: message.file!.url,
+                          name: message.file!.name,
+                        })
+                      }
                     >
                       <span className="message-file-icon">PDF</span>
                       <span>
                         <strong>{message.file.name}</strong>
-                        <small>PDF document · open in a new tab</small>
+                        <small>PDF document · view and fill in Huddle</small>
                       </span>
-                      <b aria-hidden="true">↗</b>
-                    </a>
+                      <b aria-hidden="true">Open</b>
+                    </button>
                   )}
 
                   {(message.threadCount ?? 0) > 0 && (
@@ -4801,6 +4811,14 @@ export function ChatShell() {
             Open original ↗
           </a>
         </div>
+      )}
+
+      {pdfViewer && (
+        <PdfViewer
+          url={pdfViewer.url}
+          name={pdfViewer.name}
+          onClose={() => setPdfViewer(null)}
+        />
       )}
 
       {profileMember && (
