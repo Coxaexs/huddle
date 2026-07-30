@@ -1,0 +1,21 @@
+.production-studio,
+.production-fatal {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: #09090c;
+}
+
+.production-studio canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+.production-fatal {
+  display: grid;
+  place-items: center;
+  color: #ff8792;
+  font: 600 18px system-ui;
+}

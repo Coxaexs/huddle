@@ -1,0 +1,12 @@
+{
+  "name": "huddle-recorder-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}

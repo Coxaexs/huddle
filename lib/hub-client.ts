@@ -1,4 +1,9 @@
-import type { PlayerAction, PlayerState, VoiceParticipant } from "./protocol";
+import type {
+  PlayerAction,
+  PlayerState,
+  RecordingState,
+  VoiceParticipant,
+} from "./protocol";
 import { bindings } from "./storage";
 
 /**
@@ -48,6 +53,22 @@ export async function publishMessageEvent(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ channelId, event, audience }),
+    })
+    .catch(() => undefined);
+}
+
+/** Persists the reconnect snapshot in the hub and broadcasts it to all tabs. */
+export async function publishRecordingState(
+  channelId: string,
+  state: RecordingState | null,
+): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/recording`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId, state }),
     })
     .catch(() => undefined);
 }
@@ -102,6 +123,7 @@ export async function hubState(): Promise<{
   online: string[];
   voice: Record<string, VoiceParticipant[]>;
   players: Record<string, PlayerState>;
+  recordings: Record<string, RecordingState>;
   serverNow: number;
 } | null> {
   const stub = hub();

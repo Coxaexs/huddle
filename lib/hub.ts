@@ -18,6 +18,7 @@ import {
   type ClientEvent,
   type PlayerAction,
   type PlayerState,
+  type RecordingState,
   type ServerEvent,
   type Track,
   type VoiceParticipant,
@@ -39,6 +40,7 @@ interface Attachment {
   cameraStreamId: string | null;
   screenStreamId: string | null;
   bot: boolean;
+  recorder: boolean;
 }
 
 /** How long after the last track ends before the bot leaves the room. */
@@ -48,6 +50,8 @@ export class HuddleHub extends DurableObject {
   private players = new Map<string, PlayerState>();
   /** People muted for everyone, by user id. */
   private forcedMutes = new Set<string>();
+  /** One public active/finalizing recording snapshot per voice channel. */
+  private recordings = new Map<string, RecordingState>();
   private loaded: Promise<void> | null = null;
 
   constructor(ctx: DurableObjectState, env: unknown) {
@@ -74,6 +78,11 @@ export class HuddleHub extends DurableObject {
         }
         const mutes = await this.ctx.storage.get<string[]>("forcedMutes");
         for (const userId of mutes || []) this.forcedMutes.add(userId);
+        const recordings =
+          await this.ctx.storage.get<Record<string, RecordingState>>("recordings");
+        for (const [channelId, state] of Object.entries(recordings || {})) {
+          this.recordings.set(channelId, state);
+        }
       })();
     }
     return this.loaded;
@@ -127,6 +136,26 @@ export class HuddleHub extends DurableObject {
         } as ServerEvent,
         { audience: body.audience },
       );
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/recording" && request.method === "POST") {
+      const body = (await request.json()) as {
+        channelId: string;
+        state: RecordingState | null;
+      };
+      if (!body.channelId) return new Response("Bad request", { status: 400 });
+      if (body.state) this.recordings.set(body.channelId, body.state);
+      else this.recordings.delete(body.channelId);
+      await this.ctx.storage.put(
+        "recordings",
+        Object.fromEntries(this.recordings.entries()),
+      );
+      this.broadcast({
+        t: "recording-state",
+        channelId: body.channelId,
+        state: body.state,
+        serverNow: Date.now(),
+      });
       return Response.json({ ok: true });
     }
     if (url.pathname === "/force-mute" && request.method === "POST") {
@@ -189,6 +218,7 @@ export class HuddleHub extends DurableObject {
         online: this.onlineUserIds(),
         voice: this.voiceRooms(),
         players: Object.fromEntries(this.players.entries()),
+        recordings: Object.fromEntries(this.recordings.entries()),
         serverNow: Date.now(),
       });
     }
@@ -230,6 +260,7 @@ export class HuddleHub extends DurableObject {
       cameraStreamId: null,
       screenStreamId: null,
       bot: url.searchParams.get("bot") === "1",
+      recorder: url.searchParams.get("recorder") === "1",
     };
     if (!attachment.userId) {
       return new Response("Unauthorized", { status: 401 });
@@ -250,6 +281,7 @@ export class HuddleHub extends DurableObject {
       voice: this.voiceRooms(),
       players: Object.fromEntries(this.players.entries()),
       forcedMutes: [...this.forcedMutes],
+      recordings: Object.fromEntries(this.recordings.entries()),
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
@@ -458,6 +490,7 @@ export class HuddleHub extends DurableObject {
         cameraStreamId: attachment.cameraStreamId,
         screenStreamId: attachment.screenStreamId,
         bot: attachment.bot || undefined,
+        recorder: attachment.recorder || undefined,
       }));
     return participants;
   }

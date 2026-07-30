@@ -21,6 +21,8 @@ interface UseVoiceOptions {
   /** Every live voice room, keyed by channel id, as the hub sees them. */
   rooms: Record<string, VoiceParticipant[]>;
   send: (event: ClientEvent) => boolean;
+  /** Recorder capture pages disable the unrelated rolling "Clip that!" buffer. */
+  enableClips?: boolean;
 }
 
 export type ScreenShareQuality = "720p30" | "1080p30" | "1080p60";
@@ -64,7 +66,12 @@ async function tuneAudioSender(
  * decided by comparing connection ids, which keeps both sides from offering at
  * the same time.
  */
-export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
+export function useVoice({
+  connectionId,
+  rooms,
+  send,
+  enableClips = true,
+}: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   /** Push-to-talk: when on, the mic is open only while the PTT key is held. */
@@ -187,7 +194,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
    * someone is sharing a screen, that video rides along too.
    */
   useEffect(() => {
-    if (!channelId) return;
+    if (!channelId || !enableClips) return;
     let cancelled = false;
 
     const start = () => {
@@ -255,10 +262,11 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
       void clipMixRef.current?.context.close().catch(() => undefined);
       clipMixRef.current = null;
     };
-  }, [channelId]);
+  }, [channelId, enableClips]);
 
   // Remote people joining mid-call get folded into the clip mix.
   useEffect(() => {
+    if (!enableClips) return;
     const mix = clipMixRef.current;
     if (!mix) return;
     for (const { connectionId: id, stream } of remoteStreams) {
@@ -271,7 +279,7 @@ export function useVoice({ connectionId, rooms, send }: UseVoiceOptions) {
         // Skip a stream the context will not take.
       }
     }
-  }, [remoteStreams]);
+  }, [enableClips, remoteStreams]);
 
   /** Hands back the buffered clip as a file, or null when there is nothing. */
   const takeClip = useCallback(async (): Promise<Blob | null> => {

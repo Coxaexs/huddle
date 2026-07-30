@@ -19,6 +19,8 @@ export const Permission = {
   MODERATE: 1 << 2,
   /** Edit the server, manage invites and roles, kick and ban members. */
   MANAGE_SERVER: 1 << 3,
+  /** Start and direct disclosed, consent-gated D&D session recordings. */
+  RECORD_SESSIONS: 1 << 4,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -27,7 +29,8 @@ export const ALL_PERMISSIONS =
   Permission.ADMINISTRATOR |
   Permission.MANAGE_CHANNELS |
   Permission.MODERATE |
-  Permission.MANAGE_SERVER;
+  Permission.MANAGE_SERVER |
+  Permission.RECORD_SESSIONS;
 
 /** Labels + descriptions for the role editor, in display order. */
 export const PERMISSION_INFO: Array<{
@@ -54,6 +57,11 @@ export const PERMISSION_INFO: Array<{
     flag: Permission.MANAGE_SERVER,
     label: "Manage server & members",
     description: "Edit the server, manage invites and roles, kick and ban members.",
+  },
+  {
+    flag: Permission.RECORD_SESSIONS,
+    label: "Record D&D sessions",
+    description: "Start, pause, direct and stop consent-gated room recordings.",
   },
 ];
 

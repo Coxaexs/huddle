@@ -24,6 +24,101 @@ export interface VoiceParticipant extends PresenceUser {
   screenStreamId?: string | null;
   /** True for the music bot, which has no microphone. */
   bot?: boolean;
+  /** Recorder bots are always labelled independently from ordinary bots. */
+  recorder?: boolean;
+}
+
+export type RecordingStatus =
+  | "awaiting-consent"
+  | "countdown"
+  | "recording"
+  | "paused"
+  | "finalizing"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type RecordingScene =
+  | "party"
+  | "speaker"
+  | "battlemap"
+  | "split"
+  | "intermission";
+
+export interface RecordingConsent {
+  userId: string;
+  displayName: string;
+  required: boolean;
+  decision: "pending" | "accepted" | "declined" | "withdrawn";
+  decidedAt: string | null;
+}
+
+/** Public, path-free recording state safe to send to every room participant. */
+export interface RecordingState {
+  id: string;
+  channelId: string;
+  serverId: string;
+  title: string;
+  campaign: string | null;
+  episodeNumber: number | null;
+  status: RecordingStatus;
+  scene: RecordingScene;
+  resolution: "1920x1080" | "1280x720";
+  frameRate: 30 | 60;
+  theme: "tavern" | "parchment" | "minimal" | "arcane" | "noir";
+  separateAudio: boolean;
+  retentionDays: number;
+  automaticDirection: boolean;
+  lockedSpeakerId: string | null;
+  startedAt: string | null;
+  pausedAt: string | null;
+  stoppedAt: string | null;
+  elapsedMs: number;
+  recorderHealthy: boolean;
+  recorderLastSeenAt: string | null;
+  estimatedBytes: number;
+  diskFreeBytes: number | null;
+  error: string | null;
+  controllerId: string;
+  consents: RecordingConsent[];
+  updatedAt: string;
+}
+
+export interface DiceRollEvent {
+  expression: string;
+  dice: Array<{
+    sides: number;
+    rolls: Array<{ value: number; kept: boolean }>;
+    sign: 1 | -1;
+  }>;
+  modifier: number;
+  total: number;
+  roller: { id: string; displayName: string };
+  rollType: "normal" | "advantage" | "disadvantage" | "critical-damage";
+  animationSeed: string;
+}
+
+export interface CharacterPresentation {
+  userId: string;
+  playerName: string | null;
+  characterName: string;
+  portraitUrl: string | null;
+  artworkUrl: string | null;
+  className: string | null;
+  level: number | null;
+  accentColor: string;
+  publicCard: Array<{ label: string; value: string }>;
+}
+
+export interface CharacterReveal {
+  id: string;
+  sessionId: string;
+  userId: string;
+  mode: "portrait" | "compact" | "sheet" | "spell" | "ability" | "item";
+  title: string;
+  imageUrl: string | null;
+  fields: Array<{ label: string; value: string }>;
+  durationMs: number;
 }
 
 export interface Track {
@@ -120,6 +215,7 @@ export type ServerEvent =
       voice: Record<string, VoiceParticipant[]>;
       players: Record<string, PlayerState>;
       forcedMutes: string[];
+      recordings: Record<string, RecordingState>;
     }
   | { t: "presence"; online: string[]; serverNow: number }
   | { t: "message"; channelId: string; message: unknown; serverNow: number }
@@ -127,6 +223,58 @@ export type ServerEvent =
       t: "voice";
       channelId: string;
       participants: VoiceParticipant[];
+      serverNow: number;
+    }
+  | {
+      t: "recording-state";
+      channelId: string;
+      state: RecordingState | null;
+      serverNow: number;
+    }
+  | {
+      t: "recording-consent";
+      channelId: string;
+      sessionId: string;
+      consent: RecordingConsent;
+      serverNow: number;
+    }
+  | {
+      t: "recording-scene";
+      channelId: string;
+      sessionId: string;
+      scene: RecordingScene;
+      automatic: boolean;
+      serverNow: number;
+    }
+  | {
+      t: "recording-marker";
+      channelId: string;
+      sessionId: string;
+      marker: { id: string; kind: "chapter" | "highlight"; name: string; atMs: number };
+      serverNow: number;
+    }
+  | {
+      t: "recording-heartbeat";
+      channelId: string;
+      sessionId: string;
+      healthy: boolean;
+      estimatedBytes: number;
+      diskFreeBytes: number | null;
+      serverNow: number;
+    }
+  | {
+      t: "dice-roll";
+      channelId: string;
+      roll: DiceRollEvent;
+      serverNow: number;
+    }
+  | {
+      t: "character-presentation";
+      channelId: string;
+      sessionId: string;
+      action: "updated" | "reveal" | "clear";
+      presentation?: CharacterPresentation;
+      reveal?: CharacterReveal;
       serverNow: number;
     }
   | { t: "signal"; from: string; data: unknown; serverNow: number }

@@ -75,6 +75,8 @@ interface VoiceStageProps {
   battlemap?: React.ReactNode;
   onToggleBattlemap?: () => void;
   battlemapOpen?: boolean;
+  /** Consent banner and GM director controls for the production recorder. */
+  recording?: React.ReactNode;
 }
 
 interface VideoTile {
@@ -137,6 +139,7 @@ export function VoiceStage({
   battlemap,
   onToggleBattlemap,
   battlemapOpen,
+  recording,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
@@ -215,6 +218,7 @@ export function VoiceStage({
 
   return (
     <div className="voice-stage">
+      {recording}
       {battlemap}
       <RoomActivities
         channelId={voice.channelId || ""}

@@ -16,6 +16,426 @@
   --ui-corners:16px;
 }
 
+/* D&D production recorder -------------------------------------------------- */
+.recording-room-banner {
+  min-height: 42px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted, #a9a7b2);
+  background: color-mix(in srgb, var(--panel, #202027) 92%, #000);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.recording-room-banner.live {
+  color: #fff;
+  background: linear-gradient(90deg, rgba(154, 31, 41, 0.94), rgba(55, 27, 32, 0.96));
+}
+
+.recording-room-banner time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.recording-room-banner button,
+.record-session-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #ef4f5f;
+  box-shadow: 0 0 0 4px rgba(239, 79, 95, 0.16);
+}
+
+.recording-room-banner.live .recording-dot {
+  background: #fff;
+  animation: recording-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  50% { opacity: 0.42; transform: scale(0.82); }
+}
+
+.recording-consent {
+  margin: 12px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(255, 207, 99, 0.45);
+  border-radius: 12px;
+  background: #2a251d;
+  color: #f7f0dd;
+  z-index: 4;
+}
+
+.recording-consent p {
+  margin: 3px 0 0;
+  color: #cfc6b3;
+  font-size: 13px;
+}
+
+.recording-consent .danger,
+.recording-director .danger {
+  background: #8f303a;
+  color: #fff;
+}
+
+.recording-withdraw {
+  position: absolute;
+  z-index: 8;
+  top: 54px;
+  right: 12px;
+  color: #ffd3d7;
+  background: rgba(99, 22, 31, 0.9);
+  border: 1px solid rgba(255, 126, 139, 0.4);
+}
+
+.recording-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 8, 12, 0.76);
+  backdrop-filter: blur(6px);
+}
+
+.recording-setup {
+  width: min(680px, 100%);
+  max-height: min(820px, calc(100vh - 40px));
+  overflow: auto;
+  padding: 22px;
+  border-radius: 16px;
+  background: #202027;
+  color: #f5f3f7;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.5);
+}
+
+.recording-setup header,
+.recording-setup footer,
+.recording-director header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.recording-setup h2 {
+  margin: 2px 0 0;
+}
+
+.recording-setup > label,
+.recording-setup fieldset {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.recording-setup input,
+.recording-setup select,
+.recording-setup textarea,
+.recording-director select {
+  min-width: 0;
+  padding: 9px 10px;
+  color: inherit;
+  background: #15151a;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+}
+
+.recording-setup textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.character-presentation-editor {
+  width: min(820px, 100%);
+}
+
+.privacy-note {
+  padding: 10px 12px;
+  margin: 14px 0 0;
+  color: #d9cfb7;
+  background: rgba(214, 164, 86, 0.1);
+  border: 1px solid rgba(214, 164, 86, 0.24);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.one-off-reveal {
+  padding-top: 16px;
+  margin-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.one-off-reveal h3 {
+  margin: 0;
+}
+
+.recording-form-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.recording-form-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.recording-setup fieldset {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.recording-setup legend {
+  padding: 0 6px;
+}
+
+.recording-person,
+.recording-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.recording-setup footer {
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.eyebrow {
+  color: #e9aa62;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.recording-director {
+  position: absolute;
+  z-index: 20;
+  top: 54px;
+  right: 12px;
+  width: min(390px, calc(100% - 24px));
+  max-height: calc(100% - 120px);
+  overflow: auto;
+  padding: 16px;
+  color: #f6f3f7;
+  background: rgba(23, 23, 29, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+.recording-director section {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.recording-director h3 {
+  margin: 0 0 8px;
+  color: #aaa6b2;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.director-health {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  margin-top: 12px;
+  color: #aaa6b2;
+  font-size: 12px;
+}
+
+.director-health span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.director-health time {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: #fff;
+  font: 700 18px/1 ui-monospace, monospace;
+}
+
+.director-primary,
+.director-scenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.director-primary button,
+.director-scenes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.director-scenes .on {
+  background: #8e693d;
+  color: #fff;
+}
+
+.director-participants {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.editable-timeline {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+
+.editable-timeline li {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) auto 26px;
+  gap: 6px;
+  align-items: center;
+}
+
+.editable-timeline input {
+  min-width: 0;
+  padding: 6px;
+  color: #f6f3f7;
+  background: #111117;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.editable-timeline span {
+  color: #9f9aa7;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.recording-summary dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.recording-summary dl div {
+  padding: 12px;
+  background: #17171d;
+  border-radius: 9px;
+}
+
+.recording-summary dt {
+  color: #9f9aa7;
+  font-size: 11px;
+}
+
+.recording-summary dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
+.recording-output-list,
+.recording-diagnostics {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  list-style: none;
+}
+
+.recording-output-list li {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 10px;
+  padding: 9px;
+  background: #17171d;
+  border-radius: 7px;
+}
+
+.recording-output-list span,
+.recording-output-list small {
+  color: #aaa5b1;
+}
+
+.recording-diagnostics .error {
+  color: #ff8792;
+}
+
+.recording-diagnostics .warning {
+  color: #e8c16f;
+}
+
+.director-participants li {
+  display: grid;
+  grid-template-columns: 9px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.director-participants b {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.audio-meter {
+  width: 5px;
+  height: 14px;
+  border-radius: 4px;
+  background: #484751;
+}
+
+.audio-meter.active {
+  background: #57d497;
+  box-shadow: 0 0 7px rgba(87, 212, 151, 0.7);
+}
+
+.consent-accepted { color: #65d49b; }
+.consent-pending { color: #e4bd69; }
+.consent-declined,
+.consent-withdrawn,
+.recording-error { color: #ff7d89; }
+
+@media (max-width: 700px) {
+  .recording-consent {
+    grid-template-columns: auto 1fr;
+  }
+  .recording-consent button {
+    grid-column: span 1;
+  }
+  .recording-form-row {
+    grid-template-columns: 1fr;
+  }
+  .recording-setup fieldset {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Personal appearance controls. */
 html[data-density="compact"] .message {
   padding-top:5px;
@@ -8078,9 +8498,6 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 .pin-item:hover {
   background: rgba(255, 255, 255, 0.07);
 }
-
-
-
 
 
 

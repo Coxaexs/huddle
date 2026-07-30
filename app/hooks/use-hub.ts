@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ClientEvent,
+  CharacterPresentation,
+  CharacterReveal,
+  DiceRollEvent,
   PlayerState,
+  RecordingState,
   ServerEvent,
   VoiceParticipant,
 } from "@/lib/protocol";
@@ -15,6 +19,7 @@ export interface HubState {
   online: Set<string>;
   voice: Record<string, VoiceParticipant[]>;
   players: Record<string, PlayerState>;
+  recordings: Record<string, RecordingState>;
   /** People muted for everyone. */
   forcedMutes: Set<string>;
 }
@@ -56,6 +61,16 @@ interface HubHandlers {
     channelId: string,
     payload: { action: "update" | "close"; activity?: unknown },
   ) => void;
+  onDiceRoll?: (channelId: string, roll: DiceRollEvent) => void;
+  onCharacterPresentation?: (
+    channelId: string,
+    payload: {
+      sessionId: string;
+      action: "updated" | "reveal" | "clear";
+      presentation?: CharacterPresentation;
+      reveal?: CharacterReveal;
+    },
+  ) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
   /** This tab lost voice because the account joined from elsewhere. */
   onVoiceEvicted?: () => void;
@@ -78,6 +93,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     online: new Set(),
     voice: {},
     players: {},
+    recordings: {},
     forcedMutes: new Set(),
   });
 
@@ -141,6 +157,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               online: new Set(payload.online),
               voice: payload.voice,
               players: payload.players,
+              recordings: payload.recordings || {},
               forcedMutes: new Set(payload.forcedMutes || []),
             });
             break;
@@ -164,6 +181,58 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
                 [payload.state.channelId]: payload.state,
               },
             }));
+            break;
+          case "recording-state":
+            setState((current) => {
+              const recordings = { ...current.recordings };
+              if (payload.state) recordings[payload.channelId] = payload.state;
+              else delete recordings[payload.channelId];
+              return { ...current, recordings };
+            });
+            break;
+          case "recording-consent":
+            setState((current) => {
+              const recording = current.recordings[payload.channelId];
+              if (!recording || recording.id !== payload.sessionId) return current;
+              return {
+                ...current,
+                recordings: {
+                  ...current.recordings,
+                  [payload.channelId]: {
+                    ...recording,
+                    consents: recording.consents.map((consent) =>
+                      consent.userId === payload.consent.userId
+                        ? payload.consent
+                        : consent,
+                    ),
+                  },
+                },
+              };
+            });
+            break;
+          case "recording-scene":
+            setState((current) => {
+              const recording = current.recordings[payload.channelId];
+              if (!recording || recording.id !== payload.sessionId) return current;
+              return {
+                ...current,
+                recordings: {
+                  ...current.recordings,
+                  [payload.channelId]: { ...recording, scene: payload.scene },
+                },
+              };
+            });
+            break;
+          case "dice-roll":
+            handlersRef.current.onDiceRoll?.(payload.channelId, payload.roll);
+            break;
+          case "character-presentation":
+            handlersRef.current.onCharacterPresentation?.(payload.channelId, {
+              sessionId: payload.sessionId,
+              action: payload.action,
+              presentation: payload.presentation,
+              reveal: payload.reveal,
+            });
             break;
           case "message":
             handlersRef.current.onMessage?.(payload.channelId, payload.message);

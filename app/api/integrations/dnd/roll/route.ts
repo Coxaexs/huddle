@@ -1,3 +1,11 @@
+import { currentUser, unauthorized } from "@/lib/auth";
+import { publishMessageEvent } from "@/lib/hub-client";
+import { activeRecording, elapsedMs } from "@/lib/recording";
+import { ensureSchema } from "@/lib/schema";
+import { findChannel, isServerMember } from "@/lib/servers";
+import { bindings } from "@/lib/storage";
+import type { DiceRollEvent } from "@/lib/protocol";
+
 export const dynamic = "force-dynamic";
 
 /** Rejection sampling so every face of the die stays equally likely. */
@@ -10,8 +18,19 @@ function randomDie(sides: number): number {
   return (values[0] % sides) + 1;
 }
 
+function randomSeed(): string {
+  return [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { command?: string };
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  const body = (await request.json().catch(() => ({}))) as {
+    command?: string;
+    channelId?: string;
+  };
   const input = (body.command || "").replace(/^\/roll\s*/i, "").trim();
   if (!input) {
     return Response.json(
@@ -22,10 +41,17 @@ export async function POST(request: Request) {
 
   const advantage = /\b(adv|advantage)\b/i.test(input);
   const disadvantage = /\b(dis|disadvantage)\b/i.test(input);
+  const criticalDamage = /\b(crit|critical)\b/i.test(input);
+  if (advantage && disadvantage) {
+    return Response.json(
+      { error: "Choose advantage or disadvantage, not both." },
+      { status: 400 },
+    );
+  }
   const expression = input
     .replace(/\b(adv|advantage|dis|disadvantage)\b/gi, "")
+    .replace(/\b(crit|critical)\b/gi, "")
     .replace(/\s+/g, "");
-
   const tokens = expression.match(/[+-]?[^+-]+/g) || [];
   if (!tokens.length || tokens.length > 20) {
     return Response.json(
@@ -35,16 +61,19 @@ export async function POST(request: Request) {
   }
 
   let total = 0;
+  let modifier = 0;
   const details: string[] = [];
+  const diceEvents: DiceRollEvent["dice"] = [];
 
   for (const token of tokens) {
     const sign = token.startsWith("-") ? -1 : 1;
     const term = token.replace(/^[+-]/, "");
-    const dice = term.match(/^(\d*)d(\d+)$/i);
+    const dice = term.match(/^(\d*)d(\d+)(kh1|kl1)?$/i);
 
     if (dice) {
       let count = Number(dice[1] || 1);
       const sides = Number(dice[2]);
+      const keep = dice[3]?.toLowerCase();
       if (
         !Number.isInteger(count) ||
         !Number.isInteger(sides) ||
@@ -59,18 +88,34 @@ export async function POST(request: Request) {
         );
       }
       if ((advantage || disadvantage) && count === 1 && sides === 20) count = 2;
-
       const rolls = Array.from({ length: count }, () => randomDie(sides));
-      let subtotal = rolls.reduce((sum, roll) => sum + roll, 0);
-      let kept: number | undefined;
-      if ((advantage || disadvantage) && sides === 20 && count === 2) {
-        kept = advantage ? Math.max(...rolls) : Math.min(...rolls);
-        subtotal = kept;
+      const keepMode =
+        keep || ((advantage || disadvantage) && sides === 20 && count === 2
+          ? advantage
+            ? "kh1"
+            : "kl1"
+          : null);
+      let keptIndex = -1;
+      if (keepMode) {
+        const target =
+          keepMode === "kh1" ? Math.max(...rolls) : Math.min(...rolls);
+        keptIndex = rolls.indexOf(target);
       }
+      const keptRolls =
+        keptIndex >= 0 ? [rolls[keptIndex]] : rolls;
+      const subtotal = keptRolls.reduce((sum, value) => sum + value, 0);
       total += sign * subtotal;
+      diceEvents.push({
+        sides,
+        sign: sign as 1 | -1,
+        rolls: rolls.map((value, index) => ({
+          value,
+          kept: keptIndex < 0 || keptIndex === index,
+        })),
+      });
       details.push(
         `${sign < 0 ? "−" : ""}${count}d${sides} [${rolls.join(", ")}]${
-          kept === undefined ? ` = ${subtotal}` : ` → kept ${kept}`
+          keptIndex < 0 ? ` = ${subtotal}` : ` → kept ${rolls[keptIndex]}`
         }`,
       );
       continue;
@@ -78,13 +123,78 @@ export async function POST(request: Request) {
 
     if (!/^\d+$/.test(term)) {
       return Response.json(
-        { error: `I couldn't understand \`${term}\`. Try something like \`2d20+5\`.` },
+        { error: `I couldn't understand \`${term}\`. Try something like \`2d20kh1+5\`.` },
         { status: 400 },
       );
     }
-    const modifier = Number(term) * sign;
-    total += modifier;
-    details.push(`${modifier >= 0 ? "+" : "−"}${Math.abs(modifier)}`);
+    const value = Number(term) * sign;
+    modifier += value;
+    total += value;
+    details.push(`${value >= 0 ? "+" : "−"}${Math.abs(value)}`);
+  }
+
+  const roll: DiceRollEvent = {
+    expression,
+    dice: diceEvents,
+    modifier,
+    total,
+    roller: { id: user.id, displayName: user.display_name },
+    rollType: advantage
+      ? "advantage"
+      : disadvantage
+        ? "disadvantage"
+        : criticalDamage
+          ? "critical-damage"
+          : "normal",
+    animationSeed: randomSeed(),
+  };
+
+  // The result above is authoritative. Consumers animate these exact faces;
+  // they never generate a second result.
+  const db = bindings().DB;
+  const channelId = body.channelId?.slice(0, 64) || "";
+  if (db && channelId) {
+    await ensureSchema(db);
+    const channel = await findChannel(db, channelId);
+    if (
+      channel?.kind === "voice" &&
+      (await isServerMember(db, channel.server_id, user.id))
+    ) {
+      await publishMessageEvent(channelId, { t: "dice-roll", roll });
+      const recording = await activeRecording(db, channelId);
+      if (recording) {
+        const consent = await db
+          .prepare(
+            `SELECT decision FROM recording_participants
+              WHERE session_id = ? AND user_id = ?`,
+          )
+          .bind(recording.id, user.id)
+          .first<{ decision: string }>();
+        if (consent?.decision === "accepted") {
+          await db
+            .prepare(
+              `INSERT INTO recording_dice_events
+                 (id, session_id, roller_id, expression, rolls_json, modifier,
+                  total, roll_type, animation_seed, at_ms, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              crypto.randomUUID(),
+              recording.id,
+              user.id,
+              roll.expression,
+              JSON.stringify(roll.dice),
+              modifier,
+              total,
+              roll.rollType,
+              roll.animationSeed,
+              elapsedMs(recording),
+              new Date().toISOString(),
+            )
+            .run();
+        }
+      }
+    }
   }
 
   const mode = advantage
