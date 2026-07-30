@@ -2,9 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import type { Member } from "@/lib/users";
+import { PrideBadges } from "./pride-badges";
 
 export interface UserMenuTarget {
-  member: Pick<Member, "id" | "displayName" | "username">;
+  member: Pick<Member, "id" | "displayName" | "username" | "prideBadges">;
   x: number;
   y: number;
 }
@@ -96,6 +97,7 @@ export function UserMenu({
     <div className="user-menu" ref={ref} style={style} role="menu">
       <div className="user-menu-head">
         <strong>{target.member.displayName}</strong>
+        <PrideBadges badges={target.member.prideBadges} mini />
         <span>@{target.member.username}</span>
       </div>
 

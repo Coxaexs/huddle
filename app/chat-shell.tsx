@@ -111,6 +111,7 @@ import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
 import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
 import { BlahajBuddy } from "./components/blahaj-buddy";
+import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 
 interface Message {
@@ -4002,6 +4003,7 @@ export function ChatShell() {
                       >
                         {author?.displayName || message.author}
                       </strong>
+                      {author && <PrideBadges badges={author.prideBadges} mini />}
                       {message.bot && <span className="bot-tag">BOT</span>}
                       <time>{message.time}</time>
                       {message.editedAt && (
@@ -4965,9 +4967,12 @@ export function ChatShell() {
               />
             </Avatar>
             <div>
-              <strong style={{ color: roleColorFor(member) || undefined }}>
-                {member.displayName}
-              </strong>
+              <div className="member-name-line">
+                <strong style={{ color: roleColorFor(member) || undefined }}>
+                  {member.displayName}
+                </strong>
+                <PrideBadges badges={member.prideBadges} mini />
+              </div>
               <span>
                 {(member.id === user.id ? myCustomStatus : member.customStatus) ||
                   (member.id === user.id
@@ -5003,9 +5008,12 @@ export function ChatShell() {
               color={member.color}
             />
             <div>
-              <strong style={{ color: roleColorFor(member) || undefined }}>
-                {member.displayName}
-              </strong>
+              <div className="member-name-line">
+                <strong style={{ color: roleColorFor(member) || undefined }}>
+                  {member.displayName}
+                </strong>
+                <PrideBadges badges={member.prideBadges} mini />
+              </div>
               <span>Away</span>
             </div>
           </div>

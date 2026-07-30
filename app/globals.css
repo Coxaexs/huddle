@@ -8593,6 +8593,60 @@ html[data-pride-theme="trans"] .profile-card-banner {
   margin:4px 0 0;
   width:100%;
 }
+.pride-badges.mini {
+  display:inline-flex;
+  flex:none;
+  align-items:center;
+  width:auto;
+  max-width:68px;
+  gap:2px;
+  margin:0;
+}
+.pride-badges.mini .pride-badge {
+  min-height:0;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.pride-badges.mini .pride-flag-swatch {
+  width:13px;
+  height:9px;
+  border-radius:3px;
+}
+.pride-badge-more {
+  color:var(--muted);
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+}
+.member-name-line {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  min-width:0;
+}
+.member .member-name-line strong {
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.member .member-name-line .pride-badges,
+.member .member-name-line .pride-badge,
+.member .member-name-line .pride-flag-swatch,
+.member .member-name-line .pride-badge-more {
+  display:inline-flex;
+  margin-top:0;
+  overflow:visible;
+  white-space:normal;
+}
+.member .member-name-line .pride-flag-swatch {
+  font-size:0;
+}
+.message-meta .pride-badges.mini {
+  transform:translateY(1px);
+}
 .pride-badge {
   display:inline-flex;
   align-items:center;

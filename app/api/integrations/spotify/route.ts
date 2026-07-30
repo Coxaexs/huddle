@@ -131,6 +131,8 @@ export async function GET(request: Request) {
           artist,
           albumArt,
           isPlaying: isNowPlaying,
+        }, {
+          headers: { "Cache-Control": "no-store, max-age=0" },
         });
       }
 
