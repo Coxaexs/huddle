@@ -192,7 +192,8 @@ export function ProfileSettingsDialog({
                         )
                       }
                     >
-                      <i
+                      <span
+                        className="pride-flag-swatch"
                         aria-hidden="true"
                         style={{ "--badge-stripes": badge.colors.join(", ") } as React.CSSProperties}
                       />
@@ -352,7 +353,12 @@ export function ProfileSettingsDialog({
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="blahaj-profile-tip" aria-label="Blåhaj profile tip">
+              <span aria-hidden="true">🦈</span>
+              <p><strong>Blåhaj says:</strong> decorate your profile in whatever way feels like you.</p>
+            </div>
+
+            <div className="profile-settings-savebar flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 className="discord-btn secondary-gray"
@@ -406,8 +412,8 @@ export function ProfileSettingsDialog({
                   {pronouns && (
                     <span className="text-xs text-indigo-300 ml-2">({pronouns})</span>
                   )}
-                  <PrideBadges badges={prideBadges} compact />
                 </div>
+                <PrideBadges badges={prideBadges} compact />
 
                 {hasSpotify && (
                   <div className="bg-green-950/30 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3">

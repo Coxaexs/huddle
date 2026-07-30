@@ -20,7 +20,7 @@ export function PrideBadges({
             title={badge.label}
             style={{ "--badge-stripes": badge.colors.join(", ") } as React.CSSProperties}
           >
-            <i aria-hidden="true" />
+            <span className="pride-flag-swatch" aria-hidden="true" />
             {compact ? badge.shortLabel : badge.label}
           </span>
         );

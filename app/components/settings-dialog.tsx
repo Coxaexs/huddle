@@ -775,7 +775,7 @@ export function SettingsDialog({
                     className={`${option} ${prideTheme === option ? "active" : ""}`}
                     onClick={() => setPrideTheme(option)}
                   >
-                    <i aria-hidden="true" />
+                    <span className="pride-theme-swatch" aria-hidden="true" />
                     {label}
                   </button>
                 ))}
