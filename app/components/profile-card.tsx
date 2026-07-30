@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { PublicRole } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { Avatar } from "./avatar";
+import { PrideBadges } from "./pride-badges";
 
 interface ProfileCardProps {
   member: Member;
@@ -77,6 +78,7 @@ export function ProfileCard({
               {member.displayName}
             </strong>
             {member.isAdmin && <span className="profile-badge owner">OWNER</span>}
+            <PrideBadges badges={member.prideBadges} compact />
             <span className={`profile-status ${online ? "online" : ""}`}>
               {online ? "Online" : "Offline"}
             </span>

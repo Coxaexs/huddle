@@ -1,6 +1,7 @@
 import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { normalizePrideBadges } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
       ? db
           .prepare(
             `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                    u.bio, u.pronouns, u.spotify_activity, u.color, u.is_admin,
+                    u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin,
                     u.created_at, u.last_seen_at, u.status, u.custom_status
                FROM users u
                JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
       : db
           .prepare(
             `SELECT id, username, display_name, avatar, avatar_url, banner_url,
-                    bio, pronouns, spotify_activity, color, is_admin,
+                    bio, pronouns, pride_badges, spotify_activity, color, is_admin,
                     created_at, last_seen_at, status, custom_status
                FROM users ORDER BY display_name COLLATE NOCASE ASC`,
           )
@@ -71,6 +72,15 @@ export async function GET(request: Request) {
         bannerUrl: member.banner_url || null,
         bio: member.bio || "",
         pronouns: member.pronouns || "",
+        prideBadges: normalizePrideBadges(
+          (() => {
+            try {
+              return JSON.parse(member.pride_badges || "[]");
+            } catch {
+              return [];
+            }
+          })(),
+        ),
         spotifyActivity: spotifyAct,
         color: member.color,
         lastSeenAt: member.last_seen_at,

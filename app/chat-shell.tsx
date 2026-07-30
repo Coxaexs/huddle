@@ -1470,6 +1470,14 @@ export function ChatShell() {
       window.localStorage.getItem("huddle-motion") || "full";
     root.dataset.cute =
       window.localStorage.getItem("huddle-cute") === "on" ? "on" : "off";
+    const prideTheme = window.localStorage.getItem("huddle-pride-theme");
+    root.dataset.prideTheme = ["trans", "pride", "nonbinary"].includes(
+      prideTheme || "",
+    )
+      ? prideTheme!
+      : "off";
+    root.dataset.blahaj =
+      window.localStorage.getItem("huddle-blahaj") === "on" ? "on" : "off";
     root.style.setProperty(
       "--lavender",
       window.localStorage.getItem("huddle-accent") || "#9d8cf5",

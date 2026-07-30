@@ -151,6 +151,8 @@ type Tab =
   | "invites"
   | "appearance"
   | "roles";
+
+type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
 type Density = "compact" | "cozy" | "roomy";
 type Backdrop = "plain" | "aurora" | "dots";
 
@@ -205,6 +207,8 @@ export function SettingsDialog({
   const [corners, setCorners] = useState(16);
   const [motion, setMotion] = useState(true);
   const [cute, setCute] = useState(false);
+  const [prideTheme, setPrideTheme] = useState<PrideTheme>("off");
+  const [blahaj, setBlahaj] = useState(false);
   const [notify, setNotify] = useState(
     () =>
       typeof window === "undefined" ||
@@ -230,6 +234,8 @@ export function SettingsDialog({
     const savedCorners = Number(window.localStorage.getItem("huddle-corners"));
     const savedMotion = window.localStorage.getItem("huddle-motion");
     const savedCute = window.localStorage.getItem("huddle-cute");
+    const savedPrideTheme = window.localStorage.getItem("huddle-pride-theme");
+    const savedBlahaj = window.localStorage.getItem("huddle-blahaj");
     if (savedAccent) setAccent(savedAccent);
     if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
     // The old glow was the default. Do not carry it forward: gradients are
@@ -242,6 +248,10 @@ export function SettingsDialog({
     if (savedCorners >= 4 && savedCorners <= 28) setCorners(savedCorners);
     if (savedMotion) setMotion(savedMotion !== "reduced");
     setCute(savedCute === "on");
+    if (["off", "trans", "pride", "nonbinary"].includes(savedPrideTheme || "")) {
+      setPrideTheme(savedPrideTheme as PrideTheme);
+    }
+    setBlahaj(savedBlahaj === "on");
   }, []);
 
   useEffect(() => {
@@ -252,13 +262,17 @@ export function SettingsDialog({
     root.dataset.backdrop = backdrop;
     root.dataset.motion = motion ? "full" : "reduced";
     root.dataset.cute = cute ? "on" : "off";
+    root.dataset.prideTheme = prideTheme;
+    root.dataset.blahaj = blahaj ? "on" : "off";
     window.localStorage.setItem("huddle-accent", accent);
     window.localStorage.setItem("huddle-density", density);
     window.localStorage.setItem("huddle-backdrop", backdrop);
     window.localStorage.setItem("huddle-corners", String(corners));
     window.localStorage.setItem("huddle-motion", motion ? "full" : "reduced");
     window.localStorage.setItem("huddle-cute", cute ? "on" : "off");
-  }, [accent, corners, density, backdrop, motion, cute]);
+    window.localStorage.setItem("huddle-pride-theme", prideTheme);
+    window.localStorage.setItem("huddle-blahaj", blahaj ? "on" : "off");
+  }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj]);
 
   useEffect(() => {
     if (tab !== "voice") return;
@@ -747,6 +761,26 @@ export function SettingsDialog({
                 />
               </div>
 
+              <span className="field-label">Pride palette</span>
+              <div className="pride-theme-row">
+                {([
+                  ["off", "Classic"],
+                  ["trans", "Trans"],
+                  ["pride", "Pride"],
+                  ["nonbinary", "Nonbinary"],
+                ] as const).map(([option, label]) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`${option} ${prideTheme === option ? "active" : ""}`}
+                    onClick={() => setPrideTheme(option)}
+                  >
+                    <i aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <span className="field-label">Message spacing</span>
               <div className="appearance-choice-row">
                 {(["compact", "cozy", "roomy"] as const).map((option) => (
@@ -807,6 +841,18 @@ export function SettingsDialog({
                   type="checkbox"
                   checked={cute}
                   onChange={(event) => setCute(event.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch blahaj-appearance-switch">
+                <span>
+                  <strong>Blåhaj buddy 🦈</strong>
+                  <small>A small, decorative shark friend who hangs out by the chat</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={blahaj}
+                  onChange={(event) => setBlahaj(event.target.checked)}
                 />
               </label>
 

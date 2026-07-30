@@ -6,6 +6,7 @@ import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE } from "@/lib/users";
 import { Avatar } from "./avatar";
 import type { PublicRole } from "@/lib/servers";
+import { PrideBadges } from "./pride-badges";
 
 interface UserProfileCardProps {
   member: Member;
@@ -119,6 +120,7 @@ export function UserProfileCard({
           {member.pronouns && (
             <span className="text-xs text-indigo-300 ml-2">({member.pronouns})</span>
           )}
+          <PrideBadges badges={member.prideBadges} compact />
           {member.customStatus && (
             <div className="profile-custom-status">💬 {member.customStatus}</div>
           )}

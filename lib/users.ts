@@ -7,6 +7,29 @@ export interface SpotifyActivity {
   isPlaying?: boolean;
 }
 
+export const PRIDE_BADGES = [
+  { id: "trans", label: "Transgender", shortLabel: "TRANS", colors: ["#5bcffa", "#f5abb9", "#ffffff"] },
+  { id: "pride", label: "LGBTQ+ Pride", shortLabel: "PRIDE", colors: ["#e40303", "#ff8c00", "#ffed00", "#008026", "#24408e", "#732982"] },
+  { id: "nonbinary", label: "Nonbinary", shortLabel: "ENBY", colors: ["#fff430", "#ffffff", "#9c59d1", "#2d2d2d"] },
+  { id: "bisexual", label: "Bisexual", shortLabel: "BI", colors: ["#d60270", "#9b4f96", "#0038a8"] },
+  { id: "lesbian", label: "Lesbian", shortLabel: "LESBIAN", colors: ["#d52d00", "#ff9a56", "#ffffff", "#d362a4", "#a30262"] },
+  { id: "gay", label: "Gay", shortLabel: "GAY", colors: ["#078d70", "#98e8c1", "#ffffff", "#7bade2", "#3d1a78"] },
+  { id: "pansexual", label: "Pansexual", shortLabel: "PAN", colors: ["#ff218c", "#ffd800", "#21b1ff"] },
+  { id: "asexual", label: "Asexual", shortLabel: "ACE", colors: ["#2d2d2d", "#a3a3a3", "#ffffff", "#800080"] },
+  { id: "intersex", label: "Intersex", shortLabel: "INTERSEX", colors: ["#ffd800", "#7902aa"] },
+] as const;
+
+export type PrideBadgeId = (typeof PRIDE_BADGES)[number]["id"];
+
+const PRIDE_BADGE_IDS = new Set<string>(PRIDE_BADGES.map((badge) => badge.id));
+
+export function normalizePrideBadges(value: unknown): PrideBadgeId[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value)]
+    .filter((badge): badge is PrideBadgeId => typeof badge === "string" && PRIDE_BADGE_IDS.has(badge))
+    .slice(0, 4);
+}
+
 export interface PublicUser {
   id: string;
   username: string;
@@ -16,6 +39,7 @@ export interface PublicUser {
   bannerUrl?: string | null;
   bio?: string;
   pronouns?: string;
+  prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
   color: string;
   isAdmin: boolean;
@@ -30,6 +54,7 @@ export interface Member {
   bannerUrl?: string | null;
   bio?: string;
   pronouns?: string;
+  prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
   color: string;
   lastSeenAt: string;

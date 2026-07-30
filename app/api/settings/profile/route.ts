@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth";
 import { publishStructureChange } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
+import { normalizePrideBadges } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export async function PATCH(request: Request) {
     bannerUrl?: string | null;
     bio?: string;
     pronouns?: string;
+    prideBadges?: unknown;
     spotifyActivity?: { song: string; artist: string; albumArt?: string; isPlaying?: boolean } | null;
   };
 
@@ -54,6 +56,18 @@ export async function PATCH(request: Request) {
   const bannerUrl = body.bannerUrl !== undefined ? body.bannerUrl : (user as { banner_url?: string }).banner_url || null;
   const bio = body.bio !== undefined ? body.bio.trim().slice(0, 500) : (user as { bio?: string }).bio || "";
   const pronouns = body.pronouns !== undefined ? body.pronouns.trim().slice(0, 40) : (user as { pronouns?: string }).pronouns || "";
+  const prideBadges =
+    body.prideBadges !== undefined
+      ? normalizePrideBadges(body.prideBadges)
+      : normalizePrideBadges(
+          (() => {
+            try {
+              return JSON.parse(user.pride_badges || "[]");
+            } catch {
+              return [];
+            }
+          })(),
+        );
   const spotifyActivity =
     body.spotifyActivity !== undefined
       ? body.spotifyActivity
@@ -63,9 +77,9 @@ export async function PATCH(request: Request) {
 
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, spotify_activity = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, pride_badges = ?, spotify_activity = ? WHERE id = ?",
     )
-    .bind(displayName, avatar, color, avatarUrl, bannerUrl, bio, pronouns, spotifyActivity, user.id)
+    .bind(displayName, avatar, color, avatarUrl, bannerUrl, bio, pronouns, JSON.stringify(prideBadges), spotifyActivity, user.id)
     .run();
 
   // Everyone's member list and every message avatar should update at once.
@@ -80,6 +94,7 @@ export async function PATCH(request: Request) {
       banner_url: bannerUrl,
       bio,
       pronouns,
+      pride_badges: JSON.stringify(prideBadges),
       color,
     }),
   });

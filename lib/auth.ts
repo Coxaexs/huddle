@@ -8,7 +8,11 @@
 
 import { bindings } from "./storage";
 import { ensureSchema } from "./schema";
-import type { PublicUser } from "./users";
+import {
+  normalizePrideBadges,
+  type PrideBadgeId,
+  type PublicUser,
+} from "./users";
 
 export { AVATAR_COLORS } from "./users";
 export type { PublicUser } from "./users";
@@ -26,6 +30,7 @@ export interface User {
   banner_url?: string | null;
   bio?: string;
   pronouns?: string;
+  pride_badges?: string | null;
   spotify_activity?: string | null;
   color: string;
   is_admin: number;
@@ -44,6 +49,14 @@ export function publicUser(user: User): PublicUser {
       spotifyAct = null;
     }
   }
+  let prideBadges: PrideBadgeId[] = [];
+  if (user.pride_badges) {
+    try {
+      prideBadges = normalizePrideBadges(JSON.parse(user.pride_badges));
+    } catch {
+      prideBadges = [];
+    }
+  }
   return {
     id: user.id,
     username: user.username,
@@ -53,6 +66,7 @@ export function publicUser(user: User): PublicUser {
     bannerUrl: user.banner_url || null,
     bio: user.bio || "",
     pronouns: user.pronouns || "",
+    prideBadges,
     spotifyActivity: spotifyAct,
     color: user.color,
     isAdmin: Boolean(user.is_admin),
@@ -194,7 +208,7 @@ export async function currentUser(request: Request): Promise<User | null> {
   const row = await db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-              u.bio, u.pronouns, u.spotify_activity, u.color, u.is_admin, u.created_at,
+              u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.created_at,
               u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
