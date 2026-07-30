@@ -2,8 +2,14 @@
 
 import { useRef, useState } from "react";
 import { X, Upload, Music, Smile, Calendar, Check } from "lucide-react";
-import type { PublicUser, SpotifyActivity } from "@/lib/users";
+import {
+  PRIDE_BADGES,
+  type PrideBadgeId,
+  type PublicUser,
+  type SpotifyActivity,
+} from "@/lib/users";
 import { Avatar } from "./avatar";
+import { PrideBadges } from "./pride-badges";
 import { apiFetch } from "../lib/client";
 
 interface ProfileSettingsDialogProps {
@@ -20,6 +26,9 @@ export function ProfileSettingsDialog({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [pronouns, setPronouns] = useState(user.pronouns || "");
   const [bio, setBio] = useState(user.bio || "");
+  const [prideBadges, setPrideBadges] = useState<PrideBadgeId[]>(
+    user.prideBadges || [],
+  );
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || "");
   const [bannerUrl, setBannerUrl] = useState(user.bannerUrl || "");
   const [bannerGradient, setBannerGradient] = useState("linear-gradient(135deg, #5865f2, #1e1f22)");
@@ -96,6 +105,7 @@ export function ProfileSettingsDialog({
           bannerUrl: bannerUrl || null,
           bio: bio.trim(),
           pronouns: pronouns.trim(),
+          prideBadges,
           spotifyActivity: spotifyAct,
         }),
       });
@@ -156,6 +166,42 @@ export function ProfileSettingsDialog({
                 onChange={(e) => setPronouns(e.target.value)}
                 maxLength={30}
               />
+            </div>
+
+            <div className="form-group mb-4">
+              <label>Pride badges <span className="profile-field-optional">Optional · choose up to 4</span></label>
+              <p className="pride-choice-help">
+                These are public profile decorations. Pick only the labels you want to share.
+              </p>
+              <div className="pride-badge-picker">
+                {PRIDE_BADGES.map((badge) => {
+                  const selected = prideBadges.includes(badge.id);
+                  return (
+                    <button
+                      type="button"
+                      key={badge.id}
+                      className={selected ? "selected" : ""}
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setPrideBadges((current) =>
+                          selected
+                            ? current.filter((id) => id !== badge.id)
+                            : current.length < 4
+                              ? [...current, badge.id]
+                              : current,
+                        )
+                      }
+                    >
+                      <i
+                        aria-hidden="true"
+                        style={{ "--badge-stripes": badge.colors.join(", ") } as React.CSSProperties}
+                      />
+                      {badge.label}
+                      {selected && <Check size={13} />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <input
@@ -360,6 +406,7 @@ export function ProfileSettingsDialog({
                   {pronouns && (
                     <span className="text-xs text-indigo-300 ml-2">({pronouns})</span>
                   )}
+                  <PrideBadges badges={prideBadges} compact />
                 </div>
 
                 {hasSpotify && (

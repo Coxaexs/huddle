@@ -8502,4 +8502,177 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 
 
 
+/* Opt-in Pride palettes and public profile badges. Identity is never inferred. */
+.pride-theme-row {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+  margin-bottom:16px;
+}
+.pride-theme-row button {
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel);
+  color:var(--muted);
+  padding:9px 6px;
+  font-size:12px;
+  font-weight:700;
+}
+.pride-theme-row button i {
+  display:block;
+  height:8px;
+  margin:0 3px 7px;
+  border-radius:999px;
+  background:#8b8d98;
+}
+.pride-theme-row button.trans i {
+  background:linear-gradient(90deg, #5bcffa 0 20%, #f5abb9 20% 40%, #fff 40% 60%, #f5abb9 60% 80%, #5bcffa 80%);
+}
+.pride-theme-row button.pride i {
+  background:linear-gradient(90deg, #e40303 0 16.6%, #ff8c00 16.6% 33.2%, #ffed00 33.2% 49.8%, #008026 49.8% 66.4%, #24408e 66.4% 83%, #732982 83%);
+}
+.pride-theme-row button.nonbinary i {
+  background:linear-gradient(90deg, #fff430 0 25%, #fff 25% 50%, #9c59d1 50% 75%, #2d2d2d 75%);
+}
+.pride-theme-row button.active {
+  color:var(--text);
+  border-color:var(--lavender);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--lavender) 25%, transparent);
+}
 
+html[data-pride-theme="trans"] {
+  --lavender:#5bcffa !important;
+  --coral:#f5abb9;
+  --mint:#77d9f4;
+}
+html[data-pride-theme="nonbinary"] {
+  --lavender:#9c59d1 !important;
+  --coral:#fff430;
+  --mint:#d6bbef;
+}
+html[data-pride-theme="pride"] {
+  --lavender:#9a63d4 !important;
+  --coral:#ff7657;
+  --mint:#43c986;
+}
+html[data-pride-theme="trans"] body {
+  background-image:linear-gradient(135deg, color-mix(in srgb, #5bcffa 9%, transparent), transparent 38%, color-mix(in srgb, #f5abb9 9%, transparent));
+}
+html[data-pride-theme="nonbinary"] body {
+  background-image:linear-gradient(135deg, color-mix(in srgb, #fff430 7%, transparent), transparent 38%, color-mix(in srgb, #9c59d1 10%, transparent));
+}
+html[data-pride-theme="pride"] body {
+  background-image:linear-gradient(120deg, color-mix(in srgb, #e40303 5%, transparent), color-mix(in srgb, #ffed00 4%, transparent), color-mix(in srgb, #008026 5%, transparent), color-mix(in srgb, #24408e 6%, transparent), color-mix(in srgb, #732982 7%, transparent));
+}
+html[data-pride-theme="trans"] .brand-mark,
+html[data-pride-theme="trans"] .profile-card-banner {
+  background-image:linear-gradient(135deg, #5bcffa, #f5abb9 45%, #fff 50%, #f5abb9 55%, #5bcffa);
+}
+
+.pride-badges {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:7px;
+}
+.pride-badges.compact {
+  display:inline-flex;
+  margin:4px 0 0;
+  width:100%;
+}
+.pride-badge {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  min-height:22px;
+  padding:2px 7px 2px 4px;
+  border:1px solid color-mix(in srgb, var(--line) 72%, white);
+  border-radius:999px;
+  background:color-mix(in srgb, var(--panel) 88%, transparent);
+  color:var(--text);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.055em;
+}
+.pride-badge i,
+.pride-badge-picker button i {
+  display:inline-block;
+  flex:none;
+  width:18px;
+  height:12px;
+  border-radius:4px;
+  background:linear-gradient(180deg, var(--badge-stripes));
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);
+}
+.profile-field-optional {
+  color:var(--muted);
+  font-size:11px;
+  font-weight:500;
+}
+.pride-choice-help {
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+  margin:3px 0 9px;
+}
+.pride-badge-picker {
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.pride-badge-picker button {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 9px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;
+  background:rgba(255,255,255,.04);
+  color:#c9cad1;
+  font-size:12px;
+}
+.pride-badge-picker button:hover,
+.pride-badge-picker button.selected {
+  border-color:var(--lavender);
+  color:#fff;
+  background:color-mix(in srgb, var(--lavender) 15%, transparent);
+}
+
+html[data-blahaj="on"] body::after {
+  content:"🦈";
+  position:fixed;
+  right:18px;
+  bottom:14px;
+  z-index:9000;
+  display:grid;
+  place-items:center;
+  width:66px;
+  height:52px;
+  border:3px solid #f5abb9;
+  border-left-color:#5bcffa;
+  border-right-color:#5bcffa;
+  border-radius:48% 52% 46% 54%;
+  background:linear-gradient(180deg, rgba(91,207,250,.95), rgba(245,171,185,.95));
+  box-shadow:0 10px 30px rgba(20,30,55,.3);
+  font-size:34px;
+  transform:rotate(-8deg);
+  pointer-events:none;
+  animation:blahaj-float 3.4s ease-in-out infinite;
+}
+@keyframes blahaj-float {
+  0%, 100% { transform:translateY(0) rotate(-8deg); }
+  50% { transform:translateY(-7px) rotate(-3deg); }
+}
+html[data-motion="reduced"][data-blahaj="on"] body::after {
+  animation:none;
+}
+@media (max-width:700px) {
+  .pride-theme-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  html[data-blahaj="on"] body::after {
+    width:52px;
+    height:42px;
+    right:10px;
+    bottom:72px;
+    font-size:27px;
+  }
+}
