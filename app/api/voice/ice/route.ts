@@ -19,7 +19,12 @@ const DEFAULT_ICE = [
  */
 export async function GET(request: Request) {
   const user = await currentUser(request);
-  if (!user) return unauthorized();
+  const recorder = Boolean(
+    bindings().RECORDER_SERVICE_TOKEN &&
+      request.headers.get("authorization") ===
+        `Bearer ${bindings().RECORDER_SERVICE_TOKEN}`,
+  );
+  if (!user && !recorder) return unauthorized();
 
   const configured = bindings().HUDDLE_ICE_SERVERS?.trim();
   if (!configured) {

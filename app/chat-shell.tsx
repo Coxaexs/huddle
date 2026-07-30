@@ -82,6 +82,7 @@ import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
 import { VoiceStage } from "./components/voice-stage";
+import { RecordingDirector } from "./components/recording-director";
 import {
   UserMenu,
   type UserMenuTarget,
@@ -668,6 +669,10 @@ export function ChatShell() {
 
   const canManageChannels = hasPermission(myPermissions, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(myPermissions, Permission.MANAGE_SERVER);
+  const canRecordSessions = hasPermission(
+    myPermissions,
+    Permission.RECORD_SESSIONS,
+  );
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
 
   /** Roles a member holds on the active server, highest position first. */
@@ -1690,6 +1695,67 @@ export function ChatShell() {
       return;
     }
 
+    if (name === "record") {
+      if (!voice.channelId) {
+        setNotice("Join the voice room you want to record first.");
+        return;
+      }
+      const [subcommand = "status", ...rest] = value.split(/\s+/);
+      const recording = hub.recordings[voice.channelId] || null;
+      if (subcommand === "setup") {
+        window.dispatchEvent(new CustomEvent("huddle-recording-setup"));
+        setStageChannelId(voice.channelId);
+        return;
+      }
+      if (subcommand === "status") {
+        setNotice(
+          recording
+            ? `${recording.title}: ${recording.status.replace("-", " ")} · ${recording.consents.filter((entry) => entry.decision === "accepted").length}/${recording.consents.length} consented.`
+            : "No recording is active in this room.",
+        );
+        return;
+      }
+      if (!recording) {
+        setNotice("No recording is active. Use /record setup first.");
+        return;
+      }
+      const action =
+        subcommand === "start" ||
+        subcommand === "pause" ||
+        subcommand === "resume" ||
+        subcommand === "stop"
+          ? subcommand
+          : subcommand === "marker"
+            ? "marker"
+            : subcommand === "scene"
+              ? "scene"
+              : null;
+      if (!action) {
+        setNotice(
+          "Use /record setup, start, pause, resume, marker <name>, scene <scene>, stop, or status.",
+        );
+        return;
+      }
+      try {
+        await apiFetch("/api/recordings", {
+          method: "POST",
+          body: JSON.stringify({
+            action,
+            sessionId: recording.id,
+            ...(action === "marker"
+              ? { name: rest.join(" ") || "Marker", kind: "chapter" }
+              : {}),
+            ...(action === "scene" ? { scene: rest[0] } : {}),
+          }),
+        });
+      } catch (error) {
+        setNotice(
+          error instanceof Error ? error.message : "Recording command failed.",
+        );
+      }
+      return;
+    }
+
     if (MUSIC_COMMANDS.has(name)) {
       const requiresPresence = VOICE_REQUIRED_MUSIC_COMMANDS.has(name);
       if (requiresPresence && !voice.channelId) {
@@ -1829,7 +1895,13 @@ export function ChatShell() {
           payload?: Message["payload"];
         }>(
           "/api/integrations/dnd/roll",
-          { method: "POST", body: JSON.stringify({ command: raw }) },
+          {
+            method: "POST",
+            body: JSON.stringify({
+              command: raw,
+              channelId: voice.channelId || undefined,
+            }),
+          },
         );
         await postBotMessage(data.text || "The roll failed.", {
           author: "D&D Bot",
@@ -3589,6 +3661,17 @@ export function ChatShell() {
             userName={user.displayName}
             activity={roomActivity}
             onActivity={setRoomActivity}
+            recording={
+              <RecordingDirector
+                channelId={stageChannel.id}
+                recording={hub.recordings[stageChannel.id] || null}
+                participants={voiceParticipants}
+                currentUserId={user.id}
+                canControl={canRecordSessions}
+                speaking={voice.speaking}
+                onNotice={setNotice}
+              />
+            }
             battlemapOpen={Boolean(battlemap) && !battlemapHidden}
             onToggleBattlemap={() => {
               if (!battlemap) {

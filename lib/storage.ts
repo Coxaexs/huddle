@@ -13,6 +13,10 @@ export interface HuddleBindings {
   MUSIC_HELPER_BASE_URL?: string;
   DND_BASE_URL?: string;
   DND_PUBLIC_URL?: string;
+  /** Host-side recorder control endpoint; never returned to browsers. */
+  RECORDER_SERVICE_URL?: string;
+  /** Shared bearer secret for Huddle ↔ recorder-service callbacks. */
+  RECORDER_SERVICE_TOKEN?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */

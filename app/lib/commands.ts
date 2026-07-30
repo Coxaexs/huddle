@@ -200,6 +200,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "deathsave", description: "Roll a death save (companion app)", group: "D&D" },
   { name: "gmview", description: "Open the GM panel (companion app)", group: "D&D" },
   { name: "dnd", description: "Open the D&D companion", group: "D&D" },
+  {
+    name: "record",
+    args: "<setup|start|pause|resume|marker|scene|stop|status>",
+    description: "Control a consent-gated D&D session recording",
+    group: "D&D",
+    voice: true,
+  },
 
   // ---- Huddle itself ----
   {

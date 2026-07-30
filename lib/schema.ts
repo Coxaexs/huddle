@@ -338,6 +338,146 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS audit_log_server_idx ON audit_log(server_id, created_at)",
     ),
+    // Campaign presentation data is intentionally public-only. Private sheet
+    // fields remain in the companion app and never enter recording payloads.
+    db.prepare(`CREATE TABLE IF NOT EXISTS dnd_campaigns (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS dnd_campaigns_server_idx ON dnd_campaigns(server_id, name)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS campaign_characters (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        character_name TEXT NOT NULL,
+        portrait_key TEXT,
+        artwork_key TEXT,
+        class_name TEXT,
+        level INTEGER,
+        accent_color TEXT NOT NULL DEFAULT '#ffd67c',
+        show_player_name INTEGER NOT NULL DEFAULT 0,
+        public_card_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (campaign_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS campaign_characters_campaign_idx ON campaign_characters(campaign_id)",
+    ),
+    // Workers coordinate and audit recordings; media paths and large files are
+    // deliberately absent. The host recorder owns those on local storage.
+    db.prepare(`CREATE TABLE IF NOT EXISTS recording_sessions (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        controller_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        campaign_id TEXT,
+        campaign_name TEXT,
+        episode_number INTEGER,
+        resolution TEXT NOT NULL DEFAULT '1920x1080',
+        frame_rate INTEGER NOT NULL DEFAULT 30,
+        theme TEXT NOT NULL DEFAULT 'tavern',
+        separate_audio INTEGER NOT NULL DEFAULT 0,
+        retention_days INTEGER NOT NULL DEFAULT 90,
+        automatic_direction INTEGER NOT NULL DEFAULT 1,
+        locked_speaker_id TEXT,
+        scene TEXT NOT NULL DEFAULT 'party',
+        status TEXT NOT NULL DEFAULT 'awaiting-consent',
+        started_at TEXT,
+        active_since_at TEXT,
+        paused_at TEXT,
+        stopped_at TEXT,
+        accumulated_ms INTEGER NOT NULL DEFAULT 0,
+        estimated_bytes INTEGER NOT NULL DEFAULT 0,
+        disk_free_bytes INTEGER,
+        recorder_last_seen_at TEXT,
+        error TEXT,
+        deleted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recording_sessions_channel_idx ON recording_sessions(channel_id, created_at)",
+    ),
+    db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS recording_sessions_one_active_idx
+         ON recording_sessions(channel_id)
+       WHERE status IN ('awaiting-consent','countdown','recording','paused','finalizing')`,
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS recording_participants (
+        session_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        required INTEGER NOT NULL DEFAULT 1,
+        decision TEXT NOT NULL DEFAULT 'pending',
+        decided_at TEXT,
+        joined_at TEXT,
+        left_at TEXT,
+        PRIMARY KEY (session_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recording_participants_session_idx ON recording_participants(session_id)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS recording_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        actor_id TEXT,
+        at_ms INTEGER NOT NULL DEFAULT 0,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        automatic INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recording_events_timeline_idx ON recording_events(session_id, at_ms, created_at)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS recording_dice_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        roller_id TEXT NOT NULL,
+        expression TEXT NOT NULL,
+        rolls_json TEXT NOT NULL,
+        modifier INTEGER NOT NULL DEFAULT 0,
+        total INTEGER NOT NULL,
+        roll_type TEXT NOT NULL DEFAULT 'normal',
+        animation_seed TEXT NOT NULL,
+        at_ms INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recording_dice_timeline_idx ON recording_dice_events(session_id, at_ms, created_at)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS recording_outputs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        checksum TEXT,
+        completed_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recording_outputs_session_idx ON recording_outputs(session_id)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS recorder_diagnostics (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        level TEXT NOT NULL,
+        code TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -427,6 +567,26 @@ async function migrate(db: D1Database): Promise<void> {
   if (!inviteColumns.has("server_id")) {
     await db.prepare("ALTER TABLE invites ADD COLUMN server_id TEXT").run();
   }
+
+  const recordingColumns = await columnNames(db, "recording_sessions");
+  const recordingMigrations: D1PreparedStatement[] = [];
+  for (const [column, ddl] of [
+    [
+      "active_since_at",
+      "ALTER TABLE recording_sessions ADD COLUMN active_since_at TEXT",
+    ],
+    [
+      "retention_days",
+      "ALTER TABLE recording_sessions ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 90",
+    ],
+    [
+      "deleted_at",
+      "ALTER TABLE recording_sessions ADD COLUMN deleted_at TEXT",
+    ],
+  ] as const) {
+    if (!recordingColumns.has(column)) recordingMigrations.push(db.prepare(ddl));
+  }
+  if (recordingMigrations.length) await db.batch(recordingMigrations);
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);

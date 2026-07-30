@@ -17,6 +17,7 @@ const REALTIME_PATHS = new Set([`${BASE_PATH}/api/realtime`, "/api/realtime"]);
 interface WorkerEnv {
   ASSETS?: Fetcher;
   BOT_TOKEN?: string;
+  RECORDER_SERVICE_TOKEN?: string;
 }
 
 export default {
@@ -43,8 +44,12 @@ export default {
       const isMusicBot = Boolean(
         env.BOT_TOKEN && authorization === `Bearer ${env.BOT_TOKEN}`,
       );
-      const user = isMusicBot ? null : await currentUser(request);
-      if (!isMusicBot && !user) {
+      const isRecorder = Boolean(
+        env.RECORDER_SERVICE_TOKEN &&
+          authorization === `Bearer ${env.RECORDER_SERVICE_TOKEN}`,
+      );
+      const user = isMusicBot || isRecorder ? null : await currentUser(request);
+      if (!isMusicBot && !isRecorder && !user) {
         return new Response("Unauthorized", { status: 401 });
       }
 
@@ -54,18 +59,32 @@ export default {
       }
 
       const target = new URL("https://huddle.hub/socket");
-      target.searchParams.set("userId", isMusicBot ? "bot:music" : user!.id);
-      target.searchParams.set("username", isMusicBot ? "musicbot" : user!.username);
+      target.searchParams.set(
+        "userId",
+        isRecorder ? "bot:recorder" : isMusicBot ? "bot:music" : user!.id,
+      );
+      target.searchParams.set(
+        "username",
+        isRecorder ? "recorder" : isMusicBot ? "musicbot" : user!.username,
+      );
       target.searchParams.set(
         "displayName",
-        isMusicBot ? "Music + Watch" : user!.display_name,
+        isRecorder
+          ? "D&D Session Recorder"
+          : isMusicBot
+            ? "Music + Watch"
+            : user!.display_name,
       );
-      target.searchParams.set("avatar", isMusicBot ? "♫" : user!.avatar);
-      if (!isMusicBot && user!.avatar_url) {
+      target.searchParams.set("avatar", isRecorder ? "REC" : isMusicBot ? "♫" : user!.avatar);
+      if (!isMusicBot && !isRecorder && user!.avatar_url) {
         target.searchParams.set("avatarUrl", user!.avatar_url);
       }
-      target.searchParams.set("color", isMusicBot ? "#a99af5" : user!.color);
-      if (isMusicBot) target.searchParams.set("bot", "1");
+      target.searchParams.set(
+        "color",
+        isRecorder ? "#e14d4d" : isMusicBot ? "#a99af5" : user!.color,
+      );
+      if (isMusicBot || isRecorder) target.searchParams.set("bot", "1");
+      if (isRecorder) target.searchParams.set("recorder", "1");
 
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },
