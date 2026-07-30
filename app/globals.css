@@ -7013,6 +7013,9 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
   animation: fadeIn 0.15s ease-out;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .discord-esc-button {
@@ -8441,13 +8444,14 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 .profile-settings-dialog-container {
   width: 100%;
   max-width: 900px;
-  margin: 40px auto;
+  margin: 24px auto;
   background: #2b2d31;
   border-radius: 16px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  overflow: hidden;
+  overflow: visible;
   padding: 32px;
+  flex: 0 0 auto;
 }
 
 .profile-settings-form-layout {
@@ -8471,6 +8475,15 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.profile-settings-savebar {
+  position:sticky;
+  bottom:-1px;
+  z-index:5;
+  margin:8px -8px -8px;
+  padding:14px 8px 8px;
+  background:linear-gradient(180deg, transparent, #2b2d31 24%);
 }
 
 /* Jump to Message Flash Highlight */
@@ -8518,20 +8531,20 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   font-size:12px;
   font-weight:700;
 }
-.pride-theme-row button i {
+.pride-theme-row button .pride-theme-swatch {
   display:block;
   height:8px;
   margin:0 3px 7px;
   border-radius:999px;
   background:#8b8d98;
 }
-.pride-theme-row button.trans i {
+.pride-theme-row button.trans .pride-theme-swatch {
   background:linear-gradient(90deg, #5bcffa 0 20%, #f5abb9 20% 40%, #fff 40% 60%, #f5abb9 60% 80%, #5bcffa 80%);
 }
-.pride-theme-row button.pride i {
+.pride-theme-row button.pride .pride-theme-swatch {
   background:linear-gradient(90deg, #e40303 0 16.6%, #ff8c00 16.6% 33.2%, #ffed00 33.2% 49.8%, #008026 49.8% 66.4%, #24408e 66.4% 83%, #732982 83%);
 }
-.pride-theme-row button.nonbinary i {
+.pride-theme-row button.nonbinary .pride-theme-swatch {
   background:linear-gradient(90deg, #fff430 0 25%, #fff 25% 50%, #9c59d1 50% 75%, #2d2d2d 75%);
 }
 .pride-theme-row button.active {
@@ -8594,8 +8607,7 @@ html[data-pride-theme="trans"] .profile-card-banner {
   font-weight:800;
   letter-spacing:.055em;
 }
-.pride-badge i,
-.pride-badge-picker button i {
+.pride-flag-swatch {
   display:inline-block;
   flex:none;
   width:18px;
@@ -8603,6 +8615,8 @@ html[data-pride-theme="trans"] .profile-card-banner {
   border-radius:4px;
   background:linear-gradient(180deg, var(--badge-stripes));
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);
+  overflow:hidden;
+  line-height:0;
 }
 .profile-field-optional {
   color:var(--muted);
@@ -8638,41 +8652,130 @@ html[data-pride-theme="trans"] .profile-card-banner {
   background:color-mix(in srgb, var(--lavender) 15%, transparent);
 }
 
-html[data-blahaj="on"] body::after {
-  content:"🦈";
+.blahaj-buddy {
   position:fixed;
   right:18px;
   bottom:14px;
   z-index:9000;
+  display:none;
+  align-items:flex-end;
+  gap:10px;
+  pointer-events:none;
+}
+html[data-blahaj="on"] .blahaj-buddy {
+  display:flex;
+}
+.blahaj-boop {
+  position:relative;
   display:grid;
   place-items:center;
-  width:66px;
-  height:52px;
+  width:70px;
+  height:56px;
   border:3px solid #f5abb9;
   border-left-color:#5bcffa;
   border-right-color:#5bcffa;
   border-radius:48% 52% 46% 54%;
   background:linear-gradient(180deg, rgba(91,207,250,.95), rgba(245,171,185,.95));
   box-shadow:0 10px 30px rgba(20,30,55,.3);
-  font-size:34px;
-  transform:rotate(-8deg);
-  pointer-events:none;
+  color:inherit;
+  cursor:pointer;
+  pointer-events:auto;
+  transition:transform .18s ease, filter .18s ease;
   animation:blahaj-float 3.4s ease-in-out infinite;
+}
+.blahaj-boop:hover {
+  filter:brightness(1.08);
+  transform:scale(1.08) rotate(3deg);
+}
+.blahaj-boop:active {
+  transform:scale(.94) rotate(-5deg);
+}
+.blahaj-shark {
+  font-size:34px;
+  line-height:1;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.18));
+}
+.blahaj-speech {
+  max-width:210px;
+  padding:10px 12px;
+  border:1px solid color-mix(in srgb, #5bcffa 55%, #f5abb9);
+  border-radius:14px 14px 4px 14px;
+  background:color-mix(in srgb, var(--panel) 94%, #5bcffa);
+  color:var(--text);
+  box-shadow:0 10px 30px rgba(15,20,35,.25);
+  animation:blahaj-talk .2s ease-out;
+  pointer-events:auto;
+}
+.blahaj-speech strong,
+.blahaj-speech span,
+.blahaj-speech small {
+  display:block;
+}
+.blahaj-speech strong { color:#5bcffa; font-size:12px; }
+.blahaj-speech span { margin-top:2px; font-size:13px; line-height:1.35; }
+.blahaj-speech small { margin-top:4px; color:var(--muted); font-size:10px; }
+.blahaj-spark {
+  position:absolute;
+  opacity:0;
+  font-size:15px;
+  color:#fff;
+  pointer-events:none;
+}
+.blahaj-buddy.awake .blahaj-spark {
+  animation:blahaj-spark .8s ease-out;
+}
+.blahaj-spark.one { left:3px; top:-8px; color:#5bcffa; }
+.blahaj-spark.two { right:1px; top:-11px; color:#f5abb9; animation-delay:.08s !important; }
+.blahaj-profile-tip {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:2px 0 8px;
+  padding:10px 12px;
+  border:1px solid rgba(91,207,250,.28);
+  border-radius:12px;
+  background:linear-gradient(100deg, rgba(91,207,250,.1), rgba(245,171,185,.09));
+}
+.blahaj-profile-tip > span { font-size:25px; }
+.blahaj-profile-tip p { margin:0; color:#cfd2d7; font-size:12px; line-height:1.4; }
+.blahaj-profile-tip strong { color:#5bcffa; }
+@keyframes blahaj-talk {
+  from { opacity:0; transform:translateY(7px) scale(.96); }
+  to { opacity:1; transform:translateY(0) scale(1); }
+}
+@keyframes blahaj-spark {
+  0% { opacity:0; transform:translateY(8px) scale(.5); }
+  30% { opacity:1; }
+  100% { opacity:0; transform:translateY(-18px) scale(1.3) rotate(15deg); }
 }
 @keyframes blahaj-float {
   0%, 100% { transform:translateY(0) rotate(-8deg); }
   50% { transform:translateY(-7px) rotate(-3deg); }
 }
-html[data-motion="reduced"][data-blahaj="on"] body::after {
+html[data-motion="reduced"] .blahaj-boop {
   animation:none;
 }
 @media (max-width:700px) {
   .pride-theme-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-  html[data-blahaj="on"] body::after {
-    width:52px;
-    height:42px;
+  .profile-settings-dialog-container {
+    margin:0;
+    min-height:100%;
+    border-radius:0;
+    padding:24px 18px 96px;
+  }
+  .blahaj-buddy {
     right:10px;
     bottom:72px;
-    font-size:27px;
+  }
+  .blahaj-boop {
+    width:54px;
+    height:44px;
+  }
+  .blahaj-shark { font-size:27px; }
+  .blahaj-speech { max-width:180px; }
+}
+@media (max-height:720px) {
+  .profile-settings-dialog-container {
+    margin:12px auto;
   }
 }

@@ -120,11 +120,11 @@ export function UserProfileCard({
           {member.pronouns && (
             <span className="text-xs text-indigo-300 ml-2">({member.pronouns})</span>
           )}
-          <PrideBadges badges={member.prideBadges} compact />
           {member.customStatus && (
             <div className="profile-custom-status">💬 {member.customStatus}</div>
           )}
         </div>
+        <PrideBadges badges={member.prideBadges} compact />
 
         {member.spotifyActivity && (
           <div className="bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1">

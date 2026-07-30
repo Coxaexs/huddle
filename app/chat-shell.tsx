@@ -110,6 +110,7 @@ import {
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
 import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
+import { BlahajBuddy } from "./components/blahaj-buddy";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 
 interface Message {
@@ -5464,6 +5465,7 @@ export function ChatShell() {
         />
       )}
 
+      <BlahajBuddy />
       <ToastContainer />
     </main>
   );
