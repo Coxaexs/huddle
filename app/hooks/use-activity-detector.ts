@@ -40,7 +40,7 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
   const userIdRef = useRef(user?.id);
   userIdRef.current = user?.id;
 
-  const lastSongRef = useRef("");
+  const lastActivityKeyRef = useRef<string | null>(null);
   const isSyncingRef = useRef(false);
 
   const saveSpotifyUsername = (username: string) => {
@@ -54,12 +54,57 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
   useEffect(() => {
     if (!user || !masterEnabled || !spotifyEnabled) return;
 
-    const checkMediaSession = async () => {
+    const publishSpotify = async (spotifyAct: SpotifyActivity | null) => {
+      const activityKey = spotifyAct
+        ? `${spotifyAct.song}\u0000${spotifyAct.artist}\u0000${spotifyAct.isPlaying !== false}`
+        : "";
+      if (activityKey === lastActivityKeyRef.current) return;
+      lastActivityKeyRef.current = activityKey;
+      onUpdateRef.current?.(spotifyAct);
+      try {
+        await apiFetch("/api/settings/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ spotifyActivity: spotifyAct }),
+        });
+      } catch {
+        // A later poll will retry if the published state changes again.
+      }
+    };
+
+    const checkSpotifyActivity = async () => {
       // Prevent overlapping syncs
       if (isSyncingRef.current) return;
       isSyncingRef.current = true;
 
       try {
+        const savedUsername =
+          window.localStorage.getItem("huddle-spotify-username")?.trim() || "";
+
+        if (savedUsername) {
+          const response = await fetch(
+            `/hangout/api/integrations/spotify?username=${encodeURIComponent(savedUsername)}`,
+            { cache: "no-store" },
+          );
+          const latest = (await response.json()) as {
+            song?: string | null;
+            artist?: string;
+            albumArt?: string;
+            isPlaying?: boolean;
+            error?: string;
+          };
+          if (response.ok && !latest.error && latest.song && latest.isPlaying) {
+            await publishSpotify({
+              song: latest.song,
+              artist: latest.artist || "Spotify",
+              albumArt: latest.albumArt || "",
+              isPlaying: true,
+            });
+          } else if (response.ok && !latest.error) {
+            await publishSpotify(null);
+          }
+          return;
+        }
+
         let song = "";
         let artist = "";
         let albumArt = "";
@@ -74,31 +119,17 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
           }
         }
 
-        // Only sync if the song actually changed
-        if (song && song !== lastSongRef.current) {
-          lastSongRef.current = song;
-          const spotifyAct: SpotifyActivity = { song, artist, albumArt, isPlaying: true };
-
-          // Fire callback via ref (no re-render dependency)
-          onUpdateRef.current?.(spotifyAct);
-
-          try {
-            await apiFetch("/api/settings/profile", {
-              method: "PATCH",
-              body: JSON.stringify({ spotifyActivity: spotifyAct }),
-            });
-          } catch {
-            // ignore
-          }
-        }
+        await publishSpotify(
+          song ? { song, artist, albumArt, isPlaying: true } : null,
+        );
       } finally {
         isSyncingRef.current = false;
       }
     };
 
-    // Poll every 15 seconds (not 4!) to avoid resource exhaustion
-    const interval = setInterval(checkMediaSession, 15_000);
-    void checkMediaSession();
+    // Last.fm and local media metadata are refreshed on the same bounded loop.
+    const interval = window.setInterval(checkSpotifyActivity, 10_000);
+    void checkSpotifyActivity();
     return () => clearInterval(interval);
     // Only re-subscribe when these booleans change — NOT on callback/user object changes
   }, [!!user, masterEnabled, spotifyEnabled]);

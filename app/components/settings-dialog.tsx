@@ -938,7 +938,7 @@ export function SettingsDialog({
                             const res = await resp.json() as { song?: string; artist?: string; albumArt?: string; error?: string; message?: string; isPlaying?: boolean };
                             if (res.error) {
                               setError(res.error);
-                            } else if (res.song) {
+                            } else if (res.song && res.isPlaying) {
                               const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
                               await apiFetch("/api/settings/profile", {
                                 method: "PATCH",
@@ -947,7 +947,12 @@ export function SettingsDialog({
                               setStatus(`🎵 Now playing: ${res.song} by ${res.artist}`);
                               onUser({ ...user, spotifyActivity: act });
                             } else {
-                              setStatus(res.message || "Connected! Play a song on Spotify to broadcast it.");
+                              await apiFetch("/api/settings/profile", {
+                                method: "PATCH",
+                                body: JSON.stringify({ spotifyActivity: null }),
+                              });
+                              onUser({ ...user, spotifyActivity: null });
+                              setStatus(res.message || "Connected! Nothing is playing right now; checking every 10 seconds.");
                             }
                           } catch (err) {
                             setError(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
