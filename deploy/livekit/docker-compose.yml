@@ -5,10 +5,16 @@ services:
   # less bandwidth than the fully TURN-relayed mesh did.
   livekit:
     image: livekit/livekit-server:v1.8.4
-    command: --config /etc/livekit.yaml
+    # The API secret comes from deploy/livekit/.env (gitignored). sed injects it
+    # into the mounted config at start so no secrets live in tracked files and a
+    # `git reset --hard` can never wipe the key.
+    command: sh -c "sed -i 's|__LIVEKIT_API_SECRET__|$${LIVEKIT_API_SECRET}|' /etc/livekit.yaml && exec livekit-server --config /etc/livekit.yaml"
     restart: unless-stopped
+    environment:
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-change-me}"
     ports:
-      # Signaling + token/health HTTP (put TLS on it via nginx).
+      # Signaling + token/health HTTP (TLS is terminated by nginx at
+      # wss://xray.deeppixel.online/livekit).
       - "7880:7880"
       # WebRTC over TCP (fallback for networks that block UDP).
       - "7882:7882/tcp"
@@ -17,5 +23,3 @@ services:
       - "7883-7891:7883-7891/udp"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
-    environment:
-      LIVEKIT_KEYS: "${LIVEKIT_KEYS:-devkey:${LIVEKIT_API_SECRET:-change-me}}"

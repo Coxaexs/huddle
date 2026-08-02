@@ -29,9 +29,10 @@ rtc:
 logging:
   level: info
 keys:
-  # API key:secret pair. The app's /api/voice/livekit-token signs JWTs with the
-  # secret and the browser connects using the matching key.
-  devkey: change-me-to-a-long-random-secret
+  # The secret is injected at container start from deploy/livekit/.env
+  # (LIVEKIT_API_SECRET) by the docker-compose command, replacing the
+  # __LIVEKIT_API_SECRET__ placeholder. Never commit the real value.
+  devkey: __LIVEKIT_API_SECRET__
 room:
   empty_timeout: 0
   max_participants: 25
