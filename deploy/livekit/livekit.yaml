@@ -1,0 +1,38 @@
+# LiveKit server config for Huddle.
+#
+# Copy this explainer + the compose file up to the box and run:
+#   docker compose up -d
+#
+# Networking you must do once on the host/router:
+#   1. Router: forward TCP 7880, TCP 7882 and UDP 7883-7891 to this box (mirror
+#      the existing coturn relay forwarding).
+#   2. nginx: terminate TLS for wss://xray.deeppixel.online/livekit and proxy to
+#      http://127.0.0.1:7880 (the hostname must bypass Cloudflare, like coturn's
+#      xray host, or media/signaling will fight CF's proxy).
+port: 7880
+bind_addresses:
+  - ""
+rtc:
+  tcp_port: 7882
+  port_range_start: 7883
+  port_range_end: 7891
+  use_external_ip: true
+  # If you would rather reuse the existing coturn as the TURN for relayed
+  # clients instead of LiveKit's built-in relay, uncomment and fill in coturn's
+  # static credentials:
+  # turn_servers:
+  #   - host: xray.deeppixel.online
+  #     port: 3478
+  #     protocol: udp
+  #     username: <coturn user>
+  #     credential: <coturn password>
+logging:
+  level: info
+keys:
+  # API key:secret pair. The app's /api/voice/livekit-token signs JWTs with the
+  # secret and the browser connects using the matching key.
+  devkey: change-me-to-a-long-random-secret
+room:
+  empty_timeout: 0
+  max_participants: 25
+  cleanup_timeout: 120

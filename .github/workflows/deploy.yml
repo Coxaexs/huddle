@@ -1,0 +1,40 @@
+name: Deploy huddle
+
+# When code lands on `main`, build it here and push it to the production box,
+# which is exactly the "work on dev, merge to main, it ships itself" loop we
+# want. The server just has to `git pull` + build + restart, so nothing depends
+# on ad-hoc scp.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DEPLOY_HOST    e.g. home          (a name in ~/.ssh/config is fine)
+#   DEPLOY_USER    e.g. coxaexs
+#   DEPLOY_PASS    the SSH password
+#   DEPLOY_PATH    e.g. /home/coxaexs/huddle
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref_name == 'main'
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASS }}
+          # `huddle.service` (systemd + wrangler dev on :8730) restarts and
+          # serves the freshly built worker. nginx already points /hangout at it.
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            sudo systemctl restart huddle.service
+            curl -fsS -o /dev/null http://127.0.0.1:8730/hangout || true
+            echo "deployed $(git rev-parse --short HEAD)"

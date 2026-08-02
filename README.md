@@ -73,6 +73,14 @@ is handed. `/api/voice/ice` reports whether it used that configuration or fell
 back to plain STUN, because a silent fallback looks exactly like a working setup
 until nobody can hear each other.
 
+**LiveKit SFU (in progress on `dev`):** the mesh relays everything through TURN
+once the group is behind CGNAT, which is both heavy (O(N²) on the home uplink)
+and fragile (one failed pair silences one person). `docs/livekit-sfu.md` covers
+the plan to move to a self-hosted LiveKit SFU: one reliable uplink per client
+with simulcast/dynacast. The deploy scaffolding (Docker + config), the token
+endpoint (`/api/voice/livekit-token`) and CI/CD are on `dev`; all of it is inert
+until `LIVEKIT_URL` is set, so the mesh keeps working meanwhile.
+
 Music is not streamed by the bot. `/play` resolves a track through the helper on
 :8731, and the hub publishes one position for the room; every listener plays the
 same source and is nudged back onto that position. That is what makes the

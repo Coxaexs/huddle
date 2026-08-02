@@ -1,0 +1,40 @@
+name: CI
+
+# Typecheck + build on every push and pull request. This is the safety net that
+# lets us land changes on `dev` and merge to `main` with confidence, and it is
+# what the deploy workflow depends on: only green `main` gets shipped.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app bundles its own Node 22 (see package.json "node"), but the build
+      # runs on the runner's Node 22 to keep CI lean.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: typecheck-logs
+          path: |
+            dist/
+            *.tsbuildinfo
+          if-no-files-found: ignore

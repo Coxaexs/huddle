@@ -19,6 +19,12 @@ export interface HuddleBindings {
   RECORDER_SERVICE_TOKEN?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
+  /** LiveKit SFU connection details. When LIVEKIT_URL is set, voice rooms use
+   *  the SFU instead of the peer-to-peer mesh (one reliable uplink per client
+   *  instead of N-1 mesh connections). */
+  LIVEKIT_URL?: string;
+  LIVEKIT_API_KEY?: string;
+  LIVEKIT_API_SECRET?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
   /** Last.fm API key for live scrobbler integration. */

@@ -1,0 +1,21 @@
+services:
+  # Huddle's Selective Forwarding Unit. Each client keeps exactly ONE WebRTC
+  # connection to this server instead of N-1 mesh connections, which fixes the
+  # "I can't hear that one person" failures and, with dynacast/simulcast, uses
+  # less bandwidth than the fully TURN-relayed mesh did.
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    ports:
+      # Signaling + token/health HTTP (put TLS on it via nginx).
+      - "7880:7880"
+      # WebRTC over TCP (fallback for networks that block UDP).
+      - "7882:7882/tcp"
+      # WebRTC media over UDP. The router must forward this range to this host,
+      # the same way coturn's 49160-49200 relay range is already forwarded.
+      - "7883-7891:7883-7891/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_KEYS:-devkey:${LIVEKIT_API_SECRET:-change-me}}"
