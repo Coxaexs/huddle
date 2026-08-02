@@ -52,20 +52,26 @@ deployed and `LIVEKIT_URL` is set. Until then voice behaves exactly as today (me
    plus `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Rebuild (`npm run build`)
    so `.dev.vars` is republished, then `systemctl restart huddle`.
 
-## Client steps (the remaining, bigger piece)
+## Client (implemented on `dev`)
 
-`app/hooks/use-voice.ts` (the mesh) and its two consumers
-(`app/chat-shell.tsx`, `app/recorder/[sessionId]/production-studio.tsx`) must
-learn to use `livekit-client` behind the same flag:
+`app/hooks/use-voice.ts` now drives LiveKit directly and keeps the exact same
+`useVoice` contract, so the two consumers (`app/chat-shell.tsx`, the D&D
+production studio) were not touched:
 
-1. On join, fetch `/api/voice/livekit-token?room=<channelId>`.
-   `configured:false` → keep the mesh path; `configured:true` → SFU.
-2. SFU path: `new Room()` → `room.connect(url, token)`; map
-   `TrackEvent.TrackSubscribed` into `remoteStreams`; use LiveKit's
-   `ParticipantEvent.IsSpeaking` instead of the in-hook `watchLevel` analysers.
-3. Keep the whole `useVoice` return contract (`muted/deafened/speaking/…`) so
-   `voice-stage.tsx` and the recorder stay unchanged.
-4. Server-mute → LiveKit track subscription permission instead of local tracks.
+- On join, the hook fetches `/api/voice/livekit-token?room=<channelId>&identity=<connectionId>`
+  and calls `room.connect(url, token)`. Identity is per-tab, matching the app's
+  `connectionId` model, so a person on two devices shows up twice (like before).
+- Media flows through the SFU: `RoomEvent.TrackSubscribed` surfaces remote
+  audio/video as `remoteStreams` (audio streams still play through the hidden
+  `<audio>` elements in `chat-shell`, which keeps per-person volume + deafen),
+  and `ActiveSpeakersChanged` drives the talking indicators.
+- Camera/screen share publish via `localParticipant.publishTrack` with bitrate
+  caps (`CAMERA_ENCODING`, `SCREEN_ENCODING`), which bounds how much the
+  SFU/TURN relay carries per uplink.
+- `use-voice-mesh.ts` keeps the entire old mesh implementation, unchanged, as a
+  reference/fallback. `handleSignal` is a no-op (signaling is browser→SFU now).
+- If `LIVEKIT_URL` is not configured the token endpoint returns
+  `configured:false` and the hook shows a clear "not configured" message rather
+  than silently failing.
 
-Because the mesh must keep working until the SFU is live, the swap is done as a
-flag-gated second path rather than a one-shot replacement.
+## Deploying the SFU (server side)

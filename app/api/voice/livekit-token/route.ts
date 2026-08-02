@@ -19,16 +19,18 @@ export async function GET(request: Request) {
     return Response.json({ configured: false });
   }
 
-  const room = new URL(request.url).searchParams.get("room");
+  const params = new URL(request.url).searchParams;
+  const room = params.get("room");
   if (!room) {
     return Response.json({ error: "missing room" }, { status: 400 });
   }
 
-  const join = await livekitToken({
-    identity: user.id,
-    name: user.display_name || user.username,
-    room,
-  });
+  // LiveKit identities are per-tab, matching the app's connectionId model, so a
+  // person can be in voice from two devices and each shows up independently.
+  const identity = params.get("identity") || user.id;
+  const name = params.get("name") || user.display_name || user.username;
+
+  const join = await livekitToken({ identity, name, room });
   if (!join) {
     return Response.json({ configured: false });
   }

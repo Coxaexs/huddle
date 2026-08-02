@@ -39,7 +39,11 @@ interface VoiceApi {
   forcedMute: boolean;
   deafened: boolean;
   speaking: Set<string>;
-  remoteStreams: Array<{ connectionId: string; stream: MediaStream }>;
+  remoteStreams: Array<{
+    connectionId: string;
+    stream: MediaStream;
+    kind?: "camera" | "screen";
+  }>;
   peerStates: Record<string, string>;
   screenSharing: boolean;
   screenQuality: ScreenShareQuality;
@@ -159,14 +163,14 @@ export function VoiceStage({
       connecting: false,
     });
   }
-  for (const { connectionId: remoteId, stream } of voice.remoteStreams) {
+  for (const { connectionId: remoteId, stream, kind } of voice.remoteStreams) {
     if (!hasLiveVideo(stream)) continue;
     const person = participants.find((p) => p.connectionId === remoteId);
     const label =
-      person?.cameraStreamId === stream.id
-        ? `${person.displayName} · camera`
-        : person?.screenStreamId === stream.id
-          ? `${person?.displayName} · screen`
+      kind === "camera" || person?.cameraStreamId === stream.id
+        ? `${person?.displayName || "Someone"} · camera`
+        : kind === "screen" || person?.screenStreamId === stream.id
+          ? `${person?.displayName || "Someone"} · screen`
           : person?.displayName || "Screen share";
     videoTiles.push({
       key: `${remoteId}:${stream.id}`,
