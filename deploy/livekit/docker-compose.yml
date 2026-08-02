@@ -5,10 +5,13 @@ services:
   # less bandwidth than the fully TURN-relayed mesh did.
   livekit:
     image: livekit/livekit-server:v1.8.4
+    # The image ENTRYPOINT is livekit-server itself, so override it to run the
+    # sed injection in a shell first, then exec the server.
+    entrypoint: ["sh", "-c"]
     # The API secret comes from deploy/livekit/.env (gitignored). sed injects it
     # into the mounted config at start so no secrets live in tracked files and a
     # `git reset --hard` can never wipe the key.
-    command: sh -c "sed -i 's|__LIVEKIT_API_SECRET__|$${LIVEKIT_API_SECRET}|' /etc/livekit.yaml && exec livekit-server --config /etc/livekit.yaml"
+    command: "sed -i 's|__LIVEKIT_API_SECRET__|$${LIVEKIT_API_SECRET}|' /etc/livekit.yaml && exec livekit-server --config /etc/livekit.yaml"
     restart: unless-stopped
     environment:
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-change-me}"
