@@ -36,4 +36,3 @@ keys:
 room:
   empty_timeout: 0
   max_participants: 25
-  cleanup_timeout: 120
