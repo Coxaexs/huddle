@@ -478,6 +478,14 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
     ),
+    // Fixed-window counters for throttling auth endpoints (login/signup). Rows
+    // are self-expiring: once `reset_at` passes, the next hit overwrites them,
+    // so no separate cleanup job is needed.
+    db.prepare(`CREATE TABLE IF NOT EXISTS auth_rate_limits (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL,
+        reset_at INTEGER NOT NULL
+      )`),
   ]);
 
   // Columns added after the first release.

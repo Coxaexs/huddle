@@ -17,15 +17,15 @@ rtc:
   port_range_start: 7883
   port_range_end: 7891
   use_external_ip: true
-  # If you would rather reuse the existing coturn as the TURN for relayed
-  # clients instead of LiveKit's built-in relay, uncomment and fill in coturn's
-  # static credentials:
-  # turn_servers:
-  #   - host: xray.deeppixel.online
-  #     port: 3478
-  #     protocol: udp
-  #     username: <coturn user>
-  #     credential: <coturn password>
+  # Reuse the existing coturn as the TURN relay for clients behind strict NAT.
+  # Credentials are injected at container start from deploy/livekit/.env by the
+  # docker-compose command, replacing the __TURN_*__ placeholders.
+  turn_servers:
+    - host: xray.deeppixel.online
+      port: 3478
+      protocol: udp
+      username: __TURN_USERNAME__
+      credential: __TURN_CREDENTIAL__
 logging:
   level: info
 keys:

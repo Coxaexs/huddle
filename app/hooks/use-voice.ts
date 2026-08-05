@@ -3,7 +3,7 @@
 /**
  * Huddle voice, powered by a self-hosted LiveKit SFU.
  *
- * This replaces the old WebRTC mesh (see use-voice-mesh.ts). A mesh behind
+ * This replaces the old WebRTC mesh. A mesh behind
  * carrier-grade NAT relays everything through the TURN server, which is both
  * O(N²) heavy on the home uplink and fragile — one failed peer pair silences a
  * single person. An SFU gives every client exactly one reliable uplink, and its
@@ -510,10 +510,19 @@ export function useVoice({
       if (channelIdRef.current === nextChannelId) return;
       if (channelIdRef.current) leave();
 
+      let stream: MediaStream;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           audio: microphoneConstraints(),
         });
+      } catch {
+        setError(
+          "Microphone access was blocked. Allow it in your browser settings to join voice.",
+        );
+        return;
+      }
+
+      try {
         // Joining is a real gesture, which is the only moment a phone will let
         // us start playing everyone else's audio.
         unlockAudio();
@@ -530,9 +539,11 @@ export function useVoice({
         send({ t: "voice-join", channelId: nextChannelId });
         playRoomTone("join");
 
-        const room = ensureRoom();
-        try {
-          const joinInfo = await apiFetch<{
+        // Fetch ICE servers (with TURN) and the LiveKit token in parallel so
+        // clients behind strict NAT have a relay fallback during ICE.
+        const [iceResponse, joinInfo] = await Promise.all([
+          apiFetch<{ iceServers: RTCIceServer[] }>("/api/voice/ice"),
+          apiFetch<{
             configured: boolean;
             url?: string;
             token?: string;
@@ -542,16 +553,28 @@ export function useVoice({
             )}&identity=${encodeURIComponent(
               connectionId || "",
             )}&name=${encodeURIComponent(connectionId || "")}`,
+          ),
+        ]);
+
+        if (!joinInfo.configured || !joinInfo.url || !joinInfo.token) {
+          setError(
+            "Voice server is not configured yet — tell whoever runs the server to set LIVEKIT_URL.",
           );
-          if (!joinInfo.configured || !joinInfo.url || !joinInfo.token) {
-            setError(
-              "Voice server is not configured yet — tell whoever runs the server to set LIVEKIT_URL.",
-            );
-            await leave();
-            return;
-          }
+          await leave();
+          return;
+        }
+
+        const room = ensureRoom();
+        try {
           await room.connect(joinInfo.url, joinInfo.token, {
             autoSubscribe: true,
+            // Pass TURN/STUN servers from Huddle's config so clients behind
+            // strict NAT have a relay fallback. Without this, the LiveKit
+            // client only uses ICE servers from the LiveKit server's
+            // signaling connection, which has no TURN configured.
+            rtcConfig: iceResponse.iceServers?.length
+              ? { iceServers: iceResponse.iceServers }
+              : undefined,
           });
           const audioTrack = stream.getAudioTracks()[0];
           if (audioTrack) {
@@ -559,8 +582,11 @@ export function useVoice({
               source: Track.Source.Microphone,
             });
           }
-        } catch {
-          setError("Could not connect to the voice server. Try again.");
+        } catch (connectError) {
+          console.error("[voice] LiveKit connection failed:", connectError);
+          setError(
+            "Could not connect to the voice server. A firewall or strict NAT may be blocking the media connection — try again.",
+          );
           try {
             room.disconnect();
           } catch {
@@ -568,10 +594,12 @@ export function useVoice({
           }
           await leave();
         }
-      } catch {
+      } catch (setupError) {
+        console.error("[voice] Setup failed:", setupError);
         setError(
-          "Microphone access was blocked. Allow it in your browser settings to join voice.",
+          "Could not reach the voice server. Check your connection and try again.",
         );
+        await leave();
       }
     },
     [connectionId, ensureRoom, leave, playRoomTone, rooms, send],

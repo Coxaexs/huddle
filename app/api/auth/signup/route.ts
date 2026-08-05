@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth";
 import { DEFAULT_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { bumpRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,10 @@ export async function POST(request: Request) {
     );
   }
   await ensureSchema(db);
+
+  // Cap signup attempts per IP so a valid invite code cannot be brute-forced.
+  const ipLimit = await bumpRateLimit(db, `signup-ip:${clientIp(request)}`, 20, 3600);
+  if (!ipLimit.allowed) return tooManyRequests(ipLimit.retryAfterSeconds);
 
   const body = (await request.json().catch(() => ({}))) as SignupBody;
   const username = (body.username || "").trim();

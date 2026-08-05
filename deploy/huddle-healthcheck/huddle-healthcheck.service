@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart Huddle if its local port (8730) stops answering
+After=huddle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/huddle-healthcheck.sh

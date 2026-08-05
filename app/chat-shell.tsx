@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -55,7 +57,11 @@ import {
   type BotMenuAction,
 } from "./components/bot-menu";
 import { DndCard } from "./components/dnd-card";
-import { GifPicker } from "./components/gif-picker";
+// These dialogs and pickers only mount when the user opens them, so they are
+// code-split out of the initial chat bundle and loaded on first use.
+const GifPicker = lazy(() =>
+  import("./components/gif-picker").then((m) => ({ default: m.GifPicker })),
+);
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
@@ -64,7 +70,9 @@ import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-swit
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer } from "./components/toast";
 import { PollCard } from "./components/poll-card";
-import { PdfViewer } from "./components/pdf-viewer";
+const PdfViewer = lazy(() =>
+  import("./components/pdf-viewer").then((m) => ({ default: m.PdfViewer })),
+);
 import { ProfileCard } from "./components/profile-card";
 import {
   MusicSettingsCard,
@@ -75,11 +83,21 @@ import {
   type MusicSettings,
 } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
-import { SettingsDialog } from "./components/settings-dialog";
-import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
+const SettingsDialog = lazy(() =>
+  import("./components/settings-dialog").then((m) => ({
+    default: m.SettingsDialog,
+  })),
+);
+import { useCustomDialog } from "./hooks/use-custom-dialog";
 import { UserFooter } from "./components/user-footer";
-import { ServerSettingsDialog } from "./components/server-settings-dialog";
-import { EmojiPicker } from "./components/emoji-picker";
+const ServerSettingsDialog = lazy(() =>
+  import("./components/server-settings-dialog").then((m) => ({
+    default: m.ServerSettingsDialog,
+  })),
+);
+const EmojiPicker = lazy(() =>
+  import("./components/emoji-picker").then((m) => ({ default: m.EmojiPicker })),
+);
 import { SlashMenu } from "./components/slash-menu";
 import { VoiceStage } from "./components/voice-stage";
 import { RecordingDirector } from "./components/recording-director";
@@ -109,7 +127,11 @@ import {
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
-import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
+const ProfileSettingsDialog = lazy(() =>
+  import("./components/profile-settings-dialog").then((m) => ({
+    default: m.ProfileSettingsDialog,
+  })),
+);
 import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
@@ -427,39 +449,10 @@ export function ChatShell() {
   const [dndUrl, setDndUrl] = useState<string | null>(null);
 
   // Custom modal dialog & server settings states
-  const [dialogOptions, setDialogOptions] = useState<DialogOptions | null>(null);
-  const [dialogCallback, setDialogCallback] = useState<((val?: string) => void) | null>(null);
-  const [dialogCancel, setDialogCancel] = useState<(() => void) | null>(null);
+  const { showCustomPrompt, showCustomConfirm, dialogElement } =
+    useCustomDialog();
   const [serverMenuOpen, setServerMenuOpen] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
-
-  const showCustomPrompt = (options: {
-    title: string;
-    message?: string;
-    defaultValue?: string;
-    placeholder?: string;
-    confirmText?: string;
-    onConfirm: (val?: string) => void;
-  }) => {
-    setDialogOptions({ ...options, type: "prompt" });
-    setDialogCallback(() => options.onConfirm);
-    setDialogCancel(null);
-  };
-
-  const showCustomConfirm = (options: {
-    title: string;
-    message?: string;
-    isDanger?: boolean;
-    confirmText?: string;
-    cancelText?: string;
-    onConfirm: () => void;
-    /** Runs when the cancel button (or backdrop) dismisses the dialog. */
-    onCancel?: () => void;
-  }) => {
-    setDialogOptions({ ...options, type: "confirm" });
-    setDialogCallback(() => () => options.onConfirm());
-    setDialogCancel(() => options.onCancel || null);
-  };
 
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -4498,33 +4491,37 @@ export function ChatShell() {
           )}
 
           {gifOpen && (
-            <GifPicker
-              onClose={() => setGifOpen(false)}
-              serverId={inDmHome ? null : activeServerId}
-              canManageStickers={canManageChannels}
-              onPick={(url) => {
-                setGifOpen(false);
-                void sendText(url);
-              }}
-              onInsert={(text) => {
-                setDraft((current) => current + text);
-                composerRef.current?.focus();
-              }}
-              onEmojiChange={() => void loadEmojis().catch(() => undefined)}
-            />
+            <Suspense fallback={null}>
+              <GifPicker
+                onClose={() => setGifOpen(false)}
+                serverId={inDmHome ? null : activeServerId}
+                canManageStickers={canManageChannels}
+                onPick={(url) => {
+                  setGifOpen(false);
+                  void sendText(url);
+                }}
+                onInsert={(text) => {
+                  setDraft((current) => current + text);
+                  composerRef.current?.focus();
+                }}
+                onEmojiChange={() => void loadEmojis().catch(() => undefined)}
+              />
+            </Suspense>
           )}
 
           {emojiOpen && (
-            <EmojiPicker
-              serverId={inDmHome ? null : activeServerId}
-              canManageEmojis={canManageChannels}
-              onPickEmoji={(codeOrUrl) => {
-                setEmojiOpen(false);
-                setDraft((current) => current + codeOrUrl + " ");
-                composerRef.current?.focus();
-              }}
-              onClose={() => setEmojiOpen(false)}
-            />
+            <Suspense fallback={null}>
+              <EmojiPicker
+                serverId={inDmHome ? null : activeServerId}
+                canManageEmojis={canManageChannels}
+                onPickEmoji={(codeOrUrl) => {
+                  setEmojiOpen(false);
+                  setDraft((current) => current + codeOrUrl + " ");
+                  composerRef.current?.focus();
+                }}
+                onClose={() => setEmojiOpen(false)}
+              />
+            </Suspense>
           )}
 
           {replyTarget && (
@@ -5294,11 +5291,13 @@ export function ChatShell() {
       )}
 
       {pdfViewer && (
-        <PdfViewer
-          url={pdfViewer.url}
-          name={pdfViewer.name}
-          onClose={() => setPdfViewer(null)}
-        />
+        <Suspense fallback={null}>
+          <PdfViewer
+            url={pdfViewer.url}
+            name={pdfViewer.name}
+            onClose={() => setPdfViewer(null)}
+          />
+        </Suspense>
       )}
 
       {profileMember && (
@@ -5317,68 +5316,51 @@ export function ChatShell() {
       )}
 
       {settingsOpen && (
-        <SettingsDialog
-          user={user}
-          theme={theme}
-          onTheme={applyTheme}
-          onUser={setUser}
-          onClose={() => setSettingsOpen(false)}
-          onSignOut={signOut}
-          onMicrophoneChange={() => void voice.switchMicrophone()}
-          pushToTalk={voice.pushToTalk}
-          pttKey={voice.pttKey}
-          onPushToTalk={voice.setPushToTalk}
-          onPttKey={voice.setPttKey}
-          muteKey={voice.muteKey}
-          deafenKey={voice.deafenKey}
-          onMuteKey={voice.setMuteKey}
-          onDeafenKey={voice.setDeafenKey}
-          server={inDmHome ? null : activeServer}
-          members={members}
-          canManageServer={canManageServer}
-        />
+        <Suspense fallback={null}>
+          <SettingsDialog
+            user={user}
+            theme={theme}
+            onTheme={applyTheme}
+            onUser={setUser}
+            onClose={() => setSettingsOpen(false)}
+            onSignOut={signOut}
+            onMicrophoneChange={() => void voice.switchMicrophone()}
+            pushToTalk={voice.pushToTalk}
+            pttKey={voice.pttKey}
+            onPushToTalk={voice.setPushToTalk}
+            onPttKey={voice.setPttKey}
+            muteKey={voice.muteKey}
+            deafenKey={voice.deafenKey}
+            onMuteKey={voice.setMuteKey}
+            onDeafenKey={voice.setDeafenKey}
+            server={inDmHome ? null : activeServer}
+            members={members}
+            canManageServer={canManageServer}
+          />
+        </Suspense>
       )}
 
       {serverSettingsOpen && activeServer && (
-        <ServerSettingsDialog
-          server={activeServer}
-          members={members}
-          canManageServer={canManageServer}
-          onClose={() => setServerSettingsOpen(false)}
-          onServerUpdated={() => void loadServers().catch(() => undefined)}
-          onServerDeleted={() => {
-            void loadServers().catch(() => undefined);
-            setActiveServerId(servers[0]?.id || null);
-          }}
-          onRequestPrompt={showCustomPrompt}
-          onRequestConfirm={showCustomConfirm}
-          isOwner={Boolean(user && activeServer.ownerId === user.id)}
-          onLeaveServer={() => void leaveServer(activeServer.id)}
-        />
+        <Suspense fallback={null}>
+          <ServerSettingsDialog
+            server={activeServer}
+            members={members}
+            canManageServer={canManageServer}
+            onClose={() => setServerSettingsOpen(false)}
+            onServerUpdated={() => void loadServers().catch(() => undefined)}
+            onServerDeleted={() => {
+              void loadServers().catch(() => undefined);
+              setActiveServerId(servers[0]?.id || null);
+            }}
+            onRequestPrompt={showCustomPrompt}
+            onRequestConfirm={showCustomConfirm}
+            isOwner={Boolean(user && activeServer.ownerId === user.id)}
+            onLeaveServer={() => void leaveServer(activeServer.id)}
+          />
+        </Suspense>
       )}
 
-      {dialogOptions && (
-        <CustomDialog
-          options={dialogOptions}
-          onConfirm={(val) => {
-            // Clear first, THEN run the callback: a callback that opens another
-            // dialog (name → background) would otherwise be wiped by these
-            // resets, which is why "Next" appeared to do nothing.
-            const callback = dialogCallback;
-            setDialogOptions(null);
-            setDialogCallback(null);
-            setDialogCancel(null);
-            callback?.(val);
-          }}
-          onCancel={() => {
-            const cancel = dialogCancel;
-            setDialogOptions(null);
-            setDialogCallback(null);
-            setDialogCancel(null);
-            cancel?.();
-          }}
-        />
-      )}
+      {dialogElement}
 
       <QuickSwitcher
         open={quickSwitcherOpen}
@@ -5423,14 +5405,16 @@ export function ChatShell() {
       />
 
       {profileSettingsOpen && user && (
-        <ProfileSettingsDialog
-          user={user}
-          onClose={() => setProfileSettingsOpen(false)}
-          onProfileUpdated={(updatedUser) => {
-            setUser(updatedUser);
-            void loadMembers();
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProfileSettingsDialog
+            user={user}
+            onClose={() => setProfileSettingsOpen(false)}
+            onProfileUpdated={(updatedUser) => {
+              setUser(updatedUser);
+              void loadMembers();
+            }}
+          />
+        </Suspense>
       )}
 
       <PollDialog

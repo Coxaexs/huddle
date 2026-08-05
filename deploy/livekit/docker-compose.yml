@@ -6,15 +6,35 @@ services:
   livekit:
     image: livekit/livekit-server:v1.8.4
     # The image ENTRYPOINT is livekit-server itself, so override it to run the
-    # sed injection in a shell first, then exec the server.
-    entrypoint: ["sh", "-c"]
-    # The API secret comes from deploy/livekit/.env (gitignored). sed injects it
-    # into the mounted config at start so no secrets live in tracked files and a
-    # `git reset --hard` can never wipe the key.
-    command: "sed -i 's|__LIVEKIT_API_SECRET__|$${LIVEKIT_API_SECRET}|' /etc/livekit.yaml && exec livekit-server --config /etc/livekit.yaml"
+    # secret injection in a shell first, then exec the server.
+    #
+    # The whole script must be ONE argument to `sh -c`: with the script split
+    # across argv entries, `sh -c` takes only the first as the program and binds
+    # the rest to $0/$1/... — which ran a bare `sed` and crash-looped the
+    # container.
+    #
+    # The API secret and TURN credentials come from deploy/livekit/.env
+    # (gitignored) and are rendered into a copy under /tmp, so no secrets live in
+    # tracked files and the mounted config stays read-only. `$$` defers the
+    # expansion to the container's shell instead of compose.
+    #
+    # The binary lives at /livekit-server and is NOT on PATH, so exec it by
+    # absolute path — a bare `livekit-server` exits 127.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        sed -e "s|__LIVEKIT_API_SECRET__|$${LIVEKIT_API_SECRET}|" \
+            -e "s|__TURN_USERNAME__|$${TURN_USERNAME}|" \
+            -e "s|__TURN_CREDENTIAL__|$${TURN_CREDENTIAL}|" \
+            /etc/livekit.yaml > /tmp/livekit.yaml
+        exec /livekit-server --config /tmp/livekit.yaml
     restart: unless-stopped
     environment:
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-change-me}"
+      TURN_USERNAME: "${TURN_USERNAME:-dcvoice}"
+      TURN_CREDENTIAL: "${TURN_CREDENTIAL:-change-me}"
     ports:
       # Signaling + token/health HTTP (TLS is terminated by nginx at
       # wss://xray.deeppixel.online/livekit).

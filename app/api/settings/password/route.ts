@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
+import { bumpRateLimit, clearRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,10 @@ export async function POST(request: Request) {
   }
   const user = await currentUser(request);
   if (!user) return unauthorized();
+
+  // Guessing the current password is bounded even for an already-authed session.
+  const limit = await bumpRateLimit(db, `password-change:${user.id}`, 10, 900);
+  if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
 
   const body = (await request.json().catch(() => ({}))) as {
     current?: string;
@@ -39,6 +44,8 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
+
+  await clearRateLimit(db, `password-change:${user.id}`);
 
   await db
     .prepare("UPDATE users SET password_hash = ? WHERE id = ?")
