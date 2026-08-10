@@ -203,6 +203,9 @@ const DM_HOME = "@me";
 /** The one-tap reactions shown on message hover. */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮"];
 
+/** Options for the one-tap "quick vote" on a message. */
+const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
+
 /** An @-autocomplete option: a member or a role. */
 type MentionOption =
   | { kind: "user"; member: Member }
@@ -375,6 +378,8 @@ export function ChatShell() {
   const [openActionsId, setOpenActionsId] = useState<string | number | null>(
     null,
   );
+  /** Which message's quick-vote chips are currently open. */
+  const [quickVoteId, setQuickVoteId] = useState<string | number | null>(null);
   // On a phone the member list is an overlay, so it starts out of the way.
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
@@ -4181,6 +4186,33 @@ export function ChatShell() {
                       ))}
                     </div>
                   )}
+
+                  {quickVoteId === message.id && (
+                    <div className="quick-vote">
+                      <span className="quick-vote-title">Vote</span>
+                      {QUICK_VOTES.map((emoji) => {
+                        const reacted =
+                          message.reactions?.find((r) => r.emoji === emoji)?.mine ||
+                          false;
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className={`reaction ${reacted ? "mine" : ""}`}
+                            onClick={() =>
+                              void toggleReaction(message.id, emoji)
+                            }
+                          >
+                            <span>{emoji}</span>
+                            <b>
+                              {message.reactions?.find((r) => r.emoji === emoji)
+                                ?.count || 0}
+                            </b>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Touch-only: reveal this message's actions on tap instead of
@@ -4239,6 +4271,17 @@ export function ChatShell() {
                     onClick={() => void openThread(message)}
                   >
                     <MessageSquare size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Quick vote"
+                    onClick={() =>
+                      setQuickVoteId((current) =>
+                        current === message.id ? null : message.id,
+                      )
+                    }
+                  >
+                    🗳️
                   </button>
                   {message.userId === user.id && !message.bot && (
                     <button

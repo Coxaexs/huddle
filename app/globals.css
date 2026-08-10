@@ -5367,6 +5367,25 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
 
 .quick-reactions { display:flex; gap:1px; }
 .quick-reactions button { font-size:14px; }
+.quick-vote {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  margin-top:6px;
+  padding:4px 6px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:color-mix(in srgb, var(--panel) 50%, var(--paper));
+  flex-wrap:wrap;
+}
+.quick-vote-title {
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--muted);
+  margin-right:2px;
+}
 
 .reply-preview {
   display:flex;
