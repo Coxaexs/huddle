@@ -77,6 +77,11 @@ interface VoiceStageProps {
   battlemapOpen?: boolean;
   /** Consent banner and GM director controls for the production recorder. */
   recording?: React.ReactNode;
+  /** Opens the per-person menu (volume/mute/moderation) for a participant. */
+  onOpenParticipantMenu?: (
+    event: React.MouseEvent,
+    participant: VoiceParticipant,
+  ) => void;
 }
 
 interface VideoTile {
@@ -140,6 +145,7 @@ export function VoiceStage({
   onToggleBattlemap,
   battlemapOpen,
   recording,
+  onOpenParticipantMenu,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
@@ -269,7 +275,14 @@ export function VoiceStage({
                 </button>
               ))}
               {participants.map((person) => (
-                <div className="film-tile avatar-film" key={`a:${person.connectionId}`}>
+                <div
+                  className="film-tile avatar-film"
+                  key={`a:${person.connectionId}`}
+                  onContextMenu={(event) => {
+                    if (person.connectionId === connectionId) return;
+                    onOpenParticipantMenu?.(event, person);
+                  }}
+                >
                   <Avatar
                     avatar={person.avatar}
                     avatarUrl={person.avatarUrl}
@@ -312,6 +325,10 @@ export function VoiceStage({
                 <figure
                   key={person.connectionId}
                   className={`stage-tile avatar-tile ${speaking ? "is-speaking" : ""}`}
+                  onContextMenu={(event) => {
+                    if (person.connectionId === connectionId) return;
+                    onOpenParticipantMenu?.(event, person);
+                  }}
                 >
                   <div className="avatar-tile-inner">
                     <Avatar
