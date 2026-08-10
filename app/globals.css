@@ -5529,6 +5529,7 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   max-height:180px;
   overflow-y:auto;
 }
+.soundboard-pad-wrap { position:relative; }
 .soundboard-pad {
   display:flex;
   flex-direction:column;
@@ -5555,6 +5556,26 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.soundboard-delete {
+  position:absolute;
+  top:-6px;
+  right:-6px;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  background:var(--paper);
+  color:var(--coral);
+  font-size:13px;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  padding:0;
+  z-index:2;
+}
+.soundboard-delete:hover { border-color:var(--coral); background:var(--coral); color:#fff; }
 .soundboard-empty { color:var(--muted); font-size:13px; padding:6px; }
 
 .ptt-key-button {

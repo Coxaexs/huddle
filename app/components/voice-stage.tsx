@@ -552,19 +552,37 @@ function SoundboardDrawer({
     }
   }
 
+  async function remove(sound: Sound) {
+    await apiFetch(`/api/sounds?id=${encodeURIComponent(sound.id)}`, {
+      method: "DELETE",
+    }).catch(() => undefined);
+    load.current();
+  }
+
   return (
     <div className="soundboard">
       {sounds.map((sound) => (
-        <button
-          key={sound.id}
-          type="button"
-          className="soundboard-pad"
-          onClick={() => play(sound)}
-          title={sound.name}
-        >
-          <span className="soundboard-emoji">{sound.emoji}</span>
-          <span className="soundboard-name">{sound.name}</span>
-        </button>
+        <div key={sound.id} className="soundboard-pad-wrap">
+          <button
+            type="button"
+            className="soundboard-pad"
+            onClick={() => play(sound)}
+            title={sound.name}
+          >
+            <span className="soundboard-emoji">{sound.emoji}</span>
+            <span className="soundboard-name">{sound.name}</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              className="soundboard-delete"
+              title={`Delete ${sound.name}`}
+              onClick={() => void remove(sound)}
+            >
+              ×
+            </button>
+          )}
+        </div>
       ))}
       {canManage && (
         <button
