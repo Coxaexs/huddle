@@ -10,6 +10,14 @@
 export const DEFAULT_SERVER_ID = "hangout";
 
 /**
+ * Schema version, bumped whenever a structural change is made. Persisted in
+ * the `meta` table under `schema_version` so the running database always
+ * reports which version its schema matches. All statements in `migrate()` stay
+ * idempotent, so applying an older version to a newer DB is a no-op.
+ */
+export const SCHEMA_VERSION = 1;
+
+/**
  * DM conversations live in the channels table so messages, pins and deletes all
  * work the same way. `server_id` is NOT NULL from the first schema and SQLite
  * cannot drop that, so DM channels carry this sentinel instead of a real server
@@ -591,6 +599,15 @@ async function migrate(db: D1Database): Promise<void> {
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);
+
+  // Record which schema version this database is now on, so anyone reading it
+  // (or a future migration) can tell how far along it is.
+  await db
+    .prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)",
+    )
+    .bind(String(SCHEMA_VERSION))
+    .run();
 }
 
 /**
