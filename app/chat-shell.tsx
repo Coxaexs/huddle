@@ -58,8 +58,8 @@ import { DndCard } from "./components/dnd-card";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
-import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { BattlemapBoard } from "./components/battlemap";
+import { useBattlemap } from "./hooks/use-battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer } from "./components/toast";
@@ -402,10 +402,6 @@ export function ChatShell() {
   const [threadRoot, setThreadRoot] = useState<Message | null>(null);
   const [threadMessages, setThreadMessages] = useState<Message[]>([]);
   const [threadDraft, setThreadDraft] = useState("");
-  /** The shared battlemap for the voice room you are viewing. */
-  const [battlemap, setBattlemap] = useState<Battlemap | null>(null);
-  const [battlemapGm, setBattlemapGm] = useState(false);
-  const [battlemapHidden, setBattlemapHidden] = useState(false);
   /** Whiteboard, watch party, game, tier list, or timer open in voice. */
   const [roomActivity, setRoomActivity] = useState<RoomActivity | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -460,6 +456,29 @@ export function ChatShell() {
     setDialogCallback(() => () => options.onConfirm());
     setDialogCancel(() => options.onCancel || null);
   };
+
+  // The shared battlemap for the open voice stage (map, GM flag, hide state,
+  // create/open, dropping your own token, and socket reconciliation).
+  const battlemapApi = useBattlemap({
+    stageChannelId,
+    user,
+    onNotice: setNotice,
+    showPrompt: showCustomPrompt,
+    showConfirm: showCustomConfirm,
+    pickImage: pickImageFile,
+  });
+  const {
+    battlemap,
+    gm: battlemapGm,
+    hidden: battlemapHidden,
+    onSocket: onBattlemapSocket,
+    open: openBattlemap,
+    addMyToken,
+    localToken: onLocalToken,
+    localStroke: onLocalStroke,
+    toggle: toggleBattlemap,
+    close: closeBattlemap,
+  } = battlemapApi;
 
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -951,43 +970,7 @@ export function ChatShell() {
       setPollCounts((current) => ({ ...current, [pollId]: counts }));
     },
     onBattlemap: (channelId, payload) => {
-      if (channelId !== stageChannelRef.current) return;
-      if (payload.action === "open") {
-        setBattlemap((payload.map as Battlemap) || null);
-        setBattlemapHidden(false);
-        return;
-      }
-      if (payload.action === "close") {
-        setBattlemap(null);
-        return;
-      }
-      setBattlemap((current) => {
-        if (!current) return current;
-        if (payload.action === "token") {
-          const moved = payload.token as MapToken;
-          return {
-            ...current,
-            tokens: current.tokens.map((t) => (t.id === moved.id ? moved : t)),
-          };
-        }
-        if (payload.action === "tokens") {
-          return { ...current, tokens: (payload.tokens as MapToken[]) || [] };
-        }
-        if (payload.action === "stroke") {
-          const stroke = payload.stroke as MapStroke;
-          return current.strokes.some((s) => s.id === stroke.id)
-            ? current
-            : { ...current, strokes: [...current.strokes, stroke] };
-        }
-        if (payload.action === "cleared") {
-          return {
-            ...current,
-            tokens: (payload.tokens as MapToken[]) || [],
-            strokes: (payload.strokes as MapStroke[]) || [],
-          };
-        }
-        return current;
-      });
+      onBattlemapSocket(channelId, payload);
     },
     onActivity: (channelId, payload) => {
       if (channelId !== stageChannelRef.current) return;
@@ -1122,29 +1105,6 @@ export function ChatShell() {
     };
   }, [user, activeServerId, canManageServer]);
 
-  // Opening a voice stage pulls in whatever map is on the table there.
-  useEffect(() => {
-    if (!stageChannelId) {
-      setBattlemap(null);
-      setBattlemapGm(false);
-      return;
-    }
-    let cancelled = false;
-    apiFetch<{ map: Battlemap | null; gm: boolean }>(
-      `/api/battlemap?channelId=${encodeURIComponent(stageChannelId)}`,
-    )
-      .then((data) => {
-        if (cancelled) return;
-        setBattlemap(data.map);
-        setBattlemapGm(Boolean(data.gm));
-        setBattlemapHidden(false);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [stageChannelId]);
-
   // The activity surface is persisted per voice room, just like the map.
   useEffect(() => {
     if (!stageChannelId) {
@@ -1165,88 +1125,6 @@ export function ChatShell() {
       cancelled = true;
     };
   }, [stageChannelId]);
-
-  /** GM: put a map on the table (optionally with an uploaded image). */
-  /** Creates the map on the server, uploading a background first if given. */
-  async function createBattlemap(name: string, picked: File | null) {
-    if (!stageChannelId) return;
-    try {
-      let imageKey: string | null = null;
-      if (picked) {
-        const form = new FormData();
-        form.append("file", picked);
-        // Let a failed upload surface instead of silently opening a blank map —
-        // that looked like "the battlemap upload is broken".
-        const upload = await apiFetch<{ key: string }>("/api/uploads", {
-          method: "POST",
-          body: form,
-        });
-        imageKey = upload.key;
-      }
-      await apiFetch("/api/battlemap", {
-        method: "POST",
-        body: JSON.stringify({
-          channelId: stageChannelId,
-          action: "open",
-          name: name.trim() || "Battlemap",
-          imageKey,
-        }),
-      });
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : "Could not open the battlemap.",
-      );
-    }
-  }
-
-  async function openBattlemap() {
-    if (!stageChannelId) return;
-    showCustomPrompt({
-      title: "New Battlemap",
-      message: "Enter a name for the new battlemap:",
-      defaultValue: "Battlemap",
-      confirmText: "Next",
-      onConfirm: (name) => {
-        const mapName = name?.trim() || "Battlemap";
-        showCustomConfirm({
-          title: "Map Background",
-          message:
-            "Upload a background image, or start on a blank grid. You can add tokens either way.",
-          confirmText: "Upload Image",
-          cancelText: "Blank Grid",
-          // "Upload Image": pick a file, then open with it.
-          onConfirm: async () => {
-            const picked = await pickImageFile();
-            await createBattlemap(mapName, picked);
-          },
-          // "Blank Grid" previously did nothing — now it opens an empty map.
-          onCancel: () => {
-            void createBattlemap(mapName, null);
-          },
-        });
-      },
-    });
-  }
-
-  /** Adds a token for yourself, using your avatar. */
-  async function addMyToken() {
-    if (!stageChannelId || !user) return;
-    await apiFetch("/api/battlemap", {
-      method: "POST",
-      body: JSON.stringify({
-        channelId: stageChannelId,
-        action: "add-token",
-        token: {
-          label: user.displayName,
-          color: user.color,
-          avatarUrl: user.avatarUrl || null,
-          ownerId: user.id,
-          x: 2,
-          y: 2,
-        },
-      }),
-    }).catch((error: Error) => setNotice(error.message));
-  }
 
   // Typing indicators fade out on their own a few seconds after the last keypress.
   useEffect(() => {
@@ -3689,7 +3567,7 @@ export function ChatShell() {
                 else setNotice("No map is on the table yet.");
                 return;
               }
-              setBattlemapHidden((hidden) => !hidden);
+              toggleBattlemap();
             }}
             battlemap={
               battlemap && !battlemapHidden ? (
@@ -3698,27 +3576,10 @@ export function ChatShell() {
                   map={battlemap}
                   gm={battlemapGm}
                   userId={user.id}
-                  onClose={() => setBattlemapHidden(true)}
+                  onClose={closeBattlemap}
                   onAddMyToken={() => void addMyToken()}
-                  onLocalToken={(token) =>
-                    setBattlemap((current) =>
-                      current
-                        ? {
-                            ...current,
-                            tokens: current.tokens.map((t) =>
-                              t.id === token.id ? token : t,
-                            ),
-                          }
-                        : current,
-                    )
-                  }
-                  onLocalStroke={(stroke) =>
-                    setBattlemap((current) =>
-                      current
-                        ? { ...current, strokes: [...current.strokes, stroke] }
-                        : current,
-                    )
-                  }
+                  onLocalToken={onLocalToken}
+                  onLocalStroke={onLocalStroke}
                 />
               ) : null
             }
