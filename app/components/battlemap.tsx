@@ -33,6 +33,31 @@ const PAINT_COLORS = ["#ef6b58", "#f3bd5d", "#49c99a", "#68a8ff", "#e57bd8", "#f
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 
+/** Preset monsters/fixtures the GM can drop with one click. */
+const MONSTER_PALETTE: Array<{
+  label: string;
+  color: string;
+  size: number;
+  emoji?: string;
+}> = [
+  { label: "Goblin", color: "#49a35d", size: 1 },
+  { label: "Orc", color: "#2f7d45", size: 1 },
+  { label: "Hobgoblin", color: "#6b8f4e", size: 1 },
+  { label: "Kobold", color: "#b8a6ff", size: 0.8 },
+  { label: "Skeleton", color: "#cfd6dd", size: 1 },
+  { label: "Zombie", color: "#7a9a5a", size: 1 },
+  { label: "Bandit", color: "#c05c3f", size: 1 },
+  { label: "Wolf", color: "#8a8f98", size: 0.9 },
+  { label: "Giant Spider", color: "#3a3a44", size: 1.5 },
+  { label: "Ogre", color: "#7a4a2a", size: 2 },
+  { label: "Troll", color: "#5a7a4a", size: 2 },
+  { label: "Dragon", color: "#a43a3a", size: 4 },
+  { label: "Chest", color: "#b8860b", size: 1 },
+  { label: "Door", color: "#8a6a3a", size: 1 },
+  { label: "Barrel", color: "#9a6a2a", size: 0.9 },
+  { label: "Torch", color: "#e8a541", size: 0.7 },
+];
+
 /**
  * The shared table: a grid (over an optional map image) with draggable tokens
  * and a paint layer. Coordinates are grid units, so everyone's screen agrees
@@ -64,6 +89,8 @@ export function BattlemapBoard({
   const [renameValue, setRenameValue] = useState("");
   /** Token being resized by dragging its corner handle. */
   const [resizing, setResizing] = useState<string | null>(null);
+  /** Monster palette dropdown open state (GM only). */
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ startX: 0, startY: 0, panX: 0, panY: 0 });
@@ -322,6 +349,21 @@ export function BattlemapBoard({
     }).catch(() => undefined);
   }
 
+  /** GM: drop a monster from the palette at the board center. */
+  function addMonster(monster: (typeof MONSTER_PALETTE)[number]) {
+    setPaletteOpen(false);
+    void act({
+      action: "add-token",
+      token: {
+        label: monster.label,
+        color: monster.color,
+        size: monster.size,
+        x: Math.round(map.grid / 2),
+        y: Math.round(rows / 2),
+      },
+    });
+  }
+
   function zoomBy(factor: number) {
     const box = boardRef.current?.getBoundingClientRect();
     const cx = box ? box.width / 2 : 0;
@@ -419,22 +461,39 @@ export function BattlemapBoard({
           )}
           {gm && (
             <>
-              <button
-                type="button"
-                title="Add a token here"
-                onClick={() =>
-                  void act({
-                    action: "add-token",
-                    token: {
-                      label: "Goblin",
-                      x: Math.round(map.grid / 2),
-                      y: Math.round(rows / 2),
-                    },
-                  })
-                }
-              >
-                <Plus size={14} />
-              </button>
+              <div className="battlemap-palette-wrap">
+                <button
+                  type="button"
+                  className={paletteOpen ? "on" : ""}
+                  title="Add a monster or fixture"
+                  onClick={() => setPaletteOpen((open) => !open)}
+                >
+                  <Plus size={14} />
+                </button>
+                {paletteOpen && (
+                  <div className="battlemap-palette">
+                    <div className="battlemap-palette-title">Add to table</div>
+                    <div className="battlemap-palette-grid">
+                      {MONSTER_PALETTE.map((monster) => (
+                        <button
+                          key={monster.label}
+                          type="button"
+                          className="battlemap-palette-item"
+                          onClick={() => addMonster(monster)}
+                        >
+                          <span
+                            className="battlemap-palette-token"
+                            style={{ background: monster.color }}
+                          >
+                            {monster.label.slice(0, 2).toUpperCase()}
+                          </span>
+                          <span>{monster.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 title="Clear paint"
