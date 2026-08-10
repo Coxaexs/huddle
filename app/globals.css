@@ -6178,6 +6178,62 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 .paint-swatch.on { outline:2px solid var(--ink); outline-offset:1px; }
 .battlemap-zoom { display:flex; align-items:center; gap:3px; }
 .battlemap-zoom button { width:30px; }
+.battlemap-palette-wrap { position:relative; }
+.battlemap-palette {
+  position:absolute;
+  top:calc(100% + 6px);
+  right:0;
+  z-index:30;
+  width:280px;
+  max-height:320px;
+  overflow-y:auto;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+  padding:10px;
+}
+.battlemap-palette-title {
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.battlemap-palette-grid {
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:6px;
+}
+.battlemap-palette-item {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--line);
+  background:var(--paper);
+  color:var(--ink);
+  border-radius:8px;
+  padding:6px 8px;
+  cursor:pointer;
+  font-size:12px;
+  width:100%;
+  text-align:left;
+}
+.battlemap-palette-item:hover { border-color:var(--lavender); background:color-mix(in srgb, var(--lavender) 12%, var(--paper)); }
+.battlemap-palette-token {
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:9px;
+  font-weight:800;
+  color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
 
 .battlemap-board {
   position:relative;
