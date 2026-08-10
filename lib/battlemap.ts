@@ -9,6 +9,8 @@ export interface MapToken {
   /** Grid coordinates, not pixels, so any screen size lines up. */
   x: number;
   y: number;
+  /** Token diameter in grid cells (default 1). Shared so everyone sees the same size. */
+  size?: number;
   /** Who may move it; GMs may move anything. Null tokens are free-for-all. */
   ownerId?: string | null;
   hp?: number | null;
