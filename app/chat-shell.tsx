@@ -1204,7 +1204,9 @@ export function ChatShell() {
     user,
     onUpdateSpotify: (spotifyAct) => {
       if (!user) return;
-      setUser((u) => (u ? { ...u, spotifyActivity: spotifyAct } : u));
+      // Only the member roster/profile card needs this — updating root `user`
+      // state would re-render the entire shell on every poll. The activity
+      // detector already dedupes to song changes.
       setMembers((prev) =>
         prev.map((m) => (m.id === user.id ? { ...m, spotifyActivity: spotifyAct } : m)),
       );
