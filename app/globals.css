@@ -5602,6 +5602,36 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   z-index:2;
 }
 .soundboard-delete:hover { border-color:var(--coral); background:var(--coral); color:#fff; }
+.soundboard-pad.personal { border-color:var(--lavender); }
+.soundboard-pad.personal::after {
+  content:"YOU";
+  position:absolute;
+  top:-7px;
+  left:-7px;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.03em;
+  background:var(--lavender);
+  color:#fff;
+  border-radius:6px;
+  padding:1px 4px;
+  z-index:3;
+}
+.soundboard-upload-options {
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:var(--muted);
+}
+.soundboard-personal-toggle {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  cursor:pointer;
+}
+.soundboard-personal-toggle input { accent-color:var(--lavender); }
 .soundboard-empty { color:var(--muted); font-size:13px; padding:6px; }
 
 .ptt-key-button {

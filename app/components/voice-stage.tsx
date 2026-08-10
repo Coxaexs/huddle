@@ -30,6 +30,7 @@ interface Sound {
   name: string;
   emoji: string;
   url: string;
+  personal?: boolean;
 }
 
 /** The slice of the voice hook the stage needs to render and drive a call. */
@@ -503,6 +504,8 @@ function SoundboardDrawer({
 }) {
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [uploading, setUploading] = useState(false);
+  /** True when the "add" upload targets your personal pack, not the server's. */
+  const [personalUpload, setPersonalUpload] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useRef<() => void>(() => {});
@@ -542,6 +545,7 @@ function SoundboardDrawer({
           serverId,
           key: uploaded.key,
           name: file.name.replace(/\.[^.]+$/, "").slice(0, 40),
+          personal: personalUpload,
         }),
       });
       load.current();
@@ -565,14 +569,14 @@ function SoundboardDrawer({
         <div key={sound.id} className="soundboard-pad-wrap">
           <button
             type="button"
-            className="soundboard-pad"
+            className={`soundboard-pad ${sound.personal ? "personal" : ""}`}
             onClick={() => play(sound)}
-            title={sound.name}
+            title={`${sound.name}${sound.personal ? " (your pack)" : ""}`}
           >
             <span className="soundboard-emoji">{sound.emoji}</span>
             <span className="soundboard-name">{sound.name}</span>
           </button>
-          {canManage && (
+          {(canManage || sound.personal) && (
             <button
               type="button"
               className="soundboard-delete"
@@ -584,7 +588,7 @@ function SoundboardDrawer({
           )}
         </div>
       ))}
-      {canManage && (
+      {(canManage || true) && (
         <button
           type="button"
           className="soundboard-pad add"
@@ -595,9 +599,19 @@ function SoundboardDrawer({
           <span className="soundboard-name">Add</span>
         </button>
       )}
-      {!sounds.length && !canManage && (
+      {!sounds.length && (
         <p className="soundboard-empty">No sounds yet.</p>
       )}
+      <div className="soundboard-upload-options">
+        <label className="soundboard-personal-toggle">
+          <input
+            type="checkbox"
+            checked={personalUpload}
+            onChange={(event) => setPersonalUpload(event.target.checked)}
+          />
+          <span>Add to my personal pack</span>
+        </label>
+      </div>
       <input
         ref={fileRef}
         type="file"
