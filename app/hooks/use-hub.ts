@@ -55,6 +55,7 @@ interface HubHandlers {
       tokens?: unknown;
       stroke?: unknown;
       strokes?: unknown;
+      fog?: unknown;
     },
   ) => void;
   onActivity?: (

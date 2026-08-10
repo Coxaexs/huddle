@@ -11,8 +11,9 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  CloudFog,
 } from "lucide-react";
-import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
+import type { Battlemap, MapFog, MapStroke, MapToken } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
 
 interface BattlemapBoardProps {
@@ -74,7 +75,7 @@ export function BattlemapBoard({
   onLocalStroke,
   onAddMyToken,
 }: BattlemapBoardProps) {
-  const [mode, setMode] = useState<"move" | "paint">("move");
+  const [mode, setMode] = useState<"move" | "paint" | "fog">("move");
   const [color, setColor] = useState(PAINT_COLORS[0]);
   const [width, setWidth] = useState(3);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -91,6 +92,9 @@ export function BattlemapBoard({
   const [resizing, setResizing] = useState<string | null>(null);
   /** Monster palette dropdown open state (GM only). */
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** Fog rectangle being drawn (GM): start point in grid units. */
+  const fogStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [fogDraft, setFogDraft] = useState<MapFog | null>(null);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ startX: 0, startY: 0, panX: 0, panY: 0 });
@@ -325,13 +329,45 @@ export function BattlemapBoard({
     window.addEventListener("pointerup", up, { once: true });
   }
 
-  function onBoardPointerDown(event: React.PointerEvent) {
-    if (mode === "paint") {
-      startPaint(event);
-    } else {
-      startPan(event);
+  function startFog(event: React.PointerEvent) {
+  if (mode !== "fog") return;
+  event.preventDefault();
+  const point = toGrid(event);
+  fogStartRef.current = point;
+
+  const move = (moveEvent: PointerEvent) => {
+    const now = toGrid(moveEvent);
+    const start = fogStartRef.current;
+    if (!start) return;
+    const x = Math.min(start.x, now.x);
+    const y = Math.min(start.y, now.y);
+    const w = Math.max(0.5, Math.abs(now.x - start.x));
+    const h = Math.max(0.5, Math.abs(now.y - start.y));
+    setFogDraft({ id: "draft", x, y, w, h });
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    const draft = fogDraft;
+    fogStartRef.current = null;
+    setFogDraft(null);
+    if (draft && draft.id === "draft") {
+      const { id: _id, ...fog } = draft;
+      void act({ action: "add-fog", fog });
     }
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function onBoardPointerDown(event: React.PointerEvent) {
+  if (mode === "paint") {
+    startPaint(event);
+  } else if (mode === "fog") {
+    startFog(event);
+  } else {
+    startPan(event);
   }
+}
 
   /** Turns grid points into an SVG path in the 0..grid / 0..rows space. */
   function pathOf(points: number[]): string {
@@ -421,6 +457,16 @@ export function BattlemapBoard({
           >
             <Pencil size={14} />
           </button>
+          {gm && (
+            <button
+              type="button"
+              className={mode === "fog" ? "on" : ""}
+              onClick={() => setMode("fog")}
+              title="Fog of war (drag to hide an area)"
+            >
+              <CloudFog size={14} />
+            </button>
+          )}
           <span className="battlemap-zoom">
             <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
               <ZoomOut size={14} />
@@ -520,7 +566,7 @@ export function BattlemapBoard({
       </div>
 
       <div
-        className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${panning ? "panning" : ""}`}
+        className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${mode === "fog" ? "fogging" : ""} ${panning ? "panning" : ""}`}
         ref={boardRef}
         onPointerDown={onBoardPointerDown}
         style={{ aspectRatio: `${map.grid} / ${rows}` }}
@@ -569,6 +615,37 @@ export function BattlemapBoard({
               fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"
+            />
+          )}
+          {/* Fog of war: opaque rectangles over the map. */}
+          {map.fog.map((fog) => (
+            <g key={fog.id}>
+              <rect
+                x={fog.x}
+                y={fog.y}
+                width={fog.w}
+                height={fog.h}
+                className="battlemap-fog"
+              />
+              {gm && (
+                <rect
+                  x={fog.x}
+                  y={fog.y}
+                  width={fog.w}
+                  height={fog.h}
+                  className="battlemap-fog-hit"
+                  onClick={() => void act({ action: "remove-fog", fogId: fog.id })}
+                />
+              )}
+            </g>
+          ))}
+          {fogDraft && fogDraft.id === "draft" && (
+            <rect
+              x={fogDraft.x}
+              y={fogDraft.y}
+              width={fogDraft.w}
+              height={fogDraft.h}
+              className="battlemap-fog draft"
             />
           )}
         </svg>

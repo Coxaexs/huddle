@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
+import type { Battlemap, MapFog, MapStroke, MapToken } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
 
 interface DialogOptions {
@@ -20,6 +20,7 @@ interface BattlemapSocketPayload {
   tokens?: unknown;
   stroke?: unknown;
   strokes?: unknown;
+  fog?: unknown;
 }
 
 interface UseBattlemapOptions {
@@ -113,6 +114,9 @@ export function useBattlemap({
         return current.strokes.some((s) => s.id === stroke.id)
           ? current
           : { ...current, strokes: [...current.strokes, stroke] };
+      }
+      if (payload.action === "fog") {
+        return { ...current, fog: (payload.fog as MapFog[]) || [] };
       }
       if (payload.action === "cleared") {
         return {

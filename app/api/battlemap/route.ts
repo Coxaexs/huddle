@@ -3,6 +3,7 @@ import {
   clampPoint,
   publicBattlemap,
   type BattlemapRow,
+  type MapFog,
   type MapToken,
 } from "@/lib/battlemap";
 import { publishMessageEvent } from "@/lib/hub-client";
@@ -32,7 +33,7 @@ async function activeMap(
 ): Promise<BattlemapRow | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, name, image_key, grid, tokens, strokes, active
+      `SELECT id, channel_id, name, image_key, grid, tokens, strokes, fog, active
          FROM battlemaps WHERE channel_id = ? AND active = 1
         ORDER BY created_at DESC LIMIT 1`,
     )
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
     y?: number;
     size?: number;
     stroke?: { color?: string; width?: number; points?: number[] };
+    fog?: Partial<MapFog>;
+    fogId?: string;
     what?: string;
   };
   const channelId = body.channelId?.slice(0, 64);
@@ -272,6 +275,58 @@ export async function POST(request: Request) {
       token,
     });
     return Response.json({ token });
+  }
+
+  // ---- fog: GMs add/remove rectangles hiding parts of the map -------------
+  if (body.action === "add-fog") {
+    if (!(await gm())) return forbidden();
+    const fog: MapFog = {
+      id: crypto.randomUUID(),
+      x: clampPoint(Number(body.fog?.x) || 0, map.grid),
+      y: clampPoint(Number(body.fog?.y) || 0, map.grid),
+      w: Math.max(0.5, Number(body.fog?.w) || 1),
+      h: Math.max(0.5, Number(body.fog?.h) || 1),
+    };
+    const fogList = [...map.fog, fog].slice(0, 200);
+    await db
+      .prepare("UPDATE battlemaps SET fog = ? WHERE id = ?")
+      .bind(JSON.stringify(fogList), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "fog",
+      fog: fogList,
+    });
+    return Response.json({ fog: fogList });
+  }
+
+  if (body.action === "remove-fog") {
+    if (!(await gm())) return forbidden();
+    const fogList = map.fog.filter((entry) => entry.id !== body.fogId);
+    await db
+      .prepare("UPDATE battlemaps SET fog = ? WHERE id = ?")
+      .bind(JSON.stringify(fogList), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "fog",
+      fog: fogList,
+    });
+    return Response.json({ fog: fogList });
+  }
+
+  if (body.action === "clear-fog") {
+    if (!(await gm())) return forbidden();
+    await db
+      .prepare("UPDATE battlemaps SET fog = '[]' WHERE id = ?")
+      .bind(row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "fog",
+      fog: [],
+    });
+    return Response.json({ fog: [] });
   }
 
   // ---- paint --------------------------------------------------------------

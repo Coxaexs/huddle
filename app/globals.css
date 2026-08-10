@@ -6247,7 +6247,11 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   cursor:grab;
 }
 .battlemap-board.painting { cursor:crosshair; }
+.battlemap-board.fogging { cursor:crosshair; }
 .battlemap-board.panning { cursor:grabbing; }
+.battlemap-fog { fill:#0b0d12; opacity:.96; }
+.battlemap-fog.draft { fill:#1c2030; opacity:.7; stroke:var(--lavender); stroke-width:.06; }
+.battlemap-fog-hit { fill:transparent; cursor:pointer; }
 .battlemap-viewport {
   position:absolute;
   inset:0;

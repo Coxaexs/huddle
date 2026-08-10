@@ -26,6 +26,17 @@ export interface MapStroke {
   by?: string;
 }
 
+/** A rectangle of fog hiding part of the map from non-GM players. */
+export interface MapFog {
+  id: string;
+  /** Top-left corner in grid units. */
+  x: number;
+  y: number;
+  /** Width/height in grid units. */
+  w: number;
+  h: number;
+}
+
 export interface Battlemap {
   id: string;
   channelId: string;
@@ -35,6 +46,8 @@ export interface Battlemap {
   grid: number;
   tokens: MapToken[];
   strokes: MapStroke[];
+  /** Rectangles of fog hiding parts of the map from non-GMs. */
+  fog: MapFog[];
 }
 
 export interface BattlemapRow {
@@ -45,6 +58,7 @@ export interface BattlemapRow {
   grid: number;
   tokens: string;
   strokes: string;
+  fog?: string;
   active: number;
 }
 
@@ -69,6 +83,7 @@ export function publicBattlemap(row: BattlemapRow): Battlemap {
     grid: row.grid || 20,
     tokens: parseJson<MapToken[]>(row.tokens, []),
     strokes: parseJson<MapStroke[]>(row.strokes, []),
+    fog: parseJson<MapFog[]>(row.fog, []),
   };
 }
 

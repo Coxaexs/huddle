@@ -597,6 +597,14 @@ async function migrate(db: D1Database): Promise<void> {
   }
   if (recordingMigrations.length) await db.batch(recordingMigrations);
 
+  // Fog-of-war rectangles, stored as a JSON blob alongside tokens/strokes.
+  const battlemapColumns = await columnNames(db, "battlemaps");
+  if (!battlemapColumns.has("fog")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN fog TEXT NOT NULL DEFAULT '[]'")
+      .run();
+  }
+
   await seedDefaultServer(db);
   await backfillServerMembers(db);
 
