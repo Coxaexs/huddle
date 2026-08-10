@@ -11,13 +11,15 @@ interface SoundRow {
   name: string;
   emoji: string;
   key: string;
+  scope?: string;
+  owner_id?: string | null;
 }
 
 function soundUrl(key: string): string {
   return `/hangout/api/uploads/${encodeURIComponent(key)}`;
 }
 
-/** List a server's soundboard clips. */
+/** List a server's soundboard clips, plus your own personal pack. */
 export async function GET(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ sounds: [] });
@@ -28,9 +30,13 @@ export async function GET(request: Request) {
   const serverId = new URL(request.url).searchParams.get("serverId") || "";
   const rows = await db
     .prepare(
-      "SELECT id, server_id, name, emoji, key FROM sounds WHERE server_id = ? ORDER BY created_at DESC",
+      `SELECT id, server_id, name, emoji, key, scope, owner_id
+         FROM sounds
+        WHERE (server_id = ? AND (scope IS NULL OR scope = 'server'))
+           OR (scope = 'personal' AND owner_id = ?)
+        ORDER BY created_at DESC`,
     )
-    .bind(serverId)
+    .bind(serverId, user.id)
     .all();
 
   return Response.json({
@@ -39,6 +45,7 @@ export async function GET(request: Request) {
       name: row.name,
       emoji: row.emoji,
       url: soundUrl(row.key),
+      personal: row.scope === "personal",
     })),
   });
 }
@@ -61,9 +68,12 @@ export async function POST(request: Request) {
     name?: string;
     emoji?: string;
     key?: string;
+    /** "server" (shared, needs MANAGE_CHANNELS) or "personal" (your own pack). */
+    personal?: boolean;
   };
   const serverId = body.serverId || "";
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_CHANNELS))) {
+  const personal = Boolean(body.personal);
+  if (!personal && !(await can(db, user.id, serverId, Permission.MANAGE_CHANNELS))) {
     return Response.json(
       { error: "You do not have permission to add sounds here." },
       { status: 403 },
@@ -76,7 +86,8 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID();
   await db
     .prepare(
-      "INSERT INTO sounds (id, server_id, name, emoji, key, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      `INSERT INTO sounds (id, server_id, name, emoji, key, created_by, created_at, scope, owner_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -86,6 +97,8 @@ export async function POST(request: Request) {
       body.key.slice(0, 240),
       user.id,
       new Date().toISOString(),
+      personal ? "personal" : "server",
+      personal ? user.id : null,
     )
     .run();
 
@@ -96,6 +109,7 @@ export async function POST(request: Request) {
         name: body.name || "sound",
         emoji: body.emoji || "🔊",
         url: soundUrl(body.key),
+        personal,
       },
     },
     { status: 201 },
@@ -117,13 +131,18 @@ export async function DELETE(request: Request) {
 
   const id = new URL(request.url).searchParams.get("id") || "";
   const sound = await db
-    .prepare("SELECT id, server_id, key FROM sounds WHERE id = ?")
+    .prepare("SELECT id, server_id, key, scope, owner_id FROM sounds WHERE id = ?")
     .bind(id)
     .first<SoundRow>();
   if (!sound) {
     return Response.json({ error: "That sound is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, sound.server_id, Permission.MANAGE_CHANNELS))) {
+  // Personal sounds can be removed by their owner; shared ones need moderation.
+  const isOwner = sound.scope === "personal" && sound.owner_id === user.id;
+  if (
+    !isOwner &&
+    !(await can(db, user.id, sound.server_id, Permission.MANAGE_CHANNELS))
+  ) {
     return Response.json(
       { error: "You do not have permission to remove sounds here." },
       { status: 403 },

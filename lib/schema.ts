@@ -617,6 +617,18 @@ async function migrate(db: D1Database): Promise<void> {
       .run();
   }
 
+  // Personal sound packs: a sound can be scoped to a server (shared) or to a
+  // single user (their own pack). Existing rows are shared server sounds.
+  const soundColumns = await columnNames(db, "sounds");
+  if (!soundColumns.has("scope")) {
+    await db
+      .prepare("ALTER TABLE sounds ADD COLUMN scope TEXT NOT NULL DEFAULT 'server'")
+      .run();
+  }
+  if (!soundColumns.has("owner_id")) {
+    await db.prepare("ALTER TABLE sounds ADD COLUMN owner_id TEXT").run();
+  }
+
   await seedDefaultServer(db);
   await backfillServerMembers(db);
 
