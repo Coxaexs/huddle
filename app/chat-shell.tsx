@@ -3549,6 +3549,14 @@ export function ChatShell() {
             userName={user.displayName}
             activity={roomActivity}
             onActivity={setRoomActivity}
+            onOpenParticipantMenu={(event, person) => {
+              if (person.bot) {
+                openBotMenu(event, "music");
+                return;
+              }
+              const member = membersById.get(person.id);
+              if (member) openUserMenu(event, member);
+            }}
             recording={
               <RecordingDirector
                 channelId={stageChannel.id}
