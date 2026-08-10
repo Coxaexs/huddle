@@ -4528,6 +4528,11 @@ button {
   height:100%;
   pointer-events:none;
 }
+.app-dice-overlay {
+  position:fixed;
+  z-index:1000;
+  background:transparent;
+}
 .dice-box-host {
   display:flex;
   align-items:center;

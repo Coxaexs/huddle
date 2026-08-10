@@ -441,6 +441,8 @@ export function ChatShell() {
   const [roomActivity, setRoomActivity] = useState<RoomActivity | null>(null);
   /** The latest dice roll shown over the voice stage (null when idle). */
   const [diceRoll, setDiceRoll] = useState<DiceRollEvent | null>(null);
+  /** Roller-only: the roll whose actual values still need posting. */
+  const [pendingSettle, setPendingSettle] = useState<DiceRollEvent | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   /** Your own presence, mirrored locally so the dot reacts instantly. */
   const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
@@ -1489,6 +1491,41 @@ export function ChatShell() {
     [],
   );
 
+  /** Posts the roller's actual dice values (from the 3D animation) as the roll. */
+  async function submitActualRoll(
+    roll: DiceRollEvent,
+    actualRolls: number[][],
+  ) {
+    try {
+      const data = await apiFetch<{
+        text?: string;
+        kind?: string;
+        payload?: Message["payload"];
+      }>("/api/integrations/dnd/roll", {
+        method: "POST",
+        body: JSON.stringify({
+          command: roll.expression,
+          actualRolls,
+          channelId: voice.channelId || undefined,
+          // The text channel the command was typed into, so people reading
+          // chat see the dice tumble too.
+          textChannelId: activeChannelRef.current || undefined,
+        }),
+      });
+      await postBotMessage(data.text || "The roll failed.", {
+        author: "D&D Bot",
+        avatar: "⚔",
+        kind: data.kind,
+        payload: data.payload,
+      });
+    } catch (error) {
+      await postBotMessage(
+        error instanceof Error ? error.message : "The roll failed.",
+        { author: "D&D Bot", avatar: "⚔" },
+      );
+    }
+  }
+
   async function openDm(targetId: string) {
     try {
       const data = await apiFetch<{
@@ -1835,30 +1872,30 @@ export function ChatShell() {
     }
 
     if (name === "roll") {
+      // Two-phase flow: the roller's 3D dice animation IS the source of truth.
+      // 1. Ask the server to parse the command and return the dice structure.
+      // 2. Roll the real dice locally; when they settle, submit the actual
+      //    values so the server can total them and broadcast to everyone.
       try {
-        const data = await apiFetch<{
-          text?: string;
-          kind?: string;
-          payload?: Message["payload"];
-        }>(
-          "/api/integrations/dnd/roll",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              command: raw,
-              channelId: voice.channelId || undefined,
-              // The text channel the command was typed into, so people
-              // reading chat see the dice tumble too.
-              textChannelId: activeChannelRef.current || undefined,
-            }),
-          },
-        );
-        await postBotMessage(data.text || "The roll failed.", {
-          author: "D&D Bot",
-          avatar: "⚔",
-          kind: data.kind,
-          payload: data.payload,
+        const preview = await apiFetch<{
+          roll?: DiceRollEvent;
+          error?: string;
+        }>("/api/integrations/dnd/roll", {
+          method: "POST",
+          body: JSON.stringify({
+            command: raw,
+            preview: true,
+          }),
         });
+        if (!preview.roll) {
+          await postBotMessage(preview.error || "The roll failed.", {
+            author: "D&D Bot",
+            avatar: "⚔",
+          });
+          return;
+        }
+        // Queue the roll for the overlay to animate; on settle we submit.
+        setPendingSettle(preview.roll);
       } catch (error) {
         await postBotMessage(
           error instanceof Error ? error.message : "The roll failed.",
@@ -3083,6 +3120,23 @@ export function ChatShell() {
 
   return (
     <main className={`app-shell ${mobileNav ? "nav-open" : ""}`}>
+      {/* The roller's own dice animation, shown regardless of view. When the
+          dice settle, the actual values are submitted as the authoritative
+          roll and broadcast to everyone. */}
+      {pendingSettle && (
+        <DiceOverlay
+          roll={pendingSettle}
+          onDone={() => setPendingSettle(null)}
+          onSettle={async (roll, actualRolls) => {
+            try {
+              await submitActualRoll(roll, actualRolls);
+            } finally {
+              setPendingSettle(null);
+            }
+          }}
+          className="dice-overlay app-dice-overlay"
+        />
+      )}
       {/* Tapping outside the drawer on a phone closes it. */}
       <div
         className="mobile-nav-backdrop"
