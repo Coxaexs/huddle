@@ -14,7 +14,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import type { PlayerState } from "@/lib/protocol";
+import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import {
@@ -55,6 +55,7 @@ import {
   type BotMenuAction,
 } from "./components/bot-menu";
 import { DndCard } from "./components/dnd-card";
+import { DiceOverlay } from "./components/dice-overlay";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
@@ -438,6 +439,8 @@ export function ChatShell() {
   const [threadDraft, setThreadDraft] = useState("");
   /** Whiteboard, watch party, game, tier list, or timer open in voice. */
   const [roomActivity, setRoomActivity] = useState<RoomActivity | null>(null);
+  /** The latest dice roll shown over the voice stage (null when idle). */
+  const [diceRoll, setDiceRoll] = useState<DiceRollEvent | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   /** Your own presence, mirrored locally so the dot reacts instantly. */
   const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
@@ -1039,6 +1042,17 @@ export function ChatShell() {
         }
         return incoming;
       });
+    },
+    onDiceRoll: (channelId, roll) => {
+      // Show the roll wherever it's relevant: the open voice stage or the
+      // active text channel (rolls publish to both).
+      if (
+        channelId !== stageChannelRef.current &&
+        channelId !== activeChannelRef.current
+      ) {
+        return;
+      }
+      setDiceRoll(roll);
     },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
     onVoiceEvicted: () => {
@@ -1833,6 +1847,9 @@ export function ChatShell() {
             body: JSON.stringify({
               command: raw,
               channelId: voice.channelId || undefined,
+              // The text channel the command was typed into, so people
+              // reading chat see the dice tumble too.
+              textChannelId: activeChannelRef.current || undefined,
             }),
           },
         );
@@ -3514,6 +3531,13 @@ export function ChatShell() {
             <div>Drop to attach · images and PDFs</div>
           </div>
         )}
+        {!stageChannel && (
+          <DiceOverlay
+            roll={diceRoll}
+            onDone={() => setDiceRoll(null)}
+            className="dice-overlay chat-dice-overlay"
+          />
+        )}
         <header className="chat-header">
           <button
             className="mobile-menu"
@@ -3617,6 +3641,8 @@ export function ChatShell() {
             userName={user.displayName}
             activity={roomActivity}
             onActivity={setRoomActivity}
+            diceRoll={diceRoll}
+            onDiceRollDone={() => setDiceRoll(null)}
             onOpenParticipantMenu={(event, person) => {
               if (person.bot) {
                 openBotMenu(event, "music");

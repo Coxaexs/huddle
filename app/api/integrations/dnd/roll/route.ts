@@ -30,6 +30,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     command?: string;
     channelId?: string;
+    textChannelId?: string;
   };
   const input = (body.command || "").replace(/^\/roll\s*/i, "").trim();
   if (!input) {
@@ -152,47 +153,70 @@ export async function POST(request: Request) {
   // The result above is authoritative. Consumers animate these exact faces;
   // they never generate a second result.
   const db = bindings().DB;
-  const channelId = body.channelId?.slice(0, 64) || "";
-  if (db && channelId) {
+  const voiceChannelId = body.channelId?.slice(0, 64) || "";
+  const textChannelId = body.textChannelId?.slice(0, 64) || "";
+  if (db) {
     await ensureSchema(db);
-    const channel = await findChannel(db, channelId);
-    if (
-      channel?.kind === "voice" &&
-      (await isServerMember(db, channel.server_id, user.id))
-    ) {
-      await publishMessageEvent(channelId, { t: "dice-roll", roll });
-      const recording = await activeRecording(db, channelId);
-      if (recording) {
-        const consent = await db
-          .prepare(
-            `SELECT decision FROM recording_participants
-              WHERE session_id = ? AND user_id = ?`,
-          )
-          .bind(recording.id, user.id)
-          .first<{ decision: string }>();
-        if (consent?.decision === "accepted") {
-          await db
+
+    // Publish to the voice room (if you're in one), so people on the stage
+    // see the dice tumble.
+    if (voiceChannelId) {
+      const voiceChannel = await findChannel(db, voiceChannelId);
+      if (
+        voiceChannel?.kind === "voice" &&
+        (await isServerMember(db, voiceChannel.server_id, user.id))
+      ) {
+        await publishMessageEvent(voiceChannelId, { t: "dice-roll", roll });
+        const recording = await activeRecording(db, voiceChannelId);
+        if (recording) {
+          const consent = await db
             .prepare(
-              `INSERT INTO recording_dice_events
-                 (id, session_id, roller_id, expression, rolls_json, modifier,
-                  total, roll_type, animation_seed, at_ms, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `SELECT decision FROM recording_participants
+                WHERE session_id = ? AND user_id = ?`,
             )
-            .bind(
-              crypto.randomUUID(),
-              recording.id,
-              user.id,
-              roll.expression,
-              JSON.stringify(roll.dice),
-              modifier,
-              total,
-              roll.rollType,
-              roll.animationSeed,
-              elapsedMs(recording),
-              new Date().toISOString(),
-            )
-            .run();
+            .bind(recording.id, user.id)
+            .first<{ decision: string }>();
+          if (consent?.decision === "accepted") {
+            await db
+              .prepare(
+                `INSERT INTO recording_dice_events
+                   (id, session_id, roller_id, expression, rolls_json, modifier,
+                    total, roll_type, animation_seed, at_ms, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .bind(
+                crypto.randomUUID(),
+                recording.id,
+                user.id,
+                roll.expression,
+                JSON.stringify(roll.dice),
+                modifier,
+                total,
+                roll.rollType,
+                roll.animationSeed,
+                elapsedMs(recording),
+                new Date().toISOString(),
+              )
+              .run();
+          }
         }
+      }
+    }
+
+    // Publish to the text channel the command was typed into, so anyone
+    // reading chat sees the dice tumble too. This works even when the roller
+    // isn't in a voice room.
+    if (textChannelId && textChannelId !== voiceChannelId) {
+      const textChannel = await findChannel(db, textChannelId);
+      if (
+        textChannel?.kind === "text" &&
+        (voiceChannelId
+          ? (await findChannel(db, voiceChannelId))?.server_id ===
+            textChannel.server_id
+          : true) &&
+        (await isServerMember(db, textChannel.server_id, user.id))
+      ) {
+        await publishMessageEvent(textChannelId, { t: "dice-roll", roll });
       }
     }
   }
