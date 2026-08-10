@@ -1,0 +1,41 @@
+name: Deploy web app
+
+# Deploys the web app to the production machine. The app runs locally via a
+# systemd unit (huddle.service), so the workflow SSHes into the host and runs
+# the build + restart there using the repo's bundled Node 22.
+#
+# Configure these repository secrets on GitHub:
+#   DEPLOY_HOST      SSH host (or user@host) of the production machine
+#   DEPLOY_SSH_KEY   private SSH key the runner uses to connect
+#
+# Trigger manually, or on a push to main (map to your own branch if you deploy
+# from a different branch).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          # The build must use the repo's bundled Node 22, and wrangler reads
+          # dist/server/.dev.vars (republished by the build). Restarting the
+          # unit makes wrangler pick up the rebuilt worker.
+          script: |
+            cd ~/huddle
+            git fetch origin main
+            git checkout main
+            git pull --ff-only
+            node_modules/node/bin/node node_modules/vinext/dist/cli.js build
+            sudo systemctl restart huddle.service
