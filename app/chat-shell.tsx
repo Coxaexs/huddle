@@ -270,6 +270,15 @@ function showNotification(title: string, body: string): void {
   }
 }
 
+/** A small "seen" check shown on my DM messages once the partner has read them. */
+function SeenMark() {
+  return (
+    <span className="seen-mark" title="Seen">
+      ✓✓
+    </span>
+  );
+}
+
 /** Plays a soundboard clip locally (everyone in the room hears their own copy). */
 function playSound(url: string): void {
   try {
@@ -380,6 +389,12 @@ export function ChatShell() {
   );
   /** Which message's quick-vote chips are currently open. */
   const [quickVoteId, setQuickVoteId] = useState<string | number | null>(null);
+  /** The DM partner's read position, for "seen" receipts. */
+  const [partnerReadAt, setPartnerReadAt] = useState<{
+    channelId: string | null;
+    userId: string | null;
+    readAt: string;
+  } | null>(null);
   // On a phone the member list is an overlay, so it starts out of the way.
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
@@ -987,6 +1002,15 @@ export function ChatShell() {
     onPoll: (channelId, pollId, counts) => {
       if (channelId !== activeChannelRef.current) return;
       setPollCounts((current) => ({ ...current, [pollId]: counts }));
+    },
+    onRead: (channelId, userId, readAt) => {
+      // The DM partner read the conversation up to this point.
+      if (channelId !== activeChannelRef.current) return;
+      setPartnerReadAt((current) =>
+        current && current.channelId === channelId && current.readAt >= readAt
+          ? current
+          : { channelId, userId, readAt },
+      );
     },
     onBattlemap: (channelId, payload) => {
       onBattlemapSocket(channelId, payload);
@@ -2941,6 +2965,19 @@ export function ChatShell() {
       </button>
     );
   }
+  /** Whether a DM partner has read my message (for the "seen" marker). */
+  function dmSeen(message: Message): boolean {
+    if (message.userId !== user?.id) return false;
+    if (!activeDm) return false;
+    if (!partnerReadAt || partnerReadAt.channelId !== activeDm.channelId) {
+      return false;
+    }
+    return (
+      partnerReadAt.userId === activeDm.user.id &&
+      (message.createdAt || "") <= partnerReadAt.readAt
+    );
+  }
+
   const prefFor = (id: string): VoicePref =>
     voicePrefs[id] || { volume: 100, muted: false };
   const currentPlayer = voice.channelId
@@ -3848,6 +3885,7 @@ export function ChatShell() {
                 {continuation ? (
                   <span className="message-gutter" aria-hidden="true">
                     <time>{message.time}</time>
+                    {dmSeen(message) && <SeenMark />}
                   </span>
                 ) : (
                   <Avatar
@@ -3906,6 +3944,7 @@ export function ChatShell() {
                       {author && <PrideBadges badges={author.prideBadges} mini />}
                       {message.bot && <span className="bot-tag">BOT</span>}
                       <time>{message.time}</time>
+                      {dmSeen(message) && <SeenMark />}
                       {message.editedAt && (
                         <span className="edited-tag" title="Edited">
                           (edited)
