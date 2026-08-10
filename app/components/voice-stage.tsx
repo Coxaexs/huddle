@@ -19,10 +19,12 @@ import {
   PhoneOff,
 } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
+import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import type { ScreenShareQuality } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
+import { DiceOverlay } from "./dice-overlay";
 import { RoomActivities } from "./room-activities";
 
 interface Sound {
@@ -76,6 +78,10 @@ interface VoiceStageProps {
   battlemap?: React.ReactNode;
   onToggleBattlemap?: () => void;
   battlemapOpen?: boolean;
+  /** A dice roll to animate over the stage, or null when idle. */
+  diceRoll?: DiceRollEvent | null;
+  /** Called once the roll animation has finished. */
+  onDiceRollDone?: () => void;
   /** Consent banner and GM director controls for the production recorder. */
   recording?: React.ReactNode;
   /** Opens the per-person menu (volume/mute/moderation) for a participant. */
@@ -145,6 +151,8 @@ export function VoiceStage({
   battlemap,
   onToggleBattlemap,
   battlemapOpen,
+  diceRoll,
+  onDiceRollDone,
   recording,
   onOpenParticipantMenu,
 }: VoiceStageProps) {
@@ -227,6 +235,7 @@ export function VoiceStage({
     <div className="voice-stage">
       {recording}
       {battlemap}
+      <DiceOverlay roll={diceRoll || null} onDone={() => onDiceRollDone?.()} />
       <RoomActivities
         channelId={voice.channelId || ""}
         channelName={channelName}
