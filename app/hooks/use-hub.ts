@@ -46,6 +46,12 @@ interface HubHandlers {
   onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
   onTyping?: (channelId: string, userId: string, displayName: string) => void;
   onPoll?: (channelId: string, pollId: string, counts: number[]) => void;
+  /** A DM partner read the channel up to `readAt`. */
+  onRead?: (
+    channelId: string,
+    userId: string,
+    readAt: string,
+  ) => void;
   onBattlemap?: (
     channelId: string,
     payload: {
@@ -291,6 +297,13 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.channelId,
               payload.pollId,
               payload.counts,
+            );
+            break;
+          case "read":
+            handlersRef.current.onRead?.(
+              payload.channelId,
+              payload.userId,
+              payload.readAt,
             );
             break;
           case "battlemap":

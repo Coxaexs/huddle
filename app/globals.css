@@ -5462,6 +5462,13 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
 .mention-self { background:color-mix(in srgb, var(--lavender) 40%, transparent); }
 
 .edited-tag { font-size:11px; color:var(--muted); }
+.seen-mark {
+  font-size:10px;
+  color:var(--lavender);
+  margin-left:4px;
+  letter-spacing:-1px;
+  user-select:none;
+}
 
 .message-edit textarea {
   width:100%;

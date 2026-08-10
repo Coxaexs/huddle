@@ -364,4 +364,12 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "notice"; text: string; serverNow: number }
+  | {
+      /** A DM partner read the conversation up to `readAt` (for "seen"). */
+      t: "read";
+      channelId: string;
+      userId: string;
+      readAt: string;
+      serverNow: number;
+    }
   | { t: "pong"; serverNow: number };
