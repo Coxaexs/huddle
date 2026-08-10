@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Plus, X, Hand, Eraser, Map } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  X,
+  Hand,
+  Eraser,
+  Map,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+} from "lucide-react";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
 
@@ -20,11 +30,14 @@ interface BattlemapBoardProps {
 }
 
 const PAINT_COLORS = ["#ef6b58", "#f3bd5d", "#49c99a", "#68a8ff", "#e57bd8", "#ffffff"];
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4;
 
 /**
  * The shared table: a grid (over an optional map image) with draggable tokens
  * and a paint layer. Coordinates are grid units, so everyone's screen agrees
- * regardless of size.
+ * regardless of size. Zoom and pan are local view transforms only — they never
+ * touch the shared coordinates.
  */
 export function BattlemapBoard({
   channelId,
@@ -42,23 +55,66 @@ export function BattlemapBoard({
   const [dragging, setDragging] = useState<string | null>(null);
   /** The stroke being drawn right now, in grid units. */
   const [pending, setPending] = useState<number[]>([]);
+  /** Local view transform: zoom factor and pan offset in pixels. */
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
+  /** Token currently being renamed (inline input). */
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  /** Token being resized by dragging its corner handle. */
+  const [resizing, setResizing] = useState<string | null>(null);
+
   const boardRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ startX: 0, startY: 0, panX: 0, panY: 0 });
+  const resizeRef = useRef({ startX: 0, startY: 0, startSize: 1 });
 
   const rows = Math.round(map.grid * 0.6) || map.grid;
 
-  /** Pointer position in grid units. */
+  /** Pointer position in grid units, accounting for the local zoom/pan. */
   function toGrid(event: { clientX: number; clientY: number }) {
     const box = boardRef.current?.getBoundingClientRect();
     if (!box) return { x: 0, y: 0 };
+    const bx = event.clientX - box.left;
+    const by = event.clientY - box.top;
+    const cx = (bx - pan.x) / zoom;
+    const cy = (by - pan.y) / zoom;
     return {
-      x: ((event.clientX - box.left) / box.width) * map.grid,
-      y: ((event.clientY - box.top) / box.height) * rows,
+      x: (cx / box.width) * map.grid,
+      y: (cy / box.height) * rows,
     };
   }
 
   function canMove(token: MapToken): boolean {
     return gm || !token.ownerId || token.ownerId === userId;
   }
+
+  function canRename(token: MapToken): boolean {
+    return gm || !token.ownerId || token.ownerId === userId;
+  }
+
+  // Wheel to zoom toward the cursor. Attached non-passively so we can stop
+  // the page from scrolling while zooming the map.
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const box = board.getBoundingClientRect();
+      const bx = event.clientX - box.left;
+      const by = event.clientY - box.top;
+      const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
+      // Keep the grid point under the cursor fixed while zooming.
+      const cx = (bx - pan.x) / zoom;
+      const cy = (by - pan.y) / zoom;
+      setZoom(nextZoom);
+      setPan({ x: bx - cx * nextZoom, y: by - cy * nextZoom });
+    };
+    board.addEventListener("wheel", onWheel, { passive: false });
+    return () => board.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, pan]);
 
   // Dragging a token: follow the pointer locally, save on release.
   useEffect(() => {
@@ -92,6 +148,88 @@ export function BattlemapBoard({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragging, map.tokens, channelId]);
+
+  // Panning the view: drag on empty space in move mode.
+  useEffect(() => {
+    if (!panning) return;
+    const move = (event: PointerEvent) => {
+      const dx = event.clientX - panRef.current.startX;
+      const dy = event.clientY - panRef.current.startY;
+      setPan({
+        x: panRef.current.panX + dx,
+        y: panRef.current.panY + dy,
+      });
+    };
+    const up = () => {
+      setPanning(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [panning]);
+
+  // Resizing a token by dragging its corner handle. The size is derived from
+  // how far the pointer moved away from the token's center, in grid units.
+  useEffect(() => {
+    if (!resizing) return;
+    const token = map.tokens.find((entry) => entry.id === resizing);
+    if (!token) return;
+    const startSize = token.size ?? 1;
+    resizeRef.current = { startX: 0, startY: 0, startSize };
+    let currentSize = startSize;
+
+    const move = (event: PointerEvent) => {
+      const tokenEl = boardRef.current?.querySelector<HTMLElement>(
+        `[data-token-id="${resizing}"]`,
+      );
+      const tokenBox = tokenEl?.getBoundingClientRect();
+      if (!tokenBox) return;
+      const centerX = tokenBox.left + tokenBox.width / 2;
+      const centerY = tokenBox.top + tokenBox.height / 2;
+      const dx = event.clientX - centerX;
+      const dy = event.clientY - centerY;
+      const distPx = Math.hypot(dx, dy);
+      // Convert the pixel distance into grid cells using the token's own size
+      // as the ruler (it is `startSize` cells wide on screen).
+      const cellsPerPx = startSize / tokenBox.width;
+      const next = Math.max(0.5, Math.min(4, distPx * cellsPerPx));
+      currentSize = next;
+      onLocalToken({ ...token, size: next });
+    };
+    const up = () => {
+      setResizing(null);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      void apiFetch("/api/battlemap", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId,
+          action: "resize-token",
+          tokenId: token.id,
+          size: currentSize,
+        }),
+      }).catch(() => undefined);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resizing, channelId]);
+
+  function startPan(event: React.PointerEvent) {
+    if (mode !== "move") return;
+    event.preventDefault();
+    panRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y };
+    setPanning(true);
+  }
 
   function startPaint(event: React.PointerEvent) {
     if (mode !== "paint") return;
@@ -130,6 +268,14 @@ export function BattlemapBoard({
     window.addEventListener("pointerup", up, { once: true });
   }
 
+  function onBoardPointerDown(event: React.PointerEvent) {
+    if (mode === "paint") {
+      startPaint(event);
+    } else {
+      startPan(event);
+    }
+  }
+
   /** Turns grid points into an SVG path in the 0..grid / 0..rows space. */
   function pathOf(points: number[]): string {
     let path = "";
@@ -144,6 +290,42 @@ export function BattlemapBoard({
       method: "POST",
       body: JSON.stringify({ channelId, ...payload }),
     }).catch(() => undefined);
+  }
+
+  function zoomBy(factor: number) {
+    const box = boardRef.current?.getBoundingClientRect();
+    const cx = box ? box.width / 2 : 0;
+    const cy = box ? box.height / 2 : 0;
+    const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
+    const gx = (cx - pan.x) / zoom;
+    const gy = (cy - pan.y) / zoom;
+    setZoom(nextZoom);
+    setPan({ x: cx - gx * nextZoom, y: cy - gy * nextZoom });
+  }
+
+  function resetView() {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function beginRename(token: MapToken) {
+    setRenamingId(token.id);
+    setRenameValue(token.label);
+  }
+
+  function commitRename(id: string) {
+    const label = renameValue.trim();
+    setRenamingId(null);
+    if (!label) return;
+    void act({ action: "rename-token", tokenId: id, label });
+  }
+
+  function startResize(event: React.PointerEvent, token: MapToken) {
+    if (mode !== "move") return;
+    event.stopPropagation();
+    event.preventDefault();
+    resizeRef.current.startSize = token.size ?? 1;
+    setResizing(token.id);
   }
 
   return (
@@ -167,6 +349,17 @@ export function BattlemapBoard({
           >
             <Pencil size={14} />
           </button>
+          <span className="battlemap-zoom">
+            <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
+              <ZoomOut size={14} />
+            </button>
+            <button type="button" title="Reset view" onClick={resetView}>
+              <RotateCcw size={14} />
+            </button>
+            <button type="button" title="Zoom in" onClick={() => zoomBy(1.2)}>
+              <ZoomIn size={14} />
+            </button>
+          </span>
           {mode === "paint" && (
             <>
               {PAINT_COLORS.map((option) => (
@@ -238,11 +431,17 @@ export function BattlemapBoard({
       </div>
 
       <div
-        className={`battlemap-board ${mode === "paint" ? "painting" : ""}`}
+        className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${panning ? "panning" : ""}`}
         ref={boardRef}
-        onPointerDown={startPaint}
+        onPointerDown={onBoardPointerDown}
         style={{ aspectRatio: `${map.grid} / ${rows}` }}
       >
+        <div
+          className="battlemap-viewport"
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          }}
+        >
         {map.imageUrl && <img className="battlemap-image" src={map.imageUrl} alt="" />}
 
         {/* Grid + paint share one coordinate space with the tokens. */}
@@ -287,16 +486,18 @@ export function BattlemapBoard({
 
         {map.tokens.map((token) => {
           const mine = canMove(token);
+          const renaming = renamingId === token.id;
           return (
             <div
               key={token.id}
+              data-token-id={token.id}
               className={`battlemap-token ${mine ? "movable" : ""} ${
                 dragging === token.id ? "dragging" : ""
-              }`}
+              } ${resizing === token.id ? "resizing" : ""}`}
               style={{
                 left: `${(token.x / map.grid) * 100}%`,
                 top: `${(token.y / rows) * 100}%`,
-                width: `${(1 / map.grid) * 100}%`,
+                width: `${((token.size ?? 1) / map.grid) * 100}%`,
                 borderColor: token.color,
               }}
               title={token.label}
@@ -320,9 +521,48 @@ export function BattlemapBoard({
                 </span>
               )}
               <b>{token.label}</b>
+              {canRename(token) && !renaming && (
+                <button
+                  type="button"
+                  className="battlemap-rename-btn"
+                  title="Rename token"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    beginRename(token);
+                  }}
+                >
+                  ✏️
+                </button>
+              )}
+              {renaming && (
+                <input
+                  autoFocus
+                  className="battlemap-rename-input"
+                  value={renameValue}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") commitRename(token.id);
+                    if (event.key === "Escape") setRenamingId(null);
+                  }}
+                  onBlur={() => commitRename(token.id)}
+                />
+              )}
+              {canRename(token) && (
+                <button
+                  type="button"
+                  className="battlemap-resize-btn"
+                  title="Resize token (drag)"
+                  onPointerDown={(event) => startResize(event, token)}
+                >
+                  ⇲
+                </button>
+              )}
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

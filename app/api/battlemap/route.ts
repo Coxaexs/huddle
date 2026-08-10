@@ -80,8 +80,10 @@ export async function POST(request: Request) {
     grid?: number;
     token?: Partial<MapToken>;
     tokenId?: string;
+    label?: string;
     x?: number;
     y?: number;
+    size?: number;
     stroke?: { color?: string; width?: number; points?: number[] };
     what?: string;
   };
@@ -157,6 +159,7 @@ export async function POST(request: Request) {
       avatarUrl: body.token?.avatarUrl?.slice(0, 300) || null,
       x: clampPoint(Number(body.token?.x) || 1, map.grid),
       y: clampPoint(Number(body.token?.y) || 1, map.grid),
+      size: Math.max(0.5, Math.min(4, Number(body.token?.size) || 1)),
       ownerId: body.token?.ownerId || null,
       hp: body.token?.hp ?? null,
       maxHp: body.token?.maxHp ?? null,
@@ -205,6 +208,60 @@ export async function POST(request: Request) {
     }
     token.x = clampPoint(Number(body.x), map.grid);
     token.y = clampPoint(Number(body.y), map.grid);
+    await db
+      .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
+      .bind(JSON.stringify(map.tokens), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "token",
+      token,
+    });
+    return Response.json({ token });
+  }
+
+  // ---- rename a token (GM, or the token's owner) --------------------------
+  if (body.action === "rename-token") {
+    const token = map.tokens.find((entry) => entry.id === body.tokenId);
+    if (!token) {
+      return Response.json({ error: "No such token." }, { status: 404 });
+    }
+    if (token.ownerId && token.ownerId !== user.id && !(await gm())) {
+      return Response.json(
+        { error: "That is not your character." },
+        { status: 403 },
+      );
+    }
+    const label = (body.label || "").trim().slice(0, 40);
+    if (!label) {
+      return Response.json({ error: "Name cannot be empty." }, { status: 400 });
+    }
+    token.label = label;
+    await db
+      .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
+      .bind(JSON.stringify(map.tokens), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "token",
+      token,
+    });
+    return Response.json({ token });
+  }
+
+  // ---- resize a token (GM, or the token's owner) --------------------------
+  if (body.action === "resize-token") {
+    const token = map.tokens.find((entry) => entry.id === body.tokenId);
+    if (!token) {
+      return Response.json({ error: "No such token." }, { status: 404 });
+    }
+    if (token.ownerId && token.ownerId !== user.id && !(await gm())) {
+      return Response.json(
+        { error: "That is not your character." },
+        { status: 403 },
+      );
+    }
+    token.size = Math.max(0.5, Math.min(4, Number(body.size) || 1));
     await db
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
