@@ -116,29 +116,48 @@ export function BattlemapBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, pan]);
 
-  // Dragging a token: follow the pointer locally, save on release.
+  // Dragging a token: follow the pointer locally, save throttled along the way
+  // (so a dropped connection or closed tab mid-drag doesn't lose the whole
+  // drag), and an authoritative final save on release. The token is captured
+  // once so the listeners don't churn on every local update.
   useEffect(() => {
     if (!dragging) return;
     const token = map.tokens.find((entry) => entry.id === dragging);
     if (!token) return;
 
-    const move = (event: PointerEvent) => {
-      const point = toGrid(event);
-      onLocalToken({ ...token, x: point.x, y: point.y });
-    };
-    const up = (event: PointerEvent) => {
-      const point = toGrid(event);
-      setDragging(null);
+    let lastX = token.x;
+    let lastY = token.y;
+    let lastSave = 0;
+    const SAVE_INTERVAL = 300;
+
+    const save = (x: number, y: number) => {
       void apiFetch("/api/battlemap", {
         method: "POST",
         body: JSON.stringify({
           channelId,
           action: "move-token",
           tokenId: token.id,
-          x: point.x,
-          y: point.y,
+          x,
+          y,
         }),
       }).catch(() => undefined);
+    };
+
+    const move = (event: PointerEvent) => {
+      const point = toGrid(event);
+      lastX = point.x;
+      lastY = point.y;
+      onLocalToken({ ...token, x: point.x, y: point.y });
+      const now = Date.now();
+      if (now - lastSave >= SAVE_INTERVAL) {
+        lastSave = now;
+        save(lastX, lastY);
+      }
+    };
+    const up = (event: PointerEvent) => {
+      const point = toGrid(event);
+      setDragging(null);
+      save(point.x, point.y);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
@@ -147,7 +166,7 @@ export function BattlemapBoard({
       window.removeEventListener("pointerup", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragging, map.tokens, channelId]);
+  }, [dragging, channelId]);
 
   // Panning the view: drag on empty space in move mode.
   useEffect(() => {
@@ -182,6 +201,20 @@ export function BattlemapBoard({
     const startSize = token.size ?? 1;
     resizeRef.current = { startX: 0, startY: 0, startSize };
     let currentSize = startSize;
+    let lastSave = 0;
+    const SAVE_INTERVAL = 300;
+
+    const save = (size: number) => {
+      void apiFetch("/api/battlemap", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId,
+          action: "resize-token",
+          tokenId: token.id,
+          size,
+        }),
+      }).catch(() => undefined);
+    };
 
     const move = (event: PointerEvent) => {
       const tokenEl = boardRef.current?.querySelector<HTMLElement>(
@@ -200,20 +233,17 @@ export function BattlemapBoard({
       const next = Math.max(0.5, Math.min(4, distPx * cellsPerPx));
       currentSize = next;
       onLocalToken({ ...token, size: next });
+      const now = Date.now();
+      if (now - lastSave >= SAVE_INTERVAL) {
+        lastSave = now;
+        save(next);
+      }
     };
     const up = () => {
       setResizing(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      void apiFetch("/api/battlemap", {
-        method: "POST",
-        body: JSON.stringify({
-          channelId,
-          action: "resize-token",
-          tokenId: token.id,
-          size: currentSize,
-        }),
-      }).catch(() => undefined);
+      save(currentSize);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
