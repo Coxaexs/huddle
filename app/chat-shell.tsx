@@ -249,12 +249,17 @@ function pickImageFile(): Promise<File | null> {
   });
 }
 
-/** Fires a desktop/web notification, unless the user turned them off. */
+/** Fires a desktop/web notification, unless the user turned them off. Only
+ *  fires when the tab is not the focused/visible one — if you're looking at
+ *  the app, the unread badge already tells you. */
 function showNotification(title: string, body: string): void {
   try {
     if (typeof Notification === "undefined") return;
     if (Notification.permission !== "granted") return;
     if (window.localStorage.getItem("huddle-notify") === "off") return;
+    // Don't pop a notification while the user is actively using the app; the
+    // in-app unread badge is the cue there.
+    if (document.visibilityState === "visible" && document.hasFocus()) return;
     const notification = new Notification(title, { body });
     notification.onclick = () => window.focus();
   } catch {
@@ -309,6 +314,15 @@ export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
   const [ready, setReady] = useState(false);
+
+  // Register the service worker (for web push) once a signed-in user exists.
+  useEffect(() => {
+    if (!user) return;
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/hangout/sw.js", { scope: "/hangout" })
+      .catch(() => undefined);
+  }, [user]);
 
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);

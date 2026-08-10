@@ -331,6 +331,18 @@ async function migrate(db: D1Database): Promise<void> {
         created_by_name TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )`),
+    // Web push subscriptions, one row per browser/device a user has enabled.
+    // The endpoint/auth/p256dh are what the server needs to send the push.
+    db.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions(user_id)",
+    ),
     // A real moderation/audit trail, one row per notable server action.
     db.prepare(`CREATE TABLE IF NOT EXISTS audit_log (
         id TEXT PRIMARY KEY,
