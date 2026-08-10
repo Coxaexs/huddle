@@ -3,6 +3,8 @@ node_modules/
 # Build output
 dist/
 dist-*/
+# Old build snapshots kept locally for rollbacks.
+backups/
 appledouble-quarantine/
 .vinext/
 *.tsbuildinfo
