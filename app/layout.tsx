@@ -3,6 +3,10 @@ import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+export const viewport = {
+  themeColor: "#7b63e6",
+};
+
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host =
@@ -44,6 +48,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/hangout/manifest.json" />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -1,0 +1,18 @@
+{
+  "name": "Huddle",
+  "short_name": "Huddle",
+  "description": "A tiny private place for your favorite people.",
+  "start_url": "/hangout",
+  "scope": "/hangout",
+  "display": "standalone",
+  "background_color": "#11131a",
+  "theme_color": "#7b63e6",
+  "icons": [
+    {
+      "src": "/hangout/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
