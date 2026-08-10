@@ -2782,6 +2782,11 @@ export function ChatShell() {
         <div key={channel.id} {...chanProps} {...voiceDropProps}>
           <button
             className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""} ${stageChannelId === channel.id ? "viewing-voice" : ""}`}
+            title={
+              channel.topic
+                ? `${channel.name} — ${channel.topic}`
+                : channel.name
+            }
             onClick={() => openVoiceChannel(channel)}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -2899,6 +2904,11 @@ export function ChatShell() {
           unread[channel.id]?.unread ? "has-unread" : ""
         }`}
         {...channelDragProps(channel)}
+        title={
+          channel.topic
+            ? `#${channel.name} — ${channel.topic}`
+            : `#${channel.name}`
+        }
         onClick={() => {
           setActiveChannelId(channel.id);
           setStageChannelId(null);
