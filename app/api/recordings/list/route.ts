@@ -21,17 +21,17 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const serverId = url.searchParams.get("serverId")?.slice(0, 64);
 
-  const rows = await db
-    .prepare(
-      `SELECT rs.* FROM recording_sessions rs
-         JOIN server_members sm ON sm.server_id = rs.server_id AND sm.user_id = ?
-        WHERE rs.deleted_at IS NULL
-          ${serverId ? "AND rs.server_id = ?" : ""}
-        ORDER BY rs.created_at DESC
-        LIMIT 100`,
-    )
-    .bind(serverId ? [user.id, serverId] : [user.id])
-    .all<Record<string, unknown>>();
+  const statement = db.prepare(
+    `SELECT rs.* FROM recording_sessions rs
+       JOIN server_members sm ON sm.server_id = rs.server_id AND sm.user_id = ?
+      WHERE rs.deleted_at IS NULL
+        ${serverId ? "AND rs.server_id = ?" : ""}
+      ORDER BY rs.created_at DESC
+      LIMIT 100`,
+  );
+  const rows = serverId
+    ? await statement.bind(user.id, serverId).all<Record<string, unknown>>()
+    : await statement.bind(user.id).all<Record<string, unknown>>();
 
   const states: RecordingState[] = [];
   for (const row of rows.results || []) {
