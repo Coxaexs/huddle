@@ -804,6 +804,58 @@ const server = createServer(async (request, response) => {
       }
       return;
     }
+    // Serve stored media/metadata for a session (used by the portal preview).
+    // Only allowlist-known filenames are served; the session id is validated
+    // and the resulting path is confined to the session's own directory.
+    if (request.method === "GET" && action === "file") {
+      const nameMatch = url.pathname.match(
+        /^\/v1\/sessions\/([^/]+)\/file\/([^/]+)$/,
+      );
+      const fileId = nameMatch ? safeId(decodeURIComponent(nameMatch[2])) : null;
+      const allowed = new Set([
+        "thumbnail.jpg",
+        "session.webm",
+        "session.mp4",
+        "metadata.json",
+        "chapters.txt",
+        "highlights.json",
+      ]);
+      if (!fileId || !allowed.has(fileId)) {
+        json(response, 404, { error: "Not found." });
+        return;
+      }
+      const file = path.join(storageRoot, id, fileId);
+      // Confine to the session directory (defence in depth).
+      const resolvedRoot = path.resolve(storageRoot, id);
+      const resolvedFile = path.resolve(file);
+      if (!resolvedFile.startsWith(resolvedRoot + path.sep)) {
+        json(response, 403, { error: "Forbidden." });
+        return;
+      }
+      try {
+        const info = await stat(resolvedFile);
+        if (!info.isFile()) throw new Error("Not a file.");
+        const types = {
+          "thumbnail.jpg": "image/jpeg",
+          "session.webm": "video/webm",
+          "session.mp4": "video/mp4",
+          "metadata.json": "application/json",
+          "chapters.txt": "text/plain; charset=utf-8",
+          "highlights.json": "application/json",
+        };
+        response.writeHead(200, {
+          ...corsHeaders(),
+          "Content-Type": types[fileId],
+          "Content-Length": info.size,
+          "Cache-Control": "private, max-age=60",
+        });
+        createReadStream(resolvedFile).pipe(response);
+        return;
+      } catch {
+        json(response, 404, { error: "File not found." });
+        return;
+      }
+    }
     json(response, 404, { error: "Not found." });
   } catch (error) {
     console.error("Recorder request failed", error);

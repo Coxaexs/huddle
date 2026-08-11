@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Clapperboard,
   Play,
@@ -13,8 +13,11 @@ import {
   Plus,
   Loader2,
   ArrowLeft,
+  User,
+  Upload,
 } from "lucide-react";
 import type { RecordingState, RecordingScene } from "@/lib/protocol";
+import type { CharacterPresentation } from "@/lib/protocol";
 import type { PublicServer } from "@/lib/servers";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
@@ -167,6 +170,22 @@ export function RecordingsPortal() {
       setNotice(e instanceof Error ? e.message : "Could not set up recording.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Uploads an image and returns its upload key for the character card. */
+  async function uploadImage(file: File): Promise<string | null> {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const uploaded = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      return uploaded.key;
+    } catch {
+      setNotice("Image upload failed.");
+      return null;
     }
   }
 
@@ -366,6 +385,27 @@ export function RecordingsPortal() {
                 </span>
               </div>
 
+              <div className="portal-rec-preview">
+                {r.status === "completed" ? (
+                  <video
+                    className="portal-video"
+                    controls
+                    preload="metadata"
+                    src={`${basePath}/api/recordings/file/${encodeURIComponent(r.id)}/session.mp4?${Date.now()}`}
+                  />
+                ) : (
+                  <div className="portal-preview-placeholder">
+                    <Clapperboard size={26} />
+                    <span>Preview available after the session completes</span>
+                  </div>
+                )}
+              </div>
+
+              <CharacterEditor
+                sessionId={r.id}
+                onNotice={setNotice}
+              />
+
               <div className="portal-rec-body">
                 <div className="portal-rec-row">
                   <span>Elapsed</span>
@@ -413,6 +453,186 @@ export function RecordingsPortal() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Lets the user set their character card for a recording (or edit it): name,
+ * class, level, accent colour and a portrait upload. Saves via the existing
+ * `/api/recordings/presentation` endpoint.
+ */
+function CharacterEditor({
+  sessionId,
+  onNotice,
+}: {
+  sessionId: string;
+  onNotice: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [presentation, setPresentation] = useState<CharacterPresentation | null>(
+    null,
+  );
+  const [characterName, setCharacterName] = useState("");
+  const [className, setClassName] = useState("");
+  const [level, setLevel] = useState("");
+  const [accentColor, setAccentColor] = useState("#ffd67c");
+  const [portraitKey, setPortraitKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    apiFetch<{ presentations: CharacterPresentation[] }>(
+      `/api/recordings/presentation?sessionId=${encodeURIComponent(sessionId)}`,
+    )
+      .then((data) => {
+        const mine = data.presentations?.[0] || null;
+        setPresentation(mine);
+        setCharacterName(mine?.characterName || "");
+        setClassName(mine?.className || "");
+        setLevel(mine?.level != null ? String(mine.level) : "");
+        setAccentColor(mine?.accentColor || "#ffd67c");
+        setPortraitKey(null); // keep existing unless a new upload is chosen
+      })
+      .catch(() => undefined);
+  }, [open, sessionId]);
+
+  async function uploadPortrait(file: File | null) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const uploaded = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      setPortraitKey(uploaded.key);
+    } catch {
+      onNotice("Portrait upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await apiFetch("/api/recordings/presentation", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "save",
+          sessionId,
+          characterName: characterName || undefined,
+          className: className || undefined,
+          level: level ? Number(level) : undefined,
+          accentColor,
+          portraitKey,
+        }),
+      });
+      onNotice("Character saved.");
+      setOpen(false);
+    } catch (e) {
+      onNotice(e instanceof Error ? e.message : "Could not save character.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="portal-char">
+      <button
+        type="button"
+        className="portal-char-toggle"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <User size={16} />
+        <span>{presentation ? "Edit character" : "Add character"}</span>
+        <b>{open ? "▾" : "▸"}</b>
+      </button>
+      {open && (
+        <div className="portal-char-editor">
+          <div className="portal-char-preview">
+            {portraitKey || presentation?.portraitUrl ? (
+              <img
+                src={
+                  portraitKey
+                    ? `${basePath}/api/uploads/${encodeURIComponent(portraitKey)}`
+                    : presentation?.portraitUrl || ""
+                }
+                alt="Portrait"
+              />
+            ) : (
+              <div className="portal-char-placeholder">
+                <User size={24} />
+              </div>
+            )}
+            <button
+              type="button"
+              className="portal-btn"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+            >
+              <Upload size={14} /> Upload portrait
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => void uploadPortrait(e.target.files?.[0] || null)}
+            />
+          </div>
+          <div className="portal-char-fields">
+            <label>
+              <span>Character</span>
+              <input
+                value={characterName}
+                onChange={(e) => setCharacterName(e.target.value)}
+                placeholder="Character name"
+              />
+            </label>
+            <label>
+              <span>Class</span>
+              <input
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                placeholder="e.g. Wizard"
+              />
+            </label>
+            <label>
+              <span>Level</span>
+              <input
+                type="number"
+                min={0}
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                placeholder="1"
+              />
+            </label>
+            <label>
+              <span>Accent</span>
+              <input
+                type="color"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="portal-char-actions">
+            <button
+              type="button"
+              className="portal-btn primary"
+              onClick={() => void save()}
+              disabled={busy}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+              Save character
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
