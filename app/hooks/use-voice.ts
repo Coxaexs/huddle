@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dialsFirst, isPolite } from "@/lib/protocol";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import {
@@ -131,9 +132,23 @@ export function useVoice({
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
   const restartedRef = useRef(new Set<string>());
-  const negotiateRef = useRef<
-    (remoteId: string, peer: RTCPeerConnection) => Promise<void>
-  >(async () => {});
+  /**
+   * Perfect-negotiation bookkeeping, per peer. Two offers cross whenever both
+   * sides change media at once, or when each side's watchdog re-dials the same
+   * pair. Exactly one end is "polite" and gives way, so a crossing resolves
+   * instead of throwing.
+   */
+  const negoRef = useRef(
+    new Map<
+      string,
+      {
+        polite: boolean;
+        makingOffer: boolean;
+        ignoreOffer: boolean;
+        settingRemoteAnswer: boolean;
+      }
+    >(),
+  );
   const participantCountRef = useRef(0);
   /** Signals that arrived before this tab finished joining. */
   const earlySignalsRef = useRef<Array<{ from: string; raw: unknown; at: number }>>(
@@ -392,6 +407,7 @@ export function useVoice({
       return next;
     });
     pendingCandidatesRef.current.delete(remoteId);
+    negoRef.current.delete(remoteId);
     analysersRef.current.delete(remoteId);
     setRemoteStreams((current) =>
       current.filter((entry) => entry.connectionId !== remoteId),
@@ -408,6 +424,19 @@ export function useVoice({
       });
       peersRef.current.set(remoteId, peer);
       peerSinceRef.current.set(remoteId, Date.now());
+      // Same rule the roster and the watchdog use to pick who dials, so the
+      // caller is always the impolite end and the two cannot disagree.
+      const bot = Boolean(
+        (roomsRef.current[channelIdRef.current ?? ""] || []).find(
+          (person) => person.connectionId === remoteId,
+        )?.bot,
+      );
+      negoRef.current.set(remoteId, {
+        polite: isPolite(connectionId ?? "", remoteId, bot),
+        makingOffer: false,
+        ignoreOffer: false,
+        settingRemoteAnswer: false,
+      });
 
       for (const track of localStreamRef.current?.getTracks() || []) {
         const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
@@ -424,6 +453,31 @@ export function useVoice({
       for (const track of cameraStreamRef.current?.getTracks() || []) {
         peer.addTrack(track, cameraStreamRef.current as MediaStream);
       }
+
+      // The one renegotiation path: a camera, a screen share, or an ICE
+      // restart all land here, so no caller has to remember to re-offer. The
+      // opening offer stays with callPeer, hence the localDescription guard.
+      peer.onnegotiationneeded = async () => {
+        const nego = negoRef.current.get(remoteId);
+        if (!nego || !peer.localDescription) return;
+        if (peer.signalingState !== "stable") return;
+        try {
+          nego.makingOffer = true;
+          const offer = await peer.createOffer();
+          if (peer.signalingState !== "stable") return;
+          await peer.setLocalDescription(offer);
+          send({
+            t: "signal",
+            to: remoteId,
+            data: { kind: "offer", description: offer } satisfies SignalPayload,
+          });
+        } catch {
+          // A renegotiation that will not start leaves the media already
+          // flowing alone; the watchdog rebuilds the pair if it truly broke.
+        } finally {
+          nego.makingOffer = false;
+        }
+      };
 
       peer.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -445,7 +499,13 @@ export function useVoice({
             (entry) =>
               entry.connectionId === remoteId && entry.stream.id === stream.id,
           );
-          return exists ? current : [...current, { connectionId: remoteId, stream }];
+          // A stream arrives one track at a time. Even when the entry is
+          // already present, hand back a fresh array: the hidden <audio>
+          // elements are picked by whether the stream has an audio track yet,
+          // and that turns true on a later ontrack than the one that added it.
+          return exists
+            ? [...current]
+            : [...current, { connectionId: remoteId, stream }];
         });
         if (event.track.kind === "audio") watchLevel(remoteId, stream);
       };
@@ -460,9 +520,11 @@ export function useVoice({
 
       peer.oniceconnectionstatechange = () => {
         if (peer.iceConnectionState !== "failed") return;
-        // One ICE restart covers a network that changed underneath us. If that
-        // does not take, say so: silence with no explanation is the worst
-        // possible failure mode here.
+        // One ICE restart covers a network that changed underneath us. It only
+        // asks for fresh credentials on the next offer, so it does nothing on
+        // its own — onnegotiationneeded above is what actually sends that
+        // offer. If the restart does not take, say so: silence with no
+        // explanation is the worst possible failure mode here.
         if (!restartedRef.current.has(remoteId)) {
           restartedRef.current.add(remoteId);
           try {
@@ -480,7 +542,7 @@ export function useVoice({
 
       return peer;
     },
-    [closePeer, send, watchLevel],
+    [closePeer, connectionId, send, watchLevel],
   );
 
   const handleSignal = useCallback(
@@ -507,42 +569,51 @@ export function useVoice({
       }
 
       const peer = createPeer(from);
+      const nego = negoRef.current.get(from);
 
       try {
-        if (data.kind === "offer" && data.description) {
-          await peer.setRemoteDescription(data.description);
-          for (const candidate of pendingCandidatesRef.current.get(from) || []) {
-            await peer.addIceCandidate(candidate).catch(() => undefined);
-          }
-          pendingCandidatesRef.current.delete(from);
-          const answer = await peer.createAnswer();
-          await peer.setLocalDescription(answer);
-          send({
-            t: "signal",
-            to: from,
-            data: { kind: "answer", description: answer } satisfies SignalPayload,
-          });
+        if (data.description) {
+          // Perfect negotiation. Previously a crossing offer hit
+          // setRemoteDescription in the wrong signalling state, threw, and took
+          // the whole peer down — and since the watchdog on both sides then
+          // re-dialled together, the next pair of offers crossed as well. That
+          // loop is what left two people unable to hear each other until one of
+          // them reloaded. Now the polite end rolls back and answers instead.
+          const isOffer = data.description.type === "offer";
+          const ready =
+            !nego?.makingOffer &&
+            (peer.signalingState === "stable" ||
+              Boolean(nego?.settingRemoteAnswer));
+          const collision = isOffer && !ready;
+          if (nego) nego.ignoreOffer = !nego.polite && collision;
+          // The impolite end keeps its own offer and drops theirs; the polite
+          // end falls through and lets an implicit rollback clear the way.
+          if (nego?.ignoreOffer) return;
 
-          // An answer can only carry the media the offer asked for. If we are
-          // already sending video that has no m-line yet — a camera or screen
-          // that was live before this person arrived — it needs its own round.
-          const unsent = peer
-            .getTransceivers()
-            .some(
-              (transceiver) =>
-                transceiver.sender.track &&
-                transceiver.currentDirection !== "sendrecv" &&
-                transceiver.currentDirection !== "sendonly",
-            );
-          if (unsent) {
-            await negotiateRef.current(from, peer).catch(() => undefined);
+          if (nego) nego.settingRemoteAnswer = !isOffer;
+          try {
+            await peer.setRemoteDescription(data.description);
+          } finally {
+            if (nego) nego.settingRemoteAnswer = false;
           }
-        } else if (data.kind === "answer" && data.description) {
-          await peer.setRemoteDescription(data.description);
+
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
             await peer.addIceCandidate(candidate).catch(() => undefined);
           }
           pendingCandidatesRef.current.delete(from);
+
+          if (isOffer) {
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            send({
+              t: "signal",
+              to: from,
+              data: { kind: "answer", description: answer } satisfies SignalPayload,
+            });
+            // Media the answer could not carry — a camera or screen that was
+            // already live when this person arrived — needs its own round.
+            // onnegotiationneeded raises that on its own now.
+          }
         } else if (data.kind === "candidate" && data.candidate) {
           if (peer.remoteDescription) {
             await peer.addIceCandidate(data.candidate).catch(() => undefined);
@@ -571,11 +642,17 @@ export function useVoice({
         try {
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
-          send({
+          const sent = send({
             t: "signal",
             to: remoteId,
             data: { kind: "offer", description: offer } satisfies SignalPayload,
           });
+          if (!sent) {
+            // The socket was down, so nobody received this offer. Age the clock
+            // out so the watchdog comes back on its next pass rather than
+            // sitting out the full grace period waiting on a lost handshake.
+            peerSinceRef.current.set(remoteId, 0);
+          }
         } catch {
           closePeer(remoteId);
         }
@@ -593,9 +670,7 @@ export function useVoice({
     for (const person of others) {
       const remoteId = person.connectionId;
       if (peersRef.current.has(remoteId)) continue;
-      // The server-side music publisher only answers offers, so listeners
-      // always call it. Browser peers retain deterministic caller ordering.
-      if (!person.bot && connectionId > remoteId) {
+      if (!dialsFirst(connectionId, remoteId, person.bot)) {
         // They place the call. Start their clock so the watchdog waits a
         // sensible while before stepping in, instead of offering instantly.
         if (!peerSinceRef.current.has(remoteId)) {
@@ -640,8 +715,7 @@ export function useVoice({
       for (const person of others) {
         const remoteId = person.connectionId;
         const peer = peersRef.current.get(remoteId);
-        // Mirrors the roster effect's rule, so both agree on who dials.
-        const weCall = person.bot || connectionId <= remoteId;
+        const weCall = dialsFirst(connectionId, remoteId, person.bot);
         // The side that would normally place the call retries first; the other
         // waits longer, so a pair does not both re-offer at the same moment.
         const graceMs = weCall ? 8000 : 14000;
@@ -685,21 +759,6 @@ export function useVoice({
     participantCountRef.current = count;
   }, [channelId, rooms, playRoomTone]);
 
-  const negotiatePeer = useCallback(
-    async (remoteId: string, peer: RTCPeerConnection) => {
-      if (peer.signalingState !== "stable") return;
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      send({
-        t: "signal",
-        to: remoteId,
-        data: { kind: "offer", description: offer } satisfies SignalPayload,
-      });
-    },
-    [send],
-  );
-  negotiateRef.current = negotiatePeer;
-
   /** Publishes which of your streams is the camera and which is the screen. */
   const announceVideo = useCallback(() => {
     send({
@@ -730,13 +789,12 @@ export function useVoice({
     screenStreamRef.current = null;
     setScreenSharing(false);
     announceVideo();
-    for (const [remoteId, peer] of peersRef.current) {
+    for (const peer of peersRef.current.values()) {
       for (const sender of peer.getSenders()) {
         if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
       }
-      void negotiatePeer(remoteId, peer).catch(() => closePeer(remoteId));
     }
-  }, [announceVideo, closePeer, negotiatePeer]);
+  }, [announceVideo]);
 
   const stopCamera = useCallback(() => {
     const stream = cameraStreamRef.current;
@@ -746,13 +804,12 @@ export function useVoice({
     cameraStreamRef.current = null;
     setCameraOn(false);
     announceVideo();
-    for (const [remoteId, peer] of peersRef.current) {
+    for (const peer of peersRef.current.values()) {
       for (const sender of peer.getSenders()) {
         if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
       }
-      void negotiatePeer(remoteId, peer).catch(() => closePeer(remoteId));
     }
-  }, [announceVideo, closePeer, negotiatePeer]);
+  }, [announceVideo]);
 
   const startCamera = useCallback(async () => {
     if (!channelIdRef.current) {
@@ -770,9 +827,8 @@ export function useVoice({
       stream.getVideoTracks()[0]?.addEventListener("ended", stopCamera, {
         once: true,
       });
-      for (const [remoteId, peer] of peersRef.current) {
+      for (const peer of peersRef.current.values()) {
         for (const track of stream.getTracks()) peer.addTrack(track, stream);
-        await negotiatePeer(remoteId, peer);
       }
     } catch (cameraError) {
       if ((cameraError as DOMException)?.name !== "NotAllowedError") {
@@ -781,7 +837,7 @@ export function useVoice({
         setError("Camera access was blocked. Allow it in your browser settings.");
       }
     }
-  }, [announceVideo, negotiatePeer, stopCamera]);
+  }, [announceVideo, stopCamera]);
 
   /**
    * Swaps the microphone without dropping the call: the new track replaces the
@@ -838,14 +894,13 @@ export function useVoice({
         stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare, {
           once: true,
         });
-        for (const [remoteId, peer] of peersRef.current) {
+        for (const peer of peersRef.current.values()) {
           for (const track of stream.getTracks()) {
             const sender = peer.addTrack(track, stream);
             if (track.kind === "audio") {
               await tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
             }
           }
-          await negotiatePeer(remoteId, peer);
         }
       } catch (shareError) {
         if ((shareError as DOMException)?.name !== "NotAllowedError") {
@@ -853,7 +908,7 @@ export function useVoice({
         }
       }
     },
-    [announceVideo, negotiatePeer, screenQuality, stopScreenShare],
+    [announceVideo, screenQuality, stopScreenShare],
   );
 
   const leave = useCallback(() => {

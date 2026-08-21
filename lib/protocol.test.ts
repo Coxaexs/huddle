@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { emptyPlayer, playbackPosition, type PlayerState } from "./protocol";
+import {
+  dialsFirst,
+  emptyPlayer,
+  isPolite,
+  playbackPosition,
+  type PlayerState,
+} from "./protocol";
 
 function trackState(overrides: Partial<PlayerState>): PlayerState {
   return {
@@ -58,5 +64,37 @@ describe("playbackPosition", () => {
     const player = trackState({ positionMs: 10000, updatedAt: 100000 });
     // 'now' before updatedAt shouldn't produce a negative position.
     expect(playbackPosition(player, 50000)).toBe(10000);
+  });
+});
+
+describe("voice pairing", () => {
+  const ids = ["a1", "b2", "c3", "zz", "0", "A", "conn-9", "conn-10"];
+
+  it("gives the two ends of a pair opposite answers", () => {
+    for (const local of ids) {
+      for (const remote of ids) {
+        if (local === remote) continue;
+        expect(dialsFirst(local, remote)).toBe(!dialsFirst(remote, local));
+      }
+    }
+  });
+
+  it("makes exactly one end of a pair polite", () => {
+    for (const local of ids) {
+      for (const remote of ids) {
+        if (local === remote) continue;
+        expect(isPolite(local, remote)).toBe(!isPolite(remote, local));
+        // The end that dials is the impolite one: it keeps its own offer when
+        // two cross, and the other rolls back and answers.
+        expect(isPolite(local, remote)).toBe(!dialsFirst(local, remote));
+      }
+    }
+  });
+
+  it("always dials a bot, because the publisher only answers", () => {
+    // Both orderings, so this does not depend on how the ids happen to sort.
+    expect(dialsFirst("zz", "aa", true)).toBe(true);
+    expect(dialsFirst("aa", "zz", true)).toBe(true);
+    expect(isPolite("zz", "aa", true)).toBe(false);
   });
 });

@@ -373,3 +373,32 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "pong"; serverNow: number };
+
+/**
+ * Who places the call in a mesh pair.
+ *
+ * Both ends run this over the same two ids and must come to opposite answers.
+ * If they ever agree, the pair either never connects (nobody dials) or collides
+ * on every attempt (both dial), which is why this lives in one place instead of
+ * being spelled out at each call site. The server-side music publisher only
+ * answers offers, so a bot is always the one dialled.
+ */
+export function dialsFirst(
+  localId: string,
+  remoteId: string,
+  bot = false,
+): boolean {
+  return bot || localId <= remoteId;
+}
+
+/**
+ * Perfect negotiation's tie-break. The end that does not dial is the polite
+ * one: when two offers cross, it rolls its own back and answers theirs.
+ */
+export function isPolite(
+  localId: string,
+  remoteId: string,
+  bot = false,
+): boolean {
+  return !dialsFirst(localId, remoteId, bot);
+}
