@@ -4,32 +4,84 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Sun, Moon, Mic, Volume2, Activity } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 
-function MicTest({ selectedMicId }: { selectedMicId: string }) {
-  const [testing, setTesting] = useState(false);
-  const [level, setLevel] = useState(0);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animRef = useRef<number | null>(null);
+/** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
+const METER_FLOOR_DB = -80;
 
-  const stopTest = useCallback(() => {
-    if (animRef.current) cancelAnimationFrame(animRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      void audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-    setTesting(false);
-    setLevel(0);
-  }, []);
+const meterPercent = (db: number) =>
+  Math.max(0, Math.min(100, ((db - METER_FLOOR_DB) / -METER_FLOOR_DB) * 100));
+
+/**
+ * A live picture of what the microphone is doing, with the gate threshold drawn
+ * on top of it.
+ *
+ * A sensitivity slider without a meter is guesswork — you cannot pick a
+ * threshold without seeing where your own room noise sits relative to your
+ * voice — so the two are deliberately one control.
+ */
+function InputMeter({
+  telemetry,
+  threshold,
+}: {
+  telemetry: MicTelemetry | null;
+  threshold: number | null;
+}) {
+  const level = telemetry ? meterPercent(telemetry.inputDb) : 0;
+  const open = telemetry?.gateOpen ?? false;
+
+  return (
+    <div className="input-meter">
+      <div className="input-meter-track">
+        <div
+          className={`input-meter-fill${open ? " open" : ""}`}
+          style={{ width: `${level}%` }}
+        />
+        {threshold !== null && (
+          <div
+            className="input-meter-threshold"
+            style={{ left: `${meterPercent(threshold)}%` }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Voice input controls: sensitivity, gain and suppression.
+ *
+ * Whenever you are in a call these read and steer the chain that is actually
+ * running, so every change is audible to the room immediately. Outside a call
+ * "Test microphone" opens a private chain with the same settings, which is the
+ * only honest way to preview them.
+ */
+function VoiceInput({
+  settings,
+  onChange,
+  subscribe,
+  inCall,
+}: {
+  settings: MicSettings;
+  onChange: (next: Partial<MicSettings>) => void;
+  subscribe?: (listener: (telemetry: MicTelemetry) => void) => () => void;
+  inCall: boolean;
+}) {
+  const [telemetry, setTelemetry] = useState<MicTelemetry | null>(null);
+  const [testing, setTesting] = useState(false);
+  const testChainRef = useRef<MicChain | null>(null);
 
   useEffect(() => {
-    return () => {
-      stopTest();
-    };
-  }, [stopTest]);
+    if (!inCall || !subscribe) return;
+    return subscribe(setTelemetry);
+  }, [inCall, subscribe]);
+
+  const stopTest = useCallback(() => {
+    testChainRef.current?.stop();
+    testChainRef.current = null;
+    setTesting(false);
+    setTelemetry(null);
+  }, []);
+
+  useEffect(() => stopTest, [stopTest]);
 
   const startTest = async () => {
     if (testing) {
@@ -37,64 +89,152 @@ function MicTest({ selectedMicId }: { selectedMicId: string }) {
       return;
     }
     try {
-      const constraints: MediaStreamConstraints = {
-        audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioCtxRef.current = audioCtx;
-
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const chain = await openMicrophone();
+      chain.onTelemetry(setTelemetry);
+      testChainRef.current = chain;
       setTesting(true);
-
-      const update = () => {
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length;
-        const normalized = Math.min(100, Math.round((avg / 128) * 100));
-        setLevel(normalized);
-        animRef.current = requestAnimationFrame(update);
-      };
-      update();
     } catch {
       stopTest();
     }
   };
 
+  // Changes have to reach the preview chain as well as the saved settings, or
+  // the meter goes on showing the old behaviour while you drag the slider.
+  const change = (next: Partial<MicSettings>) => {
+    onChange(next);
+    testChainRef.current?.update(next);
+  };
+
+  const manual = settings.sensitivity !== "auto";
+  const threshold = manual ? (settings.sensitivity as number) : null;
+
   return (
     <div className="mic-test-container">
       <div className="mic-test-header">
         <label className="flex items-center gap-1.5 font-semibold text-sm">
-          <Mic size={16} /> Mic Test
+          <Mic size={16} /> Input
         </label>
-        <button
-          type="button"
-          className={`discord-btn ${testing ? "danger-red" : "primary-indigo"}`}
-          onClick={() => void startTest()}
-        >
-          {testing ? "Stop Testing" : "Test Microphone"}
-        </button>
+        {inCall ? (
+          <span className="modal-hint">Live</span>
+        ) : (
+          <button
+            type="button"
+            className={`discord-btn ${testing ? "danger-red" : "primary-indigo"}`}
+            onClick={() => void startTest()}
+          >
+            {testing ? "Stop Testing" : "Test Microphone"}
+          </button>
+        )}
       </div>
-      <div className="mic-test-bar-wrap">
-        <div
-          className="mic-test-bar-fill"
-          style={{ width: `${level}%` }}
+
+      <InputMeter telemetry={telemetry} threshold={threshold} />
+
+      <label className="appearance-switch">
+        <span>
+          <strong>Automatic input volume</strong>
+          <small>
+            {settings.autoGain
+              ? `Levelling your voice for you${
+                  telemetry ? ` (${telemetry.gainDb.toFixed(0)} dB)` : ""
+                }`
+              : "Set the input gain yourself"}
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.autoGain}
+          onChange={(event) => change({ autoGain: event.target.checked })}
         />
-      </div>
+      </label>
+
+      {!settings.autoGain && (
+        <label className="appearance-range">
+          <span>
+            Input volume <small>{settings.gainDb > 0 ? "+" : ""}{settings.gainDb} dB</small>
+          </span>
+          <input
+            type="range"
+            min={GAIN_RANGE.min}
+            max={GAIN_RANGE.max}
+            step={1}
+            value={settings.gainDb}
+            onChange={(event) => change({ gainDb: Number(event.target.value) })}
+          />
+        </label>
+      )}
+
+      <label className="appearance-switch">
+        <span>
+          <strong>Noise gate</strong>
+          <small>Stay silent between sentences instead of sending the room</small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.gate}
+          onChange={(event) => change({ gate: event.target.checked })}
+        />
+      </label>
+
+      {settings.gate && (
+        <>
+          <label className="appearance-switch">
+            <span>
+              <strong>Automatic sensitivity</strong>
+              <small>Work out what is you and what is the room</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={!manual}
+              onChange={(event) =>
+                change({ sensitivity: event.target.checked ? "auto" : -50 })
+              }
+            />
+          </label>
+
+          {manual && (
+            <label className="appearance-range">
+              <span>
+                Sensitivity <small>{threshold} dB</small>
+              </span>
+              <input
+                type="range"
+                min={SENSITIVITY_RANGE.min}
+                max={SENSITIVITY_RANGE.max}
+                step={1}
+                value={threshold ?? -50}
+                onChange={(event) =>
+                  change({ sensitivity: Number(event.target.value) })
+                }
+              />
+            </label>
+          )}
+        </>
+      )}
+
+      <label htmlFor="settings-suppression">Noise suppression</label>
+      <select
+        id="settings-suppression"
+        value={settings.mode}
+        onChange={(event) =>
+          change({ mode: event.target.value as MicSettings["mode"] })
+        }
+      >
+        <option value="off">Off</option>
+        <option value="browser">Standard — your browser&apos;s filter</option>
+        <option value="rnnoise">Enhanced — removes fans, keyboards, hum</option>
+        <option value="voice" disabled>
+          Remove background voices — needs the GPU service
+        </option>
+      </select>
+      <p className="modal-hint">
+        Enhanced runs a small neural network on your own machine. It removes
+        noise, not other people talking — that needs a model too heavy for a
+        browser tab.
+      </p>
     </div>
   );
 }
+
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { AVATAR_COLORS, type Member, type PublicUser } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -107,6 +247,16 @@ import {
   supportsOutputSelection,
   type DeviceLists,
 } from "../lib/devices";
+import {
+  GAIN_RANGE,
+  openMicrophone,
+  SENSITIVITY_RANGE,
+  readMicSettings,
+  writeMicSettings,
+  type MicChain,
+  type MicSettings,
+  type MicTelemetry,
+} from "../lib/mic-chain";
 
 interface Invite {
   code: string;
@@ -126,6 +276,14 @@ interface SettingsDialogProps {
   onSignOut: () => void;
   /** Called after the microphone choice changes, to swap it mid-call. */
   onMicrophoneChange?: () => void;
+  /** Input chain settings and live meter feed, owned by the voice hook. */
+  micSettings?: MicSettings;
+  onMicSettings?: (next: Partial<MicSettings>) => void;
+  subscribeMicTelemetry?: (
+    listener: (telemetry: MicTelemetry) => void,
+  ) => () => void;
+  /** Whether a call is running, so the meter can read the real chain. */
+  inCall?: boolean;
   /** Push-to-talk state + setters, owned by the voice hook. */
   pushToTalk?: boolean;
   pttKey?: string;
@@ -164,6 +322,10 @@ export function SettingsDialog({
   onClose,
   onSignOut,
   onMicrophoneChange,
+  micSettings,
+  onMicSettings,
+  subscribeMicTelemetry,
+  inCall = false,
   pushToTalk = false,
   pttKey = "Space",
   onPushToTalk,
@@ -177,10 +339,15 @@ export function SettingsDialog({
   canManageServer = false,
 }: SettingsDialogProps) {
   const [capturingKey, setCapturingKey] = useState(false);
-  const [noise, setNoise] = useState(
-    () =>
-      typeof window === "undefined" ||
-      window.localStorage.getItem("huddle-noise") !== "off",
+  // Kept locally so the dialog still works if it is rendered without a call.
+  const [localMic, setLocalMic] = useState<MicSettings>(() => readMicSettings());
+  const mic = micSettings ?? localMic;
+  const changeMic = useCallback(
+    (next: Partial<MicSettings>) => {
+      if (onMicSettings) onMicSettings(next);
+      else setLocalMic(writeMicSettings(next));
+    },
+    [onMicSettings],
   );
   const [tab, setTab] = useState<Tab>("profile");
   const [devices, setDevices] = useState<DeviceLists>({
@@ -537,7 +704,12 @@ export function SettingsDialog({
                 ))}
               </select>
 
-              <MicTest selectedMicId={micId} />
+              <VoiceInput
+                settings={mic}
+                onChange={changeMic}
+                subscribe={subscribeMicTelemetry}
+                inCall={inCall}
+              />
 
               {supportsOutputSelection() ? (
                 <>
@@ -581,23 +753,6 @@ export function SettingsDialog({
                   </option>
                 ))}
               </select>
-
-              <label className="appearance-switch">
-                <span>
-                  <strong>Noise suppression</strong>
-                  <small>Filter out keyboard and background noise</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={noise}
-                  onChange={(event) => {
-                    const on = event.target.checked;
-                    setNoise(on);
-                    window.localStorage.setItem("huddle-noise", on ? "on" : "off");
-                    void onMicrophoneChange?.();
-                  }}
-                />
-              </label>
 
               <label className="appearance-switch">
                 <span>

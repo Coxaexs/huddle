@@ -5382,6 +5382,10 @@ export function ChatShell() {
           onClose={() => setSettingsOpen(false)}
           onSignOut={signOut}
           onMicrophoneChange={() => void voice.switchMicrophone()}
+          micSettings={voice.micSettings}
+          onMicSettings={voice.setMicSettings}
+          subscribeMicTelemetry={voice.subscribeMicTelemetry}
+          inCall={Boolean(voice.channelId)}
           pushToTalk={voice.pushToTalk}
           pttKey={voice.pttKey}
           onPushToTalk={voice.setPushToTalk}

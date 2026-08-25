@@ -40,17 +40,30 @@ export function saveDevice(kind: DeviceKind, deviceId: string): void {
   if (kind === "speaker") applySinkToAll();
 }
 
-/** Constraints for getUserMedia that honour the saved microphone. */
-export function microphoneConstraints(): MediaTrackConstraints {
+/** What the input chain needs from getUserMedia, so the two do not fight. */
+interface CaptureIntent {
+  mode: "off" | "browser" | "rnnoise" | "voice";
+  autoGain: boolean;
+}
+
+/**
+ * Constraints for getUserMedia that honour the saved microphone.
+ *
+ * The browser's own processing has to be told to stand down wherever we do the
+ * same job ourselves: two automatic gain controls fight each other for the rest
+ * of the call, and denoising an already-denoised signal sounds worse than
+ * either alone. Echo cancellation is the exception — it runs inside the capture
+ * with a reference to what is being played, which nothing downstream can
+ * reconstruct, so it always stays on.
+ */
+export function microphoneConstraints(
+  intent: CaptureIntent = { mode: "browser", autoGain: false },
+): MediaTrackConstraints {
   const deviceId = savedDevice("microphone");
-  // Noise suppression is on by default; the Voice settings toggle can disable it.
-  const noise =
-    typeof window === "undefined" ||
-    window.localStorage.getItem("huddle-noise") !== "off";
   return {
     echoCancellation: true,
-    noiseSuppression: noise,
-    autoGainControl: true,
+    noiseSuppression: intent.mode === "browser",
+    autoGainControl: !intent.autoGain,
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   };
 }

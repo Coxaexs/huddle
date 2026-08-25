@@ -3,12 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
-import {
-  cameraConstraints,
-  microphoneConstraints,
-  unlockAudio,
-} from "../lib/devices";
+import { cameraConstraints, unlockAudio } from "../lib/devices";
 import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
+import {
+  openMicrophone,
+  readMicSettings,
+  writeMicSettings,
+  type MicChain,
+  type MicSettings,
+  type MicTelemetry,
+} from "../lib/mic-chain";
 
 interface SignalPayload {
   kind: "offer" | "answer" | "candidate";
@@ -115,10 +119,33 @@ export function useVoice({
   >([]);
   const [screenQuality, setScreenQuality] =
     useState<ScreenShareQuality>("1080p30");
+  const [micSettings, setMicSettingsState] = useState<MicSettings>(() =>
+    readMicSettings(),
+  );
   const [error, setError] = useState("");
   /** Per-peer RTCPeerConnection state, so tiles can say "connecting". */
   const [peerStates, setPeerStates] = useState<Record<string, string>>({});
 
+  /**
+   * The input chain. `localStreamRef` below holds its *processed* output, which
+   * is what peers receive; the raw microphone is only reachable through here,
+   * so this is also the only thing that can release the device.
+   */
+  const micChainRef = useRef<MicChain | null>(null);
+  /**
+   * Whether the microphone should currently be live, mirrored from the gate
+   * effect below. A new track starts enabled, and nothing re-runs that effect
+   * when one is swapped in, so a replacement has to be told directly — without
+   * this, changing your microphone quietly undoes a server mute.
+   */
+  const micGateRef = useRef(true);
+  /**
+   * Level readings arrive twenty times a second. Holding them in state would
+   * re-render the whole app at 20 Hz, so they live in a ref and the meters that
+   * want them subscribe for themselves.
+   */
+  const micTelemetryRef = useRef<MicTelemetry | null>(null);
+  const micListenersRef = useRef(new Set<(telemetry: MicTelemetry) => void>());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -161,6 +188,7 @@ export function useVoice({
   // reconciles the direct track toggles elsewhere.
   useEffect(() => {
     const on = !forcedMute && (pushToTalk ? pttHeld : !muted);
+    micGateRef.current = on;
     localStreamRef.current
       ?.getAudioTracks()
       .forEach((track) => (track.enabled = on));
@@ -368,6 +396,14 @@ export function useVoice({
         for (const sample of buffer) peak = Math.max(peak, Math.abs(sample - 128));
         if (peak > 8) loud.add(id);
       }
+      // Your own tile reads the input chain instead of a second analyser: it
+      // already decided whether this is speech, and it decided on the audio
+      // everyone else is actually receiving. Mute and push-to-talk live further
+      // downstream than the chain does, so ask the track whether it is actually
+      // sending rather than trusting the level alone.
+      const own = micTelemetryRef.current;
+      const sending = localStreamRef.current?.getAudioTracks()[0]?.enabled;
+      if (sending && own && own.gateOpen && own.outputDb > -50) loud.add("self");
       setSpeaking((current) => {
         if (
           current.size === loud.size &&
@@ -380,6 +416,41 @@ export function useVoice({
     }, 200);
     return () => window.clearInterval(timer);
   }, [channelId]);
+
+  /**
+   * Opens the microphone with the saved input settings and wires its telemetry
+   * up. The caller owns the returned chain and must stop it.
+   */
+  const openMicChain = useCallback(async (): Promise<MicChain> => {
+    const chain = await openMicrophone();
+    chain.onTelemetry((telemetry) => {
+      micTelemetryRef.current = telemetry;
+      for (const listener of micListenersRef.current) listener(telemetry);
+    });
+    return chain;
+  }, []);
+
+  /** Lets the settings meters watch the live input without re-rendering the app. */
+  const subscribeMicTelemetry = useCallback(
+    (listener: (telemetry: MicTelemetry) => void) => {
+      micListenersRef.current.add(listener);
+      return () => {
+        micListenersRef.current.delete(listener);
+      };
+    },
+    [],
+  );
+
+  /**
+   * Changes an input setting mid-call. These go straight into the running
+   * worklet: rebuilding the track instead would renegotiate every peer, and the
+   * room would hear a dropout every time someone nudged a slider.
+   */
+  const setMicSettings = useCallback((next: Partial<MicSettings>) => {
+    const merged = writeMicSettings(next);
+    setMicSettingsState(merged);
+    micChainRef.current?.update(next);
+  }, []);
 
   const closePeer = useCallback((remoteId: string) => {
     const peer = peersRef.current.get(remoteId);
@@ -790,12 +861,13 @@ export function useVoice({
   const switchMicrophone = useCallback(async () => {
     if (!localStreamRef.current) return;
     try {
-      const replacement = await navigator.mediaDevices.getUserMedia({
-        audio: microphoneConstraints(),
-      });
-      const track = replacement.getAudioTracks()[0];
-      if (!track) return;
-      track.enabled = !muted;
+      const replacement = await openMicChain();
+      const track = replacement.stream.getAudioTracks()[0];
+      if (!track) {
+        replacement.stop();
+        return;
+      }
+      track.enabled = micGateRef.current;
 
       for (const peer of peersRef.current.values()) {
         for (const sender of peer.getSenders()) {
@@ -804,14 +876,17 @@ export function useVoice({
           }
         }
       }
-      localStreamRef.current.getAudioTracks().forEach((old) => old.stop());
-      localStreamRef.current = replacement;
-      analysersRef.current.delete("self");
-      watchLevel("self", replacement);
+      // Stop the old chain only once the new track is live everywhere, and stop
+      // the *chain* rather than the track: the raw device is inside it, and a
+      // microphone nobody released is a light that never goes out.
+      micChainRef.current?.stop();
+      micChainRef.current = replacement;
+      localStreamRef.current = replacement.stream;
+      setMicSettingsState(readMicSettings());
     } catch {
       setError("That microphone could not be opened.");
     }
-  }, [muted, watchLevel]);
+  }, [openMicChain]);
 
   const startScreenShare = useCallback(
     async (quality: ScreenShareQuality = screenQuality) => {
@@ -861,6 +936,11 @@ export function useVoice({
     stopScreenShare();
     stopCamera();
     for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
+    // Stopping the chain releases the raw capture too. Stopping only the tracks
+    // on localStreamRef would leave the microphone open forever.
+    micChainRef.current?.stop();
+    micChainRef.current = null;
+    micTelemetryRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     analysersRef.current.clear();
@@ -883,14 +963,13 @@ export function useVoice({
       if (channelIdRef.current) leave();
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: microphoneConstraints(),
-        });
+        const chain = await openMicChain();
         // Joining is a real gesture, which is the only moment a phone will let
         // us start playing everyone else's audio.
         unlockAudio();
-        localStreamRef.current = stream;
-        watchLevel("self", stream);
+        micChainRef.current = chain;
+        // Peers get the processed track; the raw capture stays inside the chain.
+        localStreamRef.current = chain.stream;
         setMuted(false);
         setDeafened(false);
         // Set the ref before announcing the join. React updates it on the next
@@ -909,7 +988,7 @@ export function useVoice({
         );
       }
     },
-    [leave, playRoomTone, rooms, send, watchLevel],
+    [leave, openMicChain, playRoomTone, rooms, send],
   );
 
   /** Applied when someone server-mutes you: the microphone actually stops. */
@@ -1006,6 +1085,9 @@ export function useVoice({
     startCamera,
     stopCamera,
     switchMicrophone,
+    micSettings,
+    setMicSettings,
+    subscribeMicTelemetry,
     localVideos,
     error,
     setError,

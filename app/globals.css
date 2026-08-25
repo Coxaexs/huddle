@@ -8171,6 +8171,46 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   overflow: hidden;
 }
 
+/* Input level, with the gate threshold marked on the same scale so the two can
+   actually be compared. */
+.input-meter {
+  width: 100%;
+}
+
+.input-meter-track {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.input-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  transition: width 60ms linear;
+}
+
+/* Open means this is being transmitted, so it earns the accent colour. */
+.input-meter-fill.open {
+  background: linear-gradient(
+    90deg,
+    var(--lavender, #9d8cf5),
+    var(--mint, #6fd08c)
+  );
+}
+
+.input-meter-threshold {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--coral, #e14d4d);
+}
+
 /* Keyboard Shortcuts Cheat Sheet Modal (Ctrl+/) */
 .shortcuts-dialog-backdrop {
   position: fixed;
