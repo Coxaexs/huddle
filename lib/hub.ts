@@ -83,7 +83,12 @@ export class HuddleHub extends DurableObject {
         for (const [channelId, state] of Object.entries(recordings || {})) {
           this.recordings.set(channelId, state);
         }
-      })();
+      })().catch((error) => {
+        // A failed read must not poison the object for its whole lifetime:
+        // drop the cached promise so the next request retries from scratch.
+        this.loaded = null;
+        throw error;
+      });
     }
     return this.loaded;
   }
