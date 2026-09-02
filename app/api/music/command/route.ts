@@ -760,7 +760,7 @@ export async function POST(request: Request) {
 
       default:
         throw new Error(
-          "Music commands: /play, /pause, /resume, /skip, /stop, /queue, /nowplaying, /seek, /volume, /loop, /shuffle, /clear, /remove, /disconnect.",
+          "Music commands: /play, /pause, /resume, /skip, /stop, /queue, /nowplaying, /seek, /volume, /loop, /shuffle, /clear, /gay, /remove, /disconnect.",
         );
     }
   } catch (error) {
