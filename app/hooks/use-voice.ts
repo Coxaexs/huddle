@@ -194,6 +194,14 @@ export function useVoice({
       .forEach((track) => (track.enabled = on));
   }, [channelId, pushToTalk, pttHeld, muted, forcedMute]);
 
+  // Errors are meant to be noticed, not to linger: a one-off network blip or
+  // a blocked camera must not leave a scary banner up until the next join.
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   // Push-to-talk keyboard binding (works while the window is focused; the
   // desktop app relays a global hotkey to pttPress/pttRelease below).
   useEffect(() => {
