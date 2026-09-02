@@ -166,6 +166,14 @@ export function useVoice({
   const earlySignalsRef = useRef<Array<{ from: string; raw: unknown; at: number }>>(
     [],
   );
+  /**
+   * The hub connection id this tab last announced itself with. When the socket
+   * reconnects (a laptop lid, a wifi blip) the hub has already dropped the old
+   * connection from the room, so the join has to be announced again with the
+   * new id — otherwise this tab sits in voice locally while being invisible to
+   * everyone else.
+   */
+  const announcedConnectionRef = useRef<string | null>(null);
   /** When each peer connection was (re)built, so the watchdog can spot stalls. */
   const peerSinceRef = useRef(new Map<string, number>());
   /** Latest roster, readable from the watchdog without re-subscribing. */
@@ -701,6 +709,50 @@ export function useVoice({
   }, [channelId]);
 
   /**
+   * Re-announce the voice join whenever the hub connection id changes.
+   *
+   * The hub keys voice seats by connection id. When the WebSocket reconnects
+   * (a laptop lid, a wifi blip) the hub has already dropped the old connection
+   * from the room, so this tab is sitting in voice locally while being
+   * invisible to everyone else — the classic "I'm in the room but nobody can
+   * hear me, refresh fixes it" state. Sending voice-join again with the new id
+   * puts the seat back. It also covers a join whose initial send failed
+   * because the socket was briefly down.
+   *
+   * On a real reconnect everyone else rebuilds their peer against the new id,
+   * so tear down our side and re-mesh immediately instead of waiting for the
+   * watchdog: stale peer connections would otherwise swallow the fresh offers.
+   */
+  useEffect(() => {
+    if (!channelId || !connectionId) return;
+    if (announcedConnectionRef.current === connectionId) return;
+    if (!send({ t: "voice-join", channelId })) return;
+    const wasAnnounced = announcedConnectionRef.current !== null;
+    announcedConnectionRef.current = connectionId;
+    // The first announcement is meshed by the roster effect; only a reconnect
+    // needs the teardown + rebuild here.
+    if (!wasAnnounced) return;
+
+    for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
+    peerSinceRef.current.clear();
+    restartedRef.current.clear();
+
+    // Re-mesh with the same caller rule the roster effect uses.
+    const others = (roomsRef.current[channelId] || []).filter(
+      (person) => person.connectionId !== connectionId,
+    );
+    for (const person of others) {
+      const remoteId = person.connectionId;
+      if (!person.bot && connectionId > remoteId) {
+        // They place the call; start their clock so the watchdog waits.
+        peerSinceRef.current.set(remoteId, Date.now());
+        continue;
+      }
+      callPeer(remoteId);
+    }
+  }, [channelId, connectionId, send, closePeer, callPeer]);
+
+  /**
    * Watchdog: a mesh call can lose a single pair — an offer that never landed,
    * or a connection that failed after a network blip — and nothing else would
    * ever rebuild it, because the roster has not changed. That is the state
@@ -954,6 +1006,7 @@ export function useVoice({
     analysersRef.current.clear();
     peerSinceRef.current.clear();
     earlySignalsRef.current = [];
+    announcedConnectionRef.current = null;
     setRemoteStreams([]);
     setSpeaking(new Set());
     channelIdRef.current = null;
@@ -988,7 +1041,12 @@ export function useVoice({
           1,
           (rooms[nextChannelId] || []).filter((person) => !person.bot).length + 1,
         );
-        send({ t: "voice-join", channelId: nextChannelId });
+        // Record which connection id we announced with. If the send fails (the
+        // socket is briefly down) the ref stays unset, and the re-announce
+        // effect below fires the join again once a connection id exists.
+        if (send({ t: "voice-join", channelId: nextChannelId })) {
+          announcedConnectionRef.current = connectionId;
+        }
         playRoomTone("join");
       } catch {
         setError(
@@ -996,7 +1054,7 @@ export function useVoice({
         );
       }
     },
-    [leave, openMicChain, playRoomTone, rooms, send],
+    [connectionId, leave, openMicChain, playRoomTone, rooms, send],
   );
 
   /** Applied when someone server-mutes you: the microphone actually stops. */
