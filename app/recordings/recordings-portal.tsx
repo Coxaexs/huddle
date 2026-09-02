@@ -393,6 +393,8 @@ export function RecordingsPortal() {
                     preload="metadata"
                     src={`${basePath}/api/recordings/file/${encodeURIComponent(r.id)}/session.mp4?${Date.now()}`}
                   />
+                ) : active ? (
+                  <LivePreview sessionId={r.id} />
                 ) : (
                   <div className="portal-preview-placeholder">
                     <Clapperboard size={26} />
@@ -633,6 +635,41 @@ function CharacterEditor({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Live preview for an active recording. Polls the recorder's latest JPEG
+ * frame every few seconds so the portal shows what's being captured in real
+ * time.
+ */
+function LivePreview({ sessionId }: { sessionId: string }) {
+  const [src, setSrc] = useState<string>("");
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((t) => t + 1), 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setSrc(
+      `${basePath}/api/recordings/file/${encodeURIComponent(sessionId)}/preview.jpg?t=${tick}`,
+    );
+  }, [sessionId, tick]);
+
+  return (
+    <div className="portal-live-preview">
+      {src ? (
+        <img src={src} alt="Live preview" className="portal-live-img" />
+      ) : (
+        <div className="portal-preview-placeholder">
+          <Loader2 size={22} className="animate-spin" />
+          <span>Waiting for preview…</span>
+        </div>
+      )}
+      <span className="portal-live-badge">● LIVE</span>
     </div>
   );
 }

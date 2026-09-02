@@ -9340,6 +9340,39 @@ html[data-motion="reduced"] .blahaj-boop {
     radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--lavender) 10%, transparent), transparent 60%),
     color-mix(in srgb, var(--panel) 60%, var(--paper));
 }
+.portal-live-preview {
+  position:relative;
+  width:100%;
+  height:100%;
+  background:#000;
+}
+.portal-live-img {
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+.portal-live-badge {
+  position:absolute;
+  top:8px;
+  left:8px;
+  padding:3px 9px;
+  border-radius:999px;
+  background:rgba(0,0,0,.55);
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.03em;
+}
+.portal-live-badge::before {
+  content:"";
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin-right:6px;
+  border-radius:50%;
+  background:var(--coral);
+}
 .portal-rec-head {
   display:flex;
   align-items:center;

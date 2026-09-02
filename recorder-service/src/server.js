@@ -704,6 +704,63 @@ const server = createServer(async (request, response) => {
       json(response, 202, { ok: true });
       return;
     }
+    // Serve stored session files (used by the portal preview). Handled before
+    // the main session match because the URL has an extra path segment.
+    if (request.method === "GET") {
+      const fileMatch = url.pathname.match(
+        /^\/v1\/sessions\/([^/]+)\/file\/([^/]+)$/,
+      );
+      if (fileMatch) {
+        const fileSessionId = safeId(decodeURIComponent(fileMatch[1]));
+        // The filename is validated against the allowlist below, so it does
+        // not need safeId (which would reject the dots in ".mp4"/".jpg").
+        const fileId = decodeURIComponent(fileMatch[2]);
+        const allowed = new Set([
+          "thumbnail.jpg",
+          "preview.jpg",
+          "session.webm",
+          "session.mp4",
+          "metadata.json",
+          "chapters.txt",
+          "highlights.json",
+        ]);
+        if (!fileSessionId || !allowed.has(fileId)) {
+          json(response, 404, { error: "Not found." });
+          return;
+        }
+        const file = path.join(storageRoot, fileSessionId, fileId);
+        const resolvedRoot = path.resolve(storageRoot, fileSessionId);
+        const resolvedFile = path.resolve(file);
+        if (!resolvedFile.startsWith(resolvedRoot + path.sep)) {
+          json(response, 403, { error: "Forbidden." });
+          return;
+        }
+        try {
+          const info = await stat(resolvedFile);
+          if (!info.isFile()) throw new Error("Not a file.");
+          const types = {
+            "thumbnail.jpg": "image/jpeg",
+            "preview.jpg": "image/jpeg",
+            "session.webm": "video/webm",
+            "session.mp4": "video/mp4",
+            "metadata.json": "application/json",
+            "chapters.txt": "text/plain; charset=utf-8",
+            "highlights.json": "application/json",
+          };
+          response.writeHead(200, {
+            ...corsHeaders(),
+            "Content-Type": types[fileId],
+            "Content-Length": info.size,
+            "Cache-Control": "private, max-age=60",
+          });
+          createReadStream(resolvedFile).pipe(response);
+          return;
+        } catch {
+          json(response, 404, { error: "File not found." });
+          return;
+        }
+      }
+    }
     const match = url.pathname.match(/^\/v1\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     const id = match ? safeId(decodeURIComponent(match[1])) : null;
     const action = match?.[2] || "";
@@ -731,6 +788,19 @@ const server = createServer(async (request, response) => {
         return;
       }
       await session.saveChunk(sequence, await bodyBuffer(request));
+      json(response, 202, { ok: true });
+      return;
+    }
+    // Live preview frame: the capture page uploads a JPEG every few seconds
+    // while recording; the portal polls it to show what's being captured.
+    if (request.method === "POST" && action === "preview") {
+      if (!session) {
+        json(response, 404, { error: "Session is not active." });
+        return;
+      }
+      const data = await bodyBuffer(request, 8 * 1024 * 1024);
+      const previewPath = path.join(session.directory, "preview.jpg");
+      await writeFile(previewPath, data, { mode: 0o600 });
       json(response, 202, { ok: true });
       return;
     }
@@ -803,58 +873,6 @@ const server = createServer(async (request, response) => {
         }
       }
       return;
-    }
-    // Serve stored media/metadata for a session (used by the portal preview).
-    // Only allowlist-known filenames are served; the session id is validated
-    // and the resulting path is confined to the session's own directory.
-    if (request.method === "GET" && action === "file") {
-      const nameMatch = url.pathname.match(
-        /^\/v1\/sessions\/([^/]+)\/file\/([^/]+)$/,
-      );
-      const fileId = nameMatch ? safeId(decodeURIComponent(nameMatch[2])) : null;
-      const allowed = new Set([
-        "thumbnail.jpg",
-        "session.webm",
-        "session.mp4",
-        "metadata.json",
-        "chapters.txt",
-        "highlights.json",
-      ]);
-      if (!fileId || !allowed.has(fileId)) {
-        json(response, 404, { error: "Not found." });
-        return;
-      }
-      const file = path.join(storageRoot, id, fileId);
-      // Confine to the session directory (defence in depth).
-      const resolvedRoot = path.resolve(storageRoot, id);
-      const resolvedFile = path.resolve(file);
-      if (!resolvedFile.startsWith(resolvedRoot + path.sep)) {
-        json(response, 403, { error: "Forbidden." });
-        return;
-      }
-      try {
-        const info = await stat(resolvedFile);
-        if (!info.isFile()) throw new Error("Not a file.");
-        const types = {
-          "thumbnail.jpg": "image/jpeg",
-          "session.webm": "video/webm",
-          "session.mp4": "video/mp4",
-          "metadata.json": "application/json",
-          "chapters.txt": "text/plain; charset=utf-8",
-          "highlights.json": "application/json",
-        };
-        response.writeHead(200, {
-          ...corsHeaders(),
-          "Content-Type": types[fileId],
-          "Content-Length": info.size,
-          "Cache-Control": "private, max-age=60",
-        });
-        createReadStream(resolvedFile).pipe(response);
-        return;
-      } catch {
-        json(response, 404, { error: "File not found." });
-        return;
-      }
     }
     json(response, 404, { error: "Not found." });
   } catch (error) {
