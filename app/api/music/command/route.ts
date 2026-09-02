@@ -449,6 +449,11 @@ export async function POST(request: Request) {
         await say(db, textChannelId, text);
         return Response.json({ text, state });
       }
+      case "gay": {
+        const text = "gaygaygaygay.";
+        await say(db, textChannelId, text);
+        return Response.json({ text, state: null });
+      }
 
       case "seek": {
         const seconds = parseSeek(value);

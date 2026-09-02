@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED = new Set([
   "thumbnail.jpg",
+  "preview.jpg",
   "session.webm",
   "session.mp4",
   "metadata.json",
@@ -17,6 +18,7 @@ const ALLOWED = new Set([
 
 const TYPES: Record<string, string> = {
   "thumbnail.jpg": "image/jpeg",
+  "preview.jpg": "image/jpeg",
   "session.webm": "video/webm",
   "session.mp4": "video/mp4",
   "metadata.json": "application/json",

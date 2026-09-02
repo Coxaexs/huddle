@@ -357,6 +357,34 @@ export function ProductionStudio() {
     voice.speaking,
   ]);
 
+  // Live preview: while recording, periodically upload a JPEG frame so the
+  // portal can show what's being captured in real time.
+  useEffect(() => {
+    if (!config || captureStatus !== "recording") return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const uploadFrame = () => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return;
+          fetch(
+            `${config.serviceUrl.replace(/\/+$/, "")}/v1/sessions/${encodeURIComponent(config.state.id)}/preview`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "image/jpeg" },
+              body: blob,
+            },
+          ).catch(() => undefined);
+        },
+        "image/jpeg",
+        0.6,
+      );
+    };
+    uploadFrame();
+    const timer = window.setInterval(uploadFrame, 3000);
+    return () => window.clearInterval(timer);
+  }, [config, captureStatus]);
+
   useEffect(
     () => () => {
       if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
