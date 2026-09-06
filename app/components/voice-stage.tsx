@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Mic,
+  Megaphone,
+  SlidersHorizontal,
   MicOff,
   Headphones,
   Volume2,
@@ -23,6 +25,7 @@ import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import type { ScreenShareQuality } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
+import { TableAudioMenu, type TableControls } from "./table-audio-menu";
 import { Avatar } from "./avatar";
 import { DiceOverlay } from "./dice-overlay";
 import { RoomActivities } from "./room-activities";
@@ -36,7 +39,9 @@ interface Sound {
 }
 
 /** The slice of the voice hook the stage needs to render and drive a call. */
-interface VoiceApi {
+interface VoiceApi extends TableControls {
+  important: boolean;
+  toggleImportant: () => void;
   channelId: string | null;
   muted: boolean;
   forcedMute: boolean;
@@ -157,6 +162,7 @@ export function VoiceStage({
   onOpenParticipantMenu,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
@@ -233,6 +239,7 @@ export function VoiceStage({
 
   return (
     <div className="voice-stage">
+      {tableMenuOpen && <TableAudioMenu participants={participants} listenerId={connectionId} controls={voice} onClose={() => setTableMenuOpen(false)} />}
       {recording}
       {battlemap}
       <DiceOverlay roll={diceRoll || null} onDone={() => onDiceRollDone?.()} />
@@ -246,6 +253,12 @@ export function VoiceStage({
         open={activitiesOpen}
         onOpen={setActivitiesOpen}
       />
+      {participants.some((person) => person.important && !person.muted && !person.serverMuted) && (
+        <div className="voice-important-banner" role="status"><Megaphone size={16} />
+          <span>{participants.filter((p) => p.important && !p.muted && !p.serverMuted).map((p) => p.connectionId === connectionId ? "You" : p.displayName).join(", ")} · speaking important</span>
+          {voice.important && <button type="button" onClick={voice.toggleImportant}>Finish</button>}
+        </div>
+      )}
       <div className="voice-stage-body">
         {focused ? (
           <div className="voice-focus" ref={wrapperRef}>
@@ -354,6 +367,7 @@ export function VoiceStage({
                         ? "You"
                         : person.displayName}
                     </span>
+                    {person.important && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Speaking important"><Megaphone size={13} /> Important</span>}
                     {person.muted && !person.bot && (
                       <span
                         className="tile-muted"
@@ -384,6 +398,15 @@ export function VoiceStage({
           <strong>{channelName}</strong>
         </div>
         <div className="stage-bar-controls">
+          <button type="button" className={`stage-btn table-control-button ${voice.tableMode ? "on" : ""}`}
+            aria-label="Your table" aria-haspopup="dialog" onClick={() => setTableMenuOpen(true)} title="Arrange your listening table">
+            <SlidersHorizontal size={18} /><span>Your table</span>
+          </button>
+          <button type="button" className={`stage-btn table-control-button important-control ${voice.important ? "on" : ""}`}
+            aria-label={voice.important ? "Finish important" : "Speak important"} aria-pressed={voice.important} onClick={voice.toggleImportant} disabled={voice.muted || voice.deafened || voice.forcedMute}
+            title="Centre your voice for everyone with an 8% volume boost. Click again to finish.">
+            <Megaphone size={18} /><span>{voice.important ? "Finish important" : "Speak important"}</span>
+          </button>
           <button
             type="button"
             className={`stage-btn ${voice.muted ? "off" : ""}`}

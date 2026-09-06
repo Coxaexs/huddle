@@ -284,6 +284,11 @@ interface SettingsDialogProps {
   ) => () => void;
   /** Whether a call is running, so the meter can read the real chain. */
   inCall?: boolean;
+  tableMode?: boolean;
+  onTableMode?: (enabled: boolean) => void;
+  tableHostId?: string;
+  onTableHostId?: (id: string) => void;
+  tableParticipants?: Array<{ connectionId: string; displayName: string }>;
   /** Push-to-talk state + setters, owned by the voice hook. */
   pushToTalk?: boolean;
   pttKey?: string;
@@ -326,6 +331,11 @@ export function SettingsDialog({
   onMicSettings,
   subscribeMicTelemetry,
   inCall = false,
+  tableMode = false,
+  onTableMode,
+  tableHostId = "",
+  onTableHostId,
+  tableParticipants = [],
   pushToTalk = false,
   pttKey = "Space",
   onPushToTalk,
@@ -685,6 +695,28 @@ export function SettingsDialog({
                 Choices are remembered on this device. Changing the microphone
                 while you are in a call swaps it without dropping the call.
               </p>
+
+              {onTableMode && (
+                <>
+                  <label>
+                    <input type="checkbox" checked={tableMode}
+                      onChange={(event) => onTableMode(event.target.checked)} />
+                    Table Mode / Spatial Audio
+                  </label>
+                  <p className="modal-hint">Places voices around you. Best with headphones. Only changes what you hear.</p>
+                  {tableMode && inCall && (
+                    <>
+                      <label htmlFor="table-host">Dungeon Master</label>
+                      <select id="table-host" value={tableParticipants.some((p) => p.connectionId === tableHostId) ? tableHostId : ""} onChange={(event) => onTableHostId?.(event.target.value)}>
+                        <option value="">Automatic seats by join order</option>
+                        {tableParticipants.map((person) => (
+                          <option key={person.connectionId} value={person.connectionId}>{person.displayName}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </>
+              )}
 
               <label htmlFor="settings-mic">Microphone</label>
               <select
