@@ -9,6 +9,7 @@ import {
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 import type {
   CharacterPresentation,
   CharacterReveal,
@@ -100,6 +101,9 @@ function recorderAuthorized(request: Request): boolean {
 export async function GET(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage unavailable." }, { status: 503 });
+  if (!featureFlags(bindings()).recordSessions) {
+    return Response.json({ error: "Session recording is disabled on this Huddle." }, { status: 404 });
+  }
   const recorder = recorderAuthorized(request);
   const user = recorder ? null : await currentUser(request);
   if (!recorder && !user) return unauthorized();
@@ -122,6 +126,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage unavailable." }, { status: 503 });
+  if (!featureFlags(bindings()).recordSessions) {
+    return Response.json({ error: "Session recording is disabled on this Huddle." }, { status: 404 });
+  }
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);

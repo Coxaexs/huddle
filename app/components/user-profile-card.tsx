@@ -121,7 +121,7 @@ export function UserProfileCard({
             <span className="text-xs text-indigo-300 ml-2">({member.pronouns})</span>
           )}
           {member.customStatus && (
-            <div className="profile-custom-status">💬 {member.customStatus}</div>
+            <div className="profile-custom-status flex items-center gap-1.5"><MessageSquare size={12} /> {member.customStatus}</div>
           )}
         </div>
         <PrideBadges badges={member.prideBadges} compact />

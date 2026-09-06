@@ -6,6 +6,7 @@ import {
 } from "@/lib/recording";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,16 @@ function authorized(request: Request): boolean {
   return Boolean(token && request.headers.get("authorization") === `Bearer ${token}`);
 }
 
+function disabled(): Response {
+  return Response.json(
+    { error: "Session recording is disabled on this Huddle." },
+    { status: 404 },
+  );
+}
+
 /** Full path-free session manifest used only during host finalization. */
 export async function GET(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) return disabled();
   if (!authorized(request)) {
     return Response.json({ error: "Unauthorized recorder." }, { status: 401 });
   }
@@ -66,6 +75,7 @@ export async function GET(request: Request) {
 
 /** Host recorder heartbeat and terminal-state callback. */
 export async function POST(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) return disabled();
   if (!authorized(request)) {
     return Response.json({ error: "Unauthorized recorder." }, { status: 401 });
   }

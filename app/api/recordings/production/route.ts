@@ -2,6 +2,7 @@ import { publicBattlemap, type BattlemapRow } from "@/lib/battlemap";
 import { findRecording } from "@/lib/recording";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,12 @@ function authorized(request: Request): boolean {
  * granting the recorder token arbitrary channel access.
  */
 export async function GET(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) {
+    return Response.json(
+      { error: "Session recording is disabled on this Huddle." },
+      { status: 404 },
+    );
+  }
   if (!authorized(request)) {
     return Response.json({ error: "Unauthorized recorder." }, { status: 401 });
   }

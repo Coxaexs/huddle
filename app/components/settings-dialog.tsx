@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sun, Moon, Mic, Volume2, Activity } from "lucide-react";
+import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
@@ -1021,7 +1021,7 @@ export function SettingsDialog({
 
               <label className="appearance-switch cute-appearance-switch">
                 <span>
-                  <strong>Cozy Huddle ✨</strong>
+                  <strong className="inline-flex items-center gap-1.5">Cozy Huddle <Sparkles size={14} /></strong>
                   <small>Room pet, sparkles, tiny charms, and celebrations</small>
                 </span>
                 <input
@@ -1033,7 +1033,7 @@ export function SettingsDialog({
 
               <label className="appearance-switch blahaj-appearance-switch">
                 <span>
-                  <strong>Blåhaj buddy 🦈</strong>
+                  <strong className="inline-flex items-center gap-1.5">Blåhaj buddy <Fish size={14} /></strong>
                   <small>A small, decorative shark friend who hangs out by the chat</small>
                 </span>
                 <input
@@ -1131,7 +1131,7 @@ export function SettingsDialog({
                                 method: "PATCH",
                                 body: JSON.stringify({ spotifyActivity: act }),
                               });
-                              setStatus(`🎵 Now playing: ${res.song} by ${res.artist}`);
+                              setStatus(`Now playing: ${res.song} by ${res.artist}`);
                               onUser({ ...user, spotifyActivity: act });
                             } else {
                               await apiFetch("/api/settings/profile", {

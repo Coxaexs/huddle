@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { recordingState } from "@/lib/recording";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 import type { RecordingState } from "@/lib/protocol";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,12 @@ export const dynamic = "force-dynamic";
  * settings and controls without a second round-trip.
  */
 export async function GET(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) {
+    return Response.json(
+      { error: "Session recording is disabled on this Huddle." },
+      { status: 404 },
+    );
+  }
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage is not connected." }, { status: 503 });
   const user = await currentUser(request);

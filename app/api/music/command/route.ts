@@ -268,8 +268,8 @@ export async function POST(request: Request) {
         const result = state.feedback || {};
         const text = result.added
           ? name === "like"
-            ? `❤️ Liked **${result.title}** — this now helps Smart Autoplay.`
-            : `👎 Noted — Smart Autoplay will avoid **${result.title}**.`
+            ? `Liked **${result.title}** — this now helps Smart Autoplay.`
+            : `Noted — Smart Autoplay will avoid **${result.title}**.`
           : `${name === "like" ? "Removed the like from" : "Removed the dislike from"} **${result.title}**.`;
         await say(db, textChannelId, text);
         return Response.json({ text, state });
@@ -299,8 +299,8 @@ export async function POST(request: Request) {
           .join("\n");
         const text = [
           isWrapped
-            ? `🎁 **${report.label || "Room Wrapped 2026"}**`
-            : "📊 **Room listening stats**",
+            ? `**${report.label || "Room Wrapped 2026"}**`
+            : "**Room listening stats**",
           `${report.plays || 0} plays · ${report.unique || 0} unique · ${report.hours || 0} hours`,
           songs ? `Top tracks\n${songs}` : "No listening history yet.",
           requesters ? `Top requesters\n${requesters}` : "",
@@ -347,7 +347,7 @@ export async function POST(request: Request) {
           vibe_match: true,
         }));
         const text = [
-          "⚙️ **Music settings**",
+          "**Music settings**",
           `Smart Autoplay: **${state.autoplay ? "On" : "Off"}**`,
           `AutoMix: **${state.automix ? "On" : "Off"}** · ${state.automix_blend_seconds || 8}s`,
           `Filter: **${state.audio_filter || "off"}** · Crossfade: **${state.crossfade_seconds || 0}s**`,

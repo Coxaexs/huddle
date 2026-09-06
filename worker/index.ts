@@ -8,6 +8,7 @@
 import handler from "vinext/server/app-router-entry";
 import { currentUser } from "../lib/auth";
 import { hub } from "../lib/hub-client";
+import { featureFlags } from "../lib/features";
 
 export { HuddleHub } from "../lib/hub";
 
@@ -18,6 +19,7 @@ interface WorkerEnv {
   ASSETS?: Fetcher;
   BOT_TOKEN?: string;
   RECORDER_SERVICE_TOKEN?: string;
+  FEATURE_RECORD_SESSIONS?: string;
 }
 
 export default {
@@ -44,8 +46,11 @@ export default {
       const isMusicBot = Boolean(
         env.BOT_TOKEN && authorization === `Bearer ${env.BOT_TOKEN}`,
       );
+      // The recorder participant is refused entirely while the feature is off,
+      // so a stale recorder-service cannot connect or record anything.
       const isRecorder = Boolean(
-        env.RECORDER_SERVICE_TOKEN &&
+        featureFlags(env).recordSessions &&
+          env.RECORDER_SERVICE_TOKEN &&
           authorization === `Bearer ${env.RECORDER_SERVICE_TOKEN}`,
       );
       const user = isMusicBot || isRecorder ? null : await currentUser(request);

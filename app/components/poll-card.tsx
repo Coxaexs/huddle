@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Lock, Globe } from "lucide-react";
 import { apiFetch } from "../lib/client";
 
 interface PollCardProps {
@@ -81,13 +82,13 @@ export function PollCard({
       <div className="poll-question flex items-center justify-between">
         <span>{question}</span>
         <span
-          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
             isPrivate
               ? "bg-red-500/20 text-red-300 border border-red-500/30"
               : "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
           }`}
         >
-          {isPrivate ? "🔒 Private" : "🌐 Public"}
+          {isPrivate ? <><Lock size={11} /> Private</> : <><Globe size={11} /> Public</>}
         </span>
       </div>
       <div className="poll-options">

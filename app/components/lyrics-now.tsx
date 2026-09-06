@@ -1,3 +1,5 @@
+import { Music2 } from "lucide-react";
+
 interface LyricsNowLine {
   at: number;
   line: string;
@@ -43,7 +45,7 @@ export function LyricsNow({
   return (
     <section className="lyrics-now" aria-label="Lyrics playing now">
       <header>
-        <span className="lyrics-now-icon" aria-hidden="true">♫</span>
+        <span className="lyrics-now-icon" aria-hidden="true"><Music2 size={16} /></span>
         <div>
           <strong>Lyrics now</strong>
           {(track || artist) && (

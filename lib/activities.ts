@@ -3,7 +3,17 @@ export type RoomActivityKind =
   | "whiteboard"
   | "tierlist"
   | "drawguess"
-  | "timer";
+  | "timer"
+  | "initiative";
+
+export interface InitiativeEntry {
+  id: string;
+  name: string;
+  /** Rolled initiative score; higher goes first. */
+  score: number;
+  /** Optional label: "PC" / "NPC" so the table can tint rows. */
+  kind: "pc" | "npc";
+}
 
 export interface ActivityStroke {
   id: string;
@@ -35,6 +45,7 @@ export const ACTIVITY_KINDS: RoomActivityKind[] = [
   "tierlist",
   "drawguess",
   "timer",
+  "initiative",
 ];
 
 export function isActivityKind(value: unknown): value is RoomActivityKind {

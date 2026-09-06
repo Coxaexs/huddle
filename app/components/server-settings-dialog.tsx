@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal } from "lucide-react";
+import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull } from "lucide-react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -597,7 +597,7 @@ export function ServerSettingsDialog({
           className={`sidebar-item ${tab === "app_directory" ? "active" : ""}`}
           onClick={() => setTab("app_directory")}
         >
-          App Directory ↗
+          App Directory <ExternalLink size={13} />
         </button>
 
         <div className="sidebar-divider" />
@@ -675,7 +675,7 @@ export function ServerSettingsDialog({
               })
             }
           >
-            Leave Server 🚪
+            Leave Server <LogOut size={14} />
           </button>
         )}
       </aside>
@@ -790,7 +790,7 @@ export function ServerSettingsDialog({
                 <div className="traits-grid">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="trait-box">
-                      <span className="trait-icon">🙂</span>
+                      <span className="trait-icon"><Smile size={20} /></span>
                     </div>
                   ))}
                 </div>
@@ -906,10 +906,10 @@ export function ServerSettingsDialog({
               <div className="empty-illustration-box">
                 <div className="illustration-graphic">
                   <div className="graphic-emojis-cluster">
-                    <span>👑</span>
-                    <span>😄</span>
-                    <span>🥸</span>
-                    <span>💀</span>
+                    <span><Crown size={22} /></span>
+                    <span><Smile size={22} /></span>
+                    <span><MoreHorizontal size={22} /></span>
+                    <span><Skull size={22} /></span>
                   </div>
                 </div>
                 <h2>NO EMOJI</h2>
@@ -1067,7 +1067,7 @@ export function ServerSettingsDialog({
                 return (
                   <div className="bans-empty-card">
                     <div className="ban-hammer-illustration">
-                      <span className="hammer-emoji">🔨⚡</span>
+                      <span className="hammer-emoji"><Hammer size={26} /><Zap size={26} /></span>
                     </div>
                     <h2>NO BANS</h2>
                     <p>

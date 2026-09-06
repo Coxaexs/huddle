@@ -788,6 +788,11 @@ html[data-motion="reduced"] *::after {
   font-size: 13px;
   font-weight: 900;
   text-align: center;
+  display: grid;
+  place-items: center;
+}
+.music-chart-rank svg {
+  color: var(--gold, #f3bd5d);
 }
 .music-chart-info {
   min-width: 0;
@@ -823,6 +828,10 @@ html[data-motion="reduced"] *::after {
   font-weight: 800;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 .music-play-track-btn:hover:not(:disabled) {
   background: var(--lavender);
@@ -854,7 +863,11 @@ html[data-motion="reduced"] *::after {
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+.music-requester-chip svg { color: var(--muted); }
 .music-requester-chip b {
   margin-left: 6px;
   color: var(--lavender);
@@ -872,7 +885,9 @@ html[data-motion="reduced"] *::after {
   margin-bottom: 14px;
 }
 .music-eq-icon {
-  font-size: 20px;
+  color: var(--lavender);
+  display: grid;
+  place-items: center;
 }
 .music-np-details {
   flex: 1;
@@ -2024,6 +2039,8 @@ button {
   color:#a39fa7;
   font-size:25px;
   font-weight:350;
+  display:grid;
+  place-items:center;
 }
 
 .channel-heading {
@@ -4865,10 +4882,11 @@ button {
   display:grid;
   place-items:center;
   flex:0 0 auto;
-  font-size:21px;
+  color:var(--lavender);
   border-radius:11px;
   background:var(--lavender-soft);
 }
+.room-activity-head > div:first-child > span svg { display:block; }
 .room-activity-head > div:first-child > div {
   min-width:0;
   display:grid;
@@ -4927,7 +4945,18 @@ button {
   border-color:var(--lavender);
   background:var(--lavender-soft);
 }
-.activity-picker button > span { font-size:30px; }
+.activity-picker button > span {
+  color:var(--lavender);
+  background:var(--lavender-soft);
+  border-radius:14px;
+  place-items:center;
+  width:56px;
+  height:56px;
+  display:grid;
+}
+.activity-picker button > span svg {
+  display:block;
+}
 .activity-picker button small { color:var(--muted); line-height:1.35; }
 .activity-live-pill {
   position:absolute;
@@ -5129,6 +5158,176 @@ button {
   to { background-color:color-mix(in srgb,var(--mint) 13%,transparent); }
 }
 
+/* Initiative tracker (D&D combat order). */
+.initiative-tracker {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.initiative-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.initiative-round {
+  color:#fff;
+  background:linear-gradient(135deg,var(--lavender),color-mix(in srgb,var(--lavender) 55%,#ff79c6));
+  border-radius:999px;
+  padding:5px 13px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.initiative-current {
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+.initiative-list {
+  flex:1;
+  min-height:120px;
+  max-height:340px;
+  overflow-y:auto;
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.initiative-list li {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:9px 12px;
+  background:color-mix(in srgb,var(--panel) 88%,transparent);
+  border:1px solid var(--line);
+  border-radius:12px;
+  transition:border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.initiative-list li.active {
+  border-color:color-mix(in srgb,var(--lavender) 75%,var(--line));
+  background:color-mix(in srgb,var(--lavender) 16%,var(--panel));
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--lavender) 35%,transparent);
+}
+.initiative-list li.npc .initiative-name { color:color-mix(in srgb,var(--ink) 72%,#c98a6b); }
+.initiative-pos {
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  min-width:18px;
+  text-align:center;
+}
+.initiative-score {
+  color:var(--ink);
+  background:color-mix(in srgb,var(--lavender) 20%,transparent);
+  border-radius:9px;
+  min-width:34px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  font-size:13px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+}
+.initiative-name {
+  flex:1;
+  min-width:0;
+  font-size:14px;
+  font-weight:700;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.initiative-kind {
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.initiative-remove {
+  color:var(--muted);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:4px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  transition:color .15s ease, background .15s ease;
+}
+.initiative-remove:hover { color:var(--coral); background:color-mix(in srgb,var(--coral) 12%,transparent); }
+.initiative-empty {
+  color:var(--muted);
+  justify-content:center;
+  border-style:dashed !important;
+  font-size:12px;
+}
+.initiative-add {
+  display:grid;
+  grid-template-columns:1fr 64px 64px auto;
+  gap:8px;
+}
+.initiative-add input,
+.initiative-add select {
+  min-width:0;
+  padding:9px 11px;
+  color:var(--ink);
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:10px;
+  font-size:13px;
+}
+.initiative-add input::placeholder { color:var(--muted); }
+.initiative-add select { cursor:pointer; }
+.initiative-add > button {
+  color:#fff;
+  background:linear-gradient(135deg,var(--lavender),color-mix(in srgb,var(--lavender) 55%,#ff79c6));
+  border:none;
+  border-radius:10px;
+  padding:0 14px;
+  cursor:pointer;
+  display:grid;
+  place-items:center;
+  transition:filter .15s ease;
+}
+.initiative-add > button:hover { filter:brightness(1.08); }
+.initiative-actions {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.initiative-actions button {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:var(--ink);
+  background:color-mix(in srgb,var(--panel) 88%,transparent);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:8px 13px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease;
+}
+.initiative-actions button:hover:not(:disabled) {
+  border-color:var(--lavender);
+  background:color-mix(in srgb,var(--lavender) 16%,var(--panel));
+}
+.initiative-actions button:disabled { opacity:.45; cursor:default; }
+@media (max-width:640px) {
+  .initiative-add { grid-template-columns:1fr 56px auto; }
+  .initiative-add select { display:none; }
+  .initiative-list { max-height:240px; }
+}
+
 .draw-guess {
   flex:1;
   min-height:0;
@@ -5308,6 +5507,9 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   font-size:11px;
   line-height:1;
   padding:2px 4px;
+  display:inline-flex;
+  align-items:center;
+  gap:1px;
 }
 .category { margin-top:6px; }
 .category-head {
@@ -9104,9 +9306,11 @@ html[data-blahaj="on"] .blahaj-buddy {
   transform:scale(.94) rotate(-5deg);
 }
 .blahaj-shark {
-  font-size:34px;
-  line-height:1;
-  filter:drop-shadow(0 2px 2px rgba(0,0,0,.18));
+  color: #5bcffa;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.18));
 }
 .blahaj-speech {
   max-width:210px;
@@ -9564,4 +9768,114 @@ html[data-motion="reduced"] .blahaj-boop {
 .stage-btn.table-control-button { border-radius: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .table-switch, .table-switch span { transition: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile & desktop usability polish. Safe-area awareness, larger touch targets
+   and cleaner spacing so the shell is comfortable on a phone and a big screen.
+--------------------------------------------------------------------------- */
+
+/* Bottom rail and composer respect the device's home-indicator safe area. */
+@supports (padding: max(0px)) {
+  @media (width<=760px) {
+    .rail {
+      height:auto;
+      padding-top:8px;
+      padding-bottom:max(8px, env(safe-area-inset-bottom));
+    }
+    .composer-wrap {
+      padding-bottom:max(12px, env(safe-area-inset-bottom));
+    }
+    .chat-panel {
+      padding-bottom:0;
+    }
+  }
+}
+
+/* Phones: roomier tap targets across channel rows, menus and the composer. */
+@media (width<=760px) {
+  .composer {
+    min-height:52px;
+    padding:7px 8px 7px 10px;
+  }
+  .attach-button,
+  .send-button {
+    width:40px;
+    height:40px;
+  }
+  .composer textarea {
+    font-size:15px; /* 16px-and-under zooms iOS; this keeps typing comfortable. */
+    line-height:1.4;
+    padding:9px 8px;
+  }
+  .gif-button,
+  .emoji-button {
+    min-height:32px;
+  }
+  .channel,
+  .voice-room {
+    border-radius:8px;
+  }
+  .icon-button {
+    width:38px;
+    height:38px;
+  }
+  .member {
+    gap:10px;
+  }
+  /* Prevent the action popover from spilling off the left edge. */
+  .message-actions {
+    right:auto;
+    left:4px;
+    justify-content:flex-start;
+  }
+  .message-actions-toggle {
+    right:2px;
+    width:34px;
+    height:30px;
+  }
+}
+
+/* Larger phones / small tablets: keep the desktop three-pane feel without
+   cramping the chat column. */
+@media (min-width:761px) and (max-width:1120px) {
+  .app-shell {
+    grid-template-columns:64px 224px minmax(0,1fr);
+  }
+  .member-panel {
+    width:248px;
+  }
+  .messages {
+    padding:30px clamp(18px,3vw,40px) 8px;
+  }
+}
+
+/* Desktop: a touch more breathing room at wide sizes. */
+@media (min-width:1400px) {
+  .messages {
+    padding-left:clamp(40px,5vw,72px);
+    padding-right:clamp(40px,5vw,72px);
+  }
+  .composer-wrap {
+    padding-left:clamp(32px,4vw,64px);
+    padding-right:clamp(32px,4vw,64px);
+  }
+}
+
+/* Touch devices: tap targets for the activity picker and initiative rows. */
+@media (pointer:coarse) {
+  .activity-picker button {
+    min-height:120px;
+  }
+  .initiative-list li {
+    padding:12px 14px;
+  }
+  .initiative-remove {
+    width:32px;
+    height:32px;
+  }
+  .initiative-actions button {
+    min-height:40px;
+    padding:8px 16px;
+  }
 }

@@ -1,7 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Search, Plus, X, BarChart2, Trash2 } from "lucide-react";
+import {
+  Settings,
+  Search,
+  Plus,
+  X,
+  BarChart2,
+  Trash2,
+  Sparkles,
+  Heart,
+  ThumbsDown,
+  List,
+  Shuffle,
+  Crown,
+  Music2,
+  MoonStar,
+  Loader2,
+  Play,
+  SkipForward,
+  User,
+  History,
+  RotateCcw,
+  Trophy,
+  Scroll,
+} from "lucide-react";
 
 export interface MusicSettings {
   voiceChannelId?: string;
@@ -160,12 +183,12 @@ export function MusicSettingsCard({
       <div className="music-card-section-label">Audio Effects & Filters</div>
       <div className="music-filter-row" aria-label="Music filter">
         {[
-          { id: "off", label: "🧼 Clean" },
-          { id: "bassboost", label: "🔊 Bass Boost" },
-          { id: "nightcore", label: "⚡ Nightcore" },
-          { id: "slowed", label: "🌙 Slowed" },
-          { id: "8d", label: "🎧 8D Spatial" },
-          { id: "karaoke", label: "🎤 Karaoke" },
+          { id: "off", label: "Clean" },
+          { id: "bassboost", label: "Bass Boost" },
+          { id: "nightcore", label: "Nightcore" },
+          { id: "slowed", label: "Slowed" },
+          { id: "8d", label: "8D Spatial" },
+          { id: "karaoke", label: "Karaoke" },
         ].map((preset) => (
           <button
             type="button"
@@ -179,13 +202,13 @@ export function MusicSettingsCard({
       </div>
 
       <div className="music-quick-actions">
-        <button type="button" onClick={() => void onCommand("/wrapped")}>✦ Wrapped</button>
-        <button type="button" onClick={() => void onCommand("/stats")}>📊 Stats</button>
-        <button type="button" onClick={() => void onCommand("/like")}>♡ Like</button>
-        <button type="button" onClick={() => void onCommand("/dislike")}>⊘ Avoid</button>
-        <button type="button" onClick={() => void onCommand("/lyricsnow")}>♪ Lyrics</button>
-        <button type="button" onClick={() => void onCommand("/queue")}>≡ Queue</button>
-        <button type="button" onClick={() => void onCommand("/shuffle")}>⤨ Shuffle</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> Wrapped</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> Stats</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/like")}><Heart size={14} /> Like</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/dislike")}><ThumbsDown size={14} /> Avoid</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}><Music2 size={14} /> Lyrics</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/queue")}><List size={14} /> Queue</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/shuffle")}><Shuffle size={14} /> Shuffle</button>
       </div>
     </section>
   );
@@ -241,14 +264,14 @@ export function MusicStatsCard({
     <section className={`music-stats-card ${wrapped ? "wrapped" : ""}`}>
       <header>
         <span className="music-card-icon" aria-hidden="true">
-          {wrapped ? "✦" : "📊"}
+          {wrapped ? <Sparkles size={18} /> : <BarChart2 size={18} />}
         </span>
         <div>
           <strong>{wrapped ? "Room Wrapped 2026" : "Room listening stats"}</strong>
           <small>{label || (wrapped ? "Annual music recap & highlights" : "All time in this room")}</small>
         </div>
         <span className={`music-live-pill ${wrapped ? "wrapped-pill" : "live"}`}>
-          {wrapped ? "✦ WRAPPED" : "LIVE STATS"}
+          {wrapped ? "WRAPPED" : "LIVE STATS"}
         </span>
       </header>
 
@@ -257,7 +280,7 @@ export function MusicStatsCard({
         <div className="music-wrapped-highlights">
           {personality && (
             <div className="music-highlight-badge">
-              <span className="music-highlight-icon">✨</span>
+              <span className="music-highlight-icon"><Sparkles size={16} /></span>
               <div>
                 <small>Room Personality</small>
                 <strong>{personality}</strong>
@@ -266,7 +289,7 @@ export function MusicStatsCard({
           )}
           {topArtist && (
             <div className="music-highlight-badge">
-              <span className="music-highlight-icon">👑</span>
+              <span className="music-highlight-icon"><Crown size={16} /></span>
               <div>
                 <small>Top Artist</small>
                 <strong>{topArtist}</strong>
@@ -275,7 +298,7 @@ export function MusicStatsCard({
           )}
           {topGenre && (
             <div className="music-highlight-badge">
-              <span className="music-highlight-icon">🎶</span>
+              <span className="music-highlight-icon"><Music2 size={16} /></span>
               <div>
                 <small>Top Genre</small>
                 <strong>{topGenre}</strong>
@@ -284,7 +307,7 @@ export function MusicStatsCard({
           )}
           {peakHour && (
             <div className="music-highlight-badge">
-              <span className="music-highlight-icon">🌙</span>
+              <span className="music-highlight-icon"><MoonStar size={16} /></span>
               <div>
                 <small>Peak Listening</small>
                 <strong>{peakHour}</strong>
@@ -325,7 +348,7 @@ export function MusicStatsCard({
             return (
               <div className="music-chart-row" key={`${title}-${index}`}>
                 <span className={`music-chart-rank rank-${index + 1}`}>
-                  {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
+                  {index === 0 ? <Trophy size={14} /> : index === 1 ? <Trophy size={14} /> : index === 2 ? <Trophy size={14} /> : index + 1}
                 </span>
                 <div className="music-chart-info">
                   <span title={title}>{title}</span>
@@ -340,7 +363,7 @@ export function MusicStatsCard({
                     onClick={() => void handlePlayTrack(title)}
                     title={`Play ${title}`}
                   >
-                    {isPlayingThis ? "⌛" : "▶ Play"}
+                    {isPlayingThis ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> Play</>}
                   </button>
                 )}
               </div>
@@ -358,7 +381,7 @@ export function MusicStatsCard({
           <div className="music-requester-tags">
             {topRequesters.map(([name, count]) => (
               <span key={name} className="music-requester-chip">
-                👤 {name} <b>{count} plays</b>
+                <User size={13} /> {name} <b>{count} plays</b>
               </span>
             ))}
           </div>
@@ -369,20 +392,20 @@ export function MusicStatsCard({
       {onCommand && (
         <div className="music-quick-actions">
           {!wrapped && (
-            <button type="button" onClick={() => void onCommand("/wrapped")}>
-              ✦ Room Wrapped
+            <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}>
+              <Sparkles size={14} /> Room Wrapped
             </button>
           )}
           {wrapped && (
-            <button type="button" onClick={() => void onCommand("/stats")}>
-              📊 Listening Stats
+            <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}>
+              <BarChart2 size={14} /> Listening Stats
             </button>
           )}
           <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}>
             <Settings size={14} /> Room Settings
           </button>
-          <button type="button" onClick={() => void onCommand("/lyricsnow")}>
-            ♪ Lyrics
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}>
+            <Music2 size={14} /> Lyrics
           </button>
         </div>
       )}
@@ -429,7 +452,7 @@ export function MusicQueueCard({
     <section className="music-queue-card">
       <header>
         <span className="music-card-icon" aria-hidden="true">
-          ≡
+          <List size={18} />
         </span>
         <div>
           <strong>Room Music Queue</strong>
@@ -442,7 +465,7 @@ export function MusicQueueCard({
 
       {currentTrack && (
         <div className="music-now-playing-banner">
-          <span className="music-eq-icon">🎵</span>
+          <span className="music-eq-icon"><Music2 size={18} /></span>
           <div className="music-np-details">
             <small>NOW PLAYING</small>
             <strong>{currentTrack.title}</strong>
@@ -456,7 +479,7 @@ export function MusicQueueCard({
                 disabled={disabled || busyAction === "/skip"}
                 onClick={() => void handleAction("/skip")}
               >
-                ⏭ Skip
+                <SkipForward size={13} /> Skip
               </button>
             </div>
           )}
@@ -482,7 +505,7 @@ export function MusicQueueCard({
                     onClick={() => void handleAction(`/skipto ${item.index}`)}
                     title={`Skip directly to #${item.index}`}
                   >
-                    ▶ Jump
+                    <Play size={13} /> Jump
                   </button>
                   <button
                     type="button"
@@ -504,8 +527,8 @@ export function MusicQueueCard({
 
       {onCommand && (
         <div className="music-quick-actions">
-          <button type="button" onClick={() => void handleAction("/shuffle")}>⤨ Shuffle</button>
-          <button type="button" onClick={() => void handleAction("/removedupes")}>⟳ Remove Dupes</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/shuffle")}><Shuffle size={14} /> Shuffle</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/removedupes")}><RotateCcw size={14} /> Remove Dupes</button>
           <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/clear")}><Trash2 size={14} /> Clear Queue</button>
           <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
         </div>
@@ -541,7 +564,7 @@ export function MusicHistoryCard({
     <section className="music-history-card">
       <header>
         <span className="music-card-icon" aria-hidden="true">
-          📜
+          <History size={18} />
         </span>
         <div>
           <strong>Room Listening History</strong>
@@ -566,7 +589,7 @@ export function MusicHistoryCard({
                   disabled={disabled || requestingTrack === item.title}
                   onClick={() => void handlePlay(item.title)}
                 >
-                  {requestingTrack === item.title ? "⌛" : "▶ Replay"}
+                  {requestingTrack === item.title ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> Replay</>}
                 </button>
               )}
             </div>
@@ -578,9 +601,9 @@ export function MusicHistoryCard({
 
       {onCommand && (
         <div className="music-quick-actions">
-          <button type="button" onClick={() => void onCommand("/stats")}>📊 Stats</button>
-          <button type="button" onClick={() => void onCommand("/wrapped")}>✦ Wrapped</button>
-          <button type="button" onClick={() => void onCommand("/settings")}>⚙️ Settings</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> Stats</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> Wrapped</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
         </div>
       )}
     </section>
@@ -640,7 +663,7 @@ export function MusicSearchCard({
               disabled={disabled || busyAction === `/play ${track.title}`}
               onClick={() => void handleAction(`/play ${track.title}`)}
             >
-              ▶ Play Now
+              <Play size={13} /> Play Now
             </button>
             <button
               type="button"
@@ -652,11 +675,11 @@ export function MusicSearchCard({
             </button>
             <button
               type="button"
-              className="music-action-btn"
+              className="music-action-btn flex items-center gap-1"
               disabled={disabled || busyAction === `/lyrics ${track.title}`}
               onClick={() => void handleAction(`/lyrics ${track.title}`)}
             >
-              ♪ Lyrics
+              <Music2 size={14} /> Lyrics
             </button>
           </div>
         )}

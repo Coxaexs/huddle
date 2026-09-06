@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Vote, Plus, Trash2, X } from "lucide-react";
+import { Vote, Plus, Trash2, X, Lock } from "lucide-react";
 
 interface PollDialogProps {
   open: boolean;
@@ -127,7 +127,9 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
                   onChange={(e) => setIsPrivate(e.target.checked)}
                   className="w-4 h-4 accent-indigo-500 rounded"
                 />
-                🔒 Private Mode (Anonymous voting, hide voter names)
+                <span className="inline-flex items-center gap-1">
+                  <Lock size={12} /> Private Mode (Anonymous voting, hide voter names)
+                </span>
               </label>
               <p className="text-[11px] text-gray-400 pl-6">
                 {isPrivate

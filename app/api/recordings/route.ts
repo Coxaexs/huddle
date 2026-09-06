@@ -18,12 +18,18 @@ import {
 import { ensureSchema } from "@/lib/schema";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 import type { RecordingScene, RecordingState } from "@/lib/protocol";
 
 export const dynamic = "force-dynamic";
 
 function error(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
+}
+
+/** The D&D recorder is a per-host feature; return 404 while it is off. */
+function recorderDisabled(): Response {
+  return error("Session recording is disabled on this Huddle.", 404);
 }
 
 async function publish(db: D1Database, row: RecordingRow): Promise<RecordingState> {
@@ -42,6 +48,7 @@ async function controllerAllowed(
 
 /** Active state for a room, or a completed-session summary by id. */
 export async function GET(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) return recorderDisabled();
   const db = bindings().DB;
   if (!db) return error("Recording metadata storage is not connected.", 503);
   const user = await currentUser(request);
@@ -109,6 +116,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!featureFlags(bindings()).recordSessions) return recorderDisabled();
   const db = bindings().DB;
   if (!db) return error("Recording metadata storage is not connected.", 503);
   const user = await currentUser(request);
