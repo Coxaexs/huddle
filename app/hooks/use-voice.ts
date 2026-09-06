@@ -78,6 +78,29 @@ export function useVoice({
 }: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [tableMode, setTableModeState] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem("huddle-table-mode") === "on"; }
+    catch { return false; }
+  });
+  const [tableHostId, setTableHostId] = useState("");
+  const [tableSeatPans, setTableSeatPans] = useState<Record<string, number>>({});
+  const [tableWidth, setTableWidth] = useState(1);
+  // Share one observed join order between the preview and actual playback.
+  const tableOrderRef = useRef<{ channelId: string | null; ids: string[] }>({ channelId: null, ids: [] });
+  if (tableOrderRef.current.channelId !== channelId) tableOrderRef.current = { channelId, ids: [] };
+  const tableIds = (channelId ? rooms[channelId] ?? [] : [])
+    .filter((p) => !p.bot && !p.recorder && p.connectionId !== connectionId).map((p) => p.connectionId);
+  const tableSeatOrder = tableOrderRef.current.ids.filter((id) => tableIds.includes(id));
+  for (const id of tableIds) if (!tableSeatOrder.includes(id)) tableSeatOrder.push(id);
+  tableOrderRef.current.ids = tableSeatOrder;
+  const setTableMode = useCallback((enabled: boolean) => {
+    setTableModeState(enabled);
+    try { localStorage.setItem("huddle-table-mode", enabled ? "on" : "off"); } catch { /* Session only. */ }
+  }, []);
+  useEffect(() => {
+    setTableHostId("");
+    setTableSeatPans({});
+  }, [channelId]);
   /** Push-to-talk: when on, the mic is open only while the PTT key is held. */
   const [pushToTalk, setPushToTalkState] = useState(
     () =>
@@ -107,6 +130,14 @@ export function useVoice({
   const [deafened, setDeafened] = useState(false);
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
+  // Use the server's echoed state so failed sends/reconnects cannot leave a stale toggle.
+  const important = Boolean(channelId && connectionId && rooms[channelId]?.find(
+    (person) => person.connectionId === connectionId,
+  )?.important);
+  const toggleImportant = useCallback(() => {
+    if (!channelId || muted || deafened || forcedMute) return;
+    send({ t: "voice-state", important: !important });
+  }, [channelId, muted, deafened, forcedMute, important, send]);
   const [speaking, setSpeaking] = useState<Set<string>>(new Set());
   const [remoteStreams, setRemoteStreams] = useState<
     Array<{ connectionId: string; stream: MediaStream }>
@@ -1134,6 +1165,17 @@ export function useVoice({
   }, []);
 
   return {
+    important,
+    toggleImportant,
+    tableSeatOrder,
+    tableSeatPans,
+    setTableSeatPans,
+    tableWidth,
+    setTableWidth,
+    tableMode,
+    setTableMode,
+    tableHostId,
+    setTableHostId,
     channelId,
     muted,
     forcedMute,

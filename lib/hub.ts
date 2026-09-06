@@ -36,6 +36,7 @@ interface Attachment {
   voiceChannelId: string | null;
   muted: boolean;
   deafened: boolean;
+  important?: boolean;
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
@@ -179,8 +180,12 @@ export class HuddleHub extends DurableObject {
         serverNow: Date.now(),
       });
       // Refresh whichever room they are sitting in.
-      for (const { attachment } of this.sockets()) {
+      for (const { socket, attachment } of this.sockets()) {
         if (attachment.userId === body.userId && attachment.voiceChannelId) {
+          if (body.muted) {
+            attachment.important = false;
+            socket.serializeAttachment(attachment);
+          }
           this.broadcastVoice(attachment.voiceChannelId);
         }
       }
@@ -368,6 +373,7 @@ export class HuddleHub extends DurableObject {
           }
         }
 
+        attachment.important = false;
         attachment.voiceChannelId = event.channelId;
         attachment.muted = false;
         attachment.deafened = false;
@@ -388,6 +394,7 @@ export class HuddleHub extends DurableObject {
       }
 
       case "voice-leave": {
+        attachment.important = false;
         const previous = attachment.voiceChannelId;
         attachment.voiceChannelId = null;
         attachment.cameraStreamId = null;
@@ -398,9 +405,15 @@ export class HuddleHub extends DurableObject {
       }
 
       case "voice-state": {
+        if (typeof event.important === "boolean" && attachment.voiceChannelId) {
+          attachment.important = event.important;
+        }
         if (typeof event.muted === "boolean") attachment.muted = event.muted;
         if (typeof event.deafened === "boolean") {
           attachment.deafened = event.deafened;
+        }
+        if (attachment.muted || attachment.deafened || this.forcedMutes.has(attachment.userId)) {
+          attachment.important = false;
         }
         if (event.cameraStreamId !== undefined) {
           attachment.cameraStreamId = event.cameraStreamId;
@@ -492,6 +505,7 @@ export class HuddleHub extends DurableObject {
         muted: attachment.muted || this.forcedMutes.has(attachment.userId),
         deafened: attachment.deafened,
         serverMuted: this.forcedMutes.has(attachment.userId),
+        important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
         cameraStreamId: attachment.cameraStreamId,
         screenStreamId: attachment.screenStreamId,
         bot: attachment.bot || undefined,

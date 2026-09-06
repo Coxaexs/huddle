@@ -37,7 +37,10 @@ export function saveDevice(kind: DeviceKind, deviceId: string): void {
   if (typeof window === "undefined") return;
   if (deviceId) window.localStorage.setItem(STORAGE_KEY[kind], deviceId);
   else window.localStorage.removeItem(STORAGE_KEY[kind]);
-  if (kind === "speaker") applySinkToAll();
+  if (kind === "speaker") {
+    applySinkToAll();
+    window.dispatchEvent(new Event("huddle-speaker-change"));
+  }
 }
 
 /** What the input chain needs from getUserMedia, so the two do not fight. */
@@ -111,7 +114,7 @@ export function unregisterMedia(element: HTMLMediaElement | null): void {
 
 export function applySink(element: HTMLMediaElement): void {
   const sink = savedDevice("speaker");
-  if (!sink || !supportsOutputSelection()) return;
+  if (!supportsOutputSelection()) return;
   void (element as SinkCapable).setSinkId?.(sink).catch(() => undefined);
 }
 

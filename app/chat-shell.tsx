@@ -76,6 +76,7 @@ import {
   type MusicSettings,
 } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
+import { RemoteVoiceAudio } from "./components/remote-voice-audio";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
 import { UserFooter } from "./components/user-footer";
@@ -5078,36 +5079,24 @@ export function ChatShell() {
       </aside>
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
-      {voice.remoteStreams
-        .filter(({ stream }) => stream.getAudioTracks().length > 0)
-        .map(({ connectionId, stream }) => {
-        const person = voiceParticipants.find(
-          (participant) => participant.connectionId === connectionId,
-        );
-        const pref = person ? prefFor(person.id) : { volume: 100, muted: false };
-        return (
-          <audio
-            key={`${connectionId}:${stream.id}`}
-            autoPlay
-            playsInline
-            ref={(element) => {
-              if (!element) {
-                return;
-              }
-              registerMedia(element);
-              if (element.srcObject !== stream) {
-                element.srcObject = stream;
-                // Safari is more reliable when playback is requested after
-                // srcObject is assigned, even with the autoPlay attribute.
-                void element.play().catch(() => undefined);
-              }
-              // Per-person volume, on top of your own deafen switch.
-              element.volume = volumeGain(pref.volume);
-            }}
-            muted={voice.deafened || pref.muted}
-          />
-        );
-        })}
+      {voice.channelId && (
+        <RemoteVoiceAudio
+          key={voice.channelId}
+          streams={voice.remoteStreams}
+          participants={voiceParticipants}
+          listenerId={hub.connectionId}
+          enabled={voice.tableMode}
+          hostId={voice.tableHostId}
+          seatOrder={voice.tableSeatOrder}
+          seatPans={voice.tableSeatPans}
+          width={voice.tableWidth}
+          deafened={voice.deafened}
+          preferenceFor={(id) => {
+            const pref = prefFor(id);
+            return { volume: volumeGain(pref.volume), muted: pref.muted };
+          }}
+        />
+      )}
 
       {botMenu && (
         <BotMenu
@@ -5386,6 +5375,11 @@ export function ChatShell() {
           onMicSettings={voice.setMicSettings}
           subscribeMicTelemetry={voice.subscribeMicTelemetry}
           inCall={Boolean(voice.channelId)}
+          tableMode={voice.tableMode}
+          onTableMode={voice.setTableMode}
+          tableHostId={voice.tableHostId}
+          onTableHostId={voice.setTableHostId}
+          tableParticipants={voiceParticipants.filter((p) => !p.bot && !p.recorder)}
           pushToTalk={voice.pushToTalk}
           pttKey={voice.pttKey}
           onPushToTalk={voice.setPushToTalk}

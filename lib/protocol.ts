@@ -16,6 +16,8 @@ export interface VoiceParticipant extends PresenceUser {
   deafened: boolean;
   /** Muted for the whole Huddle by someone, not just for themselves. */
   serverMuted?: boolean;
+  /** Speaker requests centred playback with a modest volume boost. */
+  important?: boolean;
   /**
    * MediaStream ids for this person's video, so receivers can tell a camera
    * from a screen share without inspecting the tracks.
@@ -176,6 +178,7 @@ export type ClientEvent =
   | { t: "voice-leave" }
   | {
       t: "voice-state";
+      important?: boolean;
       muted?: boolean;
       deafened?: boolean;
       cameraStreamId?: string | null;
