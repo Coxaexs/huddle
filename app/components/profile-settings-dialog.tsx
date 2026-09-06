@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X, Upload, Music, Smile, Calendar, Check } from "lucide-react";
+import { X, Upload, Music, Smile, Calendar, Check, Fish } from "lucide-react";
 import {
   PRIDE_BADGES,
   type PrideBadgeId,
@@ -354,7 +354,7 @@ export function ProfileSettingsDialog({
             </div>
 
             <div className="blahaj-profile-tip" aria-label="Blåhaj profile tip">
-              <span aria-hidden="true">🦈</span>
+              <span aria-hidden="true"><Fish size={22} /></span>
               <p><strong>Blåhaj says:</strong> decorate your profile in whatever way feels like you.</p>
             </div>
 

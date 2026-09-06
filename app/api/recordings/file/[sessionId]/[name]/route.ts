@@ -3,6 +3,7 @@ import { findRecording } from "@/lib/recording";
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { featureFlags } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,11 @@ export async function GET(
 ) {
   const db = bindings().DB;
   if (!db) return new Response("Storage is not connected.", { status: 503 });
+  if (!featureFlags(bindings()).recordSessions) {
+    return new Response("Session recording is disabled on this Huddle.", {
+      status: 404,
+    });
+  }
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);

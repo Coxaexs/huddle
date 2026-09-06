@@ -12,6 +12,7 @@ import {
   ZoomOut,
   RotateCcw,
   CloudFog,
+  UserRound,
 } from "lucide-react";
 import type { Battlemap, MapFog, MapStroke, MapToken } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
@@ -502,7 +503,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
           )}
           {!map.tokens.some((token) => token.ownerId === userId) && (
             <button type="button" title="Put my character on the map" onClick={onAddMyToken}>
-              🙋
+              <UserRound size={14} />
             </button>
           )}
           {gm && (
@@ -698,7 +699,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                     beginRename(token);
                   }}
                 >
-                  ✏️
+                  <Pencil size={13} />
                 </button>
               )}
               {renaming && (

@@ -17,6 +17,8 @@ export interface HuddleBindings {
   RECORDER_SERVICE_URL?: string;
   /** Shared bearer secret for Huddle ↔ recorder-service callbacks. */
   RECORDER_SERVICE_TOKEN?: string;
+  /** Set to "0"/"false"/"off" to disable the D&D session recorder feature. */
+  FEATURE_RECORD_SESSIONS?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */

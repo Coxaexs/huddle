@@ -10,10 +10,27 @@ import {
 import {
   DEFAULT_TIERS,
   type ActivityStroke,
+  type InitiativeEntry,
   type RoomActivity,
   type RoomActivityKind,
   type TierRow,
 } from "@/lib/activities";
+import {
+  Dices,
+  PartyPopper,
+  Timer,
+  Plus,
+  Trash2,
+  Play,
+  SkipForward,
+  RotateCcw,
+  PenTool,
+  Trophy,
+  Palette,
+  Sparkles,
+  ExternalLink,
+  ChevronDown,
+} from "lucide-react";
 import { apiFetch } from "../lib/client";
 
 interface RoomActivitiesProps {
@@ -29,39 +46,45 @@ interface RoomActivitiesProps {
 
 const ACTIVITY_CHOICES: Array<{
   kind: RoomActivityKind;
-  icon: string;
+  icon: React.ReactNode;
   name: string;
   description: string;
 }> = [
   {
     kind: "watch",
-    icon: "🍿",
+    icon: <Play size={20} />,
     name: "Watch Together",
     description: "The bot’s synced player, right inside this room",
   },
   {
     kind: "whiteboard",
-    icon: "🖍️",
+    icon: <PenTool size={20} />,
     name: "Whiteboard",
     description: "Sketch, plan, and doodle together",
   },
   {
     kind: "tierlist",
-    icon: "🏆",
+    icon: <Trophy size={20} />,
     name: "Tier List",
     description: "Rank anything as a group",
   },
   {
     kind: "drawguess",
-    icon: "🎨",
+    icon: <Palette size={20} />,
     name: "Draw & Guess",
     description: "Take turns drawing a secret prompt",
   },
   {
     kind: "timer",
-    icon: "⏱️",
+    icon: <Timer size={20} />,
     name: "Synced Timer",
     description: "One countdown everyone sees",
+  },
+  {
+    kind: "initiative",
+    icon: <Dices size={20} />,
+    name: "Initiative Tracker",
+    description: "Roll, sort, and take turns in combat",
   },
 ];
 
@@ -388,7 +411,9 @@ function SyncedTimer({
 
   return (
     <div className={`synced-timer ${finished ? "finished" : ""}`}>
-      <span className="timer-sparkle">{finished ? "🎉" : "⏱️"}</span>
+      <span className="timer-sparkle">
+        {finished ? <PartyPopper size={18} /> : <Timer size={18} />}
+      </span>
       <strong>
         {minutes}:{String(seconds).padStart(2, "0")}
       </strong>
@@ -422,6 +447,151 @@ function SyncedTimer({
             </option>
           ))}
         </select>
+      </div>
+    </div>
+  );
+}
+
+function InitiativeTracker({
+  activity,
+  update,
+}: {
+  activity: RoomActivity;
+  update: (state: Record<string, unknown>) => void;
+}) {
+  const [name, setName] = useState("");
+  const [score, setScore] = useState("");
+  const [kind, setKind] = useState<"pc" | "npc">("pc");
+  const entries = (Array.isArray(activity.state.entries)
+    ? (activity.state.entries as InitiativeEntry[])
+    : []
+  ).slice();
+  const round = Math.max(1, Number(activity.state.round) || 1);
+  const turnIndex = Math.min(
+    entries.length - 1,
+    Math.max(0, Number(activity.state.turnIndex) || 0),
+  );
+  // Sort by score desc; ties broken by insertion order (stable sort).
+  entries.sort((a, b) => b.score - a.score);
+  const currentId = entries[turnIndex]?.id || null;
+
+  function commit(next: InitiativeEntry[], nextRound = round, nextTurn = turnIndex) {
+    update({ entries: next, round: nextRound, turnIndex: nextTurn });
+  }
+
+  function addEntry() {
+    const trimmed = name.trim();
+    const parsed = parseInt(score, 10);
+    if (!trimmed) return;
+    const entry: InitiativeEntry = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      score: Number.isFinite(parsed) ? parsed : 0,
+      kind,
+    };
+    commit([...entries, entry].sort((a, b) => b.score - a.score));
+    setName("");
+    setScore("");
+  }
+
+  function removeEntry(id: string) {
+    const next = entries.filter((entry) => entry.id !== id);
+    commit(next, round, Math.min(turnIndex, Math.max(0, next.length - 1)));
+  }
+
+  function nextTurn() {
+    if (!entries.length) return;
+    const last = entries.length - 1;
+    if (turnIndex >= last) commit(entries, round + 1, 0);
+    else commit(entries, round, turnIndex + 1);
+  }
+
+  function resetCombat() {
+    commit([], 1, 0);
+  }
+
+  return (
+    <div className="initiative-tracker">
+      <div className="initiative-header">
+        <span className="initiative-round">Round {round}</span>
+        {currentId && (
+          <span className="initiative-current">
+            Now: {entries[turnIndex]?.name}
+          </span>
+        )}
+      </div>
+
+      <ol className="initiative-list">
+        {entries.map((entry, index) => (
+          <li
+            key={entry.id}
+            className={`${entry.id === currentId ? "active" : ""} ${entry.kind}`}
+          >
+            <span className="initiative-pos">{index + 1}</span>
+            <span className="initiative-score">{entry.score}</span>
+            <span className="initiative-name">{entry.name}</span>
+            <span className="initiative-kind">
+              {entry.kind === "pc" ? "PC" : "NPC"}
+            </span>
+            <button
+              type="button"
+              className="initiative-remove"
+              aria-label={`Remove ${entry.name}`}
+              onClick={() => removeEntry(entry.id)}
+            >
+              <Trash2 size={14} />
+            </button>
+          </li>
+        ))}
+        {!entries.length && (
+          <li className="initiative-empty">
+            Add combatants below — highest roll goes first.
+          </li>
+        )}
+      </ol>
+
+      <div className="initiative-add">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") addEntry();
+          }}
+          placeholder="Name…"
+          maxLength={60}
+          aria-label="Combatant name"
+        />
+        <input
+          value={score}
+          onChange={(event) => setScore(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") addEntry();
+          }}
+          placeholder="Init."
+          inputMode="numeric"
+          maxLength={6}
+          aria-label="Initiative score"
+        />
+        <select
+          aria-label="Combatant type"
+          value={kind}
+          onChange={(event) => setKind(event.target.value as "pc" | "npc")}
+        >
+          <option value="pc">PC</option>
+          <option value="npc">NPC</option>
+        </select>
+        <button type="button" onClick={addEntry} aria-label="Add combatant">
+          <Plus size={16} />
+        </button>
+      </div>
+
+      <div className="initiative-actions">
+        <button type="button" disabled={!entries.length} onClick={nextTurn}>
+          <SkipForward size={15} /> Next turn
+        </button>
+        <button type="button" disabled={!entries.length} onClick={resetCombat}>
+          <RotateCcw size={15} /> New combat
+        </button>
       </div>
     </div>
   );
@@ -505,7 +675,9 @@ export function RoomActivities({
                 endsAt: null,
                 running: false,
               }
-            : {};
+            : kind === "initiative"
+              ? { round: 1, turnIndex: 0, entries: [] }
+              : {};
     await action({ action: "open", kind, state });
   }
 
@@ -526,7 +698,11 @@ export function RoomActivities({
     <section className={`room-activity ${activity ? `kind-${activity.kind}` : ""}`}>
       <header className="room-activity-head">
         <div>
-          <span>{activity ? ACTIVITY_CHOICES.find((item) => item.kind === activity.kind)?.icon : "✨"}</span>
+          <span>
+            {activity
+              ? ACTIVITY_CHOICES.find((item) => item.kind === activity.kind)?.icon
+              : <Sparkles size={18} />}
+          </span>
           <div>
             <strong>{activity ? activityTitle(activity.kind) : "Room Activities"}</strong>
             <small>
@@ -543,7 +719,7 @@ export function RoomActivities({
               target="_blank"
               rel="noreferrer"
             >
-              Pop out ↗
+              Pop out <ExternalLink size={12} />
             </a>
           )}
           {activity && (
@@ -557,7 +733,7 @@ export function RoomActivities({
             </button>
           )}
           <button type="button" onClick={() => onOpen(false)} aria-label="Collapse activity">
-            ˅
+            <ChevronDown size={16} />
           </button>
         </div>
       </header>
@@ -604,6 +780,8 @@ export function RoomActivities({
         <TierList activity={activity} update={optimistic} />
       ) : activity.kind === "timer" ? (
         <SyncedTimer activity={activity} update={optimistic} />
+      ) : activity.kind === "initiative" ? (
+        <InitiativeTracker activity={activity} update={optimistic} />
       ) : (
         <div className="draw-guess">
           <div className="draw-guess-status">

@@ -56,6 +56,7 @@ export function RecordingsPortal() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [recordings, setRecordings] = useState<RecordingState[]>([]);
+  const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -97,10 +98,17 @@ export function RecordingsPortal() {
     Promise.all([
       apiFetch<{ user: PublicUser | null }>("/api/auth/session"),
       apiFetch<{ servers: PublicServer[] }>("/api/servers"),
+      apiFetch<{ recordSessions: boolean }>("/api/features").catch(() => ({
+        recordSessions: true,
+      })),
     ])
-      .then(async ([session, serversData]) => {
+      .then(async ([session, serversData, features]) => {
         setUser(session.user);
         setServers(serversData.servers || []);
+        if (!features.recordSessions) {
+          setEnabled(false);
+          return;
+        }
         if (serversData.servers?.[0]) {
           setServerId(serversData.servers[0].id);
           const voice =
@@ -194,6 +202,19 @@ export function RecordingsPortal() {
       <div className="recordings-portal">
         <div className="portal-loading">
           <Loader2 size={28} className="animate-spin" /> Loading…
+        </div>
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="recordings-portal">
+        <div className="portal-card portal-empty">
+          <p>Session recording is currently disabled on this Huddle.</p>
+          <a className="portal-btn" href={`${basePath}/`}>
+            <ArrowLeft size={16} /> Go to Huddle
+          </a>
         </div>
       </div>
     );

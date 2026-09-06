@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Fish, Sparkles, Heart } from "lucide-react";
 
 const BLAHAJ_MESSAGES = [
   "You belong in this Huddle.",
@@ -38,9 +39,9 @@ export function BlahajBuddy() {
         aria-label="Boop Blåhaj for a supportive message"
         title="Boop Blåhaj"
       >
-        <span className="blahaj-spark one" aria-hidden="true">✦</span>
-        <span className="blahaj-spark two" aria-hidden="true">♥</span>
-        <span className="blahaj-shark" aria-hidden="true">🦈</span>
+        <span className="blahaj-spark one" aria-hidden="true"><Sparkles size={14} /></span>
+        <span className="blahaj-spark two" aria-hidden="true"><Heart size={14} /></span>
+        <span className="blahaj-shark" aria-hidden="true"><Fish size={34} /></span>
       </button>
     </aside>
   );

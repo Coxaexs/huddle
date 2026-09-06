@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type MouseEvent } from "react";
-import { Volume2 } from "lucide-react";
+import { Volume2, Music2, ExternalLink, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { formatDuration } from "../lib/client";
 
@@ -91,7 +91,7 @@ export function NowPlaying({
         {track.thumbnail ? (
           <img className="now-playing-art" src={track.thumbnail} alt="" />
         ) : (
-          <div className="now-playing-art placeholder">♫</div>
+          <div className="now-playing-art placeholder"><Music2 size={22} /></div>
         )}
         <div className="now-playing-meta">
           <div className="now-playing-title">{track.title}</div>
@@ -114,7 +114,7 @@ export function NowPlaying({
             rel="noreferrer"
             aria-label="Open source"
           >
-            ↗
+            <ExternalLink size={15} />
           </a>
         )}
       </div>
@@ -146,10 +146,10 @@ export function NowPlaying({
             onClick={onToggle}
             aria-label={state?.paused ? "Resume" : "Pause"}
           >
-            {state?.paused ? "▶" : "❚❚"}
+            {state?.paused ? <Play size={16} /> : <Pause size={16} />}
           </button>
           <button type="button" onClick={onSkip} aria-label="Skip">
-            ⏭
+            <SkipForward size={16} />
           </button>
           <label className="now-playing-volume">
             <Volume2 size={16} aria-hidden="true" />

@@ -36,6 +36,8 @@ import {
   Trash2,
   Hash,
   Volume2,
+  VolumeX,
+  Radio,
   Reply,
   MessageSquare,
   Smile,
@@ -47,6 +49,10 @@ import {
   ChevronDown,
   X,
   User,
+  CheckCheck,
+  MoreHorizontal,
+  AudioLines,
+  AtSign,
 } from "lucide-react";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
@@ -276,7 +282,7 @@ function showNotification(title: string, body: string): void {
 function SeenMark() {
   return (
     <span className="seen-mark" title="Seen">
-      ✓✓
+      <CheckCheck size={13} />
     </span>
   );
 }
@@ -328,6 +334,10 @@ export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
   const [ready, setReady] = useState(false);
+  /** Per-host feature flags; defaults to everything on until loaded. */
+  const [features, setFeatures] = useState<{ recordSessions: boolean }>({
+    recordSessions: true,
+  });
 
   // Register the service worker (for web push) once a signed-in user exists.
   useEffect(() => {
@@ -642,6 +652,10 @@ export function ChatShell() {
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
+
+    apiFetch<{ recordSessions: boolean }>("/api/features")
+      .then((data) => setFeatures(data))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -1261,8 +1275,12 @@ export function ChatShell() {
 
   const activeSlashCommand = useMemo(() => {
     if (!draft.startsWith("/")) return undefined;
-    return findCommand(draft);
-  }, [draft]);
+    const command = findCommand(draft);
+    if (command && command.name === "record" && !features.recordSessions) {
+      return undefined;
+    }
+    return command;
+  }, [draft, features.recordSessions]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -1681,6 +1699,10 @@ export function ChatShell() {
     }
 
     if (name === "record") {
+      if (!features.recordSessions) {
+        setNotice("Session recording is disabled on this Huddle.");
+        return;
+      }
       if (!voice.channelId) {
         setNotice("Join the voice room you want to record first.");
         return;
@@ -2186,8 +2208,11 @@ export function ChatShell() {
 
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(
-    () => (slashOpen ? matchCommands(draft.split(/\s+/)[0]) : []),
-    [slashOpen, draft],
+    () =>
+      (slashOpen ? matchCommands(draft.split(/\s+/)[0]) : []).filter(
+        (command) => features.recordSessions || command.name !== "record",
+      ),
+    [slashOpen, draft, features.recordSessions],
   );
   const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
 
@@ -2872,7 +2897,7 @@ export function ChatShell() {
               setChannelMenu({ channel, x: event.clientX, y: event.clientY });
             }}
           >
-            <span className="speaker-icon">◖))</span>
+            <span className="speaker-icon"><Volume2 size={16} /></span>
             <span>{channel.name}</span>
             {people.length > 0 && <span className="live-pill">LIVE</span>}
             {canManageChannels && (
@@ -2951,12 +2976,12 @@ export function ChatShell() {
                       className="muted-pill"
                       title={person.serverMuted ? "Muted for everyone" : "Muted"}
                     >
-                      ⃠
+                      <VolumeX size={14} />
                     </span>
                   )}
                   {person.bot && playing && (
                     <span className="speaking-bars" aria-label="Playing">
-                      ııı
+                      <AudioLines size={14} />
                     </span>
                   )}
                   {person.bot && person.deafened && (
@@ -3256,7 +3281,7 @@ export function ChatShell() {
               }}
             >
               <span className="status-dot" style={{ background: "transparent" }}>
-                ✎
+                <Pencil size={13} />
               </span>
               {myCustomStatus ? "Edit status" : "Set a status"}
             </button>
@@ -3473,21 +3498,21 @@ export function ChatShell() {
                     title="Add category"
                     onClick={() => void addCategory()}
                   >
-                    ▾+
+                    <ChevronDown size={14} /><Plus size={14} />
                   </button>
                   <button
                     aria-label="Add text channel"
                     title="Add text channel"
                     onClick={() => createChannel("text")}
                   >
-                    #+
+                    <Hash size={14} /><Plus size={14} />
                   </button>
                   <button
                     aria-label="Add voice room"
                     title="Add voice room"
                     onClick={() => createChannel("voice")}
                   >
-                    ◖))+
+                    <Volume2 size={14} /><Plus size={14} />
                   </button>
                 </span>
               )}
@@ -3602,7 +3627,7 @@ export function ChatShell() {
             <Menu size={20} />
           </button>
           <span className="big-hash">
-            {stageChannel ? "◖))" : inDmHome ? "@" : "#"}
+            {stageChannel ? <Volume2 size={20} /> : inDmHome ? <AtSign size={20} /> : <Hash size={20} />}
           </span>
           <div className="channel-heading">
             <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
@@ -3707,15 +3732,17 @@ export function ChatShell() {
               if (member) openUserMenu(event, member);
             }}
             recording={
-              <RecordingDirector
-                channelId={stageChannel.id}
-                recording={hub.recordings[stageChannel.id] || null}
-                participants={voiceParticipants}
-                currentUserId={user.id}
-                canControl={canRecordSessions}
-                speaking={voice.speaking}
-                onNotice={setNotice}
-              />
+              features.recordSessions ? (
+                <RecordingDirector
+                  channelId={stageChannel.id}
+                  recording={hub.recordings[stageChannel.id] || null}
+                  participants={voiceParticipants}
+                  currentUserId={user.id}
+                  canControl={canRecordSessions}
+                  speaking={voice.speaking}
+                  onNotice={setNotice}
+                />
+              ) : null
             }
             battlemapOpen={Boolean(battlemap) && !battlemapHidden}
             onToggleBattlemap={() => {
@@ -3758,7 +3785,7 @@ export function ChatShell() {
                 method: "POST",
                 body: JSON.stringify({
                   channelId: activeChannelId,
-                  content: `📎 Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
+                  content: `Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
                   audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
                 }),
               });
@@ -4357,7 +4384,7 @@ export function ChatShell() {
                     )
                   }
                 >
-                  ⋯
+                  <MoreHorizontal size={18} />
                 </button>
                 <div className="message-actions">
                   <div className="quick-reactions">
@@ -4411,7 +4438,7 @@ export function ChatShell() {
                       )
                     }
                   >
-                    🗳️
+                    <Vote size={16} />
                   </button>
                   {message.userId === user.id && !message.bot && (
                     <button

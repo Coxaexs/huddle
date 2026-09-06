@@ -1,3 +1,5 @@
+import { Swords } from "lucide-react";
+
 interface DndCardProps {
   type?: string;
   name?: string;
@@ -40,7 +42,7 @@ export function DndCard({
   return (
     <section className="dnd-card">
       <header>
-        <span className="dnd-card-rune" aria-hidden="true">⚔</span>
+        <span className="dnd-card-rune" aria-hidden="true"><Swords size={20} /></span>
         <div>
           <span className="dnd-card-kicker">{type || "Compendium"}</span>
           <strong>{name}</strong>

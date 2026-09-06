@@ -201,6 +201,25 @@ function cleanState(
       running: Boolean(input.running),
     };
   }
+  if (kind === "initiative") {
+    const round = Math.max(0, Math.min(9999, Number(input.round) || 1));
+    const turnIndex = Math.max(
+      0,
+      Math.min(99, Number(input.turnIndex) || 0),
+    );
+    const entries = Array.isArray(input.entries)
+      ? input.entries.slice(0, 60).map((entry, index) => {
+          const item = (entry || {}) as Record<string, unknown>;
+          return {
+            id: String(item.id || crypto.randomUUID()).slice(0, 80),
+            name: String(item.name || `Combatant ${index + 1}`).slice(0, 60),
+            score: Math.max(-999, Math.min(9999, Number(item.score) || 0)),
+            kind: item.kind === "npc" ? "npc" : "pc",
+          };
+        })
+      : [];
+    return { round, turnIndex, entries };
+  }
   return {};
 }
 
