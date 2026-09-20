@@ -282,3 +282,27 @@ Variables configured in `.dev.vars`:
 - `HUDDLE_ICE_SERVERS`: JSON array of `RTCIceServer` objects for custom STUN/TURN server deployment.
 - `TENOR_API_KEY`: Optional key for animated GIF search in the composer.
 - `MUSICWATCH_PASSWORD`: Optional password for the external music dashboard.
+
+## License
+
+Hoffle is free and open-source software licensed under the **[GNU Affero General Public License v3.0 (GNU AGPLv3)](LICENSE)**.
+
+Under this license:
+- You are free to run, study, modify, and distribute Hoffle.
+- If you run a modified version of Hoffle on a server and provide network services to users, you are required to make the complete corresponding source code of that modified version available to those users under the GNU AGPLv3.
+
+See the [LICENSE](LICENSE) file for the full license terms and conditions.
+
+## Third-Party Open Source Attributions
+
+Hoffle is built with and grateful to the following open source projects and communities:
+- **React** (MIT License) - Meta Platforms, Inc.
+- **Three.js** (MIT License) - Ricardo Cabello (mrdoob) and Three.js authors
+- **Lucide Icons** (ISC License) - Lucide Contributors
+- **RNNoise** (Apache-2.0 License) - Jean-Marc Valin / Xiph.Org Foundation
+- **pdf-lib** & **@pdf-lib/fontkit** (MIT & Apache-2.0 Licenses) - Andrew Dillon / Hopding
+- **pdfjs-dist** (Apache-2.0 License) - Mozilla Foundation
+- **@3d-dice/dice-box** (MIT License) - Frank S
+- **yt-dlp** (The Unlicense) - yt-dlp contributors
+- **ffmpeg** (LGPL / GPL) - FFmpeg team
+
