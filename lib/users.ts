@@ -65,6 +65,14 @@ export interface Member {
   customStatus?: string | null;
   /** Role ids this member holds, keyed by server id. */
   roleIds?: Record<string, string[]>;
+  /** Invite details through which this member joined the server, if any. */
+  joinedVia?: {
+    code: string;
+    createdById?: string | null;
+    creatorName?: string | null;
+    creatorUsername?: string | null;
+  } | null;
+  joinedAt?: string | null;
 }
 
 export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";

@@ -143,6 +143,7 @@ async function migrate(db: D1Database): Promise<void> {
         server_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         joined_at TEXT NOT NULL,
+        invite_code TEXT,
         PRIMARY KEY (server_id, user_id)
       )`),
     db.prepare(
@@ -587,6 +588,13 @@ async function migrate(db: D1Database): Promise<void> {
   const inviteColumns = await columnNames(db, "invites");
   if (!inviteColumns.has("server_id")) {
     await db.prepare("ALTER TABLE invites ADD COLUMN server_id TEXT").run();
+  }
+
+  const memberColumns = await columnNames(db, "server_members");
+  if (!memberColumns.has("invite_code")) {
+    await db
+      .prepare("ALTER TABLE server_members ADD COLUMN invite_code TEXT")
+      .run();
   }
 
   const recordingColumns = await columnNames(db, "recording_sessions");

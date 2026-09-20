@@ -41,6 +41,7 @@ import {
   Reply,
   MessageSquare,
   Smile,
+  SmilePlus,
   Paperclip,
   ArrowUp,
   PhoneCall,
@@ -51,9 +52,27 @@ import {
   User,
   CheckCheck,
   MoreHorizontal,
-  AudioLines,
   AtSign,
+  Send,
+  PhoneOff,
+  VideoOff,
+  Mic,
+  MicOff,
+  Headphones,
+  AudioLines,
+  Monitor,
+  Maximize2,
 } from "lucide-react";
+import {
+  startCallingTone,
+  stopCallingTone,
+  startIncomingCallTone,
+  stopIncomingCallTone,
+  playCallAnswerSound,
+  playCallEndSound,
+  playScreenShareStartSound,
+  playScreenShareStopSound,
+} from "./lib/audio-cues";
 import { AuthGate } from "./components/auth-gate";
 import { Avatar } from "./components/avatar";
 import {
@@ -65,6 +84,10 @@ import { DiceOverlay } from "./components/dice-overlay";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
 import { MessageBody } from "./components/message-body";
+import {
+  ServerInviteCard,
+  type ResolvedInvite,
+} from "./components/server-invite-card";
 import { BattlemapBoard } from "./components/battlemap";
 import { useBattlemap } from "./hooks/use-battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
@@ -117,7 +140,6 @@ import {
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
-import { ProfileSettingsDialog } from "./components/profile-settings-dialog";
 import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
@@ -218,6 +240,28 @@ const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
 type MentionOption =
   | { kind: "user"; member: Member }
   | { kind: "role"; role: PublicRole };
+
+function formatClientTime(createdAt?: string, fallbackTime?: string): string {
+  if (!createdAt) return fallbackTime || "";
+  try {
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) return fallbackTime || "";
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return fallbackTime || "";
+  }
+}
+
+function formatClientDateTime(createdAt?: string): string {
+  if (!createdAt) return "";
+  try {
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "";
+  }
+}
 
 function Icon({
   children,
@@ -330,6 +374,21 @@ function volumeGain(percent: number): number {
   return normalized * normalized;
 }
 
+/** Extracts server invite codes from text that contain hangout invite links or codes. */
+export function extractInviteCodes(text: string): string[] {
+  if (!text) return [];
+  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})\b/gi;
+  const codes: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = inviteRegex.exec(text)) !== null) {
+    const code = match[1]?.toUpperCase();
+    if (code && !codes.includes(code)) {
+      codes.push(code);
+    }
+  }
+  return codes;
+}
+
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
@@ -401,6 +460,37 @@ export function ChatShell() {
   );
   /** Which message's quick-vote chips are currently open. */
   const [quickVoteId, setQuickVoteId] = useState<string | number | null>(null);
+  /** Which message currently has the emoji reaction picker popover open with screen coordinates. */
+  const [reactionPicker, setReactionPicker] = useState<{
+    messageId: string | number;
+    top: number;
+    right: number;
+  } | null>(null);
+
+  /** Server invites resolved for rendering rich Discord-style invite cards in chat. */
+  const [resolvedInvites, setResolvedInvites] = useState<
+    Record<string, ResolvedInvite>
+  >({});
+  const fetchingInvitesRef = useRef<Set<string>>(new Set());
+
+  const handleOpenReactionPicker = (
+    e: React.MouseEvent,
+    messageId: string | number,
+  ) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pickerHeight = 450;
+    const margin = 16;
+    let top = rect.top - 200;
+    if (top < margin) top = margin;
+    if (top + pickerHeight > window.innerHeight - margin) {
+      top = window.innerHeight - pickerHeight - margin;
+    }
+    const right = Math.max(margin, window.innerWidth - rect.left + 8);
+    setReactionPicker((current) =>
+      current?.messageId === messageId ? null : { messageId, top, right },
+    );
+  };
   /** The DM partner's read position, for "seen" receipts. */
   const [partnerReadAt, setPartnerReadAt] = useState<{
     channelId: string | null;
@@ -411,7 +501,117 @@ export function ChatShell() {
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
   );
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"cozy" | "legacy" | "light">("cozy");
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 240;
+    const saved = Number(window.localStorage.getItem("huddle-sidebar-width"));
+    return saved >= 160 && saved <= 450 ? saved : 240;
+  });
+  const [membersWidth, setMembersWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 250;
+    const saved = Number(window.localStorage.getItem("huddle-members-width"));
+    return saved >= 180 && saved <= 450 ? saved : 250;
+  });
+
+  const sidebarDragging = useRef(false);
+  const sidebarStartX = useRef(0);
+  const sidebarStartW = useRef(240);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+
+  const membersDragging = useRef(false);
+  const membersStartX = useRef(0);
+  const membersStartW = useRef(250);
+  const membersWidthRef = useRef(membersWidth);
+  membersWidthRef.current = membersWidth;
+
+  const [threadWidth, setThreadWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 420;
+    const saved = Number(window.localStorage.getItem("huddle-thread-width"));
+    return saved >= 300 && saved <= 650 ? saved : 420;
+  });
+  const threadDragging = useRef(false);
+  const threadStartX = useRef(0);
+  const threadStartW = useRef(420);
+  const threadWidthRef = useRef(threadWidth);
+  threadWidthRef.current = threadWidth;
+
+  const onSidebarResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sidebarDragging.current = true;
+    sidebarStartX.current = e.clientX;
+    sidebarStartW.current = sidebarWidthRef.current;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const onMembersResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    membersDragging.current = true;
+    membersStartX.current = e.clientX;
+    membersStartW.current = membersWidthRef.current;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const onThreadResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    threadDragging.current = true;
+    threadStartX.current = e.clientX;
+    threadStartW.current = threadWidthRef.current;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const move = (e: globalThis.MouseEvent) => {
+      if (sidebarDragging.current) {
+        const delta = e.clientX - sidebarStartX.current;
+        const next = Math.min(460, Math.max(160, sidebarStartW.current + delta));
+        setSidebarWidth(next);
+      }
+      if (membersDragging.current) {
+        const delta = membersStartX.current - e.clientX;
+        const next = Math.min(460, Math.max(180, membersStartW.current + delta));
+        setMembersWidth(next);
+      }
+      if (threadDragging.current) {
+        const delta = threadStartX.current - e.clientX;
+        const next = Math.min(650, Math.max(300, threadStartW.current + delta));
+        setThreadWidth(next);
+      }
+    };
+    const up = () => {
+      if (sidebarDragging.current) {
+        sidebarDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.localStorage.setItem("huddle-sidebar-width", String(sidebarWidthRef.current));
+      }
+      if (membersDragging.current) {
+        membersDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.localStorage.setItem("huddle-members-width", String(membersWidthRef.current));
+      }
+      if (threadDragging.current) {
+        threadDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.localStorage.setItem("huddle-thread-width", String(threadWidthRef.current));
+      }
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -678,6 +878,97 @@ export function ChatShell() {
     loadChannelPrefs,
   ]);
 
+  // Detect and redeem invite links on load (e.g. /hangout?CODE, ?servercode=CODE, ?code=CODE, ?invite=CODE)
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const search = window.location.search;
+      let code = "";
+      if (search) {
+        const params = new URLSearchParams(search);
+        code = (
+          params.get("code") ||
+          params.get("servercode") ||
+          params.get("invite") ||
+          ""
+        ).trim();
+        // Also support ?SERVERCODE (e.g. /hangout?HX3F-9K2Q without key=value)
+        if (!code && search.length > 1 && !search.includes("=")) {
+          code = decodeURIComponent(search.slice(1)).trim();
+        }
+      }
+      if (code) {
+        const inviteCode = code.toUpperCase();
+        void apiFetch<{
+          serverId: string;
+          servers: PublicServer[];
+          alreadyMember?: boolean;
+        }>("/api/servers/membership", {
+          method: "POST",
+          body: JSON.stringify({ action: "join", code: inviteCode }),
+        })
+          .then((data) => {
+            setServers(data.servers);
+            setActiveServerId(data.serverId);
+            setNotice(
+              data.alreadyMember
+                ? "You are already a member of this server."
+                : "Joined server via invite link!",
+            );
+            const cleanPath = window.location.pathname.startsWith("/hangout")
+              ? "/"
+              : window.location.pathname;
+            window.history.replaceState({}, document.title, cleanPath);
+          })
+          .catch((err) => {
+            setNotice(
+              err instanceof Error ? err.message : "Invalid or expired invite link.",
+            );
+          });
+      }
+    } catch {
+      // ignore
+    }
+  }, [user]);
+
+  // Resolves server invite codes found in visible chat messages so we can render Discord-style invite cards
+  useEffect(() => {
+    if (!user) return;
+    const codesToFetch: string[] = [];
+    const checkText = (txt?: string) => {
+      if (!txt) return;
+      const found = extractInviteCodes(txt);
+      for (const code of found) {
+        if (!resolvedInvites[code] && !fetchingInvitesRef.current.has(code)) {
+          codesToFetch.push(code);
+          fetchingInvitesRef.current.add(code);
+        }
+      }
+    };
+
+    messages.forEach((m) => checkText(m.text));
+    threadMessages.forEach((m) => checkText(m.text));
+    if (threadRoot) checkText(threadRoot.text);
+
+    if (codesToFetch.length === 0) return;
+
+    codesToFetch.forEach((code) => {
+      apiFetch<ResolvedInvite>(`/api/invites/resolve?code=${encodeURIComponent(code)}`)
+        .then((res) => {
+          setResolvedInvites((prev) => ({ ...prev, [code]: res }));
+        })
+        .catch(() => {
+          setResolvedInvites((prev) => ({
+            ...prev,
+            [code]: { code, valid: false },
+          }));
+        })
+        .finally(() => {
+          fetchingInvitesRef.current.delete(code);
+        });
+    });
+  }, [user, messages, threadMessages, threadRoot, resolvedInvites]);
+
   // Opening a channel marks it read.
   useEffect(() => {
     if (!activeChannelId) return;
@@ -942,6 +1233,8 @@ export function ChatShell() {
   const voiceEvictedRef = useRef<() => void>(() => {});
   /** Joins another voice channel when a moderator moves this account. */
   const voiceMoveRef = useRef<(channelId: string) => void>(() => {});
+  /** DM call signaling listener ref */
+  const onDmCallRef = useRef<((payload: any) => void) | null>(null);
   /** The open thread, readable from socket handlers without re-subscribing. */
   const threadRootRef = useRef<Message | null>(null);
   threadRootRef.current = threadRoot;
@@ -1078,6 +1371,7 @@ export function ChatShell() {
       voiceEvictedRef.current();
     },
     onVoiceMove: (channelId) => voiceMoveRef.current(channelId),
+    onDmCall: (payload) => onDmCallRef.current?.(payload),
   });
 
   const voice = useVoice({
@@ -1257,7 +1551,6 @@ export function ChatShell() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
-  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
 
   useActivityDetector({
@@ -1414,8 +1707,9 @@ export function ChatShell() {
   }, [activeChannelId, messages, messagesLoadedFor]);
 
   useEffect(() => {
-    const preferred =
-      window.localStorage.getItem("huddle-theme") === "light" ? "light" : "dark";
+    const saved = window.localStorage.getItem("huddle-theme");
+    const preferred: "cozy" | "legacy" | "light" =
+      saved === "legacy" ? "legacy" : saved === "light" ? "light" : "cozy";
     const root = document.documentElement;
     root.dataset.theme = preferred;
     root.dataset.density =
@@ -1477,7 +1771,7 @@ export function ChatShell() {
 
   // ------------------------------------------------------------- actions
 
-  function applyTheme(next: "dark" | "light") {
+  function applyTheme(next: "cozy" | "legacy" | "light") {
     setTheme(next);
     document.documentElement.dataset.theme = next;
     window.localStorage.setItem("huddle-theme", next);
@@ -2082,9 +2376,21 @@ export function ChatShell() {
     }).catch(() => undefined);
   }
 
+  const threadBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (threadRoot && threadBottomRef.current) {
+      threadBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [threadRoot?.id, threadMessages.length]);
+
   async function openThread(message: Message) {
     setThreadRoot(message);
     setThreadDraft("");
+    // If window is < 1300px, automatically close member panel to leave ample room for chat + thread
+    if (typeof window !== "undefined" && window.innerWidth < 1300 && membersOpen) {
+      setMembersOpen(false);
+    }
     const data = await apiFetch<{ messages: Message[] }>(
       `/api/messages?threadId=${encodeURIComponent(String(message.id))}`,
     ).catch(() => ({ messages: [] as Message[] }));
@@ -2139,6 +2445,248 @@ export function ChatShell() {
       body: JSON.stringify({ content }),
     }).catch((error: Error) => setNotice(error.message));
   }
+
+  const [incomingDmCall, setIncomingDmCall] = useState<{
+    channelId: string;
+    fromUserId: string;
+    fromDisplayName: string;
+    fromAvatar: string;
+    fromAvatarUrl?: string | null;
+    isVideo?: boolean;
+  } | null>(null);
+
+  const [dmCall, setDmCall] = useState<{
+    channelId: string;
+    otherUser: { id: string; displayName: string; avatar?: string; avatarUrl?: string | null; color?: string };
+    status: "calling" | "connected";
+    startTime: number;
+    isVideo?: boolean;
+  } | null>(null);
+  const dmCallRef = useRef(dmCall);
+  dmCallRef.current = dmCall;
+  const callingTimeoutRef = useRef<number | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
+
+  useEffect(() => {
+    if (!dmCall || dmCall.status !== "connected") {
+      setCallDuration(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setCallDuration(Math.max(0, Math.floor((Date.now() - dmCall.startTime) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [dmCall]);
+
+  const endDmCall = useCallback(
+    (missed = false) => {
+      stopCallingTone();
+      stopIncomingCallTone();
+      playCallEndSound();
+      if (callingTimeoutRef.current) {
+        window.clearTimeout(callingTimeoutRef.current);
+        callingTimeoutRef.current = null;
+      }
+      const currentCall = dmCallRef.current;
+      if (currentCall && currentCall.status === "calling") {
+        hub.send({
+          t: "dm-call",
+          channelId: currentCall.channelId,
+          targetUserId: currentCall.otherUser.id,
+          action: "cancel",
+        });
+      }
+      if (missed && activeChannelId && user) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        const dateStr = now.toLocaleDateString([], { month: "short", day: "numeric" });
+        void sendText(`📞 Missed call from ${user.displayName} on ${dateStr} at ${timeStr}`);
+      }
+      voice.leave();
+      setDmCall(null);
+    },
+    [activeChannelId, user, voice, hub],
+  );
+
+  const startDmCall = useCallback(
+    (video = false) => {
+      if (!activeDm || !activeChannelId || !user) return;
+      setDmCall({
+        channelId: activeChannelId,
+        otherUser: activeDm.user,
+        status: "calling",
+        startTime: Date.now(),
+        isVideo: video,
+      });
+      startCallingTone();
+      void voice.join(activeChannelId);
+      if (video) void voice.startCamera();
+
+      hub.send({
+        t: "dm-call",
+        channelId: activeChannelId,
+        targetUserId: activeDm.user.id,
+        action: "call",
+        isVideo: video,
+      });
+
+      if (callingTimeoutRef.current) window.clearTimeout(callingTimeoutRef.current);
+      callingTimeoutRef.current = window.setTimeout(() => {
+        endDmCall(true);
+      }, 35000);
+    },
+    [activeDm, activeChannelId, user, voice, hub, endDmCall],
+  );
+
+  const acceptIncomingCall = useCallback(() => {
+    if (!incomingDmCall || !user) return;
+    const callInfo = incomingDmCall;
+    stopIncomingCallTone();
+    setIncomingDmCall(null);
+
+    hub.send({
+      t: "dm-call",
+      channelId: callInfo.channelId,
+      targetUserId: callInfo.fromUserId,
+      action: "accept",
+    });
+
+    setActiveServerId(DM_HOME);
+    setActiveChannelId(callInfo.channelId);
+    setDmCall({
+      channelId: callInfo.channelId,
+      otherUser: {
+        id: callInfo.fromUserId,
+        displayName: callInfo.fromDisplayName,
+        avatar: callInfo.fromAvatar,
+        avatarUrl: callInfo.fromAvatarUrl,
+      },
+      status: "connected",
+      startTime: Date.now(),
+      isVideo: callInfo.isVideo,
+    });
+
+    playCallAnswerSound();
+    void voice.join(callInfo.channelId);
+    if (callInfo.isVideo) void voice.startCamera();
+  }, [incomingDmCall, user, hub, voice]);
+
+  const declineIncomingCall = useCallback(() => {
+    if (!incomingDmCall) return;
+    const callInfo = incomingDmCall;
+    stopIncomingCallTone();
+    setIncomingDmCall(null);
+
+    hub.send({
+      t: "dm-call",
+      channelId: callInfo.channelId,
+      targetUserId: callInfo.fromUserId,
+      action: "decline",
+    });
+  }, [incomingDmCall, hub]);
+
+  // Wire up incoming DM call socket handler
+  useEffect(() => {
+    onDmCallRef.current = (payload: {
+      channelId: string;
+      fromUserId: string;
+      fromDisplayName: string;
+      fromAvatar: string;
+      fromAvatarUrl?: string | null;
+      action: "call" | "accept" | "decline" | "cancel";
+      isVideo?: boolean;
+    }) => {
+      if (payload.action === "call") {
+        if (payload.fromUserId === user?.id) return;
+        startIncomingCallTone();
+        setIncomingDmCall({
+          channelId: payload.channelId,
+          fromUserId: payload.fromUserId,
+          fromDisplayName: payload.fromDisplayName,
+          fromAvatar: payload.fromAvatar,
+          fromAvatarUrl: payload.fromAvatarUrl,
+          isVideo: payload.isVideo,
+        });
+      } else if (payload.action === "accept") {
+        stopCallingTone();
+        playCallAnswerSound();
+        if (callingTimeoutRef.current) {
+          window.clearTimeout(callingTimeoutRef.current);
+          callingTimeoutRef.current = null;
+        }
+        setDmCall((curr) =>
+          curr ? { ...curr, status: "connected", startTime: Date.now() } : null,
+        );
+      } else if (payload.action === "decline") {
+        stopCallingTone();
+        playCallEndSound();
+        if (callingTimeoutRef.current) {
+          window.clearTimeout(callingTimeoutRef.current);
+          callingTimeoutRef.current = null;
+        }
+        setDmCall(null);
+        voice.leave();
+        setNotice(`${payload.fromDisplayName} declined the call.`);
+      } else if (payload.action === "cancel") {
+        stopIncomingCallTone();
+        setIncomingDmCall(null);
+      }
+    };
+  }, [user, voice]);
+
+  // Clean up tones on unmount
+  useEffect(() => {
+    return () => {
+      stopCallingTone();
+      stopIncomingCallTone();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dmCall) return;
+    if (dmCall.status === "calling") {
+      const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
+      if (otherInRoom) {
+        stopCallingTone();
+        playCallAnswerSound();
+        if (callingTimeoutRef.current) {
+          window.clearTimeout(callingTimeoutRef.current);
+          callingTimeoutRef.current = null;
+        }
+        setDmCall((curr) => (curr ? { ...curr, status: "connected", startTime: Date.now() } : null));
+      }
+    } else if (dmCall.status === "connected") {
+      const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
+      if (!otherInRoom && voiceParticipants.length <= 1) {
+        endDmCall(false);
+      }
+    }
+  }, [voiceParticipants, dmCall, endDmCall]);
+
+  // Peer screen sharing sound tracker
+  const prevPeerScreenShares = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentScreenPeers = new Set(
+      voiceParticipants
+        .filter((p) => p.connectionId !== hub.connectionId && !!p.screenStreamId)
+        .map((p) => p.connectionId),
+    );
+    if (voice.channelId) {
+      for (const id of currentScreenPeers) {
+        if (!prevPeerScreenShares.current.has(id)) {
+          playScreenShareStartSound();
+          break;
+        }
+      }
+      for (const id of prevPeerScreenShares.current) {
+        if (!currentScreenPeers.has(id)) {
+          playScreenShareStopSound();
+          break;
+        }
+      }
+    }
+    prevPeerScreenShares.current = currentScreenPeers;
+  }, [voiceParticipants, voice.channelId, hub.connectionId]);
 
   async function runSearch(query: string) {
     setSearchQuery(query);
@@ -2383,34 +2931,69 @@ export function ChatShell() {
     }
   }
 
+  /** Redeems a server invite code or link directly and jumps into the joined server. */
+  async function joinServerDirect(rawInput?: string) {
+    if (!rawInput?.trim()) return;
+    let code = rawInput.trim();
+    if (code.includes("?") || code.includes("/")) {
+      try {
+        const url = new URL(code.startsWith("http") ? code : `https://${code}`);
+        code =
+          url.searchParams.get("code") ||
+          url.searchParams.get("servercode") ||
+          url.searchParams.get("invite") ||
+          url.search.slice(1) ||
+          code;
+      } catch {
+        const qIdx = code.indexOf("?");
+        if (qIdx !== -1) code = code.slice(qIdx + 1);
+      }
+    }
+    code = code
+      .replace(/^code=/i, "")
+      .replace(/^servercode=/i, "")
+      .replace(/^invite=/i, "")
+      .trim()
+      .toUpperCase();
+    if (!code) return;
+    try {
+      const data = await apiFetch<{
+        serverId: string;
+        servers: PublicServer[];
+        alreadyMember?: boolean;
+      }>("/api/servers/membership", {
+        method: "POST",
+        body: JSON.stringify({ action: "join", code }),
+      });
+      setServers(data.servers);
+      setActiveServerId(data.serverId);
+      setResolvedInvites((prev) => {
+        const existing = prev[code];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [code]: { ...existing, isMember: true },
+        };
+      });
+      setNotice(
+        data.alreadyMember
+          ? "Switched to server."
+          : "Joined the server.",
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not join.");
+    }
+  }
+
   /** Redeems a server invite code and jumps into the joined server. */
   async function joinServerByCode() {
     showCustomPrompt({
       title: "Join a Server",
-      message: "Paste the invite code a friend gave you:",
-      placeholder: "e.g. HX3F-9K2Q",
+      message: "Paste the invite code or invite link:",
+      placeholder: "e.g. HX3F-9K2Q or deeppixel.online/hangout?HX3F-9K2Q",
       confirmText: "Join Server",
-      onConfirm: async (code) => {
-        if (!code?.trim()) return;
-        try {
-          const data = await apiFetch<{
-            serverId: string;
-            servers: PublicServer[];
-            alreadyMember?: boolean;
-          }>("/api/servers/membership", {
-            method: "POST",
-            body: JSON.stringify({ action: "join", code: code.trim() }),
-          });
-          setServers(data.servers);
-          setActiveServerId(data.serverId);
-          setNotice(
-            data.alreadyMember
-              ? "You are already in that server."
-              : "Joined the server.",
-          );
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not join.");
-        }
+      onConfirm: async (rawInput) => {
+        await joinServerDirect(rawInput);
       },
     });
   }
@@ -2613,6 +3196,29 @@ export function ChatShell() {
     window.setTimeout(() => composerRef.current?.focus(), 0);
   }
 
+  const dmMembers: Member[] = useMemo(() => {
+    if (!inDmHome || !activeDm || !user) return members;
+    const meAsMember: Member = {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl,
+      color: user.color,
+      lastSeenAt: new Date().toISOString(),
+    };
+    const otherAsMember: Member = {
+      id: activeDm.user.id,
+      username: activeDm.user.username,
+      displayName: activeDm.user.displayName,
+      avatar: activeDm.user.avatar,
+      avatarUrl: activeDm.user.avatarUrl,
+      color: activeDm.user.color,
+      lastSeenAt: new Date().toISOString(),
+    };
+    return [meAsMember, otherAsMember];
+  }, [inDmHome, activeDm, members, user]);
+
   // --------------------------------------------------------------- render
 
   if (!ready) {
@@ -2637,20 +3243,35 @@ export function ChatShell() {
     );
   }
 
-  const onlineMembers = members.filter((member) => hub.online.has(member.id));
-  const offlineMembers = members.filter((member) => !hub.online.has(member.id));
+  const displayedMembers = inDmHome ? dmMembers : members;
+  const onlineMembers = displayedMembers.filter((member) => hub.online.has(member.id));
+  const offlineMembers = displayedMembers.filter((member) => !hub.online.has(member.id));
   const currentVoiceChannel = voiceChannels.find(
     (channel) => channel.id === voice.channelId,
   );
+  const stageDm = stageChannelId
+    ? dms.find((d) => d.channelId === stageChannelId)
+    : null;
+
   // The voice channel whose stage fills the main column, if any. Falls back to
-  // the connected room's channel across servers so switching servers keeps it.
-  const stageChannel =
-    (stageChannelId
-      ? voiceChannels.find((channel) => channel.id === stageChannelId) ||
-        servers
-          .flatMap((server) => server.channels)
-          .find((channel) => channel.id === stageChannelId)
-      : null) || null;
+  // the connected room's channel across servers or DMs so switching servers keeps it.
+  const stageChannel: PublicChannel | null = stageChannelId
+    ? voiceChannels.find((channel) => channel.id === stageChannelId) ||
+      servers
+        .flatMap((server) => server.channels)
+        .find((channel) => channel.id === stageChannelId) ||
+      (stageDm
+        ? {
+            id: stageDm.channelId,
+            serverId: "",
+            name: stageDm.user.displayName,
+            kind: "voice" as const,
+            topic: `Direct call with ${stageDm.user.displayName}`,
+            position: 0,
+            categoryId: null,
+          }
+        : null)
+    : null;
 
   /** Open a voice channel's stage and join it (without ever leaving on re-click). */
   function openVoiceChannel(channel: PublicChannel) {
@@ -3145,7 +3766,14 @@ export function ChatShell() {
   ];
 
   return (
-    <main className={`app-shell ${mobileNav ? "nav-open" : ""}`}>
+    <main
+      className={`app-shell ${mobileNav ? "nav-open" : ""} ${threadRoot ? "has-thread" : ""} ${membersOpen && !stageChannel ? "has-members" : ""}`}
+      style={{
+        "--sidebar-w": `${sidebarWidth}px`,
+        "--thread-w": threadRoot ? `${threadWidth}px` : "0px",
+        "--members-w": membersOpen && !stageChannel ? `${membersWidth}px` : "0px",
+      } as React.CSSProperties}
+    >
       {/* The roller's own dice animation, shown regardless of view. When the
           dice settle, the actual values are submitted as the authoritative
           roll and broadcast to everyone. */}
@@ -3170,68 +3798,75 @@ export function ChatShell() {
         aria-hidden="true"
       />
       <aside className="rail" aria-label="Servers">
-        <button
-          className={`brand-mark ${inDmHome ? "active-space" : ""}`}
-          aria-label="Direct messages"
-          title="Direct messages"
-          onClick={() => {
-            setActiveServerId(DM_HOME);
-            setActiveChannelId(dms[0]?.channelId || null);
-            setStageChannelId(null);
-          }}
-        >
-          h
-          {dmUnreadTotal > 0 && !inDmHome && (
-            <span className="rail-badge">{dmUnreadTotal}</span>
-          )}
-        </button>
-
-        {/* Unread DMs ride the rail like Discord: sender's picture + count. */}
-        {dmUnread.map(({ dm, count }) => (
+        <div className="rail-item">
+          {inDmHome && <span className="rail-active-pill" />}
           <button
-            key={dm.channelId}
-            className="rail-dm"
-            title={`${dm.user.displayName} · ${count} new`}
-            aria-label={`${dm.user.displayName}, ${count} unread`}
+            className={`brand-mark ${inDmHome ? "active-space" : ""}`}
+            aria-label="Direct messages"
+            title="Direct messages"
             onClick={() => {
               setActiveServerId(DM_HOME);
-              setActiveChannelId(dm.channelId);
+              setActiveChannelId(dms[0]?.channelId || null);
               setStageChannelId(null);
+              setMobileNav(false);
             }}
           >
-            <Avatar
-              className="rail-dm-avatar"
-              avatar={dm.user.avatar}
-              avatarUrl={dm.user.avatarUrl}
-              color={dm.user.color}
-            />
-            <span className="rail-badge">{count}</span>
-          </button>
-        ))}
-
-        <div className="rail-divider" />
-        {servers.map((server) => (
-          <button
-            key={server.id}
-            className={`space-mark ${server.id === activeServerId ? "active-space" : ""}`}
-            style={
-              server.id === activeServerId ? { background: server.color } : undefined
-            }
-            aria-label={server.name}
-            title={server.name}
-            onClick={() => setActiveServerId(server.id)}
-          >
-            {server.iconUrl ? (
-              <img
-                src={server.iconUrl}
-                alt={server.name}
-                style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-              />
-            ) : (
-              server.icon
+            CC
+            {dmUnreadTotal > 0 && !inDmHome && (
+              <span className="rail-badge">{dmUnreadTotal}</span>
             )}
           </button>
-        ))}
+        </div>
+
+        <div className="rail-divider" />
+        {servers.map((server) => {
+          const isActive = server.id === activeServerId;
+          const initials =
+            server.name
+              .split(/\s+/)
+              .map((w) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase() || "SV";
+          return (
+            <div key={server.id} className="rail-item">
+              {isActive && (
+                <span
+                  className="rail-active-pill"
+                  style={{ background: server.color || "#a78bfa" }}
+                />
+              )}
+              <button
+                className={`space-mark ${isActive ? "active-space" : ""}`}
+                style={
+                  isActive ? { background: server.color || "#a78bfa" } : undefined
+                }
+                aria-label={server.name}
+                title={server.name}
+                onClick={() => {
+                  setActiveServerId(server.id);
+                  setStageChannelId(null);
+                  setMobileNav(false);
+                }}
+              >
+                {server.iconUrl ? (
+                  <img
+                    src={server.iconUrl}
+                    alt={server.name}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "14px",
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (
+                  server.icon || initials
+                )}
+              </button>
+            </div>
+          );
+        })}
         <button
           className="space-mark add-space"
           aria-label="Create a server"
@@ -3240,6 +3875,52 @@ export function ChatShell() {
         >
           +
         </button>
+
+        <div className="rail-divider" />
+
+        {/* Quick DMs directly on rail from Figma design */}
+        {dms.slice(0, 4).map((dm) => {
+          const isActive = inDmHome && activeChannelId === dm.channelId;
+          const count = unread[dm.channelId]?.count || 0;
+          const isOnline = hub.online.has(dm.user.id);
+          return (
+            <div key={dm.channelId} className="rail-item">
+              {isActive && (
+                <span
+                  className="rail-active-pill"
+                  style={{ background: dm.user.color || "#a78bfa" }}
+                />
+              )}
+              <button
+                className={`rail-dm ${isActive ? "active-space" : ""}`}
+                title={`${dm.user.displayName}${count > 0 ? ` · ${count} new` : ""}`}
+                aria-label={`${dm.user.displayName}, ${count} unread`}
+                onClick={() => {
+                  setActiveServerId(DM_HOME);
+                  setActiveChannelId(dm.channelId);
+                  setStageChannelId(null);
+                  setMobileNav(false);
+                }}
+              >
+                <div className="relative flex-shrink-0">
+                  <Avatar
+                    className="rail-dm-avatar"
+                    avatar={dm.user.avatar}
+                    avatarUrl={dm.user.avatarUrl}
+                    color={dm.user.color}
+                  />
+                  <span
+                    className={`rail-dm-online-dot ${isOnline ? "online" : "offline"}`}
+                  />
+                  {hub.voice[dm.channelId]?.length > 0 && (
+                    <span className="dm-call-active-indicator" title="Active voice call" />
+                  )}
+                </div>
+                {count > 0 && <span className="rail-badge">{count}</span>}
+              </button>
+            </div>
+          );
+        })}
         <div className="rail-spacer" />
 
         {statusOpen && (
@@ -3289,7 +3970,7 @@ export function ChatShell() {
               type="button"
               onClick={() => {
                 setStatusOpen(false);
-                setProfileSettingsOpen(true);
+                setSettingsOpen(true);
               }}
             >
               <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
@@ -3339,6 +4020,17 @@ export function ChatShell() {
       </aside>
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
+        {/* Mobile close button from Figma */}
+        <div className="mobile-drawer-header md:hidden">
+          <button
+            type="button"
+            className="mobile-drawer-close"
+            onClick={() => setMobileNav(false)}
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
+        </div>
         {activeServer?.bannerUrl && !inDmHome && (
           <div
             className="server-banner-header"
@@ -3474,6 +4166,9 @@ export function ChatShell() {
                 />
                 <span>{dm.user.displayName}</span>
                 {hub.online.has(dm.user.id) && <i className="dm-online" />}
+                {hub.voice[dm.channelId]?.length > 0 && (
+                  <PhoneCall size={12} className="text-green-400 ml-auto animate-pulse" />
+                )}
                 {(unread[dm.channelId]?.count ?? 0) > 0 && (
                   <span className="mention-badge">
                     {unread[dm.channelId].count}
@@ -3580,6 +4275,57 @@ export function ChatShell() {
           </nav>
         )}
 
+        {/* Mini voice bar - seamless top extension of discord-user-footer */}
+        {voice.channelId && (
+          <div className="mini-voice-bar">
+            <div className="mini-voice-bar-header">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="mini-voice-dot animate-pulse" />
+                <div className="mini-voice-info min-w-0">
+                  <span className="mini-voice-name truncate">
+                    {servers
+                      .flatMap((s) => s.channels)
+                      .find((c) => c.id === voice.channelId)?.name || "Voice Connected"}
+                  </span>
+                  <span className="mini-voice-status">voice connected</span>
+                </div>
+              </div>
+              <div className="mini-voice-actions flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  className={`mini-voice-btn ${voice.screenSharing ? "on" : ""}`}
+                  onClick={() =>
+                    voice.screenSharing
+                      ? voice.stopScreenShare()
+                      : void voice.startScreenShare()
+                  }
+                  title={voice.screenSharing ? "Stop sharing screen" : "Share screen"}
+                >
+                  <Monitor size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={`mini-voice-btn ${voice.cameraOn ? "on" : ""}`}
+                  onClick={() =>
+                    voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
+                  }
+                  title={voice.cameraOn ? "Turn camera off" : "Camera"}
+                >
+                  {voice.cameraOn ? <VideoOff size={14} /> : <Video size={14} />}
+                </button>
+                <button
+                  type="button"
+                  className="mini-voice-leave"
+                  onClick={() => voice.leave()}
+                  title="Disconnect"
+                >
+                  <PhoneOff size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {user && (
           <UserFooter
             user={user}
@@ -3591,9 +4337,16 @@ export function ChatShell() {
             onToggleDeafen={voice.toggleDeafen}
             onOpenStatusMenu={() => setStatusOpen((o) => !o)}
             onOpenSettings={() => setSettingsOpen(true)}
-            onOpenProfileSettings={() => setProfileSettingsOpen(true)}
+            onOpenProfileSettings={() => setSettingsOpen(true)}
           />
         )}
+
+        {/* Sidebar Resize Handle (Desktop) */}
+        <div
+          className="sidebar-resize-handle"
+          onMouseDown={onSidebarResizeDown}
+          title="Drag to resize channels"
+        />
       </aside>
 
       <section
@@ -3649,29 +4402,54 @@ export function ChatShell() {
           <div className="header-actions">
             {inDmHome && activeChannelId && (
               <div className="dm-call-actions">
-                <button
-                  type="button"
-                  className="dm-call-btn flex items-center gap-1.5"
-                  onClick={() => {
-                    setStageChannelId(activeChannelId);
-                    void voice.join(activeChannelId);
-                  }}
-                  title="Start Voice Call"
-                >
-                  <PhoneCall size={15} /> Start Call
-                </button>
-                <button
-                  type="button"
-                  className="dm-call-btn flex items-center gap-1.5"
-                  onClick={() => {
-                    setStageChannelId(activeChannelId);
-                    void voice.join(activeChannelId);
-                    void voice.startCamera();
-                  }}
-                  title="Start Video Call"
-                >
-                  <Video size={15} /> Video Call
-                </button>
+                {dmCall && dmCall.channelId === activeChannelId ? (
+                  <button
+                    type="button"
+                    className="dm-call-btn flex items-center gap-1.5"
+                    onClick={() => setStageChannelId(activeChannelId)}
+                    title="Open Full Call View"
+                  >
+                    <Maximize2 size={15} /> Call View
+                  </button>
+                ) : hub.voice[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
+                  <button
+                    type="button"
+                    className="dm-join-call-btn flex items-center gap-1.5"
+                    onClick={() => {
+                      void voice.join(activeChannelId);
+                      if (activeDm) {
+                        setDmCall({
+                          channelId: activeChannelId,
+                          otherUser: activeDm.user,
+                          status: "connected",
+                          startTime: Date.now(),
+                        });
+                      }
+                    }}
+                    title="Join Ongoing Call"
+                  >
+                    <PhoneCall size={15} /> Join Call
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="dm-call-btn flex items-center gap-1.5"
+                      onClick={() => startDmCall(false)}
+                      title="Start Voice Call"
+                    >
+                      <PhoneCall size={15} /> Start Call
+                    </button>
+                    <button
+                      type="button"
+                      className="dm-call-btn flex items-center gap-1.5"
+                      onClick={() => startDmCall(true)}
+                      title="Start Video Call"
+                    >
+                      <Video size={15} /> Video Call
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {!inDmHome && (
@@ -3691,10 +4469,10 @@ export function ChatShell() {
               <Pin size={18} />
             </Icon>
             <Icon
-              label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
+              label={`Switch to ${theme === "light" ? "cozy" : "light"} mode`}
+              onClick={() => applyTheme(theme === "light" ? "cozy" : "light")}
             >
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </Icon>
             <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
               <Settings size={18} />
@@ -3715,6 +4493,9 @@ export function ChatShell() {
             participants={voiceParticipants}
             connectionId={hub.connectionId}
             voice={voice}
+            joined={voice.channelId === stageChannel.id}
+            onJoin={() => void openVoiceChannel(stageChannel)}
+            onExit={() => setStageChannelId(null)}
             serverId={stageChannel.serverId}
             canManageSounds={canManageChannels}
             userId={user.id}
@@ -3927,15 +4708,146 @@ export function ChatShell() {
           </div>
         )}
 
+        {inDmHome && dmCall && dmCall.channelId === activeChannelId && (
+          <section className="dm-call-stage" aria-label="Direct Message Call">
+            <div className="dm-call-participants">
+              <div
+                className={`dm-call-avatar-wrapper ${
+                  voice.speaking.has(hub.connectionId || "") ? "is-speaking" : ""
+                }`}
+              >
+                <Avatar
+                  name={user.displayName}
+                  avatar={user.avatar}
+                  avatarUrl={user.avatarUrl}
+                  color={user.color}
+                  size={48}
+                />
+                <span className="dm-call-user-name">{user.displayName}</span>
+              </div>
+
+              <div className="dm-call-status-center">
+                <span className="dm-call-status-label">
+                  {dmCall.status === "calling" ? (
+                    <>
+                      <span className="dm-call-status-dot" style={{ background: "#a78bfa" }} />
+                      Calling...
+                    </>
+                  ) : (
+                    <>
+                      <span className="dm-call-status-dot" />
+                      In Call ({Math.floor(callDuration / 60)}:{String(callDuration % 60).padStart(2, "0")})
+                    </>
+                  )}
+                </span>
+              </div>
+
+              <div
+                className={`dm-call-avatar-wrapper ${
+                  dmCall.status === "calling" ? "is-calling is-ringing" : ""
+                } ${
+                  voiceParticipants.some(
+                    (p) => p.id === dmCall.otherUser.id && voice.speaking.has(p.connectionId),
+                  )
+                    ? "is-speaking"
+                    : ""
+                }`}
+              >
+                <Avatar
+                  name={dmCall.otherUser.displayName}
+                  avatar={dmCall.otherUser.avatar || "?"}
+                  avatarUrl={dmCall.otherUser.avatarUrl}
+                  color={dmCall.otherUser.color || "#a78bfa"}
+                  size={48}
+                />
+                <span className="dm-call-user-name">{dmCall.otherUser.displayName}</span>
+              </div>
+            </div>
+
+            <div className="dm-call-controls">
+              <button
+                type="button"
+                className={`vctrl-btn ${voice.muted ? "off" : ""}`}
+                onClick={() => voice.toggleMute()}
+                title={voice.muted ? "Unmute" : "Mute"}
+              >
+                {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+              <button
+                type="button"
+                className={`vctrl-btn ${voice.deafened ? "off" : ""}`}
+                onClick={() => voice.toggleDeafen()}
+                title={voice.deafened ? "Undeafen" : "Deafen"}
+              >
+                {voice.deafened ? <VolumeX size={16} /> : <Headphones size={16} />}
+              </button>
+              <button
+                type="button"
+                className={`vctrl-btn ${voice.screenSharing ? "active-screen" : ""}`}
+                onClick={() => {
+                  if (voice.screenSharing) {
+                    voice.stopScreenShare();
+                  } else {
+                    void voice.startScreenShare();
+                  }
+                }}
+                title={voice.screenSharing ? "Stop sharing" : "Share screen"}
+              >
+                <Monitor size={16} />
+              </button>
+              <button
+                type="button"
+                className={`vctrl-btn ${voice.cameraOn ? "active-camera" : ""}`}
+                onClick={() => {
+                  if (voice.cameraOn) {
+                    voice.stopCamera();
+                  } else {
+                    void voice.startCamera();
+                  }
+                }}
+                title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
+              >
+                {voice.cameraOn ? <Video size={16} /> : <VideoOff size={16} />}
+              </button>
+              <button
+                type="button"
+                className="vctrl-btn expand-btn"
+                onClick={() => setStageChannelId(dmCall.channelId)}
+                title="Open Call View"
+              >
+                <Maximize2 size={16} />
+              </button>
+              <button
+                type="button"
+                className="vctrl-btn disconnect-btn"
+                onClick={() => endDmCall(false)}
+                title="End Call"
+              >
+                <PhoneOff size={16} />
+              </button>
+            </div>
+          </section>
+        )}
+
         <div className="messages" aria-live="polite">
           <div className="channel-intro">
-            <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
-            <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
-            <p>
-              {inDmHome
-                ? "This conversation is only visible to the two of you."
-                : "This is the start of the channel. Be excellent to each other."}
-            </p>
+            <div className="cozy-intro-pill">
+              <span className="cozy-intro-icon">{inDmHome ? <AtSign size={13} /> : <Hash size={13} />}</span>
+              <span className="cozy-intro-text">
+                {inDmHome
+                  ? `this is the beginning of your conversation with ${channelTitle}`
+                  : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
+              </span>
+            </div>
+            <div className="legacy-intro-content">
+              <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
+              <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
+              <p>
+                {inDmHome
+                  ? "This conversation is only visible to the two of you."
+                  : "This is the start of the channel. Be excellent to each other."}
+              </p>
+            </div>
           </div>
 
           {messages.map((message, index) => {
@@ -3976,6 +4888,10 @@ export function ChatShell() {
                 className={`message ${continuation ? "continuation" : ""} ${
                   message.pinned ? "is-pinned" : ""
                 } ${openActionsId === message.id ? "actions-open" : ""} ${
+                  reactionPicker?.messageId === message.id
+                    ? "actions-open reaction-picker-active"
+                    : ""
+                } ${
                   user && message.mentions?.includes(user.id) ? "mentions-me" : ""
                 }`}
                 key={message.id}
@@ -3992,7 +4908,9 @@ export function ChatShell() {
               >
                 {continuation ? (
                   <span className="message-gutter" aria-hidden="true">
-                    <time>{message.time}</time>
+                    <time title={formatClientDateTime(message.createdAt)}>
+                      {formatClientTime(message.createdAt, message.time)}
+                    </time>
                     {dmSeen(message) && <SeenMark />}
                   </span>
                 ) : (
@@ -4051,7 +4969,9 @@ export function ChatShell() {
                       </strong>
                       {author && <PrideBadges badges={author.prideBadges} mini />}
                       {message.bot && <span className="bot-tag">BOT</span>}
-                      <time>{message.time}</time>
+                      <time title={formatClientDateTime(message.createdAt)}>
+                        {formatClientTime(message.createdAt, message.time)}
+                      </time>
                       {dmSeen(message) && <SeenMark />}
                       {message.editedAt && (
                         <span className="edited-tag" title="Edited">
@@ -4188,6 +5108,28 @@ export function ChatShell() {
                       emojis={emojiMap}
                     />
                   )}
+
+                  {extractInviteCodes(message.text).map((code) => {
+                    const inv = resolvedInvites[code];
+                    if (!inv) return null;
+                    const isCurrentlyMember = inv.server
+                      ? servers.some((s) => s.id === inv.server?.id)
+                      : false;
+                    return (
+                      <ServerInviteCard
+                        key={code}
+                        invite={inv}
+                        isMember={isCurrentlyMember}
+                        onJoin={() => {
+                          if (isCurrentlyMember && inv.server) {
+                            setActiveServerId(inv.server.id);
+                          } else {
+                            void joinServerDirect(code);
+                          }
+                        }}
+                      />
+                    );
+                  })}
 
                   {message.kind === "nowplaying" &&
                     message.payload?.voiceChannelId && (
@@ -4341,6 +5283,14 @@ export function ChatShell() {
                           <b>{reaction.count}</b>
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        className={`reaction add-reaction-btn ${reactionPicker?.messageId === message.id ? "mine" : ""}`}
+                        title="Add reaction"
+                        onClick={(e) => handleOpenReactionPicker(e, message.id)}
+                      >
+                        <SmilePlus size={14} />
+                      </button>
                     </div>
                   )}
 
@@ -4411,6 +5361,14 @@ export function ChatShell() {
                         <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      title="Add reaction"
+                      className={`add-reaction-action-btn ${reactionPicker?.messageId === message.id ? "active" : ""}`}
+                      onClick={(e) => handleOpenReactionPicker(e, message.id)}
+                    >
+                      <SmilePlus size={16} />
+                    </button>
                   </div>
                   <button
                     type="button"
@@ -4748,8 +5706,13 @@ export function ChatShell() {
             >
               /
             </button>
-            <button className="send-button" type="submit" aria-label="Send message">
-              <ArrowUp size={18} />
+            <button
+              className="send-button"
+              type="submit"
+              aria-label="Send message"
+              disabled={!draft.trim() && pendingFiles.length === 0}
+            >
+              <Send size={15} />
             </button>
           </div>
 
@@ -4768,7 +5731,9 @@ export function ChatShell() {
                     : `${typingNames.length} people are typing…`}
               </span>
             ) : (
-              "Enter to send · Shift + Enter for a new line · / for commands"
+              <span className="composer-hint-keys">
+                <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands
+              </span>
             )}
           </div>
         </form>
@@ -4777,24 +5742,39 @@ export function ChatShell() {
       </section>
 
       {threadRoot && (
-        <aside className="thread-panel" aria-label="Thread">
+        <aside
+          className="thread-panel"
+          aria-label="Thread"
+          style={{ width: `${threadWidth}px` }}
+        >
+          {/* Resize handle for thread panel */}
+          <div
+            className="thread-resize-handle"
+            onMouseDown={onThreadResizeDown}
+            title="Drag to resize thread"
+          />
+
           <header className="thread-head">
-            <strong className="flex items-center gap-1.5"><MessageSquare size={16} /> Thread</strong>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="thread-head-info">
+              <div className="thread-head-title-row">
+                <MessageSquare size={16} className="thread-icon" />
+                <span className="thread-title">
+                  {threadRoot.text?.slice(0, 36) || (threadRoot.image ? "Image" : "Thread")}
+                </span>
+              </div>
+              <span className="thread-head-channel">
+                #{activeChannel?.name || "channel"}
+              </span>
+            </div>
+            <div className="thread-head-actions">
               <button
                 type="button"
-                className="thread-quit-btn"
-                onClick={() => setThreadRoot(null)}
-                aria-label="Quit thread"
-              >
-                Quit Thread
-              </button>
-              <button
-                type="button"
+                className="thread-close-btn"
                 onClick={() => setThreadRoot(null)}
                 aria-label="Close thread"
+                title="Close thread"
               >
-                ×
+                <X size={18} />
               </button>
             </div>
           </header>
@@ -4803,18 +5783,39 @@ export function ChatShell() {
             <article className="message thread-root">
               <Avatar
                 className="avatar"
-                avatar={threadRoot.avatar}
+                avatar={
+                  (threadRoot.userId
+                    ? membersById.get(threadRoot.userId)?.avatar
+                    : null) || threadRoot.avatar
+                }
                 avatarUrl={
                   threadRoot.userId
                     ? membersById.get(threadRoot.userId)?.avatarUrl
                     : undefined
                 }
-                color={threadRoot.color}
+                color={
+                  (threadRoot.userId
+                    ? membersById.get(threadRoot.userId)?.color
+                    : null) || threadRoot.color
+                }
               />
               <div className="message-body">
                 <div className="message-meta">
-                  <strong>{threadRoot.author}</strong>
-                  <time>{threadRoot.time}</time>
+                  <strong
+                    style={{
+                      color:
+                        roleColorFor(
+                          threadRoot.userId
+                            ? membersById.get(threadRoot.userId)
+                            : undefined,
+                        ) || undefined,
+                    }}
+                  >
+                    {threadRoot.author}
+                  </strong>
+                  <time title={formatClientDateTime(threadRoot.createdAt)}>
+                    {formatClientTime(threadRoot.createdAt, threadRoot.time)}
+                  </time>
                 </div>
                 <MessageBody
                   text={threadRoot.text}
@@ -4823,20 +5824,96 @@ export function ChatShell() {
                   onImage={setLightbox}
                   emojis={emojiMap}
                 />
+                {threadRoot.image && (
+                  <img
+                    className="message-image"
+                    src={threadRoot.image}
+                    alt="Attachment"
+                    onClick={() => setLightbox(threadRoot.image!)}
+                  />
+                )}
+                {threadRoot.images && threadRoot.images.length > 0 && (
+                  <div
+                    className={`attachment-grid count-${Math.min(
+                      threadRoot.images.length,
+                      4,
+                    )}`}
+                  >
+                    {threadRoot.images.map((url) => (
+                      <img
+                        key={url}
+                        className="message-image"
+                        src={url}
+                        alt="Attachment"
+                        onClick={() => setLightbox(url)}
+                      />
+                    ))}
+                  </div>
+                )}
+                {threadRoot.file?.type === "pdf" && (
+                  <button
+                    type="button"
+                    className="message-file-card"
+                    onClick={() =>
+                      setPdfViewer({
+                        url: threadRoot.file!.url,
+                        name: threadRoot.file!.name,
+                      })
+                    }
+                  >
+                    <span className="message-file-icon">PDF</span>
+                    <span>
+                      <strong>{threadRoot.file.name}</strong>
+                      <small>PDF document · view and fill in Huddle</small>
+                    </span>
+                    <b aria-hidden="true">Open</b>
+                  </button>
+                )}
+                {extractInviteCodes(threadRoot.text).map((code) => {
+                  const inv = resolvedInvites[code];
+                  if (!inv) return null;
+                  const isCurrentlyMember = inv.server
+                    ? servers.some((s) => s.id === inv.server?.id)
+                    : false;
+                  return (
+                    <ServerInviteCard
+                      key={code}
+                      invite={inv}
+                      isMember={isCurrentlyMember}
+                      onJoin={() => {
+                        if (isCurrentlyMember && inv.server) {
+                          setActiveServerId(inv.server.id);
+                        } else {
+                          void joinServerDirect(code);
+                        }
+                      }}
+                    />
+                  );
+                })}
               </div>
             </article>
 
             <div className="thread-divider">
-              {threadMessages.length}{" "}
-              {threadMessages.length === 1 ? "reply" : "replies"}
+              <span>
+                {threadMessages.length}{" "}
+                {threadMessages.length === 1 ? "reply" : "replies"}
+              </span>
             </div>
+
+            {threadMessages.length === 0 && (
+              <div className="thread-empty-state">
+                <MessageSquare size={24} className="thread-empty-icon" />
+                <p>No replies yet.</p>
+                <span>Be the first to reply in this thread!</span>
+              </div>
+            )}
 
             {threadMessages.map((reply) => {
               const author = reply.userId
                 ? membersById.get(reply.userId)
                 : undefined;
               return (
-                <article className="message" key={reply.id}>
+                <article className="message thread-reply" key={reply.id}>
                   <Avatar
                     className="avatar"
                     avatar={author?.avatar || reply.avatar}
@@ -4845,10 +5922,14 @@ export function ChatShell() {
                   />
                   <div className="message-body">
                     <div className="message-meta">
-                      <strong style={{ color: roleColorFor(author) || undefined }}>
+                      <strong
+                        style={{ color: roleColorFor(author) || undefined }}
+                      >
                         {author?.displayName || reply.author}
                       </strong>
-                      <time>{reply.time}</time>
+                      <time title={formatClientDateTime(reply.createdAt)}>
+                        {formatClientTime(reply.createdAt, reply.time)}
+                      </time>
                     </div>
                     <MessageBody
                       text={reply.text}
@@ -4857,10 +5938,77 @@ export function ChatShell() {
                       onImage={setLightbox}
                       emojis={emojiMap}
                     />
+                    {reply.image && (
+                      <img
+                        className="message-image"
+                        src={reply.image}
+                        alt="Attachment"
+                        onClick={() => setLightbox(reply.image!)}
+                      />
+                    )}
+                    {reply.images && reply.images.length > 0 && (
+                      <div
+                        className={`attachment-grid count-${Math.min(
+                          reply.images.length,
+                          4,
+                        )}`}
+                      >
+                        {reply.images.map((url) => (
+                          <img
+                            key={url}
+                            className="message-image"
+                            src={url}
+                            alt="Attachment"
+                            onClick={() => setLightbox(url)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {reply.file?.type === "pdf" && (
+                      <button
+                        type="button"
+                        className="message-file-card"
+                        onClick={() =>
+                          setPdfViewer({
+                            url: reply.file!.url,
+                            name: reply.file!.name,
+                          })
+                        }
+                      >
+                        <span className="message-file-icon">PDF</span>
+                        <span>
+                          <strong>{reply.file.name}</strong>
+                          <small>PDF document · view and fill in Huddle</small>
+                        </span>
+                        <b aria-hidden="true">Open</b>
+                      </button>
+                    )}
+                    {extractInviteCodes(reply.text).map((code) => {
+                      const inv = resolvedInvites[code];
+                      if (!inv) return null;
+                      const isCurrentlyMember = inv.server
+                        ? servers.some((s) => s.id === inv.server?.id)
+                        : false;
+                      return (
+                        <ServerInviteCard
+                          key={code}
+                          invite={inv}
+                          isMember={isCurrentlyMember}
+                          onJoin={() => {
+                            if (isCurrentlyMember && inv.server) {
+                              setActiveServerId(inv.server.id);
+                            } else {
+                              void joinServerDirect(code);
+                            }
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 </article>
               );
             })}
+            <div ref={threadBottomRef} />
           </div>
 
           <form
@@ -4870,27 +6018,42 @@ export function ChatShell() {
               void sendThreadReply();
             }}
           >
-            <textarea
-              value={threadDraft}
-              rows={1}
-              placeholder="Reply in thread…"
-              aria-label="Reply in thread"
-              onChange={(event) => setThreadDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendThreadReply();
-                }
-              }}
-            />
-            <button type="submit" aria-label="Send reply">
-              ↑
-            </button>
+            <div className="thread-composer-inner">
+              <textarea
+                value={threadDraft}
+                rows={1}
+                placeholder="Reply in thread…"
+                aria-label="Reply in thread"
+                onChange={(event) => setThreadDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendThreadReply();
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className={`thread-send-btn ${threadDraft.trim() ? "can-send" : ""}`}
+                disabled={!threadDraft.trim()}
+                aria-label="Send reply"
+                title="Send reply"
+              >
+                <Send size={15} />
+              </button>
+            </div>
           </form>
         </aside>
       )}
 
       <aside className={`member-panel ${membersOpen ? "" : "closed"}`}>
+        {/* Resize handle for members panel (Desktop) */}
+        <div
+          className="member-resize-handle"
+          onMouseDown={onMembersResizeDown}
+          title="Drag to resize member list"
+        />
+
         {voice.channelId && (
           <>
             <div className="member-panel-title">
@@ -5504,17 +6667,6 @@ export function ChatShell() {
         onClose={() => setShortcutsOpen(false)}
       />
 
-      {profileSettingsOpen && user && (
-        <ProfileSettingsDialog
-          user={user}
-          onClose={() => setProfileSettingsOpen(false)}
-          onProfileUpdated={(updatedUser) => {
-            setUser(updatedUser);
-            void loadMembers();
-          }}
-        />
-      )}
-
       <PollDialog
         open={pollDialogOpen}
         onClose={() => setPollDialogOpen(false)}
@@ -5555,8 +6707,81 @@ export function ChatShell() {
         />
       )}
 
+      {incomingDmCall && (
+        <div className="incoming-call-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming Call">
+          <div className="incoming-call-card">
+            <div className="incoming-call-avatar-wrapper">
+              <Avatar
+                avatar={incomingDmCall.fromAvatar}
+                avatarUrl={incomingDmCall.fromAvatarUrl}
+                color="#a78bfa"
+                name={incomingDmCall.fromDisplayName}
+                size={52}
+              />
+            </div>
+            <div className="incoming-call-info">
+              <span className="incoming-call-name">{incomingDmCall.fromDisplayName}</span>
+              <span className="incoming-call-subtitle">
+                {incomingDmCall.isVideo ? <Video size={13} /> : <PhoneCall size={13} />}
+                Incoming {incomingDmCall.isVideo ? "Video" : "Voice"} Call...
+              </span>
+            </div>
+            <div className="incoming-call-actions">
+              <button
+                type="button"
+                className="incoming-call-btn decline"
+                onClick={declineIncomingCall}
+                title="Decline Call"
+                aria-label="Decline Call"
+              >
+                <PhoneOff size={20} />
+              </button>
+              <button
+                type="button"
+                className="incoming-call-btn accept"
+                onClick={acceptIncomingCall}
+                title="Accept Call"
+                aria-label="Accept Call"
+              >
+                {incomingDmCall.isVideo ? <Video size={20} /> : <PhoneCall size={20} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BlahajBuddy />
       <ToastContainer />
+
+      {reactionPicker && (
+        <div
+          className="reaction-picker-overlay"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="reaction-picker-backdrop"
+            onClick={() => setReactionPicker(null)}
+          />
+          <div
+            className="reaction-picker-floating"
+            style={{
+              top: reactionPicker.top,
+              right: reactionPicker.right,
+            }}
+          >
+            <EmojiPicker
+              className="discord-emoji-picker reaction-picker"
+              serverId={inDmHome ? null : activeServerId}
+              canManageEmojis={canManageChannels}
+              onPickEmoji={(codeOrUrl) => {
+                void toggleReaction(reactionPicker.messageId, codeOrUrl);
+                setReactionPicker(null);
+              }}
+              onClose={() => setReactionPicker(null)}
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

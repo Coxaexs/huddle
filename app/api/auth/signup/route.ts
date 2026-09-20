@@ -148,9 +148,14 @@ export async function POST(request: Request) {
     [...memberships].map((serverId) =>
       db
         .prepare(
-          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at, invite_code) VALUES (?, ?, ?, ?)",
         )
-        .bind(serverId, user.id, now2),
+        .bind(
+          serverId,
+          user.id,
+          now2,
+          serverId === inviteServerId ? inviteCode : null,
+        ),
     ),
   );
 

@@ -187,6 +187,13 @@ export type ClientEvent =
   | { t: "signal"; to: string; data: unknown }
   | { t: "player"; channelId: string; action: PlayerAction }
   | { t: "typing"; channelId: string }
+  | {
+      t: "dm-call";
+      channelId: string;
+      targetUserId: string;
+      action: "call" | "accept" | "decline" | "cancel";
+      isVideo?: boolean;
+    }
   | { t: "ping" };
 
 export type PlayerAction =
@@ -373,6 +380,18 @@ export type ServerEvent =
       channelId: string;
       userId: string;
       readAt: string;
+      serverNow: number;
+    }
+  | {
+      /** Direct message call signaling between caller and callee. */
+      t: "dm-call";
+      channelId: string;
+      fromUserId: string;
+      fromDisplayName: string;
+      fromAvatar: string;
+      fromAvatarUrl?: string | null;
+      action: "call" | "accept" | "decline" | "cancel";
+      isVideo?: boolean;
       serverNow: number;
     }
   | { t: "pong"; serverNow: number };
