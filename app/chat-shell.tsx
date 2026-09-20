@@ -50,6 +50,7 @@ import {
   ChevronDown,
   X,
   User,
+  UserPlus,
   CheckCheck,
   MoreHorizontal,
   AtSign,
@@ -113,6 +114,8 @@ import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
 import { VoiceStage } from "./components/voice-stage";
+import { FriendsView } from "./components/friends-view";
+import { GlobalUserSearchDialog } from "./components/global-user-search-dialog";
 import { RecordingDirector } from "./components/recording-director";
 import {
   UserMenu,
@@ -433,6 +436,8 @@ export function ChatShell() {
   >({});
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [pendingFriendCount, setPendingFriendCount] = useState(0);
 
   const [draft, setDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
@@ -799,6 +804,15 @@ export function ChatShell() {
     return data.conversations;
   }, []);
 
+  const loadFriendsCount = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ incoming: unknown[] }>("/api/friends");
+      setPendingFriendCount(data.incoming?.length || 0);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   const loadPrefs = useCallback(async () => {
     const data = await apiFetch<{ prefs: Record<string, VoicePref> }>(
       "/api/voice/prefs",
@@ -864,6 +878,7 @@ export function ChatShell() {
     void loadServers().catch(() => undefined);
     void loadMembers().catch(() => undefined);
     void loadDms().catch(() => undefined);
+    void loadFriendsCount().catch(() => undefined);
     void loadPrefs().catch(() => undefined);
     void loadUnread().catch(() => undefined);
     void loadEmojis().catch(() => undefined);
@@ -873,6 +888,7 @@ export function ChatShell() {
     loadServers,
     loadMembers,
     loadDms,
+    loadFriendsCount,
     loadPrefs,
     loadUnread,
     loadEmojis,
@@ -1580,7 +1596,7 @@ export function ChatShell() {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setQuickSwitcherOpen((o) => !o);
+        setGlobalSearchOpen((o) => !o);
       } else if (
         ((e.ctrlKey || e.metaKey) && e.key === "/") ||
         (e.key === "?" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName))
@@ -4150,8 +4166,49 @@ export function ChatShell() {
 
         {inDmHome ? (
           <nav className="channel-nav" aria-label="Conversations">
+            <div className="px-2 pt-1 pb-2">
+              <button
+                type="button"
+                onClick={() => setGlobalSearchOpen(true)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[#9d95bc] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
+                title="Search all users (⌘K)"
+              >
+                <span className="flex items-center gap-2">
+                  <Search size={14} className="text-[#a78bfa]" />
+                  <span>Find conversation or user</span>
+                </span>
+                <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[#9d95bc]">
+                  ⌘K
+                </kbd>
+              </button>
+            </div>
+
+            <div className="px-2 pb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveChannelId(null);
+                  setStageChannelId(null);
+                  setMobileNav(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+                  !activeChannelId && !stageChannelId
+                    ? "bg-white/[0.12] text-white"
+                    : "text-[#9d95bc] hover:bg-white/[0.05] hover:text-white"
+                }`}
+              >
+                <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[#a78bfa]" : "text-[#7c7599]"} />
+                <span className="flex-1 text-left">Friends</span>
+                {pendingFriendCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[11px] leading-tight">
+                    {pendingFriendCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="section-label">
-              <span>CONVERSATIONS</span>
+              <span>DIRECT MESSAGES</span>
             </div>
             {dms.map((dm) => (
               <button
@@ -4380,7 +4437,20 @@ export function ChatShell() {
             className="dice-overlay chat-dice-overlay"
           />
         )}
-        <header className="chat-header">
+        {inDmHome && !activeChannelId && !stageChannel ? (
+          <FriendsView
+            onlineUserIds={hub.online}
+            onOpenDm={(targetUser) => {
+              void openDm(targetUser.id);
+            }}
+            onPendingCountChange={(count) => {
+              setPendingFriendCount(count);
+            }}
+            onOpenMobileNav={() => setMobileNav(true)}
+          />
+        ) : (
+          <>
+            <header className="chat-header">
           <button
             className="mobile-menu"
             aria-label="Open channels"
@@ -4460,6 +4530,14 @@ export function ChatShell() {
                   </>
                 )}
               </div>
+            )}
+            {!inDmHome && (
+              <Icon
+                label="Find users"
+                onClick={() => setGlobalSearchOpen(true)}
+              >
+                <UserPlus size={18} />
+              </Icon>
             )}
             {!inDmHome && (
               <Icon
@@ -5748,6 +5826,8 @@ export function ChatShell() {
         </form>
           </>
         )}
+          </>
+        )}
       </section>
 
       {threadRoot && (
@@ -6055,7 +6135,7 @@ export function ChatShell() {
         </aside>
       )}
 
-      <aside className={`member-panel ${membersOpen ? "" : "closed"}`}>
+      <aside className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"}`}>
         {/* Resize handle for members panel (Desktop) */}
         <div
           className="member-resize-handle"
@@ -6632,6 +6712,15 @@ export function ChatShell() {
           onLeaveServer={() => void leaveServer(activeServer.id)}
         />
       )}
+
+      <GlobalUserSearchDialog
+        isOpen={globalSearchOpen}
+        onClose={() => setGlobalSearchOpen(false)}
+        onlineUserIds={hub.online}
+        onOpenDm={(targetUser) => {
+          void openDm(targetUser.id);
+        }}
+      />
 
       {dialogOptions && (
         <CustomDialog

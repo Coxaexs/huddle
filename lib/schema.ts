@@ -157,6 +157,22 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS dm_members_user_idx ON dm_members(user_id)",
     ),
+    // Friends system (pending requests, accepted friends, blocked users)
+    db.prepare(`CREATE TABLE IF NOT EXISTS friendships (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        friend_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(user_id, friend_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS friendships_user_idx ON friendships(user_id, status)",
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS friendships_friend_idx ON friendships(friend_id, status)",
+    ),
     db.prepare(`CREATE TABLE IF NOT EXISTS voice_prefs (
         user_id TEXT NOT NULL,
         target_id TEXT NOT NULL,
