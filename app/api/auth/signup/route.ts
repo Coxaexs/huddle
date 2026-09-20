@@ -89,6 +89,15 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+    if (invite.server_id) {
+      return Response.json(
+        {
+          error:
+            "Server invite codes cannot be used to create an account. You need an account invite code.",
+        },
+        { status: 403 },
+      );
+    }
     inviteServerId = invite.server_id;
   }
 

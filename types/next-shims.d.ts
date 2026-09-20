@@ -8,9 +8,16 @@ declare module "next" {
     metadataBase?: URL;
     title?: string | { default: string; template?: string };
     description?: string;
-    icons?: { icon?: string; shortcut?: string };
+    keywords?: string[];
+    authors?: Array<{ name: string; url?: string }>;
+    creator?: string;
+    publisher?: string;
+    alternates?: Record<string, unknown>;
+    icons?: { icon?: string; shortcut?: string; apple?: string };
     openGraph?: Record<string, unknown>;
     twitter?: Record<string, unknown>;
+    robots?: Record<string, unknown>;
+    verification?: Record<string, unknown>;
   }
 }
 

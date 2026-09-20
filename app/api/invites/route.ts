@@ -89,13 +89,6 @@ export async function POST(request: Request) {
 
   await ensureSchema(db);
 
-  if (!(await canUserCreateInvites(db, user))) {
-    return Response.json(
-      { error: "Only the server owner and authorized users can create invite codes." },
-      { status: 403 },
-    );
-  }
-
   const body = (await request.json().catch(() => ({}))) as {
     maxUses?: number;
     note?: string;
@@ -106,13 +99,34 @@ export async function POST(request: Request) {
     ? Math.max(0, Math.min(100, Math.trunc(body.maxUses as number)))
     : 1;
 
-  // A server invite may only be made by someone who is in that server.
   const serverId = body.serverId?.slice(0, 64) || null;
-  if (serverId && !(await isServerMember(db, serverId, user.id))) {
-    return Response.json(
-      { error: "You are not a member of that server." },
-      { status: 403 },
-    );
+
+  if (serverId) {
+    // A server invite may only be made by someone who is in that server
+    if (!(await isServerMember(db, serverId, user.id))) {
+      return Response.json(
+        { error: "You are not a member of that server." },
+        { status: 403 },
+      );
+    }
+    // And who has the CREATE_INVITES permission in that server (via role/owner) or instance invite permission
+    const hasServerInvitePerm =
+      (await can(db, user.id, serverId, Permission.CREATE_INVITES)) ||
+      (await canUserCreateInvites(db, user));
+    if (!hasServerInvitePerm) {
+      return Response.json(
+        { error: "You do not have permission to create invites for this server." },
+        { status: 403 },
+      );
+    }
+  } else {
+    // Global Hoffle invite (account creation): only first created user and selected users
+    if (!(await canUserCreateInvites(db, user))) {
+      return Response.json(
+        { error: "Only the instance owner and authorized users can create Hoffle invite codes." },
+        { status: 403 },
+      );
+    }
   }
 
   const invite: InviteRow = {

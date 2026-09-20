@@ -1065,6 +1065,9 @@ export function ChatShell() {
     Permission.RECORD_SESSIONS,
   );
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+  const canCreateServerInvites =
+    hasPermission(myPermissions, Permission.CREATE_INVITES) ||
+    Boolean(user?.isAdmin || user?.canInvite);
 
   /** Roles a member holds on the active server, highest position first. */
   const rolesForMember = useCallback(
@@ -6768,7 +6771,7 @@ export function ChatShell() {
           server={activeServer}
           members={members}
           canManageServer={canManageServer}
-          canCreateInvites={Boolean(user && (user.isAdmin || user.canInvite))}
+          canCreateInvites={canCreateServerInvites}
           onClose={() => setServerSettingsOpen(false)}
           onServerUpdated={() => void loadServers().catch(() => undefined)}
           onServerDeleted={() => {

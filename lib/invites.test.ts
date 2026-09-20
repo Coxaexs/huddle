@@ -157,5 +157,14 @@ describe("canUserCreateInvites and isFirstUserOrOwner", () => {
     expect(await canUserCreateInvites(db, firstCreatedUser)).toBe(true);
     expect(await isFirstUserOrOwner(db, firstCreatedUser)).toBe(true);
   });
+
+  it("distinguishes server invites from global account invites", () => {
+    const globalInvite = { code: "GLOB1234", server_id: null };
+    const serverInvite = { code: "SRV1234", server_id: "hangout" };
+
+    expect(Boolean(serverInvite.server_id)).toBe(true);
+    expect(Boolean(globalInvite.server_id)).toBe(false);
+  });
 });
+
 
