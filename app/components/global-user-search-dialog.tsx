@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, X, MessageSquare, UserPlus, Check, Clock, ShieldAlert, Loader2 } from "lucide-react";
+import { Search, X, MessageSquare, UserPlus, Check, Clock, ShieldAlert, Loader2, Server } from "lucide-react";
 import { Avatar } from "./avatar";
 import { apiFetch } from "../lib/client";
+import type { PublicServer } from "@/lib/servers";
 
 export interface SearchResultUser {
   id: string;
@@ -23,6 +24,7 @@ interface GlobalUserSearchDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onlineUserIds: Set<string>;
+  servers: PublicServer[];
   onOpenDm: (user: {
     id: string;
     username: string;
@@ -31,13 +33,16 @@ interface GlobalUserSearchDialogProps {
     avatarUrl: string | null;
     color: string;
   }) => void;
+  onSelectServer: (serverId: string) => void;
 }
 
 export function GlobalUserSearchDialog({
   isOpen,
   onClose,
   onlineUserIds,
+  servers,
   onOpenDm,
+  onSelectServer,
 }: GlobalUserSearchDialogProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultUser[]>([]);
@@ -68,6 +73,11 @@ export function GlobalUserSearchDialog({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Servers the caller belongs to, filtered by the query.
+  const matchedServers = servers.filter((s) =>
+    s.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   // Debounced search
   useEffect(() => {
@@ -190,145 +200,220 @@ export function GlobalUserSearchDialog({
                 Direct message, send friend requests, or connect instantly.
               </p>
             </div>
-          ) : results.length === 0 && !loading ? (
-            <div className="py-12 px-4 text-center text-[#9d95bc]">
-              <p className="text-sm font-semibold">No users found</p>
-              <p className="text-xs text-[#7c7599] mt-1">
-                We couldn&apos;t find anyone matching &ldquo;{query}&rdquo;.
-              </p>
-            </div>
           ) : (
-            results.map((u) => {
-              const isOnline = onlineUserIds.has(u.id);
-              const isBusy = actionLoadingId === u.id;
-
-              return (
-                <div
-                  key={u.id}
-                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                    u.isSelf
-                      ? "opacity-60 bg-white/[0.02]"
-                      : "hover:bg-white/[0.05] cursor-pointer group"
-                  }`}
-                  onClick={() => {
-                    if (!u.isSelf) handleSelectUser(u);
-                  }}
-                >
-                  <div className="flex items-center gap-3 min-w-0 pr-3">
-                    <div className="relative shrink-0">
-                      <Avatar
-                        name={u.displayName}
-                        avatar={u.avatar}
-                        avatarUrl={u.avatarUrl}
-                        color={u.color}
-                        size={40}
-                      />
-                      <span
-                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#1a1628] ${
-                          isOnline ? "bg-[#4ade80]" : "bg-neutral-500"
-                        }`}
-                        title={isOnline ? "Online" : "Offline"}
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-[#e8e3f5] truncate">
-                          {u.displayName}
-                        </span>
-                        <span className="text-xs text-[#9d95bc] truncate">
-                          @{u.username}
-                        </span>
-                        {u.isSelf && (
-                          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-white/[0.08] text-[#a78bfa]">
-                            You
-                          </span>
-                        )}
-                      </div>
-
-                      {u.customStatus ? (
-                        <p className="text-xs text-[#9d95bc] truncate mt-0.5">
-                          {u.customStatus}
-                        </p>
-                      ) : (
-                        <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
-                          {isOnline ? "Active now" : "Offline"}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div
-                    className="flex items-center gap-1.5 shrink-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {!u.isSelf && (
-                      <>
-                        <button
-                          onClick={() => handleSelectUser(u)}
-                          className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[#e8e3f5] transition-colors"
-                          title="Open Direct Message"
-                        >
-                          <MessageSquare size={16} />
-                        </button>
-
-                        {u.relationship === "none" && (
-                          <button
-                            onClick={() => handleSendFriendRequest(u)}
-                            disabled={isBusy}
-                            className="px-3 py-1.5 rounded-lg bg-[#a78bfa]/20 hover:bg-[#a78bfa]/30 text-[#c4b5fd] text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                            title="Add Friend"
-                          >
-                            <UserPlus size={14} />
-                            <span>Add</span>
-                          </button>
-                        )}
-
-                        {u.relationship === "outgoing" && (
+            <>
+              {/* Servers you belong to */}
+              {matchedServers.length > 0 && (
+                <div className="mb-1">
+                  <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
+                    Servers
+                  </p>
+                  {matchedServers.map((s) => {
+                    const initials =
+                      s.name
+                        .split(/\s+/)
+                        .map((w) => w[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase() || "SV";
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between p-2.5 rounded-xl transition-all hover:bg-white/[0.05] cursor-pointer group"
+                        onClick={() => {
+                          onSelectServer(s.id);
+                          onClose();
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 pr-3">
+                          <div className="relative shrink-0">
+                            {s.iconUrl ? (
+                              <img
+                                src={s.iconUrl}
+                                alt={s.name}
+                                className="w-10 h-10 rounded-xl object-cover"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white"
+                                style={{ background: s.color || "#a78bfa" }}
+                              >
+                                {s.icon || initials}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-[#e8e3f5] truncate">
+                                {s.name}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
+                              {s.channels?.length || 0} channels
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
-                            <Clock size={12} />
-                            Sent
+                            <Server size={12} />
+                            Server
                           </span>
-                        )}
-
-                        {u.relationship === "incoming" && (
-                          <button
-                            onClick={() => handleAcceptRequest(u)}
-                            disabled={isBusy}
-                            className="px-3 py-1.5 rounded-lg bg-[#4ade80]/20 hover:bg-[#4ade80]/30 text-[#4ade80] text-xs font-bold transition-colors flex items-center gap-1 disabled:opacity-50"
-                            title="Accept Friend Request"
-                          >
-                            <Check size={14} />
-                            <span>Accept</span>
-                          </button>
-                        )}
-
-                        {u.relationship === "friend" && (
-                          <span className="px-2.5 py-1.5 rounded-lg bg-[#4ade80]/15 text-[#4ade80] text-xs font-semibold flex items-center gap-1">
-                            <Check size={12} />
-                            Friend
-                          </span>
-                        )}
-
-                        {u.relationship === "blocked" && (
-                          <span className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-semibold flex items-center gap-1">
-                            <ShieldAlert size={12} />
-                            Blocked
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })
+              )}
+
+              {/* Matching users */}
+              {results.length > 0 && (
+                <div className="mb-1">
+                  <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
+                    People
+                  </p>
+                  {results.map((u) => {
+                    const isOnline = onlineUserIds.has(u.id);
+                    const isBusy = actionLoadingId === u.id;
+
+                    return (
+                      <div
+                        key={u.id}
+                        className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
+                          u.isSelf
+                            ? "opacity-60 bg-white/[0.02]"
+                            : "hover:bg-white/[0.05] cursor-pointer group"
+                        }`}
+                        onClick={() => {
+                          if (!u.isSelf) handleSelectUser(u);
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 pr-3">
+                          <div className="relative shrink-0">
+                            <Avatar
+                              name={u.displayName}
+                              avatar={u.avatar}
+                              avatarUrl={u.avatarUrl}
+                              color={u.color}
+                              size={40}
+                            />
+                            <span
+                              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#1a1628] ${
+                                isOnline ? "bg-[#4ade80]" : "bg-neutral-500"
+                              }`}
+                              title={isOnline ? "Online" : "Offline"}
+                            />
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-[#e8e3f5] truncate">
+                                {u.displayName}
+                              </span>
+                              <span className="text-xs text-[#9d95bc] truncate">
+                                @{u.username}
+                              </span>
+                              {u.isSelf && (
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-white/[0.08] text-[#a78bfa]">
+                                  You
+                                </span>
+                              )}
+                            </div>
+
+                            {u.customStatus ? (
+                              <p className="text-xs text-[#9d95bc] truncate mt-0.5">
+                                {u.customStatus}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
+                                {isOnline ? "Active now" : "Offline"}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div
+                          className="flex items-center gap-1.5 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {!u.isSelf && (
+                            <>
+                              <button
+                                onClick={() => handleSelectUser(u)}
+                                className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[#e8e3f5] transition-colors"
+                                title="Open Direct Message"
+                              >
+                                <MessageSquare size={16} />
+                              </button>
+
+                              {u.relationship === "none" && (
+                                <button
+                                  onClick={() => handleSendFriendRequest(u)}
+                                  disabled={isBusy}
+                                  className="px-3 py-1.5 rounded-lg bg-[#a78bfa]/20 hover:bg-[#a78bfa]/30 text-[#c4b5fd] text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                  title="Add Friend"
+                                >
+                                  <UserPlus size={14} />
+                                  <span>Add</span>
+                                </button>
+                              )}
+
+                              {u.relationship === "outgoing" && (
+                                <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
+                                  <Clock size={12} />
+                                  Sent
+                                </span>
+                              )}
+
+                              {u.relationship === "incoming" && (
+                                <button
+                                  onClick={() => handleAcceptRequest(u)}
+                                  disabled={isBusy}
+                                  className="px-3 py-1.5 rounded-lg bg-[#4ade80]/20 hover:bg-[#4ade80]/30 text-[#4ade80] text-xs font-bold transition-colors flex items-center gap-1 disabled:opacity-50"
+                                  title="Accept Friend Request"
+                                >
+                                  <Check size={14} />
+                                  <span>Accept</span>
+                                </button>
+                              )}
+
+                              {u.relationship === "friend" && (
+                                <span className="px-2.5 py-1.5 rounded-lg bg-[#4ade80]/15 text-[#4ade80] text-xs font-semibold flex items-center gap-1">
+                                  <Check size={12} />
+                                  Friend
+                                </span>
+                              )}
+
+                              {u.relationship === "blocked" && (
+                                <span className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-semibold flex items-center gap-1">
+                                  <ShieldAlert size={12} />
+                                  Blocked
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {matchedServers.length === 0 && results.length === 0 && !loading && (
+                <div className="py-12 px-4 text-center text-[#9d95bc]">
+                  <p className="text-sm font-semibold">No results found</p>
+                  <p className="text-xs text-[#7c7599] mt-1">
+                    We couldn&apos;t find anyone matching &ldquo;{query}&rdquo;.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Footer info */}
         <div className="px-4 py-2.5 bg-[#16131f]/80 border-t border-white/[0.08] flex items-center justify-between text-xs text-[#7c7599]">
-          <span>Fast lookup across all registered members</span>
+          <span>Jump to a server, or find a user you know</span>
           <span>Press ESC to exit</span>
         </div>
       </div>

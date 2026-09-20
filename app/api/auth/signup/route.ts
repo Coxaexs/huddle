@@ -46,8 +46,6 @@ export async function POST(request: Request) {
   const isFirstUser = (total?.count ?? 0) === 0;
 
   const inviteCode = (body.invite || "").trim().toUpperCase();
-  /** If the invite targets a specific server, the new account joins it too. */
-  let inviteServerId: string | null = null;
 
   // Huddle is on the public internet, so the very first signup can be gated
   // too: set BOOTSTRAP_CODE and nobody can claim the place before you do.
@@ -89,7 +87,7 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
-    if (invite.server_id) {
+    if (invite.server_id != null && invite.server_id !== "") {
       return Response.json(
         {
           error:
@@ -98,7 +96,6 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
-    inviteServerId = invite.server_id;
   }
 
   const taken = await db
@@ -150,34 +147,16 @@ export async function POST(request: Request) {
       .run();
   }
 
-  // Server membership:
-  // - The first user (owner) always lands in the home server.
-  // - If the invite code is scoped to a specific server, they ONLY join that server.
-  // - Global invites without a server_id fall back to the default home server.
+  // Server membership: every new account joins the default (home) server.
+  // Server invite codes are rejected above, so we never land here with a
+  // server-scoped invite — everyone goes to DEFAULT_SERVER_ID.
   const now2 = new Date().toISOString();
-  const memberships = new Set<string>();
-  if (isFirstUser) {
-    memberships.add(DEFAULT_SERVER_ID);
-  } else if (inviteServerId) {
-    memberships.add(inviteServerId);
-  } else {
-    memberships.add(DEFAULT_SERVER_ID);
-  }
-
-  await db.batch(
-    [...memberships].map((serverId) =>
-      db
-        .prepare(
-          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at, invite_code) VALUES (?, ?, ?, ?)",
-        )
-        .bind(
-          serverId,
-          user.id,
-          now2,
-          serverId === inviteServerId ? inviteCode : null,
-        ),
-    ),
-  );
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+    )
+    .bind(DEFAULT_SERVER_ID, user.id, now2)
+    .run();
 
   const token = await createSession(db, user.id);
   return Response.json(

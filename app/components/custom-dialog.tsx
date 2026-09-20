@@ -10,6 +10,7 @@ export interface DialogOptions {
   confirmText?: string;
   cancelText?: string;
   isDanger?: boolean;
+  maxLength?: number;
   type: "prompt" | "confirm" | "alert";
 }
 
@@ -76,6 +77,7 @@ export function CustomDialog({ options, onConfirm, onCancel }: CustomDialogProps
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={options.placeholder || ""}
+              maxLength={options.maxLength}
             />
           </div>
         )}

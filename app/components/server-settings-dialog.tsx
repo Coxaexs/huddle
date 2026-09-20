@@ -23,6 +23,8 @@ interface ServerBot {
 interface ServerSettingsDialogProps {
   server: PublicServer;
   members?: Member[];
+  /** User ids currently online (from the hub), used for the online count. */
+  onlineUserIds?: Set<string>;
   canManageServer: boolean;
   onClose: () => void;
   onServerUpdated: () => void;
@@ -145,6 +147,7 @@ const BANNER_COLORS = [
 export function ServerSettingsDialog({
   server,
   members = [],
+  onlineUserIds,
   canManageServer,
   onClose,
   onServerUpdated,
@@ -755,6 +758,12 @@ export function ServerSettingsDialog({
     return assignedRoles.some((r) => r.name.toLowerCase().includes(q));
   });
 
+  // How many of THIS server's members are online right now (not the whole
+  // Huddle). Falls back to the member count when presence isn't wired up.
+  const onlineCount = onlineUserIds
+    ? serverMembers.filter((m) => onlineUserIds.has(m.id)).length
+    : serverMembers.length;
+
   return (
     <div className="discord-server-settings-fullscreen">
       {/* Floating ESC Close Button in upper right corner */}
@@ -972,6 +981,7 @@ export function ServerSettingsDialog({
                   className="discord-text-input"
                   value={serverName}
                   onChange={(e) => setServerName(e.target.value)}
+                  maxLength={50}
                   disabled={!canManageServer}
                 />
               </div>
@@ -1103,8 +1113,8 @@ export function ServerSettingsDialog({
                   </div>
                   <h3 className="server-card-name">{serverName}</h3>
                   <div className="server-card-stats">
-                    <span className="dot green" /> 5 Online &nbsp;
-                    <span className="dot gray" /> {members.length || 12} Members
+                    <span className="dot green" /> {onlineCount} Online &nbsp;
+                    <span className="dot gray" /> {serverMembers.length || 12} Members
                   </div>
                   <div className="server-card-est">Est. Jun 2026</div>
                 </div>
@@ -1237,6 +1247,18 @@ export function ServerSettingsDialog({
                           color={member.color}
                           size={36}
                         />
+                        {onlineUserIds && (
+                          <span
+                            className={`member-online-dot ${
+                              onlineUserIds.has(member.id) ? "online" : "offline"
+                            }`}
+                            title={
+                              onlineUserIds.has(member.id)
+                                ? "Online"
+                                : "Offline"
+                            }
+                          />
+                        )}
                       </div>
                       <div className="member-info-text">
                         <span className="member-info-name">

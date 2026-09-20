@@ -36,7 +36,20 @@ export interface PublicMessage {
   replyTo?: string;
   replyPreview?: { author: string; text: string } | null;
   /** Emoji reactions, aggregated. `mine` is set per requesting user. */
-  reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
+  reactions?: Array<{
+    emoji: string;
+    count: number;
+    mine: boolean;
+    /** Who reacted, for hover tooltips. */
+    users?: Array<{
+      id: string;
+      username: string;
+      displayName: string;
+      avatar: string;
+      avatarUrl?: string | null;
+      color: string;
+    }>;
+  }>;
   /** User ids named in this message, for highlighting and unread badges. */
   mentions?: string[];
   /** Set on thread replies. */
@@ -226,9 +239,22 @@ async function decorateMessages(
   const ids = messages.map((m) => m.id);
 
   const [reactionRows, mentionRows, threadRows] = await Promise.all([
-    queryByIds<{ message_id: string; emoji: string; user_id: string }>(
+    queryByIds<{
+      message_id: string;
+      emoji: string;
+      user_id: string;
+      username: string;
+      display_name: string;
+      avatar: string;
+      avatar_url: string | null;
+      color: string;
+    }>(
       db,
-      "SELECT message_id, emoji, user_id FROM reactions WHERE message_id IN",
+      `SELECT r.message_id, r.emoji, r.user_id,
+              u.username, u.display_name, u.avatar, u.avatar_url, u.color
+         FROM reactions r
+         JOIN users u ON u.id = r.user_id
+        WHERE r.message_id IN`,
       ids,
     ),
     queryByIds<{ message_id: string; user_id: string }>(
@@ -246,13 +272,42 @@ async function decorateMessages(
   ]);
   const threadCounts = new Map(threadRows.map((r) => [r.thread_id, r.count]));
 
-  // Aggregate reactions per message + emoji.
-  const byMessage = new Map<string, Map<string, { count: number; mine: boolean }>>();
+  // Aggregate reactions per message + emoji, keeping the list of who reacted.
+  const byMessage = new Map<
+    string,
+    Map<
+      string,
+      {
+        count: number;
+        mine: boolean;
+        users: Array<{
+          id: string;
+          username: string;
+          displayName: string;
+          avatar: string;
+          avatarUrl?: string | null;
+          color: string;
+        }>;
+      }
+    >
+  >();
   for (const row of reactionRows) {
     const emojis = byMessage.get(row.message_id) || new Map();
-    const entry = emojis.get(row.emoji) || { count: 0, mine: false };
+    const entry = emojis.get(row.emoji) || {
+      count: 0,
+      mine: false,
+      users: [],
+    };
     entry.count += 1;
     if (row.user_id === userId) entry.mine = true;
+    entry.users.push({
+      id: row.user_id,
+      username: row.username,
+      displayName: row.display_name,
+      avatar: row.avatar,
+      avatarUrl: row.avatar_url,
+      color: row.color,
+    });
     emojis.set(row.emoji, entry);
     byMessage.set(row.message_id, emojis);
   }
@@ -291,6 +346,7 @@ async function decorateMessages(
         emoji,
         count: v.count,
         mine: v.mine,
+        users: v.users,
       }));
     }
     const mentions = mentionsByMessage.get(message.id);
