@@ -20,6 +20,8 @@ interface NowPlayingProps {
   onSeek: (positionMs: number) => void;
   onToggle: () => void;
   onSkip: () => void;
+  /** Personal volume preference (0-100). */
+  volume?: number;
   onVolume: (volume: number) => void;
   voiceChannelName?: string;
 }
@@ -39,6 +41,7 @@ export function NowPlaying({
   onSeek,
   onToggle,
   onSkip,
+  volume,
   onVolume,
   voiceChannelName,
 }: NowPlayingProps) {
@@ -151,14 +154,17 @@ export function NowPlaying({
           <button type="button" onClick={onSkip} aria-label="Skip">
             <SkipForward size={16} />
           </button>
-          <label className="now-playing-volume">
+          <label
+            className="now-playing-volume"
+            title={`Personal volume: ${volume ?? 100}%${state ? ` (Room general volume: ${state.volume}%)` : ""}`}
+          >
             <Volume2 size={16} aria-hidden="true" />
             <input
               type="range"
               min={0}
               max={100}
-              value={state?.volume ?? 100}
-              aria-label="Volume"
+              value={volume ?? 100}
+              aria-label="Personal volume"
               onChange={(event) => onVolume(Number(event.target.value))}
             />
           </label>

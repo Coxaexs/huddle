@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractInviteCodes } from "../app/chat-shell";
 import { addServerMember } from "./servers";
+
+vi.mock("cloudflare:workers", () => ({
+  env: {},
+}));
+
+import { canUserCreateInvites, isFirstUserOrOwner } from "./auth";
 
 describe("extractInviteCodes", () => {
   it("extracts code from full deeppixel.online link format", () => {
@@ -75,3 +81,81 @@ describe("addServerMember", () => {
     expect(captured[0].args[3]).toBeNull();
   });
 });
+
+describe("canUserCreateInvites and isFirstUserOrOwner", () => {
+  const mockDbWithFirstUser = (firstUserId: string) =>
+    ({
+      prepare: (query: string) => ({
+        first: async () => ({ id: firstUserId }),
+      }),
+    }) as unknown as D1Database;
+
+  it("permits owner (is_admin = 1)", async () => {
+    const ownerUser = {
+      id: "u-owner",
+      username: "owner",
+      display_name: "Owner",
+      avatar: "O",
+      color: "#000",
+      is_admin: 1,
+      can_invite: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      last_seen_at: "2026-01-01T00:00:00Z",
+    };
+    const db = mockDbWithFirstUser("u-owner");
+    expect(await canUserCreateInvites(db, ownerUser)).toBe(true);
+    expect(await isFirstUserOrOwner(db, ownerUser)).toBe(true);
+  });
+
+  it("permits selected users (can_invite = 1) to create invites, but not manage permissions", async () => {
+    const selectedUser = {
+      id: "u-selected",
+      username: "trusted",
+      display_name: "Trusted",
+      avatar: "T",
+      color: "#000",
+      is_admin: 0,
+      can_invite: 1,
+      created_at: "2026-01-02T00:00:00Z",
+      last_seen_at: "2026-01-02T00:00:00Z",
+    };
+    const db = mockDbWithFirstUser("u-owner");
+    expect(await canUserCreateInvites(db, selectedUser)).toBe(true);
+    expect(await isFirstUserOrOwner(db, selectedUser)).toBe(false);
+  });
+
+  it("blocks regular unselected users", async () => {
+    const regularUser = {
+      id: "u-regular",
+      username: "regular",
+      display_name: "Regular",
+      avatar: "R",
+      color: "#000",
+      is_admin: 0,
+      can_invite: 0,
+      created_at: "2026-01-03T00:00:00Z",
+      last_seen_at: "2026-01-03T00:00:00Z",
+    };
+    const db = mockDbWithFirstUser("u-owner");
+    expect(await canUserCreateInvites(db, regularUser)).toBe(false);
+    expect(await isFirstUserOrOwner(db, regularUser)).toBe(false);
+  });
+
+  it("permits first user created in the database even if is_admin is 0", async () => {
+    const firstCreatedUser = {
+      id: "u-earliest",
+      username: "first",
+      display_name: "First",
+      avatar: "F",
+      color: "#000",
+      is_admin: 0,
+      can_invite: 0,
+      created_at: "2025-12-01T00:00:00Z",
+      last_seen_at: "2025-12-01T00:00:00Z",
+    };
+    const db = mockDbWithFirstUser("u-earliest");
+    expect(await canUserCreateInvites(db, firstCreatedUser)).toBe(true);
+    expect(await isFirstUserOrOwner(db, firstCreatedUser)).toBe(true);
+  });
+});
+

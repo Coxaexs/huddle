@@ -15,7 +15,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -90,6 +90,7 @@ async function migrate(db: D1Database): Promise<void> {
         avatar TEXT NOT NULL,
         color TEXT NOT NULL,
         is_admin INTEGER NOT NULL DEFAULT 0,
+        can_invite INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL
       )`),
@@ -591,6 +592,7 @@ async function migrate(db: D1Database): Promise<void> {
     ["pronouns", "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''"],
     ["pride_badges", "ALTER TABLE users ADD COLUMN pride_badges TEXT NOT NULL DEFAULT '[]'"],
     ["spotify_activity", "ALTER TABLE users ADD COLUMN spotify_activity TEXT"],
+    ["can_invite", "ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }

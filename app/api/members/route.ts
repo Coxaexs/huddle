@@ -26,7 +26,7 @@ export async function GET(request: Request) {
         ? db
             .prepare(
               `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin,
+                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
                       u.created_at, u.last_seen_at, u.status, u.custom_status,
                       m.joined_at, m.invite_code,
                       i.created_by AS invite_creator_id,
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         : db
             .prepare(
               `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin,
+                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
                       u.created_at, u.last_seen_at, u.status, u.custom_status,
                       m.joined_at, m.invite_code,
                       i.created_by AS invite_creator_id,
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
         ? db
             .prepare(
               `SELECT id, username, display_name, avatar, avatar_url, banner_url,
-                      bio, pronouns, pride_badges, spotify_activity, color, is_admin,
+                      bio, pronouns, pride_badges, spotify_activity, color, is_admin, can_invite,
                       created_at, last_seen_at, status, custom_status
                  FROM users
                 WHERE username_lower LIKE ? OR LOWER(display_name) LIKE ?
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
         : db
             .prepare(
               `SELECT id, username, display_name, avatar, avatar_url, banner_url,
-                      bio, pronouns, pride_badges, spotify_activity, color, is_admin,
+                      bio, pronouns, pride_badges, spotify_activity, color, is_admin, can_invite,
                       created_at, last_seen_at, status, custom_status
                  FROM users ORDER BY display_name COLLATE NOCASE ASC`,
             )
@@ -134,6 +134,7 @@ export async function GET(request: Request) {
         lastSeenAt: member.last_seen_at,
         createdAt: member.created_at,
         isAdmin: Boolean(member.is_admin),
+        canInvite: Boolean(member.is_admin || member.can_invite),
         status: member.status || "online",
         customStatus: member.custom_status || null,
         roleIds: rolesByUser.get(member.id) || {},

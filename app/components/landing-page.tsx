@@ -362,7 +362,7 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
                 <span>GitHub</span>
               </Button>
             </a>
-            <a href="/hangout">
+            <a href="https://chat.hoffle.online">
               <Button variant="default" size="sm">
                 <span>Launch App</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -412,16 +412,6 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
       {/* ── Hero Section ─────────────────────────────────────────────── */}
       <section className="relative px-4 pt-16 pb-20 sm:pt-24 sm:pb-28">
         <div className="mx-auto max-w-4xl text-center">
-          {/* Status Badge */}
-          <Reveal>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#322a4d] bg-[#1e1930] px-3 py-1 text-xs font-medium text-[#c4b5fd] mb-6 shadow-sm">
-              <Radio className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-              <span>Self-Hostable Discord & TeamSpeak Alternative</span>
-              <span className="text-[#655986]">·</span>
-              <span className="text-emerald-400 font-semibold">AGPLv3 Licensed</span>
-            </div>
-          </Reveal>
-
           {/* Headline (Crisp, High-Contrast, Zero Gradients) */}
           <Reveal delay={60}>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-[#f4f1fa] leading-[1.1] mb-6">
@@ -442,9 +432,9 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
           {/* CTA Buttons */}
           <Reveal delay={180}>
             <div className="flex flex-wrap items-center justify-center gap-3.5">
-              <a href="/hangout">
+              <a href="https://chat.hoffle.online">
                 <Button variant="default" size="lg">
-                  <span>Open Web App</span>
+                  <span>Try Hoffle</span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </a>
@@ -1183,7 +1173,7 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3">
-                <a href="/hangout">
+                <a href="https://chat.hoffle.online">
                   <Button variant="default" size="lg">
                     <span>Try Hoffle Now</span>
                     <ArrowRight className="h-4 w-4" />
@@ -1236,7 +1226,7 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
             >
               AGPLv3 License
             </a>
-            <a href="/hangout" className="hover:text-[#ede9f6] transition-colors">
+            <a href="https://chat.hoffle.online" className="hover:text-[#ede9f6] transition-colors">
               Web App
             </a>
             <a href="#self-host" className="hover:text-[#ede9f6] transition-colors">

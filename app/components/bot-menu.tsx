@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VoicePref } from "./user-menu";
 
 export interface BotMenuAction {
@@ -33,6 +33,36 @@ export function BotMenu({
   onClose,
 }: BotMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState(() => {
+    const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+    const estimatedWidth = 240;
+    const estimatedHeight = 440;
+    return {
+      left: Math.max(12, Math.min(x, winW - estimatedWidth - 12)),
+      top: Math.max(12, Math.min(y, winH - estimatedHeight - 12)),
+    };
+  });
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const winW = window.innerWidth || 1200;
+    const winH = window.innerHeight || 800;
+    const padding = 12;
+
+    let nextLeft = x;
+    let nextTop = y;
+
+    if (nextLeft + rect.width > winW - padding) {
+      nextLeft = Math.max(padding, winW - rect.width - padding);
+    }
+    if (nextTop + rect.height > winH - padding) {
+      nextTop = Math.max(padding, winH - rect.height - padding);
+    }
+
+    setPos({ left: nextLeft, top: nextTop });
+  }, [x, y, actions.length, Boolean(voicePref)]);
 
   useEffect(() => {
     const dismiss = (event: Event) => {
@@ -59,8 +89,10 @@ export function BotMenu({
       className="user-menu bot-menu"
       ref={ref}
       style={{
-        left: Math.min(x, (globalThis.innerWidth || 1200) - 240),
-        top: Math.min(y, (globalThis.innerHeight || 800) - 360),
+        left: pos.left,
+        top: pos.top,
+        maxHeight: "calc(100vh - 24px)",
+        overflowY: "auto",
       }}
       role="menu"
     >

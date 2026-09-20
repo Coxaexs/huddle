@@ -5,7 +5,10 @@ import type { Member } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
 
 export interface UserMenuTarget {
-  member: Pick<Member, "id" | "displayName" | "username" | "prideBadges">;
+  member: Pick<Member, "id" | "displayName" | "username" | "prideBadges"> & {
+    canInvite?: boolean;
+    isAdmin?: boolean;
+  };
   x: number;
   y: number;
 }
@@ -38,6 +41,9 @@ interface UserMenuProps {
   /** The voice channel this person is currently sitting in, if any. */
   targetVoiceChannelId?: string | null;
   onMove?: (channelId: string) => void;
+  /** Whether viewer is instance owner */
+  isOwner?: boolean;
+  onToggleInvitePermission?: () => void;
 }
 
 /**
@@ -63,6 +69,8 @@ export function UserMenu({
   voiceChannels = [],
   targetVoiceChannelId = null,
   onMove,
+  isOwner = false,
+  onToggleInvitePermission,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -186,6 +194,21 @@ export function UserMenu({
                     Ban from server
                   </button>
                 ))}
+
+          {isOwner && !target.member.isAdmin && onToggleInvitePermission && (
+            <>
+              <div className="user-menu-divider" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onToggleInvitePermission}
+              >
+                {target.member.canInvite
+                  ? "Revoke Invite Permission"
+                  : "Allow Creating Invites"}
+              </button>
+            </>
+          )}
         </>
       )}
 

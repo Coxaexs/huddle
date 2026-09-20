@@ -108,6 +108,7 @@ export async function POST(request: Request) {
     avatar: displayName.slice(0, 1).toUpperCase() || "H",
     color: AVATAR_COLORS[(total?.count ?? 0) % AVATAR_COLORS.length],
     is_admin: isFirstUser ? 1 : 0,
+    can_invite: isFirstUser ? 1 : 0,
     created_at: now,
     last_seen_at: now,
   };
@@ -115,8 +116,8 @@ export async function POST(request: Request) {
   await db
     .prepare(
       `INSERT INTO users
-         (id, username, username_lower, display_name, password_hash, avatar, color, is_admin, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, username, username_lower, display_name, password_hash, avatar, color, is_admin, can_invite, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       user.id,
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
       user.avatar,
       user.color,
       user.is_admin,
+      user.can_invite,
       now,
       now,
     )

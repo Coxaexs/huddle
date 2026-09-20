@@ -43,6 +43,7 @@ export interface PublicUser {
   spotifyActivity?: SpotifyActivity | null;
   color: string;
   isAdmin: boolean;
+  canInvite: boolean;
 }
 
 export interface Member {
@@ -60,6 +61,7 @@ export interface Member {
   lastSeenAt: string;
   createdAt?: string;
   isAdmin?: boolean;
+  canInvite?: boolean;
   /** Presence the member chose: online | idle | dnd | invisible. */
   status?: PresenceStatus;
   customStatus?: string | null;
