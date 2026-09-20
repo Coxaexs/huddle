@@ -410,7 +410,7 @@ export function SettingsDialog({
   const [currentAppId, setCurrentAppId] = useState("spotify");
   const [detectedApps, setDetectedApps] = useState([
     { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify" },
-    { id: "vscode", name: "Visual Studio Code", type: "coding", details: "Editing Huddle codebase" },
+    { id: "vscode", name: "Visual Studio Code", type: "coding", details: "Editing Hoffle codebase" },
     { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode" },
   ]);
   const pictureRef = useRef<HTMLInputElement>(null);
@@ -1097,7 +1097,7 @@ export function SettingsDialog({
 
               <label className="appearance-switch cute-appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Cozy Huddle <Sparkles size={14} /></strong>
+                  <strong className="inline-flex items-center gap-1.5">Cozy Hoffle <Sparkles size={14} /></strong>
                   <small>Room pet, sparkles, tiny charms, and celebrations</small>
                 </span>
                 <input
@@ -1148,7 +1148,7 @@ export function SettingsDialog({
               <label className="appearance-switch">
                 <span>
                   <strong>Display current activity as a status message</strong>
-                  <small>Huddle will automatically update your profile status when you play a game or listen to Spotify</small>
+                  <small>Hoffle will automatically update your profile status when you play a game or listen to Spotify</small>
                 </span>
                 <input
                   type="checkbox"

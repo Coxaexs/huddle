@@ -1,0 +1,35 @@
+services:
+  hoffle:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hoffle
+    restart: unless-stopped
+    ports:
+      - "8730:8730" # Hoffle Web App & Realtime WebSocket
+      - "8731:8731" # Music Resolver Helper (Internal/Optional)
+    volumes:
+      # Mount state directory on host so all users, channels, messages,
+      # and uploads persist across container updates and restarts
+      - ./state:/app/state
+      - ./.dev.vars:/app/.dev.vars:ro
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=8730
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8730/hangout/api/auth/session"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Optional: coturn TURN/STUN server for guaranteed voice connectivity
+  # across strict NATs and firewalls (uncomment if you don't run coturn on host)
+  # coturn:
+  #   image: coturn/coturn:latest
+  #   container_name: hoffle-coturn
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   volumes:
+  #     - ./turnserver.conf:/etc/turnserver.conf:ro

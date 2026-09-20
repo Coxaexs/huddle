@@ -27,11 +27,16 @@ export default {
     const url = new URL(request.url);
 
     // Built assets are emitted without the basePath, so a request for
-    // /hangout/assets/x.js never matches the asset index on its own. Serving
-    // them here keeps the app working without a matching nginx alias.
-    if (env?.ASSETS && url.pathname.startsWith(`${BASE_PATH}/assets/`)) {
+    // /hangout/assets/x.js or /assets/x.js matches here.
+    if (
+      env?.ASSETS &&
+      (url.pathname.startsWith(`${BASE_PATH}/assets/`) ||
+        url.pathname.startsWith("/assets/"))
+    ) {
       const target = new URL(request.url);
-      target.pathname = url.pathname.slice(BASE_PATH.length);
+      if (url.pathname.startsWith(`${BASE_PATH}/assets/`)) {
+        target.pathname = url.pathname.slice(BASE_PATH.length);
+      }
       return env.ASSETS.fetch(new Request(target, request));
     }
 
@@ -94,6 +99,18 @@ export default {
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },
       });
+    }
+
+    if (!url.pathname.startsWith(BASE_PATH)) {
+      const target = new URL(request.url);
+      const host = request.headers.get("host") || url.host;
+      const isApex = host === "hoffle.online" || host === "www.hoffle.online";
+      if (url.pathname === "/" && isApex) {
+        target.pathname = `${BASE_PATH}/landing`;
+      } else {
+        target.pathname = `${BASE_PATH}${url.pathname}`;
+      }
+      return handler.fetch(new Request(target, request), env as never, ctx as never);
     }
 
     return handler.fetch(request, env as never, ctx as never);
