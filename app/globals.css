@@ -4421,6 +4421,31 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   padding:8px;
   position:fixed;
   box-shadow:0 24px 60px #00000073;
+  max-height:calc(100vh - 24px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#5a5c6c transparent;
+}
+
+.user-menu::-webkit-scrollbar {
+  width:5px;
+}
+.user-menu::-webkit-scrollbar-thumb {
+  background:#41434f;
+  border-radius:6px;
+}
+.user-menu::-webkit-scrollbar-track {
+  background:transparent;
+}
+
+.bot-menu .user-menu-head {
+  position:sticky;
+  top:-8px;
+  background:#202129;
+  z-index:2;
+  margin-top:-8px;
+  padding-top:12px;
 }
 
 .user-menu-head {
@@ -12087,6 +12112,158 @@ html[data-motion="reduced"] .blahaj-boop {
   color: var(--text-muted, #80848e);
   font-style: italic;
 }
+
+/* ---------------------------------------------------------------------------
+   Preview Mockup Enhancements: Voice Contour, Outline Reactions, Markdown Pill
+--------------------------------------------------------------------------- */
+.voice-active-contour {
+  border: 1px solid #28223d !important;
+  background: rgba(26, 22, 40, 0.88) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(16, 185, 129, 0.2) !important;
+  border-radius: 12px !important;
+  padding: 8px !important;
+  margin: 4px 6px !important;
+  transition: all 0.2s ease !important;
+}
+
+.voice-active-contour .voice-room {
+  background: transparent !important;
+  padding: 2px 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.voice-active-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  margin-left: auto;
+}
+
+.contour-members {
+  padding-left: 6px !important;
+  margin-top: 4px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+}
+
+.contour-members .voice-member {
+  height: 28px !important;
+  font-size: 12px !important;
+}
+
+.outline-reaction-pill {
+  border: 1px solid #2e2746 !important;
+  background: #1d182e !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  color: #c4b5fd !important;
+  transition: all 0.15s ease !important;
+}
+
+.outline-reaction-pill:hover {
+  background: #251f3b !important;
+  border-color: #3b3259 !important;
+}
+
+.outline-reaction-pill.mine {
+  border-color: rgba(124, 92, 252, 0.7) !important;
+  background: rgba(124, 92, 252, 0.18) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 8px rgba(124, 92, 252, 0.25) !important;
+}
+
+.outline-reaction-pill.mine b {
+  color: #ffffff !important;
+}
+
+.quick-react-outline-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 4px 6px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+}
+
+.quick-react-outline-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.composer-markdown-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid #28223c;
+  background: #12101b;
+  color: #9d95bc;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.composer-markdown-pill:hover {
+  border-color: #7c5cfc;
+  color: #ede9f6;
+  background: rgba(124, 92, 252, 0.12);
+}
+
+.markdown-badge-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth-request-try {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.auth-request-try-hint {
+  font-size: 12px;
+  color: var(--muted, #9d95bc);
+  margin: 0;
+}
+
+.auth-request-try-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c4b5fd;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 92, 252, 0.35);
+  background: rgba(124, 92, 252, 0.1);
+  transition: all 0.15s ease;
+}
+
+.auth-request-try-link:hover {
+  background: rgba(124, 92, 252, 0.22);
+  border-color: rgba(124, 92, 252, 0.6);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(124, 92, 252, 0.2);
+}
+
+
 
 
 

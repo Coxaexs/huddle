@@ -12,6 +12,10 @@ interface UsePlayerOptions {
   onEnded: (trackId: string) => void;
   /** True while the real server-side bot is publishing WebRTC audio. */
   streamed?: boolean;
+  /** Personal volume preference (0-100). */
+  personalVolume?: number;
+  /** Personal mute preference. */
+  personalMuted?: boolean;
 }
 
 /** Re-seek the element when it drifts further than this from the hub clock. */
@@ -26,12 +30,19 @@ const SILENT_WAV =
  * Nobody streams audio to anybody: every listener plays the same source and is
  * nudged back to the shared position, so a seek by one person moves everyone.
  */
+function volumeGain(percent: number): number {
+  const normalized = Math.max(0, Math.min(1, percent / 100));
+  return normalized * normalized;
+}
+
 export function usePlayer({
   state,
   serverNow,
   deafened,
   onEnded,
   streamed = false,
+  personalVolume,
+  personalMuted,
 }: UsePlayerOptions) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const trackIdRef = useRef<string | null>(null);
@@ -84,18 +95,20 @@ export function usePlayer({
     }
   }, [state, serverNow, ensureAudio, attempt, streamed]);
 
-  // Pause/resume and volume follow the room.
+  // Pause/resume and volume follow the room and personal preferences.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !state?.track || streamed) return;
-    audio.volume = deafened ? 0 : Math.max(0, Math.min(1, state.volume / 100));
+    const personal = personalMuted ? 0 : volumeGain(personalVolume ?? 100);
+    const general = Math.max(0, Math.min(1, (state.volume ?? 100) / 100));
+    audio.volume = deafened ? 0 : Math.max(0, Math.min(1, general * personal));
     if (state.paused && !audio.paused) {
       audio.pause();
     } else if (!state.paused && audio.paused) {
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
       attempt(audio);
     }
-  }, [state, deafened, serverNow, attempt, streamed]);
+  }, [state, deafened, personalVolume, personalMuted, serverNow, attempt, streamed]);
 
   // Ticks the visible position and corrects drift against the hub clock.
   useEffect(() => {

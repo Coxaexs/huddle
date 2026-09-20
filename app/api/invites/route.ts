@@ -1,5 +1,12 @@
-import { currentUser, generateInviteCode, unauthorized } from "@/lib/auth";
+import {
+  canUserCreateInvites,
+  currentUser,
+  generateInviteCode,
+  isFirstUserOrOwner,
+  unauthorized,
+} from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -39,6 +46,16 @@ export async function GET(request: Request) {
   // A server invite list is scoped to that server; without a serverId this is
   // the account-level invite list (codes that let someone join the Huddle).
   const serverId = new URL(request.url).searchParams.get("serverId") || null;
+
+  if (!serverId) {
+    // Only the first created user (owner) and selected users can view global invite codes
+    if (!(await canUserCreateInvites(db, user))) {
+      return Response.json({ invites: [] });
+    }
+  } else if (!(await isServerMember(db, serverId, user.id))) {
+    return Response.json({ invites: [] }, { status: 403 });
+  }
+
   const result = serverId
     ? await db
         .prepare(
@@ -58,7 +75,7 @@ export async function GET(request: Request) {
   });
 }
 
-/** Anyone signed in can invite a friend — this Huddle has no roles yet. */
+/** Only the first created user (owner) and selected users can create invite codes. */
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) {
@@ -71,6 +88,14 @@ export async function POST(request: Request) {
   if (!user) return unauthorized();
 
   await ensureSchema(db);
+
+  if (!(await canUserCreateInvites(db, user))) {
+    return Response.json(
+      { error: "Only the server owner and authorized users can create invite codes." },
+      { status: 403 },
+    );
+  }
+
   const body = (await request.json().catch(() => ({}))) as {
     maxUses?: number;
     note?: string;
@@ -139,6 +164,29 @@ export async function DELETE(request: Request) {
 
   const code = new URL(request.url).searchParams.get("code")?.toUpperCase();
   if (!code) return Response.json({ error: "Which code?" }, { status: 400 });
+
+  const existing = await db
+    .prepare("SELECT created_by, server_id FROM invites WHERE code = ?")
+    .bind(code)
+    .first<{ created_by: string | null; server_id: string | null }>();
+
+  if (!existing) {
+    return Response.json({ error: "Invite not found." }, { status: 404 });
+  }
+
+  const isOwner = await isFirstUserOrOwner(db, user);
+  const isCreator = existing.created_by === user.id;
+  let canRevoke = isOwner || isCreator;
+  if (!canRevoke && existing.server_id) {
+    canRevoke = await can(db, user.id, existing.server_id, Permission.MANAGE_SERVER);
+  }
+
+  if (!canRevoke) {
+    return Response.json(
+      { error: "You do not have permission to revoke this invite code." },
+      { status: 403 },
+    );
+  }
 
   await db
     .prepare("UPDATE invites SET revoked = 1 WHERE code = ?")

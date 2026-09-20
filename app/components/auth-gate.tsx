@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import type { PublicUser } from "@/lib/users";
 
@@ -141,6 +142,19 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               ? "I already have an account"
               : "I have an invite code"}
           </button>
+        )}
+
+        {mode === "signup" && !bootstrap && (
+          <div className="auth-request-try">
+            <p className="auth-request-try-hint">Need an invite or want early access?</p>
+            <a
+              href="mailto:info@hoffle.online?subject=Requesting%20a%20try%20for%20Hoffle&body=Hello%20Hoffle%20Team%2C%0D%0A%0D%0AI%20would%20like%20to%20request%20access%20to%20try%20out%20Hoffle!%0D%0A%0D%0AThank%20you!"
+              className="auth-request-try-link"
+            >
+              <Mail size={14} className="text-[#a78bfa]" />
+              <span>Mail us at info@hoffle.online to request a try</span>
+            </a>
+          </div>
         )}
       </form>
     </div>

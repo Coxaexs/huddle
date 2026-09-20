@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { Copy, Check } from "lucide-react";
 import { highlight } from "../lib/highlight";
 
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
@@ -149,12 +150,42 @@ function renderInline(
   return parts;
 }
 
-/** A fenced code block with a language label and light highlighting. */
+/** A fenced code block with a language label, copy button, and syntax highlighting. */
 function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
   const tokens = highlight(code, language);
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <pre className="code-block">
-      {language && <span className="code-lang">{language}</span>}
+    <pre className="code-block group relative">
+      <div className="code-block-header flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-white/[0.06] text-[10px] font-mono select-none">
+        <span className="code-lang text-[#9e83fc] font-semibold uppercase tracking-wider">
+          {language || "code"}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="copy-code-btn inline-flex items-center gap-1 text-[#8b82a8] hover:text-white transition-colors cursor-pointer"
+          title="Copy code"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-400" />
+              <span className="text-emerald-400">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
       <code>
         {tokens.map((token, index) =>
           token.kind === "plain" ? (

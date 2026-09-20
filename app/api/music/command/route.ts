@@ -4,6 +4,7 @@ import { formatDuration, resolveTracks, trackLabel } from "@/lib/music";
 import { botFetch, botSession, fetchLyrics } from "@/lib/musicbot";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
+import { can, Permission } from "@/lib/permissions";
 import { findChannel } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
@@ -172,9 +173,10 @@ export async function POST(request: Request) {
     return Response.json({ text }, { status: 409 });
   }
 
+  let voiceChannel: Awaited<ReturnType<typeof findChannel>> = null;
   if (voiceChannelId) {
-    const channel = await findChannel(db, voiceChannelId);
-    if (!channel || channel.kind !== "voice") {
+    voiceChannel = await findChannel(db, voiceChannelId);
+    if (!voiceChannel || voiceChannel.kind !== "voice") {
       return Response.json(
         { error: "That is not a voice channel." },
         { status: 400 },
@@ -470,13 +472,35 @@ export async function POST(request: Request) {
       }
 
       case "volume": {
-        const level = Number(value);
-        if (!Number.isFinite(level)) throw new Error("Use `/volume 0-100`.");
+        if (!value.trim()) {
+          const state = await playerState(voiceChannelId!);
+          const text = `General volume is currently ${state?.volume ?? 100}%. Use \`/volume 0-100\` to change it.`;
+          await say(db, textChannelId, text);
+          return Response.json({ text, state });
+        }
+        const serverId = voiceChannel?.server_id;
+        let allowed = Boolean(user.is_admin);
+        if (!allowed && serverId) {
+          allowed =
+            (await can(db, user.id, serverId, Permission.ADMINISTRATOR)) ||
+            (await can(db, user.id, serverId, Permission.MODERATE)) ||
+            (await can(db, user.id, serverId, Permission.MANAGE_SERVER)) ||
+            (await can(db, user.id, serverId, Permission.MUTE_MEMBERS));
+        }
+        if (!allowed) {
+          throw new Error(
+            "You need control user or admin permission to change the general volume.",
+          );
+        }
+        const level = Math.round(Number(value));
+        if (!Number.isFinite(level) || level < 0 || level > 100) {
+          throw new Error("Use `/volume 0-100`.");
+        }
         const state = await playerCommand(voiceChannelId!, {
           name: "volume",
           volume: level,
         });
-        const text = `Volume set to ${state?.volume ?? level}%.`;
+        const text = `General volume set to ${state?.volume ?? level}%.`;
         await say(db, textChannelId, text);
         return Response.json({ text, state });
       }

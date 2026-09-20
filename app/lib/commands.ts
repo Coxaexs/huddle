@@ -79,7 +79,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "volume",
     args: "<0-100>",
-    description: "Set the room volume",
+    description: "Set the room general volume (Admins & Moderators)",
     group: "Music",
     voice: true,
   },
@@ -217,6 +217,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   { name: "flip", description: "Flip a coin", group: "Huddle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
+  {
+    name: "markdown",
+    description: "Toggle markdown tips and code snippet helpers (e.g. ```cpp)",
+    group: "Huddle",
+  },
   { name: "help", description: "How commands work here", group: "Huddle" },
 ];
 

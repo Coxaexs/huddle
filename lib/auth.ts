@@ -35,6 +35,7 @@ export interface User {
   spotify_activity?: string | null;
   color: string;
   is_admin: number;
+  can_invite?: number;
   created_at: string;
   last_seen_at: string;
   status?: string | null;
@@ -71,6 +72,7 @@ export function publicUser(user: User): PublicUser {
     spotifyActivity: spotifyAct,
     color: user.color,
     isAdmin: Boolean(user.is_admin),
+    canInvite: Boolean(user.is_admin || user.can_invite),
   };
 }
 
@@ -213,7 +215,7 @@ export async function currentUser(request: Request): Promise<User | null> {
   const row = await db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-              u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.created_at,
+              u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite, u.created_at,
               u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
@@ -239,6 +241,36 @@ export async function touchUser(db: D1Database, userId: string): Promise<void> {
 
 export function unauthorized(): Response {
   return Response.json({ error: "Sign in to continue." }, { status: 401 });
+}
+
+/**
+ * Checks whether a user has permission to create invite codes.
+ * Only the first created user (owner/admin) and users selected by that person can create invites.
+ */
+export async function canUserCreateInvites(
+  db: D1Database,
+  user: User,
+): Promise<boolean> {
+  if (Boolean(user.is_admin) || Boolean(user.can_invite)) return true;
+  const firstUser = await db
+    .prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
+    .first<{ id: string }>();
+  return Boolean(firstUser && firstUser.id === user.id);
+}
+
+/**
+ * Checks whether a user is the first created user (the instance owner).
+ * Only this user has the authority to grant or revoke invite creation permissions for others.
+ */
+export async function isFirstUserOrOwner(
+  db: D1Database,
+  user: User,
+): Promise<boolean> {
+  if (Boolean(user.is_admin)) return true;
+  const firstUser = await db
+    .prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
+    .first<{ id: string }>();
+  return Boolean(firstUser && firstUser.id === user.id);
 }
 
 export const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{2,24}$/;

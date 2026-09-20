@@ -46,6 +46,8 @@ interface ServerSettingsDialogProps {
   isOwner?: boolean;
   /** Leave this server (non-owners only). */
   onLeaveServer?: () => void;
+  /** Whether the viewer has permission to create invite codes */
+  canCreateInvites?: boolean;
 }
 
 interface ServerInvite {
@@ -151,6 +153,7 @@ export function ServerSettingsDialog({
   onRequestConfirm,
   isOwner = false,
   onLeaveServer,
+  canCreateInvites = true,
 }: ServerSettingsDialogProps) {
   const [tab, setTab] = useState<Tab>("profile");
   const [serverName, setServerName] = useState(server.name);
@@ -1601,14 +1604,20 @@ export function ServerSettingsDialog({
               Share one of these codes to let someone join {server.name}. A code
               with no use limit works until you revoke it.
             </p>
-            <button
-              type="button"
-              className="discord-btn primary-indigo"
-              onClick={() => void createServerInvite()}
-              disabled={creatingInvite}
-            >
-              {creatingInvite ? "Creating…" : "Create Invite Code"}
-            </button>
+            {canCreateInvites ? (
+              <button
+                type="button"
+                className="discord-btn primary-indigo"
+                onClick={() => void createServerInvite()}
+                disabled={creatingInvite}
+              >
+                {creatingInvite ? "Creating…" : "Create Invite Code"}
+              </button>
+            ) : (
+              <p className="pane-subtitle" style={{ color: "#f0b232", marginTop: "8px" }}>
+                Only the server owner and designated members can create invite codes.
+              </p>
+            )}
 
             {loadingInvites ? (
               <p className="pane-subtitle">Loading invites…</p>

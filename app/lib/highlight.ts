@@ -23,7 +23,13 @@ const KEYWORDS: Record<string, string[]> = {
     " ",
   ),
   css: "important media keyframes import from to and not only".split(" "),
-  sql: "select from where insert into update delete join left right inner outer on group by order having limit values set create table drop alter index as and or not null".split(
+  cpp: "int float double char bool void auto const constexpr return if else for while do switch case break continue default class struct public private protected virtual override template typename namespace using static inline explicit operator friend this new delete nullptr true false try catch throw size_t string vector cout cin endl include define ifdef ifndef endif std static_cast dynamic_cast reinterpret_cast const_cast typedef union enum".split(
+    " ",
+  ),
+  rust: "fn let mut struct enum impl trait pub use mod match if else while loop for in return true false None Some Ok Err as const static type where async await move unsafe dyn crate self Self".split(
+    " ",
+  ),
+  go: "func package import return var const type struct interface if else for range switch case default break continue select chan go defer map nil true false make len cap".split(
     " ",
   ),
 };
@@ -38,6 +44,9 @@ function keywordsFor(language: string): string[] {
   if (["sh", "bash", "zsh", "shell", "console"].includes(lang)) return KEYWORDS.sh;
   if (["css", "scss", "less"].includes(lang)) return KEYWORDS.css;
   if (["sql"].includes(lang)) return KEYWORDS.sql;
+  if (["cpp", "c++", "c", "h", "hpp", "cc", "cxx"].includes(lang)) return KEYWORDS.cpp;
+  if (["rust", "rs"].includes(lang)) return KEYWORDS.rust;
+  if (["go", "golang"].includes(lang)) return KEYWORDS.go;
   return [];
 }
 

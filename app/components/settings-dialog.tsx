@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
+import { Avatar } from "./avatar";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
 const METER_FLOOR_DB = -80;
@@ -387,6 +388,21 @@ export function SettingsDialog({
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [invites, setInvites] = useState<Invite[]>([]);
+  const canCreateInvites = Boolean(user.isAdmin || user.canInvite);
+  const [permissionUsers, setPermissionUsers] = useState<
+    Array<{
+      id: string;
+      username: string;
+      displayName: string;
+      avatar: string;
+      avatarUrl: string | null;
+      color: string;
+      isAdmin: boolean;
+      canInvite: boolean;
+    }>
+  >([]);
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [updatingPermission, setUpdatingPermission] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || null);
@@ -485,12 +501,33 @@ export function SettingsDialog({
     };
   }, [tab]);
 
+  const loadPermissions = useCallback(() => {
+    if (!user.isAdmin) return;
+    apiFetch<{
+      users: Array<{
+        id: string;
+        username: string;
+        displayName: string;
+        avatar: string;
+        avatarUrl: string | null;
+        color: string;
+        isAdmin: boolean;
+        canInvite: boolean;
+      }>;
+    }>("/api/invites/permissions")
+      .then((data) => setPermissionUsers(data.users || []))
+      .catch(() => undefined);
+  }, [user.isAdmin]);
+
   useEffect(() => {
     if (tab !== "invites") return;
     apiFetch<{ invites: Invite[] }>("/api/invites")
       .then((data) => setInvites(data.invites))
       .catch(() => undefined);
-  }, [tab]);
+    if (user.isAdmin) {
+      loadPermissions();
+    }
+  }, [tab, user.isAdmin, loadPermissions]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -584,6 +621,31 @@ export function SettingsDialog({
     );
   }
 
+  async function toggleInvitePermission(targetUserId: string, currentCanInvite: boolean) {
+    setUpdatingPermission(targetUserId);
+    setError("");
+    try {
+      const data = await apiFetch<{ ok: boolean; userId: string; canInvite: boolean }>(
+        "/api/invites/permissions",
+        {
+          method: "POST",
+          body: JSON.stringify({ userId: targetUserId, canInvite: !currentCanInvite }),
+        },
+      );
+      setPermissionUsers((list) =>
+        list.map((u) =>
+          u.id === targetUserId ? { ...u, canInvite: data.canInvite } : u,
+        ),
+      );
+      setStatus(data.canInvite ? "Invite permission granted." : "Invite permission revoked.");
+      window.setTimeout(() => setStatus(""), 2000);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Failed to update permission.");
+    } finally {
+      setUpdatingPermission(null);
+    }
+  }
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal settings-modal">
@@ -601,7 +663,7 @@ export function SettingsDialog({
               ["activities", "Activities & Privacy"],
               ["voice", "Voice & Video"],
               ["password", "Password"],
-              ["invites", "Invites"],
+              ...(canCreateInvites ? ([["invites", "Invites"]] as const) : []),
               ["appearance", "Appearance"],
               ...(canManageServer && server
                 ? ([["roles", "Roles"]] as const)
@@ -975,6 +1037,155 @@ export function SettingsDialog({
                   <li className="empty">No codes yet.</li>
                 )}
               </ul>
+
+              {user.isAdmin && (
+                <div
+                  className="invite-permissions-container"
+                  style={{
+                    marginTop: "24px",
+                    paddingTop: "20px",
+                    borderTop: "1px solid #41434f",
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      color: "#fff",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Invite Creation Permissions
+                  </h3>
+                  <p className="modal-hint" style={{ marginBottom: "12px" }}>
+                    Only you (the first created user/owner) and selected members can
+                    create invite codes. Choose who else is authorized to create
+                    invites below.
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Filter members by name..."
+                    value={permissionSearch}
+                    onChange={(e) => setPermissionSearch(e.target.value)}
+                    style={{ marginBottom: "12px", width: "100%" }}
+                  />
+                  <div
+                    style={{
+                      maxHeight: "220px",
+                      overflowY: "auto",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    {permissionUsers
+                      .filter((u) => {
+                        if (!permissionSearch) return true;
+                        const term = permissionSearch.toLowerCase();
+                        return (
+                          u.displayName.toLowerCase().includes(term) ||
+                          u.username.toLowerCase().includes(term)
+                        );
+                      })
+                      .map((u) => (
+                        <div
+                          key={u.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            background: "rgba(255, 255, 255, 0.04)",
+                            borderRadius: "8px",
+                            border: "1px solid rgba(255, 255, 255, 0.06)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                            }}
+                          >
+                            <Avatar
+                              avatar={u.avatar}
+                              avatarUrl={u.avatarUrl}
+                              color={u.color}
+                              size={28}
+                            />
+                            <div>
+                              <span
+                                style={{
+                                  fontWeight: 500,
+                                  color: "#fff",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                {u.displayName}
+                              </span>{" "}
+                              <span
+                                style={{
+                                  color: "var(--muted)",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                @{u.username}
+                              </span>
+                            </div>
+                          </div>
+
+                          {u.isAdmin ? (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                padding: "3px 8px",
+                                borderRadius: "4px",
+                                background: "rgba(235, 185, 50, 0.15)",
+                                color: "#ffd67c",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Owner (Always Allowed)
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void toggleInvitePermission(u.id, u.canInvite)
+                              }
+                              disabled={updatingPermission === u.id}
+                              style={{
+                                fontSize: "12px",
+                                padding: "4px 12px",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                                background: u.canInvite
+                                  ? "rgba(87, 242, 135, 0.2)"
+                                  : "rgba(255, 255, 255, 0.08)",
+                                color: u.canInvite ? "#57f287" : "#aaaeba",
+                                border: u.canInvite
+                                  ? "1px solid rgba(87, 242, 135, 0.4)"
+                                  : "1px solid #4b4d5b",
+                              }}
+                            >
+                              {updatingPermission === u.id
+                                ? "Updating…"
+                                : u.canInvite
+                                  ? "✓ Can Invite"
+                                  : "+ Allow Invite"}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    {permissionUsers.length === 0 && (
+                      <p className="modal-hint" style={{ textAlign: "center" }}>
+                        Loading members…
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

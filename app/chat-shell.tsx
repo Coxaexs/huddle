@@ -106,6 +106,8 @@ import {
   type MusicSettings,
 } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
+import { MiniMusicBar } from "./components/mini-music-bar";
+import { OutlineEmoji } from "./components/outline-emoji";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
@@ -234,7 +236,7 @@ interface DmSummary {
 const DM_HOME = "@me";
 
 /** The one-tap reactions shown on message hover. */
-const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮"];
+const QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
 
 /** Options for the one-tap "quick vote" on a message. */
 const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
@@ -507,6 +509,7 @@ export function ChatShell() {
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
   );
+  const [markdownModalOpen, setMarkdownModalOpen] = useState(false);
   const [theme, setTheme] = useState<"cozy" | "legacy" | "light">("cozy");
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 240;
@@ -672,6 +675,11 @@ export function ChatShell() {
     y: number;
   } | null>(null);
   const [voicePrefs, setVoicePrefs] = useState<Record<string, VoicePref>>({});
+  const prefFor = useCallback(
+    (id: string): VoicePref =>
+      voicePrefs[id] || { volume: 100, muted: false },
+    [voicePrefs],
+  );
 
   const [musicWatchOnline, setMusicWatchOnline] = useState<boolean | null>(null);
   const [musicDashboardUrl, setMusicDashboardUrl] = useState<string | null>(null);
@@ -1658,11 +1666,14 @@ export function ChatShell() {
     (participant) => participant.bot,
   );
 
+  const musicBotPref = prefFor("bot:music");
   const player = usePlayer({
     state: roomPlayer,
     streamed: botStreaming,
     serverNow: hub.serverNow,
     deafened: voice.deafened,
+    personalVolume: musicBotPref.volume,
+    personalMuted: musicBotPref.muted,
     onEnded: (trackId) => {
       if (!voice.channelId) return;
       hub.send({
@@ -1984,6 +1995,12 @@ export function ChatShell() {
     pendingCommandRef.current = user
       ? { text: raw.trim().slice(0, 200), by: user.displayName }
       : null;
+
+    if (name === "markdown") {
+      setMarkdownModalOpen((prev) => !prev);
+      setNotice("Markdown enabled! Use ```cpp for code blocks, **bold**, *italic*.");
+      return;
+    }
 
     // /poll Question? | option | option
     if (name === "poll") {
@@ -3528,10 +3545,16 @@ export function ChatShell() {
           chanProps.onDrop?.(event);
         },
       };
+      const isConnectedVoice = voice.channelId === channel.id;
       return (
-        <div key={channel.id} {...chanProps} {...voiceDropProps}>
+        <div
+          key={channel.id}
+          {...chanProps}
+          {...voiceDropProps}
+          className={`voice-room-wrapper ${isConnectedVoice ? "voice-active-contour" : ""}`}
+        >
           <button
-            className={`voice-room ${voice.channelId === channel.id ? "selected-voice" : ""} ${stageChannelId === channel.id ? "viewing-voice" : ""}`}
+            className={`voice-room ${isConnectedVoice ? "selected-voice active-connected-room" : ""} ${stageChannelId === channel.id ? "viewing-voice" : ""}`}
             title={
               channel.topic
                 ? `${channel.name} — ${channel.topic}`
@@ -3543,9 +3566,17 @@ export function ChatShell() {
               setChannelMenu({ channel, x: event.clientX, y: event.clientY });
             }}
           >
-            <span className="speaker-icon"><Volume2 size={16} /></span>
-            <span>{channel.name}</span>
-            {people.length > 0 && <span className="live-pill">LIVE</span>}
+            <span className={`speaker-icon ${isConnectedVoice ? "text-emerald-400" : ""}`}>
+              <Volume2 size={16} />
+            </span>
+            <span className={isConnectedVoice ? "font-semibold text-[#c8bdf5]" : ""}>{channel.name}</span>
+            {isConnectedVoice ? (
+              <span className="voice-active-pill">
+                {people.length > 0 ? `${people.length} active` : "connected"}
+              </span>
+            ) : people.length > 0 ? (
+              <span className="live-pill">LIVE</span>
+            ) : null}
             {canManageChannels && (
               <span
                 className="channel-delete"
@@ -3562,85 +3593,92 @@ export function ChatShell() {
           </button>
 
           {people.length > 0 && (
-            <div className="voice-members">
-              {people.map((person) => (
-                <div
-                  className={`voice-member ${
-                    canModerate && !person.bot ? "draggable-member" : ""
-                  } ${
-                    voice.speaking.has(
-                      person.connectionId === hub.connectionId
-                        ? "self"
-                        : person.connectionId,
-                    )
-                      ? "is-speaking"
-                      : ""
-                  }`}
-                  key={person.connectionId}
-                  // Moderators can drag a person onto another voice channel to
-                  // move them there.
-                  draggable={canModerate && !person.bot}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData(
-                      "application/x-huddle-voice-member",
-                      person.id,
-                    );
-                  }}
-                  onContextMenu={(event) => {
-                    if (person.bot) {
-                      openBotMenu(event, "music");
-                      return;
-                    }
-                    const member = membersById.get(person.id);
-                    if (member) openUserMenu(event, member);
-                  }}
-                  onClick={(event) => {
-                    // Touch has no right-click: a tap opens the same menu.
-                    if (!touchInput) return;
-                    if (person.bot) {
-                      openBotMenu(event, "music");
-                      return;
-                    }
-                    const member = membersById.get(person.id);
-                    if (member) openUserMenu(event, member);
-                  }}
-                >
-                  <Avatar
-                    className="tiny-avatar"
-                    avatar={person.avatar}
-                    avatarUrl={person.avatarUrl}
-                    color={person.color}
-                  />
-                  <span>
-                    {person.connectionId === hub.connectionId
-                      ? "You"
-                      : person.displayName}
-                  </span>
-                  {person.muted && !person.bot && (
-                    <span
-                      className="muted-pill"
-                      title={person.serverMuted ? "Muted for everyone" : "Muted"}
-                    >
-                      <VolumeX size={14} />
+            <div className={`voice-members ${isConnectedVoice ? "contour-members" : ""}`}>
+              {people.map((person) => {
+                const isSpeaking = voice.speaking.has(
+                  person.connectionId === hub.connectionId
+                    ? "self"
+                    : person.connectionId,
+                );
+                return (
+                  <div
+                    className={`voice-member ${
+                      canModerate && !person.bot ? "draggable-member" : ""
+                    } ${isSpeaking ? "is-speaking" : ""}`}
+                    key={person.connectionId}
+                    draggable={canModerate && !person.bot}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData(
+                        "application/x-huddle-voice-member",
+                        person.id,
+                      );
+                    }}
+                    onContextMenu={(event) => {
+                      if (person.bot) {
+                        openBotMenu(event, "music");
+                        return;
+                      }
+                      const member = membersById.get(person.id);
+                      if (member) openUserMenu(event, member);
+                    }}
+                    onClick={(event) => {
+                      if (!touchInput) return;
+                      if (person.bot) {
+                        openBotMenu(event, "music");
+                        return;
+                      }
+                      const member = membersById.get(person.id);
+                      if (member) openUserMenu(event, member);
+                    }}
+                  >
+                    <div className={`relative flex items-center justify-center ${isSpeaking ? "ring-2 ring-emerald-500/80 rounded-full" : ""}`}>
+                      <Avatar
+                        className="tiny-avatar"
+                        avatar={person.avatar}
+                        avatarUrl={person.avatarUrl}
+                        color={person.color}
+                      />
+                    </div>
+                    <span className={isSpeaking ? "font-medium text-[#ede9f6]" : ""}>
+                      {person.connectionId === hub.connectionId
+                        ? "You"
+                        : person.displayName}
+                      {isSpeaking && isConnectedVoice ? " (speaking)" : ""}
                     </span>
-                  )}
-                  {person.bot && playing && (
-                    <span className="speaking-bars" aria-label="Playing">
-                      <AudioLines size={14} />
-                    </span>
-                  )}
-                  {person.bot && person.deafened && (
-                    <span
-                      className="bot-deafened-pill"
-                      title="The bot sends music but cannot hear the room"
-                      aria-label="Bot deafened"
-                    >
-                      <Volume2 size={12} />
-                    </span>
-                  )}
-                </div>
-              ))}
+                    {isSpeaking && (
+                      <Mic size={12} className="text-emerald-400 ml-auto animate-pulse" />
+                    )}
+                    {person.muted && !person.bot && !isSpeaking && (
+                      <span
+                        className="muted-pill ml-auto"
+                        title={person.serverMuted ? "Muted for everyone" : "Muted"}
+                      >
+                        <VolumeX size={14} />
+                      </span>
+                    )}
+                    {person.deafened && !person.bot && (
+                      <span className="deafened-pill ml-auto text-[#7d749a]" title="Deafened">
+                        <Headphones size={13} />
+                      </span>
+                    )}
+                    {person.bot && playing && (
+                      <span className="speaking-bars ml-auto" aria-label="Playing">
+                        <AudioLines size={14} />
+                      </span>
+                    )}
+                    {person.bot && person.deafened && (
+                      <span
+                        className="bot-deafened-pill ml-auto"
+                        title="The bot sends music but cannot hear the room"
+                        aria-label="Bot deafened"
+                      >
+                        <Volume2 size={12} />
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -3704,8 +3742,6 @@ export function ChatShell() {
     );
   }
 
-  const prefFor = (id: string): VoicePref =>
-    voicePrefs[id] || { volume: 100, muted: false };
   const currentPlayer = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
@@ -3758,6 +3794,14 @@ export function ChatShell() {
                 channelId: voice.channelId!,
                 action: { name: "stop" },
               }),
+          },
+        ]
+      : []),
+    ...(user?.isAdmin || canModerate
+      ? [
+          {
+            label: "Set room volume…",
+            onSelect: () => prepareCommand("/volume "),
           },
         ]
       : []),
@@ -4339,6 +4383,36 @@ export function ChatShell() {
             })}
 
           </nav>
+        )}
+
+        {/* Synchronized Music Bar - sits on top of mini-voice-bar */}
+        {roomPlayer?.track && (
+          <MiniMusicBar
+            state={roomPlayer}
+            position={player.position}
+            controllable
+            onToggle={() =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "toggle" },
+              })
+            }
+            onSeek={(positionMs) =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "seek", positionMs },
+              })
+            }
+            onSkip={() =>
+              hub.send({
+                t: "player",
+                channelId: voice.channelId!,
+                action: { name: "skip" },
+              })
+            }
+          />
         )}
 
         {/* Mini voice bar - seamless top extension of discord-user-footer */}
@@ -5261,12 +5335,9 @@ export function ChatShell() {
                             action: { name: "skip" },
                           })
                         }
+                        volume={prefFor("bot:music").volume}
                         onVolume={(volume) =>
-                          hub.send({
-                            t: "player",
-                            channelId: message.payload!.voiceChannelId!,
-                            action: { name: "volume", volume },
-                          })
+                          void saveVoicePref("bot:music", { volume })
                         }
                       />
                     )}
@@ -5353,7 +5424,7 @@ export function ChatShell() {
                         <button
                           type="button"
                           key={reaction.emoji}
-                          className={`reaction ${reaction.mine ? "mine" : ""}`}
+                          className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""}`}
                           onClick={() =>
                             void toggleReaction(message.id, reaction.emoji)
                           }
@@ -5365,7 +5436,7 @@ export function ChatShell() {
                               alt={reaction.emoji}
                             />
                           ) : (
-                            <span>{reaction.emoji}</span>
+                            <OutlineEmoji emoji={reaction.emoji} />
                           )}
                           <b>{reaction.count}</b>
                         </button>
@@ -5397,7 +5468,7 @@ export function ChatShell() {
                               void toggleReaction(message.id, emoji)
                             }
                           >
-                            <span>{emoji}</span>
+                            <OutlineEmoji emoji={emoji} />
                             <b>
                               {message.reactions?.find((r) => r.emoji === emoji)
                                 ?.count || 0}
@@ -5429,10 +5500,11 @@ export function ChatShell() {
                       <button
                         key={emoji}
                         type="button"
+                        className="quick-react-outline-btn"
                         title={`React ${emoji}`}
                         onClick={() => void toggleReaction(message.id, emoji)}
                       >
-                        {emoji}
+                        <OutlineEmoji emoji={emoji} />
                       </button>
                     ))}
                     {/* The server's own emoji, right where you react. */}
@@ -6226,47 +6298,6 @@ export function ChatShell() {
                 Open call view
               </button>
             )}
-
-            {roomPlayer?.track && (
-              <div className="member-player">
-                <NowPlaying
-                  state={roomPlayer}
-                  position={player.position}
-                  controllable
-                  blocked={!botStreaming && player.blocked}
-                  onUnblock={player.unblock}
-                  voiceChannelName={currentVoiceChannel?.name}
-                  onSeek={(positionMs) =>
-                    hub.send({
-                      t: "player",
-                      channelId: voice.channelId!,
-                      action: { name: "seek", positionMs },
-                    })
-                  }
-                  onToggle={() =>
-                    hub.send({
-                      t: "player",
-                      channelId: voice.channelId!,
-                      action: { name: "toggle" },
-                    })
-                  }
-                  onSkip={() =>
-                    hub.send({
-                      t: "player",
-                      channelId: voice.channelId!,
-                      action: { name: "skip" },
-                    })
-                  }
-                  onVolume={(volume) =>
-                    hub.send({
-                      t: "player",
-                      channelId: voice.channelId!,
-                      action: { name: "volume", volume },
-                    })
-                  }
-                />
-              </div>
-            )}
           </>
         )}
 
@@ -6394,6 +6425,16 @@ export function ChatShell() {
           deafened={voice.deafened}
           preferenceFor={(id) => {
             const pref = prefFor(id);
+            if (id === "bot:music") {
+              const generalVol = Math.max(
+                0,
+                Math.min(1, (roomPlayer?.volume ?? 100) / 100),
+              );
+              return {
+                volume: volumeGain(pref.volume) * generalVol,
+                muted: pref.muted,
+              };
+            }
             return { volume: volumeGain(pref.volume), muted: pref.muted };
           }}
         />
@@ -6413,8 +6454,7 @@ export function ChatShell() {
             botMenu.kind === "music" ? musicBotActions : dndBotActions
           }
           voicePref={
-            botMenu.kind === "music" &&
-            voiceParticipants.some((person) => person.bot)
+            botMenu.kind === "music"
               ? prefFor("bot:music")
               : undefined
           }
@@ -6436,6 +6476,34 @@ export function ChatShell() {
         <UserMenu
           target={userMenu}
           isSelf={userMenu.member.id === user.id}
+          isOwner={Boolean(user.isAdmin)}
+          onToggleInvitePermission={
+            user.isAdmin && !userMenu.member.isAdmin && userMenu.member.id !== user.id
+              ? async () => {
+                  const targetMember = userMenu.member;
+                  const newCanInvite = !targetMember.canInvite;
+                  setUserMenu(null);
+                  try {
+                    await apiFetch("/api/invites/permissions", {
+                      method: "POST",
+                      body: JSON.stringify({
+                        userId: targetMember.id,
+                        canInvite: newCanInvite,
+                      }),
+                    });
+                    setMembers((prev) =>
+                      prev.map((m) =>
+                        m.id === targetMember.id
+                          ? { ...m, canInvite: newCanInvite }
+                          : m,
+                      ),
+                    );
+                  } catch (err) {
+                    console.error("Failed to update invite permission:", err);
+                  }
+                }
+              : undefined
+          }
           pref={prefFor(userMenu.member.id)}
           serverMuted={hub.forcedMutes.has(userMenu.member.id)}
           onClose={() => setUserMenu(null)}
@@ -6700,6 +6768,7 @@ export function ChatShell() {
           server={activeServer}
           members={members}
           canManageServer={canManageServer}
+          canCreateInvites={Boolean(user && (user.isAdmin || user.canInvite))}
           onClose={() => setServerSettingsOpen(false)}
           onServerUpdated={() => void loadServers().catch(() => undefined)}
           onServerDeleted={() => {
@@ -6864,6 +6933,89 @@ export function ChatShell() {
                 aria-label="Accept Call"
               >
                 {incomingDmCall.isVideo ? <Video size={20} /> : <PhoneCall size={20} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {markdownModalOpen && (
+        <div
+          className="markdown-guide-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => setMarkdownModalOpen(false)}
+        >
+          <div
+            className="markdown-guide-modal w-full max-w-lg rounded-2xl border border-[#2e2646] bg-[#161224] p-5 shadow-2xl text-white space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-[#ede9f6]">Markdown & Code Snippets</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-300">
+                  Active
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMarkdownModalOpen(false)}
+                className="text-white/40 hover:text-white transition-colors text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[#b8b0cf] leading-relaxed">
+              Hoffle natively formats your messages with Discord-flavoured Markdown. Send code snippets with syntax highlighting using triple backticks.
+            </p>
+
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-[#9e83fc] uppercase tracking-wider">
+                Code Blocks (C++, Python, JS, Bash):
+              </div>
+              <div className="rounded-xl border border-[#28223e] bg-[#0f0d19] p-3 font-mono text-[11px] text-[#c4b5fd]">
+                <div>```cpp</div>
+                <div className="text-[#a499c8] pl-2">#include &lt;iostream&gt;</div>
+                <div className="text-[#a499c8] pl-2">int main() &#123;</div>
+                <div className="text-emerald-400 pl-4">std::cout &lt;&lt; &quot;Hello from Hoffle!&quot; &lt;&lt; std::endl;</div>
+                <div className="text-[#a499c8] pl-4">return 0;</div>
+                <div className="text-[#a499c8] pl-2">&#125;</div>
+                <div>```</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs text-[#a499c8]">
+              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <strong className="text-white">**bold**</strong> → <strong>bold</strong>
+              </div>
+              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <em className="text-white">*italic*</em> → <em>italic</em>
+              </div>
+              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <code className="text-purple-300">`code`</code> → <code className="text-xs">code</code>
+              </div>
+              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <span className="text-white">||spoiler||</span> → spoiler
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft("```cpp\n#include <iostream>\n\nint main() {\n    std::cout << \"Hello from Hoffle!\" << std::endl;\n    return 0;\n}\n```");
+                  setMarkdownModalOpen(false);
+                  composerRef.current?.focus();
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#7c5cfc] hover:bg-[#6c48f8] text-white transition-colors cursor-pointer"
+              >
+                Insert C++ Code Template
+              </button>
+              <button
+                type="button"
+                onClick={() => setMarkdownModalOpen(false)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-[#b8b0cf] transition-colors cursor-pointer"
+              >
+                Got it
               </button>
             </div>
           </div>
