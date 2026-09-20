@@ -51,7 +51,7 @@ export async function PATCH(
   await db
     .prepare("UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ? WHERE id = ?")
     .bind(
-      body.name?.trim().slice(0, 40) || server.name,
+      body.name?.trim().slice(0, 50) || server.name,
       body.icon?.trim().slice(0, 2).toUpperCase() || server.icon,
       body.color?.trim().slice(0, 24) || server.color,
       body.iconUrl !== undefined ? body.iconUrl : server.icon_url || null,
@@ -64,7 +64,7 @@ export async function PATCH(
     serverId: id,
     actor: user,
     action: "server.update",
-    targetName: body.name?.trim().slice(0, 40) || server.name,
+    targetName: body.name?.trim().slice(0, 50) || server.name,
   });
   await publishStructureChange();
   return Response.json({ servers: await listServers(db, user.id) });

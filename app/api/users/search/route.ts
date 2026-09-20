@@ -22,20 +22,41 @@ export async function GET(request: Request) {
 
   const searchPattern = `%${q}%`;
 
-  // Search users table with indexed username_lower
+  // People the caller already knows — friends and DM partners — match on any
+  // substring of their name/username. Everyone else only matches when the full
+  // username or display name is typed, so a stray letter doesn't surface the
+  // whole Huddle.
+  const knownSubquery = `(
+    SELECT ?2
+    UNION
+    SELECT friend_id FROM friendships WHERE user_id = ?2 AND status = 'accepted'
+    UNION
+    SELECT user_id FROM friendships WHERE friend_id = ?2 AND status = 'accepted'
+    UNION
+    SELECT user_id FROM dm_members
+      WHERE channel_id IN (SELECT channel_id FROM dm_members WHERE user_id = ?2)
+  )`;
+
+  // Search users table with indexed username_lower. Known people use a
+  // substring match; strangers require an exact username or display name.
   const userRows = await db
     .prepare(
       `SELECT id, username, display_name, avatar, avatar_url, color, status, custom_status, last_seen_at
          FROM users
-        WHERE username_lower LIKE ?1 OR LOWER(display_name) LIKE ?1
+        WHERE (username_lower LIKE ?1 OR LOWER(display_name) LIKE ?1)
+          AND (
+            id IN ${knownSubquery}
+            OR username_lower = ?3
+            OR LOWER(display_name) = ?3
+          )
         ORDER BY
-          CASE WHEN username_lower = ?2 THEN 0
-               WHEN username_lower LIKE ?3 THEN 1
+          CASE WHEN username_lower = ?4 THEN 0
+               WHEN username_lower LIKE ?5 THEN 1
                ELSE 2 END,
           display_name COLLATE NOCASE ASC
-        LIMIT ?4`,
+        LIMIT ?6`,
     )
-    .bind(searchPattern, q, `${q}%`, limit)
+    .bind(searchPattern, user.id, q, q, `${q}%`, limit)
     .all<{
       id: string;
       username: string;

@@ -150,6 +150,17 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS server_members_user_idx ON server_members(user_id)",
     ),
+    // Per-member server ordering for the rail. Each user can drag servers into
+    // their own order; absent rows fall back to the global servers.position.
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_member_positions (
+        server_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (server_id, user_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_member_positions_user_idx ON server_member_positions(user_id, position)",
+    ),
     // Tiny key/value store for one-off migration flags.
     db.prepare(`CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,

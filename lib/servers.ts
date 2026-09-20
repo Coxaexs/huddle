@@ -171,9 +171,12 @@ export async function listServers(
                FROM servers s
                JOIN server_members m ON m.server_id = s.id AND m.user_id = ?
               WHERE s.id != ?
-              ORDER BY s.position ASC, s.created_at ASC`,
+              ORDER BY
+                COALESCE((SELECT p.position FROM server_member_positions p
+                           WHERE p.server_id = s.id AND p.user_id = ?), s.position) ASC,
+                s.created_at ASC`,
           )
-          .bind(userId, DM_SERVER_ID)
+          .bind(userId, DM_SERVER_ID, userId)
           .all()
       : db
           .prepare(

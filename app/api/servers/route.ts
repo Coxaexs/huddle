@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     icon?: string;
     color?: string;
   };
-  const name = body.name?.trim().slice(0, 40);
+  const name = body.name?.trim().slice(0, 50);
   if (!name) {
     return Response.json({ error: "Give the server a name." }, { status: 400 });
   }

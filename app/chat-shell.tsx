@@ -175,7 +175,20 @@ interface Message {
   editedAt?: string;
   replyTo?: string;
   replyPreview?: { author: string; text: string } | null;
-  reactions?: Array<{ emoji: string; count: number; mine: boolean }>;
+  reactions?: Array<{
+    emoji: string;
+    count: number;
+    mine: boolean;
+    /** Who reacted, for hover tooltips. */
+    users?: Array<{
+      id: string;
+      username: string;
+      displayName: string;
+      avatar: string;
+      avatarUrl?: string | null;
+      color: string;
+    }>;
+  }>;
   mentions?: string[];
   threadId?: string;
   threadCount?: number;
@@ -347,27 +360,50 @@ function playSound(url: string): void {
   }
 }
 
-type ReactionList = Array<{ emoji: string; count: number; mine: boolean }>;
+type ReactionList = Array<{
+  emoji: string;
+  count: number;
+  mine: boolean;
+  users?: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatar: string;
+    avatarUrl?: string | null;
+    color: string;
+  }>;
+}>;
 
-/** Folds a single reaction toggle into a message's aggregated reaction list. */
+/** Folds a single reaction toggle into a message's aggregated reaction list.
+ *  Idempotent: if `me` is already (or no longer) in the users list, the count
+ *  is not changed again. This keeps the optimistic update + socket echo from
+ *  double-counting the same person. */
 function applyReaction(
   reactions: ReactionList | undefined,
   emoji: string,
   isMine: boolean,
   added: boolean,
+  me?: { id: string; username: string; displayName: string; avatar: string; avatarUrl?: string | null; color: string },
 ): ReactionList {
-  const list = (reactions || []).map((r) => ({ ...r }));
+  const list = (reactions || []).map((r) => ({ ...r, users: r.users ? [...r.users] : [] }));
   const entry = list.find((r) => r.emoji === emoji);
+  const alreadyThere = Boolean(me && entry?.users?.some((u) => u.id === me.id));
   if (added) {
     if (entry) {
-      entry.count += 1;
+      if (!alreadyThere) entry.count += 1;
       if (isMine) entry.mine = true;
+      if (me && !alreadyThere) {
+        entry.users = [...(entry.users || []), me];
+      }
     } else {
-      list.push({ emoji, count: 1, mine: isMine });
+      list.push({ emoji, count: 1, mine: isMine, users: me ? [me] : [] });
     }
   } else if (entry) {
-    entry.count -= 1;
-    if (isMine) entry.mine = false;
+    if (alreadyThere) {
+      entry.count -= 1;
+      if (isMine) entry.mine = false;
+      if (me) entry.users = (entry.users || []).filter((u) => u.id !== me.id);
+    }
     if (entry.count <= 0) return list.filter((r) => r.emoji !== emoji);
   }
   return list;
@@ -377,6 +413,14 @@ function applyReaction(
 function volumeGain(percent: number): number {
   const normalized = Math.max(0, Math.min(1, percent / 100));
   return normalized * normalized;
+}
+
+/** Hover text for a reaction pill: who reacted with this emoji. */
+function reactionTooltip(reaction: ReactionList[number]): string {
+  const names = (reaction.users || []).map((u) => u.displayName);
+  if (!names.length) return `${reaction.count} reaction${reaction.count === 1 ? "" : "s"}`;
+  const list = names.join(", ");
+  return `${list} reacted with ${reaction.emoji}`;
 }
 
 /** Extracts server invite codes from text that contain hangout invite links or codes. */
@@ -422,6 +466,8 @@ export function ChatShell() {
   const [stageChannelId, setStageChannelId] = useState<string | null>(null);
   /** Channel id currently being dragged in the sidebar, for reordering. */
   const [dragChannelId, setDragChannelId] = useState<string | null>(null);
+  /** Server id currently being dragged on the rail, for reordering. */
+  const [dragServerId, setDragServerId] = useState<string | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
@@ -474,6 +520,13 @@ export function ChatShell() {
     top: number;
     right: number;
   } | null>(null);
+  /** Which reaction pill's "who reacted" popover is open, with screen coordinates. */
+  const [reactionViewer, setReactionViewer] = useState<{
+    messageId: string | number;
+    emoji: string;
+    top: number;
+    left: number;
+  } | null>(null);
 
   /** Server invites resolved for rendering rich Discord-style invite cards in chat. */
   const [resolvedInvites, setResolvedInvites] = useState<
@@ -497,6 +550,29 @@ export function ChatShell() {
     const right = Math.max(margin, window.innerWidth - rect.left + 8);
     setReactionPicker((current) =>
       current?.messageId === messageId ? null : { messageId, top, right },
+    );
+  };
+
+  const handleOpenReactionViewer = (
+    e: React.MouseEvent,
+    messageId: string | number,
+    emoji: string,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewerHeight = 320;
+    const margin = 16;
+    let top = rect.top - viewerHeight - 8;
+    if (top < margin) top = rect.bottom + 8;
+    const left = Math.max(
+      margin,
+      Math.min(rect.left, window.innerWidth - 260 - margin),
+    );
+    setReactionViewer((current) =>
+      current?.messageId === messageId && current.emoji === emoji
+        ? null
+        : { messageId, emoji, top, left },
     );
   };
   /** The DM partner's read position, for "seen" receipts. */
@@ -699,6 +775,7 @@ export function ChatShell() {
     defaultValue?: string;
     placeholder?: string;
     confirmText?: string;
+    maxLength?: number;
     onConfirm: (val?: string) => void;
   }) => {
     setDialogOptions({ ...options, type: "prompt" });
@@ -803,6 +880,9 @@ export function ChatShell() {
         ? `?serverId=${encodeURIComponent(serverId)}`
         : "";
     const data = await apiFetch<{ members: Member[] }>(`/api/members${query}`);
+    // Guard against stale responses: if the user switched servers while this
+    // fetch was in-flight, discard the result so we don't flash the wrong roster.
+    if (activeServerRef.current !== serverId) return;
     setMembers(data.members);
   }, []);
 
@@ -1319,10 +1399,33 @@ export function ChatShell() {
     },
     onReaction: (channelId, messageId, emoji, userId, added) => {
       if (channelId !== activeChannelRef.current) return;
+      const me = user
+        ? {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            avatar: user.avatar,
+            avatarUrl: user.avatarUrl,
+            color: user.color,
+          }
+        : undefined;
+      // Resolve the reacting person from the roster so the tooltip can name
+      // them even when the reaction arrives over the socket.
+      const reactor = membersById.get(userId);
+      const reactorInfo = reactor
+        ? {
+            id: reactor.id,
+            username: reactor.username,
+            displayName: reactor.displayName,
+            avatar: reactor.avatar,
+            avatarUrl: reactor.avatarUrl,
+            color: reactor.color,
+          }
+        : undefined;
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId
-            ? { ...message, reactions: applyReaction(message.reactions, emoji, userId === user?.id, added) }
+            ? { ...message, reactions: applyReaction(message.reactions, emoji, userId === user?.id, added, reactorInfo) }
             : message,
         ),
       );
@@ -2391,6 +2494,16 @@ export function ChatShell() {
 
   async function toggleReaction(messageId: string | number, emoji: string) {
     const id = String(messageId);
+    const me = user
+      ? {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatar: user.avatar,
+          avatarUrl: user.avatarUrl,
+          color: user.color,
+        }
+      : undefined;
     // Optimistic: flip locally, then persist. The socket echo reconciles.
     setMessages((current) =>
       current.map((message) =>
@@ -2402,6 +2515,7 @@ export function ChatShell() {
                 emoji,
                 true,
                 !message.reactions?.find((r) => r.emoji === emoji)?.mine,
+                me,
               ),
             }
           : message,
@@ -3048,6 +3162,7 @@ export function ChatShell() {
           message: "Enter a name for your new server:",
           placeholder: "e.g. My Cool Server",
           confirmText: "Create Server",
+          maxLength: 50,
           onConfirm: async (name) => {
             if (!name?.trim()) return;
             try {
@@ -3513,6 +3628,73 @@ export function ChatShell() {
     };
   }
 
+  /**
+   * Persist a server-rail drag: place the dragged server just before
+   * `beforeServerId` (or at the end when null), renumber every server the user
+   * belongs to, and send the whole layout.
+   */
+  async function dropServer(
+    draggedId: string,
+    beforeServerId: string | null,
+  ) {
+    if (!draggedId || draggedId === beforeServerId) return;
+    const all = servers.map((s) => ({ ...s }));
+    const dragged = all.find((s) => s.id === draggedId);
+    if (!dragged) return;
+
+    const rest = all.filter((s) => s.id !== draggedId);
+    const index = beforeServerId
+      ? rest.findIndex((s) => s.id === beforeServerId)
+      : -1;
+    if (index < 0) rest.push(dragged);
+    else rest.splice(index, 0, dragged);
+
+    const payload = rest.map((server, position) => ({
+      id: server.id,
+      position,
+    }));
+
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        "/api/servers/reorder",
+        {
+          method: "POST",
+          body: JSON.stringify({ servers: payload }),
+        },
+      );
+      setServers(data.servers);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not reorder.");
+    } finally {
+      setDragServerId(null);
+    }
+  }
+
+  /** Drag props for a server on the rail: drop places the dragged one before it. */
+  function serverDragProps(server: PublicServer) {
+    return {
+      draggable: true,
+      onDragStart: (event: DragEvent<HTMLElement>) => {
+        setDragServerId(server.id);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application/x-huddle-server", server.id);
+      },
+      onDragEnd: () => setDragServerId(null),
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (dragServerId && dragServerId !== server.id) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        if (!dragServerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void dropServer(dragServerId, server.id);
+      },
+    };
+  }
+
   function renderChannel(channel: PublicChannel) {
     if (channel.kind === "voice") {
       const people = hub.voice[channel.id] || [];
@@ -3901,7 +4083,11 @@ export function ChatShell() {
               .slice(0, 2)
               .toUpperCase() || "SV";
           return (
-            <div key={server.id} className="rail-item">
+            <div
+              key={server.id}
+              className={`rail-item ${dragServerId === server.id ? "dragging" : ""}`}
+              {...serverDragProps(server)}
+            >
               {isActive && (
                 <span
                   className="rail-active-pill"
@@ -5427,10 +5613,18 @@ export function ChatShell() {
                         <button
                           type="button"
                           key={reaction.emoji}
-                          className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""}`}
+                          className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""} ${reactionViewer?.messageId === message.id && reactionViewer.emoji === reaction.emoji ? "viewer-open" : ""}`}
                           onClick={() =>
                             void toggleReaction(message.id, reaction.emoji)
                           }
+                          onContextMenu={(e) =>
+                            handleOpenReactionViewer(
+                              e,
+                              message.id,
+                              reaction.emoji,
+                            )
+                          }
+                          title={reactionTooltip(reaction)}
                         >
                           {emojiMap[reaction.emoji.replace(/^:|:$/g, "")] ? (
                             <img
@@ -6770,6 +6964,7 @@ export function ChatShell() {
         <ServerSettingsDialog
           server={activeServer}
           members={members}
+          onlineUserIds={hub.online}
           canManageServer={canManageServer}
           canCreateInvites={canCreateServerInvites}
           onClose={() => setServerSettingsOpen(false)}
@@ -6789,8 +6984,14 @@ export function ChatShell() {
         isOpen={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
         onlineUserIds={hub.online}
+        servers={servers}
         onOpenDm={(targetUser) => {
           void openDm(targetUser.id);
+        }}
+        onSelectServer={(serverId) => {
+          setActiveServerId(serverId);
+          setStageChannelId(null);
+          setMobileNav(false);
         }}
       />
 
@@ -7054,6 +7255,94 @@ export function ChatShell() {
               }}
               onClose={() => setReactionPicker(null)}
             />
+          </div>
+        </div>
+      )}
+
+      {reactionViewer && (
+        <div
+          className="reaction-viewer-overlay"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="reaction-viewer-backdrop"
+            onClick={() => setReactionViewer(null)}
+          />
+          <div
+            className="reaction-viewer-floating"
+            style={{
+              top: reactionViewer.top,
+              left: reactionViewer.left,
+            }}
+          >
+            {(() => {
+              const msg = messages.find(
+                (m) => m.id === reactionViewer.messageId,
+              );
+              const reaction = msg?.reactions?.find(
+                (r) => r.emoji === reactionViewer.emoji,
+              );
+              const users = reaction?.users || [];
+              return (
+                <>
+                  <div className="reaction-viewer-header">
+                    <span className="reaction-viewer-emoji">
+                      {emojiMap[reactionViewer.emoji.replace(/^:|:$/g, "")] ? (
+                        <img
+                          className="custom-emoji"
+                          src={
+                            emojiMap[reactionViewer.emoji.replace(/^:|:$/g, "")]
+                          }
+                          alt={reactionViewer.emoji}
+                        />
+                      ) : (
+                        <OutlineEmoji emoji={reactionViewer.emoji} />
+                      )}
+                    </span>
+                    <span className="reaction-viewer-title">
+                      {users.length}{" "}
+                      {users.length === 1 ? "reaction" : "reactions"}
+                    </span>
+                  </div>
+                  <div className="reaction-viewer-list">
+                    {users.length === 0 && (
+                      <div className="reaction-viewer-empty">
+                        No one has reacted yet.
+                      </div>
+                    )}
+                    {users.map((u) => (
+                      <button
+                        type="button"
+                        key={u.id}
+                        className="reaction-viewer-user"
+                        onClick={() => {
+                          const member = membersById.get(u.id);
+                          if (member) openProfile(member);
+                          setReactionViewer(null);
+                        }}
+                      >
+                        <Avatar
+                          name={u.displayName}
+                          avatar={u.avatar}
+                          avatarUrl={u.avatarUrl}
+                          color={u.color}
+                          size={28}
+                        />
+                        <span className="reaction-viewer-name">
+                          {u.displayName}
+                        </span>
+                        <span className="reaction-viewer-username">
+                          @{u.username}
+                        </span>
+                        {u.id === user?.id && (
+                          <span className="reaction-viewer-you">You</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
