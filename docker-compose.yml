@@ -40,8 +40,10 @@ services:
       dockerfile: Dockerfile
     container_name: hoffle-music-bot
     restart: unless-stopped
-    ports:
-      - "8731:8731"
+    # Port NOT exposed to host — music-bot is only reachable via internal Docker network
+    # The main hoffle container calls it at http://music-bot:8731
+    expose:
+      - "8731"
     environment:
       - PORT=8731
 
@@ -54,8 +56,10 @@ services:
       dockerfile: Dockerfile
     container_name: hoffle-dnd-bot
     restart: unless-stopped
-    ports:
-      - "8732:8732"
+    # Port NOT exposed to host — dnd-bot is only reachable via internal Docker network
+    # The main hoffle container calls it at http://dnd-bot:8732
+    expose:
+      - "8732"
     environment:
       - PORT=8732
 

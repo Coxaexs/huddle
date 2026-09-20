@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+import { LicensesTab } from "./licenses-tab";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
 const METER_FLOOR_DB = -80;
@@ -319,7 +320,8 @@ type Tab =
   | "password"
   | "invites"
   | "appearance"
-  | "roles";
+  | "roles"
+  | "licenses";
 
 type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
 type Density = "compact" | "cozy" | "roomy";
@@ -604,6 +606,7 @@ export function SettingsDialog({
               ...(canManageServer && server
                 ? ([["roles", "Roles"]] as const)
                 : []),
+              ["licenses", "Licenses & About"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -1340,6 +1343,8 @@ export function SettingsDialog({
           {tab === "roles" && server && (
             <RolesTab server={server} members={members} onError={setError} />
           )}
+
+          {tab === "licenses" && <LicensesTab />}
 
           {error && <p className="auth-error">{error}</p>}
           {status && <p className="modal-status">{status}</p>}

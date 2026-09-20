@@ -1570,6 +1570,18 @@ body {
   font-family:Arial,Helvetica,sans-serif;
   overflow:hidden;
 }
+
+/* Allow normal window scrolling on landing page */
+html.landing-page-active,
+body.landing-page-active,
+html:has(.lp-root),
+body:has(.lp-root) {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  overscroll-behavior: auto !important;
+}
 button,
 textarea,
 input {
