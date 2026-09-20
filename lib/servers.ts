@@ -107,17 +107,22 @@ export async function isServerMember(
   return Boolean(row);
 }
 
-/** Adds a member (idempotent). */
+/** Adds a member (idempotent, records invite code if provided). */
 export async function addServerMember(
   db: D1Database,
   serverId: string,
   userId: string,
+  inviteCode?: string | null,
 ): Promise<void> {
+  const code = inviteCode?.trim().toUpperCase() || null;
   await db
     .prepare(
-      "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+      `INSERT INTO server_members (server_id, user_id, joined_at, invite_code)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(server_id, user_id) DO UPDATE SET
+         invite_code = COALESCE(server_members.invite_code, excluded.invite_code)`,
     )
-    .bind(serverId, userId, new Date().toISOString())
+    .bind(serverId, userId, new Date().toISOString(), code)
     .run();
 }
 

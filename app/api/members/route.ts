@@ -22,9 +22,15 @@ export async function GET(request: Request) {
           .prepare(
             `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
                     u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin,
-                    u.created_at, u.last_seen_at, u.status, u.custom_status
+                    u.created_at, u.last_seen_at, u.status, u.custom_status,
+                    m.joined_at, m.invite_code,
+                    i.created_by AS invite_creator_id,
+                    inv_creator.display_name AS invite_creator_name,
+                    inv_creator.username AS invite_creator_username
                FROM users u
                JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
+               LEFT JOIN invites i ON i.code = m.invite_code
+               LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
               ORDER BY u.display_name COLLATE NOCASE ASC`,
           )
           .bind(serverId)
@@ -55,6 +61,13 @@ export async function GET(request: Request) {
 
   return Response.json({
     members: ((result.results || []) as unknown as User[]).map((member) => {
+      const memberRow = member as unknown as User & {
+        joined_at?: string | null;
+        invite_code?: string | null;
+        invite_creator_id?: string | null;
+        invite_creator_name?: string | null;
+        invite_creator_username?: string | null;
+      };
       let spotifyAct = null;
       if (member.spotify_activity) {
         try {
@@ -89,6 +102,15 @@ export async function GET(request: Request) {
         status: member.status || "online",
         customStatus: member.custom_status || null,
         roleIds: rolesByUser.get(member.id) || {},
+        joinedAt: memberRow.joined_at || null,
+        joinedVia: memberRow.invite_code
+          ? {
+              code: memberRow.invite_code,
+              createdById: memberRow.invite_creator_id || null,
+              creatorName: memberRow.invite_creator_name || null,
+              creatorUsername: memberRow.invite_creator_username || null,
+            }
+          : null,
       };
     }),
   });

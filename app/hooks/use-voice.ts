@@ -13,6 +13,14 @@ import {
   type MicSettings,
   type MicTelemetry,
 } from "../lib/mic-chain";
+import {
+  playMuteSound,
+  playUnmuteSound,
+  playDeafenSound,
+  playUndeafenSound,
+  playScreenShareStartSound,
+  playScreenShareStopSound,
+} from "../lib/audio-cues";
 
 interface SignalPayload {
   kind: "offer" | "answer" | "candidate";
@@ -891,6 +899,7 @@ export function useVoice({
     stream.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
     setScreenSharing(false);
+    playScreenShareStopSound();
     announceVideo();
     for (const [remoteId, peer] of peersRef.current) {
       for (const sender of peer.getSenders()) {
@@ -999,6 +1008,7 @@ export function useVoice({
         screenStreamRef.current = stream;
         setScreenQuality(quality);
         setScreenSharing(true);
+        playScreenShareStartSound();
         // Publishes the stream id and puts it in your own view.
         announceVideo();
         stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare, {
@@ -1106,12 +1116,29 @@ export function useVoice({
       track.enabled = !next;
     });
     setMuted(next);
-    send({ t: "voice-state", muted: next });
-  }, [forcedMute, muted, send]);
+    if (next) {
+      playMuteSound();
+    } else {
+      playUnmuteSound();
+    }
+    // When unmuting while deafened, also undeafen (matching Discord behavior)
+    if (!next && deafened) {
+      setDeafened(false);
+      playUndeafenSound();
+      send({ t: "voice-state", muted: false, deafened: false });
+    } else {
+      send({ t: "voice-state", muted: next });
+    }
+  }, [forcedMute, muted, deafened, send]);
 
   const toggleDeafen = useCallback(() => {
     const next = !deafened;
     setDeafened(next);
+    if (next) {
+      playDeafenSound();
+    } else {
+      playUndeafenSound();
+    }
     // Deafening also mutes you, the way Discord does it.
     if (next && !muted) {
       localStreamRef.current?.getAudioTracks().forEach((track) => {

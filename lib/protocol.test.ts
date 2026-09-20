@@ -60,3 +60,31 @@ describe("playbackPosition", () => {
     expect(playbackPosition(player, 50000)).toBe(10000);
   });
 });
+
+describe("dm-call events", () => {
+  it("formats client and server dm-call event payloads correctly", () => {
+    const clientEvent = {
+      t: "dm-call" as const,
+      channelId: "dm-channel-1",
+      targetUserId: "user-2",
+      action: "call" as const,
+      isVideo: true,
+    };
+    expect(clientEvent.t).toBe("dm-call");
+    expect(clientEvent.action).toBe("call");
+
+    const serverEvent = {
+      t: "dm-call" as const,
+      channelId: "dm-channel-1",
+      fromUserId: "user-1",
+      fromDisplayName: "Mewis",
+      fromAvatar: "M",
+      fromAvatarUrl: "/uploads/avatar.jpg",
+      action: "call" as const,
+      isVideo: true,
+      serverNow: Date.now(),
+    };
+    expect(serverEvent.fromDisplayName).toBe("Mewis");
+    expect(serverEvent.action).toBe("call");
+  });
+});

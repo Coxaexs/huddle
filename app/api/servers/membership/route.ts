@@ -97,7 +97,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await addServerMember(db, server.id, user.id);
+    await addServerMember(db, server.id, user.id, code);
     await db
       .prepare("UPDATE invites SET uses = uses + 1 WHERE code = ?")
       .bind(code)

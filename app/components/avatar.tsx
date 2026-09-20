@@ -6,6 +6,8 @@ interface AvatarProps {
   avatar: string;
   avatarUrl?: string | null;
   color: string;
+  name?: string;
+  size?: number;
   className?: string;
   style?: CSSProperties;
   title?: string;
@@ -22,6 +24,7 @@ export function Avatar({
   avatar,
   avatarUrl,
   color,
+  size,
   className = "",
   style,
   title,
@@ -29,10 +32,29 @@ export function Avatar({
   onClick,
   children,
 }: AvatarProps) {
+  const sizeStyle: CSSProperties = size
+    ? {
+        width: `${size}px`,
+        height: `${size}px`,
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
+        borderRadius: "50%",
+        display: "inline-grid",
+        placeItems: "center",
+        fontSize: `${Math.max(10, Math.round(size * 0.42))}px`,
+      }
+    : {};
+
+  const baseClass = className || "avatar";
+
   return (
     <span
-      className={`${className} ${avatarUrl ? "has-picture" : ""}`.trim()}
-      style={{ background: avatarUrl ? undefined : color, ...style }}
+      className={`${baseClass} ${avatarUrl ? "has-picture" : ""}`.trim()}
+      style={{
+        background: avatarUrl ? undefined : color,
+        ...sizeStyle,
+        ...style,
+      }}
       title={title}
       onContextMenu={onContextMenu}
       onClick={onClick}

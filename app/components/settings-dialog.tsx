@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish } from "lucide-react";
+import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
@@ -236,7 +236,13 @@ function VoiceInput({
 }
 
 import type { PublicRole, PublicServer } from "@/lib/servers";
-import { AVATAR_COLORS, type Member, type PublicUser } from "@/lib/users";
+import {
+  AVATAR_COLORS,
+  PRIDE_BADGES,
+  type Member,
+  type PrideBadgeId,
+  type PublicUser,
+} from "@/lib/users";
 import { apiFetch } from "../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
@@ -269,8 +275,8 @@ interface Invite {
 
 interface SettingsDialogProps {
   user: PublicUser;
-  theme: "dark" | "light";
-  onTheme: (theme: "dark" | "light") => void;
+  theme: "cozy" | "legacy" | "light";
+  onTheme: (theme: "cozy" | "legacy" | "light") => void;
   onUser: (user: PublicUser) => void;
   onClose: () => void;
   onSignOut: () => void;
@@ -371,6 +377,11 @@ export function SettingsDialog({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [avatar, setAvatar] = useState(user.avatar);
   const [color, setColor] = useState(user.color);
+  const [pronouns, setPronouns] = useState(user.pronouns || "");
+  const [bio, setBio] = useState(user.bio || "");
+  const [prideBadges, setPrideBadges] = useState<PrideBadgeId[]>(
+    user.prideBadges || [],
+  );
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -496,6 +507,9 @@ export function SettingsDialog({
           displayName,
           avatar,
           color,
+          pronouns,
+          bio,
+          prideBadges,
           ...(avatarKey === undefined ? {} : { avatarKey }),
         }),
       });
@@ -625,6 +639,61 @@ export function SettingsDialog({
                 maxLength={2}
                 onChange={(event) => setAvatar(event.target.value)}
               />
+
+              <label htmlFor="settings-pronouns">Pronouns</label>
+              <input
+                id="settings-pronouns"
+                value={pronouns}
+                maxLength={30}
+                placeholder="e.g. he/him, she/her, they/them"
+                onChange={(event) => setPronouns(event.target.value)}
+              />
+
+              <label htmlFor="settings-bio">About me</label>
+              <textarea
+                id="settings-bio"
+                rows={3}
+                value={bio}
+                maxLength={500}
+                placeholder="Tell everyone a bit about yourself…"
+                onChange={(event) => setBio(event.target.value)}
+              />
+
+              <span className="field-label">Pride badges <small className="field-optional-note">Optional · up to 4</small></span>
+              <div className="pride-badge-picker">
+                {PRIDE_BADGES.map((badge) => {
+                  const selected = prideBadges.includes(badge.id);
+                  return (
+                    <button
+                      type="button"
+                      key={badge.id}
+                      className={selected ? "selected" : ""}
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setPrideBadges((currentBadges) =>
+                          selected
+                            ? currentBadges.filter((id) => id !== badge.id)
+                            : currentBadges.length < 4
+                              ? [...currentBadges, badge.id]
+                              : currentBadges,
+                        )
+                      }
+                    >
+                      <span
+                        className="pride-flag-swatch"
+                        aria-hidden="true"
+                        style={
+                          {
+                            "--badge-stripes": badge.colors.join(", "),
+                          } as React.CSSProperties
+                        }
+                      />
+                      {badge.label}
+                      {selected && <Check size={13} />}
+                    </button>
+                  );
+                })}
+              </div>
 
               <span className="field-label">Profile picture</span>
               <div className="picture-row">
@@ -912,10 +981,17 @@ export function SettingsDialog({
               <div className="theme-row">
                 <button
                   type="button"
-                  className={`flex items-center gap-1.5 justify-center ${theme === "dark" ? "active" : ""}`}
-                  onClick={() => onTheme("dark")}
+                  className={`flex items-center gap-1.5 justify-center ${theme === "cozy" ? "active" : ""}`}
+                  onClick={() => onTheme("cozy")}
                 >
-                  <Moon size={16} /> Dark
+                  <Sparkles size={16} /> Cozy (Default)
+                </button>
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 justify-center ${theme === "legacy" ? "active" : ""}`}
+                  onClick={() => onTheme("legacy")}
+                >
+                  <Moon size={16} /> Legacy
                 </button>
                 <button
                   type="button"

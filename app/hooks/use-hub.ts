@@ -83,6 +83,16 @@ interface HubHandlers {
   onVoiceEvicted?: () => void;
   /** A moderator moved this account into another voice channel. */
   onVoiceMove?: (channelId: string) => void;
+  /** DM call signaling (incoming call, accepted, declined, cancelled). */
+  onDmCall?: (payload: {
+    channelId: string;
+    fromUserId: string;
+    fromDisplayName: string;
+    fromAvatar: string;
+    fromAvatarUrl?: string | null;
+    action: "call" | "accept" | "decline" | "cancel";
+    isVideo?: boolean;
+  }) => void;
 }
 
 /**
@@ -336,6 +346,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "voice-move":
             handlersRef.current.onVoiceMove?.(payload.channelId);
+            break;
+          case "dm-call":
+            handlersRef.current.onDmCall?.(payload);
             break;
           default:
             break;

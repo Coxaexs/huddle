@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull } from "lucide-react";
+import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus } from "lucide-react";
+import { Avatar } from "./avatar";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -211,6 +212,32 @@ export function ServerSettingsDialog({
   const [roles, setRoles] = useState<PublicRole[]>(server.roles || []);
   const [activeRole, setActiveRole] = useState<PublicRole | null>(roles[0] || null);
   const [roleSearch, setRoleSearch] = useState("");
+  const [editingRoleName, setEditingRoleName] = useState(false);
+  const [roleNameDraft, setRoleNameDraft] = useState("");
+
+  // Members state
+  const [serverMembers, setServerMembers] = useState<Member[]>(members || []);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [roleAssignMenuUser, setRoleAssignMenuUser] = useState<string | null>(null);
+
+  const loadServerMembers = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ members: Member[] }>(
+        `/api/members?serverId=${encodeURIComponent(server.id)}`,
+      );
+      setServerMembers(data.members || []);
+    } catch {
+      // fallback to current
+    }
+  }, [server.id]);
+
+  useEffect(() => {
+    if (tab === "members") void loadServerMembers();
+  }, [tab, loadServerMembers]);
+
+  useEffect(() => {
+    if (members?.length) setServerMembers(members);
+  }, [members]);
 
   // Bans state
   const [banSearch, setBanSearch] = useState("");
@@ -443,17 +470,78 @@ export function ServerSettingsDialog({
       onConfirm: async (roleName) => {
         if (!roleName?.trim()) return;
         try {
-          const res = await apiFetch<{ roles: PublicRole[] }>(
-            `/api/servers/${server.id}/roles`,
+          const res = await apiFetch<{ servers: PublicServer[] }>(
+            "/api/roles",
             {
               method: "POST",
-              body: JSON.stringify({ name: roleName.trim() }),
+              body: JSON.stringify({ serverId: server.id, name: roleName.trim() }),
             },
           );
-          setRoles(res.roles);
+          const updatedServer = res.servers.find((s) => s.id === server.id);
+          if (updatedServer) {
+            setRoles(updatedServer.roles);
+            const newRole = updatedServer.roles[updatedServer.roles.length - 1];
+            if (newRole) setActiveRole(newRole);
+          }
           onServerUpdated();
+          setNotice(`Role "${roleName.trim()}" created.`);
         } catch (err) {
           setNotice(err instanceof Error ? err.message : "Could not create role");
+        }
+      },
+    });
+  };
+
+  const updateRoleName = async (name: string) => {
+    if (!activeRole || !canManageServer || !name.trim()) return;
+    try {
+      const res = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/roles/${activeRole.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: name.trim() }),
+        },
+      );
+      const updatedServer = res.servers.find((s) => s.id === server.id);
+      if (updatedServer) {
+        setRoles(updatedServer.roles);
+        setActiveRole(
+          updatedServer.roles.find((r) => r.id === activeRole.id) || null,
+        );
+      }
+      onServerUpdated();
+      setEditingRoleName(false);
+      setNotice("Role name updated.");
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not update role name");
+    }
+  };
+
+  const handleDeleteRole = (role: PublicRole) => {
+    if (!canManageServer) return;
+    onRequestConfirm({
+      title: `Delete ${role.name}?`,
+      message: `Are you sure you want to delete the role "${role.name}"? This will remove it from all members.`,
+      isDanger: true,
+      confirmText: "Delete Role",
+      onConfirm: async () => {
+        try {
+          const res = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/roles/${role.id}`,
+            { method: "DELETE" },
+          );
+          const updatedServer = res.servers.find((s) => s.id === server.id);
+          if (updatedServer) {
+            setRoles(updatedServer.roles);
+            if (activeRole?.id === role.id) {
+              setActiveRole(updatedServer.roles[0] || null);
+            }
+          }
+          onServerUpdated();
+          void loadServerMembers();
+          setNotice(`Role "${role.name}" deleted.`);
+        } catch (err) {
+          setNotice(err instanceof Error ? err.message : "Could not delete role.");
         }
       },
     });
@@ -464,24 +552,117 @@ export function ServerSettingsDialog({
     const current = activeRole.permissions;
     const nextPerms = (current & flag) === flag ? current & ~flag : current | flag;
     try {
-      const res = await apiFetch<{ roles: PublicRole[] }>(
-        `/api/servers/${server.id}/roles/${activeRole.id}`,
+      const res = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/roles/${activeRole.id}`,
         {
           method: "PATCH",
           body: JSON.stringify({ permissions: nextPerms }),
         },
       );
-      setRoles(res.roles);
-      setActiveRole(res.roles.find((r) => r.id === activeRole.id) || null);
+      const updatedServer = res.servers.find((s) => s.id === server.id);
+      if (updatedServer) {
+        setRoles(updatedServer.roles);
+        setActiveRole(
+          updatedServer.roles.find((r) => r.id === activeRole.id) || null,
+        );
+      }
       onServerUpdated();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not update permissions");
     }
   };
 
+  async function toggleMemberRole(userId: string, roleId: string, add: boolean) {
+    try {
+      setServerMembers((prev) =>
+        prev.map((m) => {
+          if (m.id !== userId) return m;
+          const currentRoles = m.roleIds?.[server.id] || [];
+          const nextRoles = add
+            ? Array.from(new Set([...currentRoles, roleId]))
+            : currentRoles.filter((id) => id !== roleId);
+          return {
+            ...m,
+            roleIds: {
+              ...(m.roleIds || {}),
+              [server.id]: nextRoles,
+            },
+          };
+        }),
+      );
+
+      await apiFetch("/api/roles/assign", {
+        method: "POST",
+        body: JSON.stringify({ serverId: server.id, userId, roleId, add }),
+      });
+      onServerUpdated();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not assign role");
+      void loadServerMembers();
+    }
+  }
+
+  function kickMember(member: Member) {
+    onRequestConfirm({
+      title: `Kick ${member.displayName}?`,
+      message: `Are you sure you want to remove ${member.displayName} from ${server.name}? They will be able to rejoin with an invite.`,
+      isDanger: true,
+      confirmText: "Kick Member",
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/api/members/${member.id}`, {
+            method: "POST",
+            body: JSON.stringify({ serverId: server.id, action: "kick" }),
+          });
+          setServerMembers((prev) => prev.filter((m) => m.id !== member.id));
+          setNotice(`Kicked ${member.displayName}.`);
+          onServerUpdated();
+        } catch (err) {
+          setNotice(err instanceof Error ? err.message : "Could not kick member.");
+        }
+      },
+    });
+  }
+
+  function banMember(member: Member) {
+    onRequestConfirm({
+      title: `Ban ${member.displayName}?`,
+      message: `Are you sure you want to ban ${member.displayName} from ${server.name}? They will not be able to rejoin unless unbanned.`,
+      isDanger: true,
+      confirmText: "Ban Member",
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/api/members/${member.id}`, {
+            method: "POST",
+            body: JSON.stringify({ serverId: server.id, action: "ban" }),
+          });
+          setServerMembers((prev) => prev.filter((m) => m.id !== member.id));
+          setNotice(`Banned ${member.displayName}.`);
+          onServerUpdated();
+        } catch (err) {
+          setNotice(err instanceof Error ? err.message : "Could not ban member.");
+        }
+      },
+    });
+  }
+
   const filteredRoles = roles.filter((r) =>
     r.name.toLowerCase().includes(roleSearch.toLowerCase()),
   );
+
+  const filteredMembers = serverMembers.filter((m) => {
+    const q = memberSearch.toLowerCase().trim();
+    if (!q) return true;
+    if (m.displayName.toLowerCase().includes(q)) return true;
+    if (m.username.toLowerCase().includes(q)) return true;
+    if (m.joinedVia?.code.toLowerCase().includes(q)) return true;
+    if (m.joinedVia?.creatorUsername?.toLowerCase().includes(q)) return true;
+    if (m.joinedVia?.creatorName?.toLowerCase().includes(q)) return true;
+    const assignedRoles = roles.filter((r) =>
+      (m.roleIds?.[server.id] || []).includes(r.id),
+    );
+    return assignedRoles.some((r) => r.name.toLowerCase().includes(q));
+  });
 
   return (
     <div className="discord-server-settings-fullscreen">
@@ -919,6 +1100,200 @@ export function ServerSettingsDialog({
           </div>
         )}
 
+        {/* Tab: Members */}
+        {tab === "members" && (
+          <div className="tab-pane members-pane">
+            <h1 className="pane-title">Server Members</h1>
+            <p className="pane-subtitle">
+              {filteredMembers.length} {filteredMembers.length === 1 ? "member" : "members"} in {server.name}. Manage their server roles, view invite sources, and moderate members here.
+            </p>
+
+            <div className="members-toolbar">
+              <div className="search-wrap">
+                <Search size={14} className="search-icon" />
+                <input
+                  type="text"
+                  className="discord-search-input"
+                  placeholder="Search Members, Roles, or Invites"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="members-table-head">
+              <span>MEMBER</span>
+              <span>JOINED VIA</span>
+              <span>ROLES</span>
+              <span style={{ textAlign: "right" }}>ACTIONS</span>
+            </div>
+
+            <div className="members-list-wrapper">
+              {filteredMembers.map((member) => {
+                const isOwner = member.id === server.ownerId;
+                const assignedRoleIds = new Set(member.roleIds?.[server.id] || []);
+                const memberRoles = roles.filter((r) => assignedRoleIds.has(r.id));
+                const unassignedRoles = roles.filter((r) => !assignedRoleIds.has(r.id));
+                const isMenuOpen = roleAssignMenuUser === member.id;
+
+                return (
+                  <div key={member.id} className="member-table-row">
+                    <div className="member-user-col">
+                      <div className="relative flex-shrink-0">
+                        <Avatar
+                          avatar={member.avatar}
+                          avatarUrl={member.avatarUrl}
+                          color={member.color}
+                          size={36}
+                        />
+                      </div>
+                      <div className="member-info-text">
+                        <span className="member-info-name">
+                          {member.displayName}
+                          {isOwner && (
+                            <span title="Server Owner" className="owner-crown">
+                              <Crown size={14} />
+                            </span>
+                          )}
+                        </span>
+                        <span className="member-info-user">@{member.username}</span>
+                      </div>
+                    </div>
+
+                    <div className="member-invite-col">
+                      {member.joinedVia ? (
+                        <div className="member-invite-info">
+                          <span
+                            className="member-invite-badge"
+                            title={`Invite code: ${member.joinedVia.code}`}
+                          >
+                            <LinkIcon size={12} className="inline-icon" />
+                            <code>{member.joinedVia.code}</code>
+                          </span>
+                          {member.joinedVia.creatorUsername || member.joinedVia.creatorName ? (
+                            <span className="member-invite-by">
+                              by @{member.joinedVia.creatorUsername || member.joinedVia.creatorName}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : isOwner ? (
+                        <span className="member-invite-tag owner">
+                          <Crown size={12} /> Server Owner
+                        </span>
+                      ) : (
+                        <span className="member-invite-tag direct">
+                          Direct / Default
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="member-roles-col">
+                      {memberRoles.map((role) => (
+                        <span
+                          key={role.id}
+                          className="member-role-chip"
+                          style={role.color ? { borderColor: `${role.color}66` } : undefined}
+                        >
+                          <span
+                            className="member-role-dot"
+                            style={{ background: role.color || "#99aab5" }}
+                          />
+                          <span style={{ color: role.color || "#dbdee1" }}>{role.name}</span>
+                          {canManageServer && (
+                            <button
+                              type="button"
+                              className="member-role-remove"
+                              title={`Remove ${role.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleMemberRole(member.id, role.id, false);
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+
+                      {canManageServer && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            className="add-role-btn"
+                            title="Add Role"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRoleAssignMenuUser(isMenuOpen ? null : member.id);
+                            }}
+                          >
+                            <Plus size={14} />
+                          </button>
+
+                          {isMenuOpen && (
+                            <div
+                              className="role-assign-menu"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {!unassignedRoles.length ? (
+                                <div style={{ padding: "6px 8px", fontSize: 11, color: "#949ba4" }}>
+                                  No more roles to add
+                                </div>
+                              ) : (
+                                unassignedRoles.map((role) => (
+                                  <button
+                                    key={role.id}
+                                    type="button"
+                                    className="role-assign-option"
+                                    onClick={() => {
+                                      setRoleAssignMenuUser(null);
+                                      void toggleMemberRole(member.id, role.id, true);
+                                    }}
+                                  >
+                                    <span
+                                      className="member-role-dot"
+                                      style={{ background: role.color || "#99aab5" }}
+                                    />
+                                    <span style={{ color: role.color || "#dbdee1" }}>
+                                      {role.name}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="member-actions-col">
+                      {canManageServer && !isOwner && (
+                        <>
+                          <button
+                            type="button"
+                            className="member-action-btn"
+                            title="Kick Member"
+                            onClick={() => kickMember(member)}
+                          >
+                            <UserMinus size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="member-action-btn danger"
+                            title="Ban Member"
+                            onClick={() => banMember(member)}
+                          >
+                            <Hammer size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Tab 3: Roles (SS 3) */}
         {tab === "roles" && (
           <div className="tab-pane roles-pane">
@@ -997,11 +1372,10 @@ export function ServerSettingsDialog({
               <div className="active-role-permissions-editor">
                 <h3>Edit Permissions for {activeRole.name}</h3>
                 <div className="permissions-toggle-grid">
-                  {(Object.keys(PERMISSION_INFO) as unknown as PermissionFlag[]).map((flag) => {
-                    const info = PERMISSION_INFO[flag];
-                    const enabled = (activeRole.permissions & flag) === flag;
+                  {PERMISSION_INFO.map((info) => {
+                    const enabled = (activeRole.permissions & info.flag) === info.flag;
                     return (
-                      <label key={flag} className="perm-item-row">
+                      <label key={info.flag} className="perm-item-row">
                         <div>
                           <strong>{info.label}</strong>
                           <p>{info.description}</p>
@@ -1009,7 +1383,7 @@ export function ServerSettingsDialog({
                         <input
                           type="checkbox"
                           checked={enabled}
-                          onChange={() => toggleRolePermission(flag)}
+                          onChange={() => toggleRolePermission(info.flag)}
                         />
                       </label>
                     );
@@ -1170,6 +1544,20 @@ export function ServerSettingsDialog({
                       <button
                         type="button"
                         className="discord-btn"
+                        onClick={() => {
+                          const origin = typeof window !== "undefined" ? window.location.origin : "https://deeppixel.online";
+                          const link = `${origin}/hangout?${invite.code}`;
+                          void navigator.clipboard
+                            ?.writeText(link)
+                            .then(() => setNotice("Invite link copied to clipboard."))
+                            .catch(() => undefined);
+                        }}
+                      >
+                        Copy Link
+                      </button>
+                      <button
+                        type="button"
+                        className="discord-btn secondary"
                         onClick={() =>
                           void navigator.clipboard
                             ?.writeText(invite.code)
@@ -1177,7 +1565,7 @@ export function ServerSettingsDialog({
                             .catch(() => undefined)
                         }
                       >
-                        Copy
+                        Copy Code
                       </button>
                       {!invite.revoked && (
                         <button

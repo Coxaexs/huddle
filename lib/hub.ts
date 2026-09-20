@@ -442,6 +442,32 @@ export class HuddleHub extends DurableObject {
         return;
       }
 
+      case "dm-call": {
+        for (const entry of this.sockets()) {
+          const other = entry.attachment;
+          if (other.userId === event.targetUserId) {
+            try {
+              entry.socket.send(
+                JSON.stringify({
+                  t: "dm-call",
+                  channelId: event.channelId,
+                  fromUserId: attachment.userId,
+                  fromDisplayName: attachment.displayName,
+                  fromAvatar: attachment.avatar,
+                  fromAvatarUrl: attachment.avatarUrl,
+                  action: event.action,
+                  isVideo: event.isVideo,
+                  serverNow: Date.now(),
+                } satisfies ServerEvent),
+              );
+            } catch {
+              // Socket already disconnected
+            }
+          }
+        }
+        return;
+      }
+
       case "player": {
         await this.applyPlayerAction(event.channelId, event.action);
         return;

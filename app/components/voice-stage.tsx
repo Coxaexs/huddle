@@ -79,6 +79,12 @@ interface VoiceStageProps {
   onActivity: (activity: RoomActivity | null) => void;
   /** Posts a captured clip into the active text channel. */
   onClip?: (clip: Blob) => Promise<void>;
+  /** Whether the viewer is actually connected to this room's voice. */
+  joined?: boolean;
+  /** Join this room's voice (needs a real gesture for the microphone). */
+  onJoin?: () => void;
+  /** Leave the stage view entirely, used when the viewer is not joined. */
+  onExit?: () => void;
   /** The battlemap panel, rendered by the shell which owns its state. */
   battlemap?: React.ReactNode;
   onToggleBattlemap?: () => void;
@@ -153,6 +159,9 @@ export function VoiceStage({
   activity,
   onActivity,
   onClip,
+  joined,
+  onJoin,
+  onExit,
   battlemap,
   onToggleBattlemap,
   battlemapOpen,
@@ -162,6 +171,7 @@ export function VoiceStage({
   onOpenParticipantMenu,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "table" | "map">("grid");
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
@@ -259,8 +269,102 @@ export function VoiceStage({
           {voice.important && <button type="button" onClick={voice.toggleImportant}>Finish</button>}
         </div>
       )}
+      <div className="voice-stage-topbar">
+        <div className="voice-stage-topbar-info">
+          <Volume2 size={16} className="voice-stage-volume-icon" />
+          <div className="voice-stage-title-wrap">
+            <h2 className="voice-stage-title">{channelName}</h2>
+            <span className="voice-stage-sub">{participants.length} in call</span>
+          </div>
+        </div>
+        <div className="voice-view-switcher">
+          {(["grid", "table", "map"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`voice-view-pill ${viewMode === mode ? "active" : ""}`}
+              onClick={() => {
+                setViewMode(mode);
+                if (mode === "map" && onToggleBattlemap && !battlemapOpen) {
+                  onToggleBattlemap();
+                } else if (mode !== "map" && onToggleBattlemap && battlemapOpen) {
+                  onToggleBattlemap();
+                }
+              }}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="voice-stage-body">
-        {focused ? (
+        {!joined ? (
+          <div className="voice-join-prompt">
+            <div className="voice-join-icon"><Volume2 size={30} /></div>
+            <strong>You're viewing {channelName}</strong>
+            <p>
+              Join the room to talk, share your camera, and take part in
+              activities. You'll be asked to allow your microphone.
+            </p>
+            <button type="button" className="join-call-button" onClick={onJoin}>
+              <Mic size={16} /> Join voice
+            </button>
+            <button type="button" className="voice-join-exit" onClick={onExit}>
+              Back to chat
+            </button>
+          </div>
+        ) : viewMode === "table" ? (
+          <div className="voice-table-scene">
+            <p className="voice-table-heading">VOICE TABLE</p>
+            <div className="voice-table-wrapper">
+              <div className="voice-table-ring">
+                <div className="voice-table-surface">
+                  <div className="voice-table-center-divider" />
+                </div>
+              </div>
+              {participants.map((p, i) => {
+                const isSpeaking = selfSpeaking(p);
+                const positions = [
+                  { top: "4%", left: "50%", transform: "translate(-50%, -50%)" },
+                  { bottom: "4%", left: "50%", transform: "translate(-50%, 50%)" },
+                  { left: "8%", top: "50%", transform: "translate(-50%, -50%)" },
+                  { right: "8%", top: "50%", transform: "translate(50%, -50%)" },
+                  { top: "18%", left: "20%", transform: "translate(-50%, -50%)" },
+                  { top: "18%", right: "20%", transform: "translate(50%, -50%)" },
+                  { bottom: "18%", left: "20%", transform: "translate(-50%, 50%)" },
+                  { bottom: "18%", right: "20%", transform: "translate(50%, 50%)" },
+                ];
+                const pos = positions[i % positions.length];
+                return (
+                  <div
+                    key={p.connectionId}
+                    className="voice-table-seat"
+                    style={pos as React.CSSProperties}
+                  >
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Avatar
+                        className={`table-seat-avatar ${isSpeaking ? "is-speaking" : ""}`}
+                        avatar={p.avatar}
+                        avatarUrl={p.avatarUrl}
+                        color={p.color}
+                      />
+                      <span className="table-seat-name">
+                        {p.connectionId === connectionId ? "You" : p.displayName}
+                      </span>
+                      {isSpeaking && (
+                        <span className="text-[10px] text-[#a78bfa] font-bold">speaking</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="voice-table-note">
+              Everyone at the table hears each other equally. Move away to create distance.
+            </p>
+          </div>
+        ) : focused ? (
           <div className="voice-focus" ref={wrapperRef}>
             <div
               className="voice-focus-main"
@@ -392,35 +496,42 @@ export function VoiceStage({
         />
       )}
 
-      <div className="voice-stage-bar">
-        <div className="stage-bar-name">
-          <Volume2 size={18} className="speaker-icon inline" />
-          <strong>{channelName}</strong>
-        </div>
-        <div className="stage-bar-controls">
-          <button type="button" className={`stage-btn table-control-button ${voice.tableMode ? "on" : ""}`}
-            aria-label="Your table" aria-haspopup="dialog" onClick={() => setTableMenuOpen(true)} title="Arrange your listening table">
-            <SlidersHorizontal size={18} /><span>Your table</span>
-          </button>
-          <button type="button" className={`stage-btn table-control-button important-control ${voice.important ? "on" : ""}`}
-            aria-label={voice.important ? "Finish important" : "Speak important"} aria-pressed={voice.important} onClick={voice.toggleImportant} disabled={voice.muted || voice.deafened || voice.forcedMute}
-            title="Centre your voice for everyone with an 8% volume boost. Click again to finish.">
-            <Megaphone size={18} /><span>{voice.important ? "Finish important" : "Speak important"}</span>
+      <div className="voice-stage-bottom-bar">
+        <div className="voice-ctrls-centered">
+          <button
+            type="button"
+            className={`vctrl-btn ${voice.tableMode ? "active" : ""}`}
+            aria-label="Your table"
+            onClick={() => setTableMenuOpen(true)}
+            title="Your Table"
+          >
+            <SlidersHorizontal size={18} />
           </button>
           <button
             type="button"
-            className={`stage-btn ${voice.muted ? "off" : ""}`}
+            className={`vctrl-btn ${voice.important ? "active" : ""}`}
+            aria-label="Speak important"
+            onClick={voice.toggleImportant}
+            disabled={voice.muted || voice.deafened || voice.forcedMute}
+            title="Speak Important"
+          >
+            <Megaphone size={18} />
+          </button>
+
+          <div className="vctrl-divider" />
+
+          <button
+            type="button"
+            className={`vctrl-btn ${voice.muted ? "danger" : ""}`}
             onClick={voice.toggleMute}
             disabled={voice.forcedMute}
-            title={
-              voice.forcedMute ? "Server muted" : voice.muted ? "Unmute" : "Mute"
-            }
+            title={voice.muted ? "Unmute" : "Mute"}
           >
             {voice.muted ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
           <button
             type="button"
-            className={`stage-btn ${voice.deafened ? "off" : ""}`}
+            className={`vctrl-btn ${voice.deafened ? "danger" : ""}`}
             onClick={voice.toggleDeafen}
             title={voice.deafened ? "Undeafen" : "Deafen"}
           >
@@ -428,7 +539,7 @@ export function VoiceStage({
           </button>
           <button
             type="button"
-            className={`stage-btn ${voice.cameraOn ? "on" : ""}`}
+            className={`vctrl-btn ${voice.cameraOn ? "active" : ""}`}
             onClick={() =>
               voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
             }
@@ -438,29 +549,36 @@ export function VoiceStage({
           </button>
           <button
             type="button"
-            className={`stage-btn ${voice.screenSharing ? "on" : ""}`}
+            className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
             onClick={() =>
               voice.screenSharing
                 ? voice.stopScreenShare()
                 : void voice.startScreenShare()
             }
-            title={voice.screenSharing ? "Stop sharing" : "Share your screen"}
+            title={voice.screenSharing ? "Stop sharing" : "Share screen"}
           >
             <Monitor size={18} />
           </button>
+
+          <div className="vctrl-divider" />
+
           <button
             type="button"
-            className={`stage-btn ${soundboardOpen ? "on" : ""}`}
-            onClick={() => setSoundboardOpen((open) => !open)}
-            title="Soundboard"
+            className={`vctrl-btn ${viewMode === "table" ? "active" : ""}`}
+            onClick={() => setViewMode((m) => (m === "table" ? "grid" : "table"))}
+            title="Voice Table"
           >
             <Volume2 size={18} />
           </button>
           {onToggleBattlemap && (
             <button
               type="button"
-              className={`stage-btn ${battlemapOpen ? "on" : ""}`}
-              onClick={onToggleBattlemap}
+              className={`vctrl-btn ${viewMode === "map" || battlemapOpen ? "active" : ""}`}
+              onClick={() => {
+                const next = viewMode === "map" ? "grid" : "map";
+                setViewMode(next);
+                onToggleBattlemap();
+              }}
               title="Battlemap"
             >
               <Map size={18} />
@@ -468,17 +586,25 @@ export function VoiceStage({
           )}
           <button
             type="button"
-            className={`stage-btn ${activitiesOpen ? "on" : ""}`}
+            className={`vctrl-btn ${activitiesOpen ? "active" : ""}`}
             onClick={() => setActivitiesOpen((open) => !open)}
-            title="Room activities"
+            title="Activities"
           >
             <Sparkles size={18} />
           </button>
           <button
             type="button"
-            className={`stage-btn ${clipping === "done" ? "on" : ""}`}
+            className={`vctrl-btn ${soundboardOpen ? "active" : ""}`}
+            onClick={() => setSoundboardOpen((open) => !open)}
+            title="Soundboard"
+          >
+            <Volume2 size={18} />
+          </button>
+          <button
+            type="button"
+            className={`vctrl-btn ${clipping === "done" ? "active" : ""}`}
             disabled={clipping === "working" || !onClip}
-            title={`Clip the last ${voice.clipSeconds}s and post it to chat`}
+            title={`Clip the last ${voice.clipSeconds}s`}
             onClick={async () => {
               setClipping("working");
               try {
@@ -495,30 +621,29 @@ export function VoiceStage({
               }
             }}
           >
-            {clipping === "working" ? <Loader2 size={18} className="animate-spin" /> : clipping === "done" ? <Check size={18} /> : <Scissors size={18} />}
+            {clipping === "working" ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : clipping === "done" ? (
+              <Check size={18} />
+            ) : (
+              <Scissors size={18} />
+            )}
           </button>
-          <select
-            aria-label="Screen share quality"
-            className="stage-quality"
-            value={voice.screenQuality}
-            disabled={voice.screenSharing}
-            onChange={(event) =>
-              voice.setScreenQuality(event.target.value as ScreenShareQuality)
-            }
-          >
-            <option value="720p30">720p30</option>
-            <option value="1080p30">1080p30</option>
-            <option value="1080p60">1080p60</option>
-          </select>
+
+          <div className="vctrl-divider" />
+
           <button
             type="button"
-            className="stage-btn disconnect"
-            onClick={voice.leave}
-            title="Disconnect"
+            className="vctrl-btn danger active"
+            onClick={() => (joined ? voice.leave() : onExit?.())}
+            title={joined ? "Leave call" : "Close"}
           >
             <PhoneOff size={18} />
           </button>
         </div>
+        {clipping === "done" && (
+          <p className="voice-clip-saved-toast animate-pulse">✂ clip saved!</p>
+        )}
       </div>
     </div>
   );
