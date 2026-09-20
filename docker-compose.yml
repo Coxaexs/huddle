@@ -1,4 +1,7 @@
 services:
+  # ==========================================
+  # Hoffle Core: Web App & Realtime Worker
+  # ==========================================
   hoffle:
     build:
       context: .
@@ -7,22 +10,74 @@ services:
     restart: unless-stopped
     ports:
       - "8730:8730" # Hoffle Web App & Realtime WebSocket
-      - "8731:8731" # Music Resolver Helper (Internal/Optional)
     volumes:
-      # Mount state directory on host so all users, channels, messages,
-      # and uploads persist across container updates and restarts
       - ./state:/app/state
       - ./.dev.vars:/app/.dev.vars:ro
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
       - PORT=8730
+      - MUSIC_HELPER_BASE_URL=http://music-bot:8731
+      - DND_BASE_URL=http://dnd-bot:8732
+    depends_on:
+      music-bot:
+        condition: service_started
+      dnd-bot:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8730/hangout/api/auth/session"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # ==========================================
+  # Music Bot: Dedicated yt-dlp Audio Resolver
+  # ==========================================
+  music-bot:
+    build:
+      context: ./services/music-bot
+      dockerfile: Dockerfile
+    container_name: hoffle-music-bot
+    restart: unless-stopped
+    ports:
+      - "8731:8731"
+    environment:
+      - PORT=8731
+
+  # ==========================================
+  # D&D Bot: 5e SRD Compendium & Companion
+  # ==========================================
+  dnd-bot:
+    build:
+      context: ./services/dnd-bot
+      dockerfile: Dockerfile
+    container_name: hoffle-dnd-bot
+    restart: unless-stopped
+    ports:
+      - "8732:8732"
+    environment:
+      - PORT=8732
+
+  # ==========================================
+  # Discord Bridge: Bidirectional Hoffle <-> Discord Sync
+  # ==========================================
+  discord-bridge:
+    build:
+      context: ./discord-bridge
+      dockerfile: Dockerfile
+    container_name: hoffle-discord-bridge
+    restart: unless-stopped
+    env_file:
+      - ./discord-bridge/.env
+    environment:
+      - HUDDLE_URL=http://hoffle:8730
+      - HUDDLE_BASE_PATH=/hangout
+    depends_on:
+      - hoffle
+    profiles:
+      - bridge
+      - all
 
   # Optional: coturn TURN/STUN server for guaranteed voice connectivity
   # across strict NATs and firewalls (uncomment if you don't run coturn on host)

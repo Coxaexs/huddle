@@ -15,7 +15,7 @@ const KINDS: Record<string, string> = {
 
 function dndBaseUrl(): URL {
   const configured =
-    bindings().DND_BASE_URL?.trim() || "https://dnd.deeppixel.online";
+    bindings().DND_BASE_URL?.trim() || "http://127.0.0.1:8732";
   const url = new URL(configured);
   if (!["http:", "https:"].includes(url.protocol)) {
     throw new Error("Unsupported D&D server URL.");

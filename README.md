@@ -1,108 +1,284 @@
-# Huddle
+# Hoffle
 
-A small private chat app for a group of friends — text channels, voice rooms,
-and a music bot that plays into the voice room everyone is sitting in.
+Hoffle is an open-source, self-hosted real-time communication platform designed for friend groups and communities. It provides text channels, voice rooms with spatial audio, synchronized music playback, tabletop battlemaps, and a Discord-compatible bot platform.
 
-It runs as a Cloudflare Worker, but it is never deployed to Cloudflare: on this
-machine `wrangler dev` serves it locally on port 8730 and nginx puts it at
-`https://deeppixel.online/hangout`. D1 and R2 are the local SQLite/disk
-emulations under `state/`, which is why that directory holds the real data and
-must be backed up rather than deleted.
+## Architecture
 
-## Layout
+Hoffle is built to run as a multi-service architecture:
 
-    app/                 Next.js App Router pages, API routes and UI
-      chat-shell.tsx     the whole client shell
-      components/        auth gate, settings, slash palette, now-playing card
-      hooks/             hub socket, WebRTC voice, synced playback
-      api/               server routes (auth, servers, channels, music, bots)
-    lib/                 shared server code
-      hub.ts             the Durable Object: presence, voice, player clock
-      schema.ts          D1 tables, migrated on demand
-    worker/index.ts      worker entry: assets, realtime upgrade, then vinext
-    huddle_music_helper.py  yt-dlp resolver on :8731 (its own systemd unit)
+- Hoffle Web and Worker: Next.js App Router and Cloudflare Worker runtime (running locally via Wrangler).
+- Durable Object Hub: Manages presence, WebRTC signaling, voice coordination, and synchronized media playback.
+- Local Storage: SQLite database (D1 emulation) and disk assets (R2 emulation) persisted in the `state/` directory.
+- Music Bot Service: Dedicated container running Python, yt-dlp, and ffmpeg to resolve and stream music on port 8731.
+- D&D 5e Bot Service: Dedicated container providing a 5e SRD compendium (spells, monsters, items, rules) on port 8732.
+- Discord Bridge: Bidirectional bridge synchronizing messages between Discord channels and Hoffle channels.
 
-## Working on it
+## Quick Start with Docker Compose
 
-    npm install
-    npm run build        # writes dist/, the shape wrangler already expects
-    npm run serve        # or let the systemd unit do it
+The fastest way to deploy Hoffle and all companion bots is with Docker Compose.
 
-`npm run build` must be run with Node 22 (`node_modules/node/bin/node`); the
-systemd unit uses that same binary.
+### 1. Clone and Configure
 
-To try changes without touching the live database, copy `state/` somewhere and
-point `--persist-to` at the copy.
+```bash
+git clone https://github.com/coxaexs/huddle.git hoffle
+cd hoffle
+cp .dev.vars.example .dev.vars
+```
 
-## Deploying a change
+Edit `.dev.vars` to set your initial secret keys:
 
-    npm run build
-    sudo systemctl restart huddle.service
+- `BOT_TOKEN`: Shared secret key used for bot authentication and server-to-server operations.
+- `BOOTSTRAP_CODE`: Secret invite code required by the very first account registration.
 
-`npm run build` is also what publishes `.dev.vars`: the build copies it to
-`dist/server/.dev.vars`, and that copy is the one wrangler actually reads.
-Editing the root `.dev.vars` without rebuilding changes nothing, silently.
+### 2. Start the Stack
 
-`wrangler dev` does not reliably pick up a rebuilt worker on its own, so the
-restart is required. Nothing else needs to move: the systemd unit already points
-at `dist/server/wrangler.json`, and the schema migrates itself on first request.
+```bash
+docker compose up -d
+```
 
-## Accounts
+This starts:
 
-The first account created owns the Huddle; everyone after it needs an invite
-code, made from Settings → Invites. Because the app is reachable from the open
-internet, set `BOOTSTRAP_CODE` in `.dev.vars` before the first deploy — then
-even that first signup needs a code only you have. Every member is automatically in every
-server — there are no roles yet, on purpose.
+- Hoffle Web App and Realtime Worker on port 8730 (`http://localhost:8730/hangout`)
+- Hoffle Music Bot audio resolver on port 8731
+- Hoffle D&D 5e compendium service on port 8732
 
-Sessions are cookies scoped to `/hangout`, holding a random token whose hash is
-what the database stores. Passwords are PBKDF2-SHA256 through WebCrypto.
+To view logs:
 
-## Voice and music
+```bash
+docker compose logs -f
+```
 
-Voice rooms are a WebRTC mesh: browsers connect directly to each other and the
-hub Durable Object only relays the handshake. Turkish ISPs commonly use carrier-grade NAT, where STUN alone cannot connect the
-two ends: the call negotiates, the tiles appear, and then nothing is heard or
-seen. A TURN server is what fixes that, and one runs on this machine —
-`coturn`, reachable at `xray.deeppixel.online` (that hostname bypasses
-Cloudflare, which will not proxy TURN) on 3478/UDP+TCP and 5349/TLS, with the
-relay range 49160-49200/UDP forwarded through the router.
+To stop:
 
-`HUDDLE_ICE_SERVERS` holds the JSON array of `RTCIceServer` entries the browser
-is handed. `/api/voice/ice` reports whether it used that configuration or fell
-back to plain STUN, because a silent fallback looks exactly like a working setup
-until nobody can hear each other.
+```bash
+docker compose down
+```
 
-Music is not streamed by the bot. `/play` resolves a track through the helper on
-:8731, and the hub publishes one position for the room; every listener plays the
-same source and is nudged back onto that position. That is what makes the
-progress bar the control it looks like — clicking it seeks for everyone.
+## Discord-Compatible Bot API
 
-The music bot's dashboard can see these rooms too. Set in its `.env`:
+Hoffle provides a REST and Event Gateway API modeled after Discord's API conventions. You can build bots using standard HTTP clients or Discord-like abstractions.
 
-    HUDDLE_BASE_URL=http://127.0.0.1:8730/hangout
-    HUDDLE_BOT_TOKEN=<same value as BOT_TOKEN in .dev.vars>
+### Authentication
 
-## What else is in here
+Bots authenticate using an Authorization header:
 
-Direct messages (the only thing not visible to everyone — the hub filters those
-broadcasts by audience), pinned messages, message deleting, profile pictures,
-GIFs, and a right-click menu on people for per-person volume, a personal mute,
-or a server mute that stops their microphone for everyone.
+```http
+Authorization: Bot <BOT_TOKEN>
+```
 
-Slash commands cover both bots. Anything under "Music" runs in your Huddle voice
-room; "Discord music" reaches the same bot but drives its Discord voice
-connection, because those features live in its ffmpeg pipeline.
+Or:
 
-## Configuration
+```http
+Authorization: Bearer <BOT_TOKEN>
+```
 
-`.dev.vars` (not in git) holds the secrets:
+Tokens can be either the global `BOT_TOKEN` defined in `.dev.vars` or a server-specific bot token generated under Server Settings -> Bots & Integrations.
 
-    MUSICWATCH_PASSWORD   password for the music bot dashboard
-    BOT_TOKEN             shared secret for /api/bot/* and /api/bots/messages
-    BOOTSTRAP_CODE        needed by the very first signup
-    TENOR_API_KEY         optional; enables GIF search in the composer
-    HUDDLE_ICE_SERVERS    optional; JSON RTCIceServer[] for a TURN server
+### REST Endpoints
 
-Everything else lives in `wrangler.jsonc`, overridden per-host by `--var` flags
-in the systemd unit.
+#### Get Current Bot Profile
+```http
+GET /hangout/api/v1/users/@me
+```
+Returns:
+```json
+{
+  "id": "bot-id",
+  "username": "My Bot",
+  "discriminator": "0000",
+  "avatar": "B",
+  "bot": true,
+  "server_id": "optional-server-id"
+}
+```
+
+#### List Accessible Guilds (Servers)
+```http
+GET /hangout/api/v1/guilds
+```
+
+#### List Channels in a Guild
+```http
+GET /hangout/api/v1/guilds/{guildId}/channels
+```
+
+#### Fetch Channel Messages
+```http
+GET /hangout/api/v1/channels/{channelId}/messages?limit=50&before={messageId}
+```
+
+#### Send a Message to a Channel
+```http
+POST /hangout/api/v1/channels/{channelId}/messages
+Content-Type: application/json
+
+{
+  "content": "Hello world from my bot!",
+  "username": "Custom Bot Name",
+  "avatar_url": "https://example.com/avatar.png",
+  "embeds": [
+    {
+      "title": "Alert Title",
+      "description": "Details about the event",
+      "fields": [
+        { "name": "Status", "value": "Operational" }
+      ]
+    }
+  ]
+}
+```
+
+#### Delete a Message
+```http
+DELETE /hangout/api/v1/channels/{channelId}/messages/{messageId}
+```
+
+### Real-Time Event Streaming
+
+#### Server-Sent Events (SSE) Stream
+Bots can receive live events over HTTP without configuring WebSockets:
+
+```http
+GET /hangout/api/v1/gateway/events?token=<BOT_TOKEN>
+```
+
+Events emitted:
+- `READY`: Initial connection handshake with bot profile and server access.
+- `MESSAGE_CREATE`: Dispatched whenever a user or bot sends a message in a channel.
+- `MESSAGE_DELETE`: Dispatched when a message is deleted.
+
+#### WebSocket Realtime Gateway
+Bots can also connect directly to the WebSocket gateway at:
+```
+ws://localhost:8730/hangout/api/realtime
+```
+With header `Authorization: Bot <BOT_TOKEN>`.
+
+### Bot Code Examples
+
+#### Python Example
+
+```python
+import json
+import urllib.request
+
+TOKEN = "hfl_bot_your_token_here"
+BASE_URL = "http://localhost:8730/hangout/api/v1"
+CHANNEL_ID = "general"
+
+def send_message(channel_id, content):
+    url = f"{BASE_URL}/channels/{channel_id}/messages"
+    payload = json.dumps({"content": content}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bot {TOKEN}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+send_message(CHANNEL_ID, "Greetings from Python!")
+```
+
+#### Node.js Example
+
+```javascript
+const TOKEN = "hfl_bot_your_token_here";
+const BASE_URL = "http://localhost:8730/hangout/api/v1";
+
+async function sendMessage(channelId, content) {
+  const res = await fetch(`${BASE_URL}/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bot ${TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content }),
+  });
+  return res.json();
+}
+
+sendMessage("general", "Greetings from Node.js!");
+```
+
+## Server Bot Management
+
+Server administrators can manage bots directly from the Hoffle web interface:
+
+1. Open Server Settings (click the server name header -> Server Settings).
+2. Navigate to "Bots & Integrations".
+3. Add built-in bots with one click:
+   - Hoffle Music Bot: Synchronized voice audio, queue, and playback control.
+   - D&D Companion: 5e spell, monster, and item compendium lookups and cryptographic dice rolls.
+   - Discord Bridge: Live channel bridging between Hoffle and Discord.
+4. Or click "Create Bot Integration" to generate a dedicated bot token for custom scripts.
+5. Active bots can be enabled, disabled, or removed at any time.
+
+## Bidirectional Discord Bridge
+
+Hoffle includes a dedicated Discord bridge service that synchronizes messages bidirectionally between Discord and Hoffle.
+
+### Features
+- Discord to Hoffle: Forwards Discord chat, attachments, and link previews into mapped Hoffle channels.
+- Hoffle to Discord: Listens to Hoffle's real-time event gateway and relays chat into mapped Discord channels.
+- Loop Protection: Automatically filters bridged messages and bot echoes.
+
+### Setup
+
+1. Create a Discord application in the Discord Developer Portal (https://discord.com/developers/applications).
+2. Create a Bot user and enable Message Content Intent under Privileged Gateway Intents.
+3. Invite the bot to your Discord server with Read Messages and Send Messages permissions.
+4. Copy `discord-bridge/.env` and fill in:
+   - `DISCORD_BOT_TOKEN`: The Discord bot token.
+   - `HUDDLE_BOT_TOKEN`: A Hoffle Bot Token.
+   - `HUDDLE_URL`: URL to your Hoffle server (e.g. `http://127.0.0.1:8730` or `http://hoffle:8730` in Docker).
+   - `DISCORD_TO_HUDDLE_MAP`: Channel mapping in format `discord_channel:hoffle_channel,discord_channel_2:hoffle_channel_2`.
+5. Run the bridge via Docker:
+   ```bash
+   docker compose --profile bridge up -d
+   ```
+   Or run locally:
+   ```bash
+   cd discord-bridge
+   npm install
+   npm start
+   ```
+
+## Development and Testing
+
+### Requirements
+- Node.js 22
+- Python 3.10+ (for music and D&D services)
+- Docker and Docker Compose (recommended for full stack)
+
+### Running Unit Tests
+
+Hoffle includes automated vitest suites covering protocols, spatial audio, friends, invites, permissions, and bot authentication:
+
+```bash
+npm test
+```
+
+### Local Build
+
+```bash
+npm install
+npm run build
+npm run serve
+```
+
+## Configuration Reference
+
+Variables configured in `.dev.vars`:
+
+- `BOT_TOKEN`: Shared secret for system-level bot operations and API access.
+- `BOOTSTRAP_CODE`: Required passphrase for creating the initial owner account.
+- `MUSIC_HELPER_BASE_URL`: Address of the yt-dlp audio resolver service (default `http://127.0.0.1:8731`).
+- `DND_BASE_URL`: Address of the D&D 5e compendium service (default `http://127.0.0.1:8732`).
+- `HUDDLE_ICE_SERVERS`: JSON array of `RTCIceServer` objects for custom STUN/TURN server deployment.
+- `TENOR_API_KEY`: Optional key for animated GIF search in the composer.
+- `MUSICWATCH_PASSWORD`: Optional password for the external music dashboard.

@@ -28,7 +28,14 @@ export interface HuddleBindings {
   LASTFM_SECRET?: string;
 }
 
+let testBindings: HuddleBindings | null = null;
+
+export function setBindings(b: HuddleBindings | null) {
+  testBindings = b;
+}
+
 export function bindings(): HuddleBindings {
+  if (testBindings) return testBindings;
   return env as unknown as HuddleBindings;
 }
 

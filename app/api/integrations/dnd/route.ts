@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 function dndBaseUrl(): URL {
   const configured =
-    bindings().DND_BASE_URL?.trim() || "https://dnd.deeppixel.online";
+    bindings().DND_BASE_URL?.trim() || "http://127.0.0.1:8732";
   const url = new URL(configured);
   if (!["http:", "https:"].includes(url.protocol)) {
     throw new Error("Unsupported D&D server URL.");
@@ -14,7 +14,7 @@ function dndBaseUrl(): URL {
 
 function dndPublicUrl(): URL {
   const configured =
-    bindings().DND_PUBLIC_URL?.trim() || "https://dnd.deeppixel.online";
+    bindings().DND_PUBLIC_URL?.trim() || bindings().DND_BASE_URL?.trim() || "https://dnd.deeppixel.online";
   const url = new URL(configured);
   if (!["http:", "https:"].includes(url.protocol)) {
     throw new Error("Unsupported public D&D URL.");
@@ -25,15 +25,35 @@ function dndPublicUrl(): URL {
 /** Health probe for the D&D companion app shown in the sidebar. */
 export async function GET() {
   try {
-    const response = await fetch(new URL("/docs", dndBaseUrl()), {
+    const primary = await fetch(new URL("/docs", dndBaseUrl()), {
       method: "HEAD",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
-    return Response.json({
-      online: response.ok,
-      appUrl: new URL("/", dndPublicUrl()).toString(),
-    });
+    if (primary.ok) {
+      return Response.json({
+        online: true,
+        appUrl: new URL("/", dndPublicUrl()).toString(),
+      });
+    }
   } catch {
-    return Response.json({ online: false });
+    // try fallback
   }
+
+  // Fallback to public hosted compendium
+  try {
+    const fallback = await fetch(new URL("/docs", "https://dnd.deeppixel.online"), {
+      method: "HEAD",
+      signal: AbortSignal.timeout(3000),
+    });
+    if (fallback.ok) {
+      return Response.json({
+        online: true,
+        appUrl: "https://dnd.deeppixel.online/",
+      });
+    }
+  } catch {
+    // offline
+  }
+
+  return Response.json({ online: false });
 }
