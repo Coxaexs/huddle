@@ -3937,6 +3937,10 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   box-shadow:0 28px 90px #00000073;
 }
 
+.settings-modal {
+  width:min(600px,100%);
+}
+
 .modal-head {
   border-bottom:1px solid #41434f;
   justify-content:space-between;
@@ -3963,6 +3967,25 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   gap:4px;
   padding:10px 14px;
   display:flex;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:#41434f transparent;
+  flex-shrink:0;
+  -webkit-overflow-scrolling:touch;
+}
+
+.modal-tabs::-webkit-scrollbar {
+  height:4px;
+}
+
+.modal-tabs::-webkit-scrollbar-track {
+  background:transparent;
+}
+
+.modal-tabs::-webkit-scrollbar-thumb {
+  background:#41434f;
+  border-radius:4px;
 }
 
 .modal-tabs button {
@@ -3974,6 +3997,8 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   padding:8px 12px;
   font-size:13px;
   font-weight:700;
+  white-space:nowrap;
+  flex-shrink:0;
 }
 
 .modal-tabs button.active {

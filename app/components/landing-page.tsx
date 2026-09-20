@@ -412,6 +412,14 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]`;
       {/* ── Hero Section ─────────────────────────────────────────────── */}
       <section className="relative px-4 pt-16 pb-20 sm:pt-24 sm:pb-28">
         <div className="mx-auto max-w-4xl text-center">
+          {/* Eyebrow badge for SEO & branding */}
+          <Reveal delay={30}>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1d182d] border border-[#2e2646] text-xs font-semibold text-[#b8a7ff] mb-6 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-[#a78bfa]" />
+              <span>Hoffle — Open-Source Discord Alternative</span>
+            </div>
+          </Reveal>
+
           {/* Headline (Crisp, High-Contrast, Zero Gradients) */}
           <Reveal delay={60}>
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-[#f4f1fa] leading-[1.1] mb-6">
