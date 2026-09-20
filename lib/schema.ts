@@ -515,6 +515,25 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
     ),
+    // Bots and integrations added to servers
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_bots (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        avatar TEXT NOT NULL DEFAULT '🤖',
+        token TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL DEFAULT 'custom',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_bots_server_idx ON server_bots(server_id, enabled)",
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_bots_token_idx ON server_bots(token)",
+    ),
   ]);
 
   // Columns added after the first release.

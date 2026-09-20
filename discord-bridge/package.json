@@ -1,0 +1,12 @@
+{
+  "name": "hoffle-discord-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
