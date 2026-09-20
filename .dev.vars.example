@@ -1,0 +1,24 @@
+# ==============================================================================
+# Hoffle Environment Configuration Template
+# Copy this file to .dev.vars (DO NOT COMMIT .dev.vars TO VERSION CONTROL)
+# ==============================================================================
+
+# [CRITICAL SECURITY] Secret code required to claim the very first admin account.
+# Before opening your server to the internet, set this so nobody can claim your server!
+BOOTSTRAP_CODE=change_this_to_a_secret_code_only_you_know
+
+# [OPTIONAL] Shared secret token for bot endpoints and recorder services
+BOT_TOKEN=generate_a_random_32_character_token_here
+
+# [OPTIONAL] Password for the integrated music bot dashboard
+MUSICWATCH_PASSWORD=optional_music_dashboard_password
+
+# [OPTIONAL] Tenor API key for animated GIF search in the chat composer
+# Get a free key at: https://developers.google.com/tenor/guides/quickstart
+TENOR_API_KEY=
+
+# [RECOMMENDED FOR VOIP] STUN/TURN server configuration for voice NAT traversal.
+# Default uses Cloudflare's public STUN server. For friends behind restrictive
+# carrier-grade NATs (CGNAT), specify your coturn server credentials here:
+# HUDDLE_ICE_SERVERS=[{"urls":["turn:turn.example.com:3478?transport=udp"],"username":"user","credential":"pass"},{"urls":["stun:stun.cloudflare.com:3478"]}]
+HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]

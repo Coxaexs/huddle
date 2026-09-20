@@ -409,6 +409,7 @@ export function ChatShell() {
 
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [memberFilterQuery, setMemberFilterQuery] = useState("");
   const [dms, setDms] = useState<DmSummary[]>([]);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
@@ -3224,7 +3225,7 @@ export function ChatShell() {
   if (!ready) {
     return (
       <main className="app-shell booting">
-        <div className="boot-card">Opening Huddle…</div>
+        <div className="boot-card">Opening Hoffle…</div>
       </main>
     );
   }
@@ -3243,7 +3244,15 @@ export function ChatShell() {
     );
   }
 
-  const displayedMembers = inDmHome ? dmMembers : members;
+  const rawDisplayedMembers = inDmHome ? dmMembers : members;
+  const filterQ = memberFilterQuery.trim().toLowerCase();
+  const displayedMembers = filterQ
+    ? rawDisplayedMembers.filter(
+        (m) =>
+          m.username.toLowerCase().includes(filterQ) ||
+          m.displayName.toLowerCase().includes(filterQ),
+      )
+    : rawDisplayedMembers;
   const onlineMembers = displayedMembers.filter((member) => hub.online.has(member.id));
   const offlineMembers = displayedMembers.filter((member) => !hub.online.has(member.id));
   const currentVoiceChannel = voiceChannels.find(
@@ -6180,6 +6189,28 @@ export function ChatShell() {
             )}
           </>
         )}
+
+        <div className="px-3 pt-2 pb-1">
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              value={memberFilterQuery}
+              onChange={(e) => setMemberFilterQuery(e.target.value)}
+              placeholder="Search members..."
+              className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] text-xs text-white placeholder-white/40 rounded-lg px-2.5 py-1.5 outline-none transition-colors border border-white/5 focus:border-[#7b63e6]/50"
+            />
+            {memberFilterQuery && (
+              <button
+                type="button"
+                onClick={() => setMemberFilterQuery("")}
+                className="absolute right-2 text-white/40 hover:text-white text-xs px-1"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
 
         <div className="member-panel-title online-title">
           <span>ONLINE — {onlineMembers.length}</span>

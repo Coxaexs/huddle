@@ -139,11 +139,20 @@ export async function POST(request: Request) {
       .run();
   }
 
-  // Everyone lands in the home server; a server-scoped invite also drops them
-  // into that server. The first account is a member of the home server too.
+  // Server membership:
+  // - The first user (owner) always lands in the home server.
+  // - If the invite code is scoped to a specific server, they ONLY join that server.
+  // - Global invites without a server_id fall back to the default home server.
   const now2 = new Date().toISOString();
-  const memberships = new Set<string>([DEFAULT_SERVER_ID]);
-  if (inviteServerId) memberships.add(inviteServerId);
+  const memberships = new Set<string>();
+  if (isFirstUser) {
+    memberships.add(DEFAULT_SERVER_ID);
+  } else if (inviteServerId) {
+    memberships.add(inviteServerId);
+  } else {
+    memberships.add(DEFAULT_SERVER_ID);
+  }
+
   await db.batch(
     [...memberships].map((serverId) =>
       db

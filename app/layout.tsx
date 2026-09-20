@@ -20,26 +20,26 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(`${protocol}://${host}`),
     title: {
-      default: "Huddle",
-      template: "%s · Huddle",
+      default: "Hoffle",
+      template: "%s · Hoffle",
     },
-    description: "A tiny private place for your favorite people.",
+    description: "An open-source, self-hostable Discord alternative for your favorite communities.",
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
     },
     openGraph: {
-      title: "Huddle",
-      description: "A tiny private place for your favorite people.",
+      title: "Hoffle",
+      description: "An open-source, self-hostable Discord alternative for your favorite communities.",
       type: "website",
       images: [
-        { url: "/og.png", width: 1730, height: 909, alt: "Huddle" },
+        { url: "/og.png", width: 1730, height: 909, alt: "Hoffle" },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Huddle",
-      description: "A tiny private place for your favorite people.",
+      title: "Hoffle",
+      description: "An open-source, self-hostable Discord alternative for your favorite communities.",
       images: ["/og.png"],
     },
   };

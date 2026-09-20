@@ -17,7 +17,8 @@ import {
 export { AVATAR_COLORS } from "./users";
 export type { PublicUser } from "./users";
 
-export const SESSION_COOKIE = "huddle_session";
+export const SESSION_COOKIE = "hoffle_session";
+export const LEGACY_SESSION_COOKIE = "huddle_session";
 export const SESSION_TTL_DAYS = 90;
 const PBKDF2_ITERATIONS = 150_000;
 
@@ -151,18 +152,22 @@ export function readCookie(request: Request, name: string): string | null {
 }
 
 /**
- * Huddle is mounted at /hangout behind nginx, so the cookie is scoped there and
- * marked Secure whenever the original request came in over HTTPS.
- */
+  * Hoffle can be mounted at /hangout behind nginx or at root /, so the cookie is scoped
+  * accordingly and marked Secure whenever the original request came in over HTTPS.
+  */
 export function sessionCookie(request: Request, token: string): string {
   const secure = isSecure(request) ? "; Secure" : "";
   const maxAge = SESSION_TTL_DAYS * 24 * 60 * 60;
-  return `${SESSION_COOKIE}=${token}; Path=/hangout; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+  const url = new URL(request.url);
+  const path = url.pathname.startsWith("/hangout") ? "/hangout" : "/";
+  return `${SESSION_COOKIE}=${token}; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
 export function clearSessionCookie(request: Request): string {
   const secure = isSecure(request) ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; Path=/hangout; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
+  const url = new URL(request.url);
+  const path = url.pathname.startsWith("/hangout") ? "/hangout" : "/";
+  return `${SESSION_COOKIE}=; Path=${path}; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 function isSecure(request: Request): boolean {
@@ -201,7 +206,7 @@ export async function destroySession(
 export async function currentUser(request: Request): Promise<User | null> {
   const db = bindings().DB;
   if (!db) return null;
-  const token = readCookie(request, SESSION_COOKIE);
+  const token = readCookie(request, SESSION_COOKIE) || readCookie(request, LEGACY_SESSION_COOKIE);
   if (!token) return null;
 
   await ensureSchema(db);

@@ -50,19 +50,19 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
       <form className="username-card" onSubmit={submit}>
         <span className="username-mark">h</span>
         <p className="eyebrow">
-          {bootstrap ? "SET UP YOUR HUDDLE" : "WELCOME BACK"}
+          {bootstrap ? "SET UP YOUR HOFFLE" : "WELCOME BACK"}
         </p>
         <h2>
           {mode === "signup"
             ? bootstrap
-              ? "Claim this Huddle"
+              ? "Claim this Hoffle"
               : "Join with an invite"
             : "Sign in"}
         </h2>
         <p>
           {mode === "signup"
             ? bootstrap
-              ? "The first account owns this Huddle and can invite everyone else."
+              ? "The first account owns this Hoffle and can invite everyone else."
               : "Ask a friend already inside for an invite code."
             : "Your name and messages stay on your own server."}
         </p>
