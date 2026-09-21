@@ -58,6 +58,7 @@ import {
   PhoneOff,
   VideoOff,
   Mic,
+  ShieldAlert,
   MicOff,
   Headphones,
   AudioLines,
@@ -486,8 +487,26 @@ export function ChatShell() {
   const [pinsOpen, setPinsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  const [expandedBlockedMessages, setExpandedBlockedMessages] = useState<Set<string>>(new Set());
 
-  const [draft, setDraft] = useState("");
+  const channelDraftsRef = useRef<Record<string, string>>({});
+  const prevChannelForDraftRef = useRef<string | null>(null);
+  const [draft, setDraftState] = useState("");
+  const draftRef = useRef("");
+  draftRef.current = draft;
+
+  const setDraft = useCallback((valueOrFn: string | ((prev: string) => string)) => {
+    setDraftState((prev) => {
+      const next = typeof valueOrFn === "function" ? valueOrFn(prev) : valueOrFn;
+      draftRef.current = next;
+      const channelId = activeChannelRef.current;
+      if (channelId) {
+        channelDraftsRef.current[channelId] = next;
+      }
+      return next;
+    });
+  }, []);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -894,12 +913,53 @@ export function ChatShell() {
 
   const loadFriendsCount = useCallback(async () => {
     try {
-      const data = await apiFetch<{ incoming: unknown[] }>("/api/friends");
+      const data = await apiFetch<{
+        incoming: unknown[];
+        blocked: Array<{ id: string }>;
+      }>("/api/friends");
       setPendingFriendCount(data.incoming?.length || 0);
+      setBlockedUserIds(new Set((data.blocked || []).map((b) => b.id)));
     } catch {
       // Ignore
     }
   }, []);
+
+  const handleBlockUser = useCallback(
+    async (targetId: string) => {
+      try {
+        await apiFetch("/api/friends/block", {
+          method: "POST",
+          body: JSON.stringify({ targetId }),
+        });
+        setBlockedUserIds((prev) => new Set(prev).add(targetId));
+        void loadFriendsCount();
+        void loadDms();
+      } catch (err) {
+        console.error("Failed to block user:", err);
+      }
+    },
+    [loadFriendsCount, loadDms],
+  );
+
+  const handleUnblockUser = useCallback(
+    async (targetId: string) => {
+      try {
+        await apiFetch(`/api/friends?id=${encodeURIComponent(targetId)}`, {
+          method: "DELETE",
+        });
+        setBlockedUserIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetId);
+          return next;
+        });
+        void loadFriendsCount();
+        void loadDms();
+      } catch (err) {
+        console.error("Failed to unblock user:", err);
+      }
+    },
+    [loadFriendsCount, loadDms],
+  );
 
   const loadPrefs = useCallback(async () => {
     const data = await apiFetch<{ prefs: Record<string, VoicePref> }>(
@@ -1084,6 +1144,23 @@ export function ChatShell() {
     markChannelRead(activeChannelId);
   }, [activeChannelId, markChannelRead]);
 
+  // Switching channels isolates draft messages, cancels pending attachments and replies
+  useEffect(() => {
+    const prev = prevChannelForDraftRef.current;
+    if (prev && prev !== activeChannelId) {
+      channelDraftsRef.current[prev] = draftRef.current;
+    }
+    prevChannelForDraftRef.current = activeChannelId;
+
+    const nextDraft = activeChannelId ? (channelDraftsRef.current[activeChannelId] || "") : "";
+    setDraftState(nextDraft);
+    draftRef.current = nextDraft;
+
+    setPendingFiles([]);
+    setReplyTarget(null);
+    setEditingId(null);
+  }, [activeChannelId]);
+
   // Switching servers re-scopes the member roster to that server's members.
   useEffect(() => {
     if (user) void loadMembers().catch(() => undefined);
@@ -1262,6 +1339,10 @@ export function ChatShell() {
     ? activeDm?.user.displayName || "Direct messages"
     : activeChannel?.name || "no channel";
 
+  const isDmBlocked = Boolean(
+    inDmHome && activeDm && blockedUserIds.has(activeDm.user.id),
+  );
+
   // ------------------------------------------------------------ realtime
 
   const refreshPins = useCallback(async (channelId: string) => {
@@ -1399,29 +1480,22 @@ export function ChatShell() {
     },
     onReaction: (channelId, messageId, emoji, userId, added) => {
       if (channelId !== activeChannelRef.current) return;
-      const me = user
-        ? {
-            id: user.id,
-            username: user.username,
-            displayName: user.displayName,
-            avatar: user.avatar,
-            avatarUrl: user.avatarUrl,
-            color: user.color,
-          }
-        : undefined;
       // Resolve the reacting person from the roster so the tooltip can name
-      // them even when the reaction arrives over the socket.
+      // them even when the reaction arrives over the socket. Falls back to the
+      // signed-in user's own profile when the reactor is us (they may not be
+      // in the current server's roster, e.g. a DM partner).
       const reactor = membersById.get(userId);
-      const reactorInfo = reactor
-        ? {
-            id: reactor.id,
-            username: reactor.username,
-            displayName: reactor.displayName,
-            avatar: reactor.avatar,
-            avatarUrl: reactor.avatarUrl,
-            color: reactor.color,
-          }
-        : undefined;
+      const reactorInfo =
+        reactor || (user && userId === user.id)
+          ? {
+              id: reactor?.id || user!.id,
+              username: reactor?.username || user!.username,
+              displayName: reactor?.displayName || user!.displayName,
+              avatar: reactor?.avatar || user!.avatar,
+              avatarUrl: reactor?.avatarUrl ?? user!.avatarUrl,
+              color: reactor?.color || user!.color,
+            }
+          : undefined;
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId
@@ -5209,6 +5283,34 @@ export function ChatShell() {
               message.bot ||
               user.isAdmin ||
               canModerate;
+
+            const isBlockedUser = Boolean(
+              message.userId && blockedUserIds.has(message.userId),
+            );
+            const isBlockedExpanded = expandedBlockedMessages.has(String(message.id));
+
+            if (isBlockedUser && !isBlockedExpanded) {
+              return (
+                <div key={message.id} className="blocked-message-notice">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert size={14} className="text-rose-400 shrink-0" />
+                    <span>1 Blocked message ({message.author})</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="blocked-message-toggle"
+                    onClick={() => {
+                      setExpandedBlockedMessages((prev) =>
+                        new Set(prev).add(String(message.id)),
+                      );
+                    }}
+                  >
+                    Show message
+                  </button>
+                </div>
+              );
+            }
+
             // Collapse the avatar/name header when the same author sends a
             // burst of messages close together — but never for replies,
             // command answers or rich cards, which each need their own header.
@@ -5256,6 +5358,26 @@ export function ChatShell() {
                   }
                 }}
               >
+                {isBlockedUser && (
+                  <div className="col-span-full flex items-center justify-between text-[11px] text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md mb-2">
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <ShieldAlert size={12} /> Message from blocked user
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs font-bold underline hover:text-rose-300 cursor-pointer"
+                      onClick={() => {
+                        setExpandedBlockedMessages((prev) => {
+                          const n = new Set(prev);
+                          n.delete(String(message.id));
+                          return n;
+                        });
+                      }}
+                    >
+                      Hide message
+                    </button>
+                  </div>
+                )}
                 {continuation ? (
                   <span className="message-gutter" aria-hidden="true">
                     <time title={formatClientDateTime(message.createdAt)}>
@@ -5977,100 +6099,114 @@ export function ChatShell() {
             </div>
           )}
 
-          <div className="composer">
-            <button
-              type="button"
-              className="attach-button"
-              onClick={() => fileRef.current?.click()}
-              aria-label="Attach an image or PDF"
-            >
-              +
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,application/pdf,.pdf"
-              multiple
-              hidden
-              onChange={chooseAttachment}
-            />
-            <textarea
-              ref={composerRef}
-              value={draft}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                if (event.target.value.trim()) noteTyping();
-              }}
-              onKeyDown={onComposerKeyDown}
-              onPaste={(event) => {
-                // Pasting a screenshot attaches it instead of doing nothing.
-                const files = Array.from(event.clipboardData.files || []);
-                if (files.length) {
-                  event.preventDefault();
-                  acceptAttachment(files);
+          {isDmBlocked ? (
+            <div className="dm-blocked-banner">
+              <ShieldAlert size={16} className="text-rose-400 shrink-0" />
+              <span>You have blocked this user. Unblock them to send messages.</span>
+              <button
+                type="button"
+                className="dm-unblock-btn"
+                onClick={() => activeDm && handleUnblockUser(activeDm.user.id)}
+              >
+                Unblock
+              </button>
+            </div>
+          ) : (
+            <div className="composer">
+              <button
+                type="button"
+                className="attach-button"
+                onClick={() => fileRef.current?.click()}
+                aria-label="Attach an image or PDF"
+              >
+                +
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,application/pdf,.pdf"
+                multiple
+                hidden
+                onChange={chooseAttachment}
+              />
+              <textarea
+                ref={composerRef}
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  if (event.target.value.trim()) noteTyping();
+                }}
+                onKeyDown={onComposerKeyDown}
+                onPaste={(event) => {
+                  // Pasting a screenshot attaches it instead of doing nothing.
+                  const files = Array.from(event.clipboardData.files || []);
+                  if (files.length) {
+                    event.preventDefault();
+                    acceptAttachment(files);
+                  }
+                }}
+                placeholder={
+                  activeChannelId
+                    ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
+                    : "Pick a channel first"
                 }
-              }}
-              placeholder={
-                activeChannelId
-                  ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
-                  : "Pick a channel first"
-              }
-              aria-label={`Message ${channelTitle}`}
-              rows={1}
-              disabled={!activeChannelId}
-            />
-            <button
-              type="button"
-              className="composer-emoji-btn"
-              onClick={() => {
-                setEmojiOpen((open) => !open);
-                setGifOpen(false);
-              }}
-              aria-label="Open Emoji Picker"
-              title="Open Emoji Picker"
-            >
-              <Smile size={18} />
-            </button>
-            <button
-              type="button"
-              className="gif-button"
-              onClick={() => {
-                setGifOpen((open) => !open);
-                setEmojiOpen(false);
-              }}
-              aria-label="Add a GIF"
-            >
-              GIF
-            </button>
-            <button
-              type="button"
-              className="composer-emoji-btn"
-              onClick={() => setPollDialogOpen(true)}
-              aria-label="Create a Poll"
-              title="Create a Poll"
-            >
-              <Vote size={18} />
-            </button>
-            <button
-              type="button"
-              className="gif-button"
-              onClick={() => {
-                setDraft("/");
-                composerRef.current?.focus();
-              }}
-              aria-label="Show commands"
-            >
-              /
-            </button>
-            <button
-              className="send-button"
-              type="submit"
-              aria-label="Send message"
-              disabled={!draft.trim() && pendingFiles.length === 0}
-            >
-              <Send size={15} />
-            </button>
-          </div>
+                aria-label={`Message ${channelTitle}`}
+                rows={1}
+                disabled={!activeChannelId}
+              />
+              <button
+                type="button"
+                className="composer-emoji-btn"
+                onClick={() => {
+                  setEmojiOpen((open) => !open);
+                  setGifOpen(false);
+                }}
+                aria-label="Open Emoji Picker"
+                title="Open Emoji Picker"
+              >
+                <Smile size={18} />
+              </button>
+              <button
+                type="button"
+                className="gif-button"
+                onClick={() => {
+                  setGifOpen((open) => !open);
+                  setEmojiOpen(false);
+                }}
+                aria-label="Add a GIF"
+              >
+                GIF
+              </button>
+              <button
+                type="button"
+                className="composer-emoji-btn"
+                onClick={() => setPollDialogOpen(true)}
+                aria-label="Create a Poll"
+                title="Create a Poll"
+              >
+                <Vote size={18} />
+              </button>
+              <button
+                type="button"
+                className="gif-button"
+                onClick={() => {
+                  setDraft("/");
+                  composerRef.current?.focus();
+                }}
+                aria-label="Show commands"
+              >
+                /
+              </button>
+              <button
+                className="send-button"
+                type="submit"
+                aria-label="Send message"
+                disabled={!draft.trim() && pendingFiles.length === 0}
+              >
+                <Send size={15} />
+              </button>
+            </div>
+          )}
 
           <div className="composer-hint">
             {typingNames.length > 0 ? (
@@ -6703,6 +6839,13 @@ export function ChatShell() {
           }
           pref={prefFor(userMenu.member.id)}
           serverMuted={hub.forcedMutes.has(userMenu.member.id)}
+          isBlocked={blockedUserIds.has(userMenu.member.id)}
+          onBlock={() => {
+            void handleBlockUser(userMenu.member.id);
+          }}
+          onUnblock={() => {
+            void handleUnblockUser(userMenu.member.id);
+          }}
           onClose={() => setUserMenu(null)}
           onMessage={() => {
             const id = userMenu.member.id;
@@ -7090,6 +7233,14 @@ export function ChatShell() {
           }
           position={profileCardTarget.pos}
           onClose={() => setProfileCardTarget(null)}
+          isSelf={user?.id === profileCardTarget.member.id}
+          isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
+          onBlock={(targetUserId) => {
+            void handleBlockUser(targetUserId);
+          }}
+          onUnblock={(targetUserId) => {
+            void handleUnblockUser(targetUserId);
+          }}
           onDirectMessage={(targetUserId) => {
             void openDm(targetUserId);
           }}

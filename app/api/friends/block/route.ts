@@ -18,16 +18,18 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as {
     targetId?: string;
+    username?: string;
   };
 
-  if (!body.targetId) {
-    return Response.json({ error: "Missing targetId." }, { status: 400 });
+  const target = body.targetId || body.username || "";
+  if (!target.trim()) {
+    return Response.json({ error: "Missing targetId or username." }, { status: 400 });
   }
 
   await ensureSchema(db);
   try {
-    await blockUser(db, user.id, body.targetId);
-    return Response.json({ ok: true });
+    const blockedUser = await blockUser(db, user.id, target);
+    return Response.json({ ok: true, user: blockedUser });
   } catch (err) {
     return Response.json(
       { error: err instanceof Error ? err.message : "Could not block user." },

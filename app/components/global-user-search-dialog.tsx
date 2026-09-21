@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, X, MessageSquare, UserPlus, Check, Clock, ShieldAlert, Loader2, Server } from "lucide-react";
 import { Avatar } from "./avatar";
 import { apiFetch } from "../lib/client";
@@ -140,6 +140,39 @@ export function GlobalUserSearchDialog({
     }
   };
 
+  const handleBlockUser = async (user: SearchResultUser) => {
+    setActionLoadingId(user.id);
+    try {
+      await apiFetch("/api/friends/block", {
+        method: "POST",
+        body: JSON.stringify({ targetId: user.id }),
+      });
+      setResults((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, relationship: "blocked" } : u)),
+      );
+    } catch {
+      // Ignore
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleUnblockUser = async (user: SearchResultUser) => {
+    setActionLoadingId(user.id);
+    try {
+      await apiFetch(`/api/friends?id=${encodeURIComponent(user.id)}`, {
+        method: "DELETE",
+      });
+      setResults((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, relationship: "none" } : u)),
+      );
+    } catch {
+      // Ignore
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleSelectUser = (u: SearchResultUser) => {
     if (u.isSelf) return;
     onOpenDm({
@@ -194,12 +227,75 @@ export function GlobalUserSearchDialog({
         {/* Results area */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
           {query.trim() === "" ? (
-            <div className="py-12 px-4 text-center text-[#9d95bc]">
-              <p className="text-sm font-medium">Type a name or @username to find any Hoffle user.</p>
-              <p className="text-xs text-[#7c7599] mt-1">
-                Direct message, send friend requests, or connect instantly.
-              </p>
-            </div>
+            <>
+              {servers.length > 0 && (
+                <div className="mb-1">
+                  <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
+                    Your Servers
+                  </p>
+                  {servers.map((s) => {
+                    const initials =
+                      s.name
+                        .split(/\s+/)
+                        .map((w) => w[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase() || "SV";
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between p-2.5 rounded-xl transition-all hover:bg-white/[0.05] cursor-pointer group"
+                        onClick={() => {
+                          onSelectServer(s.id);
+                          onClose();
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 pr-3">
+                          <div className="relative shrink-0">
+                            {s.iconUrl ? (
+                              <img
+                                src={s.iconUrl}
+                                alt={s.name}
+                                className="w-10 h-10 rounded-xl object-cover"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white"
+                                style={{ background: s.color || "#a78bfa" }}
+                              >
+                                {s.icon || initials}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-[#e8e3f5] truncate">
+                                {s.name}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
+                              {s.channels?.length || 0} channels
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
+                            <Server size={12} />
+                            Server
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="py-8 px-4 text-center text-[#9d95bc]">
+                <p className="text-sm font-medium">Type a name or @username to find any Hoffle user.</p>
+                <p className="text-xs text-[#7c7599] mt-1">
+                  Direct message, send friend requests, or connect instantly.
+                </p>
+              </div>
+            </>
           ) : (
             <>
               {/* Servers you belong to */}
@@ -384,11 +480,39 @@ export function GlobalUserSearchDialog({
                                 </span>
                               )}
 
-                              {u.relationship === "blocked" && (
-                                <span className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-semibold flex items-center gap-1">
-                                  <ShieldAlert size={12} />
-                                  Blocked
-                                </span>
+                              {u.relationship === "blocked" ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-semibold flex items-center gap-1">
+                                    <ShieldAlert size={12} />
+                                    Blocked
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleUnblockUser(u);
+                                    }}
+                                    disabled={isBusy}
+                                    className="px-2.5 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-xs font-semibold text-white/80 transition-colors"
+                                  >
+                                    Unblock
+                                  </button>
+                                </div>
+                              ) : (
+                                !u.isSelf && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleBlockUser(u);
+                                    }}
+                                    disabled={isBusy}
+                                    className="p-1.5 rounded-lg text-white/30 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                    title="Block User"
+                                  >
+                                    <ShieldAlert size={14} />
+                                  </button>
+                                )
                               )}
                             </>
                           )}

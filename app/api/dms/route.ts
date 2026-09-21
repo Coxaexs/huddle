@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { findOrCreateDm, listDms } from "@/lib/dms";
+import { isBlockedBetween } from "@/lib/friends";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -45,9 +46,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "That person is gone." }, { status: 404 });
   }
 
+  const blocked = await isBlockedBetween(db, user.id, targetId);
   const channelId = await findOrCreateDm(db, user.id, targetId);
   return Response.json({
     channelId,
     conversations: await listDms(db, user.id),
+    isBlocked: blocked,
   });
 }

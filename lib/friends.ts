@@ -295,23 +295,84 @@ export async function removeFriend(
 export async function blockUser(
   db: D1Database,
   currentUserId: string,
-  targetId: string,
-): Promise<void> {
-  if (currentUserId === targetId) {
+  targetUsernameOrId: string,
+): Promise<FriendUser> {
+  const query = targetUsernameOrId.trim();
+  if (!query) {
+    throw new Error("Enter a username or user ID to block.");
+  }
+  const queryLower = query.toLowerCase();
+
+  const target = await db
+    .prepare(
+      `SELECT id, username, display_name, avatar, avatar_url, color, status, custom_status, last_seen_at
+         FROM users
+        WHERE username_lower = ?1 OR id = ?2`,
+    )
+    .bind(queryLower, query)
+    .first<{
+      id: string;
+      username: string;
+      display_name: string;
+      avatar: string;
+      avatar_url: string | null;
+      color: string;
+      status: string | null;
+      custom_status: string | null;
+      last_seen_at: string | null;
+    }>();
+
+  if (!target) {
+    throw new Error(`We couldn't find anyone named '${targetUsernameOrId}'. Check the spelling.`);
+  }
+
+  if (currentUserId === target.id) {
     throw new Error("You cannot block yourself.");
   }
+
   const now = new Date().toISOString();
+  const relId = crypto.randomUUID();
   await db.batch([
     db
       .prepare(
         "DELETE FROM friendships WHERE (user_id = ?1 AND friend_id = ?2) OR (user_id = ?2 AND friend_id = ?1)",
       )
-      .bind(currentUserId, targetId),
+      .bind(currentUserId, target.id),
     db
       .prepare(
         `INSERT INTO friendships (id, user_id, friend_id, status, created_at, updated_at)
          VALUES (?, ?, ?, 'blocked', ?, ?)`,
       )
-      .bind(crypto.randomUUID(), currentUserId, targetId, now, now),
+      .bind(relId, currentUserId, target.id, now, now),
   ]);
+
+  return {
+    id: target.id,
+    username: target.username,
+    displayName: target.display_name,
+    avatar: target.avatar,
+    avatarUrl: target.avatar_url,
+    color: target.color,
+    status: target.status,
+    customStatus: target.custom_status,
+    lastSeenAt: target.last_seen_at,
+    relationshipId: relId,
+    createdAt: now,
+  };
+}
+
+export async function isBlockedBetween(
+  db: D1Database,
+  userA: string,
+  userB: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT id FROM friendships
+        WHERE status = 'blocked'
+          AND ((user_id = ?1 AND friend_id = ?2) OR (user_id = ?2 AND friend_id = ?1))`,
+    )
+    .bind(userA, userB)
+    .first();
+  return Boolean(row);
 }
