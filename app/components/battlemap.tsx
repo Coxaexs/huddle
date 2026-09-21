@@ -103,9 +103,7 @@ export function BattlemapBoard({
 
   /** Detected natural aspect ratio of the background image (width / height). */
   const [imageAspect, setImageAspect] = useState<number | null>(null);
-  const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
 
-  const stageRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ startX: 0, startY: 0, panX: 0, panY: 0 });
   const resizeRef = useRef({ startX: 0, startY: 0, startSize: 1 });
@@ -134,49 +132,11 @@ export function BattlemapBoard({
     };
   }, [map.imageUrl]);
 
-  // Keep track of stage size to fit the board without distortion
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setStageSize({ width, height });
-        }
-      }
-    });
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, []);
-
   const rows =
     map.rows ||
     (imageAspect
       ? Math.max(1, Math.round(map.grid / imageAspect))
       : Math.round(map.grid * 0.6) || map.grid);
-
-  const boardAspect = imageAspect || map.grid / rows;
-
-  let boardWidthStyle: React.CSSProperties = {
-    aspectRatio: `${boardAspect}`,
-    maxWidth: "100%",
-    maxHeight: "100%",
-  };
-
-  if (stageSize && stageSize.width > 0 && stageSize.height > 0) {
-    let w = stageSize.width;
-    let h = w / boardAspect;
-    if (h > stageSize.height) {
-      h = stageSize.height;
-      w = h * boardAspect;
-    }
-    boardWidthStyle = {
-      width: `${Math.floor(w)}px`,
-      height: `${Math.floor(h)}px`,
-      aspectRatio: `${boardAspect}`,
-    };
-  }
 
   /** Pointer position in grid units, accounting for the local zoom/pan. */
   function toGrid(event: { clientX: number; clientY: number }) {
@@ -200,14 +160,14 @@ export function BattlemapBoard({
     return gm || !token.ownerId || token.ownerId === userId;
   }
 
-  // Wheel to zoom toward the cursor. Attached non-passively to the stage container so
-  // scrolling anywhere over the board or stage area smoothly zooms toward the cursor.
+  // Wheel to zoom toward the cursor. Attached non-passively so we can stop
+  // the page from scrolling while zooming the map.
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
+    const board = boardRef.current;
+    if (!board) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const box = boardRef.current?.getBoundingClientRect();
+      const box = board.getBoundingClientRect();
       if (!box) return;
       const bx = event.clientX - box.left;
       const by = event.clientY - box.top;
@@ -219,8 +179,8 @@ export function BattlemapBoard({
       setZoom(nextZoom);
       setPan({ x: bx - cx * nextZoom, y: by - cy * nextZoom });
     };
-    stage.addEventListener("wheel", onWheel, { passive: false });
-    return () => stage.removeEventListener("wheel", onWheel);
+    board.addEventListener("wheel", onWheel, { passive: false });
+    return () => board.removeEventListener("wheel", onWheel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, pan]);
 
@@ -450,12 +410,6 @@ function onBoardPointerDown(event: React.PointerEvent) {
   }
 }
 
-function onStagePointerDown(event: React.PointerEvent) {
-  if (event.target === stageRef.current || event.button === 1 || mode === "move") {
-    startPan(event);
-  }
-}
-
   /** Turns grid points into an SVG path in the 0..grid / 0..rows space. */
   function pathOf(points: number[]): string {
     let path = "";
@@ -664,16 +618,14 @@ function onStagePointerDown(event: React.PointerEvent) {
       </div>
 
       <div
-        className={`battlemap-stage ${mode === "move" ? "movable" : ""} ${panning ? "panning" : ""}`}
-        ref={stageRef}
-        onPointerDown={onStagePointerDown}
+        className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${mode === "fog" ? "fogging" : ""} ${panning ? "panning" : ""}`}
+        ref={boardRef}
+        onPointerDown={onBoardPointerDown}
+        style={{
+          aspectRatio: `${map.grid} / ${rows}`,
+          maxWidth: `calc((${expanded ? "85vh" : "60vh"} - 50px) * ${map.grid / rows})`,
+        }}
       >
-        <div
-          className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${mode === "fog" ? "fogging" : ""} ${panning ? "panning" : ""}`}
-          ref={boardRef}
-          onPointerDown={onBoardPointerDown}
-          style={boardWidthStyle}
-        >
           <div
             className="battlemap-viewport"
             style={{
@@ -843,7 +795,6 @@ function onStagePointerDown(event: React.PointerEvent) {
           );
         })}
         </div>
-      </div>
       </div>
     </div>
   );
