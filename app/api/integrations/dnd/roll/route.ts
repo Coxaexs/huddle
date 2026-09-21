@@ -71,6 +71,8 @@ function resolveRoll(
   input: string,
   user: { id: string; display_name: string },
   actualRolls?: number[][],
+  theme?: string,
+  themeColor?: string,
 ): ResolvedRoll | { error: string } {
   const advantage = /\b(adv|advantage)\b/i.test(input);
   const disadvantage = /\b(dis|disadvantage)\b/i.test(input);
@@ -174,6 +176,8 @@ function resolveRoll(
           ? "critical-damage"
           : "normal",
     animationSeed: randomSeed(),
+    theme: theme || undefined,
+    themeColor: themeColor || undefined,
   };
 
   const mode = advantage
@@ -195,42 +199,86 @@ export async function POST(request: Request) {
     actualRolls?: number[][];
     /** When true, return the parsed roll for the roller to animate, no broadcast. */
     preview?: boolean;
+    theme?: string;
+    themeColor?: string;
   };
-  const input = (body.command || "").replace(/^\/roll\s*/i, "").trim();
-  if (!input) {
+  const rawInput = (body.command || "").replace(/^\/roll\s*/i, "").trim();
+  if (!rawInput) {
     return Response.json(
       { error: "Use `/roll 2d20`, `/roll 4d6+2`, or `/roll d20 advantage`." },
       { status: 400 },
     );
   }
 
+  const allowedThemes = ["default", "pride", "trans", "nonbinary"];
+  const COLOR_NAMES: Record<string, string> = {
+    blue: "#2563eb",
+    skyblue: "#0284c7",
+    indigo: "#6366f1",
+    violet: "#7c3aed",
+    purple: "#7c3aed",
+    pink: "#db2777",
+    crimson: "#e11d48",
+    red: "#e11d48",
+    emerald: "#059669",
+    green: "#059669",
+    amber: "#d97706",
+    gold: "#d97706",
+    yellow: "#eab308",
+    dark: "#1e293b",
+    black: "#1e293b",
+    slate: "#1e293b",
+  };
+
+  let parsedTheme: string | undefined;
+  let parsedThemeColor: string | undefined;
+  let input = rawInput;
+
+  // Extract explicit hex color: #2563eb
+  const hexMatch = input.match(/(?:^|\s)#([0-9a-fA-F]{6})\b/);
+  if (hexMatch) {
+    parsedThemeColor = `#${hexMatch[1]}`;
+    input = input.replace(hexMatch[0], " ").trim();
+  }
+
+  // Extract named theme or named color
+  const tokens = input.split(/\s+/);
+  const remainingTokens: string[] = [];
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (allowedThemes.includes(lower)) {
+      parsedTheme = lower;
+    } else if (COLOR_NAMES[lower]) {
+      parsedThemeColor = COLOR_NAMES[lower];
+    } else {
+      remainingTokens.push(token);
+    }
+  }
+  input = remainingTokens.join(" ").trim();
+  if (!input) input = rawInput; // Fallback if user only typed theme name
+
+  const theme =
+    parsedTheme ||
+    (body.theme && allowedThemes.includes(body.theme) ? body.theme : "default");
+  const themeColor =
+    parsedThemeColor ||
+    (typeof body.themeColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.themeColor)
+      ? body.themeColor
+      : undefined);
+
   const result = resolveRoll(
     input,
     { id: user.id, display_name: user.display_name },
     body.actualRolls,
+    theme,
+    themeColor,
   );
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: 400 });
   }
   const { roll, details, expression, mode, total, modifier } = result;
 
-  // Preview mode: the roller animates the real dice before committing. Return
-  // the parsed structure (with placeholder values) but do NOT broadcast yet.
-  if (body.preview) {
-    return Response.json({
-      preview: true,
-      roll,
-      text: `Rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`,
-      kind: "dnd",
-      payload: {
-        type: "roll",
-        name: "Dice result",
-        expression: `${expression}${mode}`,
-        total,
-        details,
-      },
-    });
-  }
+
 
   // The result above is authoritative. Consumers animate these exact faces;
   // they never generate a second result.
@@ -313,5 +361,6 @@ export async function POST(request: Request) {
       total,
       details,
     },
+    roll,
   });
 }

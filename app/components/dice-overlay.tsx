@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type DiceBox from "@3d-dice/dice-box";
-import type { DiceBoxResultGroup } from "@3d-dice/dice-box";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
 
@@ -17,157 +15,208 @@ function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number 
   return out;
 }
 
+/** Builds predetermined notation for @3d-dice/dice-box-threejs, e.g. "1d20@14" or "2d6@3,5". */
+export function buildDiceBoxNotation(roll: DiceRollEvent): string {
+  const terms: string[] = [];
+  const results: number[] = [];
+
+  for (const term of roll.dice) {
+    const validSides = [4, 6, 8, 10, 12, 20, 100];
+    const sides = validSides.includes(term.sides) ? term.sides : 20;
+    terms.push(`${term.rolls.length}d${sides}`);
+    for (const r of term.rolls) {
+      results.push(r.value);
+    }
+  }
+
+  const baseNotation = terms.join("+");
+  if (!baseNotation) return "1d20@20";
+  return `${baseNotation}@${results.join(",")}`;
+}
+
 /**
- * Pretty 3D dice roll overlay powered by the `3d-dice` (DiceBox) library.
- *
- * Two modes:
- * - Default (viewer): plays the server's authoritative values as an animation.
- * - `onSettle` provided (roller): the dice animation IS the source of truth —
- *   we roll the real dice, read the actual settled values, and report them via
- *   `onSettle` so the caller can broadcast them to everyone.
+ * 3D dice roll overlay powered by `@3d-dice/dice-box-threejs` (Three.js + Cannon-es).
+ * Uses predetermined `@` notation so the physical tumble is mathematically guaranteed
+ * to land on the server's authoritative value across all viewers.
  */
 export function DiceOverlay({
   roll,
   onDone,
-  onSettle,
   className = "dice-overlay",
 }: {
   roll: DiceRollEvent | null;
   onDone: () => void;
-  /** Roller-only: called with the actual settled dice values (per term). */
-  onSettle?: (roll: DiceRollEvent, actualRolls: number[][]) => void;
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const boxRef = useRef<DiceBox | null>(null);
-  const [values, setValues] = useState<Array<{ sides: number; value: number }>>(
-    [],
-  );
+  const boxRef = useRef<any>(null);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  const [values, setValues] = useState<Array<{ sides: number; value: number }>>([]);
   const [total, setTotal] = useState<string>("");
 
   useEffect(() => {
-    if (!roll) {
-      setValues([]);
-      setTotal("");
-      return;
-    }
-    // For viewers, show the server's authoritative values immediately (they
-    // match what everyone sees). For the roller, the values are determined by
-    // the actual dice, so we leave the overlay empty until they settle.
-    if (onSettle) {
-      setValues([]);
-      setTotal("");
-      return;
-    }
-    const faces = flattenDice(roll);
-    setValues(faces);
-    const natural =
-      faces.some((f) => f.sides === 20 && f.value === 20)
-        ? "NAT 20 · "
-        : faces.some((f) => f.sides === 20 && f.value === 1)
-          ? "NAT 1 · "
-          : "";
-    const mode =
-      roll.rollType === "advantage"
-        ? "ADV · "
-        : roll.rollType === "disadvantage"
-          ? "DIS · "
-          : roll.rollType === "critical-damage"
-            ? "CRITICAL · "
-            : "";
-    setTotal(`${natural}${mode}TOTAL ${roll.total}`);
-  }, [roll, onSettle]);
+    setValues([]);
+    setTotal("");
+  }, [roll?.animationSeed]);
 
   useEffect(() => {
     if (!roll) return;
     let disposed = false;
-    let box: DiceBox | null = null;
+    let dismissTimer: number | null = null;
+    let failsafeTimer: number | null = null;
 
-    void import("@3d-dice/dice-box").then(async (mod) => {
+    // Hard failsafe: unconditionally dismiss after 4.5s
+    failsafeTimer = window.setTimeout(() => {
       if (disposed) return;
+      onDoneRef.current();
+    }, 4500);
+
+    void (async () => {
       const host = hostRef.current;
       if (!host) return;
-      const DiceBox = (mod as { default: typeof import("@3d-dice/dice-box").default }).default;
-      boxRef.current = new DiceBox(`#${host.id}`, {
-        assetPath: `${basePath}/assets/`,
-        theme: "default",
-        themeColor: "#7b63e6",
+      host.innerHTML = "";
+
+      // @ts-expect-error - dynamic module
+      const mod = (await import("@3d-dice/dice-box-threejs")) as { default: any };
+      if (disposed) return;
+      const DiceBox = (mod as { default: any }).default;
+
+      // Theme configuration
+      const theme = roll.theme || "default";
+      const themeColor = roll.themeColor || "#2563eb";
+
+      let customColorset: any = null;
+      if (theme === "pride") {
+        customColorset = {
+          name: "pride",
+          foreground: "#ffffff",
+          background: ["#E40303", "#FF8C00", "#FFED00", "#008026", "#24408E", "#732982"],
+          texture: "none",
+          material: "plastic",
+        };
+      } else if (theme === "trans") {
+        customColorset = {
+          name: "trans",
+          foreground: "#ffffff",
+          background: ["#5BCEFA", "#F5A9B8", "#FFFFFF", "#F5A9B8", "#5BCEFA"],
+          texture: "none",
+          material: "plastic",
+        };
+      } else if (theme === "nonbinary") {
+        customColorset = {
+          name: "nonbinary",
+          foreground: "#ffffff",
+          background: ["#FFF433", "#FFFFFF", "#9B59D0", "#2C2C2C"],
+          texture: "none",
+          material: "plastic",
+        };
+      } else {
+        customColorset = {
+          name: `custom-${themeColor}`,
+          foreground: "#ffffff",
+          background: themeColor,
+          texture: "none",
+          material: "plastic",
+        };
+      }
+
+      const box = new DiceBox(`#${host.id}`, {
+        assetPath: `${basePath}/assets/dice-box-threejs/`,
+        sounds: false,
+        shadows: true,
+        theme_surface: "green-felt",
+        theme_customColorset: customColorset,
+        baseScale: 100,
+        strength: 1.2,
       });
-      box = boxRef.current;
-      await box.init().catch(() => undefined);
+      boxRef.current = box;
+
+      let initOk = false;
+      try {
+        await box.initialize();
+        initOk = true;
+      } catch (err) {
+        console.warn("DiceBox initialization failed:", err);
+      }
       if (disposed) return;
 
-      // Build the notation for the animation (correct count + sides).
-      const groups: Array<{ qty: number; sides: number }> = [];
-      for (const term of roll.dice) {
-        groups.push({ qty: term.rolls.length, sides: term.sides });
+      if (!initOk) {
+        if (failsafeTimer) clearTimeout(failsafeTimer);
+        setValues(flattenDice(roll));
+        setTotal(`TOTAL ${roll.total}`);
+        dismissTimer = window.setTimeout(() => {
+          onDoneRef.current();
+        }, 1800);
+        return;
       }
-      box.roll(groups).catch(() => undefined);
 
-      // Capture the actual settled values (roller mode) or just clear.
-      box.onRollComplete = (results: DiceBoxResultGroup[]) => {
-        if (onSettle) {
-          try {
-            // Show the roller the ACTUAL settled values.
-            const actualRolls = results.map(
-              (group) => group.rolls?.map((die) => die.value) || [],
-            );
-            const faces: Array<{ sides: number; value: number }> = [];
-            for (const term of roll.dice) {
-              for (const entry of term.rolls) {
-                faces.push({ sides: term.sides, value: entry.value });
-              }
-            }
-            // Replace with the actual rolled values (in order).
-            const flattenedActual = actualRolls.flat();
-            const settled = faces.map((face, index) => ({
-              ...face,
-              value: flattenedActual[index] ?? face.value,
-            }));
-            setValues(settled);
-            const nat20 = settled.some(
-              (f) => f.sides === 20 && f.value === 20,
-            );
-            const nat1 = settled.some((f) => f.sides === 20 && f.value === 1);
-            setTotal(
-              `${nat20 ? "NAT 20 · " : nat1 ? "NAT 1 · " : ""}TOTAL ${settled.reduce(
-                (sum, f) => sum + f.value,
-                0,
-              )}`,
-            );
-            onSettle(roll, actualRolls);
-          } catch {
-            // If we can't read the animation's values, fall back to the
-            // server-rolled ones already in `roll`.
-          }
-        }
-        window.setTimeout(() => {
-          if (!disposed) onDone();
-        }, 1600);
-      };
-    });
+      const notation = buildDiceBoxNotation(roll);
+
+      try {
+        await box.roll(notation);
+      } catch (err) {
+        console.warn("DiceBox roll error:", err);
+      }
+      if (disposed) return;
+      if (failsafeTimer) clearTimeout(failsafeTimer);
+
+      const faces = flattenDice(roll);
+      setValues(faces);
+      const natural =
+        faces.some((f) => f.sides === 20 && f.value === 20)
+          ? "NAT 20 · "
+          : faces.some((f) => f.sides === 20 && f.value === 1)
+            ? "NAT 1 · "
+            : "";
+      const mode =
+        roll.rollType === "advantage"
+          ? "ADV · "
+          : roll.rollType === "disadvantage"
+            ? "DIS · "
+            : roll.rollType === "critical-damage"
+              ? "CRITICAL · "
+              : "";
+      setTotal(`${natural}${mode}TOTAL ${roll.total}`);
+
+      dismissTimer = window.setTimeout(() => {
+        onDoneRef.current();
+      }, 1600);
+    })();
 
     return () => {
       disposed = true;
-      boxRef.current?.clear();
+      if (dismissTimer) clearTimeout(dismissTimer);
+      if (failsafeTimer) clearTimeout(failsafeTimer);
+      try {
+        boxRef.current?.clearDice?.();
+        boxRef.current?.renderer?.dispose?.();
+      } catch {
+        // ignore
+      }
       boxRef.current = null;
+      if (hostRef.current) {
+        hostRef.current.innerHTML = "";
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roll]);
-
-  useEffect(() => {
-    return () => {
-      boxRef.current?.clear();
-    };
-  }, []);
+  }, [roll?.animationSeed]);
 
   if (!roll) return null;
 
   return (
     <div className={`${className} dice-box-host`} aria-hidden="true">
-      <div ref={hostRef} id="huddle-dice-box" className="dice-box-canvas" />
+      <div
+        ref={hostRef}
+        id={`huddle-dice-box-${roll.animationSeed}`}
+        className="dice-box-canvas"
+      />
       {values.length > 0 && (
-        <div className="dice-result-overlay">
+        <div
+          className="dice-result-overlay"
+          onClick={() => onDoneRef.current()}
+          title="Click to dismiss"
+        >
           <div className="dice-result-values">
             {values.map((die, index) => (
               <span

@@ -53,3 +53,34 @@ declare module "@3d-dice/dice-box" {
     config: DiceBoxConfig;
   }
 }
+
+declare module "@3d-dice/dice-box-threejs" {
+  export interface DiceBoxThreeJSConfig {
+    assetPath?: string;
+    framerate?: number;
+    sounds?: boolean;
+    volume?: number;
+    color_spotlight?: number;
+    shadows?: boolean;
+    theme_surface?: string;
+    sound_dieMaterial?: string;
+    theme_customColorset?: any;
+    theme_colorset?: string;
+    theme_texture?: string;
+    theme_material?: string;
+    gravity_multiplier?: number;
+    light_intensity?: number;
+    baseScale?: number;
+    strength?: number;
+    scale?: number;
+    onRollComplete?: (results: any) => void;
+  }
+
+  export default class DiceBoxThreeJS {
+    constructor(target: string, config?: DiceBoxThreeJSConfig);
+    initialize(): Promise<void>;
+    roll(notation: string): Promise<any>;
+    clearDice(): void;
+    renderer?: { dispose?: () => void; domElement?: HTMLElement };
+  }
+}

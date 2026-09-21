@@ -5508,25 +5508,29 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   z-index:30;
   width:100%;
   height:100%;
-  pointer-events:none;
+  pointer-events:none !important;
 }
 .app-dice-overlay {
   position:fixed;
   z-index:1000;
   background:transparent;
+  pointer-events:none !important;
 }
 .dice-box-host {
   display:flex;
   align-items:center;
   justify-content:center;
+  pointer-events:none !important;
 }
 .dice-box-canvas {
   width:100%;
   height:100%;
+  pointer-events:none !important;
 }
 .dice-box-canvas canvas {
   width:100% !important;
   height:100% !important;
+  pointer-events:none !important;
 }
 .dice-result-overlay {
   position:absolute;
@@ -5537,7 +5541,8 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   justify-content:flex-end;
   gap:14px;
   padding:0 0 9%;
-  pointer-events:none;
+  pointer-events:auto;
+  cursor:pointer;
 }
 .dice-result-values {
   display:flex;
@@ -10817,6 +10822,66 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   color:var(--text);
   border-color:var(--lavender);
   box-shadow:0 0 0 2px color-mix(in srgb, var(--lavender) 25%, transparent);
+}
+
+.dice-theme-row {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+  margin-bottom:12px;
+}
+.dice-theme-row button {
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel);
+  color:var(--muted);
+  padding:9px 6px;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+  transition:border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.dice-theme-row button .dice-theme-swatch {
+  display:block;
+  height:8px;
+  margin:0 3px 7px;
+  border-radius:999px;
+  background:#2563eb;
+}
+.dice-theme-row button.default .dice-theme-swatch {
+  background:var(--dice-preview-color, #2563eb);
+}
+.dice-theme-row button.trans .dice-theme-swatch {
+  background:linear-gradient(90deg, #5bcffa 0 20%, #f5abb9 20% 40%, #fff 40% 60%, #f5abb9 60% 80%, #5bcffa 80%);
+}
+.dice-theme-row button.pride .dice-theme-swatch {
+  background:linear-gradient(90deg, #e40303 0 16.6%, #ff8c00 16.6% 33.2%, #ffed00 33.2% 49.8%, #008026 49.8% 66.4%, #24408e 66.4% 83%, #732982 83%);
+}
+.dice-theme-row button.nonbinary .dice-theme-swatch {
+  background:linear-gradient(90deg, #fff430 0 25%, #fff 25% 50%, #9c59d1 50% 75%, #2d2d2d 75%);
+}
+.dice-theme-row button.active {
+  color:var(--text);
+  border-color:var(--lavender);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--lavender) 25%, transparent);
+}
+.dice-test-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:var(--panel, #1e1e24);
+  border:1px solid var(--line, #333);
+  color:var(--text, #fff);
+  padding:8px 14px;
+  border-radius:10px;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:background 0.15s, border-color 0.15s;
+}
+.dice-test-btn:hover {
+  background:var(--panel-hover, #282830);
+  border-color:var(--lavender, #7b63e6);
 }
 
 html[data-pride-theme="trans"] {
