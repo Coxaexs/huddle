@@ -1,17 +1,29 @@
 # ==========================================
-# Hoffle: Microservice Web App & Realtime Worker
+# Hoffle: All-in-One Standalone Container
+# Single container with:
+# - Hoffle Web App & Realtime Worker (Port 8730)
+# - Python yt-dlp Music Helper (Port 8731)
 # ==========================================
 
 FROM node:22-bookworm-slim AS runner
 
-# Install ca-certificates, curl (for healthchecks), and tini (for PID 1 process supervision)
+# Install Python 3, pip, ffmpeg, ca-certificates, and tini for process supervision
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ffmpeg \
     ca-certificates \
     curl \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Install Python dependencies for the music helper
+COPY huddle_music_helper.py /app/
+RUN python3 -m venv /app/pyenv && \
+    /app/pyenv/bin/pip install --no-cache-dir aiohttp yt-dlp
 
 # Copy package dependencies and install
 COPY package.json package-lock.json tsconfig.json vite.config.ts next.config.js wrangler.jsonc /app/
@@ -33,14 +45,12 @@ ENV NODE_ENV=production
 ENV PORT=8730
 ENV HOST=0.0.0.0
 ENV PERSIST_DIR=/app/state
+ENV MUSIC_HELPER_BASE_URL=http://127.0.0.1:8731
 
 # Persistent storage for SQLite (D1) and uploads (R2)
 RUN mkdir -p /app/state
 VOLUME ["/app/state"]
 
-EXPOSE 8730
+EXPOSE 8730 8731
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://127.0.0.1:8730/hangout/api/health || curl -f http://127.0.0.1:8730/api/health || exit 1
-
-ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/entrypoint-all-in-one.sh"]

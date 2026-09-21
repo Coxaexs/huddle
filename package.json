@@ -9,6 +9,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "vitest run",
+    "admin": "node scripts/admin.mjs",
     "serve": "wrangler dev --config dist/server/wrangler.json --env-file .dev.vars --ip 127.0.0.1 --port 8730 --persist-to state"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "three": "^0.180.0",
+    "web-push": "^3.6.7",
     "wrangler": "4.92.0"
   },
   "devDependencies": {
@@ -33,6 +35,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.180.0",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitejs/plugin-rsc": "^0.5.23",
     "react-server-dom-webpack": "^19.2.6",

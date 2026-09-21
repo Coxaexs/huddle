@@ -145,11 +145,24 @@ function ActivityCanvas({
   const [width, setWidth] = useState(4);
 
   function point(event: PointerEvent<SVGSVGElement>) {
-    const rect = surfaceRef.current?.getBoundingClientRect();
-    if (!rect) return [0, 0];
+    const svg = surfaceRef.current;
+    if (!svg) return [0, 0];
+    const ctm = svg.getScreenCTM();
+    if (ctm) {
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const p = pt.matrixTransform(ctm.inverse());
+      return [
+        Math.max(0, Math.min(1000, Math.round(p.x * 10) / 10)),
+        Math.max(0, Math.min(650, Math.round(p.y * 10) / 10)),
+      ];
+    }
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return [0, 0];
     return [
       Math.max(0, Math.min(1000, ((event.clientX - rect.left) / rect.width) * 1000)),
-      Math.max(0, Math.min(1000, ((event.clientY - rect.top) / rect.height) * 1000)),
+      Math.max(0, Math.min(650, ((event.clientY - rect.top) / rect.height) * 650)),
     ];
   }
 
@@ -169,9 +182,12 @@ function ActivityCanvas({
   function finish(event: PointerEvent<SVGSVGElement>) {
     if (!editable || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const points = activeRef.current;
+    let points = activeRef.current;
     activeRef.current = [];
     setPreview([]);
+    if (points.length === 2) {
+      points = [points[0], points[1], points[0] + 0.1, points[1] + 0.1];
+    }
     if (points.length >= 4) {
       onStroke({
         id: crypto.randomUUID(),
@@ -246,7 +262,7 @@ function ActivityCanvas({
             strokeLinejoin="round"
           />
         ))}
-        {preview.length >= 4 && (
+        {preview.length >= 4 ? (
           <polyline
             points={polyline({ id: "preview", color, width, points: preview })}
             fill="none"
@@ -255,7 +271,14 @@ function ActivityCanvas({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-        )}
+        ) : preview.length === 2 ? (
+          <circle
+            cx={preview[0]}
+            cy={preview[1]}
+            r={Math.max(1, width / 2)}
+            fill={color}
+          />
+        ) : null}
       </svg>
     </div>
   );

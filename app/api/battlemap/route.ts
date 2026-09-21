@@ -33,7 +33,7 @@ async function activeMap(
 ): Promise<BattlemapRow | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, name, image_key, grid, tokens, strokes, fog, active
+      `SELECT id, channel_id, name, image_key, grid, rows, tokens, strokes, fog, active
          FROM battlemaps WHERE channel_id = ? AND active = 1
         ORDER BY created_at DESC LIMIT 1`,
     )
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
     name?: string;
     imageKey?: string | null;
     grid?: number;
+    rows?: number | null;
     token?: Partial<MapToken>;
     tokenId?: string;
     label?: string;
@@ -108,14 +109,15 @@ export async function POST(request: Request) {
     if (!(await gm())) return forbidden();
     const id = crypto.randomUUID();
     const grid = Math.max(5, Math.min(60, Number(body.grid) || 20));
+    const rows = body.rows ? Math.max(1, Math.min(200, Math.round(Number(body.rows)))) : null;
     await db.batch([
       db
         .prepare("UPDATE battlemaps SET active = 0 WHERE channel_id = ?")
         .bind(channelId),
       db
         .prepare(
-          `INSERT INTO battlemaps (id, channel_id, name, image_key, grid, tokens, strokes, active, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, '[]', '[]', 1, ?, ?)`,
+          `INSERT INTO battlemaps (id, channel_id, name, image_key, grid, rows, tokens, strokes, active, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', 1, ?, ?)`,
         )
         .bind(
           id,
@@ -123,6 +125,7 @@ export async function POST(request: Request) {
           body.name?.trim().slice(0, 60) || "Battlemap",
           body.imageKey?.slice(0, 240) || null,
           grid,
+          rows,
           user.id,
           new Date().toISOString(),
         ),
@@ -151,6 +154,7 @@ export async function POST(request: Request) {
   }
 
   // ---- add / remove tokens (GM) -------------------------------------------
+  const maxY = map.rows || Math.max(60, map.grid * 3);
   if (body.action === "add-token") {
     if (!(await gm())) return forbidden();
     const token: MapToken = {
@@ -161,7 +165,7 @@ export async function POST(request: Request) {
         : "#b8a6ff",
       avatarUrl: body.token?.avatarUrl?.slice(0, 300) || null,
       x: clampPoint(Number(body.token?.x) || 1, map.grid),
-      y: clampPoint(Number(body.token?.y) || 1, map.grid),
+      y: clampPoint(Number(body.token?.y) || 1, maxY),
       size: Math.max(0.5, Math.min(4, Number(body.token?.size) || 1)),
       ownerId: body.token?.ownerId || null,
       hp: body.token?.hp ?? null,
@@ -210,7 +214,7 @@ export async function POST(request: Request) {
       );
     }
     token.x = clampPoint(Number(body.x), map.grid);
-    token.y = clampPoint(Number(body.y), map.grid);
+    token.y = clampPoint(Number(body.y), maxY);
     await db
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)

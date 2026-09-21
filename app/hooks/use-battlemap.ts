@@ -129,13 +129,37 @@ export function useBattlemap({
     });
   }, []);
 
+async function getImageDimensions(
+  file: File,
+): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
   /** GM: create a map on the server, uploading a background first if given. */
   const createBattlemap = useCallback(
     async (name: string, picked: File | null) => {
       if (!stageChannelId) return;
       try {
         let imageKey: string | null = null;
+        let rows: number | null = null;
         if (picked) {
+          const dims = await getImageDimensions(picked);
+          if (dims && dims.width > 0 && dims.height > 0) {
+            const aspect = dims.width / dims.height;
+            rows = Math.max(1, Math.round(20 / aspect));
+          }
           const form = new FormData();
           form.append("file", picked);
           // Let a failed upload surface instead of silently opening a blank map.
@@ -152,6 +176,7 @@ export function useBattlemap({
             action: "open",
             name: name.trim() || "Battlemap",
             imageKey,
+            rows,
           }),
         });
       } catch (error) {

@@ -7755,6 +7755,11 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   flex-direction:column;
   max-height:62%;
   flex:0 0 auto;
+  transition:max-height .25s ease;
+}
+.battlemap.expanded {
+  max-height:100%;
+  flex:1 1 0;
 }
 .battlemap-bar {
   display:flex;
@@ -7786,6 +7791,14 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
 .paint-swatch.on { outline:2px solid var(--ink); outline-offset:1px; }
 .battlemap-zoom { display:flex; align-items:center; gap:3px; }
 .battlemap-zoom button { width:30px; }
+.battlemap-zoom-badge {
+  font-size:11px;
+  font-weight:700;
+  color:var(--muted);
+  min-width:36px;
+  text-align:center;
+  user-select:none;
+}
 .battlemap-palette-wrap { position:relative; }
 .battlemap-palette {
   position:absolute;
@@ -7843,15 +7856,32 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
 
+.battlemap-stage {
+  flex:1 1 0;
+  min-height:0;
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  overflow:hidden;
+  background:#08090d;
+  padding:6px;
+  touch-action:none;
+}
+.battlemap-stage.movable { cursor:grab; }
+.battlemap-stage.panning { cursor:grabbing; }
+
 .battlemap-board {
   position:relative;
-  width:100%;
+  max-width:100%;
   max-height:100%;
-  margin:0 auto;
+  margin:auto;
   background:#11131a;
   overflow:hidden;
   touch-action:none;
-  align-self:center;
+  box-shadow:0 4px 24px rgba(0,0,0,.6);
+  border-radius:4px;
   cursor:grab;
 }
 .battlemap-board.painting { cursor:crosshair; }
@@ -7873,7 +7903,10 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   inset:0;
   width:100%;
   height:100%;
-  object-fit:cover;
+  object-fit:fill;
+  display:block;
+  user-select:none;
+  pointer-events:none;
 }
 .battlemap-layer { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 
@@ -9889,6 +9922,7 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   /* The battlemap toolbar wraps and its board is capped shorter so the map and
      the chat below it can share a phone screen. */
   .battlemap { max-height:50%; }
+  .battlemap.expanded { max-height:100%; }
   .battlemap-bar { padding:6px 10px; gap:6px; }
   .battlemap-tools { gap:4px; }
   .battlemap-tools input[type="range"] { width:60px; }

@@ -12,35 +12,42 @@ import { featureFlags } from "../lib/features";
 
 export { HuddleHub } from "../lib/hub";
 
-const BASE_PATH = "/hangout";
-const REALTIME_PATHS = new Set([`${BASE_PATH}/api/realtime`, "/api/realtime"]);
+const DEFAULT_BASE_PATH = "/hangout";
 
 interface WorkerEnv {
   ASSETS?: Fetcher;
   BOT_TOKEN?: string;
   RECORDER_SERVICE_TOKEN?: string;
   FEATURE_RECORD_SESSIONS?: string;
+  BASE_PATH?: string;
+  LANDING_DOMAINS?: string;
 }
 
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    const basePath = (env?.BASE_PATH ?? DEFAULT_BASE_PATH).replace(/\/+$/, "");
+    const effectiveBasePath = basePath || DEFAULT_BASE_PATH;
+    const realtimePaths = new Set([
+      `${effectiveBasePath}/api/realtime`,
+      "/api/realtime",
+    ]);
 
     // Built assets are emitted without the basePath, so a request for
     // /hangout/assets/x.js or /assets/x.js matches here.
     if (
       env?.ASSETS &&
-      (url.pathname.startsWith(`${BASE_PATH}/assets/`) ||
+      (url.pathname.startsWith(`${effectiveBasePath}/assets/`) ||
         url.pathname.startsWith("/assets/"))
     ) {
       const target = new URL(request.url);
-      if (url.pathname.startsWith(`${BASE_PATH}/assets/`)) {
-        target.pathname = url.pathname.slice(BASE_PATH.length);
+      if (url.pathname.startsWith(`${effectiveBasePath}/assets/`)) {
+        target.pathname = url.pathname.slice(effectiveBasePath.length);
       }
       return env.ASSETS.fetch(new Request(target, request));
     }
 
-    if (REALTIME_PATHS.has(url.pathname)) {
+    if (realtimePaths.has(url.pathname)) {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
         return new Response("Expected a WebSocket upgrade.", { status: 426 });
       }
@@ -101,14 +108,20 @@ export default {
       });
     }
 
-    if (!url.pathname.startsWith(BASE_PATH)) {
+    if (!url.pathname.startsWith(effectiveBasePath)) {
       const target = new URL(request.url);
-      const host = request.headers.get("host") || url.host;
-      const isApex = host === "hoffle.online" || host === "www.hoffle.online";
-      if (url.pathname === "/" && isApex) {
-        target.pathname = `${BASE_PATH}/landing`;
+      const rawHost = request.headers.get("host") || url.host;
+      const host = rawHost.split(":")[0].toLowerCase();
+      const configuredLandingDomains = (env?.LANDING_DOMAINS || "hoffle.online,www.hoffle.online")
+        .split(",")
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean);
+      const isLanding = configuredLandingDomains.includes(host);
+      if (url.pathname === "/" && isLanding) {
+        target.pathname = `${effectiveBasePath}/landing`;
       } else {
-        target.pathname = `${BASE_PATH}${url.pathname}`;
+        const sub = url.pathname.startsWith("/") ? url.pathname : `/${url.pathname}`;
+        target.pathname = `${effectiveBasePath}${sub}`;
       }
       return handler.fetch(new Request(target, request), env as never, ctx as never);
     }
