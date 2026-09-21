@@ -553,6 +553,86 @@ export function ChatShell() {
   >({});
   const fetchingInvitesRef = useRef<Set<string>>(new Set());
 
+  const touchStartRef = useRef<{ x: number; y: number; id: string | number } | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (!openActionsId) return;
+    const handleOutside = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        !target?.closest(`.message[id="msg-${openActionsId}"] .message-actions`) &&
+        !target?.closest(`.message[id="msg-${openActionsId}"] .message-actions-toggle`)
+      ) {
+        setOpenActionsId(null);
+      }
+    };
+    const timer = setTimeout(() => {
+      window.addEventListener("pointerdown", handleOutside);
+    }, 60);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointerdown", handleOutside);
+    };
+  }, [openActionsId]);
+
+  const handleMessageTouchStart = (
+    messageId: string | number,
+    e: React.TouchEvent,
+  ) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "button, a, input, textarea, select, audio, video, [role='button'], .message-actions, .message-actions-toggle, .avatar, .reaction, .message-image, .message-file-card",
+      )
+    ) {
+      return;
+    }
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, id: messageId };
+    longPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      setOpenActionsId(messageId);
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try {
+          navigator.vibrate(40);
+        } catch {}
+      }
+    }, 450);
+  };
+
+  const handleMessageTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || !longPressTimerRef.current) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const dx = Math.abs(touch.clientX - touchStartRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartRef.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      touchStartRef.current = null;
+    }
+  };
+
+  const handleMessageTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartRef.current = null;
+    if (longPressTriggeredRef.current) {
+      setTimeout(() => {
+        longPressTriggeredRef.current = false;
+      }, 300);
+    }
+  };
+
   const handleOpenReactionPicker = (
     e: React.MouseEvent,
     messageId: string | number,
@@ -5347,7 +5427,17 @@ export function ChatShell() {
                   user && message.mentions?.includes(user.id) ? "mentions-me" : ""
                 }`}
                 key={message.id}
+                onTouchStart={(e) => handleMessageTouchStart(message.id, e)}
+                onTouchMove={handleMessageTouchMove}
+                onTouchEnd={handleMessageTouchEnd}
+                onTouchCancel={handleMessageTouchEnd}
                 onContextMenu={(event) => {
+                  if (longPressTriggeredRef.current || touchInput) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setOpenActionsId(message.id);
+                    return;
+                  }
                   if (message.bot) {
                     openBotMenu(
                       event,
@@ -5821,7 +5911,10 @@ export function ChatShell() {
                         type="button"
                         className="quick-react-outline-btn"
                         title={`React ${emoji}`}
-                        onClick={() => void toggleReaction(message.id, emoji)}
+                        onClick={() => {
+                          void toggleReaction(message.id, emoji);
+                          setOpenActionsId(null);
+                        }}
                       >
                         <OutlineEmoji emoji={emoji} />
                       </button>
@@ -5832,9 +5925,10 @@ export function ChatShell() {
                         key={emoji.id}
                         type="button"
                         title={`React :${emoji.name}:`}
-                        onClick={() =>
-                          void toggleReaction(message.id, `:${emoji.name}:`)
-                        }
+                        onClick={() => {
+                          void toggleReaction(message.id, `:${emoji.name}:`);
+                          setOpenActionsId(null);
+                        }}
                       >
                         <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
                       </button>
@@ -5854,6 +5948,7 @@ export function ChatShell() {
                     onClick={() => {
                       setReplyTarget(message);
                       composerRef.current?.focus();
+                      setOpenActionsId(null);
                     }}
                   >
                     <Reply size={16} />
@@ -5861,18 +5956,22 @@ export function ChatShell() {
                   <button
                     type="button"
                     title="Reply in thread"
-                    onClick={() => void openThread(message)}
+                    onClick={() => {
+                      void openThread(message);
+                      setOpenActionsId(null);
+                    }}
                   >
                     <MessageSquare size={16} />
                   </button>
                   <button
                     type="button"
                     title="Quick vote"
-                    onClick={() =>
+                    onClick={() => {
                       setQuickVoteId((current) =>
                         current === message.id ? null : message.id,
-                      )
-                    }
+                      );
+                      setOpenActionsId(null);
+                    }}
                   >
                     <Vote size={16} />
                   </button>
@@ -5880,7 +5979,10 @@ export function ChatShell() {
                     <button
                       type="button"
                       title="Edit"
-                      onClick={() => beginEdit(message)}
+                      onClick={() => {
+                        beginEdit(message);
+                        setOpenActionsId(null);
+                      }}
                     >
                       <Pencil size={16} />
                     </button>
@@ -5888,7 +5990,10 @@ export function ChatShell() {
                   <button
                     type="button"
                     title={message.pinned ? "Unpin" : "Pin"}
-                    onClick={() => void togglePin(message)}
+                    onClick={() => {
+                      void togglePin(message);
+                      setOpenActionsId(null);
+                    }}
                   >
                     <Pin size={16} />
                   </button>
@@ -5896,7 +6001,10 @@ export function ChatShell() {
                     <button
                       type="button"
                       title="Delete"
-                      onClick={() => void deleteMessage(message.id)}
+                      onClick={() => {
+                        void deleteMessage(message.id);
+                        setOpenActionsId(null);
+                      }}
                     >
                       <Trash2 size={16} />
                     </button>

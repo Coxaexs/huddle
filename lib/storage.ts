@@ -26,6 +26,12 @@ export interface HuddleBindings {
   /** Last.fm API key for live scrobbler integration. */
   LASTFM_API_KEY?: string;
   LASTFM_SECRET?: string;
+  /** LiveKit SFU server WebSocket URL (e.g. wss://host/livekit or ws://host:7880) */
+  LIVEKIT_URL?: string;
+  /** LiveKit API Key for minting room tokens */
+  LIVEKIT_API_KEY?: string;
+  /** LiveKit API Secret for minting room tokens */
+  LIVEKIT_API_SECRET?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

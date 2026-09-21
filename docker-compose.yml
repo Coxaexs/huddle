@@ -83,6 +83,21 @@ services:
       - bridge
       - all
 
+  # ==========================================
+  # LiveKit SFU: Discord-grade Voice Relay
+  # ==========================================
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: hoffle-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"         # Signaling & HTTP API
+      - "7881:7881"         # WebRTC ICE over TCP fallback
+      - "7882:7882/udp"     # WebRTC UDP media
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+
   # Optional: coturn TURN/STUN server for guaranteed voice connectivity
   # across strict NATs and firewalls (uncomment if you don't run coturn on host)
   # coturn:
@@ -92,3 +107,4 @@ services:
   #   network_mode: host
   #   volumes:
   #     - ./turnserver.conf:/etc/turnserver.conf:ro
+

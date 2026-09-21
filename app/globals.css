@@ -2209,6 +2209,7 @@ button {
   display:grid;
   position:relative;
   transition: background-color 0.15s ease;
+  -webkit-touch-callout: none;
 }
 
 .message:hover {
@@ -4850,10 +4851,12 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   border-color:#41434f;
 }
 
-.message:hover .message-actions {
-  opacity:1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
+@media (hover: hover) and (pointer: fine) {
+  .message:hover .message-actions {
+    opacity:1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .message-actions button {
@@ -5233,9 +5236,13 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   }
 
   /* Hover has no meaning on a touch screen. Instead of every message showing
-     its full bar at once (a wall of emoji), a ⋯ button reveals one message's
-     actions at a time as a tidy wrapping popover. */
+     its full bar at once (a wall of emoji), a ⋯ button or press-and-hold reveals
+     one message's actions at a time as a tidy wrapping popover. */
   .message-actions-toggle { display:flex; }
+  .message:hover .message-actions {
+    opacity:0;
+    pointer-events:none;
+  }
   .message-actions {
     opacity:0;
     pointer-events:none;
@@ -5248,9 +5255,11 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
     z-index:6;
     box-shadow:0 12px 30px #00000055;
   }
-  .message.actions-open .message-actions {
+  .message.actions-open .message-actions,
+  .message.actions-open:hover .message-actions {
     opacity:1;
     pointer-events:auto;
+    transform: translateY(0) scale(1);
   }
   .message.actions-open .message-actions-toggle {
     background:var(--lavender);
@@ -11541,6 +11550,19 @@ html[data-motion="reduced"] .blahaj-boop {
 
 /* Touch devices: tap targets for the activity picker and initiative rows. */
 @media (pointer:coarse) {
+  .message-actions-toggle {
+    display: flex;
+  }
+  .message:hover .message-actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .message.actions-open .message-actions,
+  .message.actions-open:hover .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
   .activity-picker button {
     min-height:120px;
   }
