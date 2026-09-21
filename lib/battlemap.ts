@@ -44,6 +44,8 @@ export interface Battlemap {
   imageUrl: string | null;
   /** Columns across the map; rows follow the image's aspect ratio. */
   grid: number;
+  /** Explicit row count if fixed/saved from image aspect ratio. */
+  rows?: number | null;
   tokens: MapToken[];
   strokes: MapStroke[];
   /** Rectangles of fog hiding parts of the map from non-GMs. */
@@ -56,6 +58,7 @@ export interface BattlemapRow {
   name: string;
   image_key: string | null;
   grid: number;
+  rows?: number | null;
   tokens: string;
   strokes: string;
   fog?: string;
@@ -81,6 +84,7 @@ export function publicBattlemap(row: BattlemapRow): Battlemap {
       ? `/hangout/api/uploads/${encodeURIComponent(row.image_key)}`
       : null,
     grid: row.grid || 20,
+    rows: row.rows ? Number(row.rows) : null,
     tokens: parseJson<MapToken[]>(row.tokens, []),
     strokes: parseJson<MapStroke[]>(row.strokes, []),
     fog: parseJson<MapFog[]>(row.fog, []),

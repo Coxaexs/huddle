@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "online.deeppixel.huddle",
   "build": {
-    "devUrl": "http://localhost:3001",
-    "frontendDist": "https://deeppixel.online/hangout"
+    "devUrl": "https://chat.hoffle.online",
+    "frontendDist": "https://chat.hoffle.online"
   },
   "app": {
     "windows": [
@@ -33,6 +33,10 @@
       "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "infoPlist": "Info.plist"
+    }
   }
 }

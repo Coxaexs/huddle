@@ -271,12 +271,72 @@ npm run build
 npm run serve
 ```
 
+## Admin & Disaster Recovery CLI
+
+Hoffle provides an administrative CLI for server owners to manage users, reset passwords, create invites, and safely back up the database:
+
+```bash
+# List all registered users
+npm run admin -- list-users
+
+# Safely reset a user's password (invalidating all sessions)
+npm run admin -- reset-password <username> <new_password>
+
+# Promote a user to administrator
+npm run admin -- promote <username>
+
+# Generate a server invite code from the terminal
+npm run admin -- create-invite [max_uses] [expiry_hours]
+
+# Create a safe, point-in-time SQLite snapshot via VACUUM INTO
+npm run admin -- backup [destination_path]
+```
+
+## Voice Architecture: LiveKit SFU & P2P Mesh
+
+Hoffle features a hybrid voice architecture:
+- **P2P WebRTC Mesh (Default)**: Zero media server bandwidth fees, fully encrypted peer-to-peer audio and video for close-knit groups without opening extra ports.
+- **LiveKit SFU (Scalable)**: When `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are configured, Hoffle automatically routes voice and screen sharing through the LiveKit Selective Forwarding Unit (SFU) for Discord-grade scale.
+
+Start LiveKit alongside Hoffle:
+```bash
+docker compose up -d livekit
+```
+
+### STUN / TURN Relay (Coturn)
+
+For users behind restrictive carrier-grade NATs (CGNAT) or strict corporate firewalls, launch the integrated Coturn relay:
+```bash
+docker compose --profile turn up -d
+```
+
+## All-In-One Single Container Deployment
+
+If you prefer a single self-contained container without Docker Compose (e.g., Unraid, TrueNAS, Synology):
+
+```bash
+docker build -f Dockerfile.all-in-one -t hoffle-all-in-one .
+docker run -d \
+  -p 8730:8730 \
+  -v $(pwd)/state:/app/state \
+  --name hoffle \
+  hoffle-all-in-one
+```
+
 ## Configuration Reference
 
 Variables configured in `.dev.vars`:
 
 - `BOT_TOKEN`: Shared secret for system-level bot operations and API access.
 - `BOOTSTRAP_CODE`: Required passphrase for creating the initial owner account.
+- `BASE_PATH`: Mount path (default `/hangout`; set to `/` for root domain hosting).
+- `LANDING_DOMAINS`: Comma-separated domains displaying the public landing page (others load chat).
+- `LIVEKIT_URL`: WebSocket URL to LiveKit SFU (e.g., `wss://livekit.hoffle.online`).
+- `LIVEKIT_API_KEY`: API key for LiveKit token authentication.
+- `LIVEKIT_API_SECRET`: API secret for LiveKit token authentication.
+- `VAPID_PUBLIC_KEY`: Web Push VAPID public key for offline browser notifications.
+- `VAPID_PRIVATE_KEY`: Web Push VAPID private key.
+- `VAPID_SUBJECT`: Mailto or contact URI for Web Push dispatch (e.g., `mailto:admin@example.com`).
 - `MUSIC_HELPER_BASE_URL`: Address of the yt-dlp audio resolver service (default `http://127.0.0.1:8731`).
 - `DND_BASE_URL`: Address of the D&D 5e compendium service (default `http://127.0.0.1:8732`).
 - `HUDDLE_ICE_SERVERS`: JSON array of `RTCIceServer` objects for custom STUN/TURN server deployment.

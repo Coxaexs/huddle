@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAudience, isDmMember } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
 import { publishMessage } from "@/lib/hub-client";
+import { sendPushNotifications } from "@/lib/push";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 
@@ -598,5 +599,24 @@ export async function POST(request: Request) {
   }
 
   await publishMessage(channelId || channelName, message, audience);
+
+  const pushTargets = new Set<string>();
+  if (message.mentions) {
+    for (const id of message.mentions) pushTargets.add(id);
+  }
+  if (audience) {
+    for (const id of audience) {
+      if (id !== user.id) pushTargets.add(id);
+    }
+  }
+  if (pushTargets.size > 0) {
+    void sendPushNotifications(db, Array.from(pushTargets), {
+      title: stored.author,
+      body: stored.content ? stored.content.slice(0, 120) : "Shared an attachment",
+      url: `/hangout`,
+      tag: `msg-${stored.channel_id || stored.channel}`,
+    });
+  }
+
   return Response.json({ message }, { status: 201 });
 }

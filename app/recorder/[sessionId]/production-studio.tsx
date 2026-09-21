@@ -965,8 +965,17 @@ function drawBattlemap(
   width: number,
   height: number,
 ) {
-  const rows = Math.round(map.grid * 0.6) || map.grid;
-  const aspect = map.grid / rows;
+  const background = cachedImage(images, map.imageUrl || null);
+  const imageAspect =
+    background && background.naturalWidth && background.naturalHeight
+      ? background.naturalWidth / background.naturalHeight
+      : null;
+  const rows =
+    map.rows ||
+    (imageAspect
+      ? Math.max(1, Math.round(map.grid / imageAspect))
+      : Math.round(map.grid * 0.6) || map.grid);
+  const aspect = imageAspect || map.grid / rows;
   let drawWidth = width;
   let drawHeight = drawWidth / aspect;
   if (drawHeight > height) {
@@ -981,7 +990,6 @@ function drawBattlemap(
   context.clip();
   context.fillStyle = "#24242b";
   context.fillRect(x, y, drawWidth, drawHeight);
-  const background = cachedImage(images, map.imageUrl || null);
   if (background) context.drawImage(background, x, y, drawWidth, drawHeight);
   context.strokeStyle = "rgba(255,255,255,.18)";
   context.lineWidth = 1;

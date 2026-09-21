@@ -27,6 +27,7 @@ describe("publicBattlemap", () => {
     name: "Cave",
     image_key: "bg/cave.png",
     grid: 24,
+    rows: 16,
     tokens: JSON.stringify([
       { id: "t1", label: "Goblin", color: "#b8a6ff", x: 5, y: 5, size: 2 },
     ]),
@@ -42,6 +43,7 @@ describe("publicBattlemap", () => {
     expect(map.channelId).toBe("voice-1");
     expect(map.name).toBe("Cave");
     expect(map.grid).toBe(24);
+    expect(map.rows).toBe(16);
   });
 
   it("builds the image URL under the hangout base path", () => {

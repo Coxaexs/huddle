@@ -340,6 +340,7 @@ async function migrate(db: D1Database): Promise<void> {
         name TEXT NOT NULL,
         image_key TEXT,
         grid INTEGER NOT NULL DEFAULT 20,
+        rows INTEGER,
         tokens TEXT NOT NULL DEFAULT '[]',
         strokes TEXT NOT NULL DEFAULT '[]',
         active INTEGER NOT NULL DEFAULT 1,
@@ -672,6 +673,11 @@ async function migrate(db: D1Database): Promise<void> {
       .prepare("ALTER TABLE battlemaps ADD COLUMN fog TEXT NOT NULL DEFAULT '[]'")
       .run();
   }
+  if (!battlemapColumns.has("rows")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN rows INTEGER")
+      .run();
+  }
 
   // Personal sound packs: a sound can be scoped to a server (shared) or to a
   // single user (their own pack). Existing rows are shared server sounds.
@@ -687,6 +693,7 @@ async function migrate(db: D1Database): Promise<void> {
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);
+  await ensureFts(db);
 
   // Record which schema version this database is now on, so anyone reading it
   // (or a future migration) can tell how far along it is.
@@ -782,4 +789,62 @@ async function seedDefaultServer(db: D1Database): Promise<void> {
     )
     .bind(DEFAULT_SERVER_ID)
     .run();
+}
+
+/**
+ * Initializes SQLite FTS5 full-text search indexing for messages.
+ * Automatically mirrors new/edited/deleted messages and backfills existing content.
+ */
+async function ensureFts(db: D1Database): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+           id UNINDEXED,
+           channel_id UNINDEXED,
+           channel UNINDEXED,
+           content,
+           author,
+           tokenize = 'porter unicode61'
+         );`,
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+           INSERT INTO messages_fts(id, channel_id, channel, content, author)
+           VALUES (new.id, new.channel_id, new.channel, new.content, new.author);
+         END;`,
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+           DELETE FROM messages_fts WHERE id = old.id;
+         END;`,
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE OF content ON messages BEGIN
+           UPDATE messages_fts SET content = new.content, channel_id = new.channel_id, channel = new.channel, author = new.author
+           WHERE id = new.id;
+         END;`,
+      )
+      .run();
+
+    await db
+      .prepare(
+        `INSERT INTO messages_fts(id, channel_id, channel, content, author)
+         SELECT id, channel_id, channel, content, author FROM messages
+         WHERE id NOT IN (SELECT id FROM messages_fts);`,
+      )
+      .run();
+  } catch (err) {
+    // If running in an in-memory mock or environment without FTS5 module, ignore gracefully
+    console.warn("FTS5 initialization notice:", err);
+  }
 }
