@@ -1,0 +1,19 @@
+# LiveKit SFU Configuration for Hoffle
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  udp_port: 7882
+  tcp_port: 7881
+  use_external_ip: true
+
+keys:
+  devkey: f4a0c134a9b0419a77f5ae7c0a0b373b
+
+room:
+  empty_timeout: 300
+  max_participants: 100
+
+logging:
+  level: info
