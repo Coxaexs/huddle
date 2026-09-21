@@ -7758,8 +7758,7 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   transition:max-height .25s ease;
 }
 .battlemap.expanded {
-  max-height:100%;
-  flex:1 1 0;
+  max-height:88vh;
 }
 .battlemap-bar {
   display:flex;
@@ -7856,32 +7855,15 @@ html[data-motion="reduced"] .typing-dots i { animation:none; }
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
 
-.battlemap-stage {
-  flex:1 1 0;
-  min-height:0;
-  width:100%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  position:relative;
-  overflow:hidden;
-  background:#08090d;
-  padding:6px;
-  touch-action:none;
-}
-.battlemap-stage.movable { cursor:grab; }
-.battlemap-stage.panning { cursor:grabbing; }
-
 .battlemap-board {
   position:relative;
-  max-width:100%;
+  width:100%;
   max-height:100%;
-  margin:auto;
+  margin:0 auto;
   background:#11131a;
   overflow:hidden;
   touch-action:none;
-  box-shadow:0 4px 24px rgba(0,0,0,.6);
-  border-radius:4px;
+  align-self:center;
   cursor:grab;
 }
 .battlemap-board.painting { cursor:crosshair; }

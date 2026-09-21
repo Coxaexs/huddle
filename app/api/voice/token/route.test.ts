@@ -35,7 +35,7 @@ it("returns enabled: false when LiveKit is not configured", async () => {
   setBindings({});
   const res = await GET(new Request("http://localhost/hangout/api/voice/token?channelId=v1"));
   expect(res.status).toBe(200);
-  const data = await res.json();
+  const data = (await res.json()) as { enabled?: boolean };
   expect(data.enabled).toBe(false);
 });
 
@@ -73,7 +73,7 @@ it("mints an authenticated LiveKit token when valid", async () => {
   });
   const res = await GET(new Request("http://localhost/hangout/api/voice/token?channelId=v1"));
   expect(res.status).toBe(200);
-  const data = await res.json();
+  const data = (await res.json()) as Record<string, unknown>;
   expect(data.enabled).toBe(true);
   expect(data.url).toBe("wss://test.livekit.local");
   expect(typeof data.token).toBe("string");
