@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAudience, isDmMember } from "@/lib/dms";
+import { isBlockedBetween } from "@/lib/friends";
 import { publishMessage } from "@/lib/hub-client";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
@@ -436,6 +437,17 @@ export async function POST(request: Request) {
     if (channel.kind === "dm") {
       if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
       audience = await channelAudience(db, channelId);
+      if (audience) {
+        const others = audience.filter((id) => id !== user.id);
+        for (const otherId of others) {
+          if (await isBlockedBetween(db, user.id, otherId)) {
+            return Response.json(
+              { error: "You cannot message this user." },
+              { status: 403 },
+            );
+          }
+        }
+      }
     } else {
       // Banned members cannot post in the server they were banned from.
       const banned = await db

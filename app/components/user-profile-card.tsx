@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessageSquare, AtSign, ShieldAlert, Calendar, X, Music } from "lucide-react";
+import { MessageSquare, AtSign, ShieldAlert, ShieldCheck, Calendar, X, Music } from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE } from "@/lib/users";
 import { Avatar } from "./avatar";
@@ -16,6 +16,10 @@ interface UserProfileCardProps {
   onClose: () => void;
   onDirectMessage?: (userId: string) => void;
   onMention?: (username: string) => void;
+  isSelf?: boolean;
+  isBlocked?: boolean;
+  onBlock?: (userId: string) => void;
+  onUnblock?: (userId: string) => void;
 }
 
 export function UserProfileCard({
@@ -26,6 +30,10 @@ export function UserProfileCard({
   onClose,
   onDirectMessage,
   onMention,
+  isSelf = false,
+  isBlocked = false,
+  onBlock,
+  onUnblock,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -182,11 +190,11 @@ export function UserProfileCard({
           <span>Member since {joinedDate}</span>
         </div>
 
-        <div className="profile-card-actions">
-          {onDirectMessage && (
+        <div className="profile-card-actions flex flex-wrap gap-2 pt-2">
+          {!isSelf && onDirectMessage && !isBlocked && (
             <button
               type="button"
-              className="discord-btn primary-indigo flex items-center gap-2 text-xs justify-center"
+              className="discord-btn primary-indigo flex items-center gap-2 text-xs justify-center flex-1"
               onClick={() => {
                 onDirectMessage(member.id);
                 onClose();
@@ -195,10 +203,10 @@ export function UserProfileCard({
               <MessageSquare size={14} /> Send DM
             </button>
           )}
-          {onMention && (
+          {!isSelf && onMention && (
             <button
               type="button"
-              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center"
+              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1"
               onClick={() => {
                 onMention(member.username);
                 onClose();
@@ -206,6 +214,35 @@ export function UserProfileCard({
             >
               <AtSign size={14} /> Mention
             </button>
+          )}
+          {!isSelf && (
+            isBlocked ? (
+              onUnblock && (
+                <button
+                  type="button"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10 px-3"
+                  onClick={() => {
+                    onUnblock(member.id);
+                  }}
+                  title="Unblock this user"
+                >
+                  <ShieldCheck size={14} /> Unblock
+                </button>
+              )
+            ) : (
+              onBlock && (
+                <button
+                  type="button"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:bg-rose-500/10 px-3"
+                  onClick={() => {
+                    onBlock(member.id);
+                  }}
+                  title="Block this user"
+                >
+                  <ShieldAlert size={14} /> Block
+                </button>
+              )
+            )
           )}
         </div>
       </div>

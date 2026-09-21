@@ -44,6 +44,10 @@ interface UserMenuProps {
   /** Whether viewer is instance owner */
   isOwner?: boolean;
   onToggleInvitePermission?: () => void;
+  /** Blocking */
+  isBlocked?: boolean;
+  onBlock?: () => void;
+  onUnblock?: () => void;
 }
 
 /**
@@ -71,6 +75,9 @@ export function UserMenu({
   onMove,
   isOwner = false,
   onToggleInvitePermission,
+  isBlocked = false,
+  onBlock,
+  onUnblock,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -111,9 +118,39 @@ export function UserMenu({
 
       {!isSelf && (
         <>
-          <button type="button" role="menuitem" onClick={onMessage}>
-            Message
-          </button>
+          {!isBlocked && (
+            <button type="button" role="menuitem" onClick={onMessage}>
+              Message
+            </button>
+          )}
+          {isBlocked ? (
+            onUnblock && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onUnblock();
+                  onClose();
+                }}
+              >
+                Unblock
+              </button>
+            )
+          ) : (
+            onBlock && (
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  onBlock();
+                  onClose();
+                }}
+              >
+                Block
+              </button>
+            )
+          )}
           <button
             type="button"
             role="menuitem"

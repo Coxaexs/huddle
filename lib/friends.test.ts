@@ -122,6 +122,17 @@ describe("friends operations", () => {
     const mockDb = {
       prepare: (sql: string) => ({
         bind: () => ({
+          first: async () => ({
+            id: "user-2",
+            username: "bob",
+            display_name: "Bob",
+            avatar: "B",
+            avatar_url: null,
+            color: "#123456",
+            status: null,
+            custom_status: null,
+            last_seen_at: null,
+          }),
           run: async () => ({}),
         }),
       }),
@@ -131,7 +142,56 @@ describe("friends operations", () => {
       },
     } as unknown as D1Database;
 
-    await blockUser(mockDb, "user-1", "user-2");
+    const result = await blockUser(mockDb, "user-1", "user-2");
     expect(batched).toBe(true);
+    expect(result.id).toBe("user-2");
+  });
+
+  it("prevents blocking self", async () => {
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => ({ id: "user-1", username: "alice" }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    await expect(blockUser(mockDb, "user-1", "user-1")).rejects.toThrow(
+      "You cannot block yourself.",
+    );
+  });
+
+  it("throws error when blocking nonexistent user", async () => {
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => null,
+        }),
+      }),
+    } as unknown as D1Database;
+
+    await expect(blockUser(mockDb, "user-1", "unknown")).rejects.toThrow(
+      "We couldn't find anyone named 'unknown'. Check the spelling.",
+    );
+  });
+
+  it("checks if users are blocked with isBlockedBetween", async () => {
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: (a: string, b: string) => ({
+          first: async () => {
+            if ((a === "u1" && b === "u2") || (a === "u2" && b === "u1")) {
+              return { id: "rel-1" };
+            }
+            return null;
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const { isBlockedBetween } = await import("./friends");
+    expect(await isBlockedBetween(mockDb, "u1", "u2")).toBe(true);
+    expect(await isBlockedBetween(mockDb, "u2", "u1")).toBe(true);
+    expect(await isBlockedBetween(mockDb, "u1", "u3")).toBe(false);
   });
 });
