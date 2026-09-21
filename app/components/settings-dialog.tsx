@@ -5,6 +5,8 @@ import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check } from "lucide
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
 import { Avatar } from "./avatar";
+import { DiceOverlay } from "./dice-overlay";
+import type { DiceRollEvent } from "@/lib/protocol";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
 const METER_FLOOR_DB = -80;
@@ -415,6 +417,9 @@ export function SettingsDialog({
   const [cute, setCute] = useState(false);
   const [prideTheme, setPrideTheme] = useState<PrideTheme>("off");
   const [blahaj, setBlahaj] = useState(false);
+  const [diceTheme, setDiceTheme] = useState("default");
+  const [diceColor, setDiceColor] = useState("#2563eb");
+  const [testRoll, setTestRoll] = useState<DiceRollEvent | null>(null);
   const [notify, setNotify] = useState(
     () =>
       typeof window === "undefined" ||
@@ -442,6 +447,8 @@ export function SettingsDialog({
     const savedCute = window.localStorage.getItem("huddle-cute");
     const savedPrideTheme = window.localStorage.getItem("huddle-pride-theme");
     const savedBlahaj = window.localStorage.getItem("huddle-blahaj");
+    const savedDiceTheme = window.localStorage.getItem("huddle_dice_theme");
+    const savedDiceColor = window.localStorage.getItem("huddle_dice_color");
     if (savedAccent) setAccent(savedAccent);
     if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
     // The old glow was the default. Do not carry it forward: gradients are
@@ -458,12 +465,17 @@ export function SettingsDialog({
       setPrideTheme(savedPrideTheme as PrideTheme);
     }
     setBlahaj(savedBlahaj === "on");
+    if (savedDiceTheme && ["default", "pride", "trans", "nonbinary"].includes(savedDiceTheme)) {
+      setDiceTheme(savedDiceTheme);
+    }
+    if (savedDiceColor) setDiceColor(savedDiceColor);
   }, []);
 
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--lavender", accent);
     root.style.setProperty("--ui-corners", `${corners}px`);
+    root.style.setProperty("--dice-preview-color", diceColor);
     root.dataset.density = density;
     root.dataset.backdrop = backdrop;
     root.dataset.motion = motion ? "full" : "reduced";
@@ -478,7 +490,9 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle-cute", cute ? "on" : "off");
     window.localStorage.setItem("huddle-pride-theme", prideTheme);
     window.localStorage.setItem("huddle-blahaj", blahaj ? "on" : "off");
-  }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj]);
+    window.localStorage.setItem("huddle_dice_theme", diceTheme);
+    window.localStorage.setItem("huddle_dice_color", diceColor);
+  }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj, diceTheme, diceColor]);
 
   useEffect(() => {
     if (tab !== "voice") return;
@@ -1258,6 +1272,85 @@ export function SettingsDialog({
                 ))}
               </div>
 
+              <span className="field-label">3D Dice Style</span>
+              <div className="dice-theme-row">
+                {([
+                  ["default", "Solid Colour"],
+                  ["pride", "Pride 🏳️‍🌈"],
+                  ["trans", "Trans 🏳️‍⚧️"],
+                  ["nonbinary", "Nonbinary 💛"],
+                ] as const).map(([option, label]) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`${option} ${diceTheme === option ? "active" : ""}`}
+                    onClick={() => setDiceTheme(option)}
+                  >
+                    <span className="dice-theme-swatch" aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {diceTheme === "default" && (
+                <>
+                  <span className="field-label">Dice Colour</span>
+                  <div className="accent-picker-row">
+                    {[
+                      "#2563eb", // Classic Blue
+                      "#0284c7", // Sky Blue
+                      "#6366f1", // Indigo
+                      "#7c3aed", // Violet
+                      "#db2777", // Pink
+                      "#e11d48", // Crimson Red
+                      "#059669", // Emerald Green
+                      "#d97706", // Amber Gold
+                      "#1e293b", // Slate Dark
+                    ].map((col) => (
+                      <button
+                        type="button"
+                        key={col}
+                        aria-label={`Use dice colour ${col}`}
+                        className={diceColor === col ? "active" : ""}
+                        style={{ background: col }}
+                        onClick={() => setDiceColor(col)}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={diceColor}
+                      aria-label="Custom dice colour"
+                      onChange={(event) => setDiceColor(event.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div style={{ marginTop: "10px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <button
+                  type="button"
+                  className="dice-test-btn"
+                  onClick={() => {
+                    setTestRoll({
+                      expression: "1d20",
+                      dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],
+                      modifier: 0,
+                      total: 20,
+                      roller: { id: "preview", displayName: "You" },
+                      rollType: "normal",
+                      animationSeed: String(Date.now()),
+                      theme: diceTheme,
+                      themeColor: diceColor,
+                    });
+                  }}
+                >
+                  🎲 Roll Test d20
+                </button>
+                <small style={{ color: "var(--muted, #888)", fontSize: "12px" }}>
+                  Preview your 3D dice landing on 20
+                </small>
+              </div>
+
               <span className="field-label">Message spacing</span>
               <div className="appearance-choice-row">
                 {(["compact", "cozy", "roomy"] as const).map((option) => (
@@ -1571,6 +1664,12 @@ export function SettingsDialog({
           </button>
         </footer>
       </div>
+      {testRoll && (
+        <DiceOverlay
+          roll={testRoll}
+          onDone={() => setTestRoll(null)}
+        />
+      )}
     </div>
   );
 }

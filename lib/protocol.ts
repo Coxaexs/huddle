@@ -98,6 +98,8 @@ export interface DiceRollEvent {
   roller: { id: string; displayName: string };
   rollType: "normal" | "advantage" | "disadvantage" | "critical-damage";
   animationSeed: string;
+  theme?: string;
+  themeColor?: string;
 }
 
 export interface CharacterPresentation {

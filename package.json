@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
+    "@3d-dice/dice-box-threejs": "^0.0.12",
     "@pdf-lib/fontkit": "^1.1.1",
+    "cannon-es": "^0.20.0",
     "livekit-client": "^2.22.3",
     "livekit-server-sdk": "^2.19.1",
     "lucide-react": "^1.27.0",
