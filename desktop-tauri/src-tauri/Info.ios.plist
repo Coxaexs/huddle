@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSMotionUsageDescription</key>
+    <string>Hoffle reads your AirPods head position so voices stay in place around you when you turn your head.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Hoffle needs access to your microphone for voice channels and calls.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Hoffle needs access to your camera for video calls.</string>
+</dict>
+</plist>

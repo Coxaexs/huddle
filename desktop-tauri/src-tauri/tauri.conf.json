@@ -38,6 +38,9 @@
     "macOS": {
       "entitlements": "Entitlements.plist",
       "infoPlist": "Info.plist"
+    },
+    "iOS": {
+      "minimumSystemVersion": "14.0"
     }
   }
 }
