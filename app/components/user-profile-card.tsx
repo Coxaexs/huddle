@@ -104,6 +104,8 @@ interface UserProfileCardProps {
   onRemoveFriend?: (userId: string) => void | Promise<void>;
   onAcceptFriend?: (userId: string) => void | Promise<void>;
   onEditProfile?: () => void;
+  /** Live presence (from the socket), overriding the member's saved status. */
+  presence?: PresenceStatus | "offline";
 }
 
 export function UserProfileCard({
@@ -123,6 +125,7 @@ export function UserProfileCard({
   onRemoveFriend,
   onAcceptFriend,
   onEditProfile,
+  presence,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [currentFriendStatus, setCurrentFriendStatus] =
@@ -154,7 +157,10 @@ export function UserProfileCard({
   }, [onClose]);
 
   const assignedRoles = roles.filter((r) => userRoles.includes(r.id));
-  const statusInfo = PRESENCE[member.status || "online"];
+  const statusInfo =
+    presence === "offline"
+      ? { label: "Offline", color: PRESENCE.invisible.color }
+      : PRESENCE[presence || member.status || "online"];
 
   // Format created date
   const joinedDate = member.createdAt

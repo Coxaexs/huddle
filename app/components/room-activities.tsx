@@ -2,10 +2,12 @@
 
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import {
   DEFAULT_TIERS,
@@ -30,6 +32,7 @@ import {
   Sparkles,
   ExternalLink,
   ChevronDown,
+  Eraser,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 
@@ -103,6 +106,77 @@ function asStrokes(value: unknown): ActivityStroke[] {
   return Array.isArray(value) ? (value as ActivityStroke[]) : [];
 }
 
+function strokePoints(stroke: ActivityStroke): string {
+  return stroke.points
+    .reduce<string[]>((pairs, value, index) => {
+      if (index % 2 === 0) pairs.push(`${value},${stroke.points[index + 1]}`);
+      return pairs;
+    }, [])
+    .join(" ");
+}
+
+/**
+ * Draws strokes in order. Each run of eraser strokes becomes a mask over
+ * everything drawn before it, so erasing works on any background and ink
+ * drawn afterwards still shows.
+ */
+function renderStrokes(strokes: ActivityStroke[], maskPrefix: string): ReactNode {
+  const masks: ReactNode[] = [];
+  let content: ReactNode[] = [];
+  let index = 0;
+  while (index < strokes.length) {
+    const stroke = strokes[index];
+    if (!stroke.erase) {
+      content.push(
+        <polyline
+          key={stroke.id}
+          points={strokePoints(stroke)}
+          fill="none"
+          stroke={stroke.color}
+          strokeWidth={stroke.width}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />,
+      );
+      index += 1;
+      continue;
+    }
+    const erasers: ActivityStroke[] = [];
+    while (index < strokes.length && strokes[index].erase) {
+      erasers.push(strokes[index]);
+      index += 1;
+    }
+    const id = `${maskPrefix}-${masks.length}`;
+    masks.push(
+      <mask key={id} id={id} maskUnits="userSpaceOnUse" x={0} y={0} width={1000} height={650}>
+        <rect width="1000" height="650" fill="white" />
+        {erasers.map((eraser) => (
+          <polyline
+            key={eraser.id}
+            points={strokePoints(eraser)}
+            fill="none"
+            stroke="black"
+            strokeWidth={eraser.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+      </mask>,
+    );
+    content = [
+      <g key={id} mask={`url(#${id})`}>
+        {content}
+      </g>,
+    ];
+  }
+  return (
+    <>
+      <defs>{masks}</defs>
+      {content}
+    </>
+  );
+}
+
 function embeddedWatchUrl(raw: string) {
   try {
     const url = new URL(raw);
@@ -143,6 +217,10 @@ function ActivityCanvas({
   const [preview, setPreview] = useState<number[]>([]);
   const [color, setColor] = useState("#9b87f5");
   const [width, setWidth] = useState(4);
+  const [erasing, setErasing] = useState(false);
+  const maskPrefix = `erase-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  // The eraser is chunkier than the pen at the same slider position.
+  const strokeWidth = erasing ? Math.min(60, width * 4) : width;
 
   function point(event: PointerEvent<SVGSVGElement>) {
     const svg = surfaceRef.current;
@@ -192,31 +270,43 @@ function ActivityCanvas({
       onStroke({
         id: crypto.randomUUID(),
         color,
-        width,
+        width: strokeWidth,
         points,
+        ...(erasing ? { erase: true } : {}),
       });
     }
   }
 
-  const polyline = (stroke: ActivityStroke) =>
-    stroke.points
-      .reduce<string[]>((pairs, value, index) => {
-        if (index % 2 === 0) pairs.push(`${value},${stroke.points[index + 1]}`);
-        return pairs;
-      }, [])
-      .join(" ");
+  // While erasing, the in-progress stroke erases live.
+  const shown =
+    erasing && preview.length >= 4
+      ? [...strokes, { id: "preview", color, width: strokeWidth, points: preview, erase: true }]
+      : strokes;
 
   return (
     <div className="activity-canvas-shell">
       <div className="activity-draw-tools">
+        <button
+          type="button"
+          className={`activity-eraser ${erasing ? "active" : ""}`}
+          title="Eraser"
+          aria-label="Eraser"
+          aria-pressed={erasing}
+          onClick={() => setErasing((on) => !on)}
+        >
+          <Eraser size={14} />
+        </button>
         {DRAW_COLORS.map((option) => (
           <button
             type="button"
             key={option}
-            className={color === option ? "active" : ""}
+            className={!erasing && color === option ? "active" : ""}
             style={{ background: option }}
             title={`Draw with ${option}`}
-            onClick={() => setColor(option)}
+            onClick={() => {
+              setColor(option);
+              setErasing(false);
+            }}
           />
         ))}
         <input
@@ -238,7 +328,7 @@ function ActivityCanvas({
       </div>
       <svg
         ref={surfaceRef}
-        className={`activity-canvas ${editable ? "editable" : ""}`}
+        className={`activity-canvas ${editable ? "editable" : ""} ${erasing ? "erasing" : ""}`}
         viewBox="0 0 1000 650"
         onPointerDown={start}
         onPointerMove={move}
@@ -251,20 +341,10 @@ function ActivityCanvas({
           </pattern>
         </defs>
         <rect width="1000" height="650" fill="url(#activityDots)" />
-        {strokes.map((stroke) => (
+        {renderStrokes(shown, maskPrefix)}
+        {erasing ? null : preview.length >= 4 ? (
           <polyline
-            key={stroke.id}
-            points={polyline(stroke)}
-            fill="none"
-            stroke={stroke.color}
-            strokeWidth={stroke.width}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-        {preview.length >= 4 ? (
-          <polyline
-            points={polyline({ id: "preview", color, width, points: preview })}
+            points={strokePoints({ id: "preview", color, width, points: preview })}
             fill="none"
             stroke={color}
             strokeWidth={width}

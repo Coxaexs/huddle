@@ -115,14 +115,16 @@ function cleanStroke(value: unknown, userId: string): ActivityStroke | null {
         .map((point) => Math.max(0, Math.min(1000, point)))
     : [];
   if (points.length < 4 || points.length % 2) return null;
+  const erase = input.erase === true;
   return {
     id: String(input.id || crypto.randomUUID()).slice(0, 80),
     color: /^#[0-9a-f]{6}$/i.test(String(input.color))
       ? String(input.color)
       : "#8f7aea",
-    width: Math.max(1, Math.min(20, Number(input.width) || 4)),
+    width: Math.max(1, Math.min(erase ? 60 : 20, Number(input.width) || 4)),
     points,
     by: userId,
+    ...(erase ? { erase: true } : {}),
   };
 }
 

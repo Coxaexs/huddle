@@ -7129,7 +7129,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
     min-height: 92px;
   }
 
-  .activity-draw-tools>button:nth-of-type(n+7):not(.activity-tool-text) {
+  .activity-draw-tools>button:nth-of-type(n+8):not(.activity-tool-text) {
     display: none;
   }
 }
@@ -7732,14 +7732,6 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
 .edited-tag {
   font-size: 11px;
   color: var(--muted);
-}
-
-.seen-mark {
-  font-size: 10px;
-  color: var(--lavender);
-  margin-left: 4px;
-  letter-spacing: -1px;
-  user-select: none;
 }
 
 .message-edit textarea {
@@ -16674,4 +16666,82 @@ input:checked + .toggle-slider:before {
 }
 [data-underline-links="on"] a {
   text-decoration: underline !important;
+}
+/* Server rail: unread pill (no mention) and a speaker badge when voice is live. */
+.rail-unread-pill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: #fff;
+  pointer-events: none;
+  z-index: 10;
+  transition: height 0.15s ease;
+}
+
+.rail-item:hover .rail-unread-pill {
+  height: 20px;
+}
+
+.rail-voice-badge {
+  position: absolute;
+  left: -3px;
+  bottom: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #23a55a;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #2c2d36;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  /* Rail runs horizontally here, so the pill sits under the icon. */
+  .rail-unread-pill {
+    left: 50%;
+    top: auto;
+    bottom: -6px;
+    width: 8px;
+    height: 4px;
+    border-radius: 4px 4px 0 0;
+    transform: translateX(-50%);
+  }
+}
+
+/* Fullscreen screen share: just the video, edge to edge. */
+.voice-focus-main:fullscreen {
+  border-radius: 0;
+  cursor: default;
+  width: 100vw;
+  height: 100vh;
+}
+
+.voice-focus-main:fullscreen .voice-focus-bar {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.voice-focus-main:fullscreen:hover .voice-focus-bar {
+  opacity: 1;
+}
+
+/* Whiteboard / Draw & Guess eraser. */
+.activity-draw-tools>button.activity-eraser {
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line);
+  border-radius: 8px;
+}
+
+.activity-canvas.editable.erasing {
+  cursor: cell;
 }

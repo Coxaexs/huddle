@@ -1,6 +1,4 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { channelAudience } from "@/lib/dms";
-import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -95,17 +93,6 @@ export async function POST(request: Request) {
     )
     .bind(user.id, channelId, readAt)
     .run();
-
-  // In a DM, tell the other person you've read up to now so they can show a
-  // "seen" marker on their messages. Scoped to only the two participants.
-  const audience = await channelAudience(db, channelId);
-  if (audience?.length === 2) {
-    await publishMessageEvent(
-      channelId,
-      { t: "read", userId: user.id, readAt, channelId },
-      audience,
-    );
-  }
 
   return Response.json({ ok: true });
 }

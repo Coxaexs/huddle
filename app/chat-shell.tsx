@@ -52,7 +52,6 @@ import {
   X,
   User,
   UserPlus,
-  CheckCheck,
   MoreHorizontal,
   AtSign,
   Send,
@@ -357,15 +356,6 @@ function showNotification(title: string, body: string): void {
   } catch {
     // Notifications are best-effort.
   }
-}
-
-/** A small "seen" check shown on my DM messages once the partner has read them. */
-function SeenMark() {
-  return (
-    <span className="seen-mark" title="Seen">
-      <CheckCheck size={13} />
-    </span>
-  );
 }
 
 /** Plays a soundboard clip locally (everyone in the room hears their own copy). */
@@ -805,12 +795,6 @@ export function ChatShell() {
         : { messageId, emoji, top, left },
     );
   };
-  /** The DM partner's read position, for "seen" receipts. */
-  const [partnerReadAt, setPartnerReadAt] = useState<{
-    channelId: string | null;
-    userId: string | null;
-    readAt: string;
-  } | null>(null);
   // On a phone the member list is an overlay, so it starts out of the way.
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
@@ -1868,15 +1852,6 @@ export function ChatShell() {
     onPoll: (channelId, pollId, counts) => {
       if (channelId !== activeChannelRef.current) return;
       setPollCounts((current) => ({ ...current, [pollId]: counts }));
-    },
-    onRead: (channelId, userId, readAt) => {
-      // The DM partner read the conversation up to this point.
-      if (channelId !== activeChannelRef.current) return;
-      setPartnerReadAt((current) =>
-        current && current.channelId === channelId && current.readAt >= readAt
-          ? current
-          : { channelId, userId, readAt },
-      );
     },
     onBattlemap: (channelId, payload) => {
       onBattlemapSocket(channelId, payload);
@@ -4416,19 +4391,6 @@ export function ChatShell() {
       </button>
     );
   }
-  /** Whether a DM partner has read my message (for the "seen" marker). */
-  function dmSeen(message: Message): boolean {
-    if (message.userId !== user?.id) return false;
-    if (!activeDm) return false;
-    if (!partnerReadAt || partnerReadAt.channelId !== activeDm.channelId) {
-      return false;
-    }
-    return (
-      partnerReadAt.userId === activeDm.user.id &&
-      (message.createdAt || "") <= partnerReadAt.readAt
-    );
-  }
-
   const currentPlayer = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
@@ -4568,17 +4530,28 @@ export function ChatShell() {
               .join("")
               .slice(0, 2)
               .toUpperCase() || "SV";
+          const hasUnread =
+            !isActive && server.channels.some((c) => unread[c.id]?.unread);
+          const mentionTotal = server.channels.reduce(
+            (sum, c) => sum + (unread[c.id]?.mentions || 0),
+            0,
+          );
+          const voiceActive = server.channels.some(
+            (c) => c.kind === "voice" && (hub.voice[c.id]?.length || 0) > 0,
+          );
           return (
             <div
               key={server.id}
               className={`rail-item ${dragServerId === server.id ? "dragging" : ""}`}
               {...serverDragProps(server)}
             >
-              {isActive && (
+              {isActive ? (
                 <span
                   className="rail-active-pill"
                   style={{ background: server.color || "#a78bfa" }}
                 />
+              ) : (
+                hasUnread && <span className="rail-unread-pill" />
               )}
               <button
                 className={`space-mark ${isActive ? "active-space" : ""}`}
@@ -4606,6 +4579,14 @@ export function ChatShell() {
                   />
                 ) : (
                   server.icon || initials
+                )}
+                {mentionTotal > 0 && (
+                  <span className="rail-badge">{mentionTotal}</span>
+                )}
+                {voiceActive && (
+                  <span className="rail-voice-badge" title="Someone is in voice">
+                    <Volume2 size={11} />
+                  </span>
                 )}
               </button>
             </div>
@@ -5844,7 +5825,6 @@ export function ChatShell() {
                             <time title={formatClientDateTime(message.createdAt)}>
                               {formatClientTime(message.createdAt, message.time)}
                             </time>
-                            {dmSeen(message) && <SeenMark />}
                           </span>
                         ) : (
                           <Avatar
@@ -5905,7 +5885,6 @@ export function ChatShell() {
                               <time title={formatClientDateTime(message.createdAt)}>
                                 {formatClientTime(message.createdAt, message.time)}
                               </time>
-                              {dmSeen(message) && <SeenMark />}
                               {message.editedAt && (
                                 <span className="edited-tag" title="Edited">
                                   (edited)
@@ -7866,6 +7845,7 @@ export function ChatShell() {
           position={profileCardTarget.pos}
           onClose={() => setProfileCardTarget(null)}
           isSelf={user?.id === profileCardTarget.member.id}
+          presence={presenceOf(profileCardTarget.member)}
           isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
           onEditProfile={() => {
             setProfileCardTarget(null);

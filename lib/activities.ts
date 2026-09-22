@@ -21,6 +21,8 @@ export interface ActivityStroke {
   width: number;
   points: number[];
   by?: string;
+  /** Eraser stroke: masks out whatever was drawn before it. */
+  erase?: boolean;
 }
 
 export interface TierRow {
