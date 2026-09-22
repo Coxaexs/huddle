@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAudience } from "@/lib/dms";
+import { dispatchReaction } from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -69,6 +70,10 @@ export async function POST(
       message.channel_id,
       { t: "reaction", messageId: id, emoji, userId: user.id, added },
       await channelAudience(db, message.channel_id),
+    );
+    void dispatchReaction(
+      added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
+      { messageId: id, channelId: message.channel_id, userId: user.id, emoji },
     );
   }
   return Response.json({ ok: true, added });

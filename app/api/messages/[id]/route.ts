@@ -1,4 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import {
+  dispatchMessageById,
+  dispatchMessageDelete,
+} from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -81,6 +85,7 @@ export async function DELETE(
       { t: "message-deleted", id },
       await channelAudience(db, message.channel_id),
     );
+    void dispatchMessageDelete(id, message.channel_id);
   }
   return Response.json({ ok: true });
 }
@@ -136,6 +141,9 @@ export async function PATCH(
         { t: "message-edited", id, content, editedAt },
         await channelAudience(db, message.channel_id),
       );
+      void dispatchMessageById("MESSAGE_UPDATE", id, {
+        origin: new URL(request.url).origin,
+      });
     }
     return Response.json({ ok: true, content, editedAt });
   }
