@@ -12,6 +12,7 @@ import {
   normalizePrideBadges,
   type PrideBadgeId,
   type PublicUser,
+  type SocialLink,
 } from "./users";
 
 export { AVATAR_COLORS } from "./users";
@@ -31,8 +32,11 @@ export interface User {
   banner_url?: string | null;
   bio?: string;
   pronouns?: string;
+  tagline?: string | null;
   pride_badges?: string | null;
   spotify_activity?: string | null;
+  social_links?: string | null;
+  avatar_frame?: string | null;
   color: string;
   is_admin: number;
   can_invite?: number;
@@ -40,6 +44,8 @@ export interface User {
   last_seen_at: string;
   status?: string | null;
   custom_status?: string | null;
+  custom_css?: string | null;
+  custom_theme?: string | null;
 }
 
 export function publicUser(user: User): PublicUser {
@@ -59,6 +65,23 @@ export function publicUser(user: User): PublicUser {
       prideBadges = [];
     }
   }
+  let socialLinks: SocialLink[] = [];
+  if (user.social_links) {
+    try {
+      const parsed = JSON.parse(user.social_links);
+      if (Array.isArray(parsed)) {
+        socialLinks = parsed.filter(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            typeof item.platform === "string" &&
+            typeof item.url === "string",
+        );
+      }
+    } catch {
+      socialLinks = [];
+    }
+  }
   return {
     id: user.id,
     username: user.username,
@@ -68,11 +91,17 @@ export function publicUser(user: User): PublicUser {
     bannerUrl: user.banner_url || null,
     bio: user.bio || "",
     pronouns: user.pronouns || "",
+    tagline: user.tagline || "",
+    customStatus: user.custom_status || null,
     prideBadges,
     spotifyActivity: spotifyAct,
+    socialLinks,
+    avatarFrame: user.avatar_frame || "none",
     color: user.color,
     isAdmin: Boolean(user.is_admin),
     canInvite: Boolean(user.is_admin || user.can_invite),
+    customCss: user.custom_css || null,
+    customTheme: user.custom_theme || null,
   };
 }
 
@@ -215,7 +244,9 @@ export async function currentUser(request: Request): Promise<User | null> {
   const row = await db
     .prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-              u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite, u.created_at,
+              u.bio, u.pronouns, u.tagline, u.custom_status, u.pride_badges, u.spotify_activity,
+              u.social_links, u.avatar_frame, u.color, u.is_admin, u.can_invite,
+              u.status, u.custom_css, u.custom_theme, u.created_at,
               u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id

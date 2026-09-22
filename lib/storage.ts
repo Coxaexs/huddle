@@ -4,6 +4,8 @@ export interface HuddleBindings {
   DB?: D1Database;
   UPLOADS?: R2Bucket;
   HUB?: DurableObjectNamespace;
+  /** Durable Object holding connected Discord-compatible bot sockets. */
+  DISCORD_GATEWAY?: DurableObjectNamespace;
   BOT_TOKEN?: string;
   /** When set, the first account must present this code too. */
   BOOTSTRAP_CODE?: string;

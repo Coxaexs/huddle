@@ -5,6 +5,7 @@ import type { PublicRole } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { Avatar } from "./avatar";
 import { PrideBadges } from "./pride-badges";
+import { scopeProfileCss } from "@/lib/themes";
 
 interface ProfileCardProps {
   member: Member;
@@ -46,6 +47,7 @@ export function ProfileCard({
 
   const nameColor = roles[0]?.color;
   const since = memberSince(member.createdAt);
+  const safeScopeId = member.id.replace(/[^a-zA-Z0-9_-]/g, "_");
 
   return (
     <div
@@ -54,8 +56,26 @@ export function ProfileCard({
       aria-modal="true"
       onClick={onClose}
     >
-      <div className="profile-card" onClick={(event) => event.stopPropagation()}>
-        <div className="profile-banner" style={{ background: nameColor || undefined }} />
+      <div
+        className={`profile-card user-profile-scoped-${safeScopeId}`}
+        data-user-profile={member.id}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {member.customCss && (
+          <style
+            dangerouslySetInnerHTML={{
+              __html: scopeProfileCss(member.customCss, member.id),
+            }}
+          />
+        )}
+        <div
+          className="profile-banner"
+          style={{
+            background: member.bannerUrl
+              ? `url(${member.bannerUrl}) center/cover no-repeat`
+              : nameColor || undefined,
+          }}
+        />
         <button
           type="button"
           className="profile-close"
@@ -65,12 +85,14 @@ export function ProfileCard({
           ×
         </button>
 
-        <Avatar
-          className="profile-avatar"
-          avatar={member.avatar}
-          avatarUrl={member.avatarUrl}
-          color={member.color}
-        />
+        <div className={`profile-card-avatar-wrap avatar-frame-${member.avatarFrame || "none"}`}>
+          <Avatar
+            className="profile-avatar"
+            avatar={member.avatar}
+            avatarUrl={member.avatarUrl}
+            color={member.color}
+          />
+        </div>
 
         <div className="profile-body">
           <div className="profile-name">
@@ -84,6 +106,11 @@ export function ProfileCard({
             </span>
           </div>
           <div className="profile-handle">@{member.username}</div>
+          {member.tagline && (
+            <div className="profile-tagline" title={member.tagline}>
+              {member.tagline}
+            </div>
+          )}
           {member.customStatus && (
             <div className="profile-custom-status">{member.customStatus}</div>
           )}
@@ -119,11 +146,9 @@ export function ProfileCard({
             </div>
           )}
 
-          {!isSelf && (
-            <button type="button" className="profile-message" onClick={onMessage}>
-              Message
-            </button>
-          )}
+          <button type="button" className="profile-message" onClick={onMessage}>
+            {isSelf ? "Note to Self" : "Message"}
+          </button>
         </div>
       </div>
     </div>

@@ -12,9 +12,16 @@
     "binding": "ASSETS"
   },
   "durable_objects": {
-    "bindings": [{ "name": "HUB", "class_name": "HuddleHub" }]
+    "bindings": [
+      { "name": "HUB", "class_name": "HuddleHub" },
+      // Holds the WebSocket of every connected Discord-compatible bot.
+      { "name": "DISCORD_GATEWAY", "class_name": "DiscordGateway" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HuddleHub"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["HuddleHub"] },
+    { "tag": "v2", "new_sqlite_classes": ["DiscordGateway"] }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

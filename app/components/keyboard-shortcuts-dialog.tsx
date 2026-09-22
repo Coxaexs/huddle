@@ -47,6 +47,7 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
         { keys: ["/"], description: "Open Slash Command Menu" },
         { keys: ["↑"], description: "Edit your last sent message" },
         { keys: ["Shift", "Enter"], description: "Insert a new line" },
+        { keys: ["Shift", "Delete"], description: "Bypass delete confirmation" },
       ],
     },
   ];

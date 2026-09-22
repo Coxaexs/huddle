@@ -52,6 +52,38 @@ export async function findOrCreateDm(
   a: string,
   b: string,
 ): Promise<string> {
+  if (a === b) {
+    const existing = await db
+      .prepare(
+        `SELECT d1.channel_id AS id
+           FROM dm_members d1
+          WHERE d1.user_id = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM dm_members d2
+               WHERE d2.channel_id = d1.channel_id
+                 AND d2.user_id != d1.user_id
+            )`,
+      )
+      .bind(a)
+      .first<{ id: string }>();
+    if (existing?.id) return existing.id;
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO channels (id, server_id, name, kind, topic, position, created_at)
+           VALUES (?, ?, 'direct message', 'dm', '', 0, ?)`,
+        )
+        .bind(id, DM_SERVER_ID, now),
+      db
+        .prepare("INSERT INTO dm_members (channel_id, user_id) VALUES (?, ?)")
+        .bind(id, a),
+    ]);
+    return id;
+  }
+
   const existing = await db
     .prepare(
       `SELECT mine.channel_id AS id
@@ -98,10 +130,11 @@ export async function listDms(
                 WHERE m.channel_id = mine.channel_id AND m.deleted_at IS NULL
                 ORDER BY m.created_at DESC LIMIT 1) AS last_at
          FROM dm_members mine
-         JOIN dm_members theirs
+         LEFT JOIN dm_members theirs
            ON theirs.channel_id = mine.channel_id AND theirs.user_id != mine.user_id
-         JOIN users u ON u.id = theirs.user_id
+         JOIN users u ON u.id = COALESCE(theirs.user_id, mine.user_id)
         WHERE mine.user_id = ?
+        GROUP BY mine.channel_id
         ORDER BY last_at DESC NULLS LAST`,
     )
     .bind(userId)

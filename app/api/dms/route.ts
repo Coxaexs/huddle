@@ -31,9 +31,9 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as { userId?: string };
   const targetId = body.userId || "";
-  if (!targetId || targetId === user.id) {
+  if (!targetId) {
     return Response.json(
-      { error: "Pick someone else to message." },
+      { error: "Pick someone to message." },
       { status: 400 },
     );
   }
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "That person is gone." }, { status: 404 });
   }
 
-  const blocked = await isBlockedBetween(db, user.id, targetId);
+  const blocked =
+    targetId === user.id ? false : await isBlockedBetween(db, user.id, targetId);
   const channelId = await findOrCreateDm(db, user.id, targetId);
   return Response.json({
     channelId,

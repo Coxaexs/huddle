@@ -34,6 +34,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  StickyNote,
   Hash,
   Volume2,
   VolumeX,
@@ -152,6 +153,16 @@ import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
 import { ForwardedMessageCard, type ForwardedFromData } from "./components/forwarded-message-card";
+import { ThemeShareCard } from "./components/theme-share-card";
+import {
+  type Theme,
+  getActiveThemeId,
+  findThemeById,
+  applyThemeToDocument,
+  applyClientUiCss,
+  importThemeCode,
+  exportThemeCode,
+} from "@/lib/themes";
 
 interface Message {
   id: string | number;
@@ -197,6 +208,8 @@ interface Message {
   threadId?: string;
   threadCount?: number;
   payload?: {
+    /** Theme share cards */
+    themeShare?: Theme;
     /** Poll cards. */
     pollId?: string;
     question?: string;
@@ -1625,12 +1638,17 @@ export function ChatShell() {
     () => dms.find((dm) => dm.channelId === activeChannelId) || null,
     [dms, activeChannelId],
   );
+  const isSelfDm = Boolean(
+    inDmHome && activeDm && user && activeDm.user.id === user.id,
+  );
   const channelTitle = inDmHome
-    ? activeDm?.user.displayName || "Direct messages"
+    ? isSelfDm
+      ? `${user?.displayName || "You"} (Notes)`
+      : activeDm?.user.displayName || "Direct messages"
     : activeChannel?.name || "no channel";
 
   const isDmBlocked = Boolean(
-    inDmHome && activeDm && blockedUserIds.has(activeDm.user.id),
+    inDmHome && activeDm && !isSelfDm && blockedUserIds.has(activeDm.user.id),
   );
 
   // ------------------------------------------------------------ realtime
@@ -2242,8 +2260,18 @@ export function ChatShell() {
       "--ui-corners",
       `${Number(window.localStorage.getItem("huddle-corners")) || 16}px`,
     );
-    const frame = window.requestAnimationFrame(() => setTheme(preferred));
-    return () => window.cancelAnimationFrame(frame);
+
+    // Apply client-side custom UI CSS if enabled
+    applyClientUiCss();
+    const activeThemeId = getActiveThemeId();
+    const activeTheme = findThemeById(activeThemeId);
+    if (activeTheme) {
+      applyThemeToDocument(activeTheme);
+      setTheme(activeTheme.baseTheme);
+    } else {
+      const frame = window.requestAnimationFrame(() => setTheme(preferred));
+      return () => window.cancelAnimationFrame(frame);
+    }
   }, []);
 
   useEffect(() => {
@@ -2273,11 +2301,43 @@ export function ChatShell() {
 
   // ------------------------------------------------------------- actions
 
-  function applyTheme(next: "cozy" | "legacy" | "light") {
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    window.localStorage.setItem("huddle-theme", next);
+  function applyTheme(next: "cozy" | "legacy" | "light" | Theme) {
+    if (typeof next === "string") {
+      setTheme(next);
+      const th = findThemeById(next);
+      if (th) {
+        applyThemeToDocument(th);
+      } else {
+        document.documentElement.dataset.theme = next;
+        window.localStorage.setItem("huddle-theme", next);
+      }
+    } else {
+      setTheme(next.baseTheme);
+      applyThemeToDocument(next);
+    }
   }
+
+  const handleShareThemeToChat = useCallback(
+    async (themeToShare: Theme) => {
+      if (!activeChannelRef.current) return;
+      try {
+        const code = exportThemeCode(themeToShare);
+        await apiFetch("/api/messages", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: activeChannelRef.current,
+            content: `🎨 Shared a theme: **${themeToShare.name}**\n${code}`,
+            payload: {
+              themeShare: themeToShare,
+            },
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to share theme to chat:", err);
+      }
+    },
+    [],
+  );
 
   const postBotMessage = useCallback(
     async (text: string, options?: Partial<Message>) => {
@@ -3373,6 +3433,24 @@ export function ChatShell() {
         event.preventDefault();
         setDraft("");
         return;
+      }
+    }
+    if (
+      event.key === "ArrowUp" &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
+      if (!draft && !editingId && user) {
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((m) => m.userId === user.id && !m.bot);
+        if (lastUserMessage) {
+          event.preventDefault();
+          beginEdit(lastUserMessage);
+          return;
+        }
       }
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -4782,43 +4860,62 @@ export function ChatShell() {
               </button>
             </div>
 
-            <div className="section-label">
+            <div className="section-label flex items-center justify-between">
               <span>DIRECT MESSAGES</span>
+              {user && (
+                <button
+                  type="button"
+                  className="hover:text-white transition-colors"
+                  title="Note to Self"
+                  onClick={() => void openDm(user.id)}
+                >
+                  <StickyNote size={14} />
+                </button>
+              )}
             </div>
-            {dms.map((dm) => (
-              <button
-                key={dm.channelId}
-                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
-                  }`}
-                onClick={() => {
-                  setActiveChannelId(dm.channelId);
-                  setStageChannelId(null);
-                  setMobileNav(false);
-                }}
-                onContextMenu={(event) => openUserMenu(event, dm.user)}
-              >
-                {unread[dm.channelId]?.unread && <span className="unread-pill" />}
-                <Avatar
-                  className="tiny-avatar"
-                  avatar={dm.user.avatar}
-                  avatarUrl={dm.user.avatarUrl}
-                  color={dm.user.color}
-                />
-                <span>{dm.user.displayName}</span>
-                {hub.online.has(dm.user.id) && <i className="dm-online" />}
-                {hub.voice[dm.channelId]?.length > 0 && (
-                  <PhoneCall size={12} className="text-green-400 ml-auto animate-pulse" />
-                )}
-                {(unread[dm.channelId]?.count ?? 0) > 0 && (
-                  <span className="mention-badge">
-                    {unread[dm.channelId].count}
+            {dms.map((dm) => {
+              const isSelf = Boolean(user && dm.user.id === user.id);
+              return (
+                <button
+                  key={dm.channelId}
+                  className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
+                    }`}
+                  onClick={() => {
+                    setActiveChannelId(dm.channelId);
+                    setStageChannelId(null);
+                    setMobileNav(false);
+                  }}
+                  onContextMenu={(event) => openUserMenu(event, dm.user)}
+                >
+                  {unread[dm.channelId]?.unread && <span className="unread-pill" />}
+                  <Avatar
+                    className="tiny-avatar"
+                    avatar={dm.user.avatar}
+                    avatarUrl={dm.user.avatarUrl}
+                    color={dm.user.color}
+                  />
+                  <span className="flex items-center gap-1.5 truncate">
+                    {isSelf ? `${dm.user.displayName} (Notes)` : dm.user.displayName}
                   </span>
-                )}
-              </button>
-            ))}
+                  {isSelf ? (
+                    <StickyNote size={12} className="text-amber-400/80 ml-auto flex-shrink-0" />
+                  ) : (
+                    hub.online.has(dm.user.id) && <i className="dm-online" />
+                  )}
+                  {hub.voice[dm.channelId]?.length > 0 && (
+                    <PhoneCall size={12} className="text-green-400 ml-auto animate-pulse" />
+                  )}
+                  {(unread[dm.channelId]?.count ?? 0) > 0 && (
+                    <span className="mention-badge">
+                      {unread[dm.channelId].count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {!dms.length && (
               <p className="sidebar-empty">
-                Right-click someone in the member list to start a conversation.
+                Right-click someone or click the note icon above to start a conversation.
               </p>
             )}
           </nav>
@@ -5063,7 +5160,17 @@ export function ChatShell() {
                 <Menu size={20} />
               </button>
               <span className="big-hash">
-                {stageChannel ? <Volume2 size={20} /> : inDmHome ? <AtSign size={20} /> : <Hash size={20} />}
+                {stageChannel ? (
+                  <Volume2 size={20} />
+                ) : inDmHome ? (
+                  isSelfDm ? (
+                    <StickyNote size={20} />
+                  ) : (
+                    <AtSign size={20} />
+                  )
+                ) : (
+                  <Hash size={20} />
+                )}
               </span>
               <div className="channel-heading">
                 <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
@@ -5074,7 +5181,9 @@ export function ChatShell() {
                       : `${voiceParticipants.length} in the room`
                     : inDmHome
                       ? activeDm
-                        ? `Just you and ${activeDm.user.displayName}`
+                        ? isSelfDm
+                          ? "Your personal space for notes, drafts, and to-dos"
+                          : `Just you and ${activeDm.user.displayName}`
                         : "Pick a conversation"
                       : activeChannel?.topic ||
                       (activeChannel
@@ -5083,7 +5192,7 @@ export function ChatShell() {
                 </span>
               </div>
               <div className="header-actions">
-                {inDmHome && activeChannelId && (
+                {inDmHome && activeChannelId && !isSelfDm && (
                   <div className="dm-call-actions">
                     {dmCall && dmCall.channelId === activeChannelId ? (
                       <button
@@ -5520,19 +5629,35 @@ export function ChatShell() {
                 <div className="messages" aria-live="polite">
                   <div className="channel-intro">
                     <div className="cozy-intro-pill">
-                      <span className="cozy-intro-icon">{inDmHome ? <AtSign size={13} /> : <Hash size={13} />}</span>
+                      <span className="cozy-intro-icon">
+                        {inDmHome ? (
+                          isSelfDm ? (
+                            <StickyNote size={13} />
+                          ) : (
+                            <AtSign size={13} />
+                          )
+                        ) : (
+                          <Hash size={13} />
+                        )}
+                      </span>
                       <span className="cozy-intro-text">
                         {inDmHome
-                          ? `this is the beginning of your conversation with ${channelTitle}`
+                          ? isSelfDm
+                            ? "This is your personal space for notes, drafts, and reminders."
+                            : `this is the beginning of your conversation with ${channelTitle}`
                           : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
                       </span>
                     </div>
                     <div className="legacy-intro-content">
-                      <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
+                      <div className="intro-icon">
+                        {inDmHome ? (isSelfDm ? "📝" : "@") : "#"}
+                      </div>
                       <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
                       <p>
                         {inDmHome
-                          ? "This conversation is only visible to the two of you."
+                          ? isSelfDm
+                            ? "Messages sent here are private and only visible to you. Great for jotting down thoughts, saving links, or staging drafts."
+                            : "This conversation is only visible to the two of you."
                           : "This is the start of the channel. Be excellent to each other."}
                       </p>
                     </div>
@@ -5862,6 +5987,26 @@ export function ChatShell() {
                               emojis={emojiMap}
                             />
                           )}
+
+                          {message.payload?.themeShare && (
+                            <ThemeShareCard
+                              theme={message.payload.themeShare}
+                              onApplyTheme={(th) => applyTheme(th)}
+                            />
+                          )}
+
+                          {!message.payload?.themeShare && message.text?.includes("huddle-theme:v1:") && (() => {
+                            const match = message.text.match(/huddle-theme:v1:[a-zA-Z0-9+/=_-]+/);
+                            if (!match) return null;
+                            const parsed = importThemeCode(match[0]);
+                            if (!parsed) return null;
+                            return (
+                              <ThemeShareCard
+                                theme={parsed}
+                                onApplyTheme={(th) => applyTheme(th)}
+                              />
+                            );
+                          })()}
 
                           {extractInviteCodes(message.text).map((code) => {
                             const inv = resolvedInvites[code];
@@ -6259,10 +6404,24 @@ export function ChatShell() {
                           {canDelete && (
                             <button
                               type="button"
-                              title="Delete"
-                              onClick={() => {
-                                void deleteMessage(message.id);
+                              title="Delete (Hold Shift to skip confirmation)"
+                              onClick={(event) => {
                                 setOpenActionsId(null);
+                                if (event.shiftKey) {
+                                  void deleteMessage(message.id);
+                                } else {
+                                  showCustomConfirm({
+                                    title: "Delete Message",
+                                    message:
+                                      "Are you sure you want to delete this message? Pro tip: You can delete while pressing Shift to skip this confirmation.",
+                                    isDanger: true,
+                                    confirmText: "Delete",
+                                    cancelText: "Cancel",
+                                    onConfirm: () => {
+                                      void deleteMessage(message.id);
+                                    },
+                                  });
+                                }
                               }}
                             >
                               <Trash2 size={16} />
@@ -6514,7 +6673,9 @@ export function ChatShell() {
                         }}
                         placeholder={
                           activeChannelId
-                            ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
+                            ? isSelfDm
+                              ? "Jot down a note or link to yourself..."
+                              : `Message ${inDmHome ? "" : "#"}${channelTitle}`
                             : "Pick a channel first"
                         }
                         aria-label={`Message ${channelTitle}`}
@@ -6812,6 +6973,24 @@ export function ChatShell() {
                         emojis={emojiMap}
                       />
                     )}
+                    {reply.payload?.themeShare && (
+                      <ThemeShareCard
+                        theme={reply.payload.themeShare}
+                        onApplyTheme={(th) => applyTheme(th)}
+                      />
+                    )}
+                    {!reply.payload?.themeShare && reply.text?.includes("huddle-theme:v1:") && (() => {
+                      const match = reply.text.match(/huddle-theme:v1:[a-zA-Z0-9+/=_-]+/);
+                      if (!match) return null;
+                      const parsed = importThemeCode(match[0]);
+                      if (!parsed) return null;
+                      return (
+                        <ThemeShareCard
+                          theme={parsed}
+                          onApplyTheme={(th) => applyTheme(th)}
+                        />
+                      );
+                    })()}
                     {reply.image && (
                       <img
                         className="message-image"
@@ -7135,6 +7314,8 @@ export function ChatShell() {
           seatOrder={voice.tableSeatOrder}
           seatPans={voice.tableSeatPans}
           width={voice.tableWidth}
+          headTracking={voice.headTracking}
+          onHeadTracking={voice.onHeadTracking}
           deafened={voice.deafened}
           preferenceFor={(id) => {
             const pref = prefFor(id);
@@ -7456,6 +7637,7 @@ export function ChatShell() {
           user={user}
           theme={theme}
           onTheme={applyTheme}
+          onShareThemeToChat={handleShareThemeToChat}
           onUser={setUser}
           onClose={() => setSettingsOpen(false)}
           onSignOut={signOut}
@@ -7464,6 +7646,11 @@ export function ChatShell() {
           onMicSettings={voice.setMicSettings}
           subscribeMicTelemetry={voice.subscribeMicTelemetry}
           inCall={Boolean(voice.channelId)}
+          headTracking={voice.headTracking}
+          setHeadTracking={voice.setHeadTracking}
+          headTrackingOffered={voice.headTrackingOffered}
+          headTrackingStatus={voice.headTrackingStatus}
+          recenterHead={voice.recenterHead}
           tableMode={voice.tableMode}
           onTableMode={voice.setTableMode}
           tableHostId={voice.tableHostId}
@@ -7615,6 +7802,10 @@ export function ChatShell() {
           onClose={() => setProfileCardTarget(null)}
           isSelf={user?.id === profileCardTarget.member.id}
           isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
+          onEditProfile={() => {
+            setProfileCardTarget(null);
+            setSettingsOpen(true);
+          }}
           friendStatus={
             friendUserIds.has(profileCardTarget.member.id)
               ? "friend"
