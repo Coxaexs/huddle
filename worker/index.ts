@@ -135,6 +135,12 @@ export default {
       for (const [key, value] of url.searchParams) {
         target.searchParams.set(key, value);
       }
+      // READY carries resume_gateway_url, and the Durable Object cannot know
+      // the public origin a bot reached us on, so it is passed down here.
+      target.searchParams.set(
+        "resumeUrl",
+        `${url.origin.replace(/^http/, "ws")}${effectiveBasePath}/api/gateway`,
+      );
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },
       });

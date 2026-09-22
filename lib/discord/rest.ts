@@ -1107,11 +1107,12 @@ export async function createMessage(
   const { publicMessage } = await import("../../app/api/messages/route");
   await publishMessage(channel.id, publicMessage(stored));
 
-  // Other bots see it too, but never the bot that sent it.
+  // Discord delivers a bot its own MESSAGE_CREATE as well, which is why every
+  // bot guards with `if (message.author.bot) return`. Suppressing the echo
+  // here would silently change how that guard behaves.
   await dispatchMessage("MESSAGE_CREATE", stored, {
     origin: context.origin,
     basePath: context.basePath,
-    excludeBotId: context.bot.id,
   });
 
   return json(await buildMessage(context, stored, channel, guildSnowflake), 200);
