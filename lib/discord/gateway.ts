@@ -55,6 +55,8 @@ interface Session {
   zlibStarted: boolean;
   lastHeartbeatAt: number;
   helloAt: number;
+  /** Public gateway URL, which only the worker edge knows. */
+  resumeUrl: string;
 }
 
 interface DispatchRequest {
@@ -138,9 +140,12 @@ export class DiscordGateway extends DurableObject {
       zlibStarted: false,
       lastHeartbeatAt: Date.now(),
       helloAt: Date.now(),
+      resumeUrl: url.searchParams.get("resumeUrl") || "",
     };
     socket.serializeAttachment(session);
 
+    // sendRaw re-persists the attachment if this is the frame that emits the
+    // zlib header, so the flag is never lost between the two calls.
     this.send(socket, session, {
       op: GatewayOpcode.Hello,
       d: {
@@ -361,7 +366,7 @@ export class DiscordGateway extends DurableObject {
       user,
       guilds: guildStubs,
       session_id: session.sessionId,
-      resume_gateway_url: "",
+      resume_gateway_url: session.resumeUrl,
       shard: [0, 1],
       application: {
         id: applicationId,
@@ -543,8 +548,14 @@ export class DiscordGateway extends DurableObject {
         // attachment so hibernation cannot desync the client's inflater.
         const encoder = new ZlibStreamEncoder(session.zlibStarted);
         const framed = encoder.encode(payload);
-        session.zlibStarted = encoder.started;
         socket.send(framed);
+        if (!session.zlibStarted && encoder.started) {
+          // Persisted here rather than by the caller: a second copy of the
+          // zlib header mid-stream is read as a stored block with a bad
+          // length, and the client's inflate context never recovers.
+          session.zlibStarted = true;
+          socket.serializeAttachment(session);
+        }
       } else {
         socket.send(payload);
       }

@@ -1,4 +1,5 @@
 import { authenticateBot } from "@/lib/bot-auth";
+import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { publicMessage } from "@/app/api/messages/route";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
@@ -210,6 +211,12 @@ export async function POST(
     .run();
 
   await publishMessage(channel.id, publicMessage(stored));
+
+  // Bots on the gateway see messages posted through the older REST APIs too,
+  // so a bot's view of a channel does not depend on which API wrote to it.
+  void dispatchMessage("MESSAGE_CREATE", stored, {
+    origin: new URL(request.url).origin,
+  });
 
   return Response.json(
     {
