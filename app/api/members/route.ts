@@ -13,76 +13,70 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
-  // Scope the roster to a server's real members when asked; otherwise (DMs,
-  // legacy callers) return everyone in the Huddle.
+  // Scope the roster to a server's real members. If no serverId is provided,
+  // return an empty list rather than exposing all users in the system.
   const url = new URL(request.url);
   const serverId = url.searchParams.get("serverId") || null;
+  if (!serverId) {
+    return Response.json({ members: [] });
+  }
+
+  // Ensure caller is a member of the requested server (or an admin).
+  const isMember = await db
+    .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+    .bind(serverId, user.id)
+    .first();
+  if (!isMember && !user.is_admin) {
+    return Response.json({ members: [] }, { status: 403 });
+  }
+
   const q = (url.searchParams.get("q") || url.searchParams.get("query") || "").trim().toLowerCase();
   const searchPattern = q ? `%${q}%` : null;
 
   const [result, roleRows] = await Promise.all([
-    serverId
-      ? searchPattern
-        ? db
-            .prepare(
-              `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
-                      u.created_at, u.last_seen_at, u.status, u.custom_status,
-                      m.joined_at, m.invite_code,
-                      i.created_by AS invite_creator_id,
-                      inv_creator.display_name AS invite_creator_name,
-                      inv_creator.username AS invite_creator_username
-                 FROM users u
-                 JOIN server_members m ON m.user_id = u.id AND m.server_id = ?1
-                 LEFT JOIN invites i ON i.code = m.invite_code
-                 LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
-                WHERE u.username_lower LIKE ?2 OR LOWER(u.display_name) LIKE ?2
-                ORDER BY u.display_name COLLATE NOCASE ASC`,
-            )
-            .bind(serverId, searchPattern)
-            .all()
-        : db
-            .prepare(
-              `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                      u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
-                      u.created_at, u.last_seen_at, u.status, u.custom_status,
-                      m.joined_at, m.invite_code,
-                      i.created_by AS invite_creator_id,
-                      inv_creator.display_name AS invite_creator_name,
-                      inv_creator.username AS invite_creator_username
-                 FROM users u
-                 JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
-                 LEFT JOIN invites i ON i.code = m.invite_code
-                 LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
-                ORDER BY u.display_name COLLATE NOCASE ASC`,
-            )
-            .bind(serverId)
-            .all()
-      : searchPattern
-        ? db
-            .prepare(
-              `SELECT id, username, display_name, avatar, avatar_url, banner_url,
-                      bio, pronouns, pride_badges, spotify_activity, color, is_admin, can_invite,
-                      created_at, last_seen_at, status, custom_status
-                 FROM users
-                WHERE username_lower LIKE ? OR LOWER(display_name) LIKE ?
-                ORDER BY display_name COLLATE NOCASE ASC`,
-            )
-            .bind(searchPattern, searchPattern)
-            .all()
-        : db
-            .prepare(
-              `SELECT id, username, display_name, avatar, avatar_url, banner_url,
-                      bio, pronouns, pride_badges, spotify_activity, color, is_admin, can_invite,
-                      created_at, last_seen_at, status, custom_status
-                 FROM users ORDER BY display_name COLLATE NOCASE ASC`,
-            )
-            .all(),
-    db.prepare("SELECT server_id, user_id, role_id FROM member_roles").all(),
+    searchPattern
+      ? db
+          .prepare(
+            `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
+                    u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.created_at, u.last_seen_at, u.status, u.custom_status,
+                    m.joined_at, m.invite_code,
+                    i.created_by AS invite_creator_id,
+                    inv_creator.display_name AS invite_creator_name,
+                    inv_creator.username AS invite_creator_username
+               FROM users u
+               JOIN server_members m ON m.user_id = u.id AND m.server_id = ?1
+               LEFT JOIN invites i ON i.code = m.invite_code
+               LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
+              WHERE u.username_lower LIKE ?2 OR LOWER(u.display_name) LIKE ?2
+              ORDER BY u.display_name COLLATE NOCASE ASC`,
+          )
+          .bind(serverId, searchPattern)
+          .all()
+      : db
+          .prepare(
+            `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
+                    u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.created_at, u.last_seen_at, u.status, u.custom_status,
+                    m.joined_at, m.invite_code,
+                    i.created_by AS invite_creator_id,
+                    inv_creator.display_name AS invite_creator_name,
+                    inv_creator.username AS invite_creator_username
+               FROM users u
+               JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
+               LEFT JOIN invites i ON i.code = m.invite_code
+               LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
+              ORDER BY u.display_name COLLATE NOCASE ASC`,
+          )
+          .bind(serverId)
+          .all(),
+    db
+      .prepare("SELECT server_id, user_id, role_id FROM member_roles WHERE server_id = ?")
+      .bind(serverId)
+      .all(),
   ]);
 
-  // Role assignments, keyed userId → serverId → roleId[]. Small friends' app, so
-  // the whole join table is a few rows.
+  // Role assignments, keyed userId → serverId → roleId[].
   const rolesByUser = new Map<string, Record<string, string[]>>();
   for (const row of (roleRows.results || []) as Array<{
     server_id: string;

@@ -415,7 +415,12 @@ export async function POST(request: Request) {
     .map((key) => key.slice(0, 240));
   const attachmentKey = allKeys[0] || null;
   const extraKeys = allKeys.slice(1);
-  if (!content && !attachmentKey) {
+  const hasPayloadForward = Boolean(
+    body.payload &&
+      typeof body.payload === "object" &&
+      "forwardedFrom" in (body.payload as Record<string, unknown>),
+  );
+  if (!content && !attachmentKey && !hasPayloadForward) {
     return Response.json({ error: "A message cannot be empty." }, { status: 400 });
   }
 
@@ -487,9 +492,11 @@ export async function POST(request: Request) {
     color: body.asBot ? "#b8a6ff" : user.color,
     content:
       content ||
-      (attachmentKey?.toLowerCase().endsWith(".pdf")
-        ? "Shared a PDF document"
-        : "Shared an image"),
+      (hasPayloadForward
+        ? "Forwarded a message"
+        : attachmentKey?.toLowerCase().endsWith(".pdf")
+          ? "Shared a PDF document"
+          : "Shared an image"),
     attachment_key: attachmentKey,
     is_bot: body.asBot ? 1 : 0,
     created_at: new Date().toISOString(),

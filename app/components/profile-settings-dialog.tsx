@@ -90,11 +90,11 @@ export function ProfileSettingsDialog({
     try {
       const spotifyAct: SpotifyActivity | null = hasSpotify
         ? {
-            song: spotifySong.trim() || "Currently Listening",
-            artist: spotifyArtist.trim() || "Spotify",
-            albumArt: spotifyCover.trim() || undefined,
-            isPlaying: true,
-          }
+          song: spotifySong.trim() || "Currently Listening",
+          artist: spotifyArtist.trim() || "Spotify",
+          albumArt: spotifyCover.trim() || undefined,
+          isPlaying: true,
+        }
         : null;
 
       const res = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
@@ -401,7 +401,7 @@ export function ProfileSettingsDialog({
                 />
                 <span
                   className="profile-presence-dot"
-                  style={{ background: "#3ba55d" }}
+                  style={{ background: "#3ba55d", position: "absolute" }}
                 />
               </div>
 

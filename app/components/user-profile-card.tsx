@@ -1,12 +1,27 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { MessageSquare, AtSign, ShieldAlert, ShieldCheck, Calendar, X, Music } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  MessageSquare,
+  AtSign,
+  ShieldAlert,
+  ShieldCheck,
+  Calendar,
+  X,
+  Music,
+  UserPlus,
+  UserCheck,
+  UserMinus,
+  Clock,
+} from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE } from "@/lib/users";
 import { Avatar } from "./avatar";
 import type { PublicRole } from "@/lib/servers";
 import { PrideBadges } from "./pride-badges";
+import { apiFetch } from "../lib/client";
+
+export type FriendRelationshipStatus = "none" | "friend" | "incoming" | "outgoing";
 
 interface UserProfileCardProps {
   member: Member;
@@ -20,6 +35,10 @@ interface UserProfileCardProps {
   isBlocked?: boolean;
   onBlock?: (userId: string) => void;
   onUnblock?: (userId: string) => void;
+  friendStatus?: FriendRelationshipStatus;
+  onAddFriend?: (userId: string, username?: string) => void | Promise<void>;
+  onRemoveFriend?: (userId: string) => void | Promise<void>;
+  onAcceptFriend?: (userId: string) => void | Promise<void>;
 }
 
 export function UserProfileCard({
@@ -34,8 +53,20 @@ export function UserProfileCard({
   isBlocked = false,
   onBlock,
   onUnblock,
+  friendStatus = "none",
+  onAddFriend,
+  onRemoveFriend,
+  onAcceptFriend,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const [currentFriendStatus, setCurrentFriendStatus] =
+    useState<FriendRelationshipStatus>(friendStatus);
+  const [friendLoading, setFriendLoading] = useState(false);
+  const [friendHover, setFriendHover] = useState(false);
+
+  useEffect(() => {
+    setCurrentFriendStatus(friendStatus);
+  }, [friendStatus]);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -191,10 +222,115 @@ export function UserProfileCard({
         </div>
 
         <div className="profile-card-actions flex flex-wrap gap-2 pt-2">
+          {!isSelf && !isBlocked && (
+            <>
+              {currentFriendStatus === "friend" ? (
+                <button
+                  type="button"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 text-emerald-400 hover:text-rose-400 border border-emerald-500/20 hover:border-rose-500/30 transition-colors"
+                  disabled={friendLoading}
+                  onMouseEnter={() => setFriendHover(true)}
+                  onMouseLeave={() => setFriendHover(false)}
+                  onClick={async () => {
+                    setFriendLoading(true);
+                    try {
+                      if (onRemoveFriend) {
+                        await onRemoveFriend(member.id);
+                      } else {
+                        await apiFetch(`/api/friends?id=${encodeURIComponent(member.id)}`, {
+                          method: "DELETE",
+                        });
+                      }
+                      setCurrentFriendStatus("none");
+                    } catch (err) {
+                      console.error("Failed to remove friend:", err);
+                    } finally {
+                      setFriendLoading(false);
+                    }
+                  }}
+                  title="Click to remove friend"
+                >
+                  {friendHover ? (
+                    <>
+                      <UserMinus size={14} className="text-rose-400" /> Remove Friend
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck size={14} className="text-emerald-400" /> Friends
+                    </>
+                  )}
+                </button>
+              ) : currentFriendStatus === "outgoing" ? (
+                <button
+                  type="button"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 text-indigo-300 opacity-80 cursor-default"
+                  disabled
+                  title="Friend request pending"
+                >
+                  <Clock size={14} /> Request Sent
+                </button>
+              ) : currentFriendStatus === "incoming" ? (
+                <button
+                  type="button"
+                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 !bg-emerald-600 hover:!bg-emerald-500 text-white font-semibold"
+                  disabled={friendLoading}
+                  onClick={async () => {
+                    setFriendLoading(true);
+                    try {
+                      if (onAcceptFriend) {
+                        await onAcceptFriend(member.id);
+                      } else {
+                        await apiFetch("/api/friends/accept", {
+                          method: "POST",
+                          body: JSON.stringify({ requesterId: member.id }),
+                        });
+                      }
+                      setCurrentFriendStatus("friend");
+                    } catch (err) {
+                      console.error("Failed to accept friend request:", err);
+                    } finally {
+                      setFriendLoading(false);
+                    }
+                  }}
+                  title="Accept friend request"
+                >
+                  <UserCheck size={14} /> {friendLoading ? "Accepting…" : "Accept Request"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 font-semibold"
+                  disabled={friendLoading}
+                  onClick={async () => {
+                    setFriendLoading(true);
+                    try {
+                      if (onAddFriend) {
+                        await onAddFriend(member.id, member.username);
+                      } else {
+                        await apiFetch("/api/friends", {
+                          method: "POST",
+                          body: JSON.stringify({ userId: member.id, username: member.username }),
+                        });
+                      }
+                      setCurrentFriendStatus("outgoing");
+                    } catch (err) {
+                      console.error("Failed to send friend request:", err);
+                    } finally {
+                      setFriendLoading(false);
+                    }
+                  }}
+                  title="Add as friend"
+                >
+                  <UserPlus size={14} /> {friendLoading ? "Sending…" : "Add Friend"}
+                </button>
+              )}
+            </>
+          )}
+
           {!isSelf && onDirectMessage && !isBlocked && (
             <button
               type="button"
-              className="discord-btn primary-indigo flex items-center gap-2 text-xs justify-center flex-1"
+              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1"
               onClick={() => {
                 onDirectMessage(member.id);
                 onClose();

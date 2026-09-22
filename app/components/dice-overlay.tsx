@@ -78,7 +78,6 @@ export function DiceOverlay({
       if (!host) return;
       host.innerHTML = "";
 
-      // @ts-expect-error - dynamic module
       const mod = (await import("@3d-dice/dice-box-threejs")) as { default: any };
       if (disposed) return;
       const DiceBox = (mod as { default: any }).default;
