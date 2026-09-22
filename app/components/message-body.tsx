@@ -3,6 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { Copy, Check } from "lucide-react";
 import { highlight } from "../lib/highlight";
+import { LinkPreviewCard } from "./link-preview";
+
+/** At most this many preview cards under one message. */
+const MAX_PREVIEWS = 3;
 
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
 
@@ -30,6 +34,8 @@ interface RenderOptions {
   onImage?: (url: string) => void;
   /** Custom emoji by name, so `:name:` can render as the image. */
   emojis?: Record<string, string>;
+  /** Collects links that should get a preview card (absent: don't collect). */
+  links?: string[];
 }
 
 /** Hidden until clicked, like Discord's ||spoiler||. */
@@ -77,6 +83,11 @@ function renderInline(
         images.push(token);
         continue;
       }
+      // <https://…> suppresses the preview, like Discord.
+      const suppressed = text[index - 1] === "<" && text[index + token.length] === ">";
+      if (!suppressed && options.links && !options.links.includes(token)) {
+        options.links.push(token);
+      }
       parts.push(
         <a key={key} href={token} target="_blank" rel="noreferrer">
           {token}
@@ -106,7 +117,7 @@ function renderInline(
     } else if (match[4]) {
       parts.push(
         <Spoiler key={key}>
-          {renderInline(token.slice(2, -2), options, images, `${key}s`)}
+          {renderInline(token.slice(2, -2), { ...options, links: undefined }, images, `${key}s`)}
         </Spoiler>,
       );
     } else if (match[5]) {
@@ -213,6 +224,7 @@ export function MessageBody({
   onMention,
   onImage,
   emojis,
+  linkPreviews = false,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
@@ -223,8 +235,17 @@ export function MessageBody({
   onImage?: (url: string) => void;
   /** Custom emoji by name for `:name:`. */
   emojis?: Record<string, string>;
+  /** Show embed cards for links in the text. */
+  linkPreviews?: boolean;
 }) {
-  const options: RenderOptions = { selfHandle, onMention, onImage, emojis };
+  const links: string[] = [];
+  const options: RenderOptions = {
+    selfHandle,
+    onMention,
+    onImage,
+    emojis,
+    links: linkPreviews ? links : undefined,
+  };
   const trimmed = text.trim();
 
   // A message that is nothing but an image link renders as just the image.
@@ -317,6 +338,9 @@ export function MessageBody({
           alt=""
           onClick={() => onImage?.(url)}
         />
+      ))}
+      {links.slice(0, MAX_PREVIEWS).map((url) => (
+        <LinkPreviewCard key={url} url={url} />
       ))}
     </>
   );

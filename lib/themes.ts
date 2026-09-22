@@ -694,6 +694,270 @@ export const PROFILE_CSS_PRESETS = [
   text-shadow: 0 0 10px rgba(244, 114, 182, 0.5);
 }`,
   },
+  {
+    name: "Matrix HUD",
+    desc: "Matrix green terminal with CRT scanlines, digital stream banner, targeting reticle, and cyber telemetry",
+    css: `@keyframes matrixDigitalRain {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 0 400px, 0 200px; }
+}
+@keyframes matrixGlowPulse {
+  0%, 100% { box-shadow: 0 0 25px rgba(0, 255, 102, 0.4), inset 0 0 15px rgba(0, 255, 102, 0.15); }
+  50% { box-shadow: 0 0 40px rgba(0, 255, 102, 0.65), inset 0 0 25px rgba(0, 255, 102, 0.25); }
+}
+@keyframes cyberGlitchText {
+  0%, 100% { text-shadow: 0 0 8px #00ff66, 0 0 16px rgba(0,255,102,0.6); transform: none; }
+  92% { text-shadow: -2px 0 #00ffff, 2px 0 #ff0055; transform: skewX(-2deg); }
+  96% { text-shadow: 2px 0 #00ff66, -2px 0 #00ffff; transform: skewX(2deg); }
+}
+@keyframes targetingSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes radarPing {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+.profile-card {
+  position: relative !important;
+  background: #020b04 radial-gradient(circle at 50% 10%, #001f0a 0%, #010803 80%) !important;
+  border: 1.5px solid #00ff66 !important;
+  border-radius: 6px !important;
+  font-family: 'Courier New', Courier, ui-monospace, monospace !important;
+  color: #00ff66 !important;
+  animation: matrixGlowPulse 4s ease-in-out infinite !important;
+  overflow: hidden !important;
+}
+
+.profile-card::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background: repeating-linear-gradient(0deg, rgba(0, 20, 5, 0.25) 0px, rgba(0, 20, 5, 0.25) 1px, transparent 1px, transparent 3px) !important;
+  pointer-events: none !important;
+  z-index: 20 !important;
+}
+
+.profile-card::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 3px !important;
+  border: 1px dashed rgba(0, 255, 102, 0.25) !important;
+  border-radius: 4px !important;
+  pointer-events: none !important;
+  z-index: 20 !important;
+}
+
+.profile-banner,
+.profile-card-banner {
+  position: relative !important;
+  height: 120px !important;
+  background: linear-gradient(180deg, rgba(0, 25, 8, 0.9) 0%, #020d05 100%),
+              repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(0, 255, 102, 0.15) 20px) !important;
+  background-size: 100% 100%, 100% 200px !important;
+  animation: matrixDigitalRain 12s linear infinite !important;
+  border-bottom: 2px solid #00ff66 !important;
+  box-shadow: 0 4px 15px rgba(0, 255, 102, 0.3) !important;
+}
+
+.profile-banner::before,
+.profile-card-banner::before {
+  content: "[SYS_TERMINAL // NODE_0x7F]" !important;
+  position: absolute !important;
+  top: 6px !important;
+  left: 10px !important;
+  font-size: 9px !important;
+  letter-spacing: 1.5px !important;
+  color: #00ff66 !important;
+  background: rgba(0, 0, 0, 0.7) !important;
+  padding: 2px 6px !important;
+  border: 1px solid rgba(0, 255, 102, 0.4) !important;
+  border-radius: 3px !important;
+  z-index: 5 !important;
+}
+
+.profile-card-avatar-wrap {
+  position: relative !important;
+  width: 86px !important;
+  height: 86px !important;
+}
+
+.profile-card-avatar-wrap::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: -6px !important;
+  border: 2px dashed #00ff66 !important;
+  border-radius: 50% !important;
+  animation: targetingSpin 10s linear infinite !important;
+  z-index: 1 !important;
+  box-shadow: 0 0 12px rgba(0, 255, 102, 0.5) !important;
+}
+
+.profile-card-avatar-wrap .avatar,
+.profile-card-avatar-wrap .profile-card-avatar {
+  border: 2px solid #00ff66 !important;
+  box-shadow: 0 0 18px rgba(0, 255, 102, 0.6) !important;
+}
+
+.profile-presence-dot {
+  background: #00ff66 !important;
+  box-shadow: 0 0 10px #00ff66, 0 0 20px #00ff66 !important;
+  border: 2px solid #020b04 !important;
+}
+
+.profile-status-bubble {
+  background: rgba(0, 20, 6, 0.95) !important;
+  border: 1.5px solid #00ff66 !important;
+  border-radius: 4px !important;
+  color: #00ff66 !important;
+  box-shadow: 0 0 15px rgba(0, 255, 102, 0.35) !important;
+  font-family: 'Courier New', Courier, monospace !important;
+  font-size: 11px !important;
+}
+
+.profile-status-bubble::before {
+  content: "[COMMS] > " !important;
+  color: #34d399 !important;
+  font-weight: bold !important;
+}
+
+.profile-status-bubble-tail {
+  border-right-color: #00ff66 !important;
+  border-top-color: #00ff66 !important;
+}
+
+.profile-display-name {
+  color: #00ff66 !important;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.8px !important;
+  text-shadow: 0 0 10px #00ff66, 0 0 20px rgba(0, 255, 102, 0.6) !important;
+  animation: cyberGlitchText 5s infinite !important;
+}
+
+.profile-username {
+  color: #10b981 !important;
+  font-size: 12px !important;
+}
+
+.profile-username::before {
+  content: "usr@" !important;
+  color: #059669 !important;
+}
+
+.profile-tagline {
+  color: #34d399 !important;
+  font-family: 'Courier New', Courier, monospace !important;
+  font-size: 11px !important;
+  border-left: 2px solid #00ff66 !important;
+  padding-left: 6px !important;
+  margin-top: 4px !important;
+}
+
+.profile-tagline::before {
+  content: "// ROLE: " !important;
+  color: #059669 !important;
+  font-weight: bold !important;
+}
+
+.profile-pronouns-tag {
+  color: #6ee7b7 !important;
+  font-size: 11px !important;
+  background: rgba(0, 255, 102, 0.1) !important;
+  border: 1px solid rgba(0, 255, 102, 0.3) !important;
+  padding: 1px 6px !important;
+  border-radius: 3px !important;
+}
+
+.profile-badges-shelf {
+  background: rgba(0, 20, 6, 0.7) !important;
+  border: 1px solid rgba(0, 255, 102, 0.25) !important;
+  border-radius: 4px !important;
+  padding: 6px !important;
+}
+
+.profile-badge-item,
+.badge-owner {
+  background: rgba(0, 255, 102, 0.12) !important;
+  border: 1px solid #00ff66 !important;
+  color: #00ff66 !important;
+  border-radius: 3px !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  box-shadow: 0 0 8px rgba(0, 255, 102, 0.3) !important;
+}
+
+.profile-social-links {
+  gap: 6px !important;
+}
+
+.profile-social-link-pill {
+  background: rgba(0, 20, 6, 0.8) !important;
+  border: 1px solid #00ff66 !important;
+  color: #00ff66 !important;
+  border-radius: 3px !important;
+  font-size: 10px !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+  transition: all 0.2s ease !important;
+}
+
+.profile-social-link-pill:hover {
+  background: #00ff66 !important;
+  color: #020b04 !important;
+  box-shadow: 0 0 14px #00ff66 !important;
+  transform: translateY(-2px) !important;
+}
+
+.profile-social-link-pill svg {
+  color: inherit !important;
+}
+
+.profile-bio {
+  background: rgba(0, 20, 6, 0.85) !important;
+  border: 1px solid rgba(0, 255, 102, 0.35) !important;
+  border-radius: 4px !important;
+  padding: 10px !important;
+  color: #a7f3d0 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.profile-bio::before {
+  content: "> LOG // " !important;
+  color: #00ff66 !important;
+  font-weight: bold !important;
+}
+
+.profile-card [class*="bg-green-950"] {
+  background: rgba(0, 25, 8, 0.9) !important;
+  border: 1.5px solid #00ff66 !important;
+  box-shadow: 0 0 16px rgba(0, 255, 102, 0.3) !important;
+  border-radius: 4px !important;
+}
+
+.profile-card-actions button,
+.profile-action-tile {
+  background: rgba(0, 20, 6, 0.85) !important;
+  border: 1px solid #00ff66 !important;
+  color: #00ff66 !important;
+  border-radius: 4px !important;
+  transition: all 0.2s ease !important;
+}
+
+.profile-card-actions button:hover,
+.profile-action-tile:hover {
+  background: rgba(0, 255, 102, 0.2) !important;
+  box-shadow: 0 0 12px rgba(0, 255, 102, 0.5) !important;
+}
+
+.profile-card-divider {
+  background: linear-gradient(90deg, transparent, #00ff66, transparent) !important;
+  height: 1px !important;
+}`,
+  },
 ];
 
 /**

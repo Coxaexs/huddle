@@ -40,19 +40,24 @@ export async function POST(request: Request) {
   // /hangout/ (see /etc/nginx/snippets/huddle.conf) — nginx rejects a body
   // over its limit with its own 413 before the request reaches us, which
   // looks like an unexplained failure in the UI.
+  // Voice messages run up to five minutes, so they get more room than a
+  // soundboard clip.
+  const isVoiceMessage = isAudio && form.get("purpose") === "voice";
   const maximum = isPdf
     ? 20 * 1024 * 1024
     : isClip
       ? 40 * 1024 * 1024
-      : isAudio
-        ? 3 * 1024 * 1024
-        : 8 * 1024 * 1024;
+      : isVoiceMessage
+        ? 8 * 1024 * 1024
+        : isAudio
+          ? 3 * 1024 * 1024
+          : 8 * 1024 * 1024;
   if (upload.size > maximum) {
     const megabytes = Math.round(maximum / 1024 / 1024);
     return Response.json(
       {
         error: `${
-          isPdf ? "PDFs" : isClip ? "Clips" : isAudio ? "Sound clips" : "Images"
+          isPdf ? "PDFs" : isClip ? "Clips" : isVoiceMessage ? "Voice messages" : isAudio ? "Sound clips" : "Images"
         } must be smaller than ${megabytes} MB.`,
       },
       { status: 413 },

@@ -33,6 +33,7 @@ import {
   ExternalLink,
   ChevronDown,
   Eraser,
+  Undo2,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 
@@ -206,11 +207,15 @@ function ActivityCanvas({
   editable,
   onStroke,
   onClear,
+  onUndo,
+  canUndo,
 }: {
   strokes: ActivityStroke[];
   editable: boolean;
   onStroke: (stroke: ActivityStroke) => void;
   onClear: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }) {
   const surfaceRef = useRef<SVGSVGElement>(null);
   const activeRef = useRef<number[]>([]);
@@ -221,6 +226,23 @@ function ActivityCanvas({
   const maskPrefix = `erase-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   // The eraser is chunkier than the pen at the same slider position.
   const strokeWidth = erasing ? Math.min(60, width * 4) : width;
+
+  // Ctrl/Cmd+Z undoes your last stroke, unless you're typing somewhere.
+  const undoRef = useRef(onUndo);
+  undoRef.current = onUndo;
+  useEffect(() => {
+    if (!editable || !canUndo) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "z") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      event.preventDefault();
+      undoRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editable, canUndo]);
 
   function point(event: PointerEvent<SVGSVGElement>) {
     const svg = surfaceRef.current;
@@ -317,6 +339,16 @@ function ActivityCanvas({
           onChange={(event) => setWidth(Number(event.target.value))}
           aria-label="Brush size"
         />
+        <button
+          type="button"
+          className="activity-tool-text activity-undo"
+          disabled={!editable || !canUndo}
+          onClick={onUndo}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+        >
+          <Undo2 size={14} />
+        </button>
         <button
           type="button"
           className="activity-tool-text"
@@ -718,6 +750,40 @@ export function RoomActivities({
     if (activity) onOpen(true);
   }, [activity?.kind]);
 
+  /** Canvas callbacks shared by the whiteboard and Draw & Guess. */
+  function drawProps(current: RoomActivity) {
+    const strokes = asStrokes(current.state.strokes);
+    let lastMine = -1;
+    for (let index = strokes.length - 1; index >= 0; index -= 1) {
+      if (strokes[index].by === userId) {
+        lastMine = index;
+        break;
+      }
+    }
+    const replaceStrokes = (next: ActivityStroke[]) =>
+      onActivity({
+        ...current,
+        state: { ...current.state, strokes: next },
+        updatedAt: new Date().toISOString(),
+      });
+    return {
+      strokes,
+      canUndo: lastMine >= 0,
+      onStroke: (stroke: ActivityStroke) => {
+        const mine = { ...stroke, by: userId };
+        replaceStrokes([...strokes, mine].slice(-400));
+        void action({ action: "stroke", stroke: mine });
+      },
+      onUndo: () => {
+        if (lastMine < 0) return;
+        const target = strokes[lastMine];
+        replaceStrokes(strokes.filter((_, index) => index !== lastMine));
+        void action({ action: "undo", strokeId: target.id });
+      },
+      onClear: () => void action({ action: "clear" }),
+    };
+  }
+
   async function action(body: Record<string, unknown>) {
     try {
       setBusy(true);
@@ -865,20 +931,7 @@ export function RoomActivities({
           />
         </div>
       ) : activity.kind === "whiteboard" ? (
-        <ActivityCanvas
-          strokes={asStrokes(activity.state.strokes)}
-          editable
-          onStroke={(stroke) => {
-            const strokes = [...asStrokes(activity.state.strokes), stroke].slice(-400);
-            onActivity({
-              ...activity,
-              state: { strokes },
-              updatedAt: new Date().toISOString(),
-            });
-            void action({ action: "stroke", stroke });
-          }}
-          onClear={() => void action({ action: "clear" })}
-        />
+        <ActivityCanvas editable {...drawProps(activity)} />
       ) : activity.kind === "tierlist" ? (
         <TierList activity={activity} update={optimistic} />
       ) : activity.kind === "timer" ? (
@@ -906,18 +959,8 @@ export function RoomActivities({
           </div>
           <div className="draw-guess-body">
             <ActivityCanvas
-              strokes={asStrokes(activity.state.strokes)}
               editable={activity.state.drawerId === userId}
-              onStroke={(stroke) => {
-                const strokes = [...asStrokes(activity.state.strokes), stroke].slice(-400);
-                onActivity({
-                  ...activity,
-                  state: { ...activity.state, strokes },
-                  updatedAt: new Date().toISOString(),
-                });
-                void action({ action: "stroke", stroke });
-              }}
-              onClear={() => void action({ action: "clear" })}
+              {...drawProps(activity)}
             />
             <aside>
               <div className="guess-feed">

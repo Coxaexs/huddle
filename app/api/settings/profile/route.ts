@@ -39,6 +39,8 @@ export async function PATCH(request: Request) {
     avatarFrame?: string;
     customCss?: string | null;
     customTheme?: string | null;
+    quickReactions?: unknown;
+    hiddenEmojis?: unknown;
   };
 
   const displayName =
@@ -142,9 +144,37 @@ export async function PATCH(request: Request) {
       ? (body.avatarFrame ? body.avatarFrame.trim().slice(0, 30) : "none")
       : (user as { avatar_frame?: string | null }).avatar_frame || "none";
 
+  let quickReactions: string = (user as { quick_reactions?: string | null }).quick_reactions || "[]";
+  if (body.quickReactions !== undefined) {
+    if (Array.isArray(body.quickReactions)) {
+      const sanitized = body.quickReactions
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().slice(0, 48))
+        .filter(Boolean)
+        .slice(0, 20);
+      quickReactions = JSON.stringify(sanitized);
+    } else {
+      quickReactions = "[]";
+    }
+  }
+
+  let hiddenEmojis: string = (user as { hidden_emojis?: string | null }).hidden_emojis || "[]";
+  if (body.hiddenEmojis !== undefined) {
+    if (Array.isArray(body.hiddenEmojis)) {
+      const sanitized = body.hiddenEmojis
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().slice(0, 48))
+        .filter(Boolean)
+        .slice(0, 50);
+      hiddenEmojis = JSON.stringify(sanitized);
+    } else {
+      hiddenEmojis = "[]";
+    }
+  }
+
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, social_links = ?, avatar_frame = ?, custom_css = ?, custom_theme = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, social_links = ?, avatar_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
     )
     .bind(
       displayName,
@@ -162,6 +192,8 @@ export async function PATCH(request: Request) {
       avatarFrame,
       customCss,
       customTheme,
+      quickReactions,
+      hiddenEmojis,
       user.id,
     )
     .run();
@@ -187,6 +219,8 @@ export async function PATCH(request: Request) {
       color,
       custom_css: customCss,
       custom_theme: customTheme,
+      quick_reactions: quickReactions,
+      hidden_emojis: hiddenEmojis,
     }),
   });
 }

@@ -128,6 +128,19 @@ function cleanStroke(value: unknown, userId: string): ActivityStroke | null {
   };
 }
 
+/** Drops one of the caller's own strokes by id; anyone else's stay put. */
+function withoutOwnStroke(
+  strokes: unknown[],
+  strokeId: unknown,
+  userId: string,
+): unknown[] {
+  const id = String(strokeId || "");
+  return strokes.filter((stroke) => {
+    const entry = stroke as Partial<ActivityStroke>;
+    return !(entry.id === id && entry.by === userId);
+  });
+}
+
 function cleanTiers(value: unknown): TierRow[] {
   if (!Array.isArray(value)) return DEFAULT_TIERS;
   return value.slice(0, 10).map((tier, index) => {
@@ -312,6 +325,7 @@ export async function POST(request: Request) {
     kind?: unknown;
     state?: unknown;
     stroke?: unknown;
+    strokeId?: string;
     guess?: string;
   };
   const channelId = String(body.channelId || "").slice(0, 64);
@@ -375,6 +389,8 @@ export async function POST(request: Request) {
       const stroke = cleanStroke(body.stroke, user.id);
       if (!stroke) return Response.json({ error: "Empty stroke." }, { status: 400 });
       state.strokes = [...strokes, stroke].slice(-400);
+    } else if (body.action === "undo") {
+      state.strokes = withoutOwnStroke(strokes, body.strokeId, user.id);
     } else if (body.action === "clear") {
       if (state.drawerId !== user.id) {
         return Response.json({ error: "Only the drawer can clear." }, { status: 403 });
@@ -423,6 +439,9 @@ export async function POST(request: Request) {
     if (!stroke) return Response.json({ error: "Empty stroke." }, { status: 400 });
     const strokes = Array.isArray(state.strokes) ? state.strokes : [];
     state.strokes = [...strokes, stroke].slice(-400);
+  } else if (body.action === "undo" && existing.kind === "whiteboard") {
+    const strokes = Array.isArray(state.strokes) ? state.strokes : [];
+    state.strokes = withoutOwnStroke(strokes, body.strokeId, user.id);
   } else if (body.action === "clear" && existing.kind === "whiteboard") {
     state.strokes = [];
   } else {
