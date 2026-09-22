@@ -64,6 +64,7 @@ import {
   AudioLines,
   Monitor,
   Maximize2,
+  Forward,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -94,7 +95,7 @@ import { BattlemapBoard } from "./components/battlemap";
 import { useBattlemap } from "./hooks/use-battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
-import { ToastContainer } from "./components/toast";
+import { ToastContainer, showToast } from "./components/toast";
 import { PollCard } from "./components/poll-card";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
@@ -149,6 +150,8 @@ import { UserProfileCard } from "./components/user-profile-card";
 import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
+import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
+import { ForwardedMessageCard, type ForwardedFromData } from "./components/forwarded-message-card";
 
 interface Message {
   id: string | number;
@@ -236,6 +239,7 @@ interface Message {
     totalTracks?: number;
     history?: any;
     query?: string;
+    forwardedFrom?: ForwardedFromData;
   };
 }
 
@@ -249,8 +253,8 @@ interface DmSummary {
 /** The rail slot for direct messages, standing in for a server id. */
 const DM_HOME = "@me";
 
-/** The one-tap reactions shown on message hover. */
-const QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
+/** Default one-tap reactions shown on message hover. */
+const DEFAULT_QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
 
 /** Options for the one-tap "quick vote" on a message. */
 const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
@@ -487,6 +491,9 @@ export function ChatShell() {
   const [pinsOpen, setPinsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
+  const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
+  const [outgoingFriendUserIds, setOutgoingFriendUserIds] = useState<Set<string>>(new Set());
+  const [incomingFriendUserIds, setIncomingFriendUserIds] = useState<Set<string>>(new Set());
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [expandedBlockedMessages, setExpandedBlockedMessages] = useState<Set<string>>(new Set());
 
@@ -533,12 +540,80 @@ export function ChatShell() {
   );
   /** Which message's quick-vote chips are currently open. */
   const [quickVoteId, setQuickVoteId] = useState<string | number | null>(null);
+
+  /** User's custom quick reactions in message actions bar. */
+  const [quickReactions, setQuickReactions] = useState<string[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_QUICK_REACTIONS;
+    try {
+      const stored = window.localStorage.getItem("huddle_quick_reactions_v2");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_QUICK_REACTIONS;
+  });
+
+  const [hiddenServerEmojiIds, setHiddenServerEmojiIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = window.localStorage.getItem("huddle_hidden_server_emojis_v2");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const removeQuickReaction = (emojiToRemove: string) => {
+    setQuickReactions((prev) => {
+      const next = prev.filter((e) => e !== emojiToRemove);
+      try {
+        window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast(`Removed ${emojiToRemove} from quick reactions`);
+  };
+
+  const hideServerEmoji = (id: string, name: string) => {
+    setHiddenServerEmojiIds((prev) => {
+      const next = [...prev, id];
+      try {
+        window.localStorage.setItem("huddle_hidden_server_emojis_v2", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast(`Removed :${name}: from quick reactions`);
+  };
+
+  const addQuickReaction = (emojiToAdd: string) => {
+    setQuickReactions((prev) => {
+      if (prev.includes(emojiToAdd)) {
+        showToast(`${emojiToAdd} is already in quick reactions`);
+        return prev;
+      }
+      const next = [...prev, emojiToAdd];
+      try {
+        window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast(`Added ${emojiToAdd} to quick reactions`);
+  };
+
   /** Which message currently has the emoji reaction picker popover open with screen coordinates. */
   const [reactionPicker, setReactionPicker] = useState<{
     messageId: string | number;
     top: number;
     right: number;
+    mode?: "react" | "addToQuickReactions";
   } | null>(null);
+
+  /** Forward message target modal state. */
+  const [forwardTarget, setForwardTarget] = useState<ForwardMessageTarget | null>(null);
+
   /** Which reaction pill's "who reacted" popover is open, with screen coordinates. */
   const [reactionViewer, setReactionViewer] = useState<{
     messageId: string | number;
@@ -602,7 +677,7 @@ export function ChatShell() {
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         try {
           navigator.vibrate(40);
-        } catch {}
+        } catch { }
       }
     }, 450);
   };
@@ -636,6 +711,7 @@ export function ChatShell() {
   const handleOpenReactionPicker = (
     e: React.MouseEvent,
     messageId: string | number,
+    mode: "react" | "addToQuickReactions" = "react",
   ) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
@@ -648,9 +724,50 @@ export function ChatShell() {
     }
     const right = Math.max(margin, window.innerWidth - rect.left + 8);
     setReactionPicker((current) =>
-      current?.messageId === messageId ? null : { messageId, top, right },
+      current?.messageId === messageId && current?.mode === mode
+        ? null
+        : { messageId, top, right, mode },
     );
   };
+
+  async function handleForwardMessage(
+    destinationChannelId: string,
+    comment: string,
+    destinationName: string,
+  ) {
+    if (!forwardTarget) return;
+    try {
+      const res = await apiFetch<Message>("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: destinationChannelId,
+          content: comment || "",
+          payload: {
+            forwardedFrom: {
+              id: String(forwardTarget.id),
+              author: forwardTarget.author,
+              avatar: forwardTarget.avatar,
+              avatarUrl: forwardTarget.avatarUrl,
+              color: forwardTarget.color,
+              text: forwardTarget.text,
+              createdAt: forwardTarget.createdAt,
+              image: forwardTarget.image,
+              images: forwardTarget.images,
+              file: forwardTarget.file,
+              channelName: forwardTarget.channelName,
+              serverName: forwardTarget.serverName,
+            },
+          },
+        }),
+      });
+      showToast(`Forwarded message to ${destinationName}`, "success");
+      if (destinationChannelId === activeChannelId && res) {
+        setMessages((prev) => [...prev, res]);
+      }
+    } catch {
+      showToast("Failed to forward message", "warning");
+    }
+  }
 
   const handleOpenReactionViewer = (
     e: React.MouseEvent,
@@ -970,13 +1087,12 @@ export function ChatShell() {
   }, []);
 
   const loadMembers = useCallback(async () => {
-    // Scope the roster to the server you are looking at; DMs (no server) still
-    // see everyone so mentions and profiles keep resolving.
     const serverId = activeServerRef.current;
-    const query =
-      serverId && serverId !== DM_HOME
-        ? `?serverId=${encodeURIComponent(serverId)}`
-        : "";
+    if (!serverId || serverId === DM_HOME) {
+      setMembers([]);
+      return;
+    }
+    const query = `?serverId=${encodeURIComponent(serverId)}`;
     const data = await apiFetch<{ members: Member[] }>(`/api/members${query}`);
     // Guard against stale responses: if the user switched servers while this
     // fetch was in-flight, discard the result so we don't flash the wrong roster.
@@ -993,15 +1109,78 @@ export function ChatShell() {
   const loadFriendsCount = useCallback(async () => {
     try {
       const data = await apiFetch<{
-        incoming: unknown[];
+        friends?: Array<{ id: string }>;
+        incoming: Array<{ id: string }>;
+        outgoing?: Array<{ id: string }>;
         blocked: Array<{ id: string }>;
       }>("/api/friends");
       setPendingFriendCount(data.incoming?.length || 0);
+      setFriendUserIds(new Set((data.friends || []).map((b) => b.id)));
+      setIncomingFriendUserIds(new Set((data.incoming || []).map((b) => b.id)));
+      setOutgoingFriendUserIds(new Set((data.outgoing || []).map((b) => b.id)));
       setBlockedUserIds(new Set((data.blocked || []).map((b) => b.id)));
     } catch {
       // Ignore
     }
   }, []);
+
+  const handleAddFriend = useCallback(
+    async (targetUserId: string, targetUsername?: string) => {
+      try {
+        await apiFetch("/api/friends", {
+          method: "POST",
+          body: JSON.stringify(
+            targetUsername ? { username: targetUsername } : { userId: targetUserId },
+          ),
+        });
+        setOutgoingFriendUserIds((prev) => new Set(prev).add(targetUserId));
+        void loadFriendsCount();
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : "Failed to send friend request.");
+      }
+    },
+    [loadFriendsCount],
+  );
+
+  const handleRemoveFriend = useCallback(
+    async (targetUserId: string) => {
+      try {
+        await apiFetch(`/api/friends?id=${encodeURIComponent(targetUserId)}`, {
+          method: "DELETE",
+        });
+        setFriendUserIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetUserId);
+          return next;
+        });
+        void loadFriendsCount();
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : "Failed to remove friend.");
+      }
+    },
+    [loadFriendsCount],
+  );
+
+  const handleAcceptFriend = useCallback(
+    async (targetUserId: string) => {
+      try {
+        await apiFetch("/api/friends/accept", {
+          method: "POST",
+          body: JSON.stringify({ requesterId: targetUserId }),
+        });
+        setIncomingFriendUserIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetUserId);
+          return next;
+        });
+        setFriendUserIds((prev) => new Set(prev).add(targetUserId));
+        void loadFriendsCount();
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : "Failed to accept friend request.");
+      }
+    },
+    [loadFriendsCount],
+  );
 
   const handleBlockUser = useCallback(
     async (targetId: string) => {
@@ -1103,7 +1282,6 @@ export function ChatShell() {
   useEffect(() => {
     if (!user) return;
     void loadServers().catch(() => undefined);
-    void loadMembers().catch(() => undefined);
     void loadDms().catch(() => undefined);
     void loadFriendsCount().catch(() => undefined);
     void loadPrefs().catch(() => undefined);
@@ -1113,7 +1291,6 @@ export function ChatShell() {
   }, [
     user,
     loadServers,
-    loadMembers,
     loadDms,
     loadFriendsCount,
     loadPrefs,
@@ -1242,7 +1419,11 @@ export function ChatShell() {
 
   // Switching servers re-scopes the member roster to that server's members.
   useEffect(() => {
-    if (user) void loadMembers().catch(() => undefined);
+    if (user && activeServerId && activeServerId !== DM_HOME) {
+      void loadMembers().catch(() => undefined);
+    } else if (activeServerId === DM_HOME) {
+      setMembers([]);
+    }
   }, [user, activeServerId, loadMembers]);
 
   useEffect(() => {
@@ -1272,8 +1453,34 @@ export function ChatShell() {
   const membersById = useMemo(() => {
     const map = new Map<string, Member>();
     for (const member of members) map.set(member.id, member);
+    if (user) {
+      map.set(user.id, {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl,
+        color: user.color,
+        isAdmin: user.isAdmin,
+        canInvite: user.canInvite,
+        lastSeenAt: (user as any).lastSeenAt || new Date().toISOString(),
+      });
+    }
+    for (const dm of dms) {
+      if (dm.user && !map.has(dm.user.id)) {
+        map.set(dm.user.id, {
+          id: dm.user.id,
+          username: dm.user.username,
+          displayName: dm.user.displayName,
+          avatar: dm.user.avatar,
+          avatarUrl: dm.user.avatarUrl,
+          color: dm.user.color,
+          lastSeenAt: (dm.user as any).lastSeenAt || new Date().toISOString(),
+        });
+      }
+    }
     return map;
-  }, [members]);
+  }, [members, user, dms]);
 
   /**
    * The signed-in member's effective permission bitmask on the active server,
@@ -1324,7 +1531,11 @@ export function ChatShell() {
   }
   function openProfileByHandle(handle: string) {
     const lower = handle.toLowerCase();
-    const member = members.find((m) => m.username.toLowerCase() === lower);
+    const member =
+      members.find((m) => m.username.toLowerCase() === lower) ||
+      Array.from(membersById.values()).find(
+        (m) => m.username.toLowerCase() === lower,
+      );
     if (member) openProfile(member);
   }
 
@@ -1468,8 +1679,8 @@ export function ChatShell() {
       if (incoming.threadId) {
         setThreadMessages((current) =>
           threadRootRef.current &&
-          String(threadRootRef.current.id) === incoming.threadId &&
-          !current.some((m) => m.id === incoming.id)
+            String(threadRootRef.current.id) === incoming.threadId &&
+            !current.some((m) => m.id === incoming.id)
             ? [...current, incoming]
             : current,
         );
@@ -1491,16 +1702,16 @@ export function ChatShell() {
     [loadDms, user],
   );
 
-  const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => {});
+  const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => { });
   const forcedMuteRef = useRef<(userId: string, muted: boolean) => void>(
-    () => {},
+    () => { },
   );
   /** Current connected voice channel, for the soundboard event handler. */
   const voiceChannelRef = useRef<string | null>(null);
   /** Tears this tab out of voice when the account joins from another one. */
-  const voiceEvictedRef = useRef<() => void>(() => {});
+  const voiceEvictedRef = useRef<() => void>(() => { });
   /** Joins another voice channel when a moderator moves this account. */
-  const voiceMoveRef = useRef<(channelId: string) => void>(() => {});
+  const voiceMoveRef = useRef<(channelId: string) => void>(() => { });
   /** DM call signaling listener ref */
   const onDmCallRef = useRef<((payload: any) => void) | null>(null);
   /** The open thread, readable from socket handlers without re-subscribing. */
@@ -1567,13 +1778,13 @@ export function ChatShell() {
       const reactorInfo =
         reactor || (user && userId === user.id)
           ? {
-              id: reactor?.id || user!.id,
-              username: reactor?.username || user!.username,
-              displayName: reactor?.displayName || user!.displayName,
-              avatar: reactor?.avatar || user!.avatar,
-              avatarUrl: reactor?.avatarUrl ?? user!.avatarUrl,
-              color: reactor?.color || user!.color,
-            }
+            id: reactor?.id || user!.id,
+            username: reactor?.username || user!.username,
+            displayName: reactor?.displayName || user!.displayName,
+            avatar: reactor?.avatar || user!.avatar,
+            avatarUrl: reactor?.avatarUrl ?? user!.avatarUrl,
+            color: reactor?.color || user!.color,
+          }
           : undefined;
       setMessages((current) =>
         current.map((message) =>
@@ -2286,9 +2497,9 @@ export function ChatShell() {
       }
       const action =
         subcommand === "start" ||
-        subcommand === "pause" ||
-        subcommand === "resume" ||
-        subcommand === "stop"
+          subcommand === "pause" ||
+          subcommand === "resume" ||
+          subcommand === "stop"
           ? subcommand
           : subcommand === "marker"
             ? "marker"
@@ -2643,28 +2854,28 @@ export function ChatShell() {
     const id = String(messageId);
     const me = user
       ? {
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          avatar: user.avatar,
-          avatarUrl: user.avatarUrl,
-          color: user.color,
-        }
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        avatarUrl: user.avatarUrl,
+        color: user.color,
+      }
       : undefined;
     // Optimistic: flip locally, then persist. The socket echo reconciles.
     setMessages((current) =>
       current.map((message) =>
         message.id === messageId
           ? {
-              ...message,
-              reactions: applyReaction(
-                message.reactions,
-                emoji,
-                true,
-                !message.reactions?.find((r) => r.emoji === emoji)?.mine,
-                me,
-              ),
-            }
+            ...message,
+            reactions: applyReaction(
+              message.reactions,
+              emoji,
+              true,
+              !message.reactions?.find((r) => r.emoji === emoji)?.mine,
+              me,
+            ),
+          }
           : message,
       ),
     );
@@ -3067,12 +3278,37 @@ export function ChatShell() {
     const match = draft.match(/(?:^|\s)@([a-zA-Z0-9._-]*)$/);
     return match ? match[1].toLowerCase() : null;
   }, [draft]);
+  const dmMembers: Member[] = useMemo(() => {
+    if (!inDmHome || !user) return [];
+    const meAsMember: Member = {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      avatar: user.avatar,
+      avatarUrl: user.avatarUrl,
+      color: user.color,
+      lastSeenAt: new Date().toISOString(),
+    };
+    if (!activeDm) return [meAsMember];
+    const otherAsMember: Member = {
+      id: activeDm.user.id,
+      username: activeDm.user.username,
+      displayName: activeDm.user.displayName,
+      avatar: activeDm.user.avatar,
+      avatarUrl: activeDm.user.avatarUrl,
+      color: activeDm.user.color,
+      lastSeenAt: new Date().toISOString(),
+    };
+    return [meAsMember, otherAsMember];
+  }, [inDmHome, activeDm, user]);
+
   const mentionMatches = useMemo<MentionOption[]>(() => {
     if (mentionQuery === null) return [];
     const roleOptions: MentionOption[] = (activeServer?.roles || [])
       .filter((role) => role.name.toLowerCase().startsWith(mentionQuery))
       .map((role) => ({ kind: "role", role }));
-    const memberOptions: MentionOption[] = members
+    const candidateMembers = inDmHome ? dmMembers : members;
+    const memberOptions: MentionOption[] = candidateMembers
       .filter(
         (member) =>
           member.username.toLowerCase().startsWith(mentionQuery) ||
@@ -3081,7 +3317,7 @@ export function ChatShell() {
       .map((member) => ({ kind: "user", member }));
     // Roles first (they're fewer and often what you want), then people.
     return [...roleOptions, ...memberOptions].slice(0, 8);
-  }, [mentionQuery, members, activeServer]);
+  }, [mentionQuery, members, activeServer, inDmHome, dmMembers]);
   const mentionActive = mentionQuery !== null && mentionMatches.length > 0;
 
   useEffect(() => setSlashIndex(0), [draft]);
@@ -3495,28 +3731,6 @@ export function ChatShell() {
     window.setTimeout(() => composerRef.current?.focus(), 0);
   }
 
-  const dmMembers: Member[] = useMemo(() => {
-    if (!inDmHome || !activeDm || !user) return members;
-    const meAsMember: Member = {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      avatar: user.avatar,
-      avatarUrl: user.avatarUrl,
-      color: user.color,
-      lastSeenAt: new Date().toISOString(),
-    };
-    const otherAsMember: Member = {
-      id: activeDm.user.id,
-      username: activeDm.user.username,
-      displayName: activeDm.user.displayName,
-      avatar: activeDm.user.avatar,
-      avatarUrl: activeDm.user.avatarUrl,
-      color: activeDm.user.color,
-      lastSeenAt: new Date().toISOString(),
-    };
-    return [meAsMember, otherAsMember];
-  }, [inDmHome, activeDm, members, user]);
 
   // --------------------------------------------------------------- render
 
@@ -3546,10 +3760,10 @@ export function ChatShell() {
   const filterQ = memberFilterQuery.trim().toLowerCase();
   const displayedMembers = filterQ
     ? rawDisplayedMembers.filter(
-        (m) =>
-          m.username.toLowerCase().includes(filterQ) ||
-          m.displayName.toLowerCase().includes(filterQ),
-      )
+      (m) =>
+        m.username.toLowerCase().includes(filterQ) ||
+        m.displayName.toLowerCase().includes(filterQ),
+    )
     : rawDisplayedMembers;
   const onlineMembers = displayedMembers.filter((member) => hub.online.has(member.id));
   const offlineMembers = displayedMembers.filter((member) => !hub.online.has(member.id));
@@ -3564,20 +3778,20 @@ export function ChatShell() {
   // the connected room's channel across servers or DMs so switching servers keeps it.
   const stageChannel: PublicChannel | null = stageChannelId
     ? voiceChannels.find((channel) => channel.id === stageChannelId) ||
-      servers
-        .flatMap((server) => server.channels)
-        .find((channel) => channel.id === stageChannelId) ||
-      (stageDm
-        ? {
-            id: stageDm.channelId,
-            serverId: "",
-            name: stageDm.user.displayName,
-            kind: "voice" as const,
-            topic: `Direct call with ${stageDm.user.displayName}`,
-            position: 0,
-            categoryId: null,
-          }
-        : null)
+    servers
+      .flatMap((server) => server.channels)
+      .find((channel) => channel.id === stageChannelId) ||
+    (stageDm
+      ? {
+        id: stageDm.channelId,
+        serverId: "",
+        name: stageDm.user.displayName,
+        kind: "voice" as const,
+        topic: `Direct call with ${stageDm.user.displayName}`,
+        position: 0,
+        categoryId: null,
+      }
+      : null)
     : null;
 
   /** Open a voice channel's stage and join it (without ever leaving on re-click). */
@@ -3934,9 +4148,8 @@ export function ChatShell() {
                 );
                 return (
                   <div
-                    className={`voice-member ${
-                      canModerate && !person.bot ? "draggable-member" : ""
-                    } ${isSpeaking ? "is-speaking" : ""}`}
+                    className={`voice-member ${canModerate && !person.bot ? "draggable-member" : ""
+                      } ${isSpeaking ? "is-speaking" : ""}`}
                     key={person.connectionId}
                     draggable={canModerate && !person.bot}
                     onDragStart={(event) => {
@@ -4020,9 +4233,8 @@ export function ChatShell() {
     return (
       <button
         key={channel.id}
-        className={`channel ${activeChannelId === channel.id && !stageChannelId ? "selected" : ""} ${
-          unread[channel.id]?.unread ? "has-unread" : ""
-        }`}
+        className={`channel ${activeChannelId === channel.id && !stageChannelId ? "selected" : ""} ${unread[channel.id]?.unread ? "has-unread" : ""
+          }`}
         {...channelDragProps(channel)}
         title={
           channel.topic
@@ -4099,56 +4311,56 @@ export function ChatShell() {
     { label: "Music settings", onSelect: () => void runCommand("/settings") },
     ...(voice.channelId && currentPlayer?.track
       ? [
-          {
-            label: currentPlayer.paused ? "Resume" : "Pause",
-            onSelect: () =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "toggle" },
-              }),
-          },
-          {
-            label: "Skip",
-            onSelect: () =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "skip" },
-              }),
-          },
-          {
-            label: "Stop playing",
-            danger: true,
-            onSelect: () =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "stop" },
-              }),
-          },
-        ]
+        {
+          label: currentPlayer.paused ? "Resume" : "Pause",
+          onSelect: () =>
+            hub.send({
+              t: "player",
+              channelId: voice.channelId!,
+              action: { name: "toggle" },
+            }),
+        },
+        {
+          label: "Skip",
+          onSelect: () =>
+            hub.send({
+              t: "player",
+              channelId: voice.channelId!,
+              action: { name: "skip" },
+            }),
+        },
+        {
+          label: "Stop playing",
+          danger: true,
+          onSelect: () =>
+            hub.send({
+              t: "player",
+              channelId: voice.channelId!,
+              action: { name: "stop" },
+            }),
+        },
+      ]
       : []),
     ...(user?.isAdmin || canModerate
       ? [
-          {
-            label: "Set room volume…",
-            onSelect: () => prepareCommand("/volume "),
-          },
-        ]
+        {
+          label: "Set room volume…",
+          onSelect: () => prepareCommand("/volume "),
+        },
+      ]
       : []),
     ...(musicDashboardUrl
       ? [
-          {
-            label: "Open dashboard",
-            onSelect: () =>
-              window.open(
-                musicDashboardUrl,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
-        ]
+        {
+          label: "Open dashboard",
+          onSelect: () =>
+            window.open(
+              musicDashboardUrl,
+              "_blank",
+              "noopener,noreferrer",
+            ),
+        },
+      ]
       : []),
   ];
   const dndBotActions: BotMenuAction[] = [
@@ -4157,12 +4369,12 @@ export function ChatShell() {
     { label: "Find a monster…", onSelect: () => prepareCommand("/monster ") },
     ...(dndUrl
       ? [
-          {
-            label: "Open dashboard",
-            onSelect: () =>
-              window.open(dndUrl, "_blank", "noopener,noreferrer"),
-          },
-        ]
+        {
+          label: "Open dashboard",
+          onSelect: () =>
+            window.open(dndUrl, "_blank", "noopener,noreferrer"),
+        },
+      ]
       : []),
   ];
 
@@ -4381,7 +4593,7 @@ export function ChatShell() {
             </button>
           </div>
         )}
-
+        {/* 
         <Avatar
           className="profile-dot"
           avatar={user.avatar}
@@ -4405,7 +4617,7 @@ export function ChatShell() {
                 : PRESENCE.invisible.color,
             }}
           />
-        </Avatar>
+        </Avatar> */}
       </aside>
 
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
@@ -4555,11 +4767,10 @@ export function ChatShell() {
                   setStageChannelId(null);
                   setMobileNav(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
-                  !activeChannelId && !stageChannelId
-                    ? "bg-white/[0.12] text-white"
-                    : "text-[#9d95bc] hover:bg-white/[0.05] hover:text-white"
-                }`}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${!activeChannelId && !stageChannelId
+                  ? "bg-white/[0.12] text-white"
+                  : "text-[#9d95bc] hover:bg-white/[0.05] hover:text-white"
+                  }`}
               >
                 <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[#a78bfa]" : "text-[#7c7599]"} />
                 <span className="flex-1 text-left">Friends</span>
@@ -4577,9 +4788,8 @@ export function ChatShell() {
             {dms.map((dm) => (
               <button
                 key={dm.channelId}
-                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${
-                  unread[dm.channelId]?.unread ? "has-unread" : ""
-                }`}
+                className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
+                  }`}
                 onClick={() => {
                   setActiveChannelId(dm.channelId);
                   setStageChannelId(null);
@@ -4845,1477 +5055,1549 @@ export function ChatShell() {
         ) : (
           <>
             <header className="chat-header">
-          <button
-            className="mobile-menu"
-            aria-label="Open channels"
-            onClick={() => setMobileNav((open) => !open)}
-          >
-            <Menu size={20} />
-          </button>
-          <span className="big-hash">
-            {stageChannel ? <Volume2 size={20} /> : inDmHome ? <AtSign size={20} /> : <Hash size={20} />}
-          </span>
-          <div className="channel-heading">
-            <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
-            <span>
-              {stageChannel
-                ? voiceParticipants.length === 1
-                  ? "Just you so far"
-                  : `${voiceParticipants.length} in the room`
-                : inDmHome
-                  ? activeDm
-                    ? `Just you and ${activeDm.user.displayName}`
-                    : "Pick a conversation"
-                  : activeChannel?.topic ||
-                    (activeChannel
-                      ? `Everything happening in ${activeChannel.name}`
-                      : "Create a channel to start talking")}
-            </span>
-          </div>
-          <div className="header-actions">
-            {inDmHome && activeChannelId && (
-              <div className="dm-call-actions">
-                {dmCall && dmCall.channelId === activeChannelId ? (
-                  <button
-                    type="button"
-                    className="dm-call-btn flex items-center gap-1.5"
-                    onClick={() => setStageChannelId(activeChannelId)}
-                    title="Open Full Call View"
-                  >
-                    <Maximize2 size={15} /> Call View
-                  </button>
-                ) : hub.voice[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
-                  <button
-                    type="button"
-                    className="dm-join-call-btn flex items-center gap-1.5"
-                    onClick={() => {
-                      void voice.join(activeChannelId);
-                      if (activeDm) {
-                        setDmCall({
-                          channelId: activeChannelId,
-                          otherUser: activeDm.user,
-                          status: "connected",
-                          startTime: Date.now(),
-                        });
-                      }
-                    }}
-                    title="Join Ongoing Call"
-                  >
-                    <PhoneCall size={15} /> Join Call
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="dm-call-btn flex items-center gap-1.5"
-                      onClick={() => startDmCall(false)}
-                      title="Start Voice Call"
-                    >
-                      <PhoneCall size={15} /> Start Call
-                    </button>
-                    <button
-                      type="button"
-                      className="dm-call-btn flex items-center gap-1.5"
-                      onClick={() => startDmCall(true)}
-                      title="Start Video Call"
-                    >
-                      <Video size={15} /> Video Call
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            {!inDmHome && (
-              <Icon
-                label="Find users"
-                onClick={() => setGlobalSearchOpen(true)}
-              >
-                <UserPlus size={18} />
-              </Icon>
-            )}
-            {!inDmHome && (
-              <Icon
-                label="Search messages"
-                active={searchOpen}
-                onClick={() => setSearchOpen((open) => !open)}
-              >
-                <Search size={18} />
-              </Icon>
-            )}
-            <Icon
-              label="Pinned messages"
-              active={pinsOpen}
-              onClick={() => setPinsOpen((open) => !open)}
-            >
-              <Pin size={18} />
-            </Icon>
-            <Icon
-              label={`Switch to ${theme === "light" ? "cozy" : "light"} mode`}
-              onClick={() => applyTheme(theme === "light" ? "cozy" : "light")}
-            >
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-            </Icon>
-            <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
-              <Settings size={18} />
-            </Icon>
-            <Icon
-              label="Toggle member list"
-              active={membersOpen}
-              onClick={() => setMembersOpen((open) => !open)}
-            >
-              <Users size={18} />
-            </Icon>
-          </div>
-        </header>
-
-        {stageChannel ? (
-          <VoiceStage
-            channelName={stageChannel.name}
-            participants={voiceParticipants}
-            connectionId={hub.connectionId}
-            voice={voice}
-            joined={voice.channelId === stageChannel.id}
-            onJoin={() => void openVoiceChannel(stageChannel)}
-            onExit={() => setStageChannelId(null)}
-            serverId={stageChannel.serverId}
-            canManageSounds={canManageChannels}
-            userId={user.id}
-            userName={user.displayName}
-            activity={roomActivity}
-            onActivity={setRoomActivity}
-            diceRoll={diceRoll}
-            onDiceRollDone={() => setDiceRoll(null)}
-            onOpenParticipantMenu={(event, person) => {
-              if (person.bot) {
-                openBotMenu(event, "music");
-                return;
-              }
-              const member = membersById.get(person.id);
-              if (member) openUserMenu(event, member);
-            }}
-            recording={
-              features.recordSessions ? (
-                <RecordingDirector
-                  channelId={stageChannel.id}
-                  recording={hub.recordings[stageChannel.id] || null}
-                  participants={voiceParticipants}
-                  currentUserId={user.id}
-                  canControl={canRecordSessions}
-                  speaking={voice.speaking}
-                  onNotice={setNotice}
-                />
-              ) : null
-            }
-            battlemapOpen={Boolean(battlemap) && !battlemapHidden}
-            onToggleBattlemap={() => {
-              if (!battlemap) {
-                if (battlemapGm) void openBattlemap();
-                else setNotice("No map is on the table yet.");
-                return;
-              }
-              toggleBattlemap();
-            }}
-            battlemap={
-              battlemap && !battlemapHidden ? (
-                <BattlemapBoard
-                  channelId={stageChannel.id}
-                  map={battlemap}
-                  gm={battlemapGm}
-                  userId={user.id}
-                  onClose={closeBattlemap}
-                  onAddMyToken={() => void addMyToken()}
-                  onLocalToken={onLocalToken}
-                  onLocalStroke={onLocalStroke}
-                />
-              ) : null
-            }
-            onClip={async (clip) => {
-              if (!activeChannelId) {
-                setNotice("Open a text channel to post the clip into.");
-                return;
-              }
-              const form = new FormData();
-              form.append(
-                "file",
-                new File([clip], `clip-${Date.now()}.webm`, { type: clip.type }),
-              );
-              const upload = await apiFetch<{ key: string }>("/api/uploads", {
-                method: "POST",
-                body: form,
-              });
-              await apiFetch("/api/messages", {
-                method: "POST",
-                body: JSON.stringify({
-                  channelId: activeChannelId,
-                  content: `Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
-                  audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
-                }),
-              });
-              setNotice("Clip posted.");
-            }}
-          />
-        ) : (
-          <>
-        {searchOpen && (
-          <div className="search-panel">
-            <div className="search-head">
-              <input
-                autoFocus
-                value={searchQuery}
-                placeholder={`Search #${channelTitle}'s server…`}
-                onChange={(event) => void runSearch(event.target.value)}
-                aria-label="Search messages"
-              />
               <button
-                type="button"
-                onClick={() => {
-                  setSearchOpen(false);
-                  setSearchQuery("");
-                  setSearchResults([]);
-                }}
-                aria-label="Close search"
+                className="mobile-menu"
+                aria-label="Open channels"
+                onClick={() => setMobileNav((open) => !open)}
               >
-                ×
+                <Menu size={20} />
               </button>
-            </div>
-            <div className="search-filter-pills">
-              <button
-                type="button"
-                onClick={() => {
-                  const q = searchQuery.includes("from:") ? searchQuery : `from: ${searchQuery}`.trim();
-                  setSearchQuery(q);
-                }}
-              >
-                from:
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const q = searchQuery.includes("in:") ? searchQuery : `in: ${searchQuery}`.trim();
-                  setSearchQuery(q);
-                }}
-              >
-                in:
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const q = searchQuery.includes("has:link") ? searchQuery : `${searchQuery} has:link`.trim();
-                  setSearchQuery(q);
-                  void runSearch(q);
-                }}
-              >
-                has:link
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const q = searchQuery.includes("has:file") ? searchQuery : `${searchQuery} has:file`.trim();
-                  setSearchQuery(q);
-                  void runSearch(q);
-                }}
-              >
-                has:file
-              </button>
-            </div>
-            <div className="search-results">
-              {searchResults.map((result) => (
-                <button
-                  type="button"
-                  key={result.id}
-                  className="search-result"
-                  onClick={() => jumpToMessage(result.channelId, result.id)}
-                >
-                  <span className="search-result-meta">
-                    <span className="channel-hash">#</span>
-                    {result.channelName} · <strong>{result.author}</strong>
-                  </span>
-                  <span className="search-result-snippet">{result.snippet}</span>
-                </button>
-              ))}
-              {searchQuery.length >= 2 && !searchResults.length && (
-                <p className="pins-empty">Nothing matched that.</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {pinsOpen && (
-          <div className="pins-panel">
-            <div className="pins-head">
-              <strong>Pinned in {channelTitle}</strong>
-              <button type="button" onClick={() => setPinsOpen(false)}>
-                ×
-              </button>
-            </div>
-            {pins.length ? (
-              pins.map((pin) => (
-                <div
-                  className="pin-item cursor-pointer hover:bg-white/5 p-2.5 rounded-lg transition-colors border border-transparent hover:border-white/10 my-1"
-                  key={pin.id}
-                  onClick={() => {
-                    const el = document.getElementById(`msg-${pin.id}`);
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "center" });
-                      el.classList.add("jump-flash");
-                      setTimeout(() => {
-                        el.classList.remove("jump-flash");
-                      }, 2000);
-                    }
-                  }}
-                  title="Click to jump to message"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <strong className="text-xs text-white">{pin.author}</strong>
-                    <button
-                      type="button"
-                      className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void togglePin(pin);
-                      }}
-                    >
-                      Unpin
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-300 line-clamp-3">{pin.text}</p>
-                </div>
-              ))
-            ) : (
-              <p className="pins-empty">
-                Nothing pinned yet. Hover a message and press the pin.
-              </p>
-            )}
-          </div>
-        )}
-
-        {inDmHome && dmCall && dmCall.channelId === activeChannelId && (
-          <section className="dm-call-stage" aria-label="Direct Message Call">
-            <div className="dm-call-participants">
-              <div
-                className={`dm-call-avatar-wrapper ${
-                  voice.speaking.has(hub.connectionId || "") ? "is-speaking" : ""
-                }`}
-              >
-                <Avatar
-                  name={user.displayName}
-                  avatar={user.avatar}
-                  avatarUrl={user.avatarUrl}
-                  color={user.color}
-                  size={48}
-                />
-                <span className="dm-call-user-name">{user.displayName}</span>
-              </div>
-
-              <div className="dm-call-status-center">
-                <span className="dm-call-status-label">
-                  {dmCall.status === "calling" ? (
-                    <>
-                      <span className="dm-call-status-dot" style={{ background: "#a78bfa" }} />
-                      Calling...
-                    </>
-                  ) : (
-                    <>
-                      <span className="dm-call-status-dot" />
-                      In Call ({Math.floor(callDuration / 60)}:{String(callDuration % 60).padStart(2, "0")})
-                    </>
-                  )}
+              <span className="big-hash">
+                {stageChannel ? <Volume2 size={20} /> : inDmHome ? <AtSign size={20} /> : <Hash size={20} />}
+              </span>
+              <div className="channel-heading">
+                <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
+                <span>
+                  {stageChannel
+                    ? voiceParticipants.length === 1
+                      ? "Just you so far"
+                      : `${voiceParticipants.length} in the room`
+                    : inDmHome
+                      ? activeDm
+                        ? `Just you and ${activeDm.user.displayName}`
+                        : "Pick a conversation"
+                      : activeChannel?.topic ||
+                      (activeChannel
+                        ? `Everything happening in ${activeChannel.name}`
+                        : "Create a channel to start talking")}
                 </span>
               </div>
-
-              <div
-                className={`dm-call-avatar-wrapper ${
-                  dmCall.status === "calling" ? "is-calling is-ringing" : ""
-                } ${
-                  voiceParticipants.some(
-                    (p) => p.id === dmCall.otherUser.id && voice.speaking.has(p.connectionId),
-                  )
-                    ? "is-speaking"
-                    : ""
-                }`}
-              >
-                <Avatar
-                  name={dmCall.otherUser.displayName}
-                  avatar={dmCall.otherUser.avatar || "?"}
-                  avatarUrl={dmCall.otherUser.avatarUrl}
-                  color={dmCall.otherUser.color || "#a78bfa"}
-                  size={48}
-                />
-                <span className="dm-call-user-name">{dmCall.otherUser.displayName}</span>
-              </div>
-            </div>
-
-            <div className="dm-call-controls">
-              <button
-                type="button"
-                className={`vctrl-btn ${voice.muted ? "off" : ""}`}
-                onClick={() => voice.toggleMute()}
-                title={voice.muted ? "Unmute" : "Mute"}
-              >
-                {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-              </button>
-              <button
-                type="button"
-                className={`vctrl-btn ${voice.deafened ? "off" : ""}`}
-                onClick={() => voice.toggleDeafen()}
-                title={voice.deafened ? "Undeafen" : "Deafen"}
-              >
-                {voice.deafened ? <VolumeX size={16} /> : <Headphones size={16} />}
-              </button>
-              <button
-                type="button"
-                className={`vctrl-btn ${voice.screenSharing ? "active-screen" : ""}`}
-                onClick={() => {
-                  if (voice.screenSharing) {
-                    voice.stopScreenShare();
-                  } else {
-                    void voice.startScreenShare();
-                  }
-                }}
-                title={voice.screenSharing ? "Stop sharing" : "Share screen"}
-              >
-                <Monitor size={16} />
-              </button>
-              <button
-                type="button"
-                className={`vctrl-btn ${voice.cameraOn ? "active-camera" : ""}`}
-                onClick={() => {
-                  if (voice.cameraOn) {
-                    voice.stopCamera();
-                  } else {
-                    void voice.startCamera();
-                  }
-                }}
-                title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
-              >
-                {voice.cameraOn ? <Video size={16} /> : <VideoOff size={16} />}
-              </button>
-              <button
-                type="button"
-                className="vctrl-btn expand-btn"
-                onClick={() => setStageChannelId(dmCall.channelId)}
-                title="Open Call View"
-              >
-                <Maximize2 size={16} />
-              </button>
-              <button
-                type="button"
-                className="vctrl-btn disconnect-btn"
-                onClick={() => endDmCall(false)}
-                title="End Call"
-              >
-                <PhoneOff size={16} />
-              </button>
-            </div>
-          </section>
-        )}
-
-        <div className="messages" aria-live="polite">
-          <div className="channel-intro">
-            <div className="cozy-intro-pill">
-              <span className="cozy-intro-icon">{inDmHome ? <AtSign size={13} /> : <Hash size={13} />}</span>
-              <span className="cozy-intro-text">
-                {inDmHome
-                  ? `this is the beginning of your conversation with ${channelTitle}`
-                  : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
-              </span>
-            </div>
-            <div className="legacy-intro-content">
-              <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
-              <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
-              <p>
-                {inDmHome
-                  ? "This conversation is only visible to the two of you."
-                  : "This is the start of the channel. Be excellent to each other."}
-              </p>
-            </div>
-          </div>
-
-          {messages.map((message, index) => {
-            const author = message.userId
-              ? membersById.get(message.userId)
-              : undefined;
-            const canDelete =
-              message.userId === user.id ||
-              message.bot ||
-              user.isAdmin ||
-              canModerate;
-
-            const isBlockedUser = Boolean(
-              message.userId && blockedUserIds.has(message.userId),
-            );
-            const isBlockedExpanded = expandedBlockedMessages.has(String(message.id));
-
-            if (isBlockedUser && !isBlockedExpanded) {
-              return (
-                <div key={message.id} className="blocked-message-notice">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert size={14} className="text-rose-400 shrink-0" />
-                    <span>1 Blocked message ({message.author})</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="blocked-message-toggle"
-                    onClick={() => {
-                      setExpandedBlockedMessages((prev) =>
-                        new Set(prev).add(String(message.id)),
-                      );
-                    }}
-                  >
-                    Show message
-                  </button>
-                </div>
-              );
-            }
-
-            // Collapse the avatar/name header when the same author sends a
-            // burst of messages close together — but never for replies,
-            // command answers or rich cards, which each need their own header.
-            const prev = index > 0 ? messages[index - 1] : undefined;
-            const sameAuthor =
-              !!prev &&
-              Boolean(prev.bot) === Boolean(message.bot) &&
-              (message.bot
-                ? prev.author === message.author
-                : !!prev.userId && prev.userId === message.userId);
-            const closeInTime =
-              !!prev && message.createdAt && prev.createdAt
-                ? new Date(message.createdAt).getTime() -
-                    new Date(prev.createdAt).getTime() <
-                  7 * 60 * 1000
-                : true;
-            const continuation =
-              sameAuthor &&
-              closeInTime &&
-              !message.replyTo &&
-              !message.commandText &&
-              !message.kind &&
-              !prev?.kind;
-            return (
-              <article
-                id={`msg-${message.id}`}
-                className={`message ${continuation ? "continuation" : ""} ${
-                  message.pinned ? "is-pinned" : ""
-                } ${openActionsId === message.id ? "actions-open" : ""} ${
-                  reactionPicker?.messageId === message.id
-                    ? "actions-open reaction-picker-active"
-                    : ""
-                } ${
-                  user && message.mentions?.includes(user.id) ? "mentions-me" : ""
-                }`}
-                key={message.id}
-                onTouchStart={(e) => handleMessageTouchStart(message.id, e)}
-                onTouchMove={handleMessageTouchMove}
-                onTouchEnd={handleMessageTouchEnd}
-                onTouchCancel={handleMessageTouchEnd}
-                onContextMenu={(event) => {
-                  if (longPressTriggeredRef.current || touchInput) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setOpenActionsId(message.id);
-                    return;
-                  }
-                  if (message.bot) {
-                    openBotMenu(
-                      event,
-                      message.author.toLowerCase().includes("d&d")
-                        ? "dnd"
-                        : "music",
-                    );
-                  }
-                }}
-              >
-                {isBlockedUser && (
-                  <div className="col-span-full flex items-center justify-between text-[11px] text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md mb-2">
-                    <span className="flex items-center gap-1.5 font-bold">
-                      <ShieldAlert size={12} /> Message from blocked user
-                    </span>
-                    <button
-                      type="button"
-                      className="text-xs font-bold underline hover:text-rose-300 cursor-pointer"
-                      onClick={() => {
-                        setExpandedBlockedMessages((prev) => {
-                          const n = new Set(prev);
-                          n.delete(String(message.id));
-                          return n;
-                        });
-                      }}
-                    >
-                      Hide message
-                    </button>
-                  </div>
-                )}
-                {continuation ? (
-                  <span className="message-gutter" aria-hidden="true">
-                    <time title={formatClientDateTime(message.createdAt)}>
-                      {formatClientTime(message.createdAt, message.time)}
-                    </time>
-                    {dmSeen(message) && <SeenMark />}
-                  </span>
-                ) : (
-                  <Avatar
-                    className={`avatar ${message.bot ? "bot-avatar" : ""}`}
-                    avatar={author?.avatar || message.avatar}
-                    avatarUrl={author?.avatarUrl}
-                    color={author?.color || message.color}
-                    onContextMenu={(event) => {
-                      if (author) openUserMenu(event, author);
-                    }}
-                    onClick={(event) => {
-                      if (touchInput && author) openUserMenu(event, author);
-                    }}
-                  />
-                )}
-                <div className="message-body">
-                  {message.commandText && (
-                    <div className="command-invocation">
-                      <span className="reply-arrow">↩</span>
-                      <strong>{message.commandBy || "someone"}</strong>
-                      <span className="command-used">used</span>
-                      <code>{message.commandText}</code>
-                    </div>
-                  )}
-                  {message.replyTo && (
-                    <button
-                      type="button"
-                      className="reply-preview"
-                      onClick={() =>
-                        document
-                          .getElementById(`msg-${message.replyTo}`)
-                          ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                      }
-                    >
-                      <span className="reply-arrow">↩</span>
-                      <strong>{message.replyPreview?.author || "someone"}</strong>
-                      <span className="reply-snippet">
-                        {message.replyPreview?.text || "message"}
-                      </span>
-                    </button>
-                  )}
-                  {!continuation && (
-                    <div className="message-meta">
-                      <strong
-                        className={author ? "clickable-name" : ""}
-                        style={{ color: roleColorFor(author) || undefined }}
-                        onContextMenu={(event) => {
-                          if (author) openUserMenu(event, author);
-                        }}
-                        onClick={() => {
-                          if (author) openProfile(author);
-                        }}
-                      >
-                        {author?.displayName || message.author}
-                      </strong>
-                      {author && <PrideBadges badges={author.prideBadges} mini />}
-                      {message.bot && <span className="bot-tag">BOT</span>}
-                      <time title={formatClientDateTime(message.createdAt)}>
-                        {formatClientTime(message.createdAt, message.time)}
-                      </time>
-                      {dmSeen(message) && <SeenMark />}
-                      {message.editedAt && (
-                        <span className="edited-tag" title="Edited">
-                          (edited)
-                        </span>
-                      )}
-                      {message.pinned && (
-                        <span className="pin-tag flex items-center gap-1" title="Pinned">
-                          <Pin size={12} />
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {message.kind === "lyricsnow" && message.payload?.lines ? (
-                    <LyricsNow
-                      track={typeof message.payload.track === "string" ? message.payload.track : message.payload.track?.title}
-                      artist={message.payload.artist}
-                      lines={message.payload.lines}
-                      positionMs={
-                        message.payload.voiceChannelId === voice.channelId
-                          ? player.position
-                          : undefined
-                      }
-                      live={
-                        message.payload.voiceChannelId === voice.channelId &&
-                        hub.players[voice.channelId!]?.track?.id ===
-                          message.payload.trackId
-                      }
-                    />
-                  ) : message.kind === "dnd" && message.payload ? (
-                    <DndCard {...message.payload} />
-                  ) : message.kind === "music-settings" && message.payload ? (
-                    <MusicSettingsCard
-                      settings={message.payload}
-                      disabled={!message.payload.voiceChannelId}
-                      onCommand={(command) =>
-                        runMusicUiCommand(
-                          command,
-                          message.payload?.voiceChannelId,
-                        )
-                      }
-                    />
-                  ) : message.kind === "music-stats" && message.payload ? (
-                    <MusicStatsCard
-                      wrapped={message.payload.wrapped}
-                      label={message.payload.label}
-                      plays={message.payload.plays}
-                      unique={message.payload.unique}
-                      hours={message.payload.hours}
-                      topSongs={message.payload.topSongs}
-                      topRequesters={message.payload.topRequesters}
-                      topArtist={message.payload.topArtist}
-                      topGenre={message.payload.topGenre}
-                      peakHour={message.payload.peakHour}
-                      streakDays={message.payload.streakDays}
-                      personality={message.payload.personality}
-                      disabled={!message.payload.voiceChannelId}
-                      onCommand={(command) =>
-                        runMusicUiCommand(
-                          command,
-                          message.payload?.voiceChannelId,
-                        )
-                      }
-                    />
-                  ) : message.kind === "music-queue" && message.payload ? (
-                    <MusicQueueCard
-                      currentTrack={message.payload.currentTrack}
-                      queue={message.payload.queue}
-                      totalTracks={message.payload.totalTracks}
-                      disabled={!message.payload.voiceChannelId}
-                      onCommand={(command) =>
-                        runMusicUiCommand(
-                          command,
-                          message.payload?.voiceChannelId,
-                        )
-                      }
-                    />
-                  ) : message.kind === "music-history" && message.payload ? (
-                    <MusicHistoryCard
-                      history={message.payload.history}
-                      disabled={!message.payload.voiceChannelId}
-                      onCommand={(command) =>
-                        runMusicUiCommand(
-                          command,
-                          message.payload?.voiceChannelId,
-                        )
-                      }
-                    />
-                  ) : message.kind === "music-search" && message.payload ? (
-                    <MusicSearchCard
-                      query={message.payload.query}
-                      track={typeof message.payload.track === "object" ? message.payload.track : undefined}
-                      disabled={!message.payload.voiceChannelId}
-                      onCommand={(command) =>
-                        runMusicUiCommand(
-                          command,
-                          message.payload?.voiceChannelId,
-                        )
-                      }
-                    />
-                  ) : message.kind === "poll" && message.payload?.pollId ? (
-                    <PollCard
-                      pollId={message.payload.pollId}
-                      question={message.payload.question || message.text}
-                      options={message.payload.options || []}
-                      multi={message.payload.multi}
-                      liveCounts={pollCounts[message.payload.pollId]}
-                    />
-                  ) : editingId === message.id ? (
-                    <div className="message-edit">
-                      <textarea
-                        value={editDraft}
-                        autoFocus
-                        onChange={(event) => setEditDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") setEditingId(null);
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            void saveEdit(message);
-                          }
-                        }}
-                      />
-                      <div className="message-edit-hint">
-                        Enter to save · Esc to cancel
-                      </div>
-                    </div>
-                  ) : (
-                    <MessageBody
-                      text={message.text}
-                      selfHandle={user.username}
-                      onMention={openProfileByHandle}
-                      onImage={setLightbox}
-                      emojis={emojiMap}
-                    />
-                  )}
-
-                  {extractInviteCodes(message.text).map((code) => {
-                    const inv = resolvedInvites[code];
-                    if (!inv) return null;
-                    const isCurrentlyMember = inv.server
-                      ? servers.some((s) => s.id === inv.server?.id)
-                      : false;
-                    return (
-                      <ServerInviteCard
-                        key={code}
-                        invite={inv}
-                        isMember={isCurrentlyMember}
-                        onJoin={() => {
-                          if (isCurrentlyMember && inv.server) {
-                            setActiveServerId(inv.server.id);
-                          } else {
-                            void joinServerDirect(code);
-                          }
-                        }}
-                      />
-                    );
-                  })}
-
-                  {message.kind === "nowplaying" &&
-                    message.payload?.voiceChannelId && (
-                      <NowPlaying
-                        state={hub.players[message.payload.voiceChannelId] || null}
-                        trackId={message.payload.trackId}
-                        trackLabel={message.payload.label}
-                        position={
-                          voice.channelId === message.payload.voiceChannelId
-                            ? player.position
-                            : 0
-                        }
-                        controllable={
-                          voice.channelId === message.payload.voiceChannelId
-                        }
-                        blocked={!botStreaming && player.blocked}
-                        onUnblock={player.unblock}
-                        voiceChannelName={
-                          voiceChannels.find(
-                            (channel) =>
-                              channel.id === message.payload?.voiceChannelId,
-                          )?.name
-                        }
-                        onSeek={(positionMs) =>
-                          hub.send({
-                            t: "player",
-                            channelId: message.payload!.voiceChannelId!,
-                            action: { name: "seek", positionMs },
-                          })
-                        }
-                        onToggle={() =>
-                          hub.send({
-                            t: "player",
-                            channelId: message.payload!.voiceChannelId!,
-                            action: { name: "toggle" },
-                          })
-                        }
-                        onSkip={() =>
-                          hub.send({
-                            t: "player",
-                            channelId: message.payload!.voiceChannelId!,
-                            action: { name: "skip" },
-                          })
-                        }
-                        volume={prefFor("bot:music").volume}
-                        onVolume={(volume) =>
-                          void saveVoicePref("bot:music", { volume })
-                        }
-                      />
-                    )}
-
-                  {message.link && (
-                    <a
-                      className="bot-action"
-                      href={message.link}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {message.actionLabel || "Open"}
-                      <span aria-hidden="true">↗</span>
-                    </a>
-                  )}
-                  {message.audio && (
-                    <audio
-                      className="message-audio"
-                      controls
-                      preload="none"
-                      src={message.audio}
-                    />
-                  )}
-                  {message.image && (
-                    <img
-                      className="message-image"
-                      src={message.image}
-                      alt="Shared attachment"
-                      onClick={() => setLightbox(message.image!)}
-                    />
-                  )}
-                  {message.images && message.images.length > 0 && (
-                    <div
-                      className={`attachment-grid count-${Math.min(
-                        message.images.length,
-                        4,
-                      )}`}
-                    >
-                      {message.images.map((url) => (
-                        <img
-                          key={url}
-                          className="message-image"
-                          src={url}
-                          alt="Shared attachment"
-                          onClick={() => setLightbox(url)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {message.file?.type === "pdf" && (
-                    <button
-                      type="button"
-                      className="message-file-card"
-                      onClick={() =>
-                        setPdfViewer({
-                          url: message.file!.url,
-                          name: message.file!.name,
-                        })
-                      }
-                    >
-                      <span className="message-file-icon">PDF</span>
-                      <span>
-                        <strong>{message.file.name}</strong>
-                        <small>PDF document · view and fill in Huddle</small>
-                      </span>
-                      <b aria-hidden="true">Open</b>
-                    </button>
-                  )}
-
-                  {(message.threadCount ?? 0) > 0 && (
-                    <button
-                      type="button"
-                      className="thread-link inline-flex items-center gap-1.5"
-                      onClick={() => void openThread(message)}
-                    >
-                      <MessageSquare size={14} /> {message.threadCount}{" "}
-                      {message.threadCount === 1 ? "reply" : "replies"}
-                    </button>
-                  )}
-
-                  {message.reactions && message.reactions.length > 0 && (
-                    <div className="reactions">
-                      {message.reactions.map((reaction) => (
-                        <button
-                          type="button"
-                          key={reaction.emoji}
-                          className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""} ${reactionViewer?.messageId === message.id && reactionViewer.emoji === reaction.emoji ? "viewer-open" : ""}`}
-                          onClick={() =>
-                            void toggleReaction(message.id, reaction.emoji)
-                          }
-                          onContextMenu={(e) =>
-                            handleOpenReactionViewer(
-                              e,
-                              message.id,
-                              reaction.emoji,
-                            )
-                          }
-                          title={reactionTooltip(reaction)}
-                        >
-                          {emojiMap[reaction.emoji.replace(/^:|:$/g, "")] ? (
-                            <img
-                              className="custom-emoji"
-                              src={emojiMap[reaction.emoji.replace(/^:|:$/g, "")]}
-                              alt={reaction.emoji}
-                            />
-                          ) : (
-                            <OutlineEmoji emoji={reaction.emoji} />
-                          )}
-                          <b>{reaction.count}</b>
-                        </button>
-                      ))}
+              <div className="header-actions">
+                {inDmHome && activeChannelId && (
+                  <div className="dm-call-actions">
+                    {dmCall && dmCall.channelId === activeChannelId ? (
                       <button
                         type="button"
-                        className={`reaction add-reaction-btn ${reactionPicker?.messageId === message.id ? "mine" : ""}`}
-                        title="Add reaction"
-                        onClick={(e) => handleOpenReactionPicker(e, message.id)}
+                        className="dm-call-btn flex items-center gap-1.5"
+                        onClick={() => setStageChannelId(activeChannelId)}
+                        title="Open Full Call View"
                       >
-                        <SmilePlus size={14} />
+                        <Maximize2 size={15} /> Call View
                       </button>
+                    ) : hub.voice[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
+                      <button
+                        type="button"
+                        className="dm-join-call-btn flex items-center gap-1.5"
+                        onClick={() => {
+                          void voice.join(activeChannelId);
+                          if (activeDm) {
+                            setDmCall({
+                              channelId: activeChannelId,
+                              otherUser: activeDm.user,
+                              status: "connected",
+                              startTime: Date.now(),
+                            });
+                          }
+                        }}
+                        title="Join Ongoing Call"
+                      >
+                        <PhoneCall size={15} /> Join Call
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="dm-call-btn flex items-center gap-1.5"
+                          onClick={() => startDmCall(false)}
+                          title="Start Voice Call"
+                        >
+                          <PhoneCall size={15} /> Start Call
+                        </button>
+                        <button
+                          type="button"
+                          className="dm-call-btn flex items-center gap-1.5"
+                          onClick={() => startDmCall(true)}
+                          title="Start Video Call"
+                        >
+                          <Video size={15} /> Video Call
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {!inDmHome && (
+                  <Icon
+                    label="Find users"
+                    onClick={() => setGlobalSearchOpen(true)}
+                  >
+                    <UserPlus size={18} />
+                  </Icon>
+                )}
+                {!inDmHome && (
+                  <Icon
+                    label="Search messages"
+                    active={searchOpen}
+                    onClick={() => setSearchOpen((open) => !open)}
+                  >
+                    <Search size={18} />
+                  </Icon>
+                )}
+                <Icon
+                  label="Pinned messages"
+                  active={pinsOpen}
+                  onClick={() => setPinsOpen((open) => !open)}
+                >
+                  <Pin size={18} />
+                </Icon>
+                <Icon
+                  label={`Switch to ${theme === "light" ? "cozy" : "light"} mode`}
+                  onClick={() => applyTheme(theme === "light" ? "cozy" : "light")}
+                >
+                  {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+                </Icon>
+                <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
+                  <Settings size={18} />
+                </Icon>
+                <Icon
+                  label="Toggle member list"
+                  active={membersOpen}
+                  onClick={() => setMembersOpen((open) => !open)}
+                >
+                  <Users size={18} />
+                </Icon>
+              </div>
+            </header>
+
+            {stageChannel ? (
+              <VoiceStage
+                channelName={stageChannel.name}
+                participants={voiceParticipants}
+                connectionId={hub.connectionId}
+                voice={voice}
+                joined={voice.channelId === stageChannel.id}
+                onJoin={() => void openVoiceChannel(stageChannel)}
+                onExit={() => setStageChannelId(null)}
+                serverId={stageChannel.serverId}
+                canManageSounds={canManageChannels}
+                userId={user.id}
+                userName={user.displayName}
+                activity={roomActivity}
+                onActivity={setRoomActivity}
+                diceRoll={diceRoll}
+                onDiceRollDone={() => setDiceRoll(null)}
+                onOpenParticipantMenu={(event, person) => {
+                  if (person.bot) {
+                    openBotMenu(event, "music");
+                    return;
+                  }
+                  const member = membersById.get(person.id);
+                  if (member) openUserMenu(event, member);
+                }}
+                recording={
+                  features.recordSessions ? (
+                    <RecordingDirector
+                      channelId={stageChannel.id}
+                      recording={hub.recordings[stageChannel.id] || null}
+                      participants={voiceParticipants}
+                      currentUserId={user.id}
+                      canControl={canRecordSessions}
+                      speaking={voice.speaking}
+                      onNotice={setNotice}
+                    />
+                  ) : null
+                }
+                battlemapOpen={Boolean(battlemap) && !battlemapHidden}
+                onToggleBattlemap={() => {
+                  if (!battlemap) {
+                    if (battlemapGm) void openBattlemap();
+                    else setNotice("No map is on the table yet.");
+                    return;
+                  }
+                  toggleBattlemap();
+                }}
+                battlemap={
+                  battlemap && !battlemapHidden ? (
+                    <BattlemapBoard
+                      channelId={stageChannel.id}
+                      map={battlemap}
+                      gm={battlemapGm}
+                      userId={user.id}
+                      onClose={closeBattlemap}
+                      onAddMyToken={() => void addMyToken()}
+                      onLocalToken={onLocalToken}
+                      onLocalStroke={onLocalStroke}
+                    />
+                  ) : null
+                }
+                onClip={async (clip) => {
+                  if (!activeChannelId) {
+                    setNotice("Open a text channel to post the clip into.");
+                    return;
+                  }
+                  const form = new FormData();
+                  form.append(
+                    "file",
+                    new File([clip], `clip-${Date.now()}.webm`, { type: clip.type }),
+                  );
+                  const upload = await apiFetch<{ key: string }>("/api/uploads", {
+                    method: "POST",
+                    body: form,
+                  });
+                  await apiFetch("/api/messages", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      channelId: activeChannelId,
+                      content: `Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
+                      audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
+                    }),
+                  });
+                  setNotice("Clip posted.");
+                }}
+              />
+            ) : (
+              <>
+                {searchOpen && (
+                  <div className="search-panel">
+                    <div className="search-head">
+                      <input
+                        autoFocus
+                        value={searchQuery}
+                        placeholder={`Search #${channelTitle}'s server…`}
+                        onChange={(event) => void runSearch(event.target.value)}
+                        aria-label="Search messages"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                          setSearchResults([]);
+                        }}
+                        aria-label="Close search"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="search-filter-pills">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const q = searchQuery.includes("from:") ? searchQuery : `from: ${searchQuery}`.trim();
+                          setSearchQuery(q);
+                        }}
+                      >
+                        from:
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const q = searchQuery.includes("in:") ? searchQuery : `in: ${searchQuery}`.trim();
+                          setSearchQuery(q);
+                        }}
+                      >
+                        in:
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const q = searchQuery.includes("has:link") ? searchQuery : `${searchQuery} has:link`.trim();
+                          setSearchQuery(q);
+                          void runSearch(q);
+                        }}
+                      >
+                        has:link
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const q = searchQuery.includes("has:file") ? searchQuery : `${searchQuery} has:file`.trim();
+                          setSearchQuery(q);
+                          void runSearch(q);
+                        }}
+                      >
+                        has:file
+                      </button>
+                    </div>
+                    <div className="search-results">
+                      {searchResults.map((result) => (
+                        <button
+                          type="button"
+                          key={result.id}
+                          className="search-result"
+                          onClick={() => jumpToMessage(result.channelId, result.id)}
+                        >
+                          <span className="search-result-meta">
+                            <span className="channel-hash">#</span>
+                            {result.channelName} · <strong>{result.author}</strong>
+                          </span>
+                          <span className="search-result-snippet">{result.snippet}</span>
+                        </button>
+                      ))}
+                      {searchQuery.length >= 2 && !searchResults.length && (
+                        <p className="pins-empty">Nothing matched that.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {pinsOpen && (
+                  <div className="pins-panel">
+                    <div className="pins-head">
+                      <strong>Pinned in {channelTitle}</strong>
+                      <button type="button" onClick={() => setPinsOpen(false)}>
+                        ×
+                      </button>
+                    </div>
+                    {pins.length ? (
+                      pins.map((pin) => (
+                        <div
+                          className="pin-item cursor-pointer hover:bg-white/5 p-2.5 rounded-lg transition-colors border border-transparent hover:border-white/10 my-1"
+                          key={pin.id}
+                          onClick={() => {
+                            const el = document.getElementById(`msg-${pin.id}`);
+                            if (el) {
+                              el.scrollIntoView({ behavior: "smooth", block: "center" });
+                              el.classList.add("jump-flash");
+                              setTimeout(() => {
+                                el.classList.remove("jump-flash");
+                              }, 2000);
+                            }
+                          }}
+                          title="Click to jump to message"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <strong className="text-xs text-white">{pin.author}</strong>
+                            <button
+                              type="button"
+                              className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void togglePin(pin);
+                              }}
+                            >
+                              Unpin
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-300 line-clamp-3">{pin.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="pins-empty">
+                        Nothing pinned yet. Hover a message and press the pin.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {inDmHome && dmCall && dmCall.channelId === activeChannelId && (
+                  <section className="dm-call-stage" aria-label="Direct Message Call">
+                    <div className="dm-call-participants">
+                      <div
+                        className={`dm-call-avatar-wrapper ${voice.speaking.has(hub.connectionId || "") ? "is-speaking" : ""
+                          }`}
+                      >
+                        <Avatar
+                          name={user.displayName}
+                          avatar={user.avatar}
+                          avatarUrl={user.avatarUrl}
+                          color={user.color}
+                          size={48}
+                        />
+                        <span className="dm-call-user-name">{user.displayName}</span>
+                      </div>
+
+                      <div className="dm-call-status-center">
+                        <span className="dm-call-status-label">
+                          {dmCall.status === "calling" ? (
+                            <>
+                              <span className="dm-call-status-dot" style={{ background: "#a78bfa" }} />
+                              Calling...
+                            </>
+                          ) : (
+                            <>
+                              <span className="dm-call-status-dot" />
+                              In Call ({Math.floor(callDuration / 60)}:{String(callDuration % 60).padStart(2, "0")})
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`dm-call-avatar-wrapper ${dmCall.status === "calling" ? "is-calling is-ringing" : ""
+                          } ${voiceParticipants.some(
+                            (p) => p.id === dmCall.otherUser.id && voice.speaking.has(p.connectionId),
+                          )
+                            ? "is-speaking"
+                            : ""
+                          }`}
+                      >
+                        <Avatar
+                          name={dmCall.otherUser.displayName}
+                          avatar={dmCall.otherUser.avatar || "?"}
+                          avatarUrl={dmCall.otherUser.avatarUrl}
+                          color={dmCall.otherUser.color || "#a78bfa"}
+                          size={48}
+                        />
+                        <span className="dm-call-user-name">{dmCall.otherUser.displayName}</span>
+                      </div>
+                    </div>
+
+                    <div className="dm-call-controls">
+                      <button
+                        type="button"
+                        className={`vctrl-btn ${voice.muted ? "off" : ""}`}
+                        onClick={() => voice.toggleMute()}
+                        title={voice.muted ? "Unmute" : "Mute"}
+                      >
+                        {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={`vctrl-btn ${voice.deafened ? "off" : ""}`}
+                        onClick={() => voice.toggleDeafen()}
+                        title={voice.deafened ? "Undeafen" : "Deafen"}
+                      >
+                        {voice.deafened ? <VolumeX size={16} /> : <Headphones size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={`vctrl-btn ${voice.screenSharing ? "active-screen" : ""}`}
+                        onClick={() => {
+                          if (voice.screenSharing) {
+                            voice.stopScreenShare();
+                          } else {
+                            void voice.startScreenShare();
+                          }
+                        }}
+                        title={voice.screenSharing ? "Stop sharing" : "Share screen"}
+                      >
+                        <Monitor size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`vctrl-btn ${voice.cameraOn ? "active-camera" : ""}`}
+                        onClick={() => {
+                          if (voice.cameraOn) {
+                            voice.stopCamera();
+                          } else {
+                            void voice.startCamera();
+                          }
+                        }}
+                        title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
+                      >
+                        {voice.cameraOn ? <Video size={16} /> : <VideoOff size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        className="vctrl-btn expand-btn"
+                        onClick={() => setStageChannelId(dmCall.channelId)}
+                        title="Open Call View"
+                      >
+                        <Maximize2 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="vctrl-btn disconnect-btn"
+                        onClick={() => endDmCall(false)}
+                        title="End Call"
+                      >
+                        <PhoneOff size={16} />
+                      </button>
+                    </div>
+                  </section>
+                )}
+
+                <div className="messages" aria-live="polite">
+                  <div className="channel-intro">
+                    <div className="cozy-intro-pill">
+                      <span className="cozy-intro-icon">{inDmHome ? <AtSign size={13} /> : <Hash size={13} />}</span>
+                      <span className="cozy-intro-text">
+                        {inDmHome
+                          ? `this is the beginning of your conversation with ${channelTitle}`
+                          : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
+                      </span>
+                    </div>
+                    <div className="legacy-intro-content">
+                      <div className="intro-icon">{inDmHome ? "@" : "#"}</div>
+                      <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
+                      <p>
+                        {inDmHome
+                          ? "This conversation is only visible to the two of you."
+                          : "This is the start of the channel. Be excellent to each other."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {messages.map((message, index) => {
+                    const author = message.userId
+                      ? membersById.get(message.userId)
+                      : undefined;
+                    const canDelete =
+                      message.userId === user.id ||
+                      message.bot ||
+                      user.isAdmin ||
+                      canModerate;
+
+                    const isBlockedUser = Boolean(
+                      message.userId && blockedUserIds.has(message.userId),
+                    );
+                    const isBlockedExpanded = expandedBlockedMessages.has(String(message.id));
+
+                    if (isBlockedUser && !isBlockedExpanded) {
+                      return (
+                        <div key={message.id} className="blocked-message-notice">
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert size={14} className="text-rose-400 shrink-0" />
+                            <span>1 Blocked message ({message.author})</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="blocked-message-toggle"
+                            onClick={() => {
+                              setExpandedBlockedMessages((prev) =>
+                                new Set(prev).add(String(message.id)),
+                              );
+                            }}
+                          >
+                            Show message
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    // Collapse the avatar/name header when the same author sends a
+                    // burst of messages close together — but never for replies,
+                    // command answers or rich cards, which each need their own header.
+                    const prev = index > 0 ? messages[index - 1] : undefined;
+                    const sameAuthor =
+                      !!prev &&
+                      Boolean(prev.bot) === Boolean(message.bot) &&
+                      (message.bot
+                        ? prev.author === message.author
+                        : !!prev.userId && prev.userId === message.userId);
+                    const closeInTime =
+                      !!prev && message.createdAt && prev.createdAt
+                        ? new Date(message.createdAt).getTime() -
+                        new Date(prev.createdAt).getTime() <
+                        7 * 60 * 1000
+                        : true;
+                    const continuation =
+                      sameAuthor &&
+                      closeInTime &&
+                      !message.replyTo &&
+                      !message.commandText &&
+                      !message.kind &&
+                      !prev?.kind;
+                    return (
+                      <article
+                        id={`msg-${message.id}`}
+                        className={`message ${continuation ? "continuation" : ""} ${message.pinned ? "is-pinned" : ""
+                          } ${openActionsId === message.id ? "actions-open" : ""} ${reactionPicker?.messageId === message.id
+                            ? "actions-open reaction-picker-active"
+                            : ""
+                          } ${user && message.mentions?.includes(user.id) ? "mentions-me" : ""
+                          }`}
+                        key={message.id}
+                        onTouchStart={(e) => handleMessageTouchStart(message.id, e)}
+                        onTouchMove={handleMessageTouchMove}
+                        onTouchEnd={handleMessageTouchEnd}
+                        onTouchCancel={handleMessageTouchEnd}
+                        onContextMenu={(event) => {
+                          if (longPressTriggeredRef.current || touchInput) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setOpenActionsId(message.id);
+                            return;
+                          }
+                          if (message.bot) {
+                            openBotMenu(
+                              event,
+                              message.author.toLowerCase().includes("d&d")
+                                ? "dnd"
+                                : "music",
+                            );
+                          }
+                        }}
+                      >
+                        {isBlockedUser && (
+                          <div className="col-span-full flex items-center justify-between text-[11px] text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md mb-2">
+                            <span className="flex items-center gap-1.5 font-bold">
+                              <ShieldAlert size={12} /> Message from blocked user
+                            </span>
+                            <button
+                              type="button"
+                              className="text-xs font-bold underline hover:text-rose-300 cursor-pointer"
+                              onClick={() => {
+                                setExpandedBlockedMessages((prev) => {
+                                  const n = new Set(prev);
+                                  n.delete(String(message.id));
+                                  return n;
+                                });
+                              }}
+                            >
+                              Hide message
+                            </button>
+                          </div>
+                        )}
+                        {continuation ? (
+                          <span className="message-gutter" aria-hidden="true">
+                            <time title={formatClientDateTime(message.createdAt)}>
+                              {formatClientTime(message.createdAt, message.time)}
+                            </time>
+                            {dmSeen(message) && <SeenMark />}
+                          </span>
+                        ) : (
+                          <Avatar
+                            className={`avatar ${message.bot ? "bot-avatar" : ""}`}
+                            avatar={author?.avatar || message.avatar}
+                            avatarUrl={author?.avatarUrl}
+                            color={author?.color || message.color}
+                            onContextMenu={(event) => {
+                              if (author) openUserMenu(event, author);
+                            }}
+                            onClick={(event) => {
+                              if (touchInput && author) openUserMenu(event, author);
+                            }}
+                          />
+                        )}
+                        <div className="message-body">
+                          {message.commandText && (
+                            <div className="command-invocation">
+                              <span className="reply-arrow">↩</span>
+                              <strong>{message.commandBy || "someone"}</strong>
+                              <span className="command-used">used</span>
+                              <code>{message.commandText}</code>
+                            </div>
+                          )}
+                          {message.replyTo && (
+                            <button
+                              type="button"
+                              className="reply-preview"
+                              onClick={() =>
+                                document
+                                  .getElementById(`msg-${message.replyTo}`)
+                                  ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                              }
+                            >
+                              <span className="reply-arrow">↩</span>
+                              <strong>{message.replyPreview?.author || "someone"}</strong>
+                              <span className="reply-snippet">
+                                {message.replyPreview?.text || "message"}
+                              </span>
+                            </button>
+                          )}
+                          {!continuation && (
+                            <div className="message-meta">
+                              <strong
+                                className={author ? "clickable-name" : ""}
+                                style={{ color: roleColorFor(author) || undefined }}
+                                onContextMenu={(event) => {
+                                  if (author) openUserMenu(event, author);
+                                }}
+                                onClick={() => {
+                                  if (author) openProfile(author);
+                                }}
+                              >
+                                {author?.displayName || message.author}
+                              </strong>
+                              {author && <PrideBadges badges={author.prideBadges} mini />}
+                              {message.bot && <span className="bot-tag">BOT</span>}
+                              <time title={formatClientDateTime(message.createdAt)}>
+                                {formatClientTime(message.createdAt, message.time)}
+                              </time>
+                              {dmSeen(message) && <SeenMark />}
+                              {message.editedAt && (
+                                <span className="edited-tag" title="Edited">
+                                  (edited)
+                                </span>
+                              )}
+                              {message.pinned && (
+                                <span className="pin-tag flex items-center gap-1" title="Pinned">
+                                  <Pin size={12} />
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {message.kind === "lyricsnow" && message.payload?.lines ? (
+                            <LyricsNow
+                              track={typeof message.payload.track === "string" ? message.payload.track : message.payload.track?.title}
+                              artist={message.payload.artist}
+                              lines={message.payload.lines}
+                              positionMs={
+                                message.payload.voiceChannelId === voice.channelId
+                                  ? player.position
+                                  : undefined
+                              }
+                              live={
+                                message.payload.voiceChannelId === voice.channelId &&
+                                hub.players[voice.channelId!]?.track?.id ===
+                                message.payload.trackId
+                              }
+                            />
+                          ) : message.kind === "dnd" && message.payload ? (
+                            <DndCard {...message.payload} />
+                          ) : message.kind === "music-settings" && message.payload ? (
+                            <MusicSettingsCard
+                              settings={message.payload}
+                              disabled={!message.payload.voiceChannelId}
+                              onCommand={(command) =>
+                                runMusicUiCommand(
+                                  command,
+                                  message.payload?.voiceChannelId,
+                                )
+                              }
+                            />
+                          ) : message.kind === "music-stats" && message.payload ? (
+                            <MusicStatsCard
+                              wrapped={message.payload.wrapped}
+                              label={message.payload.label}
+                              plays={message.payload.plays}
+                              unique={message.payload.unique}
+                              hours={message.payload.hours}
+                              topSongs={message.payload.topSongs}
+                              topRequesters={message.payload.topRequesters}
+                              topArtist={message.payload.topArtist}
+                              topGenre={message.payload.topGenre}
+                              peakHour={message.payload.peakHour}
+                              streakDays={message.payload.streakDays}
+                              personality={message.payload.personality}
+                              disabled={!message.payload.voiceChannelId}
+                              onCommand={(command) =>
+                                runMusicUiCommand(
+                                  command,
+                                  message.payload?.voiceChannelId,
+                                )
+                              }
+                            />
+                          ) : message.kind === "music-queue" && message.payload ? (
+                            <MusicQueueCard
+                              currentTrack={message.payload.currentTrack}
+                              queue={message.payload.queue}
+                              totalTracks={message.payload.totalTracks}
+                              disabled={!message.payload.voiceChannelId}
+                              onCommand={(command) =>
+                                runMusicUiCommand(
+                                  command,
+                                  message.payload?.voiceChannelId,
+                                )
+                              }
+                            />
+                          ) : message.kind === "music-history" && message.payload ? (
+                            <MusicHistoryCard
+                              history={message.payload.history}
+                              disabled={!message.payload.voiceChannelId}
+                              onCommand={(command) =>
+                                runMusicUiCommand(
+                                  command,
+                                  message.payload?.voiceChannelId,
+                                )
+                              }
+                            />
+                          ) : message.kind === "music-search" && message.payload ? (
+                            <MusicSearchCard
+                              query={message.payload.query}
+                              track={typeof message.payload.track === "object" ? message.payload.track : undefined}
+                              disabled={!message.payload.voiceChannelId}
+                              onCommand={(command) =>
+                                runMusicUiCommand(
+                                  command,
+                                  message.payload?.voiceChannelId,
+                                )
+                              }
+                            />
+                          ) : message.kind === "poll" && message.payload?.pollId ? (
+                            <PollCard
+                              pollId={message.payload.pollId}
+                              question={message.payload.question || message.text}
+                              options={message.payload.options || []}
+                              multi={message.payload.multi}
+                              liveCounts={pollCounts[message.payload.pollId]}
+                            />
+                          ) : editingId === message.id ? (
+                            <div className="message-edit">
+                              <textarea
+                                value={editDraft}
+                                autoFocus
+                                onChange={(event) => setEditDraft(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") setEditingId(null);
+                                  if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault();
+                                    void saveEdit(message);
+                                  }
+                                }}
+                              />
+                              <div className="message-edit-hint">
+                                Enter to save · Esc to cancel
+                              </div>
+                            </div>
+                          ) : message.payload?.forwardedFrom ? (
+                            <ForwardedMessageCard
+                              data={message.payload.forwardedFrom}
+                              comment={message.text}
+                              selfHandle={user.username}
+                              emojis={emojiMap}
+                              onMention={openProfileByHandle}
+                              onImage={setLightbox}
+                              onPdf={setPdfViewer}
+                              formatTime={(d) => formatClientTime(d, "")}
+                            />
+                          ) : (
+                            <MessageBody
+                              text={message.text}
+                              selfHandle={user.username}
+                              onMention={openProfileByHandle}
+                              onImage={setLightbox}
+                              emojis={emojiMap}
+                            />
+                          )}
+
+                          {extractInviteCodes(message.text).map((code) => {
+                            const inv = resolvedInvites[code];
+                            if (!inv) return null;
+                            const isCurrentlyMember = inv.server
+                              ? servers.some((s) => s.id === inv.server?.id)
+                              : false;
+                            return (
+                              <ServerInviteCard
+                                key={code}
+                                invite={inv}
+                                isMember={isCurrentlyMember}
+                                onJoin={() => {
+                                  if (isCurrentlyMember && inv.server) {
+                                    setActiveServerId(inv.server.id);
+                                  } else {
+                                    void joinServerDirect(code);
+                                  }
+                                }}
+                              />
+                            );
+                          })}
+
+                          {message.kind === "nowplaying" &&
+                            message.payload?.voiceChannelId && (
+                              <NowPlaying
+                                state={hub.players[message.payload.voiceChannelId] || null}
+                                trackId={message.payload.trackId}
+                                trackLabel={message.payload.label}
+                                position={
+                                  voice.channelId === message.payload.voiceChannelId
+                                    ? player.position
+                                    : 0
+                                }
+                                controllable={
+                                  voice.channelId === message.payload.voiceChannelId
+                                }
+                                blocked={!botStreaming && player.blocked}
+                                onUnblock={player.unblock}
+                                voiceChannelName={
+                                  voiceChannels.find(
+                                    (channel) =>
+                                      channel.id === message.payload?.voiceChannelId,
+                                  )?.name
+                                }
+                                onSeek={(positionMs) =>
+                                  hub.send({
+                                    t: "player",
+                                    channelId: message.payload!.voiceChannelId!,
+                                    action: { name: "seek", positionMs },
+                                  })
+                                }
+                                onToggle={() =>
+                                  hub.send({
+                                    t: "player",
+                                    channelId: message.payload!.voiceChannelId!,
+                                    action: { name: "toggle" },
+                                  })
+                                }
+                                onSkip={() =>
+                                  hub.send({
+                                    t: "player",
+                                    channelId: message.payload!.voiceChannelId!,
+                                    action: { name: "skip" },
+                                  })
+                                }
+                                volume={prefFor("bot:music").volume}
+                                onVolume={(volume) =>
+                                  void saveVoicePref("bot:music", { volume })
+                                }
+                              />
+                            )}
+
+                          {message.link && (
+                            <a
+                              className="bot-action"
+                              href={message.link}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {message.actionLabel || "Open"}
+                              <span aria-hidden="true">↗</span>
+                            </a>
+                          )}
+                          {message.audio && (
+                            <audio
+                              className="message-audio"
+                              controls
+                              preload="none"
+                              src={message.audio}
+                            />
+                          )}
+                          {message.image && (
+                            <img
+                              className="message-image"
+                              src={message.image}
+                              alt="Shared attachment"
+                              onClick={() => setLightbox(message.image!)}
+                            />
+                          )}
+                          {message.images && message.images.length > 0 && (
+                            <div
+                              className={`attachment-grid count-${Math.min(
+                                message.images.length,
+                                4,
+                              )}`}
+                            >
+                              {message.images.map((url) => (
+                                <img
+                                  key={url}
+                                  className="message-image"
+                                  src={url}
+                                  alt="Shared attachment"
+                                  onClick={() => setLightbox(url)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {message.file?.type === "pdf" && (
+                            <button
+                              type="button"
+                              className="message-file-card"
+                              onClick={() =>
+                                setPdfViewer({
+                                  url: message.file!.url,
+                                  name: message.file!.name,
+                                })
+                              }
+                            >
+                              <span className="message-file-icon">PDF</span>
+                              <span>
+                                <strong>{message.file.name}</strong>
+                                <small>PDF document · view and fill in Huddle</small>
+                              </span>
+                              <b aria-hidden="true">Open</b>
+                            </button>
+                          )}
+
+                          {(message.threadCount ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              className="thread-link inline-flex items-center gap-1.5"
+                              onClick={() => void openThread(message)}
+                            >
+                              <MessageSquare size={14} /> {message.threadCount}{" "}
+                              {message.threadCount === 1 ? "reply" : "replies"}
+                            </button>
+                          )}
+
+                          {message.reactions && message.reactions.length > 0 && (
+                            <div className="reactions">
+                              {message.reactions.map((reaction) => (
+                                <button
+                                  type="button"
+                                  key={reaction.emoji}
+                                  className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""} ${reactionViewer?.messageId === message.id && reactionViewer.emoji === reaction.emoji ? "viewer-open" : ""}`}
+                                  onClick={() =>
+                                    void toggleReaction(message.id, reaction.emoji)
+                                  }
+                                  onContextMenu={(e) =>
+                                    handleOpenReactionViewer(
+                                      e,
+                                      message.id,
+                                      reaction.emoji,
+                                    )
+                                  }
+                                  title={reactionTooltip(reaction)}
+                                >
+                                  {emojiMap[reaction.emoji.replace(/^:|:$/g, "")] ? (
+                                    <img
+                                      className="custom-emoji"
+                                      src={emojiMap[reaction.emoji.replace(/^:|:$/g, "")]}
+                                      alt={reaction.emoji}
+                                    />
+                                  ) : (
+                                    <OutlineEmoji emoji={reaction.emoji} />
+                                  )}
+                                  <b>{reaction.count}</b>
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                className={`reaction add-reaction-btn ${reactionPicker?.messageId === message.id ? "mine" : ""}`}
+                                title="Add reaction · Shift-click to add to quick reactions"
+                                onClick={(e) => {
+                                  if (e.shiftKey) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleOpenReactionPicker(e, message.id, "addToQuickReactions");
+                                    return;
+                                  }
+                                  handleOpenReactionPicker(e, message.id, "react");
+                                }}
+                              >
+                                <SmilePlus size={14} />
+                              </button>
+                            </div>
+                          )}
+
+                          {quickVoteId === message.id && (
+                            <div className="quick-vote">
+                              <span className="quick-vote-title">Vote</span>
+                              {QUICK_VOTES.map((emoji) => {
+                                const reacted =
+                                  message.reactions?.find((r) => r.emoji === emoji)?.mine ||
+                                  false;
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    className={`reaction ${reacted ? "mine" : ""}`}
+                                    onClick={() =>
+                                      void toggleReaction(message.id, emoji)
+                                    }
+                                  >
+                                    <OutlineEmoji emoji={emoji} />
+                                    <b>
+                                      {message.reactions?.find((r) => r.emoji === emoji)
+                                        ?.count || 0}
+                                    </b>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Touch-only: reveal this message's actions on tap instead of
+                    showing every message's full bar at once. */}
+                        <button
+                          type="button"
+                          className="message-actions-toggle"
+                          aria-label="Message actions"
+                          onClick={() =>
+                            setOpenActionsId((current) =>
+                              current === message.id ? null : message.id,
+                            )
+                          }
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                        <div className="message-actions">
+                          <div className="quick-reactions">
+                            {quickReactions.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                className="quick-react-outline-btn"
+                                title={`React ${emoji} · Shift-click to remove`}
+                                onClick={(e) => {
+                                  if (e.shiftKey) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    removeQuickReaction(emoji);
+                                    return;
+                                  }
+                                  void toggleReaction(message.id, emoji);
+                                  setOpenActionsId(null);
+                                }}
+                              >
+                                {emojiMap[emoji.replace(/^:|:$/g, "")] ? (
+                                  <img
+                                    className="custom-emoji"
+                                    src={emojiMap[emoji.replace(/^:|:$/g, "")]}
+                                    alt={emoji}
+                                  />
+                                ) : (
+                                  <OutlineEmoji emoji={emoji} />
+                                )}
+                              </button>
+                            ))}
+                            {/* The server's own emoji, right where you react. */}
+                            {emojis
+                              .slice(0, 4)
+                              .filter((emoji) => !hiddenServerEmojiIds.includes(emoji.id))
+                              .map((emoji) => (
+                                <button
+                                  key={emoji.id}
+                                  type="button"
+                                  title={`React :${emoji.name}: · Shift-click to remove`}
+                                  onClick={(e) => {
+                                    if (e.shiftKey) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      hideServerEmoji(emoji.id, emoji.name);
+                                      return;
+                                    }
+                                    void toggleReaction(message.id, `:${emoji.name}:`);
+                                    setOpenActionsId(null);
+                                  }}
+                                >
+                                  <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
+                                </button>
+                              ))}
+                            <button
+                              type="button"
+                              title="Add reaction · Shift-click to add to quick reactions"
+                              className={`add-reaction-action-btn ${reactionPicker?.messageId === message.id ? "active" : ""}`}
+                              onClick={(e) => {
+                                if (e.shiftKey) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleOpenReactionPicker(e, message.id, "addToQuickReactions");
+                                  return;
+                                }
+                                handleOpenReactionPicker(e, message.id, "react");
+                              }}
+                            >
+                              <SmilePlus size={16} />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            title="Reply"
+                            onClick={() => {
+                              setReplyTarget(message);
+                              composerRef.current?.focus();
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            <Reply size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Reply in thread"
+                            onClick={() => {
+                              void openThread(message);
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            <MessageSquare size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Forward"
+                            onClick={() => {
+                              const chName = inDmHome
+                                ? activeDm?.user.displayName
+                                : activeChannel?.name;
+                              const srvName = inDmHome ? undefined : activeServer?.name;
+                              setForwardTarget({
+                                id: message.id,
+                                author: author?.displayName || message.author,
+                                avatar: author?.avatar || message.avatar,
+                                avatarUrl: author?.avatarUrl,
+                                color: author?.color || message.color,
+                                text: message.text,
+                                createdAt: message.createdAt,
+                                image: message.image,
+                                images: message.images,
+                                file: message.file,
+                                channelId: message.channelId || activeChannelId,
+                                channelName: chName,
+                                serverName: srvName,
+                              });
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            <Forward size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Quick vote"
+                            onClick={() => {
+                              setQuickVoteId((current) =>
+                                current === message.id ? null : message.id,
+                              );
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            <Vote size={16} />
+                          </button>
+                          {message.userId === user.id && !message.bot && (
+                            <button
+                              type="button"
+                              title="Edit"
+                              onClick={() => {
+                                beginEdit(message);
+                                setOpenActionsId(null);
+                              }}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title={message.pinned ? "Unpin" : "Pin"}
+                            onClick={() => {
+                              void togglePin(message);
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            <Pin size={16} />
+                          </button>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              title="Delete"
+                              onClick={() => {
+                                void deleteMessage(message.id);
+                                setOpenActionsId(null);
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  <div ref={messageEndRef} />
+                </div>
+
+                {(notice || voice.error) && (
+                  <button
+                    className="notice"
+                    onClick={() => {
+                      setNotice("");
+                      voice.setError("");
+                    }}
+                    aria-label="Dismiss notification"
+                  >
+                    {notice || voice.error}
+                    <span>×</span>
+                  </button>
+                )}
+
+                <form className="composer-wrap" onSubmit={sendMessage}>
+                  {activeSlashCommand && draft.startsWith("/") && (
+                    <div className="active-command-helper">
+                      <span className="command-title">/{activeSlashCommand.name}</span>
+                      {activeSlashCommand.args && (
+                        <span className="command-args">{activeSlashCommand.args}</span>
+                      )}
+                      <span className="command-desc">— {activeSlashCommand.description}</span>
                     </div>
                   )}
 
-                  {quickVoteId === message.id && (
-                    <div className="quick-vote">
-                      <span className="quick-vote-title">Vote</span>
-                      {QUICK_VOTES.map((emoji) => {
-                        const reacted =
-                          message.reactions?.find((r) => r.emoji === emoji)?.mine ||
-                          false;
+                  {slashActive && (
+                    <SlashMenu
+                      query={draft.split(/\s+/)[0]}
+                      highlighted={slashIndex}
+                      onHighlight={setSlashIndex}
+                      onPick={(command) =>
+                        pickCommand(
+                          slashMatches.findIndex((item) => item.name === command.name),
+                        )
+                      }
+                      inVoice={Boolean(voice.channelId)}
+                    />
+                  )}
+
+                  {mentionActive && (
+                    <div className="mention-menu">
+                      {mentionMatches.map((option, index) => {
+                        const active = index === slashIndex % mentionMatches.length;
+                        // Section headers, printed when the kind changes.
+                        const previous = mentionMatches[index - 1];
+                        const header =
+                          !previous || previous.kind !== option.kind ? (
+                            <div className="mention-section" key={`h:${option.kind}`}>
+                              {option.kind === "user" ? "MEMBERS" : "ROLES"}
+                            </div>
+                          ) : null;
+
+                        if (option.kind === "role") {
+                          return (
+                            <div key={`role:${option.role.id}`}>
+                              {header}
+                              <button
+                                type="button"
+                                className={`mention-item ${active ? "active" : ""}`}
+                                onMouseEnter={() => setSlashIndex(index)}
+                                onClick={() => pickMention(option)}
+                              >
+                                <span
+                                  className="mention-role-dot"
+                                  style={{ background: option.role.color }}
+                                />
+                                <span
+                                  className="mention-primary"
+                                  style={{ color: option.role.color }}
+                                >
+                                  @{option.role.name}
+                                </span>
+                                <span className="mention-note">
+                                  Notify everyone with this role
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        const member = option.member;
                         return (
-                          <button
-                            key={emoji}
-                            type="button"
-                            className={`reaction ${reacted ? "mine" : ""}`}
-                            onClick={() =>
-                              void toggleReaction(message.id, emoji)
-                            }
-                          >
-                            <OutlineEmoji emoji={emoji} />
-                            <b>
-                              {message.reactions?.find((r) => r.emoji === emoji)
-                                ?.count || 0}
-                            </b>
-                          </button>
+                          <div key={`user:${member.id}`}>
+                            {header}
+                            <button
+                              type="button"
+                              className={`mention-item ${active ? "active" : ""}`}
+                              onMouseEnter={() => setSlashIndex(index)}
+                              onClick={() => pickMention(option)}
+                            >
+                              <Avatar
+                                className="tiny-avatar"
+                                avatar={member.avatar}
+                                avatarUrl={member.avatarUrl}
+                                color={member.color}
+                              />
+                              <span
+                                className="mention-primary"
+                                style={{ color: roleColorFor(member) || undefined }}
+                              >
+                                {member.displayName}
+                              </span>
+                              <span className="mention-note">@{member.username}</span>
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
                   )}
-                </div>
 
-                {/* Touch-only: reveal this message's actions on tap instead of
-                    showing every message's full bar at once. */}
-                <button
-                  type="button"
-                  className="message-actions-toggle"
-                  aria-label="Message actions"
-                  onClick={() =>
-                    setOpenActionsId((current) =>
-                      current === message.id ? null : message.id,
-                    )
-                  }
-                >
-                  <MoreHorizontal size={18} />
-                </button>
-                <div className="message-actions">
-                  <div className="quick-reactions">
-                    {QUICK_REACTIONS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        className="quick-react-outline-btn"
-                        title={`React ${emoji}`}
-                        onClick={() => {
-                          void toggleReaction(message.id, emoji);
-                          setOpenActionsId(null);
-                        }}
-                      >
-                        <OutlineEmoji emoji={emoji} />
-                      </button>
-                    ))}
-                    {/* The server's own emoji, right where you react. */}
-                    {emojis.slice(0, 4).map((emoji) => (
-                      <button
-                        key={emoji.id}
-                        type="button"
-                        title={`React :${emoji.name}:`}
-                        onClick={() => {
-                          void toggleReaction(message.id, `:${emoji.name}:`);
-                          setOpenActionsId(null);
-                        }}
-                      >
-                        <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      title="Add reaction"
-                      className={`add-reaction-action-btn ${reactionPicker?.messageId === message.id ? "active" : ""}`}
-                      onClick={(e) => handleOpenReactionPicker(e, message.id)}
-                    >
-                      <SmilePlus size={16} />
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    title="Reply"
-                    onClick={() => {
-                      setReplyTarget(message);
-                      composerRef.current?.focus();
-                      setOpenActionsId(null);
-                    }}
-                  >
-                    <Reply size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    title="Reply in thread"
-                    onClick={() => {
-                      void openThread(message);
-                      setOpenActionsId(null);
-                    }}
-                  >
-                    <MessageSquare size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    title="Quick vote"
-                    onClick={() => {
-                      setQuickVoteId((current) =>
-                        current === message.id ? null : message.id,
-                      );
-                      setOpenActionsId(null);
-                    }}
-                  >
-                    <Vote size={16} />
-                  </button>
-                  {message.userId === user.id && !message.bot && (
-                    <button
-                      type="button"
-                      title="Edit"
-                      onClick={() => {
-                        beginEdit(message);
-                        setOpenActionsId(null);
+                  {gifOpen && (
+                    <GifPicker
+                      onClose={() => setGifOpen(false)}
+                      serverId={inDmHome ? null : activeServerId}
+                      canManageStickers={canManageChannels}
+                      onPick={(url) => {
+                        setGifOpen(false);
+                        void sendText(url);
                       }}
-                    >
-                      <Pencil size={16} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    title={message.pinned ? "Unpin" : "Pin"}
-                    onClick={() => {
-                      void togglePin(message);
-                      setOpenActionsId(null);
-                    }}
-                  >
-                    <Pin size={16} />
-                  </button>
-                  {canDelete && (
-                    <button
-                      type="button"
-                      title="Delete"
-                      onClick={() => {
-                        void deleteMessage(message.id);
-                        setOpenActionsId(null);
+                      onInsert={(text) => {
+                        setDraft((current) => current + text);
+                        composerRef.current?.focus();
                       }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                      onEmojiChange={() => void loadEmojis().catch(() => undefined)}
+                    />
                   )}
-                </div>
-              </article>
-            );
-          })}
-          <div ref={messageEndRef} />
-        </div>
 
-        {(notice || voice.error) && (
-          <button
-            className="notice"
-            onClick={() => {
-              setNotice("");
-              voice.setError("");
-            }}
-            aria-label="Dismiss notification"
-          >
-            {notice || voice.error}
-            <span>×</span>
-          </button>
-        )}
+                  {emojiOpen && (
+                    <EmojiPicker
+                      serverId={inDmHome ? null : activeServerId}
+                      canManageEmojis={canManageChannels}
+                      onPickEmoji={(codeOrUrl) => {
+                        setEmojiOpen(false);
+                        setDraft((current) => current + codeOrUrl + " ");
+                        composerRef.current?.focus();
+                      }}
+                      onClose={() => setEmojiOpen(false)}
+                    />
+                  )}
 
-        <form className="composer-wrap" onSubmit={sendMessage}>
-          {activeSlashCommand && draft.startsWith("/") && (
-            <div className="active-command-helper">
-              <span className="command-title">/{activeSlashCommand.name}</span>
-              {activeSlashCommand.args && (
-                <span className="command-args">{activeSlashCommand.args}</span>
-              )}
-              <span className="command-desc">— {activeSlashCommand.description}</span>
-            </div>
-          )}
-
-          {slashActive && (
-            <SlashMenu
-              query={draft.split(/\s+/)[0]}
-              highlighted={slashIndex}
-              onHighlight={setSlashIndex}
-              onPick={(command) =>
-                pickCommand(
-                  slashMatches.findIndex((item) => item.name === command.name),
-                )
-              }
-              inVoice={Boolean(voice.channelId)}
-            />
-          )}
-
-          {mentionActive && (
-            <div className="mention-menu">
-              {mentionMatches.map((option, index) => {
-                const active = index === slashIndex % mentionMatches.length;
-                // Section headers, printed when the kind changes.
-                const previous = mentionMatches[index - 1];
-                const header =
-                  !previous || previous.kind !== option.kind ? (
-                    <div className="mention-section" key={`h:${option.kind}`}>
-                      {option.kind === "user" ? "MEMBERS" : "ROLES"}
-                    </div>
-                  ) : null;
-
-                if (option.kind === "role") {
-                  return (
-                    <div key={`role:${option.role.id}`}>
-                      {header}
-                      <button
-                        type="button"
-                        className={`mention-item ${active ? "active" : ""}`}
-                        onMouseEnter={() => setSlashIndex(index)}
-                        onClick={() => pickMention(option)}
-                      >
-                        <span
-                          className="mention-role-dot"
-                          style={{ background: option.role.color }}
-                        />
-                        <span
-                          className="mention-primary"
-                          style={{ color: option.role.color }}
-                        >
-                          @{option.role.name}
-                        </span>
-                        <span className="mention-note">
-                          Notify everyone with this role
-                        </span>
-                      </button>
-                    </div>
-                  );
-                }
-
-                const member = option.member;
-                return (
-                  <div key={`user:${member.id}`}>
-                    {header}
-                    <button
-                      type="button"
-                      className={`mention-item ${active ? "active" : ""}`}
-                      onMouseEnter={() => setSlashIndex(index)}
-                      onClick={() => pickMention(option)}
-                    >
-                      <Avatar
-                        className="tiny-avatar"
-                        avatar={member.avatar}
-                        avatarUrl={member.avatarUrl}
-                        color={member.color}
-                      />
-                      <span
-                        className="mention-primary"
-                        style={{ color: roleColorFor(member) || undefined }}
-                      >
-                        {member.displayName}
-                      </span>
-                      <span className="mention-note">@{member.username}</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {gifOpen && (
-            <GifPicker
-              onClose={() => setGifOpen(false)}
-              serverId={inDmHome ? null : activeServerId}
-              canManageStickers={canManageChannels}
-              onPick={(url) => {
-                setGifOpen(false);
-                void sendText(url);
-              }}
-              onInsert={(text) => {
-                setDraft((current) => current + text);
-                composerRef.current?.focus();
-              }}
-              onEmojiChange={() => void loadEmojis().catch(() => undefined)}
-            />
-          )}
-
-          {emojiOpen && (
-            <EmojiPicker
-              serverId={inDmHome ? null : activeServerId}
-              canManageEmojis={canManageChannels}
-              onPickEmoji={(codeOrUrl) => {
-                setEmojiOpen(false);
-                setDraft((current) => current + codeOrUrl + " ");
-                composerRef.current?.focus();
-              }}
-              onClose={() => setEmojiOpen(false)}
-            />
-          )}
-
-          {replyTarget && (
-            <div className="reply-bar">
-              <span>
-                Replying to <strong>{replyTarget.author}</strong>
-              </span>
-              <button
-                type="button"
-                onClick={() => setReplyTarget(null)}
-                aria-label="Cancel reply"
-              >
-                ×
-              </button>
-            </div>
-          )}
-
-          {pendingFiles.length > 0 && (
-            <div className="attachment-row">
-              {pendingFiles.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`attachment-preview ${entry.preview ? "" : "file-preview"}`}
-                >
-                  {entry.preview ? (
-                    <img src={entry.preview} alt={entry.file.name} />
-                  ) : (
-                    <>
-                      <span className="message-file-icon">PDF</span>
+                  {replyTarget && (
+                    <div className="reply-bar">
                       <span>
-                        <strong>{entry.file.name}</strong>
-                        <small>
-                          {(entry.file.size / 1024 / 1024).toFixed(1)} MB
-                        </small>
+                        Replying to <strong>{replyTarget.author}</strong>
                       </span>
-                    </>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTarget(null)}
+                        aria-label="Cancel reply"
+                      >
+                        ×
+                      </button>
+                    </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPendingFiles((current) =>
-                        current.filter((item) => item.id !== entry.id),
-                      )
-                    }
-                    aria-label={`Remove ${entry.file.name}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
 
-          {isDmBlocked ? (
-            <div className="dm-blocked-banner">
-              <ShieldAlert size={16} className="text-rose-400 shrink-0" />
-              <span>You have blocked this user. Unblock them to send messages.</span>
-              <button
-                type="button"
-                className="dm-unblock-btn"
-                onClick={() => activeDm && handleUnblockUser(activeDm.user.id)}
-              >
-                Unblock
-              </button>
-            </div>
-          ) : (
-            <div className="composer">
-              <button
-                type="button"
-                className="attach-button"
-                onClick={() => fileRef.current?.click()}
-                aria-label="Attach an image or PDF"
-              >
-                +
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,application/pdf,.pdf"
-                multiple
-                hidden
-                onChange={chooseAttachment}
-              />
-              <textarea
-                ref={composerRef}
-                value={draft}
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  if (event.target.value.trim()) noteTyping();
-                }}
-                onKeyDown={onComposerKeyDown}
-                onPaste={(event) => {
-                  // Pasting a screenshot attaches it instead of doing nothing.
-                  const files = Array.from(event.clipboardData.files || []);
-                  if (files.length) {
-                    event.preventDefault();
-                    acceptAttachment(files);
-                  }
-                }}
-                placeholder={
-                  activeChannelId
-                    ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
-                    : "Pick a channel first"
-                }
-                aria-label={`Message ${channelTitle}`}
-                rows={1}
-                disabled={!activeChannelId}
-              />
-              <button
-                type="button"
-                className="composer-emoji-btn"
-                onClick={() => {
-                  setEmojiOpen((open) => !open);
-                  setGifOpen(false);
-                }}
-                aria-label="Open Emoji Picker"
-                title="Open Emoji Picker"
-              >
-                <Smile size={18} />
-              </button>
-              <button
-                type="button"
-                className="gif-button"
-                onClick={() => {
-                  setGifOpen((open) => !open);
-                  setEmojiOpen(false);
-                }}
-                aria-label="Add a GIF"
-              >
-                GIF
-              </button>
-              <button
-                type="button"
-                className="composer-emoji-btn"
-                onClick={() => setPollDialogOpen(true)}
-                aria-label="Create a Poll"
-                title="Create a Poll"
-              >
-                <Vote size={18} />
-              </button>
-              <button
-                type="button"
-                className="gif-button"
-                onClick={() => {
-                  setDraft("/");
-                  composerRef.current?.focus();
-                }}
-                aria-label="Show commands"
-              >
-                /
-              </button>
-              <button
-                className="send-button"
-                type="submit"
-                aria-label="Send message"
-                disabled={!draft.trim() && pendingFiles.length === 0}
-              >
-                <Send size={15} />
-              </button>
-            </div>
-          )}
+                  {pendingFiles.length > 0 && (
+                    <div className="attachment-row">
+                      {pendingFiles.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`attachment-preview ${entry.preview ? "" : "file-preview"}`}
+                        >
+                          {entry.preview ? (
+                            <img src={entry.preview} alt={entry.file.name} />
+                          ) : (
+                            <>
+                              <span className="message-file-icon">PDF</span>
+                              <span>
+                                <strong>{entry.file.name}</strong>
+                                <small>
+                                  {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+                                </small>
+                              </span>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPendingFiles((current) =>
+                                current.filter((item) => item.id !== entry.id),
+                              )
+                            }
+                            aria-label={`Remove ${entry.file.name}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-          <div className="composer-hint">
-            {typingNames.length > 0 ? (
-              <span className="typing-line">
-                <span className="typing-dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                {typingNames.length === 1
-                  ? `${typingNames[0]} is typing…`
-                  : typingNames.length === 2
-                    ? `${typingNames[0]} and ${typingNames[1]} are typing…`
-                    : `${typingNames.length} people are typing…`}
-              </span>
-            ) : (
-              <span className="composer-hint-keys">
-                <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands
-              </span>
+                  {isDmBlocked ? (
+                    <div className="dm-blocked-banner">
+                      <ShieldAlert size={16} className="text-rose-400 shrink-0" />
+                      <span>You have blocked this user. Unblock them to send messages.</span>
+                      <button
+                        type="button"
+                        className="dm-unblock-btn"
+                        onClick={() => activeDm && handleUnblockUser(activeDm.user.id)}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="composer">
+                      <button
+                        type="button"
+                        className="attach-button"
+                        onClick={() => fileRef.current?.click()}
+                        aria-label="Attach an image or PDF"
+                      >
+                        +
+                      </button>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/*,application/pdf,.pdf"
+                        multiple
+                        hidden
+                        onChange={chooseAttachment}
+                      />
+                      <textarea
+                        ref={composerRef}
+                        value={draft}
+                        onChange={(event) => {
+                          setDraft(event.target.value);
+                          if (event.target.value.trim()) noteTyping();
+                        }}
+                        onKeyDown={onComposerKeyDown}
+                        onPaste={(event) => {
+                          // Pasting a screenshot attaches it instead of doing nothing.
+                          const files = Array.from(event.clipboardData.files || []);
+                          if (files.length) {
+                            event.preventDefault();
+                            acceptAttachment(files);
+                          }
+                        }}
+                        placeholder={
+                          activeChannelId
+                            ? `Message ${inDmHome ? "" : "#"}${channelTitle}`
+                            : "Pick a channel first"
+                        }
+                        aria-label={`Message ${channelTitle}`}
+                        rows={1}
+                        disabled={!activeChannelId}
+                      />
+                      <button
+                        type="button"
+                        className="composer-emoji-btn"
+                        onClick={() => {
+                          setEmojiOpen((open) => !open);
+                          setGifOpen(false);
+                        }}
+                        aria-label="Open Emoji Picker"
+                        title="Open Emoji Picker"
+                      >
+                        <Smile size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="gif-button"
+                        onClick={() => {
+                          setGifOpen((open) => !open);
+                          setEmojiOpen(false);
+                        }}
+                        aria-label="Add a GIF"
+                      >
+                        GIF
+                      </button>
+                      <button
+                        type="button"
+                        className="composer-emoji-btn"
+                        onClick={() => setPollDialogOpen(true)}
+                        aria-label="Create a Poll"
+                        title="Create a Poll"
+                      >
+                        <Vote size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="gif-button"
+                        onClick={() => {
+                          setDraft("/");
+                          composerRef.current?.focus();
+                        }}
+                        aria-label="Show commands"
+                      >
+                        /
+                      </button>
+                      <button
+                        className="send-button"
+                        type="submit"
+                        aria-label="Send message"
+                        disabled={!draft.trim() && pendingFiles.length === 0}
+                      >
+                        <Send size={15} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="composer-hint">
+                    {typingNames.length > 0 ? (
+                      <span className="typing-line">
+                        <span className="typing-dots">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        {typingNames.length === 1
+                          ? `${typingNames[0]} is typing…`
+                          : typingNames.length === 2
+                            ? `${typingNames[0]} and ${typingNames[1]} are typing…`
+                            : `${typingNames.length} people are typing…`}
+                      </span>
+                    ) : (
+                      <span className="composer-hint-keys">
+                        <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands
+                      </span>
+                    )}
+                  </div>
+                </form>
+              </>
             )}
-          </div>
-        </form>
-          </>
-        )}
           </>
         )}
       </section>
@@ -6510,13 +6792,26 @@ export function ChatShell() {
                         {formatClientTime(reply.createdAt, reply.time)}
                       </time>
                     </div>
-                    <MessageBody
-                      text={reply.text}
-                      selfHandle={user.username}
-                      onMention={openProfileByHandle}
-                      onImage={setLightbox}
-                      emojis={emojiMap}
-                    />
+                    {reply.payload?.forwardedFrom ? (
+                      <ForwardedMessageCard
+                        data={reply.payload.forwardedFrom}
+                        comment={reply.text}
+                        selfHandle={user.username}
+                        emojis={emojiMap}
+                        onMention={openProfileByHandle}
+                        onImage={setLightbox}
+                        onPdf={setPdfViewer}
+                        formatTime={(d) => formatClientTime(d, "")}
+                      />
+                    ) : (
+                      <MessageBody
+                        text={reply.text}
+                        selfHandle={user.username}
+                        onMention={openProfileByHandle}
+                        onImage={setLightbox}
+                        emojis={emojiMap}
+                      />
+                    )}
                     {reply.image && (
                       <img
                         className="message-image"
@@ -6790,10 +7085,10 @@ export function ChatShell() {
                       : hub.forcedMutes.has(member.id)
                         ? "Server muted"
                         : PRESENCE[
-                            (presenceOf(member) === "offline"
-                              ? "invisible"
-                              : presenceOf(member)) as PresenceStatus
-                          ].label)}
+                          (presenceOf(member) === "offline"
+                            ? "invisible"
+                            : presenceOf(member)) as PresenceStatus
+                        ].label)}
               </span>
             </div>
           </div>
@@ -6898,28 +7193,28 @@ export function ChatShell() {
           onToggleInvitePermission={
             user.isAdmin && !userMenu.member.isAdmin && userMenu.member.id !== user.id
               ? async () => {
-                  const targetMember = userMenu.member;
-                  const newCanInvite = !targetMember.canInvite;
-                  setUserMenu(null);
-                  try {
-                    await apiFetch("/api/invites/permissions", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        userId: targetMember.id,
-                        canInvite: newCanInvite,
-                      }),
-                    });
-                    setMembers((prev) =>
-                      prev.map((m) =>
-                        m.id === targetMember.id
-                          ? { ...m, canInvite: newCanInvite }
-                          : m,
-                      ),
-                    );
-                  } catch (err) {
-                    console.error("Failed to update invite permission:", err);
-                  }
+                const targetMember = userMenu.member;
+                const newCanInvite = !targetMember.canInvite;
+                setUserMenu(null);
+                try {
+                  await apiFetch("/api/invites/permissions", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      userId: targetMember.id,
+                      canInvite: newCanInvite,
+                    }),
+                  });
+                  setMembers((prev) =>
+                    prev.map((m) =>
+                      m.id === targetMember.id
+                        ? { ...m, canInvite: newCanInvite }
+                        : m,
+                    ),
+                  );
+                } catch (err) {
+                  console.error("Failed to update invite permission:", err);
                 }
+              }
               : undefined
           }
           pref={prefFor(userMenu.member.id)}
@@ -6965,9 +7260,9 @@ export function ChatShell() {
           voiceChannels={
             canModerate && !inDmHome
               ? voiceChannels.map((channel) => ({
-                  id: channel.id,
-                  name: channel.name,
-                }))
+                id: channel.id,
+                name: channel.name,
+              }))
               : []
           }
           targetVoiceChannelId={
@@ -7320,6 +7615,24 @@ export function ChatShell() {
           onClose={() => setProfileCardTarget(null)}
           isSelf={user?.id === profileCardTarget.member.id}
           isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
+          friendStatus={
+            friendUserIds.has(profileCardTarget.member.id)
+              ? "friend"
+              : incomingFriendUserIds.has(profileCardTarget.member.id)
+                ? "incoming"
+                : outgoingFriendUserIds.has(profileCardTarget.member.id)
+                  ? "outgoing"
+                  : "none"
+          }
+          onAddFriend={(targetUserId, targetUsername) => {
+            void handleAddFriend(targetUserId, targetUsername);
+          }}
+          onRemoveFriend={(targetUserId) => {
+            void handleRemoveFriend(targetUserId);
+          }}
+          onAcceptFriend={(targetUserId) => {
+            void handleAcceptFriend(targetUserId);
+          }}
           onBlock={(targetUserId) => {
             void handleBlockUser(targetUserId);
           }}
@@ -7485,7 +7798,22 @@ export function ChatShell() {
               className="discord-emoji-picker reaction-picker"
               serverId={inDmHome ? null : activeServerId}
               canManageEmojis={canManageChannels}
-              onPickEmoji={(codeOrUrl) => {
+              title={
+                reactionPicker.mode === "addToQuickReactions"
+                  ? "Add to Quick Reactions"
+                  : undefined
+              }
+              subtitle={
+                reactionPicker.mode === "addToQuickReactions"
+                  ? "Click any emoji to add to your message actions bar"
+                  : undefined
+              }
+              onPickEmoji={(codeOrUrl, _isCustom, e) => {
+                if (reactionPicker.mode === "addToQuickReactions" || e?.shiftKey) {
+                  addQuickReaction(codeOrUrl);
+                  setReactionPicker(null);
+                  return;
+                }
                 void toggleReaction(reactionPicker.messageId, codeOrUrl);
                 setReactionPicker(null);
               }}
@@ -7494,6 +7822,15 @@ export function ChatShell() {
           </div>
         </div>
       )}
+
+      <ForwardMessageDialog
+        target={forwardTarget}
+        servers={servers}
+        dms={dms}
+        currentChannelId={activeChannelId}
+        onClose={() => setForwardTarget(null)}
+        onForward={handleForwardMessage}
+      />
 
       {reactionViewer && (
         <div

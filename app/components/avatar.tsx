@@ -34,15 +34,17 @@ export function Avatar({
 }: AvatarProps) {
   const sizeStyle: CSSProperties = size
     ? {
-        width: `${size}px`,
-        height: `${size}px`,
-        minWidth: `${size}px`,
-        minHeight: `${size}px`,
-        borderRadius: "50%",
-        display: "inline-grid",
-        placeItems: "center",
-        fontSize: `${Math.max(10, Math.round(size * 0.42))}px`,
-      }
+      overflow: "visible",
+      width: `${size}px`,
+      height: `${size}px`,
+      minWidth: `${size}px`,
+      minHeight: `${size}px`,
+      borderRadius: "50%",
+      aspectRatio: 1 / 1,
+      display: "inline-grid",
+      placeItems: "center",
+      fontSize: `${Math.max(10, Math.round(size * 0.42))}px`,
+    }
     : {};
 
   const baseClass = className || "avatar";

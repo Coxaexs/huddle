@@ -28,11 +28,13 @@ interface EmojiItem {
 
 interface EmojiPickerProps {
   serverId: string | null;
-  onPickEmoji: (codeOrUrl: string, isCustom?: boolean) => void;
+  onPickEmoji: (codeOrUrl: string, isCustom?: boolean, e?: React.MouseEvent) => void;
   onClose: () => void;
   canManageEmojis?: boolean;
   onRequestUploadEmoji?: () => void;
   className?: string;
+  title?: string;
+  subtitle?: string;
 }
 
 interface CategoryDef {
@@ -739,6 +741,8 @@ export function EmojiPicker({
   canManageEmojis = false,
   onRequestUploadEmoji,
   className,
+  title,
+  subtitle,
 }: EmojiPickerProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("smileys");
@@ -780,8 +784,7 @@ export function EmojiPicker({
   }, [onClose]);
 
   const toggleFavorite = (name: string, e: React.MouseEvent) => {
-    if (e.altKey || e.metaKey || e.ctrlKey) {
-      e.preventDefault();
+    if (e.altKey) {
       e.stopPropagation();
       setFavorites((prev) => {
         const next = prev.includes(name)
@@ -823,6 +826,12 @@ export function EmojiPicker({
       role="dialog"
       aria-label="Emoji Picker"
     >
+      {title && (
+        <div className="emoji-picker-banner">
+          <span className="emoji-picker-banner-title">{title}</span>
+          {subtitle && <small className="emoji-picker-banner-sub">{subtitle}</small>}
+        </div>
+      )}
       <div className="emoji-picker-search-bar">
         <div className="search-input-wrap">
           <Search size={14} className="search-icon" />
@@ -886,7 +895,7 @@ export function EmojiPicker({
                     }
                     onClick={(e) => {
                       toggleFavorite(item.name, e);
-                      onPickEmoji(`:${item.name}:`, true);
+                      onPickEmoji(`:${item.name}:`, true, e);
                     }}
                     title={`:${item.name}:`}
                   >
@@ -901,7 +910,7 @@ export function EmojiPicker({
                     onMouseEnter={() => setHoveredEmoji(item)}
                     onClick={(e) => {
                       toggleFavorite(item.name, e);
-                      onPickEmoji(item.symbol || `:${item.name}:`);
+                      onPickEmoji(item.symbol || `:${item.name}:`, false, e);
                     }}
                     title={`:${item.name}:`}
                   >
@@ -937,7 +946,7 @@ export function EmojiPicker({
                         onMouseEnter={() => setHoveredEmoji(item)}
                         onClick={(e) => {
                           toggleFavorite(item.name, e);
-                          onPickEmoji(item.symbol || `:${item.name}:`);
+                          onPickEmoji(item.symbol || `:${item.name}:`, false, e);
                         }}
                         title={`:${item.name}:`}
                       >
@@ -985,7 +994,7 @@ export function EmojiPicker({
                       }
                       onClick={(e) => {
                         toggleFavorite(item.name, e);
-                        onPickEmoji(`:${item.name}:`, true);
+                        onPickEmoji(`:${item.name}:`, true, e);
                       }}
                       title={`:${item.name}:`}
                     >
@@ -1026,7 +1035,7 @@ export function EmojiPicker({
                           onMouseEnter={() => setHoveredEmoji(item)}
                           onClick={(e) => {
                             toggleFavorite(item.name, e);
-                            onPickEmoji(item.symbol || `:${item.name}:`);
+                            onPickEmoji(item.symbol || `:${item.name}:`, false, e);
                           }}
                           title={`:${item.name}:`}
                         >
