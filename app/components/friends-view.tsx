@@ -412,7 +412,8 @@ export function FriendsView({
                           avatar={req.avatar}
                           avatarUrl={req.avatarUrl}
                           color={req.color}
-                          className="w-10 h-10 rounded-xl"
+                          size={40}
+                          className="friend-avatar"
                         />
                         <div className="min-w-0">
                           <div className="font-bold text-sm text-[var(--ink)] truncate">
@@ -473,7 +474,8 @@ export function FriendsView({
                           avatar={req.avatar}
                           avatarUrl={req.avatarUrl}
                           color={req.color}
-                          className="w-10 h-10 rounded-xl"
+                          size={40}
+                          className="friend-avatar"
                         />
                         <div className="min-w-0">
                           <div className="font-bold text-sm text-[var(--ink)] truncate">
@@ -565,7 +567,8 @@ export function FriendsView({
                         avatar={b.avatar}
                         avatarUrl={b.avatarUrl}
                         color={b.color}
-                        className="w-10 h-10 rounded-xl opacity-60"
+                        size={40}
+                        className="friend-avatar opacity-60"
                       />
                       <div className="min-w-0">
                         <div className="font-bold text-sm text-[var(--ink)] truncate">
@@ -658,7 +661,8 @@ export function FriendsView({
                             avatar={f.avatar}
                             avatarUrl={f.avatarUrl}
                             color={f.color}
-                            className="w-10 h-10 rounded-xl"
+                            size={40}
+                            className="friend-avatar"
                           />
                           <span
                             className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--chat-bg)]"

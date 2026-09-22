@@ -18,6 +18,7 @@ import {
   Check,
   Loader2,
   Maximize2,
+  Minimize2,
   PhoneOff,
 } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
@@ -177,6 +178,8 @@ export function VoiceStage({
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const focusMainRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const videoTiles: VideoTile[] = [];
   for (const { kind, stream } of voice.localVideos) {
@@ -215,11 +218,12 @@ export function VoiceStage({
     ? videoTiles.find((tile) => tile.key === focusedKey) || null
     : null;
 
-  // Esc leaves the focused view.
+  // Esc leaves the focused view (the first Esc in fullscreen just exits that).
   useEffect(() => {
     if (!focused) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFocusedKey(null);
+      if (event.key !== "Escape" || document.fullscreenElement) return;
+      setFocusedKey(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -232,13 +236,27 @@ export function VoiceStage({
     }
   });
 
+  useEffect(() => {
+    const onChange = () =>
+      setIsFullscreen(document.fullscreenElement === focusMainRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  /** Fullscreens just the shared video — no filmstrip of people underneath. */
   function toggleFullscreen() {
-    const element = wrapperRef.current;
+    const element = focusMainRef.current;
     if (!element) return;
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
-    } else {
+    } else if (element.requestFullscreen) {
       void element.requestFullscreen().catch(() => undefined);
+    } else {
+      // iOS Safari only fullscreens <video> elements.
+      const video = element.querySelector("video") as
+        | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+        | null;
+      video?.webkitEnterFullscreen?.();
     }
   }
 
@@ -365,11 +383,14 @@ export function VoiceStage({
             </p>
           </div>
         ) : focused ? (
-          <div className="voice-focus" ref={wrapperRef}>
+          <div className="voice-focus">
             <div
               className="voice-focus-main"
-              onClick={() => setFocusedKey(null)}
-              title="Click to return to the grid"
+              ref={focusMainRef}
+              onClick={() => {
+                if (!isFullscreen) setFocusedKey(null);
+              }}
+              title={isFullscreen ? undefined : "Click to return to the grid"}
             >
               <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
               <div className="voice-focus-bar">
@@ -382,9 +403,9 @@ export function VoiceStage({
                     event.stopPropagation();
                     toggleFullscreen();
                   }}
-                  aria-label="Toggle fullscreen"
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
                 >
-                  <Maximize2 size={16} />
+                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 </button>
               </div>
             </div>
