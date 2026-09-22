@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Default permissions for Huddle desktop app",
   "windows": ["main"],
+  "remote": {
+    "urls": ["https://chat.hoffle.online"]
+  },
   "permissions": [
     "core:default",
     "core:event:default",
