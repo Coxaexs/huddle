@@ -610,18 +610,26 @@ export interface RunCommandInput {
   customId?: string;
 }
 
+export type RunCommandResult =
+  | { status: "unknown" }
+  | { status: "offline" }
+  | { status: "dispatched" };
+
 /**
  * Dispatches INTERACTION_CREATE to the bot that owns the command.
  *
- * Returns false when no bot owns it, so the caller can fall back to Hoffle's
- * own slash commands rather than silently swallowing the input.
+ * "unknown" lets the caller fall back to Hoffle's own slash commands rather
+ * than swallowing the input; "offline" means the command is registered but its
+ * bot has no gateway session, which is worth telling the person who typed it.
  */
-export async function runBotCommand(input: RunCommandInput): Promise<boolean> {
+export async function runBotCommand(
+  input: RunCommandInput,
+): Promise<RunCommandResult> {
   const db = bindings().DB;
-  if (!db || !bindings().DISCORD_GATEWAY) return false;
+  if (!db || !bindings().DISCORD_GATEWAY) return { status: "unknown" };
 
   const located = await channelWithGuild(db, input.channelId);
-  if (!located) return false;
+  if (!located) return { status: "unknown" };
   const serverId = located.server?.id ?? null;
 
   const command = await db
@@ -632,10 +640,10 @@ export async function runBotCommand(input: RunCommandInput): Promise<boolean> {
     )
     .bind(input.commandName.toLowerCase(), serverId)
     .first<CommandRow>();
-  if (!command) return false;
+  if (!command) return { status: "unknown" };
 
   const user = await loadUser(db, input.userId);
-  if (!user) return false;
+  if (!user) return { status: "unknown" };
 
   const now = Date.now();
   const interactionId = transientSnowflake();
@@ -689,7 +697,7 @@ export async function runBotCommand(input: RunCommandInput): Promise<boolean> {
   );
   const serializedUser = await serializeUser(user);
 
-  await dispatchToBots(
+  const delivered = await dispatchToBots(
     "INTERACTION_CREATE",
     {
       id: interactionId,
@@ -724,7 +732,7 @@ export async function runBotCommand(input: RunCommandInput): Promise<boolean> {
     { serverId: serverId ?? undefined, targetBotId: command.bot_id },
   );
 
-  return true;
+  return { status: delivered > 0 ? "dispatched" : "offline" };
 }
 
 /** The commands a channel's slash menu should offer, for the web client. */
@@ -732,14 +740,17 @@ export async function listCommandsForServer(
   db: D1Database,
   serverId: string | null,
 ): Promise<Array<{ name: string; description: string; options: unknown[]; botId: string }>> {
+  // LEFT JOIN, not JOIN: the master BOT_TOKEN has no server_bots row, and its
+  // commands would otherwise register successfully and then never be offered.
   const rows = await db
     .prepare(
-      `SELECT c.*, b.name AS bot_name FROM discord_commands c
-       JOIN server_bots b ON b.id = c.bot_id AND b.enabled = 1
-       WHERE c.server_id IS ? OR c.server_id IS NULL`,
+      `SELECT c.* FROM discord_commands c
+       LEFT JOIN server_bots b ON b.id = c.bot_id
+       WHERE (c.server_id IS ? OR c.server_id IS NULL)
+         AND (b.id IS NULL OR b.enabled = 1)`,
     )
     .bind(serverId)
-    .all<CommandRow & { bot_name: string }>();
+    .all<CommandRow>();
   return (rows.results || []).map((row) => ({
     name: row.name,
     description: row.description,

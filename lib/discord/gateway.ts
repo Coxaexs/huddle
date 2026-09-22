@@ -21,7 +21,7 @@ import {
   GatewayCloseCode,
   GatewayIntent,
   SUPPORTED_API_VERSIONS,
-  ALL_INTENTS,
+  MAX_INTENTS,
   intentAllows,
 } from "./protocol";
 import { ZlibStreamEncoder } from "./zlib-stream";
@@ -256,8 +256,8 @@ export class DiscordGateway extends DurableObject {
       socket.close(GatewayCloseCode.InvalidIntents, "Invalid intents");
       return;
     }
-    if ((intents & ~ALL_INTENTS) !== 0) {
-      socket.close(GatewayCloseCode.InvalidIntents, "Unknown intent bits");
+    if (intents > MAX_INTENTS) {
+      socket.close(GatewayCloseCode.InvalidIntents, "Invalid intents");
       return;
     }
 

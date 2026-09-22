@@ -72,6 +72,8 @@ export const GatewayIntent = {
   GuildScheduledEvents: 1 << 16,
   AutoModerationConfiguration: 1 << 20,
   AutoModerationExecution: 1 << 21,
+  GuildMessagePolls: 1 << 24,
+  DirectMessagePolls: 1 << 25,
 } as const;
 
 /**
@@ -88,6 +90,14 @@ export const ALL_INTENTS = Object.values(GatewayIntent).reduce(
   (all, bit) => all | bit,
   0,
 );
+
+/**
+ * The widest value an IDENTIFY may carry. Unknown bits are accepted rather
+ * than rejected: Discord keeps adding intents, and a client that asks for one
+ * Hoffle has never heard of should lose that category of event, not the whole
+ * connection. Refusing them closes 4013, which libraries treat as fatal.
+ */
+export const MAX_INTENTS = 0xffffffff;
 
 /** Discord channel types. Hoffle only has a few of these to offer. */
 export const ChannelType = {

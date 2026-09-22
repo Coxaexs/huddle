@@ -31,21 +31,31 @@ export interface DispatchOptions {
   excludeBotId?: string | null;
 }
 
-/** Sends one already-serialized event to every eligible bot session. */
+/**
+ * Sends one already-serialized event to every eligible bot session.
+ *
+ * Returns how many sockets received it, which is the only way a caller can
+ * tell "no bot is listening" from "the bot got it and said nothing".
+ */
 export async function dispatchToBots(
   event: string,
   data: unknown,
   options: DispatchOptions = {},
-): Promise<void> {
+): Promise<number> {
   const stub = gateway();
-  if (!stub) return;
-  await stub
-    .fetch(`${INTERNAL}/dispatch`, {
+  if (!stub) return 0;
+  try {
+    const response = await stub.fetch(`${INTERNAL}/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event, data, ...options }),
-    })
-    .catch(() => undefined);
+    });
+    if (!response.ok) return 0;
+    const body = (await response.json()) as { delivered?: number };
+    return body.delivered ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**
