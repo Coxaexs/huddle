@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAudience, isDmMember } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
+import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
@@ -606,6 +607,12 @@ export async function POST(request: Request) {
   }
 
   await publishMessage(channelId || channelName, message, audience);
+
+  // Connected Discord bots see the same message. This runs after the hub
+  // publish so a slow or absent gateway never delays the sender's own tabs.
+  void dispatchMessage("MESSAGE_CREATE", stored, {
+    origin: new URL(request.url).origin,
+  });
 
   const pushTargets = new Set<string>();
   if (message.mentions) {

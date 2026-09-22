@@ -11,11 +11,13 @@ import { hub } from "../lib/hub-client";
 import { featureFlags } from "../lib/features";
 
 export { HuddleHub } from "../lib/hub";
+export { DiscordGateway } from "../lib/discord/gateway";
 
 const DEFAULT_BASE_PATH = "/hangout";
 
 interface WorkerEnv {
   ASSETS?: Fetcher;
+  DISCORD_GATEWAY?: DurableObjectNamespace;
   BOT_TOKEN?: string;
   RECORDER_SERVICE_TOKEN?: string;
   FEATURE_RECORD_SESSIONS?: string;
@@ -106,6 +108,52 @@ export default {
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },
       });
+    }
+
+    // ---- Discord-compatible bot surface ----
+    // Bots reach these with their own base URL configured, so both the
+    // basePath-prefixed and bare forms have to resolve.
+    const discordPath = url.pathname.startsWith(`${effectiveBasePath}/api/`)
+      ? url.pathname.slice(effectiveBasePath.length)
+      : url.pathname.startsWith("/api/")
+        ? url.pathname
+        : null;
+
+    if (discordPath === "/api/gateway") {
+      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+        return new Response("Expected a WebSocket upgrade.", { status: 426 });
+      }
+      const namespace = env.DISCORD_GATEWAY;
+      if (!namespace) {
+        return new Response("The bot gateway is not configured.", { status: 503 });
+      }
+      // IDENTIFY carries the token, so the upgrade itself is unauthenticated —
+      // exactly as on Discord, where an un-identified socket can do nothing but
+      // sit through its heartbeat interval and get closed.
+      const stub = namespace.get(namespace.idFromName("discord-gateway"));
+      const target = new URL("https://hoffle.gateway/socket");
+      for (const [key, value] of url.searchParams) {
+        target.searchParams.set(key, value);
+      }
+      return stub.fetch(target.toString(), {
+        headers: { upgrade: "websocket" },
+      });
+    }
+
+    const discordRest = discordPath?.match(/^\/api\/v(\d+)(\/.*)?$/);
+    // v1 is Hoffle's own simpler bot API and stays where it is.
+    if (discordRest && discordRest[1] !== "1") {
+      const { handleDiscordRest } = await import("../lib/discord/rest");
+      const segments = (discordRest[2] || "")
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => decodeURIComponent(segment));
+      return handleDiscordRest(request, discordRest[1], segments, effectiveBasePath);
+    }
+
+    if (discordPath?.startsWith("/api/cdn/")) {
+      const { handleCdn } = await import("../lib/discord/cdn");
+      return handleCdn(request, discordPath.slice("/api/cdn".length), effectiveBasePath);
     }
 
     if (!url.pathname.startsWith(effectiveBasePath)) {
