@@ -11,6 +11,8 @@ import {
 import { Avatar } from "./avatar";
 import { PrideBadges } from "./pride-badges";
 import { apiFetch } from "../lib/client";
+import { PROFILE_CSS_PRESETS, scopeProfileCss } from "@/lib/themes";
+
 
 interface ProfileSettingsDialogProps {
   user: PublicUser;
@@ -38,6 +40,10 @@ export function ProfileSettingsDialog({
   const [spotifySong, setSpotifySong] = useState(user.spotifyActivity?.song || "Starboy");
   const [spotifyArtist, setSpotifyArtist] = useState(user.spotifyActivity?.artist || "The Weeknd");
   const [spotifyCover, setSpotifyCover] = useState(user.spotifyActivity?.albumArt || "");
+
+  // Custom Profile CSS
+  const [customCss, setCustomCss] = useState(user.customCss || "");
+  const [showCssGuide, setShowCssGuide] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -107,6 +113,7 @@ export function ProfileSettingsDialog({
           pronouns: pronouns.trim(),
           prideBadges,
           spotifyActivity: spotifyAct,
+          customCss: customCss.trim() || null,
         }),
       });
 
@@ -353,6 +360,80 @@ export function ProfileSettingsDialog({
               )}
             </div>
 
+            {/* Custom Profile CSS */}
+            <div className="profile-settings-field-group border-t border-gray-800 pt-5 mt-5">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    Custom Profile CSS
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-purple-500/30">
+                      Scoped
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Add custom styling to your profile card. Styles are strictly scoped to your profile.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                  onClick={() => setShowCssGuide(!showCssGuide)}
+                >
+                  {showCssGuide ? "Hide Guide" : "CSS Guide"}
+                </button>
+              </div>
+
+              {showCssGuide && (
+                <div className="mb-3 p-3 bg-gray-900/80 rounded-lg text-xs text-gray-300 border border-gray-800 space-y-1.5">
+                  <div className="font-semibold text-gray-200">Available Selectors:</div>
+                  <div className="grid grid-cols-2 gap-1 font-mono text-[11px] text-purple-300">
+                    <span>.profile-card</span>
+                    <span>.profile-banner</span>
+                    <span>.profile-card-avatar</span>
+                    <span>.profile-display-name</span>
+                    <span>.profile-username</span>
+                    <span>.profile-bio</span>
+                    <span>.profile-badge</span>
+                    <span>.profile-section</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Preset buttons */}
+              <div className="mb-2.5 flex flex-wrap gap-1.5">
+                <span className="text-xs text-gray-400 self-center mr-1">Presets:</span>
+                {PROFILE_CSS_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    title={p.desc}
+                    className="text-xs bg-gray-800/80 hover:bg-gray-700 text-gray-200 px-2.5 py-1 rounded border border-gray-700/60 transition-colors"
+                    onClick={() => setCustomCss(p.css)}
+                  >
+                    ✨ {p.name}
+                  </button>
+                ))}
+                {customCss && (
+                  <button
+                    type="button"
+                    className="text-xs bg-red-950/40 hover:bg-red-900/60 text-red-300 px-2 py-1 rounded border border-red-800/40 transition-colors"
+                    onClick={() => setCustomCss("")}
+                  >
+                    Clear CSS
+                  </button>
+                )}
+              </div>
+
+              <textarea
+                rows={6}
+                value={customCss}
+                onChange={(e) => setCustomCss(e.target.value)}
+                placeholder={`.profile-card {\n  border: 1px solid #a78bfa;\n  box-shadow: 0 0 20px rgba(167, 139, 250, 0.4);\n}`}
+                className="w-full font-mono text-xs bg-black/50 border border-gray-700 rounded-lg p-3 text-purple-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                spellCheck={false}
+              />
+            </div>
+
             <div className="blahaj-profile-tip" aria-label="Blåhaj profile tip">
               <span aria-hidden="true"><Fish size={22} /></span>
               <p><strong>Blåhaj says:</strong> decorate your profile in whatever way feels like you.</p>
@@ -382,9 +463,19 @@ export function ProfileSettingsDialog({
               PREVIEW
             </h3>
 
-            <div className="user-profile-card-popover shadow-2xl">
+            <div
+              className={`user-profile-card-popover profile-card shadow-2xl user-profile-scoped-${user.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`}
+              data-user-profile={user.id}
+            >
+              {customCss && (
+                <style
+                  dangerouslySetInnerHTML={{
+                    __html: scopeProfileCss(customCss, user.id),
+                  }}
+                />
+              )}
               <div
-                className="profile-card-banner"
+                className="profile-card-banner profile-banner"
                 style={{
                   background: bannerUrl
                     ? `url(${bannerUrl}) center/cover no-repeat`

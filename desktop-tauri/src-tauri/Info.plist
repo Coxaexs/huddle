@@ -6,5 +6,7 @@
     <string>Hoffle needs access to your microphone for voice channels and calls.</string>
     <key>NSCameraUsageDescription</key>
     <string>Hoffle needs access to your camera for video calls.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>Hoffle reads your AirPods head position so voices stay in place around you when you turn your head.</string>
 </dict>
 </plist>

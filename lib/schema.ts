@@ -15,7 +15,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -547,6 +547,83 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS server_bots_token_idx ON server_bots(token)",
     ),
+    // Custom user and community themes
+    db.prepare(`CREATE TABLE IF NOT EXISTS custom_themes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        base_theme TEXT NOT NULL DEFAULT 'cozy',
+        colors TEXT NOT NULL,
+        corners INTEGER NOT NULL DEFAULT 16,
+        backdrop TEXT NOT NULL DEFAULT 'plain',
+        custom_css TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        creator_name TEXT NOT NULL DEFAULT '',
+        creator_username TEXT NOT NULL DEFAULT '',
+        is_public INTEGER NOT NULL DEFAULT 1,
+        stars INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS custom_themes_public_idx ON custom_themes(is_public, created_at)",
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS custom_themes_user_idx ON custom_themes(created_by)",
+    ),
+    // ---- Discord-compatible bot surface ----
+    // Every object a bot can see needs a snowflake, because Discord libraries
+    // parse ids as 64-bit integers. Allocated on first sight and kept here so
+    // the id a bot was handed keeps resolving back to the same native row.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_ids (
+        snowflake TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        native_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE UNIQUE INDEX IF NOT EXISTS discord_ids_native_idx ON discord_ids(kind, native_id)",
+    ),
+    // Application commands registered by bots over /applications/{id}/commands.
+    // `options` is the raw Discord option array, replayed verbatim to clients.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_commands (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT NOT NULL,
+        server_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        type INTEGER NOT NULL DEFAULT 1,
+        options TEXT NOT NULL DEFAULT '[]',
+        default_member_permissions TEXT,
+        dm_permission INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE UNIQUE INDEX IF NOT EXISTS discord_commands_scope_idx ON discord_commands(bot_id, server_id, name)",
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS discord_commands_server_idx ON discord_commands(server_id)",
+    ),
+    // Live interactions. A bot has 3 seconds to acknowledge and 15 minutes to
+    // edit, so the token outlives the request that created it and needs a home.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_interactions (
+        id TEXT PRIMARY KEY,
+        token TEXT NOT NULL UNIQUE,
+        bot_id TEXT NOT NULL,
+        server_id TEXT,
+        channel_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        command_name TEXT NOT NULL DEFAULT '',
+        type INTEGER NOT NULL DEFAULT 2,
+        state TEXT NOT NULL DEFAULT 'pending',
+        response_message_id TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS discord_interactions_expiry_idx ON discord_interactions(expires_at)",
+    ),
   ]);
 
   // Columns added after the first release.
@@ -605,10 +682,35 @@ async function migrate(db: D1Database): Promise<void> {
     ["pride_badges", "ALTER TABLE users ADD COLUMN pride_badges TEXT NOT NULL DEFAULT '[]'"],
     ["spotify_activity", "ALTER TABLE users ADD COLUMN spotify_activity TEXT"],
     ["can_invite", "ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0"],
+    ["custom_css", "ALTER TABLE users ADD COLUMN custom_css TEXT"],
+    ["custom_theme", "ALTER TABLE users ADD COLUMN custom_theme TEXT"],
+    ["tagline", "ALTER TABLE users ADD COLUMN tagline TEXT NOT NULL DEFAULT ''"],
+    ["social_links", "ALTER TABLE users ADD COLUMN social_links TEXT NOT NULL DEFAULT '[]'"],
+    ["avatar_frame", "ALTER TABLE users ADD COLUMN avatar_frame TEXT NOT NULL DEFAULT 'none'"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
   if (userMigrations.length) await db.batch(userMigrations);
+
+  await db
+    .prepare(`CREATE TABLE IF NOT EXISTS custom_themes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        base_theme TEXT NOT NULL DEFAULT 'cozy',
+        colors TEXT NOT NULL,
+        corners INTEGER NOT NULL DEFAULT 16,
+        backdrop TEXT NOT NULL DEFAULT 'plain',
+        custom_css TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        creator_name TEXT NOT NULL DEFAULT '',
+        creator_username TEXT NOT NULL DEFAULT '',
+        is_public INTEGER NOT NULL DEFAULT 1,
+        stars INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`)
+    .run();
 
   const channelColumns = await columnNames(db, "channels");
   if (!channelColumns.has("category_id")) {

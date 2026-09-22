@@ -38,7 +38,9 @@ export async function GET(request: Request) {
       ? db
           .prepare(
             `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                    u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.bio, u.pronouns, u.tagline, u.social_links, u.avatar_frame,
+                    u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.custom_css, u.custom_theme,
                     u.created_at, u.last_seen_at, u.status, u.custom_status,
                     m.joined_at, m.invite_code,
                     i.created_by AS invite_creator_id,
@@ -56,7 +58,9 @@ export async function GET(request: Request) {
       : db
           .prepare(
             `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                    u.bio, u.pronouns, u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.bio, u.pronouns, u.tagline, u.social_links, u.avatar_frame,
+                    u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
+                    u.custom_css, u.custom_theme,
                     u.created_at, u.last_seen_at, u.status, u.custom_status,
                     m.joined_at, m.invite_code,
                     i.created_by AS invite_creator_id,
@@ -105,6 +109,17 @@ export async function GET(request: Request) {
           spotifyAct = null;
         }
       }
+      let socialLinks = [];
+      if ((member as unknown as { social_links?: string | null }).social_links) {
+        try {
+          const parsed = JSON.parse((member as unknown as { social_links: string }).social_links);
+          if (Array.isArray(parsed)) {
+            socialLinks = parsed;
+          }
+        } catch {
+          socialLinks = [];
+        }
+      }
       return {
         id: member.id,
         username: member.username,
@@ -114,6 +129,9 @@ export async function GET(request: Request) {
         bannerUrl: member.banner_url || null,
         bio: member.bio || "",
         pronouns: member.pronouns || "",
+        tagline: (member as unknown as { tagline?: string | null }).tagline || "",
+        socialLinks,
+        avatarFrame: (member as unknown as { avatar_frame?: string | null }).avatar_frame || "none",
         prideBadges: normalizePrideBadges(
           (() => {
             try {
@@ -125,6 +143,8 @@ export async function GET(request: Request) {
         ),
         spotifyActivity: spotifyAct,
         color: member.color,
+        customCss: (member as unknown as { custom_css?: string | null }).custom_css || null,
+        customTheme: (member as unknown as { custom_theme?: string | null }).custom_theme || null,
         lastSeenAt: member.last_seen_at,
         createdAt: member.created_at,
         isAdmin: Boolean(member.is_admin),

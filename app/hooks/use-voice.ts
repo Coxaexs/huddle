@@ -5,6 +5,7 @@ import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import { cameraConstraints, unlockAudio } from "../lib/devices";
 import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
+import { HEAD_RECENTER_EVENT, headTrackingPossible, type HeadTrackingStatus } from "../lib/head-tracking";
 import {
   openMicrophone,
   readMicSettings,
@@ -91,6 +92,17 @@ export function useVoice({
     catch { return false; }
   });
   const [tableHostId, setTableHostId] = useState("");
+  // Head tracking only works in the desktop shell, so remember the wish, not the result.
+  const [headTracking, setHeadTrackingState] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem("huddle-head-tracking") === "on"; }
+    catch { return false; }
+  });
+  const [headTrackingStatus, setHeadTrackingStatus] = useState<{ status: HeadTrackingStatus; live: boolean }>(
+    { status: "unsupported", live: false },
+  );
+  // Resolved after mount so the server and the first client render agree.
+  const [headTrackingOffered, setHeadTrackingOffered] = useState(false);
+  useEffect(() => setHeadTrackingOffered(headTrackingPossible()), []);
   const [tableSeatPans, setTableSeatPans] = useState<Record<string, number>>({});
   const [tableWidth, setTableWidth] = useState(1);
   // Share one observed join order between the preview and actual playback.
@@ -101,6 +113,17 @@ export function useVoice({
   const tableSeatOrder = tableOrderRef.current.ids.filter((id) => tableIds.includes(id));
   for (const id of tableIds) if (!tableSeatOrder.includes(id)) tableSeatOrder.push(id);
   tableOrderRef.current.ids = tableSeatOrder;
+  const setHeadTracking = useCallback((enabled: boolean) => {
+    setHeadTrackingState(enabled);
+    if (!enabled) setHeadTrackingStatus({ status: "unsupported", live: false });
+    try { localStorage.setItem("huddle-head-tracking", enabled ? "on" : "off"); } catch { /* Session only. */ }
+  }, []);
+  const onHeadTracking = useCallback((status: HeadTrackingStatus, live: boolean) => {
+    setHeadTrackingStatus({ status, live });
+  }, []);
+  const recenterHead = useCallback(() => {
+    window.dispatchEvent(new Event(HEAD_RECENTER_EVENT));
+  }, []);
   const setTableMode = useCallback((enabled: boolean) => {
     setTableModeState(enabled);
     try { localStorage.setItem("huddle-table-mode", enabled ? "on" : "off"); } catch { /* Session only. */ }
@@ -1199,6 +1222,12 @@ export function useVoice({
     setTableSeatPans,
     tableWidth,
     setTableWidth,
+    headTracking,
+    setHeadTracking,
+    headTrackingOffered,
+    headTrackingStatus,
+    onHeadTracking,
+    recenterHead,
     tableMode,
     setTableMode,
     tableHostId,

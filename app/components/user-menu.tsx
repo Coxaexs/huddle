@@ -249,7 +249,21 @@ export function UserMenu({
         </>
       )}
 
-      {isSelf && <p className="user-menu-note">This is you.</p>}
+      {isSelf && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onMessage();
+              onClose();
+            }}
+          >
+            Note to Self
+          </button>
+          <p className="user-menu-note">This is you.</p>
+        </>
+      )}
     </div>
   );
 }

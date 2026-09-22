@@ -1,12 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check } from "lucide-react";
+import {
+  Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
+  Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
+  User, ShieldCheck, LogOut, Search, Music
+} from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
 import { Avatar } from "./avatar";
 import { DiceOverlay } from "./dice-overlay";
 import type { DiceRollEvent } from "@/lib/protocol";
+import type { HeadTrackingStatus } from "../lib/head-tracking";
+import {
+  BUILTIN_THEMES,
+  type Theme,
+  type ThemeColors,
+  applyThemeToDocument,
+  exportThemeCode,
+  importThemeCode,
+  getStoredThemes,
+  saveCustomTheme,
+  deleteCustomTheme,
+  getActiveThemeId,
+  scopeProfileCss,
+  PROFILE_CSS_PRESETS,
+  THEME_CSS_PRESETS,
+  getClientUiCss,
+  setClientUiCss,
+  isClientUiCssEnabled,
+  applyClientUiCss,
+  CLIENT_UI_CSS_PRESETS,
+} from "@/lib/themes";
+
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
 const METER_FLOOR_DB = -80;
@@ -246,7 +272,10 @@ import {
   type Member,
   type PrideBadgeId,
   type PublicUser,
+  type SocialLink,
 } from "@/lib/users";
+import { PrideBadges } from "./pride-badges";
+import { SocialPlatformIcon } from "./user-profile-card";
 import { apiFetch } from "../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
@@ -284,6 +313,7 @@ interface SettingsDialogProps {
   onUser: (user: PublicUser) => void;
   onClose: () => void;
   onSignOut: () => void;
+  onShareThemeToChat?: (theme: Theme) => void;
   /** Called after the microphone choice changes, to swap it mid-call. */
   onMicrophoneChange?: () => void;
   /** Input chain settings and live meter feed, owned by the voice hook. */
@@ -296,6 +326,11 @@ interface SettingsDialogProps {
   inCall?: boolean;
   tableMode?: boolean;
   onTableMode?: (enabled: boolean) => void;
+  headTracking?: boolean;
+  setHeadTracking?: (enabled: boolean) => void;
+  headTrackingOffered?: boolean;
+  headTrackingStatus?: { status: HeadTrackingStatus; live: boolean };
+  recenterHead?: () => void;
   tableHostId?: string;
   onTableHostId?: (id: string) => void;
   tableParticipants?: Array<{ connectionId: string; displayName: string }>;
@@ -323,10 +358,80 @@ type Tab =
   | "password"
   | "invites"
   | "appearance"
+  | "custom_ui_css"
+  | "accessibility"
   | "roles"
   | "licenses";
 
 type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
+
+export const BANNER_PRESETS = [
+  { id: "synthwave", name: "Synthwave Sunset", css: "linear-gradient(135deg, #ff007f, #7928ca, #ff0080)" },
+  { id: "nebula", name: "Cosmic Nebula", css: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" },
+  { id: "cyberpunk", name: "Cyber Matrix", css: "linear-gradient(135deg, #001100, #003b00, #00ff66)" },
+  { id: "aurora", name: "Northern Aurora", css: "linear-gradient(135deg, #0575e6, #00f260)" },
+  { id: "sakura", name: "Sakura Blossom", css: "linear-gradient(135deg, #fbc2eb, #a6c1ee)" },
+  { id: "midnight", name: "Midnight Velvet", css: "linear-gradient(135deg, #180b2c, #3a1c71, #d76d77)" },
+  { id: "ocean", name: "Deep Ocean", css: "linear-gradient(135deg, #0f2027, #203a43, #2c5364)" },
+  { id: "carbon", name: "Dark Carbon", css: "linear-gradient(135deg, #141517, #23272a, #111214)" },
+];
+
+export const AVATAR_FRAMES = [
+  { id: "none", name: "Clean", desc: "Classic avatar" },
+  { id: "neon", name: "💫 Neon Pulse", desc: "Vibrant cyan glowing aura" },
+  { id: "rainbow", name: "🌈 Rainbow Halo", desc: "Rotating prismatic ring" },
+  { id: "cyber", name: "⚡ Cyber Glitch", desc: "Terminal glitch matrix frame" },
+  { id: "gold", name: "👑 Royal Gold", desc: "Shimmering luxury gold ring" },
+  { id: "sakura", name: "🌸 Sakura Blossom", desc: "Soft pastel floral halo" },
+  { id: "diamond", name: "💎 Diamond Cut", desc: "Angular cyber diamond border" },
+];
+
+export const COLOR_SWATCHES = [
+  "#5865F2", // Discord Blurple
+  "#57F287", // Green
+  "#FEE75C", // Yellow
+  "#EB459E", // Fuchsia
+  "#ED4245", // Red
+  "#9d8cf5", // Lavender
+  "#38bdf8", // Sky Blue
+  "#06b6d4", // Cyan
+  "#10b981", // Emerald
+  "#f97316", // Orange
+  "#ec4899", // Pink
+  "#a855f7", // Purple
+  "#6366f1", // Indigo
+  "#e11d48", // Crimson
+  "#14b8a6", // Teal
+  "#e2e8f0", // Silver White
+];
+
+export const STATUS_EMOJIS = [
+  "💬", "🎮", "🎧", "💻", "☕", "✨", "🌙", "🔥", "🚀", "🐱", "🎨", "🎵", "💤", "🍕", "🌸", "⚡"
+];
+
+export const PROFILE_CSS_SNIPPETS = [
+  {
+    name: "✨ Glow Aura",
+    snippet: "\n.profile-card {\n  box-shadow: 0 0 25px rgba(168, 85, 247, 0.45) !important;\n  border: 1px solid rgba(168, 85, 247, 0.5) !important;\n}\n",
+  },
+  {
+    name: "🌈 Gradient Name",
+    snippet: "\n.profile-display-name {\n  background: linear-gradient(90deg, #ff007f, #00f2fe) !important;\n  -webkit-background-clip: text !important;\n  -webkit-text-fill-color: transparent !important;\n}\n",
+  },
+  {
+    name: "📺 CRT Scanlines",
+    snippet: "\n.profile-card::after {\n  content: '' !important;\n  position: absolute !important;\n  inset: 0 !important;\n  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 2px) !important;\n  pointer-events: none !important;\n}\n",
+  },
+  {
+    name: "🧊 Glass Card",
+    snippet: "\n.profile-card {\n  background: rgba(18, 19, 26, 0.7) !important;\n  backdrop-filter: blur(16px) !important;\n  border: 1px solid rgba(255, 255, 255, 0.12) !important;\n}\n",
+  },
+  {
+    name: "💫 Float Motion",
+    snippet: "\n@keyframes floatAnim {\n  0%, 100% { transform: translateY(0); }\n  50% { transform: translateY(-6px); }\n}\n.profile-card-avatar-wrap {\n  animation: floatAnim 3.5s ease-in-out infinite !important;\n}\n",
+  },
+];
+
 type Density = "compact" | "cozy" | "roomy";
 type Backdrop = "plain" | "aurora" | "dots";
 
@@ -344,6 +449,11 @@ export function SettingsDialog({
   inCall = false,
   tableMode = false,
   onTableMode,
+  headTracking = false,
+  setHeadTracking,
+  headTrackingOffered = false,
+  headTrackingStatus = { status: "unsupported", live: false },
+  recenterHead,
   tableHostId = "",
   onTableHostId,
   tableParticipants = [],
@@ -358,6 +468,7 @@ export function SettingsDialog({
   server,
   members = [],
   canManageServer = false,
+  onShareThemeToChat,
 }: SettingsDialogProps) {
   const [capturingKey, setCapturingKey] = useState(false);
   // Kept locally so the dialog still works if it is rendered without a call.
@@ -409,6 +520,18 @@ export function SettingsDialog({
   const [error, setError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || null);
   const [avatarKey, setAvatarKey] = useState<string | null | undefined>(undefined);
+  const [bannerUrl, setBannerUrl] = useState(user.bannerUrl || null);
+  const [bannerKey, setBannerKey] = useState<string | null | undefined>(undefined);
+  const [tagline, setTagline] = useState(user.tagline || "");
+  const [customStatus, setCustomStatus] = useState(user.customStatus || "");
+  const [avatarFrame, setAvatarFrame] = useState(user.avatarFrame || "none");
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(user.socialLinks || []);
+  const [newPlatform, setNewPlatform] = useState("github");
+  const [newUrl, setNewUrl] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [spotifySong, setSpotifySong] = useState(user.spotifyActivity?.song || "");
+  const [spotifyArtist, setSpotifyArtist] = useState(user.spotifyActivity?.artist || "");
+  const bannerRef = useRef<HTMLInputElement>(null);
   const [accent, setAccent] = useState("#9d8cf5");
   const [density, setDensity] = useState<Density>("cozy");
   const [backdrop, setBackdrop] = useState<Backdrop>("plain");
@@ -420,6 +543,52 @@ export function SettingsDialog({
   const [diceTheme, setDiceTheme] = useState("default");
   const [diceColor, setDiceColor] = useState("#2563eb");
   const [testRoll, setTestRoll] = useState<DiceRollEvent | null>(null);
+
+  // Theme Manager state
+  const [customThemes, setCustomThemes] = useState<Theme[]>(() => getStoredThemes());
+  const [activeThemeId, setActiveThemeId] = useState<string>(() => getActiveThemeId());
+  const [appearanceSubtab, setAppearanceSubtab] = useState<"installed" | "community">("installed");
+  const [themeSearchQuery, setThemeSearchQuery] = useState("");
+  const [communityThemes, setCommunityThemes] = useState<Theme[]>([]);
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [themeShareMenuId, setThemeShareMenuId] = useState<string | null>(null);
+  const [themeCopiedId, setThemeCopiedId] = useState<string | null>(null);
+  const [themeActionNotice, setThemeActionNotice] = useState("");
+
+  // Theme Creator / Editor Modal State
+  const [isCreatingTheme, setIsCreatingTheme] = useState(false);
+  const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
+  const [draftBaseTheme, setDraftBaseTheme] = useState<"cozy" | "legacy" | "light">("cozy");
+  const [draftColors, setDraftColors] = useState<ThemeColors>({
+    paper: "#16131f",
+    panel: "#1a1628",
+    chatBg: "#1e1a2e",
+    lavender: "#a78bfa",
+    lavenderSoft: "#2e2750",
+    lavenderMuted: "#3d2f6b",
+    ink: "#e8e3f5",
+    muted: "#9d95bc",
+    line: "rgba(255, 255, 255, 0.07)",
+    coral: "#f59e6e",
+    mint: "#4ade80",
+  });
+  const [draftCorners, setDraftCorners] = useState(16);
+  const [draftBackdrop, setDraftBackdrop] = useState<"plain" | "aurora" | "dots" | "grid" | "stars">("plain");
+  const [draftCustomCss, setDraftCustomCss] = useState("");
+  const [draftIsPublic, setDraftIsPublic] = useState(true);
+
+  // Import Theme Modal State
+  const [isImportingTheme, setIsImportingTheme] = useState(false);
+  const [importCodeInput, setImportCodeInput] = useState("");
+  const [importParsedTheme, setImportParsedTheme] = useState<Theme | null>(null);
+  const [importError, setImportError] = useState("");
+
+  // Profile Custom CSS state
+  const [profileCustomCss, setProfileCustomCss] = useState(user.customCss || "");
+  const [showProfileCssGuide, setShowProfileCssGuide] = useState(false);
+
   const [notify, setNotify] = useState(
     () =>
       typeof window === "undefined" ||
@@ -491,8 +660,53 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle-pride-theme", prideTheme);
     window.localStorage.setItem("huddle-blahaj", blahaj ? "on" : "off");
     window.localStorage.setItem("huddle_dice_theme", diceTheme);
-    window.localStorage.setItem("huddle_dice_color", diceColor);
   }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj, diceTheme, diceColor]);
+
+  // Personal Client-Side UI CSS
+  const [clientUiCss, setLocalClientUiCss] = useState<string>(() => getClientUiCss());
+  const [clientUiCssEnabled, setClientUiCssEnabled] = useState<boolean>(() => isClientUiCssEnabled());
+  const [clientUiNotice, setClientUiNotice] = useState<string>("");
+
+  // Accessibility & Display Settings
+  const [chatFontSize, setChatFontSize] = useState<number>(() => {
+    if (typeof window === "undefined") return 16;
+    return Number(window.localStorage.getItem("huddle_chat_font_size")) || 16;
+  });
+  const [alwaysUnderlineLinks, setAlwaysUnderlineLinks] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("huddle_underline_links") === "true";
+  });
+  const [displayNameStyles, setDisplayNameStyles] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("huddle_display_names_styles") !== "false";
+  });
+
+  // Settings search
+  const [settingsSearch, setSettingsSearch] = useState<string>("");
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--chat-font-size", `${chatFontSize}px`);
+    window.localStorage.setItem("huddle_chat_font_size", String(chatFontSize));
+  }, [chatFontSize]);
+
+  useEffect(() => {
+    window.localStorage.setItem("huddle_underline_links", alwaysUnderlineLinks ? "true" : "false");
+    document.documentElement.dataset.underlineLinks = alwaysUnderlineLinks ? "on" : "off";
+  }, [alwaysUnderlineLinks]);
+
+  useEffect(() => {
+    window.localStorage.setItem("huddle_display_names_styles", displayNameStyles ? "true" : "false");
+    document.documentElement.dataset.displayNameStyles = displayNameStyles ? "on" : "off";
+  }, [displayNameStyles]);
+
+  const handleSaveClientUiCss = (css: string, enabled: boolean) => {
+    setLocalClientUiCss(css);
+    setClientUiCssEnabled(enabled);
+    setClientUiCss(css, enabled);
+    setClientUiNotice("Saved and applied client-side CSS!");
+    setTimeout(() => setClientUiNotice(""), 2500);
+  };
 
   useEffect(() => {
     if (tab !== "voice") return;
@@ -561,18 +775,216 @@ export function SettingsDialog({
           avatar,
           color,
           pronouns,
+          tagline,
+          customStatus: customStatus.trim() || null,
           bio,
           prideBadges,
-          ...(avatarKey === undefined ? {} : { avatarKey }),
+          avatarFrame,
+          socialLinks,
+          spotifyActivity: spotifySong.trim()
+            ? {
+                song: spotifySong.trim(),
+                artist: spotifyArtist.trim() || "Unknown Artist",
+                isPlaying: true,
+              }
+            : null,
+          customCss: profileCustomCss.trim() || null,
+          ...(avatarKey === undefined ? { avatarUrl } : { avatarKey }),
+          ...(bannerKey === undefined ? { bannerUrl } : { bannerKey }),
         }),
       });
       onUser(data.user);
-      setStatus("Saved.");
-      window.setTimeout(() => setStatus(""), 2000);
+      setStatus("Profile saved!");
+      window.setTimeout(() => setStatus(""), 2500);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save.");
     }
   }
+
+  const loadCommunityThemes = useCallback(async (query = "") => {
+    setCommunityLoading(true);
+    try {
+      const url = query ? `/api/themes?query=${encodeURIComponent(query)}` : "/api/themes";
+      const res = await apiFetch<{ themes: Theme[] }>(url);
+      setCommunityThemes(res.themes || []);
+    } catch {
+      setCommunityThemes([]);
+    } finally {
+      setCommunityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "appearance" && appearanceSubtab === "community") {
+      void loadCommunityThemes(themeSearchQuery);
+    }
+  }, [tab, appearanceSubtab, themeSearchQuery, loadCommunityThemes]);
+
+  const handleSelectTheme = (th: Theme) => {
+    setActiveThemeId(th.id);
+    applyThemeToDocument(th);
+    onTheme(th.baseTheme);
+    if (th.colors.lavender) setAccent(th.colors.lavender);
+    if (typeof th.corners === "number") setCorners(th.corners);
+    if (th.backdrop && ["plain", "aurora", "dots"].includes(th.backdrop)) {
+      setBackdrop(th.backdrop as Backdrop);
+    }
+  };
+
+  const handleOpenCreateTheme = (existing?: Theme) => {
+    if (existing) {
+      setEditingThemeId(existing.id);
+      setDraftName(existing.name);
+      setDraftDesc(existing.description || "");
+      setDraftBaseTheme(existing.baseTheme);
+      setDraftColors({ ...existing.colors });
+      setDraftCorners(existing.corners ?? 16);
+      setDraftBackdrop(existing.backdrop || "plain");
+      setDraftCustomCss(existing.customCss || "");
+      setDraftIsPublic(existing.isPublic ?? true);
+    } else {
+      setEditingThemeId(null);
+      setDraftName("My Custom Theme");
+      setDraftDesc("");
+      setDraftBaseTheme("cozy");
+      setDraftColors({
+        paper: "#16131f",
+        panel: "#1a1628",
+        chatBg: "#1e1a2e",
+        lavender: accent || "#a78bfa",
+        lavenderSoft: "#2e2750",
+        lavenderMuted: "#3d2f6b",
+        ink: "#e8e3f5",
+        muted: "#9d95bc",
+        line: "rgba(255, 255, 255, 0.07)",
+        coral: "#f59e6e",
+        mint: "#4ade80",
+      });
+      setDraftCorners(corners || 16);
+      setDraftBackdrop(backdrop || "plain");
+      setDraftCustomCss("");
+      setDraftIsPublic(true);
+    }
+    setIsCreatingTheme(true);
+  };
+
+  const handleSaveDraftTheme = async () => {
+    if (!draftName.trim()) {
+      alert("Please provide a name for your theme.");
+      return;
+    }
+
+    const themeId = editingThemeId || `theme_${Date.now()}`;
+    const newTheme: Theme = {
+      id: themeId,
+      name: draftName.trim(),
+      description: draftDesc.trim(),
+      baseTheme: draftBaseTheme,
+      colors: draftColors,
+      corners: draftCorners,
+      backdrop: draftBackdrop,
+      customCss: draftCustomCss,
+      author: {
+        id: user.id,
+        displayName: user.displayName,
+        username: user.username,
+      },
+      isPublic: draftIsPublic,
+      isBuiltin: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveCustomTheme(newTheme);
+    setCustomThemes(getStoredThemes());
+    handleSelectTheme(newTheme);
+    setIsCreatingTheme(false);
+    setThemeActionNotice(`Theme "${newTheme.name}" saved and applied!`);
+    setTimeout(() => setThemeActionNotice(""), 3500);
+
+    // If marked public, also publish to server database
+    if (draftIsPublic) {
+      try {
+        await apiFetch("/api/themes", {
+          method: "POST",
+          body: JSON.stringify({ theme: newTheme }),
+        });
+      } catch {
+        // Local storage still succeeded
+      }
+    }
+  };
+
+  const handleDeleteCustomTheme = (id: string) => {
+    if (!confirm("Are you sure you want to delete this custom theme?")) return;
+    deleteCustomTheme(id);
+    setCustomThemes(getStoredThemes());
+    if (activeThemeId === id) {
+      const defaultTheme = BUILTIN_THEMES[0];
+      handleSelectTheme(defaultTheme);
+    }
+    setThemeActionNotice("Theme deleted.");
+    setTimeout(() => setThemeActionNotice(""), 3000);
+  };
+
+  const handleShareThemeCode = async (th: Theme) => {
+    const code = exportThemeCode(th);
+    try {
+      await navigator.clipboard.writeText(code);
+      setThemeCopiedId(th.id);
+      setTimeout(() => setThemeCopiedId(null), 2000);
+    } catch {
+      alert("Theme share code:\n\n" + code);
+    }
+  };
+
+  const handleShareThemeChat = (th: Theme) => {
+    if (onShareThemeToChat) {
+      onShareThemeToChat(th);
+      setThemeActionNotice(`Shared "${th.name}" to active chat!`);
+      setTimeout(() => setThemeActionNotice(""), 3000);
+      onClose();
+    } else {
+      void handleShareThemeCode(th);
+    }
+  };
+
+  const handlePublishTheme = async (th: Theme) => {
+    try {
+      await apiFetch("/api/themes", {
+        method: "POST",
+        body: JSON.stringify({ theme: th }),
+      });
+      setThemeActionNotice(`Theme "${th.name}" published to Community Themes!`);
+      setTimeout(() => setThemeActionNotice(""), 3500);
+      if (appearanceSubtab === "community") {
+        void loadCommunityThemes(themeSearchQuery);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to publish theme");
+    }
+  };
+
+  const handleImportTheme = () => {
+    setImportError("");
+    if (!importCodeInput.trim()) {
+      setImportError("Please paste a theme code or JSON.");
+      return;
+    }
+    const parsed = importThemeCode(importCodeInput);
+    if (!parsed) {
+      setImportError("Invalid theme code. Please check that you copied the full string.");
+      return;
+    }
+    saveCustomTheme(parsed);
+    setCustomThemes(getStoredThemes());
+    handleSelectTheme(parsed);
+    setIsImportingTheme(false);
+    setImportCodeInput("");
+    setImportParsedTheme(null);
+    setThemeActionNotice(`Successfully imported & applied "${parsed.name}"!`);
+    setTimeout(() => setThemeActionNotice(""), 3500);
+  };
 
   async function savePassword() {
     setError("");
@@ -605,6 +1017,26 @@ export function SettingsDialog({
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "That image did not upload.",
+      );
+    }
+  }
+
+  async function chooseBanner(file: File | undefined) {
+    if (!file) return;
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      const upload = await apiFetch<{ key: string }>("/api/uploads", {
+        method: "POST",
+        body: form,
+      });
+      setBannerKey(upload.key);
+      setBannerUrl(`/hangout/api/uploads/${encodeURIComponent(upload.key)}`);
+      setStatus("Banner ready — save the profile to keep it.");
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "That banner did not upload.",
       );
     }
   }
@@ -660,47 +1092,154 @@ export function SettingsDialog({
     }
   }
 
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal settings-modal">
-        <header className="modal-head">
-          <h2>Settings</h2>
-          <button type="button" onClick={onClose} aria-label="Close settings">
-            ×
-          </button>
-        </header>
-
-        <nav className="modal-tabs">
-          {(
-            [
-              ["profile", "Profile"],
-              ["activities", "Activities & Privacy"],
-              ["voice", "Voice & Video"],
-              ["password", "Password"],
-              ...(canCreateInvites ? ([["invites", "Invites"]] as const) : []),
-              ["appearance", "Appearance"],
-              ...(canManageServer && server
-                ? ([["roles", "Roles"]] as const)
+  const NAV_CATEGORIES = [
+    {
+      title: "USER SETTINGS",
+      items: [
+        { id: "profile" as Tab, label: "Profile", icon: User, desc: "Avatar, banner, bio, pride badges, and custom CSS" },
+        { id: "password" as Tab, label: "Account & Password", icon: ShieldCheck, desc: "Username, password and account security" },
+        { id: "activities" as Tab, label: "Activities & Privacy", icon: Activity, desc: "Status sharing, games and Spotify" },
+      ],
+    },
+    {
+      title: "APP SETTINGS",
+      items: [
+        { id: "appearance" as Tab, label: "Appearance", icon: Palette, desc: "Themes, colors, and community library" },
+        { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
+        { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
+        { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
+      ],
+    },
+    ...(canCreateInvites || (canManageServer && server)
+      ? [
+          {
+            title: "SERVER / COMMUNITY",
+            items: [
+              ...(canCreateInvites
+                ? [{ id: "invites" as Tab, label: "Invites", icon: Share2, desc: "Manage server invites and links" }]
                 : []),
-              ["licenses", "Licenses & About"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={tab === id ? "active" : ""}
-              onClick={() => {
-                setTab(id);
-                setError("");
-                setStatus("");
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+              ...(canManageServer && server
+                ? [{ id: "roles" as Tab, label: "Roles", icon: Layers, desc: "Configure server roles and permissions" }]
+                : []),
+            ],
+          },
+        ]
+      : []),
+    {
+      title: "ABOUT",
+      items: [
+        { id: "licenses" as Tab, label: "Licenses & About", icon: Globe, desc: "Software licenses and legal notices" },
+      ],
+    },
+  ];
 
-        <div className="modal-body">
+  return (
+    <div className="modal-backdrop settings-modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal settings-modal">
+        {/* Discord Left Sidebar */}
+        <aside className="settings-sidebar">
+          <div className="settings-sidebar-user">
+            <Avatar avatar={avatar} avatarUrl={avatarUrl} color={color} className="w-9 h-9 rounded-full shrink-0" />
+            <div className="settings-sidebar-user-info">
+              <span className="settings-sidebar-user-name" title={displayName || user.displayName}>
+                {displayName || user.displayName}
+              </span>
+              <button
+                type="button"
+                className="settings-sidebar-user-sub"
+                onClick={() => setTab("profile")}
+              >
+                <span>Edit Profiles</span>
+                <Edit3 size={11} />
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-search-wrap">
+            <Search size={14} className="settings-search-icon" />
+            <input
+              type="text"
+              className="settings-search-input"
+              placeholder="Search settings…"
+              value={settingsSearch}
+              onChange={(e) => setSettingsSearch(e.target.value)}
+            />
+          </div>
+
+          <nav className="settings-nav-groups">
+            {NAV_CATEGORIES.map((cat) => {
+              const matchingItems = cat.items.filter((item) => {
+                if (!settingsSearch.trim()) return true;
+                const q = settingsSearch.toLowerCase();
+                return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q);
+              });
+              if (matchingItems.length === 0) return null;
+              return (
+                <div key={cat.title} className="settings-group-section">
+                  <div className="settings-group-title">{cat.title}</div>
+                  {matchingItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
+                        onClick={() => {
+                          setTab(item.id);
+                          setError("");
+                          setStatus("");
+                        }}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </nav>
+
+          <button
+            type="button"
+            className="settings-nav-btn signout"
+            onClick={onSignOut}
+          >
+            <LogOut size={16} />
+            <span>Log Out</span>
+          </button>
+        </aside>
+
+        {/* Right Main Content Panel */}
+        <main className="settings-main">
+          <header className="settings-topbar">
+            <h2>
+              {tab === "profile" && "Profile"}
+              {tab === "password" && "Account & Password"}
+              {tab === "activities" && "Activities & Privacy"}
+              {tab === "appearance" && "Appearance"}
+              {tab === "custom_ui_css" && "Custom CSS"}
+              {tab === "voice" && "Voice & Video"}
+              {tab === "accessibility" && "Accessibility"}
+              {tab === "invites" && "Invites"}
+              {tab === "roles" && "Roles"}
+              {tab === "licenses" && "Licenses & About"}
+            </h2>
+            <button
+              type="button"
+              className="settings-esc-control"
+              onClick={onClose}
+              aria-label="Close settings (Esc)"
+              title="Close settings (Esc)"
+            >
+              <div className="settings-esc-circle">
+                <X size={18} />
+              </div>
+              <span className="settings-esc-text">ESC</span>
+            </button>
+          </header>
+
+          <div className="settings-content-scroll">
           {tab === "profile" && (
             <>
               <label htmlFor="settings-name">Display name</label>
@@ -831,6 +1370,80 @@ export function SettingsDialog({
                 ))}
               </div>
 
+              <span className="field-label flex items-center justify-between" style={{ marginTop: 20 }}>
+                <span className="flex items-center gap-2">
+                  Custom Profile CSS
+                  <span className="text-[10px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-purple-500/30">
+                    Scoped
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                  onClick={() => setShowProfileCssGuide(!showProfileCssGuide)}
+                >
+                  {showProfileCssGuide ? "Hide Guide" : "CSS Guide"}
+                </button>
+              </span>
+
+              {showProfileCssGuide && (
+                <div style={{ padding: "10px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", fontSize: "11px", marginBottom: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "4px" }}>Available Selectors:</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", fontFamily: "monospace", color: "var(--lavender)" }}>
+                    <span>.profile-card</span>
+                    <span>.profile-banner</span>
+                    <span>.profile-avatar</span>
+                    <span>.profile-name</span>
+                    <span>.profile-bio</span>
+                    <span>.profile-badge</span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>Presets:</span>
+                {PROFILE_CSS_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    title={p.desc}
+                    style={{ fontSize: "11px", padding: "3px 8px", background: "rgba(255,255,255,0.06)", borderRadius: "6px", border: "1px solid var(--line)" }}
+                    onClick={() => setProfileCustomCss(p.css)}
+                  >
+                    ✨ {p.name}
+                  </button>
+                ))}
+                {profileCustomCss && (
+                  <button
+                    type="button"
+                    style={{ fontSize: "11px", padding: "3px 8px", background: "rgba(239,68,68,0.15)", color: "#fca5a5", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.3)" }}
+                    onClick={() => setProfileCustomCss("")}
+                  >
+                    Clear CSS
+                  </button>
+                )}
+              </div>
+
+              <textarea
+                rows={5}
+                value={profileCustomCss}
+                onChange={(e) => setProfileCustomCss(e.target.value)}
+                placeholder={`.profile-card {\n  border: 1px solid var(--lavender);\n  box-shadow: 0 0 15px rgba(167, 139, 250, 0.3);\n}`}
+                style={{
+                  width: "100%",
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  padding: "10px",
+                  background: "rgba(0,0,0,0.35)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "8px",
+                  color: "var(--ink)",
+                  marginBottom: "16px",
+                  resize: "vertical",
+                }}
+                spellCheck={false}
+              />
+
               <button type="button" className="primary" onClick={saveProfile}>
                 Save profile
               </button>
@@ -852,6 +1465,25 @@ export function SettingsDialog({
                     Table Mode / Spatial Audio
                   </label>
                   <p className="modal-hint">Places voices around you. Best with headphones. Only changes what you hear.</p>
+                  {tableMode && headTrackingOffered && setHeadTracking && (
+                    <>
+                      <label>
+                        <input type="checkbox" checked={headTracking}
+                          onChange={(event) => setHeadTracking(event.target.checked)} />
+                        Follow my head (AirPods spatial audio)
+                      </label>
+                      <p className="modal-hint">
+                        {headTrackingStatus.status === "denied"
+                          ? "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness."
+                          : headTracking && headTrackingStatus.status === "unsupported"
+                            ? "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max."
+                            : "The table holds still while you turn your head, so looking at someone brings their voice in front of you."}
+                      </p>
+                      {headTracking && headTrackingStatus.live && (
+                        <button type="button" onClick={recenterHead}>Face forward</button>
+                      )}
+                    </>
+                  )}
                   {tableMode && inCall && (
                     <>
                       <label htmlFor="table-host">Dungeon Master</label>
@@ -1205,30 +1837,278 @@ export function SettingsDialog({
 
           {tab === "appearance" && (
             <>
-              <span className="field-label">Theme</span>
-              <div className="theme-row">
+              {/* Theme Manager Header */}
+              <div className="flex items-center justify-between mt-1 mb-3">
+                <span className="field-label" style={{ margin: 0 }}>Themes & Styling</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="discord-btn primary-indigo text-xs py-1 px-2.5 flex items-center gap-1.5"
+                    onClick={() => handleOpenCreateTheme()}
+                  >
+                    <Plus size={14} /> Create Theme
+                  </button>
+                  <button
+                    type="button"
+                    className="discord-btn secondary-gray text-xs py-1 px-2.5 flex items-center gap-1.5"
+                    onClick={() => {
+                      setImportCodeInput("");
+                      setImportError("");
+                      setImportParsedTheme(null);
+                      setIsImportingTheme(true);
+                    }}
+                  >
+                    <Download size={14} /> Import
+                  </button>
+                </div>
+              </div>
+
+              {themeActionNotice && (
+                <div className="mb-3 p-2.5 bg-indigo-950/60 border border-indigo-500/40 rounded-lg text-xs text-indigo-200 flex items-center gap-2">
+                  <Sparkles size={14} className="text-indigo-400 flex-shrink-0" />
+                  <span>{themeActionNotice}</span>
+                </div>
+              )}
+
+              {/* Subtabs: Installed vs Community */}
+              <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
                 <button
                   type="button"
-                  className={`flex items-center gap-1.5 justify-center ${theme === "cozy" ? "active" : ""}`}
-                  onClick={() => onTheme("cozy")}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${appearanceSubtab === "installed" ? "bg-white/15 text-white" : "text-gray-400 hover:text-gray-200"}`}
+                  onClick={() => setAppearanceSubtab("installed")}
                 >
-                  <Sparkles size={16} /> Cozy (Default)
+                  Installed Themes ({BUILTIN_THEMES.length + customThemes.length})
                 </button>
                 <button
                   type="button"
-                  className={`flex items-center gap-1.5 justify-center ${theme === "legacy" ? "active" : ""}`}
-                  onClick={() => onTheme("legacy")}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${appearanceSubtab === "community" ? "bg-white/15 text-white" : "text-gray-400 hover:text-gray-200"}`}
+                  onClick={() => setAppearanceSubtab("community")}
                 >
-                  <Moon size={16} /> Legacy
-                </button>
-                <button
-                  type="button"
-                  className={`flex items-center gap-1.5 justify-center ${theme === "light" ? "active" : ""}`}
-                  onClick={() => onTheme("light")}
-                >
-                  <Sun size={16} /> Light
+                  <Globe size={13} /> Community Library
                 </button>
               </div>
+
+              {appearanceSubtab === "installed" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-5">
+                  {[...BUILTIN_THEMES, ...customThemes].map((th) => {
+                    const isActive = activeThemeId === th.id || (theme === th.id);
+                    const colors = th.colors || {};
+                    const isShareOpen = themeShareMenuId === th.id;
+
+                    return (
+                      <div
+                        key={th.id}
+                        className={`p-3 rounded-xl border transition-all ${isActive ? "bg-purple-950/20 border-purple-500 shadow-md ring-1 ring-purple-500/40" : "bg-black/30 border-white/10 hover:border-white/20"}`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-white">{th.name}</span>
+                              {th.isBuiltin && (
+                                <span className="text-[9px] uppercase px-1.5 py-0.2 bg-white/10 text-gray-300 rounded">
+                                  Default
+                                </span>
+                              )}
+                              {th.customCss && (
+                                <span className="text-[9px] px-1.5 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded font-mono">
+                                  CSS
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-400 line-clamp-1 mt-0.5">
+                              {th.description || `Base: ${th.baseTheme}`}
+                            </div>
+                          </div>
+
+                          <div className="relative">
+                            <button
+                              type="button"
+                              title="Share Theme"
+                              className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                              onClick={() => setThemeShareMenuId(isShareOpen ? null : th.id)}
+                            >
+                              <Share2 size={13} />
+                            </button>
+
+                            {isShareOpen && (
+                              <div
+                                className="absolute right-0 top-6 z-50 w-44 bg-gray-900 border border-gray-700 rounded-lg shadow-xl py-1 text-xs text-gray-200"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-1.5 hover:bg-indigo-600 hover:text-white flex items-center gap-2"
+                                  onClick={() => {
+                                    void handleShareThemeCode(th);
+                                    setThemeShareMenuId(null);
+                                  }}
+                                >
+                                  <Copy size={13} />
+                                  {themeCopiedId === th.id ? "Copied Code!" : "Copy Share Code"}
+                                </button>
+                                {onShareThemeToChat && (
+                                  <button
+                                    type="button"
+                                    className="w-full text-left px-3 py-1.5 hover:bg-indigo-600 hover:text-white flex items-center gap-2"
+                                    onClick={() => {
+                                      handleShareThemeChat(th);
+                                      setThemeShareMenuId(null);
+                                    }}
+                                  >
+                                    <Sparkles size={13} /> Share to Chat
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-1.5 hover:bg-indigo-600 hover:text-white flex items-center gap-2"
+                                  onClick={() => {
+                                    void handlePublishTheme(th);
+                                    setThemeShareMenuId(null);
+                                  }}
+                                >
+                                  <Globe size={13} /> Publish to Library
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Palette swatches */}
+                        <div className="flex items-center gap-1.5 my-2">
+                          {[colors.paper, colors.panel, colors.chatBg, colors.lavender, colors.coral, colors.mint].filter(Boolean).map((col, idx) => (
+                            <span
+                              key={idx}
+                              className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                              style={{ background: col }}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-white/5">
+                          <div className="flex items-center gap-1.5">
+                            {!th.isBuiltin && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-gray-400 hover:text-white flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/5"
+                                  onClick={() => handleOpenCreateTheme(th)}
+                                  title="Edit Theme"
+                                >
+                                  <Edit3 size={11} /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-red-950/30"
+                                  onClick={() => handleDeleteCustomTheme(th.id)}
+                                  title="Delete Theme"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            className={`text-xs px-2.5 py-1 rounded font-medium transition-all ${isActive ? "bg-purple-600 text-white shadow" : "bg-white/10 hover:bg-white/20 text-gray-200"}`}
+                            onClick={() => handleSelectTheme(th)}
+                          >
+                            {isActive ? "✓ Active" : "Apply"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {appearanceSubtab === "community" && (
+                <div className="mb-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="text"
+                      className="discord-text-input text-xs flex-1"
+                      placeholder="Search community themes..."
+                      value={themeSearchQuery}
+                      onChange={(e) => setThemeSearchQuery(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="discord-btn secondary-gray text-xs whitespace-nowrap"
+                      onClick={() => void loadCommunityThemes(themeSearchQuery)}
+                    >
+                      Search
+                    </button>
+                  </div>
+
+                  {communityLoading ? (
+                    <div className="text-center py-6 text-xs text-gray-400">Loading community themes…</div>
+                  ) : communityThemes.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-gray-400 bg-black/20 rounded-lg border border-white/5">
+                      No community themes found yet. Be the first to share one!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {communityThemes.map((th) => {
+                        const colors = th.colors || {};
+
+                        return (
+                          <div
+                            key={th.id}
+                            className="p-3 rounded-xl border bg-black/30 border-white/10 hover:border-white/20 transition-all flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-bold text-xs text-white">{th.name}</span>
+                                <span className="text-[10px] text-gray-400">
+                                  by {th.author?.displayName || "Member"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-400 line-clamp-1 mt-1">
+                                {th.description || `Base: ${th.baseTheme}`}
+                              </p>
+
+                              <div className="flex items-center gap-1.5 my-2">
+                                {[colors.paper, colors.panel, colors.chatBg, colors.lavender, colors.coral, colors.mint].filter(Boolean).map((col, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                                    style={{ background: col }}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-white/5 mt-2">
+                              <button
+                                type="button"
+                                className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
+                                onClick={() => void handleShareThemeCode(th)}
+                              >
+                                <Copy size={12} /> Copy Code
+                              </button>
+
+                              <button
+                                type="button"
+                                className="discord-btn primary-indigo text-xs py-1 px-2.5 flex items-center gap-1"
+                                onClick={() => {
+                                  saveCustomTheme(th);
+                                  setCustomThemes(getStoredThemes());
+                                  handleSelectTheme(th);
+                                  setThemeActionNotice(`Installed & applied "${th.name}"!`);
+                                  setTimeout(() => setThemeActionNotice(""), 3500);
+                                }}
+                              >
+                                <Download size={12} /> Install & Apply
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <span className="field-label">Accent colour</span>
               <div className="accent-picker-row">
@@ -1644,6 +2524,261 @@ export function SettingsDialog({
             </div>
           )}
 
+          {tab === "custom_ui_css" && (
+            <div className="space-y-6">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Enable Client UI Custom CSS</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Injects your personal custom CSS rules across your entire client interface (client-side only).
+                    </p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={clientUiCssEnabled}
+                      onChange={(e) => {
+                        handleSaveClientUiCss(clientUiCss, e.target.checked);
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-300">Quick Presets:</span>
+                    {clientUiNotice && (
+                      <span className="text-xs text-emerald-400 font-medium animate-pulse">{clientUiNotice}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {CLIENT_UI_CSS_PRESETS.map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        className="p-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group"
+                        onClick={() => {
+                          handleSaveClientUiCss(preset.css, true);
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-white group-hover:text-indigo-300 transition-colors">
+                          ✨ {preset.name}
+                        </div>
+                        <div className="text-[11px] text-gray-400 mt-1 line-clamp-2">
+                          {preset.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-300">CSS Code Editor:</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-xs text-gray-300 hover:text-white px-2.5 py-1 rounded bg-white/5 border border-white/10"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(clientUiCss);
+                          setClientUiNotice("CSS copied to clipboard!");
+                          setTimeout(() => setClientUiNotice(""), 2000);
+                        }}
+                      >
+                        Copy CSS
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1 rounded bg-rose-500/10 border border-rose-500/20"
+                        onClick={() => handleSaveClientUiCss("", false)}
+                      >
+                        Clear CSS
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    rows={12}
+                    value={clientUiCss}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setLocalClientUiCss(next);
+                      setClientUiCss(next, clientUiCssEnabled);
+                    }}
+                    placeholder={`/* Write custom CSS to style the Huddle interface (personal to this client) */\n:root {\n  --lavender: #a78bfa !important;\n}\n.sidebar {\n  backdrop-filter: blur(14px) !important;\n}`}
+                    className="w-full font-mono text-xs p-3 rounded-lg bg-black/40 border border-white/10 text-gray-200 focus:outline-none focus:border-indigo-500"
+                    style={{ resize: "vertical", minHeight: 220 }}
+                  />
+                  <div className="mt-3 flex items-center justify-between">
+                    <p className="text-[11px] text-gray-400">
+                      Target selectors: <code className="text-indigo-300">.sidebar</code>, <code className="text-indigo-300">.chat-panel</code>, <code className="text-indigo-300">.message</code>, <code className="text-indigo-300">.composer</code>, <code className="text-indigo-300">.member-panel</code>
+                    </p>
+                    <button
+                      type="button"
+                      className="primary px-4 py-1.5 rounded-lg text-xs font-semibold"
+                      onClick={() => handleSaveClientUiCss(clientUiCss, true)}
+                    >
+                      Save & Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === "accessibility" && (
+            <div className="space-y-6">
+              {/* Live Chat Preview Card matching Screenshot 5 */}
+              <div className="settings-preview-box">
+                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Preview</div>
+                <div className="bg-[#1e1f22] border border-white/10 rounded-xl p-4 space-y-3">
+                  {/* Message 1 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white shrink-0">
+                      {avatar || "K"}
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-pink-400" style={{ fontSize: `${chatFontSize}px` }}>{displayName || "kivu"}</span>
+                        <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.5 rounded-full border border-pink-500/30 flex items-center gap-1">
+                          ❤️ LGBT
+                        </span>
+                        <span className="text-[11px] text-gray-400">14:48</span>
+                      </div>
+                      <p className="text-gray-200" style={{ fontSize: `${chatFontSize}px` }}>
+                        what happened to all the beans
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <span className="inline-flex items-center gap-1 text-xs bg-indigo-950/60 border border-indigo-500/40 rounded px-2 py-0.5 text-indigo-300">
+                          🫐 3
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs bg-white/5 border border-white/10 rounded px-2 py-0.5 text-gray-300">
+                          🧱 1
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Message 2 */}
+                  <div className="flex items-start gap-3 pt-1">
+                    <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white shrink-0">
+                      {avatar || "K"}
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-pink-400" style={{ fontSize: `${chatFontSize}px` }}>{displayName || "kivu"}</span>
+                        <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.5 rounded-full border border-pink-500/30 flex items-center gap-1">
+                          ❤️ LGBT
+                        </span>
+                        <span className="text-[11px] text-gray-400">14:48</span>
+                      </div>
+                      <div className="text-gray-200 flex items-center justify-between" style={{ fontSize: `${chatFontSize}px` }}>
+                        <span>
+                          here's a link{" "}
+                          <a
+                            href="#preview"
+                            className={`text-indigo-400 hover:text-indigo-300 ${alwaysUnderlineLinks ? "underline" : "hover:underline"}`}
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            https://huddle.app/accessibility
+                          </a>
+                        </span>
+                        <button
+                          type="button"
+                          className="primary text-xs px-3 py-1.5 rounded-lg shrink-0 ml-4 font-semibold"
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          Example Button
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Text Readability Section */}
+              <div className="space-y-4 pt-2">
+                <h3 className="text-base font-bold text-white">Text Readability</h3>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+                    <span>Text size in chat</span>
+                    <span className="font-bold text-indigo-400">{chatFontSize}px</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Adjust the size of the chat font.</p>
+
+                  {/* Labeled tick slider matching Discord Screenshot 5 */}
+                  <div className="relative pt-1 pb-4">
+                    <input
+                      type="range"
+                      min={12}
+                      max={24}
+                      step={1}
+                      value={chatFontSize}
+                      onChange={(e) => setChatFontSize(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    />
+                    <div className="flex justify-between text-[11px] text-gray-400 mt-2 px-1">
+                      <span className={chatFontSize === 12 ? "text-indigo-400 font-bold" : ""}>12px</span>
+                      <span className={chatFontSize === 14 ? "text-indigo-400 font-bold" : ""}>14px</span>
+                      <span className={chatFontSize === 15 ? "text-indigo-400 font-bold" : ""}>15px</span>
+                      <span className={chatFontSize === 16 ? "text-indigo-400 font-bold" : ""}>16px</span>
+                      <span className={chatFontSize === 18 ? "text-indigo-400 font-bold" : ""}>18px</span>
+                      <span className={chatFontSize === 20 ? "text-indigo-400 font-bold" : ""}>20px</span>
+                      <span className={chatFontSize === 24 ? "text-indigo-400 font-bold" : ""}>24px</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-3 border-t border-white/10">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Always underline links</div>
+                    <div className="text-xs text-gray-400">Make links stand out more across messages.</div>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={alwaysUnderlineLinks}
+                      onChange={(e) => setAlwaysUnderlineLinks(e.target.checked)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-3 border-t border-white/10">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Display Name Styles</div>
+                    <div className="text-xs text-gray-400">Enable display name styles — including font, effect, and color — across Huddle.</div>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={displayNameStyles}
+                      onChange={(e) => setDisplayNameStyles(e.target.checked)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-3 border-t border-white/10">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Interface motion</div>
+                    <div className="text-xs text-gray-400">Smooth scrolling and interface micro-animations.</div>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={motion}
+                      onChange={(e) => setMotion(e.target.checked)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
           {tab === "roles" && server && (
             <RolesTab server={server} members={members} onError={setError} />
           )}
@@ -1652,23 +2787,341 @@ export function SettingsDialog({
 
           {error && <p className="auth-error">{error}</p>}
           {status && <p className="modal-status">{status}</p>}
-        </div>
-
-        <footer className="modal-foot">
-          <span className="modal-hint">
-            Signed in as {user.username}
-            {user.isAdmin ? " · owner" : ""}
-          </span>
-          <button type="button" className="danger" onClick={onSignOut}>
-            Sign out
-          </button>
-        </footer>
+          </div>
+        </main>
       </div>
       {testRoll && (
         <DiceOverlay
           roll={testRoll}
           onDone={() => setTestRoll(null)}
         />
+      )}
+
+      {/* Theme Creator / Editor Modal */}
+      {isCreatingTheme && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsCreatingTheme(false)}
+        >
+          <div
+            className="modal-window"
+            style={{ width: 680, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="modal-head">
+              <h2>{editingThemeId ? "Edit Custom Theme" : "Create New Theme"}</h2>
+              <button
+                type="button"
+                className="profile-close"
+                onClick={() => setIsCreatingTheme(false)}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="modal-body" style={{ overflowY: "auto", flex: 1, padding: "16px 20px" }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label htmlFor="theme-name-input">Theme Name</label>
+                  <input
+                    id="theme-name-input"
+                    value={draftName}
+                    maxLength={50}
+                    placeholder="e.g. Neon Cyberpunk"
+                    onChange={(e) => setDraftName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="theme-desc-input">Description</label>
+                  <input
+                    id="theme-desc-input"
+                    value={draftDesc}
+                    maxLength={140}
+                    placeholder="Short summary of this theme..."
+                    onChange={(e) => setDraftDesc(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <span className="field-label">Base Style Foundation</span>
+              <div className="theme-row mb-4">
+                {(["cozy", "legacy", "light"] as const).map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    className={`flex items-center gap-1.5 justify-center ${draftBaseTheme === b ? "active" : ""}`}
+                    onClick={() => setDraftBaseTheme(b)}
+                  >
+                    {b === "cozy" ? "✨ Cozy" : b === "legacy" ? "🌙 Legacy" : "☀️ Light"}
+                  </button>
+                ))}
+              </div>
+
+              <span className="field-label">Color Palette</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
+                {[
+                  { key: "paper", label: "App Background", fallback: "#16131f" },
+                  { key: "panel", label: "Sidebars / Panels", fallback: "#1a1628" },
+                  { key: "chatBg", label: "Chat Area", fallback: "#1e1a2e" },
+                  { key: "lavender", label: "Primary Accent", fallback: "#a78bfa" },
+                  { key: "lavenderSoft", label: "Secondary Accent", fallback: "#2e2750" },
+                  { key: "ink", label: "Text Color", fallback: "#e8e3f5" },
+                  { key: "muted", label: "Muted Text", fallback: "#9d95bc" },
+                  { key: "line", label: "Borders / Lines", fallback: "rgba(255,255,255,0.1)" },
+                ].map(({ key, label, fallback }) => (
+                  <div key={key} className="p-2 rounded-lg bg-black/30 border border-white/10 flex flex-col gap-1">
+                    <span className="text-[11px] text-gray-400 font-medium">{label}</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={draftColors[key as keyof ThemeColors] || fallback}
+                        className="w-7 h-7 rounded border-none cursor-pointer p-0 bg-transparent flex-shrink-0"
+                        onChange={(e) =>
+                          setDraftColors((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                      />
+                      <input
+                        type="text"
+                        value={draftColors[key as keyof ThemeColors] || fallback}
+                        className="text-xs font-mono bg-black/40 border border-white/10 rounded px-1.5 py-0.5 w-full text-gray-200"
+                        onChange={(e) =>
+                          setDraftColors((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="appearance-range">
+                    <span>Corner Roundness: <b>{draftCorners}px</b></span>
+                    <input
+                      type="range"
+                      min={4}
+                      max={28}
+                      value={draftCorners}
+                      onChange={(e) => setDraftCorners(Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                <div>
+                  <span className="field-label" style={{ marginTop: 0 }}>Chat Backdrop</span>
+                  <div className="appearance-choice-row">
+                    {(["plain", "aurora", "dots", "grid", "stars"] as const).map((b) => (
+                      <button
+                        key={b}
+                        type="button"
+                        className={draftBackdrop === b ? "active" : ""}
+                        onClick={() => setDraftBackdrop(b)}
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Theme Custom CSS */}
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <span className="field-label flex items-center justify-between" style={{ marginTop: 0 }}>
+                  <span className="flex items-center gap-2">
+                    Custom UI CSS
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-purple-500/30">
+                      Optional
+                    </span>
+                  </span>
+                </span>
+                <p className="modal-hint" style={{ marginTop: 2, marginBottom: 8 }}>
+                  Write custom CSS rules targeting app UI elements (.rail, .sidebar, .chat-panel, .message, .composer).
+                </p>
+
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  <span className="text-xs text-gray-400 self-center mr-1">Insert Preset:</span>
+                  {THEME_CSS_PRESETS.map((p: { name: string; desc: string; css: string }) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      title={p.desc}
+                      className="text-xs bg-white/5 hover:bg-white/10 text-gray-200 px-2 py-0.5 rounded border border-white/10 transition-colors"
+                      onClick={() =>
+                        setDraftCustomCss((prev) => (prev ? `${prev}\n\n${p.css}` : p.css))
+                      }
+                    >
+                      + {p.name}
+                    </button>
+                  ))}
+                  {draftCustomCss && (
+                    <button
+                      type="button"
+                      className="text-xs bg-red-950/40 hover:bg-red-900/60 text-red-300 px-2 py-0.5 rounded border border-red-800/40 transition-colors"
+                      onClick={() => setDraftCustomCss("")}
+                    >
+                      Clear CSS
+                    </button>
+                  )}
+                </div>
+
+                <textarea
+                  rows={5}
+                  value={draftCustomCss}
+                  onChange={(e) => setDraftCustomCss(e.target.value)}
+                  placeholder={`/* Custom UI styling */\n.active-space { box-shadow: 0 0 14px var(--lavender); }\n.composer { border: 1px solid var(--line); }`}
+                  style={{
+                    width: "100%",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    padding: "10px",
+                    background: "rgba(0,0,0,0.4)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "8px",
+                    color: "var(--ink)",
+                    resize: "vertical",
+                  }}
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className="mt-3">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={draftIsPublic}
+                    onChange={(e) => setDraftIsPublic(e.target.checked)}
+                  />
+                  <span>Publish to Community Themes Library so others can discover & install it</span>
+                </label>
+              </div>
+            </div>
+
+            <footer className="modal-foot">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setIsCreatingTheme(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleSaveDraftTheme}
+              >
+                Save & Apply Theme
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* Import Theme Modal */}
+      {isImportingTheme && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsImportingTheme(false)}
+        >
+          <div
+            className="modal-window"
+            style={{ width: 480, maxWidth: "90vw" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="modal-head">
+              <h2>Import Theme</h2>
+              <button
+                type="button"
+                className="profile-close"
+                onClick={() => setIsImportingTheme(false)}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="modal-body" style={{ padding: "16px 20px" }}>
+              <p className="modal-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                Paste a theme share code (starting with <code>huddle-theme:v1:</code>) or theme JSON:
+              </p>
+
+              <textarea
+                rows={4}
+                value={importCodeInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setImportCodeInput(val);
+                  const parsed = importThemeCode(val);
+                  setImportParsedTheme(parsed);
+                  setImportError(parsed ? "" : val.trim() ? "Invalid theme code" : "");
+                }}
+                placeholder="huddle-theme:v1:eyJpZCI6..."
+                style={{
+                  width: "100%",
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  padding: "10px",
+                  background: "rgba(0,0,0,0.4)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "8px",
+                  color: "var(--ink)",
+                  resize: "vertical",
+                }}
+                spellCheck={false}
+              />
+
+              {importError && (
+                <p className="auth-error" style={{ marginTop: 8, marginBottom: 0 }}>
+                  {importError}
+                </p>
+              )}
+
+              {importParsedTheme && (
+                <div className="mt-3 p-3 bg-purple-950/20 border border-purple-500/40 rounded-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="text-sm text-white">{importParsedTheme.name}</strong>
+                    <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-gray-300">
+                      {importParsedTheme.baseTheme}
+                    </span>
+                  </div>
+                  {importParsedTheme.description && (
+                    <p className="text-xs text-gray-400 mt-1">{importParsedTheme.description}</p>
+                  )}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    {Object.values(importParsedTheme.colors || {}).filter(Boolean).map((c, i) => (
+                      <span
+                        key={i}
+                        className="w-4 h-4 rounded-full border border-white/20"
+                        style={{ background: c }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer className="modal-foot">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setIsImportingTheme(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!importParsedTheme}
+                onClick={handleImportTheme}
+              >
+                Install & Apply
+              </button>
+            </footer>
+          </div>
+        </div>
       )}
     </div>
   );

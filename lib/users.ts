@@ -30,6 +30,14 @@ export function normalizePrideBadges(value: unknown): PrideBadgeId[] {
     .slice(0, 4);
 }
 
+export interface SocialLink {
+  platform: string;
+  url: string;
+  label?: string;
+}
+
+export type AvatarFrameId = "none" | "neon" | "rainbow" | "cyber" | "gold" | "sakura" | "diamond";
+
 export interface PublicUser {
   id: string;
   username: string;
@@ -39,11 +47,17 @@ export interface PublicUser {
   bannerUrl?: string | null;
   bio?: string;
   pronouns?: string;
+  tagline?: string;
+  customStatus?: string | null;
   prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
+  socialLinks?: SocialLink[];
+  avatarFrame?: string;
   color: string;
   isAdmin: boolean;
   canInvite: boolean;
+  customCss?: string | null;
+  customTheme?: string | null;
 }
 
 export interface Member {
@@ -55,9 +69,14 @@ export interface Member {
   bannerUrl?: string | null;
   bio?: string;
   pronouns?: string;
+  tagline?: string;
   prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
+  socialLinks?: SocialLink[];
+  avatarFrame?: string;
   color: string;
+  customCss?: string | null;
+  customTheme?: string | null;
   lastSeenAt: string;
   createdAt?: string;
   isAdmin?: boolean;

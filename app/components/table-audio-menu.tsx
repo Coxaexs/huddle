@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, Crown, Headphones, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { ArrowLeftRight, Crown, Headphones, RotateCcw, Compass, SlidersHorizontal, X } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { MAX_TABLE_PAN, personalTableLayout } from "../lib/spatial-audio";
+import type { HeadTrackingStatus } from "../lib/head-tracking";
 import { Avatar } from "./avatar";
 
 export interface TableControls {
@@ -16,6 +17,20 @@ export interface TableControls {
   setTableSeatPans: (pans: Record<string, number>) => void;
   tableWidth: number;
   setTableWidth: (width: number) => void;
+  headTracking: boolean;
+  setHeadTracking: (enabled: boolean) => void;
+  headTrackingOffered: boolean;
+  headTrackingStatus: { status: HeadTrackingStatus; live: boolean };
+  recenterHead: () => void;
+}
+
+/** Head tracking can be wanted, unavailable, waiting for poses, or actually running. */
+function headTrackingHint({ headTracking, headTrackingStatus }: TableControls): string {
+  if (!headTracking) return "Keeps the table still while you turn, like Apple spatial audio.";
+  if (headTrackingStatus.status === "denied") return "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness.";
+  if (headTrackingStatus.status === "unsupported") return "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max.";
+  if (!headTrackingStatus.live) return "Waiting for your headphones to report their position…";
+  return "Tracking your head — the table stays put as you look around.";
 }
 
 export function TableAudioMenu({ participants, listenerId, controls, onClose }: {
@@ -119,6 +134,20 @@ export function TableAudioMenu({ participants, listenerId, controls, onClose }: 
                   .map((p) => <option key={p.connectionId} value={p.connectionId}>{p.displayName}</option>)}
               </select>
             </label>
+          )}
+        </section>}
+
+        {controls.headTrackingOffered && <section className="table-head-tracking">
+          <label>
+            <input type="checkbox" checked={controls.headTracking}
+              onChange={(event) => controls.setHeadTracking(event.target.checked)} />
+            Follow my head (AirPods)
+          </label>
+          <small>{headTrackingHint(controls)}</small>
+          {controls.headTracking && controls.headTrackingStatus.live && (
+            <button type="button" className="table-reset" onClick={controls.recenterHead}>
+              <Compass size={15} /> Face forward
+            </button>
           )}
         </section>}
 
