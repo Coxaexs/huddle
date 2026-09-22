@@ -377,14 +377,6 @@ export type ServerEvent =
     }
   | { t: "notice"; text: string; serverNow: number }
   | {
-      /** A DM partner read the conversation up to `readAt` (for "seen"). */
-      t: "read";
-      channelId: string;
-      userId: string;
-      readAt: string;
-      serverNow: number;
-    }
-  | {
       /** Direct message call signaling between caller and callee. */
       t: "dm-call";
       channelId: string;

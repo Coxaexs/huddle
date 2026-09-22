@@ -25,6 +25,9 @@ import {
 import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import {
   Search,
+  Bell,
+  BellOff,
+  CheckCheck,
   Pin,
   Sun,
   Moon,
@@ -148,6 +151,14 @@ import {
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
+import {
+  VoiceMessagePlayer,
+  VoiceRecordButton,
+  VoiceRecordingBar,
+  formatDuration,
+  useVoiceRecorder,
+  type VoiceClip,
+} from "./components/voice-message";
 import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
@@ -208,6 +219,8 @@ interface Message {
   threadId?: string;
   threadCount?: number;
   payload?: {
+    /** Voice messages: length and a precomputed waveform (0–100 bars). */
+    voice?: { durationMs?: number; waveform?: number[] };
     /** Theme share cards */
     themeShare?: Theme;
     /** Poll cards. */
@@ -261,6 +274,15 @@ interface DmSummary {
   user: Member;
   lastMessage: string | null;
   lastAt: string | null;
+}
+
+/** Effective notification level: the channel's own, else its server's, else "all". */
+function notifyLevel(
+  prefs: Record<string, string>,
+  channelId: string,
+  serverId: string | undefined,
+): string {
+  return prefs[channelId] || (serverId && prefs[`server:${serverId}`]) || "all";
 }
 
 /** The rail slot for direct messages, standing in for a server id. */
@@ -488,7 +510,8 @@ export function ChatShell() {
     }
   });
   const [messages, setMessages] = useState<Message[]>([]);
-  const [unread, setUnread] = useState<
+  /** Raw unread counts; `unread` below is this with notification levels applied. */
+  const [rawUnread, setUnread] = useState<
     Record<string, { unread: boolean; count: number; mentions: number }>
   >({});
   const [pins, setPins] = useState<Message[]>([]);
@@ -550,9 +573,9 @@ export function ChatShell() {
     if (typeof window === "undefined") return DEFAULT_QUICK_REACTIONS;
     try {
       const stored = window.localStorage.getItem("huddle_quick_reactions_v2");
-      if (stored) {
+      if (stored !== null) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
     return DEFAULT_QUICK_REACTIONS;
@@ -562,7 +585,7 @@ export function ChatShell() {
     if (typeof window === "undefined") return [];
     try {
       const stored = window.localStorage.getItem("huddle_hidden_server_emojis_v2");
-      if (stored) {
+      if (stored !== null) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) return parsed;
       }
@@ -570,29 +593,126 @@ export function ChatShell() {
     return [];
   });
 
+  const syncProfileEmojis = useCallback((qr?: string[], hidden?: string[]) => {
+    if (!user) return;
+    void apiFetch("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(qr !== undefined ? { quickReactions: qr } : {}),
+        ...(hidden !== undefined ? { hiddenEmojis: hidden } : {}),
+      }),
+    }).catch(() => {});
+  }, [user]);
+
+  // Reconcile and hydrate client-side quick reactions on mount and when user session loads
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("huddle_quick_reactions_v2");
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setQuickReactions(parsed);
+          return;
+        }
+      }
+    } catch {}
+    if (user?.quickReactions && Array.isArray(user.quickReactions)) {
+      setQuickReactions(user.quickReactions);
+      try {
+        window.localStorage.setItem(
+          "huddle_quick_reactions_v2",
+          JSON.stringify(user.quickReactions),
+        );
+      } catch {}
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("huddle_hidden_server_emojis_v2");
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setHiddenServerEmojiIds(parsed);
+          return;
+        }
+      }
+    } catch {}
+    if (user?.hiddenEmojis && Array.isArray(user.hiddenEmojis)) {
+      setHiddenServerEmojiIds(user.hiddenEmojis);
+      try {
+        window.localStorage.setItem(
+          "huddle_hidden_server_emojis_v2",
+          JSON.stringify(user.hiddenEmojis),
+        );
+      } catch {}
+    }
+  }, [user?.id]);
+
   const removeQuickReaction = (emojiToRemove: string) => {
+    const cleanEmoji = emojiToRemove.replace(/^:|:$/g, "");
     setQuickReactions((prev) => {
-      const next = prev.filter((e) => e !== emojiToRemove);
+      const next = prev.filter(
+        (e) => e !== emojiToRemove && e.replace(/^:|:$/g, "") !== cleanEmoji,
+      );
       try {
         window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
       } catch {}
+      syncProfileEmojis(next, undefined);
       return next;
     });
+
+    // If it is also a server custom emoji, ensure it's hidden so it doesn't resurface from server emojis
+    const matchingServerEmoji = emojis.find(
+      (e) => e.name === cleanEmoji || e.id === emojiToRemove,
+    );
+    if (matchingServerEmoji || emojiToRemove.startsWith(":")) {
+      const idToHide = matchingServerEmoji ? matchingServerEmoji.id : cleanEmoji;
+      setHiddenServerEmojiIds((prev) => {
+        const tokens = [idToHide, cleanEmoji, `:${cleanEmoji}:`];
+        const next = [...new Set([...prev, ...tokens])];
+        try {
+          window.localStorage.setItem("huddle_hidden_server_emojis_v2", JSON.stringify(next));
+        } catch {}
+        syncProfileEmojis(undefined, next);
+        return next;
+      });
+    }
+
     showToast(`Removed ${emojiToRemove} from quick reactions`);
   };
 
   const hideServerEmoji = (id: string, name: string) => {
+    const cleanName = name.replace(/^:|:$/g, "");
+    const tokens = [id, cleanName, `:${cleanName}:`];
     setHiddenServerEmojiIds((prev) => {
-      const next = [...prev, id];
+      const next = [...new Set([...prev, ...tokens])];
       try {
         window.localStorage.setItem("huddle_hidden_server_emojis_v2", JSON.stringify(next));
       } catch {}
+      syncProfileEmojis(undefined, next);
       return next;
     });
-    showToast(`Removed :${name}: from quick reactions`);
+
+    // Also remove from quick reactions if present
+    setQuickReactions((prev) => {
+      const next = prev.filter(
+        (e) => e !== id && e !== cleanName && e !== `:${cleanName}:`,
+      );
+      if (next.length !== prev.length) {
+        try {
+          window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
+        } catch {}
+        syncProfileEmojis(next, undefined);
+      }
+      return next;
+    });
+
+    showToast(`Removed :${cleanName}: from quick reactions`);
   };
 
   const addQuickReaction = (emojiToAdd: string) => {
+    const cleanName = emojiToAdd.replace(/^:|:$/g, "");
     setQuickReactions((prev) => {
       if (prev.includes(emojiToAdd)) {
         showToast(`${emojiToAdd} is already in quick reactions`);
@@ -602,8 +722,24 @@ export function ChatShell() {
       try {
         window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
       } catch {}
+      syncProfileEmojis(next, undefined);
       return next;
     });
+
+    // If it was hidden, unhide it
+    setHiddenServerEmojiIds((prev) => {
+      const next = prev.filter(
+        (id) => id !== emojiToAdd && id !== cleanName && id !== `:${cleanName}:`,
+      );
+      if (next.length !== prev.length) {
+        try {
+          window.localStorage.setItem("huddle_hidden_server_emojis_v2", JSON.stringify(next));
+        } catch {}
+        syncProfileEmojis(undefined, next);
+      }
+      return next;
+    });
+
     showToast(`Added ${emojiToAdd} to quick reactions`);
   };
 
@@ -936,12 +1072,50 @@ export function ChatShell() {
   const [emojis, setEmojis] = useState<
     Array<{ id: string; serverId: string; name: string; url: string }>
   >([]);
-  /** Per-channel notification level; absent means "all". */
+  /**
+   * Notification levels, absent meaning "all". Keyed by channel id, plus
+   * `server:<id>` for a whole-server setting (a channel's own level wins).
+   */
   const [channelPrefs, setChannelPrefs] = useState<Record<string, string>>({});
+  /** Which server each channel belongs to; channels not listed are DMs. */
+  const channelServer = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const server of servers) {
+      for (const channel of server.channels) map.set(channel.id, server.id);
+    }
+    return map;
+  }, [servers]);
+  const channelServerRef = useRef(channelServer);
+  channelServerRef.current = channelServer;
+  // Applied at display time, so counts loaded on startup respect muted
+  // channels and servers the same way live messages do.
+  const unread = useMemo(() => {
+    const shown: typeof rawUnread = {};
+    for (const [channelId, entry] of Object.entries(rawUnread)) {
+      const level = notifyLevel(channelPrefs, channelId, channelServer.get(channelId));
+      if (level === "nothing") continue;
+      if (level === "mentions") {
+        if (entry.mentions > 0) {
+          shown[channelId] = { unread: true, count: entry.mentions, mentions: entry.mentions };
+        }
+        continue;
+      }
+      shown[channelId] = entry;
+    }
+    return shown;
+  }, [rawUnread, channelPrefs, channelServer]);
+  const rawUnreadRef = useRef(rawUnread);
+  rawUnreadRef.current = rawUnread;
   /** Members banned from the active server, so the menu can offer Unban. */
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
   const [channelMenu, setChannelMenu] = useState<{
     channel: PublicChannel;
+    x: number;
+    y: number;
+  } | null>(null);
+  /** Right-click menu on a server icon in the rail. */
+  const [railMenu, setRailMenu] = useState<{
+    server: PublicServer;
     x: number;
     y: number;
   } | null>(null);
@@ -1039,8 +1213,8 @@ export function ChatShell() {
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
-  const unreadRef = useRef(unread);
-  unreadRef.current = unread;
+  const unreadRef = useRef(rawUnread);
+  unreadRef.current = rawUnread;
   const initialChannelScrollRef = useRef<{
     channelId: string;
     unreadCount: number;
@@ -1245,6 +1419,37 @@ export function ChatShell() {
       channels: Record<string, { unread: boolean; count: number; mentions: number }>;
     }>("/api/channels/reads").catch(() => ({ channels: {} }));
     setUnread(data.channels || {});
+  }, []);
+
+  /** Clears every unread channel in a server with one request. */
+  const markServerRead = useCallback((server: PublicServer) => {
+    const ids = server.channels
+      .map((channel) => channel.id)
+      .filter((id) => rawUnreadRef.current[id]);
+    if (!ids.length) return;
+    setUnread((current) => {
+      const next = { ...current };
+      for (const id of ids) delete next[id];
+      return next;
+    });
+    void apiFetch("/api/channels/reads", {
+      method: "POST",
+      body: JSON.stringify({ channelIds: ids }),
+    }).catch(() => undefined);
+  }, []);
+
+  /** Sets a notification level for a channel id or a `server:<id>` key. */
+  const setNotifyLevel = useCallback((key: string, level: string) => {
+    setChannelPrefs((prefs) => {
+      const next = { ...prefs };
+      if (level === "all") delete next[key];
+      else next[key] = level;
+      return next;
+    });
+    void apiFetch("/api/channels/prefs", {
+      method: "POST",
+      body: JSON.stringify({ channelId: key, level }),
+    }).catch(() => undefined);
   }, []);
 
   /** Clears a channel's unread flag locally and records it read on the server. */
@@ -1688,17 +1893,17 @@ export function ChatShell() {
     (channelId: string, message: unknown) => {
       const incoming = message as Message;
       if (channelId !== activeChannelRef.current) {
+        const serverId = channelServerRef.current.get(channelId);
         // A DM you are not looking at still deserves to bubble up the list.
-        void loadDms().catch(() => undefined);
+        // Server channels don't touch the DM list, so skip the refetch.
+        if (!serverId) void loadDms().catch(() => undefined);
         const mentioned = Boolean(user && incoming.mentions?.includes(user.id));
         // Your own messages (echoed back) never count as unread.
         if (user && incoming.userId === user.id) return;
 
-        // Per-channel level: "nothing" stays silent, "mentions" only lights up
-        // when you are named.
-        const level = channelPrefsRef.current[channelId] || "all";
-        if (level === "nothing") return;
-        if (level === "mentions" && !mentioned) return;
+        // Counted regardless of level (the `unread` view filters it), but
+        // "nothing" never pops a notification.
+        const level = notifyLevel(channelPrefsRef.current, channelId, serverId);
 
         setUnread((current) => ({
           ...current,
@@ -1708,7 +1913,7 @@ export function ChatShell() {
             mentions: (current[channelId]?.mentions || 0) + (mentioned ? 1 : 0),
           },
         }));
-        if (mentioned) {
+        if (mentioned && level !== "nothing") {
           showNotification(
             `${incoming.author} mentioned you`,
             incoming.text.slice(0, 140),
@@ -2930,6 +3135,42 @@ export function ChatShell() {
     }
   }
 
+  /** Uploads a recorded clip and posts it as a voice message. */
+  async function sendVoiceMessage(clip: VoiceClip) {
+    const channelId = activeChannelId;
+    if (!channelId) return;
+    const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
+    const extension = clip.blob.type.includes("mp4")
+      ? "m4a"
+      : clip.blob.type.includes("ogg")
+        ? "ogg"
+        : "webm";
+    const form = new FormData();
+    form.append("purpose", "voice");
+    form.append(
+      "file",
+      new File([clip.blob], `voice-${Date.now()}.${extension}`, { type: clip.blob.type }),
+    );
+    const upload = await apiFetch<{ key: string }>("/api/uploads", {
+      method: "POST",
+      body: form,
+    });
+    setReplyTarget(null);
+    await apiFetch("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        channelId,
+        content: `Voice message (${formatDuration(clip.durationMs)})`,
+        audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
+        kind: "voice",
+        payload: {
+          voice: { durationMs: Math.round(clip.durationMs), waveform: clip.waveform },
+        },
+        replyTo,
+      }),
+    });
+  }
+
   async function sendText(text: string, attachmentKeys?: string | string[]) {
     if (!activeChannelId) return;
     const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
@@ -3852,6 +4093,17 @@ export function ChatShell() {
 
   // --------------------------------------------------------------- render
 
+  const voiceRecorder = useVoiceRecorder(sendVoiceMessage);
+  useEffect(() => {
+    if (!voiceRecorder.error) return;
+    setNotice(voiceRecorder.error);
+    voiceRecorder.clearError();
+  }, [voiceRecorder.error]);
+  // Switching channels mid-recording throws the recording away.
+  useEffect(() => {
+    voiceRecorder.cancel();
+  }, [activeChannelId]);
+
   if (!ready) {
     return (
       <main className="app-shell booting">
@@ -4536,9 +4788,16 @@ export function ChatShell() {
             (sum, c) => sum + (unread[c.id]?.mentions || 0),
             0,
           );
-          const voiceActive = server.channels.some(
+          const voiceRooms = server.channels.filter(
             (c) => c.kind === "voice" && (hub.voice[c.id]?.length || 0) > 0,
           );
+          const voiceActive = voiceRooms.length > 0;
+          const voiceTitle = voiceRooms
+            .map(
+              (c) =>
+                `🔊 ${c.name}: ${hub.voice[c.id].map((p) => p.displayName).join(", ")}`,
+            )
+            .join("\n");
           return (
             <div
               key={server.id}
@@ -4565,6 +4824,10 @@ export function ChatShell() {
                   setStageChannelId(null);
                   setMobileNav(false);
                 }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setRailMenu({ server, x: event.clientX, y: event.clientY });
+                }}
               >
                 {server.iconUrl ? (
                   <img
@@ -4584,7 +4847,7 @@ export function ChatShell() {
                   <span className="rail-badge">{mentionTotal}</span>
                 )}
                 {voiceActive && (
-                  <span className="rail-voice-badge" title="Someone is in voice">
+                  <span className="rail-voice-badge" title={voiceTitle}>
                     <Volume2 size={11} />
                   </span>
                 )}
@@ -4828,6 +5091,33 @@ export function ChatShell() {
               >
                 <span className="flex items-center gap-2">
                   <Plus size={16} /> Create Channel
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  markServerRead(activeServer);
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <CheckCheck size={16} /> Mark as Read
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  const key = `server:${activeServer.id}`;
+                  setNotifyLevel(key, channelPrefs[key] ? "all" : "mentions");
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  {channelPrefs[`server:${activeServer.id}`] ? (
+                    <><Bell size={16} /> Unmute Server</>
+                  ) : (
+                    <><BellOff size={16} /> Mute Server</>
+                  )}
                 </span>
               </button>
               <div className="server-menu-divider" />
@@ -5767,8 +6057,8 @@ export function ChatShell() {
                       closeInTime &&
                       !message.replyTo &&
                       !message.commandText &&
-                      !message.kind &&
-                      !prev?.kind;
+                      (!message.kind || message.kind === "voice") &&
+                      (!prev?.kind || prev.kind === "voice");
                     return (
                       <article
                         id={`msg-${message.id}`}
@@ -5985,6 +6275,12 @@ export function ChatShell() {
                                 )
                               }
                             />
+                          ) : message.kind === "voice" && message.audio ? (
+                            <VoiceMessagePlayer
+                              src={message.audio}
+                              durationMs={message.payload?.voice?.durationMs}
+                              waveform={message.payload?.voice?.waveform}
+                            />
                           ) : message.kind === "poll" && message.payload?.pollId ? (
                             <PollCard
                               pollId={message.payload.pollId}
@@ -6029,6 +6325,7 @@ export function ChatShell() {
                               onMention={openProfileByHandle}
                               onImage={setLightbox}
                               emojis={emojiMap}
+                              linkPreviews
                             />
                           )}
 
@@ -6135,7 +6432,7 @@ export function ChatShell() {
                               <span aria-hidden="true">↗</span>
                             </a>
                           )}
-                          {message.audio && (
+                          {message.audio && message.kind !== "voice" && (
                             <audio
                               className="message-audio"
                               controls
@@ -6305,6 +6602,9 @@ export function ChatShell() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     removeQuickReaction(emoji);
+                                    if (message.reactions?.some((r) => r.emoji === emoji && r.mine)) {
+                                      void toggleReaction(message.id, emoji);
+                                    }
                                     return;
                                   }
                                   void toggleReaction(message.id, emoji);
@@ -6324,27 +6624,49 @@ export function ChatShell() {
                             ))}
                             {/* The server's own emoji, right where you react. */}
                             {emojis
+                              .filter((emoji) => {
+                                const code = `:${emoji.name}:`;
+                                const clean = emoji.name;
+                                return (
+                                  !hiddenServerEmojiIds.includes(emoji.id) &&
+                                  !hiddenServerEmojiIds.includes(clean) &&
+                                  !hiddenServerEmojiIds.includes(code) &&
+                                  !quickReactions.includes(code) &&
+                                  !quickReactions.includes(clean)
+                                );
+                              })
                               .slice(0, 4)
-                              .filter((emoji) => !hiddenServerEmojiIds.includes(emoji.id))
-                              .map((emoji) => (
-                                <button
-                                  key={emoji.id}
-                                  type="button"
-                                  title={`React :${emoji.name}: · Shift-click to remove`}
-                                  onClick={(e) => {
-                                    if (e.shiftKey) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      hideServerEmoji(emoji.id, emoji.name);
-                                      return;
-                                    }
-                                    void toggleReaction(message.id, `:${emoji.name}:`);
-                                    setOpenActionsId(null);
-                                  }}
-                                >
-                                  <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
-                                </button>
-                              ))}
+                              .map((emoji) => {
+                                const emojiCode = `:${emoji.name}:`;
+                                return (
+                                  <button
+                                    key={emoji.id}
+                                    type="button"
+                                    title={`React ${emojiCode} · Shift-click to remove`}
+                                    onClick={(e) => {
+                                      if (e.shiftKey) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        hideServerEmoji(emoji.id, emoji.name);
+                                        if (
+                                          message.reactions?.some(
+                                            (r) =>
+                                              (r.emoji === emojiCode || r.emoji === emoji.name) &&
+                                              r.mine,
+                                          )
+                                        ) {
+                                          void toggleReaction(message.id, emojiCode);
+                                        }
+                                        return;
+                                      }
+                                      void toggleReaction(message.id, emojiCode);
+                                      setOpenActionsId(null);
+                                    }}
+                                  >
+                                    <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
+                                  </button>
+                                );
+                              })}
                             <button
                               type="button"
                               title="Add reaction · Shift-click to add to quick reactions"
@@ -6683,6 +7005,10 @@ export function ChatShell() {
                     </div>
                   ) : (
                     <div className="composer">
+                      {voiceRecorder.state !== "idle" ? (
+                        <VoiceRecordingBar recorder={voiceRecorder} />
+                      ) : (
+                      <>
                       <button
                         type="button"
                         className="attach-button"
@@ -6769,14 +7095,22 @@ export function ChatShell() {
                       >
                         /
                       </button>
-                      <button
-                        className="send-button"
-                        type="submit"
-                        aria-label="Send message"
-                        disabled={!draft.trim() && pendingFiles.length === 0}
-                      >
-                        <Send size={15} />
-                      </button>
+                      {!draft.trim() && pendingFiles.length === 0 ? (
+                        <VoiceRecordButton
+                          recorder={voiceRecorder}
+                          disabled={!activeChannelId}
+                        />
+                      ) : (
+                        <button
+                          className="send-button"
+                          type="submit"
+                          aria-label="Send message"
+                        >
+                          <Send size={15} />
+                        </button>
+                      )}
+                      </>
+                      )}
                     </div>
                   )}
 
@@ -6889,6 +7223,7 @@ export function ChatShell() {
                   onMention={openProfileByHandle}
                   onImage={setLightbox}
                   emojis={emojiMap}
+                  linkPreviews
                 />
                 {threadRoot.image && (
                   <img
@@ -7015,6 +7350,7 @@ export function ChatShell() {
                         onMention={openProfileByHandle}
                         onImage={setLightbox}
                         emojis={emojiMap}
+                        linkPreviews
                       />
                     )}
                     {reply.payload?.themeShare && (
@@ -7504,6 +7840,71 @@ export function ChatShell() {
         />
       )}
 
+      {railMenu && (
+        <>
+          <div
+            className="menu-shade"
+            onClick={() => setRailMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setRailMenu(null);
+            }}
+          />
+          <div
+            className="user-menu"
+            role="menu"
+            style={{
+              left: Math.min(railMenu.x, (globalThis.innerWidth || 1200) - 240),
+              top: Math.min(railMenu.y, (globalThis.innerHeight || 800) - 260),
+            }}
+          >
+            <div className="user-menu-head">
+              <strong>{railMenu.server.name}</strong>
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!railMenu.server.channels.some((c) => unread[c.id])}
+              onClick={() => {
+                markServerRead(railMenu.server);
+                setRailMenu(null);
+              }}
+            >
+              Mark as read
+            </button>
+            <div className="user-menu-divider" />
+            <div className="user-menu-head">
+              <span>Notifications</span>
+            </div>
+            {(
+              [
+                ["all", "All messages"],
+                ["mentions", "Only @mentions"],
+                ["nothing", "Nothing"],
+              ] as const
+            ).map(([level, label]) => {
+              const key = `server:${railMenu.server.id}`;
+              const current = channelPrefs[key] || "all";
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  role="menuitem"
+                  className={current === level ? "active" : ""}
+                  onClick={() => {
+                    setNotifyLevel(key, level);
+                    setRailMenu(null);
+                  }}
+                >
+                  {current === level ? "● " : "○ "}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {channelMenu && (
         <>
           <div
@@ -7544,25 +7945,7 @@ export function ChatShell() {
                   role="menuitem"
                   className={current === level ? "active" : ""}
                   onClick={() => {
-                    const id = channelMenu.channel.id;
-                    setChannelPrefs((prefs) => {
-                      const next = { ...prefs };
-                      if (level === "all") delete next[id];
-                      else next[id] = level;
-                      return next;
-                    });
-                    if (level !== "all") {
-                      // Muting clears whatever was already lit up.
-                      setUnread((current) => {
-                        const next = { ...current };
-                        if (level === "nothing") delete next[id];
-                        return next;
-                      });
-                    }
-                    void apiFetch("/api/channels/prefs", {
-                      method: "POST",
-                      body: JSON.stringify({ channelId: id, level }),
-                    }).catch(() => undefined);
+                    setNotifyLevel(channelMenu.channel.id, level);
                     setChannelMenu(null);
                   }}
                 >

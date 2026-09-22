@@ -46,6 +46,8 @@ export interface User {
   custom_status?: string | null;
   custom_css?: string | null;
   custom_theme?: string | null;
+  quick_reactions?: string | null;
+  hidden_emojis?: string | null;
 }
 
 export function publicUser(user: User): PublicUser {
@@ -82,6 +84,28 @@ export function publicUser(user: User): PublicUser {
       socialLinks = [];
     }
   }
+  let quickReactions: string[] | undefined = undefined;
+  if (user.quick_reactions) {
+    try {
+      const parsed = JSON.parse(user.quick_reactions);
+      if (Array.isArray(parsed)) {
+        quickReactions = parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      quickReactions = undefined;
+    }
+  }
+  let hiddenEmojis: string[] | undefined = undefined;
+  if (user.hidden_emojis) {
+    try {
+      const parsed = JSON.parse(user.hidden_emojis);
+      if (Array.isArray(parsed)) {
+        hiddenEmojis = parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      hiddenEmojis = undefined;
+    }
+  }
   return {
     id: user.id,
     username: user.username,
@@ -102,6 +126,8 @@ export function publicUser(user: User): PublicUser {
     canInvite: Boolean(user.is_admin || user.can_invite),
     customCss: user.custom_css || null,
     customTheme: user.custom_theme || null,
+    quickReactions,
+    hiddenEmojis,
   };
 }
 
@@ -246,7 +272,7 @@ export async function currentUser(request: Request): Promise<User | null> {
       `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
               u.bio, u.pronouns, u.tagline, u.custom_status, u.pride_badges, u.spotify_activity,
               u.social_links, u.avatar_frame, u.color, u.is_admin, u.can_invite,
-              u.status, u.custom_css, u.custom_theme, u.created_at,
+              u.status, u.custom_css, u.custom_theme, u.quick_reactions, u.hidden_emojis, u.created_at,
               u.last_seen_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id

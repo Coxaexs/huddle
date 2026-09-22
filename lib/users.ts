@@ -58,6 +58,8 @@ export interface PublicUser {
   canInvite: boolean;
   customCss?: string | null;
   customTheme?: string | null;
+  quickReactions?: string[];
+  hiddenEmojis?: string[];
 }
 
 export interface Member {

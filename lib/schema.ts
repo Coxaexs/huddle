@@ -15,7 +15,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -331,6 +331,13 @@ async function migrate(db: D1Database): Promise<void> {
         channel_id TEXT NOT NULL,
         level TEXT NOT NULL DEFAULT 'all',
         PRIMARY KEY (user_id, channel_id)
+      )`),
+    // Cached link previews (title/description/image scraped from a page).
+    // `data` is JSON, or empty when the page had nothing worth showing.
+    db.prepare(`CREATE TABLE IF NOT EXISTS link_previews (
+        url TEXT PRIMARY KEY,
+        data TEXT,
+        fetched_at TEXT NOT NULL
       )`),
     // A shared battlemap per voice channel. Tokens and paint strokes are JSON
     // blobs: moves fly over the socket and only land here when they settle.
@@ -687,6 +694,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["tagline", "ALTER TABLE users ADD COLUMN tagline TEXT NOT NULL DEFAULT ''"],
     ["social_links", "ALTER TABLE users ADD COLUMN social_links TEXT NOT NULL DEFAULT '[]'"],
     ["avatar_frame", "ALTER TABLE users ADD COLUMN avatar_frame TEXT NOT NULL DEFAULT 'none'"],
+    ["quick_reactions", "ALTER TABLE users ADD COLUMN quick_reactions TEXT NOT NULL DEFAULT '[]'"],
+    ["hidden_emojis", "ALTER TABLE users ADD COLUMN hidden_emojis TEXT NOT NULL DEFAULT '[]'"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }

@@ -74,7 +74,7 @@ export async function GET(request: Request) {
   return Response.json({ channels: result });
 }
 
-/** Mark a channel read up to now. */
+/** Mark a channel (or, with `channelIds`, several at once) read up to now. */
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ ok: false });
@@ -82,17 +82,25 @@ export async function POST(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
-  const body = (await request.json().catch(() => ({}))) as { channelId?: string };
-  const channelId = body.channelId?.slice(0, 64);
-  if (!channelId) return Response.json({ error: "Which channel?" }, { status: 400 });
+  const body = (await request.json().catch(() => ({}))) as {
+    channelId?: string;
+    channelIds?: unknown;
+  };
+  const ids = Array.isArray(body.channelIds)
+    ? body.channelIds
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+        .slice(0, 500)
+        .map((id) => id.slice(0, 64))
+    : body.channelId
+      ? [body.channelId.slice(0, 64)]
+      : [];
+  if (!ids.length) return Response.json({ error: "Which channel?" }, { status: 400 });
 
   const readAt = new Date().toISOString();
-  await db
-    .prepare(
-      "INSERT OR REPLACE INTO channel_reads (user_id, channel_id, read_at) VALUES (?, ?, ?)",
-    )
-    .bind(user.id, channelId, readAt)
-    .run();
+  const insert = db.prepare(
+    "INSERT OR REPLACE INTO channel_reads (user_id, channel_id, read_at) VALUES (?, ?, ?)",
+  );
+  await db.batch(ids.map((id) => insert.bind(user.id, id, readAt)));
 
   return Response.json({ ok: true });
 }
