@@ -145,6 +145,7 @@ import {
   VOICE_REQUIRED_MUSIC_COMMANDS,
   matchCommands,
   findCommand,
+  type SlashCommand,
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
 import { UserProfileCard } from "./components/user-profile-card";
@@ -930,6 +931,8 @@ export function ChatShell() {
   const [gifOpen, setGifOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
+  /** Slash commands registered by connected bots, offered beside our own. */
+  const [botCommands, setBotCommands] = useState<SlashCommand[]>([]);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
   /** Image opened fullscreen in the lightbox. */
@@ -1428,6 +1431,43 @@ export function ChatShell() {
     setPendingFiles([]);
     setReplyTarget(null);
     setEditingId(null);
+  }, [activeChannelId]);
+
+  // Bot commands are per-server, so the slash menu reloads them on a move.
+  useEffect(() => {
+    if (!activeChannelId) {
+      setBotCommands([]);
+      return;
+    }
+    let cancelled = false;
+    void apiFetch<{
+      commands: Array<{ name: string; description: string; options?: unknown[] }>;
+    }>(`/api/commands?channelId=${encodeURIComponent(activeChannelId)}`)
+      .then((data) => {
+        if (cancelled) return;
+        setBotCommands(
+          (data.commands || []).map((command) => ({
+            name: command.name,
+            description: command.description || "From a connected bot",
+            group: "Bots" as const,
+            args: Array.isArray(command.options) && command.options.length
+              ? (command.options as Array<{ name: string; required?: boolean }>)
+                  .map((option) =>
+                    option.required ? `<${option.name}>` : `[${option.name}]`,
+                  )
+                  .join(" ")
+              : undefined,
+          })),
+        );
+      })
+      .catch(() => {
+        // A Huddle with no bots, or an offline gateway: the menu just shows
+        // the built-in commands.
+        if (!cancelled) setBotCommands([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeChannelId]);
 
   // Switching servers re-scopes the member roster to that server's members.
@@ -2843,6 +2883,31 @@ export function ChatShell() {
       return;
     }
 
+    // Last: a command a connected bot registered. The server tells us whether
+    // it owns the name, so an unknown one still gets the message below.
+    if (activeChannelId) {
+      try {
+        const result = await apiFetch<{ ok: boolean; reason: string | null }>(
+          "/api/commands",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              channelId: activeChannelId,
+              name: bare,
+              args: value,
+            }),
+          },
+        );
+        if (result.ok) return;
+        if (result.reason === "offline") {
+          setNotice(`The bot that owns /${bare} is not connected right now.`);
+          return;
+        }
+      } catch {
+        // Fall through to the unknown-command message.
+      }
+    }
+
     setNotice(`I don't know /${bare}. Type / to see what I do know.`);
   }
 
@@ -3326,10 +3391,10 @@ export function ChatShell() {
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(
     () =>
-      (slashOpen ? matchCommands(draft.split(/\s+/)[0]) : []).filter(
+      (slashOpen ? matchCommands(draft.split(/\s+/)[0], botCommands) : []).filter(
         (command) => features.recordSessions || command.name !== "record",
       ),
-    [slashOpen, draft, features.recordSessions],
+    [slashOpen, draft, features.recordSessions, botCommands],
   );
   const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
 

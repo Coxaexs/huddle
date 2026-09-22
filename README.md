@@ -1,6 +1,6 @@
 # Hoffle
 
-Hoffle is an open-source, self-hosted real-time communication platform designed for friend groups and communities. It provides text channels, voice rooms with spatial audio, synchronized music playback, tabletop battlemaps, and a Discord-compatible bot platform.
+Hoffle is an open-source, self-hosted real-time communication platform designed for friend groups and communities. It provides text channels, voice rooms with spatial audio, synchronized music playback, tabletop battlemaps, and a Discord-compatible bot platform that runs unmodified discord.js and discord.py bots.
 
 ## Architecture
 
@@ -54,9 +54,85 @@ To stop:
 docker compose down
 ```
 
-## Discord-Compatible Bot API
+## Running Real Discord Bots
 
-Hoffle provides a REST and Event Gateway API modeled after Discord's API conventions. You can build bots using standard HTTP clients or Discord-like abstractions.
+Hoffle implements Discord's v10 gateway and REST API, so bots written with **discord.js**, **discord.py** and other standard libraries run against it. A bot needs no code changes beyond pointing it at your server.
+
+### Point a bot at Hoffle
+
+**discord.js** — set the REST base URL; the gateway URL is discovered from it automatically:
+
+```javascript
+import { Client, GatewayIntentBits } from "discord.js";
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+  rest: { api: "http://localhost:8730/hangout/api" },
+});
+
+client.on("messageCreate", (message) => {
+  if (message.author.bot) return;
+  if (message.content === "!ping") message.reply("Pong!");
+});
+
+client.login("hfl_bot_your_token_here");
+```
+
+**discord.py** — the gateway host is a separate constant from the REST base, so override both:
+
+```python
+import discord, yarl
+
+discord.http.Route.BASE = "http://localhost:8730/hangout/api/v10"
+discord.gateway.DiscordWebSocket.DEFAULT_GATEWAY = yarl.URL(
+    "ws://localhost:8730/hangout/api/gateway"
+)
+
+intents = discord.Intents.default()
+intents.message_content = True
+
+class Bot(discord.Client):
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        if message.content == "!ping":
+            await message.channel.send("Pong!")
+
+Bot(intents=intents).run("hfl_bot_your_token_here")
+```
+
+Use `wss://` and `https://` when your Hoffle is behind TLS. Tokens are the same ones as the rest of this document: the global `BOT_TOKEN`, or a per-server token from Server Settings -> Bots & Integrations.
+
+Serve images through the CDN route by adding `cdn: "http://localhost:8730/hangout/api/cdn"` to the discord.js `rest` options.
+
+### What works
+
+- **Gateway v10**: HELLO, IDENTIFY, HEARTBEAT/ACK, RESUME with event replay, sequence numbers, intent gating, and Discord's fatal close codes. `zlib-stream` transport compression is supported, which discord.py requires.
+- **Snowflake ids**: every guild, channel, message, user and role gets a real 64-bit snowflake that sorts by creation time, so `createdTimestamp` and id-based pagination behave.
+- **Events**: `READY`, `GUILD_CREATE` (with channels, roles, members and presences inline), `MESSAGE_CREATE/UPDATE/DELETE`, `MESSAGE_DELETE_BULK`, `MESSAGE_REACTION_ADD/REMOVE`, `TYPING_START`, `GUILD_MEMBER_REMOVE`, `GUILD_BAN_ADD`, `GUILD_MEMBERS_CHUNK`, `INTERACTION_CREATE`.
+- **REST**: users, guilds, channels, messages (history with `before`/`after`/`around`, embeds, replies, edits, bulk delete, pins), members, roles, role assignment, bans, emojis.
+- **Slash commands**: bots register application commands the usual way (`PUT /applications/{id}/commands`, or a library's `tree.sync()`). Registered commands appear in Hoffle's own slash menu, and running one dispatches `INTERACTION_CREATE`. Replies, deferred replies, follow-ups and ephemeral responses all work.
+- **The MESSAGE_CONTENT intent** behaves as on Discord: without it, message events arrive with the content blanked rather than not at all.
+
+### What does not work
+
+- **Voice.** Discord's voice gateway needs raw UDP with Opus and xsalsa20 encryption, and Cloudflare Workers cannot open UDP sockets. Music bots and anything else that joins a voice channel will not connect. Use Hoffle's own music bot instead, which plays into Hoffle voice rooms directly.
+- **Bots adding reactions.** Reactions belong to an account in Hoffle's schema and a bot has none. Bots can read reactions and receive reaction events, but `PUT /reactions/.../@me` returns 403.
+- **Modals**, **autocomplete suggestions**, **threads**, **webhooks**, **scheduled events**, **stage instances**, and **per-channel permission overwrites**: Hoffle has no equivalent surface, so these return empty or an explicit error rather than pretending.
+- **Sharding** beyond a single shard, which a self-hosted instance never needs.
+- **RESUME after the gateway hibernates.** The replay buffer is in memory, so a resume against an evicted object answers `INVALID_SESSION`; clients handle this by re-identifying.
+
+### Rate limits
+
+Hoffle does not rate limit bots. The standard `x-ratelimit-*` headers are returned on every response so libraries pace themselves normally, but the bucket never runs out.
+
+## Hoffle's Own Bot API
+
+Alongside the Discord-compatible surface, Hoffle keeps a simpler REST API at `/api/v1` for scripts that just want to post a message. You can build bots using standard HTTP clients without a Discord library.
 
 ### Authentication
 

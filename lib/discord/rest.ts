@@ -11,7 +11,7 @@
  * 10003 to UnknownChannel and 50013 to MissingPermissions, and a bot's retry
  * logic depends on telling those apart.
  */
-import { authenticateBot, type BotIdentity } from "../bot-auth";
+import { authenticateBot, botById, type BotIdentity } from "../bot-auth";
 import { ensureSchema, DM_SERVER_ID } from "../schema";
 import { bindings, type StoredMessage } from "../storage";
 import { publishMessage, publishMessageEvent } from "../hub-client";
@@ -88,6 +88,29 @@ function withRateLimitHeaders(response: Response): Response {
   return new Response(response.body, { status: response.status, headers });
 }
 
+/**
+ * Resolves the bot behind an interaction token.
+ *
+ * /interactions/{id}/{token}/callback and /webhooks/{appId}/{token}/... both
+ * put the token in the second path segment, so one lookup serves both.
+ */
+async function botForInteractionToken(
+  db: D1Database,
+  segments: string[],
+): Promise<BotIdentity | null> {
+  const token = segments[2];
+  if (!token) return null;
+  const row = await db
+    .prepare(
+      "SELECT bot_id, expires_at FROM discord_interactions WHERE token = ? LIMIT 1",
+    )
+    .bind(token)
+    .first<{ bot_id: string; expires_at: string }>();
+  if (!row) return null;
+  if (Date.parse(row.expires_at) < Date.now()) return null;
+  return botById(db, row.bot_id);
+}
+
 export interface RestContext {
   bot: BotIdentity;
   db: D1Database;
@@ -127,7 +150,15 @@ export async function handleDiscordRest(
   }
   await ensureSchema(db);
 
-  const bot = await authenticateBot(request);
+  // Interaction callbacks and followups carry no Authorization header: the
+  // interaction token in the path is the credential, and libraries send these
+  // with auth explicitly disabled. The identity comes from the stored
+  // interaction, which also scopes the call to that one channel and bot.
+  const bot =
+    segments[0] === "interactions" || segments[0] === "webhooks"
+      ? await botForInteractionToken(db, segments)
+      : await authenticateBot(request);
+
   if (!bot) {
     return withRateLimitHeaders(
       discordError(401, ErrorCode.Unauthorized, "401: Unauthorized"),

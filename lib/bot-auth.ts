@@ -87,3 +87,49 @@ export async function authenticateBot(
     kind: row.kind || "custom",
   };
 }
+
+/**
+ * Rebuilds a bot identity from its id alone.
+ *
+ * Interaction callbacks arrive without an Authorization header — the
+ * interaction token is the credential, exactly as on Discord — so the identity
+ * has to come from the stored interaction instead of the request.
+ */
+export async function botById(
+  db: D1Database,
+  botId: string,
+): Promise<BotIdentity | null> {
+  if (botId === "system-bot") {
+    return {
+      id: "system-bot",
+      name: "Hoffle System Bot",
+      avatar: "🤖",
+      serverId: null,
+      isMaster: true,
+      kind: "system",
+    };
+  }
+
+  const row = await db
+    .prepare(
+      "SELECT id, server_id, name, avatar, kind FROM server_bots WHERE id = ? AND enabled = 1 LIMIT 1",
+    )
+    .bind(botId)
+    .first<{
+      id: string;
+      server_id: string;
+      name: string;
+      avatar: string;
+      kind: string;
+    }>();
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    avatar: row.avatar || "🤖",
+    serverId: row.server_id,
+    isMaster: false,
+    kind: row.kind || "custom",
+  };
+}

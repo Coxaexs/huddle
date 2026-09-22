@@ -4,7 +4,7 @@ export interface SlashCommand {
   name: string;
   args?: string;
   description: string;
-  group: "Music" | "Discord music" | "Rooms" | "D&D" | "Huddle";
+  group: "Music" | "Discord music" | "Rooms" | "D&D" | "Huddle" | "Bots";
   /** Needs the caller to be sitting in a voice channel. */
   voice?: boolean;
 }
@@ -284,10 +284,24 @@ export const COMMAND_ALIASES: Record<string, string> = {
   "247": "247status",
 };
 
-export function matchCommands(query: string): SlashCommand[] {
+/**
+ * @param extra commands registered by connected bots, which are discovered at
+ *   runtime rather than shipped in this list.
+ */
+export function matchCommands(
+  query: string,
+  extra: SlashCommand[] = [],
+): SlashCommand[] {
+  // A bot may register a name Hoffle already uses; the built-in wins, so a
+  // third-party bot cannot shadow /play or /record.
+  const builtinNames = new Set(SLASH_COMMANDS.map((command) => command.name));
+  const all = [
+    ...SLASH_COMMANDS,
+    ...extra.filter((command) => !builtinNames.has(command.name)),
+  ];
   const term = query.replace(/^\//, "").toLowerCase().trim();
-  if (!term) return SLASH_COMMANDS;
-  return SLASH_COMMANDS.filter(
+  if (!term) return all;
+  return all.filter(
     (command) =>
       command.name.startsWith(term) ||
       command.description.toLowerCase().includes(term),

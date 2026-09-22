@@ -12,6 +12,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./"),
+      // Only workerd provides this module, so tests that pull in worker code
+      // get a stub instead of failing to resolve it.
+      "cloudflare:workers": path.resolve(
+        __dirname,
+        "./test/stubs/cloudflare-workers.ts",
+      ),
     },
   },
 });
