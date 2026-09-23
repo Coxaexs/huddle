@@ -13,7 +13,7 @@
     "pack": "electron-builder --dir"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "electron": "^36.0.0",
     "electron-builder": "^25.1.8"
   },
   "build": {
@@ -23,13 +23,28 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "files": ["src/**/*", "package.json"],
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.social-networking",
       "icon": "build/icon.png",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -46,7 +61,14 @@
     },
     "win": {
       "icon": "build/icon.ico",
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -58,7 +80,12 @@
     "linux": {
       "icon": "build/icon.png",
       "category": "Network",
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     }
+  },
+  "optionalDependencies": {
+    "uiohook-napi": "^1.5.4"
   }
 }

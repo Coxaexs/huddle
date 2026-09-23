@@ -23,6 +23,7 @@ import {
   Maximize2,
   Minimize2,
   PhoneOff,
+  Users,
   X,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
@@ -299,6 +300,38 @@ export function VoiceStage({
     }
   });
 
+  // Theater: hide the row of people under a share without leaving the app.
+  const [theater, setTheater] = useState(() => {
+    try {
+      return window.localStorage.getItem("huddle-share-theater") === "on";
+    } catch {
+      return false;
+    }
+  });
+  const toggleTheater = () =>
+    setTheater((on) => {
+      try {
+        window.localStorage.setItem("huddle-share-theater", on ? "off" : "on");
+      } catch {
+        // Only a remembered preference.
+      }
+      return !on;
+    });
+  // Fills the window when the Fullscreen API is missing or refused (Tauri's
+  // WebKit, embedded webviews), so fullscreen always means just the video.
+  const [windowFull, setWindowFull] = useState(false);
+  useEffect(() => {
+    if (!windowFull) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setWindowFull(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [windowFull]);
+  useEffect(() => {
+    if (!focused) setWindowFull(false);
+  }, [focused]);
+
   useEffect(() => {
     const onChange = () =>
       setIsFullscreen(document.fullscreenElement === focusMainRef.current);
@@ -310,10 +343,14 @@ export function VoiceStage({
   function toggleFullscreen() {
     const element = focusMainRef.current;
     if (!element) return;
-    if (document.fullscreenElement) {
+    if (windowFull) {
+      setWindowFull(false);
+    } else if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
-    } else if (element.requestFullscreen) {
-      void element.requestFullscreen().catch(() => undefined);
+    } else if (element.requestFullscreen && document.fullscreenEnabled !== false) {
+      void element.requestFullscreen().catch(() => setWindowFull(true));
+    } else if (!("webkitEnterFullscreen" in (element.querySelector("video") ?? {}))) {
+      setWindowFull(true);
     } else {
       // iOS Safari only fullscreens <video> elements.
       const video = element.querySelector("video") as
@@ -446,19 +483,33 @@ export function VoiceStage({
             </p>
           </div>
         ) : focused ? (
-          <div className="voice-focus">
+          <div className={`voice-focus ${theater ? "theater" : ""}`}>
             <div
-              className="voice-focus-main"
+              className={`voice-focus-main ${windowFull ? "window-full" : ""}`}
               ref={focusMainRef}
               onClick={() => {
-                if (!isFullscreen) setFocusedKey(null);
+                if (!isFullscreen && !windowFull) setFocusedKey(null);
               }}
-              title={isFullscreen ? undefined : "Click to return to the grid"}
+              title={isFullscreen || windowFull ? undefined : "Click to return to the grid"}
             >
               <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
               <div className="voice-focus-bar">
                 <span className="live-dot" /> LIVE
                 <strong>{focused.label}</strong>
+                {!isFullscreen && !windowFull && (
+                  <button
+                    type="button"
+                    className={`voice-focus-full ${theater ? "active" : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleTheater();
+                    }}
+                    aria-label={theater ? "Show people" : "Hide people"}
+                    title={theater ? "Show people" : "Hide people"}
+                  >
+                    <Users size={16} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="voice-focus-full"
@@ -466,9 +517,9 @@ export function VoiceStage({
                     event.stopPropagation();
                     toggleFullscreen();
                   }}
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  aria-label={isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}
                 >
-                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  {isFullscreen || windowFull ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 </button>
               </div>
             </div>

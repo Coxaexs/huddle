@@ -23,6 +23,8 @@ export interface HuddleBindings {
   FEATURE_RECORD_SESSIONS?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
+  /** "1" lets users point phone notifications at LAN/compose-network ntfy servers. */
+  HUDDLE_PUSH_ALLOW_PRIVATE?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
   /** Last.fm API key for live scrobbler integration. */

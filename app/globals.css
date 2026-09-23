@@ -8486,12 +8486,11 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   white-space: nowrap;
 }
 
-/* @-mention autocomplete popover (mirrors the slash menu). */
+/* @-mention / #-channel / :emoji: autocomplete. Sits in flow right above the
+   composer like the slash menu: .composer-wrap isn't positioned, so an
+   absolute menu anchored to the chat panel and landed off-screen. */
 .mention-menu {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
+  position: relative;
   margin-bottom: 8px;
   background: var(--paper);
   border: 1px solid var(--line);
@@ -17905,6 +17904,33 @@ input:checked + .toggle-slider:before {
 }
 
 .voice-focus-main:fullscreen:hover .voice-focus-bar {
+  opacity: 1;
+}
+
+/* Theater: the share gets the whole stage, no people row underneath. */
+.voice-focus.theater .voice-filmstrip {
+  display: none;
+}
+
+.voice-focus-full.active {
+  background: rgba(255, 255, 255, .34);
+}
+
+/* Fullscreen fallback where the Fullscreen API isn't available. */
+.voice-focus-main.window-full {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  border-radius: 0;
+  cursor: default;
+}
+
+.voice-focus-main.window-full .voice-focus-bar {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.voice-focus-main.window-full:hover .voice-focus-bar {
   opacity: 1;
 }
 

@@ -713,6 +713,17 @@ async function migrate(db: D1Database): Promise<void> {
     )
     .run();
 
+  // Self-hosted push: "webpush" rows are browser/UnifiedPush subscriptions,
+  // "ntfy" rows are plain HTTP topics (ntfy, or any UnifiedPush endpoint).
+  const pushColumns = await columnNames(db, "push_subscriptions");
+  if (!pushColumns.has("kind")) {
+    await db
+      .prepare(
+        "ALTER TABLE push_subscriptions ADD COLUMN kind TEXT NOT NULL DEFAULT 'webpush'",
+      )
+      .run();
+  }
+
   const userColumns = await columnNames(db, "users");
   const userMigrations: D1PreparedStatement[] = [];
   for (const [column, ddl] of [

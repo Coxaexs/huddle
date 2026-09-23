@@ -63,6 +63,21 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Custom instance: `huddle --server=https://chat.example.com` or
+            // HUDDLE_URL=... overrides the bundled default for this launch.
+            let custom = std::env::args()
+                .find_map(|arg| arg.strip_prefix("--server=").map(str::to_owned))
+                .or_else(|| std::env::var("HUDDLE_URL").ok())
+                .map(|raw| {
+                    let raw = raw.trim().to_owned();
+                    if raw.contains("://") { raw } else { format!("https://{raw}") }
+                })
+                .and_then(|raw| tauri::Url::parse(&raw).ok())
+                .filter(|url| matches!(url.scheme(), "http" | "https"));
+            if let (Some(url), Some(window)) = (custom, app.get_webview_window("main")) {
+                let _ = window.navigate(url);
+            }
+
             // Register global shortcut for microphone toggle (CommandOrControl+Shift+M)
             #[cfg(desktop)]
             {

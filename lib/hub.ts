@@ -491,9 +491,11 @@ export class HuddleHub extends DurableObject {
       }
 
       case "dm-call": {
+        let reached = false;
         for (const entry of this.sockets()) {
           const other = entry.attachment;
           if (other.userId === event.targetUserId) {
+            reached = true;
             try {
               entry.socket.send(
                 JSON.stringify({
@@ -512,6 +514,17 @@ export class HuddleHub extends DurableObject {
               // Socket already disconnected
             }
           }
+        }
+        // Nobody has the app open: ring their phone instead.
+        if (!reached && event.action === "call" && this.db) {
+          this.ctx.waitUntil(
+            sendPushNotifications(this.db, [event.targetUserId], {
+              title: `${attachment.displayName} is calling`,
+              body: event.isVideo ? "Incoming video call on Hoffle" : "Incoming call on Hoffle",
+              tag: `call-${event.channelId}`,
+              urgent: true,
+            }).catch(() => undefined),
+          );
         }
         return;
       }

@@ -78,3 +78,31 @@ You need a Windows machine, **or** CI (recommended — no local Windows needed):
   web app calls `getDisplayMedia()`.
 - `build/` — app icons and macOS entitlements.
 - `package.json` — the `build:` block is the electron-builder config.
+
+## Connecting to your own server
+
+Use **Server → Change server…** in the menu (remembered between launches), or
+for a single launch:
+
+    huddle --server=https://chat.example.com
+    HUDDLE_URL=https://chat.example.com huddle
+
+The Tauri app accepts the same `--server=` flag and `HUDDLE_URL`.
+
+## Global push-to-talk
+
+With the optional `uiohook-napi` dependency installed (it is by default), the
+push-to-talk key chosen in Settings works while other apps are focused. macOS
+asks for Accessibility permission the first time. If the hook can't start,
+push-to-talk falls back to working only while Huddle is focused.
+
+## Screen share audio
+
+Desktop audio is shared along with the screen on Windows, Linux
+(PulseAudio or pipewire-pulse) and macOS 13+ (Electron 36+).
+
+On Linux the share goes through PipeWire and xdg-desktop-portal, so it works on
+Wayland (GNOME, KDE, Hyprland/Sway with xdg-desktop-portal-wlr or -hyprland) and
+you pick the screen or window in your desktop's own dialog. X11 sessions without
+a portal get Huddle's picker instead.
+

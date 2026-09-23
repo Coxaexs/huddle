@@ -85,7 +85,13 @@ export function readMicSettings(): MicSettings {
   // "on"/"off" predate the third option, so an existing choice still reads.
   const saved = store.getItem(KEYS.mode);
   const mode: SuppressionMode =
-    saved === "off" ? "off" : saved === "ai" ? "rnnoise" : "browser";
+    saved === "off"
+      ? "off"
+      : saved === "ai"
+        ? "rnnoise"
+        : saved === "voice"
+          ? "voice"
+          : "browser";
 
   const gainDb = Number(store.getItem(KEYS.gain));
   const sensitivityRaw = store.getItem(KEYS.sensitivity);
@@ -110,7 +116,13 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
 
   store.setItem(
     KEYS.mode,
-    merged.mode === "off" ? "off" : merged.mode === "browser" ? "on" : "ai",
+    merged.mode === "off"
+      ? "off"
+      : merged.mode === "browser"
+        ? "on"
+        : merged.mode === "voice"
+          ? "voice"
+          : "ai",
   );
   store.setItem(KEYS.gain, String(merged.gainDb));
   store.setItem(KEYS.autoGain, merged.autoGain ? "on" : "off");
@@ -169,7 +181,12 @@ function applyCapture(raw: MediaStream, settings: MicSettings): void {
  * sensitivity slider over a live meter, and a dead meter there is worse than a
  * missing feature — it looks like a broken microphone.
  */
+function browserFallback(settings: MicSettings): MicSettings {
+  return settings.mode === "off" ? settings : { ...settings, mode: "browser" };
+}
+
 function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
+  applyCapture(raw, browserFallback(readMicSettings()));
   const listeners = new Set<(telemetry: MicTelemetry) => void>();
   let meter: { context: AudioContext; timer: number } | null = null;
 
@@ -207,8 +224,9 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
     processing: false,
     rnnoise: false,
     update(next) {
-      // The browser's own processing is the only thing left to steer here.
-      applyCapture(raw, { ...readMicSettings(), ...next });
+      // The browser's own processing is the only thing left to steer here, so
+      // it stands in for the neural modes rather than leaving you unfiltered.
+      applyCapture(raw, browserFallback({ ...readMicSettings(), ...next }));
     },
     onTelemetry(listener) {
       listeners.add(listener);
@@ -284,7 +302,7 @@ export async function openMicrophone(
     // pulled lazily here and again if the mode changes later.
     let requested = false;
     const ensureRnnoise = (mode: SuppressionMode) => {
-      if (mode !== "rnnoise" || requested) return;
+      if ((mode !== "rnnoise" && mode !== "voice") || requested) return;
       requested = true;
       loadRnnoise().then(
         // A copy, not a transfer: the buffer is cached for the next chain.
