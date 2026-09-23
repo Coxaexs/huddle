@@ -7,6 +7,9 @@ on:
     tags:
       - "desktop-v*"
 
+permissions:
+  contents: write # to publish the GitHub Release the website links to
+
 jobs:
   build:
     strategy:
@@ -16,6 +19,8 @@ jobs:
             script: dist:mac
           - os: windows-latest
             script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -24,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install
       # Unsigned builds. To sign/notarize, add CSC_LINK / CSC_KEY_PASSWORD
       # (and APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID for mac)
@@ -37,4 +42,15 @@ jobs:
             desktop/dist/*.dmg
             desktop/dist/*.zip
             desktop/dist/*.exe
+            desktop/dist/*.AppImage
           if-no-files-found: ignore
+      # Tag pushes publish a Release; hoffle.online links to releases/latest.
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.exe
+            desktop/dist/*.AppImage
+          fail_on_unmatched_files: false
