@@ -1,9 +1,14 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { can, Permission } from "@/lib/permissions";
+import { canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+/** Stickers and shared sounds: Manage Emojis & Stickers, or Manage Channels. */
+function canManageExpressions(db: D1Database, userId: string, serverId: string) {
+  return canAny(db, userId, serverId, Permission.MANAGE_EMOJIS, Permission.MANAGE_CHANNELS);
+}
 
 interface SoundRow {
   id: string;
@@ -50,7 +55,7 @@ export async function GET(request: Request) {
   });
 }
 
-/** Add a soundboard clip (already uploaded to R2). Gated by MANAGE_CHANNELS. */
+/** Add a soundboard clip (already uploaded to R2). Needs Manage Emojis & Stickers or Manage Channels. */
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) {
@@ -68,12 +73,12 @@ export async function POST(request: Request) {
     name?: string;
     emoji?: string;
     key?: string;
-    /** "server" (shared, needs MANAGE_CHANNELS) or "personal" (your own pack). */
+    /** "server" (shared, needs expression permissions) or "personal" (your own pack). */
     personal?: boolean;
   };
   const serverId = body.serverId || "";
   const personal = Boolean(body.personal);
-  if (!personal && !(await can(db, user.id, serverId, Permission.MANAGE_CHANNELS))) {
+  if (!personal && !(await canManageExpressions(db, user.id, serverId))) {
     return Response.json(
       { error: "You do not have permission to add sounds here." },
       { status: 403 },
@@ -116,7 +121,7 @@ export async function POST(request: Request) {
   );
 }
 
-/** Remove a soundboard clip. Gated by MANAGE_CHANNELS. */
+/** Remove a soundboard clip. Needs Manage Emojis & Stickers or Manage Channels. */
 export async function DELETE(request: Request) {
   const db = bindings().DB;
   if (!db) {
@@ -141,7 +146,7 @@ export async function DELETE(request: Request) {
   const isOwner = sound.scope === "personal" && sound.owner_id === user.id;
   if (
     !isOwner &&
-    !(await can(db, user.id, sound.server_id, Permission.MANAGE_CHANNELS))
+    !(await canManageExpressions(db, user.id, sound.server_id))
   ) {
     return Response.json(
       { error: "You do not have permission to remove sounds here." },
@@ -151,5 +156,46 @@ export async function DELETE(request: Request) {
 
   await db.prepare("DELETE FROM sounds WHERE id = ?").bind(id).run();
   await bindings().UPLOADS?.delete(sound.key);
+  return Response.json({ ok: true });
+}
+
+/** Rename a soundboard clip or change its emoji. */
+export async function PATCH(request: Request) {
+  const db = bindings().DB;
+  if (!db) {
+    return Response.json(
+      { error: "Message storage is not connected." },
+      { status: 503 },
+    );
+  }
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  await ensureSchema(db);
+
+  const body = (await request.json().catch(() => ({}))) as {
+    id?: string;
+    name?: string;
+    emoji?: string;
+  };
+  const sound = await db
+    .prepare("SELECT id, server_id, key, scope, owner_id FROM sounds WHERE id = ?")
+    .bind(body.id || "")
+    .first<SoundRow>();
+  if (!sound) {
+    return Response.json({ error: "That sound is gone." }, { status: 404 });
+  }
+  const isOwner = sound.scope === "personal" && sound.owner_id === user.id;
+  if (!isOwner && !(await canManageExpressions(db, user.id, sound.server_id))) {
+    return Response.json(
+      { error: "You do not have permission to edit sounds here." },
+      { status: 403 },
+    );
+  }
+  const name = body.name?.trim().slice(0, 40);
+  const emoji = body.emoji?.trim().slice(0, 8);
+  await db
+    .prepare("UPDATE sounds SET name = COALESCE(?, name), emoji = COALESCE(?, emoji) WHERE id = ?")
+    .bind(name || null, emoji || null, sound.id)
+    .run();
   return Response.json({ ok: true });
 }

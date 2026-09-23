@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { PublicRole } from "@/lib/servers";
-import type { Member } from "@/lib/users";
+import { bannerBackground, type Member } from "@/lib/users";
 import { Avatar } from "./avatar";
 import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
@@ -71,9 +71,7 @@ export function ProfileCard({
         <div
           className="profile-banner"
           style={{
-            background: member.bannerUrl
-              ? `url(${member.bannerUrl}) center/cover no-repeat`
-              : nameColor || undefined,
+            background: bannerBackground(member.bannerUrl, nameColor || "") || undefined,
           }}
         />
         <button

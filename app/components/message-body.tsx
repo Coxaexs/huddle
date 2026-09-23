@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Volume2 } from "lucide-react";
 import { highlight } from "../lib/highlight";
 import { LinkPreviewCard } from "./link-preview";
+import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
+import { handleMatchesName } from "@/lib/mention-handles";
 
 /** At most this many preview cards under one message. */
 const MAX_PREVIEWS = 3;
@@ -21,12 +23,26 @@ export function isImageUrl(value: string): boolean {
 }
 
 /**
- * Inline tokens: links, @mentions, and the Discord-flavoured emphasis markers.
+ * Inline tokens: links, @mentions, #channels and the Discord-flavoured
+ * emphasis markers.
  * Order matters — the first alternative that matches at a position wins, so
  * the longer fences (**, ~~, ||, __) are listed before the single-character one.
  */
 const INLINE_PATTERN =
-  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,24})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)/g;
+  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,32})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)|((?<![\w#/&])#[a-zA-Z0-9._-]{1,32})/g;
+
+/** A channel a `#name` token can link to. */
+export interface MentionChannel {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+/** A role an `@name` token can refer to (rendered in the role's colour). */
+export interface MentionRole {
+  name: string;
+  color: string;
+}
 
 interface RenderOptions {
   selfHandle?: string;
@@ -36,6 +52,9 @@ interface RenderOptions {
   emojis?: Record<string, string>;
   /** Collects links that should get a preview card (absent: don't collect). */
   links?: string[];
+  channels?: MentionChannel[];
+  roles?: MentionRole[];
+  onChannel?: (channel: MentionChannel) => void;
 }
 
 /** Hidden until clicked, like Discord's ||spoiler||. */
@@ -77,7 +96,8 @@ function renderInline(
     lastIndex = index + token.length;
     const key = `${keyPrefix}-${index}`;
 
-    // 1: url, 2: mention, 3: code, 4: spoiler, 5: **, 6: __, 7: ~~, 8: *, 9: _
+    // 1: url, 2: mention, 3: code, 4: spoiler, 5: **, 6: __, 7: ~~, 8: *, 9: _,
+    // 10: :emoji:, 11: #channel
     if (match[1]) {
       if (isImageUrl(token)) {
         images.push(token);
@@ -95,6 +115,19 @@ function renderInline(
       );
     } else if (match[2]) {
       const handle = token.slice(1);
+      const role = options.roles?.find((r) => handleMatchesName(handle, r.name));
+      if (role) {
+        parts.push(
+          <span
+            key={key}
+            className="mention mention-role"
+            style={{ color: role.color, background: `color-mix(in srgb, ${role.color} 18%, transparent)` }}
+          >
+            @{role.name}
+          </span>,
+        );
+        continue;
+      }
       const isSelf =
         options.selfHandle &&
         handle.toLowerCase() === options.selfHandle.toLowerCase();
@@ -145,15 +178,42 @@ function renderInline(
         </em>,
       );
     } else if (match[10]) {
-      // :custom_emoji: — falls back to the literal text when unknown.
+      // :custom_emoji: or standard shortcode like :tada:, :smiley:, :thumbsup:
       const name = token.slice(1, -1);
       const url = options.emojis?.[name];
-      parts.push(
-        url ? (
+      if (url) {
+        parts.push(
           <img key={key} className="custom-emoji" src={url} alt={token} title={token} />
-        ) : (
-          token
-        ),
+        );
+      } else {
+        const standardEmoji = resolveEmojiShortcode(name);
+        if (standardEmoji) {
+          parts.push(
+            <span key={key} className="emoji-char" title={token}>
+              {standardEmoji}
+            </span>
+          );
+        } else {
+          parts.push(token);
+        }
+      }
+    } else if (match[11]) {
+      const channel = options.channels?.find((c) => handleMatchesName(token.slice(1), c.name));
+      if (!channel) {
+        parts.push(token);
+        continue;
+      }
+      parts.push(
+        <button
+          type="button"
+          key={key}
+          className="mention mention-channel"
+          onClick={() => options.onChannel?.(channel)}
+          title={channel.kind === "voice" ? "Join voice channel" : "Open channel"}
+        >
+          {channel.kind === "voice" ? <Volume2 size={13} aria-hidden /> : "#"}
+          {channel.name}
+        </button>,
       );
     }
   }
@@ -225,6 +285,9 @@ export function MessageBody({
   onImage,
   emojis,
   linkPreviews = false,
+  channels,
+  roles,
+  onChannel,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
@@ -237,6 +300,12 @@ export function MessageBody({
   emojis?: Record<string, string>;
   /** Show embed cards for links in the text. */
   linkPreviews?: boolean;
+  /** Channels `#name` can link to; unknown names stay plain text. */
+  channels?: MentionChannel[];
+  /** Roles, so `@role` renders as a coloured role pill. */
+  roles?: MentionRole[];
+  /** Called when a #channel link is clicked. */
+  onChannel?: (channel: MentionChannel) => void;
 }) {
   const links: string[] = [];
   const options: RenderOptions = {
@@ -245,6 +314,9 @@ export function MessageBody({
     onImage,
     emojis,
     links: linkPreviews ? links : undefined,
+    channels,
+    roles,
+    onChannel,
   };
   const trimmed = text.trim();
 

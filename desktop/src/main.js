@@ -9,6 +9,9 @@ const {
   ipcMain,
   Menu,
   shell,
+  Tray,
+  Notification,
+  nativeImage,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -29,6 +32,8 @@ const APP_URL = process.env.HUDDLE_URL || "https://deeppixel.online/hangout";
 const boundsFile = path.join(app.getPath("userData"), "window-bounds.json");
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 
 function loadBounds() {
   try {
@@ -45,6 +50,65 @@ function saveBounds() {
   } catch {
     // Bounds are a nicety; ignore a failed write.
   }
+}
+
+function createTray() {
+  if (tray) return;
+  const iconPath = path.join(__dirname, "../build/icon.png");
+  let icon;
+  if (fs.existsSync(iconPath)) {
+    icon = nativeImage.createFromPath(iconPath);
+  } else {
+    icon = nativeImage.createEmpty();
+  }
+  tray = new Tray(icon);
+  tray.setToolTip("Huddle");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Open Huddle",
+      click: () => {
+        if (!mainWindow) {
+          createWindow();
+        } else {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    {
+      label: "Toggle Mute",
+      click: () => {
+        mainWindow?.webContents.send("hotkey", "toggle-mute");
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit Huddle",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on("click", () => {
+    if (!mainWindow) {
+      createWindow();
+    } else if (mainWindow.isVisible()) {
+      if (mainWindow.isFocused()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.focus();
+      }
+    } else {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 function createWindow() {
@@ -68,7 +132,14 @@ function createWindow() {
   });
 
   mainWindow.loadURL(APP_URL);
-  mainWindow.on("close", saveBounds);
+  mainWindow.on("close", (event) => {
+    saveBounds();
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
+    }
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -219,6 +290,29 @@ if (!app.requestSingleInstanceLock()) {
     configureSession();
     buildMenu();
     createWindow();
+    createTray();
+
+    // Native OS push notification handler
+    ipcMain.on("desktop-notification", (_event, { title, body }) => {
+      if (Notification.isSupported()) {
+        const iconPath = path.join(__dirname, "../build/icon.png");
+        const notification = new Notification({
+          title: String(title || "Huddle"),
+          body: String(body || ""),
+          icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        });
+        notification.on("click", () => {
+          if (!mainWindow) {
+            createWindow();
+          } else {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+        notification.show();
+      }
+    });
 
     // Unread count → dock/taskbar badge.
     ipcMain.on("set-badge", (_event, count) => {
@@ -253,9 +347,15 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
+  app.on("before-quit", () => {
+    isQuitting = true;
+  });
+
   app.on("will-quit", () => globalShortcut.unregisterAll());
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin" && (!tray || isQuitting)) {
+      app.quit();
+    }
   });
 }

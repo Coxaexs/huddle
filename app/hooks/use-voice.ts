@@ -22,6 +22,13 @@ import {
   playScreenShareStartSound,
   playScreenShareStopSound,
 } from "../lib/audio-cues";
+import {
+  createVirtualBackgroundPipeline,
+  type BackgroundMode,
+  type VirtualBackgroundController,
+} from "../lib/virtual-background";
+
+export type { BackgroundMode };
 
 interface SignalPayload {
   kind: "offer" | "answer" | "candidate";
@@ -211,6 +218,29 @@ export function useVoice({
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const rawCameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraBgPipelineRef = useRef<VirtualBackgroundController | null>(null);
+  const [cameraBackground, setCameraBackgroundState] = useState<BackgroundMode>(() => {
+    if (typeof localStorage === "undefined") return "none";
+    return (localStorage.getItem("huddle_camera_bg") as BackgroundMode) || "none";
+  });
+  const cameraBackgroundRef = useRef<BackgroundMode>(cameraBackground);
+  cameraBackgroundRef.current = cameraBackground;
+
+  const [cameraBlurAmount, setCameraBlurAmountState] = useState<number>(() => {
+    if (typeof localStorage === "undefined") return 14;
+    const v = parseInt(localStorage.getItem("huddle_camera_blur_amount") || "14", 10);
+    return isNaN(v) ? 14 : Math.max(4, Math.min(36, v));
+  });
+  const cameraBlurAmountRef = useRef<number>(cameraBlurAmount);
+  cameraBlurAmountRef.current = cameraBlurAmount;
+
+  const [cameraBackgroundImage, setCameraBackgroundImageState] = useState<string>(() => {
+    if (typeof localStorage === "undefined") return "preset:cyberpunk";
+    return localStorage.getItem("huddle_camera_bg_image") || "preset:cyberpunk";
+  });
+  const cameraBackgroundImageRef = useRef<string>(cameraBackgroundImage);
+  cameraBackgroundImageRef.current = cameraBackgroundImage;
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const iceServersRef = useRef<RTCIceServer[]>([
@@ -933,6 +963,10 @@ export function useVoice({
   }, [announceVideo, closePeer, negotiatePeer]);
 
   const stopCamera = useCallback(() => {
+    cameraBgPipelineRef.current?.stop();
+    cameraBgPipelineRef.current = null;
+    rawCameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    rawCameraStreamRef.current = null;
     const stream = cameraStreamRef.current;
     if (!stream) return;
     const trackIds = new Set(stream.getTracks().map((track) => track.id));
@@ -955,13 +989,28 @@ export function useVoice({
     }
     stopCamera();
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const rawStream = await navigator.mediaDevices.getUserMedia({
         video: cameraConstraints(),
       });
+      rawCameraStreamRef.current = rawStream;
+
+      let stream: MediaStream = rawStream;
+      const currentBg = cameraBackgroundRef.current;
+      if (currentBg !== "none") {
+        const pipeline = createVirtualBackgroundPipeline(
+          rawStream,
+          currentBg,
+          cameraBlurAmountRef.current,
+          cameraBackgroundImageRef.current
+        );
+        cameraBgPipelineRef.current = pipeline;
+        stream = pipeline.outputStream;
+      }
+
       cameraStreamRef.current = stream;
       setCameraOn(true);
       announceVideo();
-      stream.getVideoTracks()[0]?.addEventListener("ended", stopCamera, {
+      rawStream.getVideoTracks()[0]?.addEventListener("ended", stopCamera, {
         once: true,
       });
       for (const [remoteId, peer] of peersRef.current) {
@@ -976,6 +1025,65 @@ export function useVoice({
       }
     }
   }, [announceVideo, negotiatePeer, stopCamera]);
+
+  const setCameraBackground = useCallback(async (mode: BackgroundMode) => {
+    setCameraBackgroundState(mode);
+    cameraBackgroundRef.current = mode;
+    try {
+      localStorage.setItem("huddle_camera_bg", mode);
+    } catch {
+      // ignore
+    }
+    const rawStream = rawCameraStreamRef.current;
+    if (!rawStream || !cameraStreamRef.current) return;
+
+    if (cameraBgPipelineRef.current) {
+      cameraBgPipelineRef.current.setMode(mode);
+    } else if (mode !== "none") {
+      const pipeline = createVirtualBackgroundPipeline(
+        rawStream,
+        mode,
+        cameraBlurAmountRef.current,
+        cameraBackgroundImageRef.current
+      );
+      cameraBgPipelineRef.current = pipeline;
+      const newTrack = pipeline.outputStream.getVideoTracks()[0];
+      const oldTrack = cameraStreamRef.current.getVideoTracks()[0];
+      cameraStreamRef.current = pipeline.outputStream;
+      if (newTrack && oldTrack) {
+        for (const peer of peersRef.current.values()) {
+          for (const sender of peer.getSenders()) {
+            if (sender.track && sender.track.kind === "video" && sender.track.id === oldTrack.id) {
+              await sender.replaceTrack(newTrack).catch(() => undefined);
+            }
+          }
+        }
+      }
+    }
+  }, []);
+
+  const setCameraBlurAmount = useCallback((amount: number) => {
+    const clamped = Math.max(4, Math.min(36, amount));
+    setCameraBlurAmountState(clamped);
+    cameraBlurAmountRef.current = clamped;
+    try {
+      localStorage.setItem("huddle_camera_blur_amount", clamped.toString());
+    } catch {
+      // ignore
+    }
+    cameraBgPipelineRef.current?.setBlurAmount(clamped);
+  }, []);
+
+  const setCameraBackgroundImage = useCallback((imageId: string) => {
+    setCameraBackgroundImageState(imageId);
+    cameraBackgroundImageRef.current = imageId;
+    try {
+      localStorage.setItem("huddle_camera_bg_image", imageId);
+    } catch {
+      // ignore
+    }
+    cameraBgPipelineRef.current?.setBackgroundImage(imageId);
+  }, []);
 
   /**
    * Swaps the microphone without dropping the call: the new track replaces the
@@ -1246,6 +1354,12 @@ export function useVoice({
     startScreenShare,
     stopScreenShare,
     cameraOn,
+    cameraBackground,
+    setCameraBackground,
+    cameraBlurAmount,
+    setCameraBlurAmount,
+    cameraBackgroundImage,
+    setCameraBackgroundImage,
     startCamera,
     stopCamera,
     switchMicrophone,

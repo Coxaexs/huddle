@@ -12,6 +12,8 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
+import { collectDueEventNotices, nextEventAlarm } from "./events";
+import { sendPushNotifications } from "./push";
 import {
   emptyPlayer,
   playbackPosition,
@@ -42,6 +44,8 @@ interface Attachment {
   screenStreamId: string | null;
   bot: boolean;
   recorder: boolean;
+  /** Connected but appearing offline: left out of every presence list. */
+  invisible?: boolean;
 }
 
 /** How long after the last track ends before the bot leaves the room. */
@@ -54,9 +58,11 @@ export class HuddleHub extends DurableObject {
   /** One public active/finalizing recording snapshot per voice channel. */
   private recordings = new Map<string, RecordingState>();
   private loaded: Promise<void> | null = null;
+  private readonly db: D1Database | null;
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
+    this.db = (env as { DB?: D1Database } | null)?.DB ?? null;
     // Answer the client keepalive ping in the runtime itself, so an idle tab's
     // ping never wakes this object from hibernation to run JS. The pong carries
     // no serverNow on purpose — the client only takes the clock from real
@@ -219,6 +225,46 @@ export class HuddleHub extends DurableObject {
       }
       return Response.json({ ok: true, moved });
     }
+    if (url.pathname === "/events-changed" && request.method === "POST") {
+      await this.runEvents();
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/voice-evict" && request.method === "POST") {
+      // Moderation (a timeout): drop this user from any of these voice rooms.
+      const body = (await request.json()) as { userId: string; channelIds: string[] };
+      const rooms = new Set(body.channelIds);
+      const emptied = new Set<string>();
+      for (const { socket, attachment } of this.sockets()) {
+        if (attachment.userId !== body.userId || !attachment.voiceChannelId) continue;
+        if (!rooms.has(attachment.voiceChannelId)) continue;
+        const room = attachment.voiceChannelId;
+        socket.serializeAttachment({
+          ...attachment,
+          voiceChannelId: null,
+          cameraStreamId: null,
+          screenStreamId: null,
+        });
+        emptied.add(room);
+        try {
+          socket.send(
+            JSON.stringify({ t: "voice-evicted", channelId: room, serverNow: Date.now() } satisfies ServerEvent),
+          );
+        } catch {
+          // Already going away.
+        }
+      }
+      for (const room of emptied) this.broadcastVoice(room);
+      return Response.json({ ok: true, evicted: emptied.size });
+    }
+    if (url.pathname === "/presence-status" && request.method === "POST") {
+      const body = (await request.json()) as { userId: string; invisible: boolean };
+      for (const { socket, attachment } of this.sockets()) {
+        if (attachment.userId !== body.userId || attachment.bot) continue;
+        socket.serializeAttachment({ ...attachment, invisible: body.invisible });
+      }
+      this.broadcastPresence();
+      return Response.json({ ok: true });
+    }
     if (url.pathname === "/structure" && request.method === "POST") {
       this.broadcast({ t: "structure", serverNow: Date.now() });
       return Response.json({ ok: true });
@@ -271,6 +317,7 @@ export class HuddleHub extends DurableObject {
       screenStreamId: null,
       bot: url.searchParams.get("bot") === "1",
       recorder: url.searchParams.get("recorder") === "1",
+      invisible: url.searchParams.get("invisible") === "1",
     };
     if (!attachment.userId) {
       return new Response("Unauthorized", { status: 401 });
@@ -295,6 +342,7 @@ export class HuddleHub extends DurableObject {
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
+    this.markSeen(attachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -477,6 +525,7 @@ export class HuddleHub extends DurableObject {
 
   async webSocketClose(socket: WebSocket) {
     const attachment = socket.deserializeAttachment() as Attachment | null;
+    if (attachment) this.markSeen(attachment);
     if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.
@@ -496,6 +545,21 @@ export class HuddleHub extends DurableObject {
 
   // ---------------------------------------------------------------- helpers
 
+  /**
+   * Records "last seen" when a person connects or disconnects. Skipped while
+   * invisible, so the timestamp can't reveal someone who is hiding.
+   */
+  private markSeen(attachment: Attachment): void {
+    if (!this.db || attachment.bot || attachment.invisible) return;
+    this.ctx.waitUntil(
+      this.db
+        .prepare("UPDATE users SET last_seen_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), attachment.userId)
+        .run()
+        .then(() => undefined, () => undefined),
+    );
+  }
+
   private sockets(): Array<{ socket: WebSocket; attachment: Attachment }> {
     const out: Array<{ socket: WebSocket; attachment: Attachment }> = [];
     for (const socket of this.ctx.getWebSockets()) {
@@ -514,7 +578,13 @@ export class HuddleHub extends DurableObject {
   }
 
   private onlineUserIds(): string[] {
-    return [...new Set(this.sockets().map((entry) => entry.attachment.userId))];
+    return [
+      ...new Set(
+        this.sockets()
+          .filter((entry) => !entry.attachment.invisible)
+          .map((entry) => entry.attachment.userId),
+      ),
+    ];
   }
 
   private participantsIn(channelId: string): VoiceParticipant[] {
@@ -788,16 +858,46 @@ export class HuddleHub extends DurableObject {
     const durationMs = state.track?.duration ? state.track.duration * 1000 : 0;
     if (state.track && durationMs && !state.paused) {
       const remaining = durationMs - playbackPosition(state);
-      await this.ctx.storage.setAlarm(Date.now() + Math.max(1000, remaining + 1500));
+      await this.armAlarm(Date.now() + Math.max(1000, remaining + 1500));
       return;
     }
     if (!state.track) {
-      await this.ctx.storage.setAlarm(Date.now() + IDLE_LEAVE_MS);
+      await this.armAlarm(Date.now() + IDLE_LEAVE_MS);
     }
+  }
+
+  /**
+   * One Durable Object has one alarm, shared by the music player and event
+   * reminders. Only ever move it earlier; alarm() re-arms whatever is still due
+   * later, and both jobs tolerate an early wake-up.
+   */
+  private async armAlarm(at: number): Promise<void> {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || at < current || current < Date.now()) {
+      await this.ctx.storage.setAlarm(at);
+    }
+  }
+
+  /** Sends due event reminders and schedules the next one. */
+  private async runEvents(): Promise<void> {
+    if (!this.db) return;
+    const notices = await collectDueEventNotices(this.db).catch(() => []);
+    for (const notice of notices) {
+      await sendPushNotifications(this.db, notice.userIds, {
+        title: notice.title,
+        body: notice.body,
+        url: notice.url,
+        tag: notice.tag,
+      }).catch(() => undefined);
+    }
+    if (notices.length) this.broadcast({ t: "structure", serverNow: Date.now() });
+    const next = await nextEventAlarm(this.db).catch(() => null);
+    if (next !== null) await this.armAlarm(Math.max(next, Date.now() + 1000));
   }
 
   async alarm(): Promise<void> {
     await this.load();
+    await this.runEvents();
     const now = Date.now();
     for (const state of this.players.values()) {
       if (!state.track || state.paused) continue;
@@ -809,6 +909,12 @@ export class HuddleHub extends DurableObject {
           trackId: state.track.id,
         });
       }
+    }
+    // An early wake (an event reminder) must not lose a track still playing.
+    for (const state of this.players.values()) {
+      if (!state.track || state.paused || !state.track.duration) continue;
+      const remaining = state.track.duration * 1000 - playbackPosition(state);
+      if (remaining > 0) await this.armAlarm(Date.now() + remaining + 1500);
     }
   }
 }

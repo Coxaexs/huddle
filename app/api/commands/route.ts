@@ -7,47 +7,131 @@ import { bindings } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 
 /** Discord option types this maps text arguments onto. */
+const OPTION_SUB_COMMAND = 1;
+const OPTION_SUB_COMMAND_GROUP = 2;
 const OPTION_STRING = 3;
 const OPTION_INTEGER = 4;
 const OPTION_BOOLEAN = 5;
 const OPTION_NUMBER = 10;
+/** Users, channels, roles, mentionables, attachments: no text form here. */
+const UNSUPPORTED_TYPES = new Set([6, 7, 8, 9, 11]);
 
 interface CommandOption {
   name: string;
   type?: number;
   required?: boolean;
+  options?: CommandOption[];
+  choices?: Array<{ name: string; value: string | number }>;
+}
+
+interface ParsedOption {
+  name: string;
+  type: number;
+  value?: string | number | boolean;
+  options?: ParsedOption[];
+}
+
+class UsageError extends Error {}
+
+function coerce(option: CommandOption, raw: string): string | number | boolean | undefined {
+  const type = option.type ?? OPTION_STRING;
+  if (option.choices?.length) {
+    // Accept the label people see or the value the bot gets, any case, and a
+    // unique prefix: `/lookup monster goblin` for a "Monster" choice.
+    const lower = raw.toLowerCase();
+    const exact = option.choices.find(
+      (choice) =>
+        choice.name.toLowerCase() === lower || String(choice.value).toLowerCase() === lower,
+    );
+    const prefixed = option.choices.filter((choice) =>
+      choice.name.toLowerCase().startsWith(lower),
+    );
+    const choice = exact ?? (prefixed.length === 1 ? prefixed[0] : undefined);
+    if (!choice) {
+      throw new UsageError(
+        `${option.name} must be one of: ${option.choices.map((c) => c.name).join(", ")}`,
+      );
+    }
+    return choice.value;
+  }
+  if (type === OPTION_INTEGER) {
+    const value = parseInt(raw, 10);
+    if (!Number.isFinite(value)) throw new UsageError(`${option.name} must be a whole number`);
+    return value;
+  }
+  if (type === OPTION_NUMBER) {
+    const value = Number(raw);
+    if (!Number.isFinite(value)) throw new UsageError(`${option.name} must be a number`);
+    return value;
+  }
+  if (type === OPTION_BOOLEAN) return /^(true|yes|y|on|1)$/i.test(raw);
+  return raw;
 }
 
 /**
  * Turns the rest of a typed slash command into Discord option values.
  *
  * Hoffle's composer is a text box, not Discord's structured command UI, so the
- * arguments arrive as one string. Options are filled positionally, and the last
- * string option takes everything left over — otherwise `/play some long title`
- * would lose every word after the first.
+ * arguments arrive as one string. Subcommands are the first word
+ * (`/initiative join 3`). Options can be named (`name:Goblin hp:7`) or
+ * positional, and the last positional string takes everything left over, so
+ * `/play some long title` keeps every word.
  */
-function parseOptions(
-  options: CommandOption[],
-  input: string,
-): Array<{ name: string; type: number; value: string | number | boolean }> {
-  const words = input.trim().length ? input.trim().split(/\s+/) : [];
-  const parsed: Array<{ name: string; type: number; value: string | number | boolean }> = [];
+function parseOptions(options: CommandOption[], input: string): ParsedOption[] {
+  const trimmed = input.trim();
+  const subs = options.filter(
+    (option) =>
+      option.type === OPTION_SUB_COMMAND || option.type === OPTION_SUB_COMMAND_GROUP,
+  );
+  if (subs.length) {
+    const [first = "", ...rest] = trimmed.split(/\s+/);
+    const sub = subs.find((option) => option.name === first.toLowerCase());
+    if (!sub) {
+      throw new UsageError(`Choose one: ${subs.map((option) => option.name).join(", ")}`);
+    }
+    return [
+      {
+        name: sub.name,
+        type: sub.type!,
+        options: parseOptions(sub.options || [], rest.join(" ")),
+      },
+    ];
+  }
 
-  options.forEach((option, index) => {
-    const isLast = index === options.length - 1;
-    const type = option.type ?? OPTION_STRING;
-    const raw = isLast ? words.slice(index).join(" ") : words[index];
-    if (raw === undefined || raw === "") return;
+  const usable = options.filter((option) => !UNSUPPORTED_TYPES.has(option.type ?? OPTION_STRING));
+  const parsed: ParsedOption[] = [];
+  const push = (option: CommandOption, raw: string) => {
+    const value = coerce(option, raw.trim());
+    if (value === undefined || value === "") return;
+    parsed.push({ name: option.name, type: option.type ?? OPTION_STRING, value });
+  };
 
-    let value: string | number | boolean = raw;
-    if (type === OPTION_INTEGER) value = parseInt(raw, 10);
-    else if (type === OPTION_NUMBER) value = Number(raw);
-    else if (type === OPTION_BOOLEAN) value = raw.toLowerCase() === "true";
-    if (typeof value === "number" && !Number.isFinite(value)) return;
+  // Named form: `key:value key2:some longer value`.
+  const names = usable.map((option) => option.name.toLowerCase());
+  const namedRe = new RegExp(`(?:^|\\s)(${names.map((n) => n.replace(/[-]/g, "\\-")).join("|")}):`, "gi");
+  const marks = names.length ? [...trimmed.matchAll(namedRe)] : [];
+  if (marks.length) {
+    marks.forEach((mark, index) => {
+      const start = (mark.index ?? 0) + mark[0].length;
+      const end = index + 1 < marks.length ? marks[index + 1].index ?? trimmed.length : trimmed.length;
+      const option = usable.find((candidate) => candidate.name.toLowerCase() === mark[1].toLowerCase());
+      if (option) push(option, trimmed.slice(start, end));
+    });
+  } else {
+    const words = trimmed.length ? trimmed.split(/\s+/) : [];
+    usable.forEach((option, index) => {
+      const isLast = index === usable.length - 1;
+      const raw = isLast ? words.slice(index).join(" ") : words[index];
+      if (raw !== undefined && raw !== "") push(option, raw);
+    });
+  }
 
-    parsed.push({ name: option.name, type, value });
-  });
-
+  const missing = usable.filter(
+    (option) => option.required && !parsed.some((entry) => entry.name === option.name),
+  );
+  if (missing.length) {
+    throw new UsageError(`Missing ${missing.map((option) => `<${option.name}>`).join(" ")}`);
+  }
   return parsed;
 }
 
@@ -99,11 +183,25 @@ export async function POST(request: Request) {
   // slash commands and its "I don't know that one" message.
   if (!command) return Response.json({ ok: false, reason: "unknown" });
 
+  let options: ParsedOption[];
+  try {
+    options = parseOptions(command.options as CommandOption[], body.args || "");
+  } catch (error) {
+    if (error instanceof UsageError) {
+      return Response.json({
+        ok: false,
+        reason: "usage",
+        message: `/${command.name}: ${error.message}`,
+      });
+    }
+    throw error;
+  }
+
   const result = await runBotCommand({
     channelId: channel.id,
     userId: user.id,
     commandName: command.name,
-    options: parseOptions(command.options as CommandOption[], body.args || ""),
+    options,
   });
 
   return Response.json({

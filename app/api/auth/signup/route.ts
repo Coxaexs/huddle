@@ -119,9 +119,28 @@ export async function POST(request: Request) {
     last_seen_at: now,
   };
 
-  await db
+  // Claim the invite in one conditional UPDATE, so simultaneous signups can't
+  // all read "1 use left" and each spend it.
+  if (!isFirstUser) {
+    const claimed = await db
+      .prepare(
+        `UPDATE invites SET uses = uses + 1
+          WHERE code = ? AND revoked = 0 AND (max_uses <= 0 OR uses < max_uses)`,
+      )
+      .bind(inviteCode)
+      .run();
+    if (!claimed.meta.changes) {
+      return Response.json(
+        { error: "That invite code is not valid any more." },
+        { status: 403 },
+      );
+    }
+  }
+
+  const passwordHash = await hashPassword(password);
+  const inserted = await db
     .prepare(
-      `INSERT INTO users
+      `INSERT OR IGNORE INTO users
          (id, username, username_lower, display_name, password_hash, avatar, color, is_admin, can_invite, created_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
@@ -130,7 +149,7 @@ export async function POST(request: Request) {
       user.username,
       user.username.toLowerCase(),
       user.display_name,
-      await hashPassword(password),
+      passwordHash,
       user.avatar,
       user.color,
       user.is_admin,
@@ -139,12 +158,12 @@ export async function POST(request: Request) {
       now,
     )
     .run();
-
-  if (!isFirstUser && inviteCode) {
-    await db
-      .prepare("UPDATE invites SET uses = uses + 1 WHERE code = ?")
-      .bind(inviteCode)
-      .run();
+  if (!inserted.meta.changes) {
+    // Someone took the username between the check above and this insert.
+    if (!isFirstUser) {
+      await db.prepare("UPDATE invites SET uses = uses - 1 WHERE code = ?").bind(inviteCode).run();
+    }
+    return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 
   // Server membership: every new account joins the default (home) server.

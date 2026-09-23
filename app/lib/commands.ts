@@ -181,17 +181,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // ---- D&D ----
   {
     name: "roll",
-    args: "<2d20+3>",
-    description: "Roll dice, with advantage or disadvantage",
+    args: "<d20+5> [label] [adv|dis|crit]",
+    description: "Roll dice: /roll d20+5 stealth adv, /roll 2d6+3 sword crit",
     group: "D&D",
   },
   { name: "coinflip", description: "Flip a coin", group: "D&D" },
-  { name: "spell", args: "<fireball>", description: "Look up a spell", group: "D&D" },
-  { name: "monster", args: "<goblin>", description: "Look up a monster", group: "D&D" },
+  { name: "spell", args: "<fireball> [2024]", description: "Look up a spell", group: "D&D" },
+  { name: "monster", args: "<goblin> [2024]", description: "Look up a monster's stat block", group: "D&D" },
   { name: "item", args: "<longsword>", description: "Look up an item", group: "D&D" },
   { name: "feat", args: "<alert>", description: "Look up a feat", group: "D&D" },
   { name: "race", args: "<half-orc>", description: "Look up a race", group: "D&D" },
   { name: "class", args: "<paladin>", description: "Look up a class", group: "D&D" },
+  { name: "subclass", args: "<oath of vengeance>", description: "Look up a subclass", group: "D&D" },
   { name: "character", description: "Your character sheet (companion app)", group: "D&D" },
   { name: "inventory", description: "Your inventory (companion app)", group: "D&D" },
   { name: "condition", description: "Track conditions (companion app)", group: "D&D" },
@@ -253,6 +254,7 @@ export const LOOKUP_COMMANDS = new Set([
   "feat",
   "race",
   "class",
+  "subclass",
 ]);
 
 /** Character-sheet features that need the companion app's own login. */
@@ -293,19 +295,30 @@ export function matchCommands(
   extra: SlashCommand[] = [],
 ): SlashCommand[] {
   // A bot may register a name Hoffle already uses; the built-in wins, so a
-  // third-party bot cannot shadow /play or /record.
+  // third-party bot cannot shadow /play or /record. The exception is the D&D
+  // stubs that only link out to the companion: a connected D&D bot does
+  // those for real, so its version replaces the stub.
   const builtinNames = new Set(SLASH_COMMANDS.map((command) => command.name));
+  const extraNames = new Set(extra.map((command) => command.name));
+  const replaced = (name: string) => DND_LINK_COMMANDS.has(name) && extraNames.has(name);
   const all = [
-    ...SLASH_COMMANDS,
-    ...extra.filter((command) => !builtinNames.has(command.name)),
+    ...SLASH_COMMANDS.filter((command) => !replaced(command.name)),
+    ...extra.filter((command) => !builtinNames.has(command.name) || replaced(command.name)),
   ];
   const term = query.replace(/^\//, "").toLowerCase().trim();
   if (!term) return all;
-  return all.filter(
-    (command) =>
-      command.name.startsWith(term) ||
-      command.description.toLowerCase().includes(term),
-  );
+  // Exact name first, then name prefixes, then description matches, so Enter
+  // on a fully typed "/character" runs /character, not the first command
+  // whose description happens to mention characters.
+  const rank = (command: SlashCommand) =>
+    command.name === term ? 0 : command.name.startsWith(term) ? 1 : 2;
+  return all
+    .filter(
+      (command) =>
+        command.name.startsWith(term) ||
+        command.description.toLowerCase().includes(term),
+    )
+    .sort((a, b) => rank(a) - rank(b));
 }
 
 export function findCommand(query: string): SlashCommand | undefined {

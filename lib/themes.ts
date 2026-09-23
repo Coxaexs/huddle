@@ -483,45 +483,282 @@ export function findThemeById(themeId: string): Theme | undefined {
   const custom = getStoredThemes().find((t) => t.id === themeId);
   return custom;
 }
+/** At-rules profile CSS may use; everything else (@import, @font-face, …) is refused. */
+const PROFILE_CSS_AT_RULES = new Set([
+  "media",
+  "supports",
+  "container",
+  "keyframes",
+  "-webkit-keyframes",
+]);
+
+/** Functions that can fetch a resource without going through url(). */
+const PROFILE_CSS_BLOCKED_FUNCTIONS = new Set([
+  "image-set",
+  "-webkit-image-set",
+  "src",
+  "expression",
+  "element",
+  "-moz-element",
+]);
+
+/**
+ * url() targets profile CSS may load: same-origin paths and inline images.
+ * Anything else would let a profile ping an outside server with each viewer's IP.
+ */
+function isSafeProfileCssUrl(target: string): boolean {
+  const url = target.trim();
+  if (/^data:image\/(png|gif|jpeg|webp|avif|svg\+xml)[;,]/i.test(url)) return true;
+  return url.startsWith("/") && !url.startsWith("//") && !/[\s\\]/.test(url);
+}
+
+/** Decodes CSS escapes inside a quoted string so url("h\74tp:…") cannot slip past. */
+function decodeCssString(value: string): string {
+  return value.replace(/\\([0-9a-fA-F]{1,6}\s?|[\s\S])/g, (_match, escape: string) => {
+    const hex = escape.trim();
+    if (/^[0-9a-fA-F]+$/.test(hex)) {
+      const code = Number.parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "�";
+    }
+    return escape === "\n" ? "" : escape;
+  });
+}
+
+function isIdentChar(char: string | undefined): boolean {
+  return char !== undefined && /[a-zA-Z0-9_-]/.test(char);
+}
+
+export type ProfileCssCheck =
+  | { ok: true; css: string }
+  | { ok: false; error: string };
+
+/**
+ * Validates user profile CSS. It must be self-contained: balanced braces, no
+ * escapes outside strings, no `</` (which would end the <style> element), only
+ * a few at-rules, and no loading of outside resources. Comments are dropped.
+ *
+ * The scoper wraps this CSS in a block, so an unbalanced `}` would otherwise
+ * escape the profile card and restyle the whole app for whoever opens it.
+ */
+export function checkProfileCss(raw: string): ProfileCssCheck {
+  if (typeof raw !== "string") return { ok: false, error: "Profile CSS must be text." };
+
+  let out = "";
+  let depth = 0;
+  let i = 0;
+  while (i < raw.length) {
+    const char = raw[i];
+    const next = raw[i + 1];
+
+    if (char === "/" && next === "*") {
+      const end = raw.indexOf("*/", i + 2);
+      if (end === -1) return { ok: false, error: "A comment is never closed." };
+      i = end + 2;
+      out += " ";
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      let j = i + 1;
+      while (j < raw.length && raw[j] !== char) {
+        if (raw[j] === "\\") j += 1;
+        else if (raw[j] === "\n") return { ok: false, error: "A quoted string runs past the end of its line." };
+        j += 1;
+      }
+      if (j >= raw.length) return { ok: false, error: "A quoted string is never closed." };
+      const literal = raw.slice(i, j + 1);
+      if (/<\//.test(literal) || /<\//.test(decodeCssString(literal))) {
+        return { ok: false, error: "Profile CSS cannot contain \"</\"." };
+      }
+      out += literal;
+      i = j + 1;
+      continue;
+    }
+
+    if (char === "\\") {
+      return { ok: false, error: "Backslash escapes are only allowed inside quoted strings." };
+    }
+    if (char === "<" && (next === "/" || next === "!")) {
+      return { ok: false, error: "Profile CSS cannot contain HTML tags." };
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth < 0) return { ok: false, error: "There is a \"}\" without a matching \"{\"." };
+    }
+
+    if (char === "@") {
+      let j = i + 1;
+      while (isIdentChar(raw[j])) j += 1;
+      const name = raw.slice(i + 1, j).toLowerCase();
+      if (!PROFILE_CSS_AT_RULES.has(name)) {
+        return { ok: false, error: `@${name || "…"} is not allowed in profile CSS.` };
+      }
+      out += raw.slice(i, j);
+      i = j;
+      continue;
+    }
+
+    if (isIdentChar(char) && !isIdentChar(raw[i - 1])) {
+      let j = i;
+      while (isIdentChar(raw[j])) j += 1;
+      const name = raw.slice(i, j).toLowerCase();
+      if (raw[j] === "(") {
+        if (PROFILE_CSS_BLOCKED_FUNCTIONS.has(name)) {
+          return { ok: false, error: `${name}() is not allowed in profile CSS.` };
+        }
+        if (name === "url") {
+          const close = findUrlEnd(raw, j + 1);
+          if (close === -1) return { ok: false, error: "A url( is never closed." };
+          let target = raw.slice(j + 1, close).trim();
+          if (target.startsWith('"') || target.startsWith("'")) {
+            target = decodeCssString(target.slice(1, -1));
+          } else if (/[{}<"']/.test(target)) {
+            // Braces here would desync the block splitter from the browser's parser.
+            return { ok: false, error: "Put quotes around url() values that contain special characters." };
+          }
+          if (!isSafeProfileCssUrl(target)) {
+            return {
+              ok: false,
+              error: "url() can only point at files uploaded here or inline data: images.",
+            };
+          }
+          out += raw.slice(i, close + 1);
+          i = close + 1;
+          continue;
+        }
+      }
+      out += raw.slice(i, j);
+      i = j;
+      continue;
+    }
+
+    out += char;
+    i += 1;
+  }
+
+  if (depth !== 0) return { ok: false, error: "There is a \"{\" without a matching \"}\"." };
+  return { ok: true, css: out.trim() };
+}
+
+/** Index of the ")" closing a url( whose argument starts at `start`, skipping quotes. */
+function findUrlEnd(css: string, start: number): number {
+  let quote: string | null = null;
+  for (let i = start; i < css.length; i++) {
+    const char = css[i];
+    if (quote) {
+      if (char === "\\") i += 1;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ")") {
+      return i;
+    }
+  }
+  return -1;
+}
+
+interface CssBlock {
+  prelude: string;
+  body: string;
+}
+
+/** Splits already-validated CSS into its top-level `prelude { body }` blocks. */
+function splitCssBlocks(css: string): CssBlock[] {
+  const blocks: CssBlock[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let preludeStart = 0;
+  let bodyStart = 0;
+  for (let i = 0; i < css.length; i++) {
+    const char = css[i];
+    if (quote) {
+      if (char === "\\") i += 1;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ";" && depth === 0) preludeStart = i + 1;
+    else if (char === "{") {
+      if (depth === 0) bodyStart = i + 1;
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        blocks.push({
+          prelude: css.slice(preludeStart, bodyStart - 1).trim(),
+          body: css.slice(bodyStart, i),
+        });
+        preludeStart = i + 1;
+      }
+    }
+  }
+  return blocks;
+}
+
+/** Splits a selector list on commas that are not inside (), [] or quotes. */
+function splitSelectorList(prelude: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < prelude.length; i++) {
+    const char = prelude[i];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === "(" || char === "[") depth += 1;
+    else if (char === ")" || char === "]") depth -= 1;
+    else if (char === "," && depth === 0) {
+      parts.push(prelude.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(prelude.slice(start));
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
+function prefixSelector(selector: string, scope: string): string {
+  const root = /^(:root|:scope|&|\.profile-card)(?![a-zA-Z0-9_-])/.exec(selector);
+  if (root) return `${scope}${selector.slice(root[0].length)}`;
+  return `${scope} ${selector}`;
+}
+
+/** Rewrites every selector to live under `scope`; used where @scope is unsupported. */
+function prefixCssBlocks(css: string, scope: string): string {
+  return splitCssBlocks(css)
+    .map(({ prelude, body }) => {
+      if (prelude.startsWith("@")) {
+        const name = /^@([a-zA-Z-]+)/.exec(prelude)?.[1].toLowerCase() || "";
+        if (name.endsWith("keyframes")) return `${prelude}{${body}}`;
+        return `${prelude}{${prefixCssBlocks(body, scope)}}`;
+      }
+      const selectors = splitSelectorList(prelude);
+      if (selectors.length === 0) return "";
+      return `${selectors.map((selector) => prefixSelector(selector, scope)).join(", ")}{${body}}`;
+    })
+    .join("\n");
+}
 
 /**
  * Scopes user-written profile CSS so it only targets their specific profile card.
- * Strips dangerous content and prefixes selectors with `.user-profile-scoped-${userId}`.
+ * CSS that fails {@link checkProfileCss} renders nothing at all.
  */
 export function scopeProfileCss(rawCss: string, userId: string): string {
   if (!rawCss || typeof rawCss !== "string") return "";
+  const checked = checkProfileCss(rawCss);
+  if (!checked.ok || !checked.css) return "";
 
   const scopeClass = `.user-profile-scoped-${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-
-  // Clean CSS of dangerous HTML script closing tags
-  const sanitized = rawCss
-    .replace(/<\/style/gi, "")
-    .replace(/<script/gi, "")
-    .replace(/url\(\s*['"]?javascript:/gi, "url(");
-
-  // Modern browser @scope rule provides native encapsulation
-  return `
-    @scope (${scopeClass}) {
-      ${sanitized}
-    }
-    /* Fallback selector mapping for universal compatibility */
-    ${scopeClass} {
-      ${sanitized.replace(/([^{}]+)\{/g, (match, selector) => {
-        // If it's a keyframe rule or media query, don't prefix
-        if (selector.trim().startsWith("@")) return match;
-        return selector
-          .split(",")
-          .map((s: string) => {
-            const trimmed = s.trim();
-            if (trimmed === ":root" || trimmed === "&" || trimmed === ".profile-card") {
-              return scopeClass;
-            }
-            return `${scopeClass} ${trimmed}`;
-          })
-          .join(", ") + " {";
-      })}
-    }
-  `;
+  const prefixed = prefixCssBlocks(checked.css, scopeClass);
+  // @scope gives exact encapsulation; the prefixed copy covers webviews without it.
+  return `@scope (${scopeClass}) {
+${checked.css}
+}
+${prefixed}
+`;
 }
 
 /**

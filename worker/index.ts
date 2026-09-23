@@ -104,6 +104,9 @@ export default {
       );
       if (isMusicBot || isRecorder) target.searchParams.set("bot", "1");
       if (isRecorder) target.searchParams.set("recorder", "1");
+      if (!isMusicBot && !isRecorder && user!.status === "invisible") {
+        target.searchParams.set("invisible", "1");
+      }
 
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },

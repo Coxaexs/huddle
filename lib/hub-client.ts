@@ -119,6 +119,37 @@ export async function publishStructureChange(): Promise<void> {
   await stub.fetch(`${INTERNAL}/structure`, { method: "POST" }).catch(() => undefined);
 }
 
+/** Asks the hub to (re)schedule event reminders after an event changed. */
+export async function publishEventsChanged(): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub.fetch(`${INTERNAL}/events-changed`, { method: "POST" }).catch(() => undefined);
+}
+
+/** Removes a user from whichever of these voice rooms they are sitting in. */
+export async function evictFromVoice(userId: string, channelIds: string[]): Promise<void> {
+  const stub = hub();
+  if (!stub || channelIds.length === 0) return;
+  await stub
+    .fetch(`${INTERNAL}/voice-evict`, {
+      method: "POST",
+      body: JSON.stringify({ userId, channelIds }),
+    })
+    .catch(() => undefined);
+}
+
+/** Tells the hub whether a user's open sockets should count as online. */
+export async function publishPresenceStatus(userId: string, invisible: boolean): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/presence-status`, {
+      method: "POST",
+      body: JSON.stringify({ userId, invisible }),
+    })
+    .catch(() => undefined);
+}
+
 export async function hubState(): Promise<{
   online: string[];
   voice: Record<string, VoiceParticipant[]>;

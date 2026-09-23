@@ -1,0 +1,25 @@
+# Keep the build context small and keep secrets and live data out of images.
+.git
+.github
+.claude
+.wrangler
+.vinext
+node_modules
+**/node_modules
+dist
+dist-*
+backups
+state
+test
+desktop
+desktop-tauri
+native-qt
+discord-bridge
+recorder-service
+.dev.vars
+.env
+.env.*
+!.env.example
+**/__pycache__
+._*
+.DS_Store

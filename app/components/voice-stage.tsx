@@ -8,7 +8,10 @@ import {
   MicOff,
   Headphones,
   Volume2,
+  Volume1,
   VolumeX,
+  Play,
+  Search,
   Video,
   VideoOff,
   Monitor,
@@ -20,7 +23,18 @@ import {
   Maximize2,
   Minimize2,
   PhoneOff,
+  X,
 } from "lucide-react";
+import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
+import {
+  VIRTUAL_BACKGROUND_PRESETS,
+  BUILTIN_BACKGROUND_IMAGES,
+  loadCustomBackgrounds,
+  saveCustomBackground,
+  deleteCustomBackground,
+  type BackgroundMode,
+  type CustomBackgroundItem,
+} from "../lib/virtual-background";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
@@ -56,6 +70,12 @@ interface VoiceApi extends TableControls {
   startScreenShare: () => void | Promise<void>;
   stopScreenShare: () => void;
   cameraOn: boolean;
+  cameraBackground?: BackgroundMode;
+  setCameraBackground?: (mode: BackgroundMode) => void;
+  cameraBlurAmount?: number;
+  setCameraBlurAmount?: (amount: number) => void;
+  cameraBackgroundImage?: string;
+  setCameraBackgroundImage?: (imageId: string) => void;
   startCamera: () => void | Promise<void>;
   stopCamera: () => void;
   localVideos: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
@@ -177,6 +197,49 @@ export function VoiceStage({
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
+  const [cameraBgMenuOpen, setCameraBgMenuOpen] = useState(false);
+  const [cameraTab, setCameraTab] = useState<"blur" | "images" | "fx">("blur");
+  const [customBgs, setCustomBgs] = useState<CustomBackgroundItem[]>(() => loadCustomBackgrounds());
+  const bgFileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleBgUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement("canvas");
+          c.width = 1280;
+          c.height = 720;
+          const ctx = c.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, 1280, 720);
+            const compressed = c.toDataURL("image/webp", 0.85);
+            const saved = saveCustomBackground(file.name.replace(/\.[^.]+$/, ""), compressed);
+            setCustomBgs(loadCustomBackgrounds());
+            voice.setCameraBackground?.("image");
+            voice.setCameraBackgroundImage?.(saved.id);
+          }
+        };
+        img.src = dataUrl;
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function handleDeleteCustomBg(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    deleteCustomBackground(id);
+    setCustomBgs(loadCustomBackgrounds());
+    if (voice.cameraBackgroundImage === id) {
+      voice.setCameraBackgroundImage?.("preset:cyberpunk");
+    }
+  }
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const focusMainRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -558,16 +621,296 @@ export function VoiceStage({
           >
             {voice.deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
           </button>
-          <button
-            type="button"
-            className={`vctrl-btn ${voice.cameraOn ? "active" : ""}`}
-            onClick={() =>
-              voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
-            }
-            title={voice.cameraOn ? "Turn camera off" : "Turn camera on"}
-          >
-            {voice.cameraOn ? <VideoOff size={18} /> : <Video size={18} />}
-          </button>
+          <div className="relative inline-flex items-center">
+            <button
+              type="button"
+              className={`vctrl-btn ${voice.cameraOn ? "active" : ""}`}
+              onClick={() =>
+                voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
+              }
+              title={voice.cameraOn ? "Turn camera off" : "Turn camera on"}
+            >
+              {voice.cameraOn ? <VideoOff size={18} /> : <Video size={18} />}
+            </button>
+            <button
+              type="button"
+              className={`vctrl-btn-mini ${voice.cameraBackground && voice.cameraBackground !== "none" ? "highlight" : ""}`}
+              onClick={() => setCameraBgMenuOpen((o) => !o)}
+              title="Camera Virtual Backgrounds & Effects"
+            >
+              <Sparkles size={11} />
+            </button>
+            {cameraBgMenuOpen && (
+              <div className="camera-bg-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50">
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel)]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-[var(--ink)]">Camera Effects</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="popup-close-x"
+                    onClick={() => setCameraBgMenuOpen(false)}
+                    aria-label="Close camera effects"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Tab Switcher */}
+                <div className="flex items-center gap-1 p-2 border-b border-[var(--line)] bg-[var(--paper)]">
+                  <button
+                    type="button"
+                    className={`camera-bg-tab flex-1 flex items-center justify-center gap-1.5 ${cameraTab === "blur" ? "active" : ""}`}
+                    onClick={() => setCameraTab("blur")}
+                  >
+                    <span>✨</span>
+                    <span>Bokeh Blur</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-bg-tab flex-1 flex items-center justify-center gap-1.5 ${cameraTab === "images" ? "active" : ""}`}
+                    onClick={() => setCameraTab("images")}
+                  >
+                    <span>🖼️</span>
+                    <span>Backdrops</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-bg-tab flex-1 flex items-center justify-center gap-1.5 ${cameraTab === "fx" ? "active" : ""}`}
+                    onClick={() => setCameraTab("fx")}
+                  >
+                    <span>🎨</span>
+                    <span>FX</span>
+                  </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="p-3 overflow-y-auto max-h-[320px] space-y-3">
+                  {cameraTab === "blur" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
+                            voice.cameraBackground === "blur"
+                              ? "bg-[var(--lavender)] text-white shadow-md"
+                              : "bg-[var(--panel)] text-[var(--ink)] border border-[var(--line)] hover:border-[var(--lavender)]"
+                          }`}
+                          onClick={() => voice.setCameraBackground?.("blur")}
+                        >
+                          {voice.cameraBackground === "blur" ? "✓ Bokeh Blur Active" : "Enable Bokeh Blur"}
+                        </button>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-[var(--ink)]">Blur Strength</span>
+                          <span className="font-mono text-[var(--lavender)] font-bold">{voice.cameraBlurAmount || 14}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="4"
+                          max="32"
+                          step="2"
+                          value={voice.cameraBlurAmount || 14}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            voice.setCameraBlurAmount?.(val);
+                            if (voice.cameraBackground !== "blur") {
+                              voice.setCameraBackground?.("blur");
+                            }
+                          }}
+                          className="w-full h-1.5 cursor-pointer accent-[var(--lavender)] rounded-lg"
+                        />
+                        <div className="grid grid-cols-4 gap-1.5 pt-1">
+                          {[
+                            { label: "Subtle", val: 8 },
+                            { label: "Normal", val: 14 },
+                            { label: "Heavy", val: 22 },
+                            { label: "Deep", val: 30 },
+                          ].map((b) => (
+                            <button
+                              key={b.val}
+                              type="button"
+                              className={`py-1 text-[10px] rounded-lg border transition-all ${
+                                (voice.cameraBlurAmount || 14) === b.val
+                                  ? "bg-[var(--lavender)]/20 border-[var(--lavender)] text-[var(--lavender)] font-bold"
+                                  : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--ink)] bg-[var(--paper)]"
+                              }`}
+                              onClick={() => {
+                                voice.setCameraBlurAmount?.(b.val);
+                                if (voice.cameraBackground !== "blur") {
+                                  voice.setCameraBackground?.("blur");
+                                }
+                              }}
+                            >
+                              {b.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                        Client-side AI segmentation cleanly cuts around your person, leaving you sharp while beautifully blurring your room.
+                      </p>
+                    </div>
+                  )}
+
+                  {cameraTab === "images" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[var(--ink)]">Virtual Backgrounds</span>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[var(--lavender)] hover:underline flex items-center gap-1"
+                          onClick={() => bgFileInputRef.current?.click()}
+                        >
+                          <span>＋</span>
+                          <span>Upload Image</span>
+                        </button>
+                        <input
+                          ref={bgFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={handleBgUpload}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Custom Upload Tile */}
+                        <div
+                          className="camera-bg-tile border-dashed border-[var(--lavender)]/40 flex flex-col items-center justify-center gap-1 p-2 text-center hover:bg-[var(--lavender)]/10"
+                          onClick={() => bgFileInputRef.current?.click()}
+                          title="Upload custom image from your device"
+                        >
+                          <span className="text-lg">📁</span>
+                          <span className="text-[10px] font-semibold text-[var(--lavender)]">Upload Image</span>
+                        </div>
+
+                        {/* Custom User Uploaded Backgrounds */}
+                        {customBgs.map((custom) => {
+                          const isSelected = voice.cameraBackground === "image" && voice.cameraBackgroundImage === custom.id;
+                          return (
+                            <div
+                              key={custom.id}
+                              className={`camera-bg-tile ${isSelected ? "active" : ""}`}
+                              onClick={() => {
+                                voice.setCameraBackground?.("image");
+                                voice.setCameraBackgroundImage?.(custom.id);
+                              }}
+                              title={custom.name}
+                            >
+                              <img src={custom.dataUrl} alt={custom.name} />
+                              <span className="absolute bottom-1 left-1.5 text-[9px] font-semibold text-white bg-black/60 px-1 py-0.5 rounded truncate max-w-[85%]">
+                                {custom.name}
+                              </span>
+                              {isSelected && (
+                                <span className="absolute top-1 left-1.5 w-4 h-4 rounded-full bg-[var(--lavender)] text-white text-[10px] flex items-center justify-center font-bold">
+                                  ✓
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="camera-bg-delete-btn"
+                                onClick={(e) => handleDeleteCustomBg(custom.id, e)}
+                                title="Delete background"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Built-in Preset Images */}
+                        {BUILTIN_BACKGROUND_IMAGES.map((preset) => {
+                          const isSelected = voice.cameraBackground === "image" && voice.cameraBackgroundImage === preset.id;
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`camera-bg-tile ${isSelected ? "active" : ""}`}
+                              onClick={() => {
+                                voice.setCameraBackground?.("image");
+                                voice.setCameraBackgroundImage?.(preset.id);
+                              }}
+                              title={`${preset.name} - ${preset.description}`}
+                            >
+                              <img src={preset.svgDataUri} alt={preset.name} />
+                              <span className="absolute bottom-1 left-1.5 text-[9px] font-semibold text-white bg-black/60 px-1 py-0.5 rounded truncate max-w-[85%] flex items-center gap-1">
+                                <span>{preset.emoji}</span>
+                                <span>{preset.name}</span>
+                              </span>
+                              {isSelected && (
+                                <span className="absolute top-1 left-1.5 w-4 h-4 rounded-full bg-[var(--lavender)] text-white text-[10px] flex items-center justify-center font-bold">
+                                  ✓
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {cameraTab === "fx" && (
+                    <div className="space-y-1.5">
+                      {[
+                        { id: "studio" as const, name: "Studio Spotlight", emoji: "🎙️", badge: "Warm" },
+                        { id: "cyberpunk" as const, name: "Neon Cyberpunk", emoji: "🌆", badge: "Cyber" },
+                        { id: "sunset" as const, name: "Golden Sunset", emoji: "🌅", badge: "Sunset" },
+                        { id: "matrix" as const, name: "Digital Matrix", emoji: "🟩", badge: "Matrix" },
+                        { id: "cosmos" as const, name: "Deep Space", emoji: "🌌", badge: "Cosmic" },
+                      ].map((preset) => {
+                        const isSelected = voice.cameraBackground === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors text-left ${
+                              isSelected
+                                ? "bg-[var(--lavender)] text-white font-medium shadow-sm"
+                                : "text-[var(--ink)] hover:bg-[var(--panel)] border border-transparent"
+                            }`}
+                            onClick={() => voice.setCameraBackground?.(preset.id)}
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <span className="text-base leading-none">{preset.emoji}</span>
+                              <span className="font-medium">{preset.name}</span>
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                              isSelected ? "bg-white/20 text-white" : "bg-[var(--line)] text-[var(--muted)]"
+                            }`}>
+                              {preset.badge}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Controls */}
+                <div className="p-2 border-t border-[var(--line)] bg-[var(--panel)] flex items-center justify-between">
+                  <button
+                    type="button"
+                    className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                      voice.cameraBackground === "none"
+                        ? "text-[var(--muted)] cursor-default"
+                        : "text-[var(--coral)] hover:bg-[var(--coral)]/10 font-semibold"
+                    }`}
+                    disabled={voice.cameraBackground === "none"}
+                    onClick={() => voice.setCameraBackground?.("none")}
+                  >
+                    🚫 Turn Off Effects
+                  </button>
+                  <span className="text-[10px] text-[var(--muted)] font-mono">
+                    Active: {voice.cameraBackground || "none"}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
@@ -670,21 +1013,39 @@ export function VoiceStage({
   );
 }
 
-/** The soundboard: browse and play a server's clips; upload new ones. */
-function SoundboardDrawer({
+/** The soundboard: browse and play presets or server clips; upload new ones; adjust volume. */
+export function SoundboardDrawer({
   serverId,
   channelId,
   canManage,
+  onClose,
 }: {
   serverId: string | null;
   channelId: string | null;
   canManage: boolean;
+  onClose?: () => void;
 }) {
+  const [tab, setTab] = useState<"presets" | "server">("presets");
+  const [search, setSearch] = useState("");
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [uploading, setUploading] = useState(false);
-  /** True when the "add" upload targets your personal pack, not the server's. */
   const [personalUpload, setPersonalUpload] = useState(false);
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof localStorage === "undefined") return 0.7;
+    const v = parseFloat(localStorage.getItem("huddle_soundboard_volume") || "0.7");
+    return isNaN(v) ? 0.7 : Math.max(0, Math.min(1, v));
+  });
+  const [recentlyPlayed, setRecentlyPlayed] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
+    try {
+      localStorage.setItem("huddle_soundboard_volume", newVol.toString());
+    } catch {
+      // ignore
+    }
+  };
 
   const load = useRef<() => void>(() => {});
   load.current = () => {
@@ -699,12 +1060,30 @@ function SoundboardDrawer({
     load.current();
   }, [serverId]);
 
-  function play(sound: Sound) {
+  function playSoundboardItem(soundId: string, name: string) {
     if (!channelId) return;
+    setRecentlyPlayed(soundId);
+    window.setTimeout(() => setRecentlyPlayed(null), 600);
     void apiFetch("/api/sounds/play", {
       method: "POST",
-      body: JSON.stringify({ channelId, soundId: sound.id }),
+      body: JSON.stringify({ channelId, soundId }),
     }).catch(() => undefined);
+  }
+
+  function previewPreset(presetId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    playPresetSound(presetId, volume);
+  }
+
+  function previewCustom(url: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const audio = new Audio(url);
+      audio.volume = volume;
+      void audio.play().catch(() => undefined);
+    } catch {
+      // ignore
+    }
   }
 
   async function upload(file: File | undefined | null) {
@@ -734,62 +1113,176 @@ function SoundboardDrawer({
     }
   }
 
-  async function remove(sound: Sound) {
+  async function remove(sound: Sound, e: React.MouseEvent) {
+    e.stopPropagation();
     await apiFetch(`/api/sounds?id=${encodeURIComponent(sound.id)}`, {
       method: "DELETE",
     }).catch(() => undefined);
     load.current();
   }
 
+  const filteredPresets = SOUNDBOARD_PRESETS.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.description.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredSounds = sounds.filter((s) =>
+    s.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="soundboard">
-      {sounds.map((sound) => (
-        <div key={sound.id} className="soundboard-pad-wrap">
+      <div className="soundboard-header-bar flex items-center justify-between gap-2 w-full pb-2 mb-1 border-b border-[var(--line)]">
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            className={`soundboard-pad ${sound.personal ? "personal" : ""}`}
-            onClick={() => play(sound)}
-            title={`${sound.name}${sound.personal ? " (your pack)" : ""}`}
+            className={`soundboard-tab-btn ${tab === "presets" ? "active" : ""}`}
+            onClick={() => setTab("presets")}
           >
-            <span className="soundboard-emoji">{sound.emoji}</span>
-            <span className="soundboard-name">{sound.name}</span>
+            Instant Presets ({SOUNDBOARD_PRESETS.length})
           </button>
-          {(canManage || sound.personal) && (
+          <button
+            type="button"
+            className={`soundboard-tab-btn ${tab === "server" ? "active" : ""}`}
+            onClick={() => setTab("server")}
+          >
+            Server Clips ({sounds.length})
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="soundboard-volume-wrap flex items-center gap-1.5" title={`Soundboard Volume: ${Math.round(volume * 100)}%`}>
+            {volume === 0 ? <VolumeX size={14} className="text-[var(--muted)]" /> : volume < 0.5 ? <Volume1 size={14} className="text-[var(--muted)]" /> : <Volume2 size={14} className="text-[var(--muted)]" />}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+              className="soundboard-volume-slider w-16 h-1 cursor-pointer accent-[var(--lavender)]"
+            />
+            <span className="text-[10px] text-[var(--muted)] w-6 font-mono">{Math.round(volume * 100)}%</span>
+          </div>
+
+          <div className="relative flex items-center">
+            <Search size={12} className="absolute left-2 text-[var(--muted)] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search sounds..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="soundboard-search-input pl-6 pr-2 py-0.5 text-xs rounded-md bg-[var(--paper)] border border-[var(--line)] w-28 focus:w-36 transition-all outline-none"
+            />
+          </div>
+
+          {onClose && (
             <button
               type="button"
-              className="soundboard-delete"
-              title={`Delete ${sound.name}`}
-              onClick={() => void remove(sound)}
+              className="popup-close-x"
+              onClick={onClose}
+              aria-label="Close soundboard"
             >
-              ×
+              <X size={16} />
             </button>
           )}
         </div>
-      ))}
-      {(canManage || true) && (
-        <button
-          type="button"
-          className="soundboard-pad add"
-          disabled={uploading || !serverId}
-          onClick={() => fileRef.current?.click()}
-        >
-          <span className="soundboard-emoji">{uploading ? "…" : "＋"}</span>
-          <span className="soundboard-name">Add</span>
-        </button>
-      )}
-      {!sounds.length && (
-        <p className="soundboard-empty">No sounds yet.</p>
-      )}
-      <div className="soundboard-upload-options">
-        <label className="soundboard-personal-toggle">
-          <input
-            type="checkbox"
-            checked={personalUpload}
-            onChange={(event) => setPersonalUpload(event.target.checked)}
-          />
-          <span>Add to my personal pack</span>
-        </label>
       </div>
+
+      <div className="soundboard-grid flex flex-wrap gap-2 w-full">
+        {tab === "presets" && (
+          <>
+            {filteredPresets.map((preset) => (
+              <div key={preset.id} className="soundboard-pad-wrap">
+                <button
+                  type="button"
+                  className={`soundboard-pad ${recentlyPlayed === `preset:${preset.id}` ? "played" : ""}`}
+                  onClick={() => playSoundboardItem(`preset:${preset.id}`, preset.name)}
+                  title={`${preset.name} - ${preset.description}\n(Click to play to room)`}
+                >
+                  <span className="soundboard-emoji">{preset.emoji}</span>
+                  <span className="soundboard-name">{preset.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="soundboard-preview-btn"
+                  title="Preview for only you"
+                  onClick={(e) => previewPreset(preset.id, e)}
+                >
+                  <Play size={10} />
+                </button>
+              </div>
+            ))}
+            {filteredPresets.length === 0 && (
+              <p className="soundboard-empty">No preset sounds match &ldquo;{search}&rdquo;</p>
+            )}
+          </>
+        )}
+
+        {tab === "server" && (
+          <>
+            {filteredSounds.map((sound) => (
+              <div key={sound.id} className="soundboard-pad-wrap">
+                <button
+                  type="button"
+                  className={`soundboard-pad ${sound.personal ? "personal" : ""} ${recentlyPlayed === sound.id ? "played" : ""}`}
+                  onClick={() => playSoundboardItem(sound.id, sound.name)}
+                  title={`${sound.name}${sound.personal ? " (your pack)" : ""}\n(Click to play to room)`}
+                >
+                  <span className="soundboard-emoji">{sound.emoji}</span>
+                  <span className="soundboard-name">{sound.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="soundboard-preview-btn"
+                  title="Preview for only you"
+                  onClick={(e) => previewCustom(sound.url, e)}
+                >
+                  <Play size={10} />
+                </button>
+                {(canManage || sound.personal) && (
+                  <button
+                    type="button"
+                    className="soundboard-delete"
+                    title={`Delete ${sound.name}`}
+                    onClick={(e) => void remove(sound, e)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {(canManage || true) && (
+              <button
+                type="button"
+                className="soundboard-pad add"
+                disabled={uploading || !serverId}
+                onClick={() => fileRef.current?.click()}
+              >
+                <span className="soundboard-emoji">{uploading ? "…" : "＋"}</span>
+                <span className="soundboard-name">Upload</span>
+              </button>
+            )}
+            {filteredSounds.length === 0 && sounds.length === 0 && (
+              <p className="soundboard-empty">No custom sounds yet. Click upload to add audio clips!</p>
+            )}
+            {filteredSounds.length === 0 && sounds.length > 0 && (
+              <p className="soundboard-empty">No server sounds match &ldquo;{search}&rdquo;</p>
+            )}
+            <div className="soundboard-upload-options w-full mt-1">
+              <label className="soundboard-personal-toggle">
+                <input
+                  type="checkbox"
+                  checked={personalUpload}
+                  onChange={(event) => setPersonalUpload(event.target.checked)}
+                />
+                <span>Add to my personal pack</span>
+              </label>
+            </div>
+          </>
+        )}
+      </div>
+
       <input
         ref={fileRef}
         type="file"

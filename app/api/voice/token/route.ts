@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { AccessToken } from "livekit-server-sdk";
+import { timeoutInChannel } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,9 @@ export async function GET(request: Request) {
     }
   }
 
+  // A timed-out member may listen but not speak or share.
+  const timedOut = db && user ? await timeoutInChannel(db, channelId, user.id) : null;
+
   const identity = user ? user.id : "recorder";
   const name = user ? user.display_name || user.username : "Session Recorder";
 
@@ -69,9 +73,9 @@ export async function GET(request: Request) {
   at.addGrant({
     roomJoin: true,
     room: channelId,
-    canPublish: true,
+    canPublish: !timedOut,
     canSubscribe: true,
-    canPublishData: true,
+    canPublishData: !timedOut,
   });
 
   const token = await at.toJwt();

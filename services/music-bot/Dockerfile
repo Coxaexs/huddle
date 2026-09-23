@@ -12,6 +12,11 @@ RUN pip install --no-cache-dir aiohttp yt-dlp
 
 COPY huddle_music_helper.py /app/
 
+# Listen on every interface so the hoffle container can reach it over the
+# compose network. The port is not published to the host.
+ENV HOST=0.0.0.0
+ENV PORT=8731
+
 EXPOSE 8731
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
-  User, ShieldCheck, LogOut, Search, Music
+  User, ShieldCheck, LogOut, Search, Music, ChevronLeft
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
@@ -24,6 +24,7 @@ import {
   deleteCustomTheme,
   getActiveThemeId,
   scopeProfileCss,
+  checkProfileCss,
   PROFILE_CSS_PRESETS,
   THEME_CSS_PRESETS,
   getClientUiCss,
@@ -273,6 +274,7 @@ import {
   type PrideBadgeId,
   type PublicUser,
   type SocialLink,
+  type SpotifyActivity,
 } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
 import { SocialPlatformIcon } from "./user-profile-card";
@@ -482,6 +484,8 @@ export function SettingsDialog({
     [onMicSettings],
   );
   const [tab, setTab] = useState<Tab>("profile");
+  // Phones show one pane at a time: the section list, then the chosen page.
+  const [mobilePage, setMobilePage] = useState(false);
   const [devices, setDevices] = useState<DeviceLists>({
     microphones: [],
     speakers: [],
@@ -500,6 +504,8 @@ export function SettingsDialog({
   );
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  const [newUsername, setNewUsername] = useState(user.username);
+  const [usernamePassword, setUsernamePassword] = useState("");
   const [invites, setInvites] = useState<Invite[]>([]);
   const canCreateInvites = Boolean(user.isAdmin || user.canInvite);
   const [permissionUsers, setPermissionUsers] = useState<
@@ -531,6 +537,7 @@ export function SettingsDialog({
   const [newLabel, setNewLabel] = useState("");
   const [spotifySong, setSpotifySong] = useState(user.spotifyActivity?.song || "");
   const [spotifyArtist, setSpotifyArtist] = useState(user.spotifyActivity?.artist || "");
+  const [spotifyCover, setSpotifyCover] = useState(user.spotifyActivity?.albumArt || "");
   const bannerRef = useRef<HTMLInputElement>(null);
   const [accent, setAccent] = useState("#9d8cf5");
   const [density, setDensity] = useState<Density>("cozy");
@@ -765,6 +772,23 @@ export function SettingsDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /**
+   * Saves just the music activity (from the Spotify/Last.fm sync) and mirrors
+   * the server's answer into the form, so a later "Save profile" keeps it and
+   * the album art is the proxied copy the server stored.
+   */
+  async function saveSpotifyActivity(activity: SpotifyActivity | null) {
+    const data = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ spotifyActivity: activity }),
+    });
+    const saved = data.user.spotifyActivity || null;
+    setSpotifySong(saved?.song || "");
+    setSpotifyArtist(saved?.artist || "");
+    setSpotifyCover(saved?.albumArt || "");
+    onUser(data.user);
+  }
+
   async function saveProfile() {
     setError("");
     try {
@@ -785,6 +809,7 @@ export function SettingsDialog({
             ? {
                 song: spotifySong.trim(),
                 artist: spotifyArtist.trim() || "Unknown Artist",
+                albumArt: spotifyCover.trim() || undefined,
                 isPlaying: true,
               }
             : null,
@@ -986,6 +1011,21 @@ export function SettingsDialog({
     setTimeout(() => setThemeActionNotice(""), 3500);
   };
 
+  async function saveUsername() {
+    setError("");
+    try {
+      const data = await apiFetch<{ user: PublicUser }>("/api/settings/username", {
+        method: "POST",
+        body: JSON.stringify({ username: newUsername.trim(), password: usernamePassword }),
+      });
+      setUsernamePassword("");
+      onUser(data.user);
+      setStatus(`You are now @${data.user.username}. Sign in with this name from now on.`);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not change your username.");
+    }
+  }
+
   async function savePassword() {
     setError("");
     try {
@@ -1135,9 +1175,20 @@ export function SettingsDialog({
 
   return (
     <div className="modal-backdrop settings-modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal settings-modal">
+      <div className={`modal settings-modal ${mobilePage ? "mobile-page" : ""}`}>
         {/* Discord Left Sidebar */}
         <aside className="settings-sidebar">
+          <div className="settings-mobile-head">
+            <h2>Settings</h2>
+            <button
+              type="button"
+              className="settings-mobile-close"
+              onClick={onClose}
+              aria-label="Close settings"
+            >
+              <X size={20} />
+            </button>
+          </div>
           <div className="settings-sidebar-user">
             <Avatar avatar={avatar} avatarUrl={avatarUrl} color={color} className="w-9 h-9 rounded-full shrink-0" />
             <div className="settings-sidebar-user-info">
@@ -1147,7 +1198,10 @@ export function SettingsDialog({
               <button
                 type="button"
                 className="settings-sidebar-user-sub"
-                onClick={() => setTab("profile")}
+                onClick={() => {
+                  setTab("profile");
+                  setMobilePage(true);
+                }}
               >
                 <span>Edit Profiles</span>
                 <Edit3 size={11} />
@@ -1186,6 +1240,7 @@ export function SettingsDialog({
                         className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
                         onClick={() => {
                           setTab(item.id);
+                          setMobilePage(true);
                           setError("");
                           setStatus("");
                         }}
@@ -1213,6 +1268,14 @@ export function SettingsDialog({
         {/* Right Main Content Panel */}
         <main className="settings-main">
           <header className="settings-topbar">
+            <button
+              type="button"
+              className="settings-mobile-back"
+              onClick={() => setMobilePage(false)}
+              aria-label="Back to settings list"
+            >
+              <ChevronLeft size={22} />
+            </button>
             <h2>
               {tab === "profile" && "Profile"}
               {tab === "password" && "Account & Password"}
@@ -1543,6 +1606,9 @@ export function SettingsDialog({
                 {/* 6. Pride Badges */}
                 <div className="profile-studio-section">
                   <span className="field-label">Pride Badges <small className="field-optional-note">Optional · up to 4</small></span>
+                  <p className="pride-choice-help">
+                    These are public profile decorations. Pick only the labels you want to share.
+                  </p>
                   <div className="pride-badge-picker">
                     {PRIDE_BADGES.map((badge) => {
                       const selected = prideBadges.includes(badge.id);
@@ -1673,6 +1739,13 @@ export function SettingsDialog({
                       />
                     </div>
                   </div>
+                  <label htmlFor="spotify-cover">Album Art URL</label>
+                  <input
+                    id="spotify-cover"
+                    value={spotifyCover}
+                    placeholder="https://… (optional)"
+                    onChange={(e) => setSpotifyCover(e.target.value)}
+                  />
                   {spotifySong && (
                     <button
                       type="button"
@@ -1680,6 +1753,7 @@ export function SettingsDialog({
                       onClick={() => {
                         setSpotifySong("");
                         setSpotifyArtist("");
+                        setSpotifyCover("");
                       }}
                     >
                       Clear Music
@@ -1778,6 +1852,19 @@ export function SettingsDialog({
                     }}
                     spellCheck={false}
                   />
+                  {profileCustomCss.trim() && (() => {
+                    const checked = checkProfileCss(profileCustomCss);
+                    return checked.ok ? null : (
+                      <p role="alert" style={{ color: "var(--coral)", fontSize: 12, margin: "6px 0 0" }}>
+                        {checked.error}
+                      </p>
+                    );
+                  })()}
+                </div>
+
+                <div className="blahaj-profile-tip" aria-label="Blåhaj profile tip">
+                  <span aria-hidden="true"><Fish size={22} /></span>
+                  <p><strong>Blåhaj says:</strong> decorate your profile in whatever way feels like you.</p>
                 </div>
 
                 <div className="profile-studio-actions">
@@ -1887,8 +1974,12 @@ export function SettingsDialog({
                       {/* Spotify Widget */}
                       {spotifySong && (
                         <div className="bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
-                          <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0">
-                            <Music size={20} className="animate-pulse" />
+                          <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0 overflow-hidden">
+                            {spotifyCover.startsWith("/") ? (
+                              <img src={spotifyCover} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Music size={20} className="animate-pulse" />
+                            )}
                           </div>
                           <div className="overflow-hidden text-xs">
                             <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
@@ -2077,32 +2168,71 @@ export function SettingsDialog({
           )}
 
           {tab === "password" && (
-            <>
-              <label htmlFor="settings-current">Current password</label>
-              <input
-                id="settings-current"
-                type="password"
-                value={current}
-                autoComplete="current-password"
-                onChange={(event) => setCurrent(event.target.value)}
-              />
-              <label htmlFor="settings-next">New password</label>
-              <input
-                id="settings-next"
-                type="password"
-                value={next}
-                autoComplete="new-password"
-                onChange={(event) => setNext(event.target.value)}
-              />
-              <button
-                type="button"
-                className="primary"
-                onClick={savePassword}
-                disabled={!current || !next}
-              >
-                Change password
-              </button>
-            </>
+            <div className="account-settings">
+              <section className="profile-studio-section">
+                <h3 className="profile-studio-section-title">Username</h3>
+                <label htmlFor="settings-username">Username</label>
+                <input
+                  id="settings-username"
+                  value={newUsername}
+                  autoComplete="username"
+                  maxLength={24}
+                  onChange={(event) => setNewUsername(event.target.value)}
+                />
+                <p className="modal-hint">
+                  2–24 letters, numbers, dots, dashes or underscores. You sign in with this.
+                </p>
+                {newUsername.trim() !== user.username && (
+                  <>
+                    <label htmlFor="settings-username-password">Password to confirm</label>
+                    <input
+                      id="settings-username-password"
+                      type="password"
+                      value={usernamePassword}
+                      autoComplete="current-password"
+                      onChange={(event) => setUsernamePassword(event.target.value)}
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={saveUsername}
+                  disabled={!newUsername.trim() || newUsername.trim() === user.username || !usernamePassword}
+                >
+                  Change username
+                </button>
+              </section>
+
+              <section className="profile-studio-section">
+                <h3 className="profile-studio-section-title">Password</h3>
+                <p className="modal-hint">Changing it signs you out on every other device.</p>
+                <label htmlFor="settings-current">Current password</label>
+                <input
+                  id="settings-current"
+                  type="password"
+                  value={current}
+                  autoComplete="current-password"
+                  onChange={(event) => setCurrent(event.target.value)}
+                />
+                <label htmlFor="settings-next">New password</label>
+                <input
+                  id="settings-next"
+                  type="password"
+                  value={next}
+                  autoComplete="new-password"
+                  onChange={(event) => setNext(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={savePassword}
+                  disabled={!current || !next}
+                >
+                  Change password
+                </button>
+              </section>
+            </div>
           )}
 
           {tab === "invites" && (
@@ -2851,19 +2981,15 @@ export function SettingsDialog({
                             if (res.error) {
                               setError(res.error);
                             } else if (res.song && res.isPlaying) {
-                              const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
-                              await apiFetch("/api/settings/profile", {
-                                method: "PATCH",
-                                body: JSON.stringify({ spotifyActivity: act }),
+                              await saveSpotifyActivity({
+                                song: res.song,
+                                artist: res.artist || "Spotify",
+                                albumArt: res.albumArt,
+                                isPlaying: true,
                               });
                               setStatus(`Now playing: ${res.song} by ${res.artist}`);
-                              onUser({ ...user, spotifyActivity: act });
                             } else {
-                              await apiFetch("/api/settings/profile", {
-                                method: "PATCH",
-                                body: JSON.stringify({ spotifyActivity: null }),
-                              });
-                              onUser({ ...user, spotifyActivity: null });
+                              await saveSpotifyActivity(null);
                               setStatus(res.message || "Connected! Nothing is playing right now; checking every 10 seconds.");
                             }
                           } catch (err) {
@@ -2898,12 +3024,12 @@ export function SettingsDialog({
                               `/api/integrations/spotify?track=${encodeURIComponent(trackSearchInput.trim())}`
                             );
                             if (res.song) {
-                              const act = { song: res.song, artist: res.artist || "Spotify", albumArt: res.albumArt, isPlaying: true };
-                              await apiFetch("/api/settings/profile", {
-                                method: "PATCH",
-                                body: JSON.stringify({ spotifyActivity: act }),
+                              await saveSpotifyActivity({
+                                song: res.song,
+                                artist: res.artist || "Spotify",
+                                albumArt: res.albumArt,
+                                isPlaying: true,
                               });
-                              onUser({ ...user, spotifyActivity: act });
                               setStatus(`Now playing: ${res.song} by ${res.artist}`);
                             }
                           } catch {

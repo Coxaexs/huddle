@@ -33,8 +33,10 @@ interface HubHandlers {
   onMessageEdited?: (
     channelId: string,
     id: string,
-    content: string,
-    editedAt: string,
+    content: string | undefined,
+    editedAt: string | undefined,
+    /** Bot edits can change embeds and buttons too; absent for plain edits. */
+    payload?: unknown,
   ) => void;
   onReaction?: (
     channelId: string,
@@ -270,6 +272,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.id,
               payload.content,
               payload.editedAt,
+              payload.payload,
             );
             break;
           case "reaction":

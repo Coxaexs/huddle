@@ -7,12 +7,16 @@
  */
 
 import { bindings } from "./storage";
+import { activeUntil } from "./timeouts";
 import { ensureSchema } from "./schema";
 import {
+  isSafeProfileImage,
   normalizePrideBadges,
-  type PrideBadgeId,
+  normalizeSocialLinks,
+  statusSeenBy,
+  type Member,
   type PublicUser,
-  type SocialLink,
+  type SpotifyActivity,
 } from "./users";
 
 export { AVATAR_COLORS } from "./users";
@@ -50,84 +54,126 @@ export interface User {
   hidden_emojis?: string | null;
 }
 
-export function publicUser(user: User): PublicUser {
-  let spotifyAct = null;
-  if (user.spotify_activity) {
-    try {
-      spotifyAct = JSON.parse(user.spotify_activity);
-    } catch {
-      spotifyAct = null;
-    }
+const USER_COLUMN_NAMES = [
+  "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
+  "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity",
+  "social_links", "avatar_frame", "color", "is_admin", "can_invite", "status",
+  "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "created_at",
+  "last_seen_at",
+] as const;
+
+/** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
+export function userColumns(alias?: string): string {
+  const prefix = alias ? `${alias}.` : "";
+  return USER_COLUMN_NAMES.map((column) => `${prefix}${column}`).join(", ");
+}
+
+function parseJson(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
-  let prideBadges: PrideBadgeId[] = [];
-  if (user.pride_badges) {
-    try {
-      prideBadges = normalizePrideBadges(JSON.parse(user.pride_badges));
-    } catch {
-      prideBadges = [];
-    }
-  }
-  let socialLinks: SocialLink[] = [];
-  if (user.social_links) {
-    try {
-      const parsed = JSON.parse(user.social_links);
-      if (Array.isArray(parsed)) {
-        socialLinks = parsed.filter(
-          (item) =>
-            item &&
-            typeof item === "object" &&
-            typeof item.platform === "string" &&
-            typeof item.url === "string",
-        );
-      }
-    } catch {
-      socialLinks = [];
-    }
-  }
-  let quickReactions: string[] | undefined = undefined;
-  if (user.quick_reactions) {
-    try {
-      const parsed = JSON.parse(user.quick_reactions);
-      if (Array.isArray(parsed)) {
-        quickReactions = parsed.filter((item): item is string => typeof item === "string");
-      }
-    } catch {
-      quickReactions = undefined;
-    }
-  }
-  let hiddenEmojis: string[] | undefined = undefined;
-  if (user.hidden_emojis) {
-    try {
-      const parsed = JSON.parse(user.hidden_emojis);
-      if (Array.isArray(parsed)) {
-        hiddenEmojis = parsed.filter((item): item is string => typeof item === "string");
-      }
-    } catch {
-      hiddenEmojis = undefined;
-    }
-  }
+}
+
+function stringList(value: string | null | undefined): string[] | undefined {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === "string")
+    : undefined;
+}
+
+function spotifyActivity(value: string | null | undefined): SpotifyActivity | null {
+  const parsed = parseJson(value) as Partial<SpotifyActivity> | null;
+  if (!parsed || typeof parsed !== "object") return null;
+  if (typeof parsed.song !== "string" || typeof parsed.artist !== "string") return null;
+  return {
+    song: parsed.song,
+    artist: parsed.artist,
+    ...(isSafeProfileImage(parsed.albumArt) ? { albumArt: parsed.albumArt } : {}),
+    ...(typeof parsed.isPlaying === "boolean" ? { isPlaying: parsed.isPlaying } : {}),
+  };
+}
+
+/** The profile everyone can see, shared by publicUser and memberFromRow. */
+function profileFields(user: User) {
   return {
     id: user.id,
     username: user.username,
     displayName: user.display_name,
     avatar: user.avatar,
-    avatarUrl: user.avatar_url || null,
-    bannerUrl: user.banner_url || null,
+    avatarUrl: isSafeProfileImage(user.avatar_url) ? user.avatar_url! : null,
+    bannerUrl: isSafeProfileImage(user.banner_url, true) ? user.banner_url! : null,
     bio: user.bio || "",
     pronouns: user.pronouns || "",
     tagline: user.tagline || "",
     customStatus: user.custom_status || null,
-    prideBadges,
-    spotifyActivity: spotifyAct,
-    socialLinks,
+    prideBadges: normalizePrideBadges(parseJson(user.pride_badges)),
+    spotifyActivity: spotifyActivity(user.spotify_activity),
+    socialLinks: normalizeSocialLinks(parseJson(user.social_links)),
     avatarFrame: user.avatar_frame || "none",
     color: user.color,
-    isAdmin: Boolean(user.is_admin),
-    canInvite: Boolean(user.is_admin || user.can_invite),
     customCss: user.custom_css || null,
     customTheme: user.custom_theme || null,
-    quickReactions,
-    hiddenEmojis,
+  };
+}
+
+/** The signed-in user's own account, including their private preferences. */
+export function publicUser(user: User): PublicUser {
+  return {
+    ...profileFields(user),
+    isAdmin: Boolean(user.is_admin),
+    canInvite: Boolean(user.is_admin || user.can_invite),
+    quickReactions: stringList(user.quick_reactions),
+    hiddenEmojis: stringList(user.hidden_emojis),
+  };
+}
+
+/** A server_members row joined onto its user, as the member list reads it. */
+export interface MemberRow extends User {
+  nickname?: string | null;
+  timeout_until?: string | null;
+  joined_at?: string | null;
+  invite_code?: string | null;
+  invite_creator_id?: string | null;
+  invite_creator_name?: string | null;
+  invite_creator_username?: string | null;
+}
+
+/**
+ * Someone as another member sees them in a server. A per-server nickname
+ * replaces displayName (the account-wide name moves to globalName), and an
+ * invisible status is masked unless the viewer is that person.
+ */
+export function memberFromRow(
+  row: MemberRow,
+  viewerId: string,
+  roleIds: Record<string, string[]> = {},
+): Member {
+  const profile = profileFields(row);
+  const nickname = row.nickname?.trim() || null;
+  return {
+    ...profile,
+    displayName: nickname || profile.displayName,
+    globalName: profile.displayName,
+    nickname,
+    lastSeenAt: row.last_seen_at,
+    createdAt: row.created_at,
+    isAdmin: Boolean(row.is_admin),
+    canInvite: Boolean(row.is_admin || row.can_invite),
+    status: statusSeenBy(row.status, row.id === viewerId),
+    timeoutUntil: activeUntil(row.timeout_until),
+    roleIds,
+    joinedAt: row.joined_at || null,
+    joinedVia: row.invite_code
+      ? {
+          code: row.invite_code,
+          createdById: row.invite_creator_id || null,
+          creatorName: row.invite_creator_name || null,
+          creatorUsername: row.invite_creator_username || null,
+        }
+      : null,
   };
 }
 
@@ -269,11 +315,7 @@ export async function currentUser(request: Request): Promise<User | null> {
   await ensureSchema(db);
   const row = await db
     .prepare(
-      `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-              u.bio, u.pronouns, u.tagline, u.custom_status, u.pride_badges, u.spotify_activity,
-              u.social_links, u.avatar_frame, u.color, u.is_admin, u.can_invite,
-              u.status, u.custom_css, u.custom_theme, u.quick_reactions, u.hidden_emojis, u.created_at,
-              u.last_seen_at, s.expires_at
+      `SELECT ${userColumns("u")}, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,

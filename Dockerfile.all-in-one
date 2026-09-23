@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     ca-certificates \
     curl \
+    sqlite3 \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,6 +52,11 @@ ENV MUSIC_HELPER_BASE_URL=http://127.0.0.1:8731
 RUN mkdir -p /app/state
 VOLUME ["/app/state"]
 
-EXPOSE 8730 8731
+# The music helper stays on loopback inside the container; only the web app
+# needs to be published.
+EXPOSE 8730
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8730/api/health > /dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/entrypoint-all-in-one.sh"]

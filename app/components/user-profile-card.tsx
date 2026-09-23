@@ -18,7 +18,7 @@ import {
   Globe,
 } from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
-import { PRESENCE } from "@/lib/users";
+import { PRESENCE, bannerBackground, lastSeenLabel } from "@/lib/users";
 import { Avatar } from "./avatar";
 import type { PublicRole } from "@/lib/servers";
 import { PrideBadges } from "./pride-badges";
@@ -87,6 +87,18 @@ export function SocialPlatformIcon({ platform }: { platform: string }) {
 }
 
 
+interface Mutuals {
+  servers: Array<{ id: string; name: string; icon: string; iconUrl: string | null; color: string }>;
+  friends: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatar: string;
+    avatarUrl: string | null;
+    color: string;
+  }>;
+}
+
 interface UserProfileCardProps {
   member: Member;
   roles?: PublicRole[];
@@ -134,6 +146,21 @@ export function UserProfileCard({
   const [friendHover, setFriendHover] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
+  const [mutuals, setMutuals] = useState<Mutuals | null>(null);
+
+  useEffect(() => {
+    if (isSelf) return;
+    let cancelled = false;
+    setMutuals(null);
+    apiFetch<Mutuals>(`/api/users/${encodeURIComponent(member.id)}/mutuals`)
+      .then((data) => {
+        if (!cancelled) setMutuals(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [member.id, isSelf]);
 
   useEffect(() => {
     setCurrentFriendStatus(friendStatus);
@@ -215,9 +242,10 @@ export function UserProfileCard({
       <div
         className="profile-card-banner profile-banner"
         style={{
-          background: member.bannerUrl
-            ? `url(${member.bannerUrl}) center/cover no-repeat`
-            : `linear-gradient(135deg, ${member.color || "#5865f2"}, #1e1f22)`,
+          background: bannerBackground(
+            member.bannerUrl,
+            `linear-gradient(135deg, ${member.color || "#5865f2"}, #1e1f22)`,
+          ),
         }}
       >
         <button
@@ -257,6 +285,11 @@ export function UserProfileCard({
         <div className="profile-card-header">
           <h2 className="profile-display-name">{member.displayName}</h2>
           <div className="profile-identity-sub">
+            {member.nickname && member.globalName && member.globalName !== member.nickname && (
+              <span className="profile-global-name" title="Account display name">
+                {member.globalName} ·
+              </span>
+            )}
             <span className="profile-username">@{member.username}</span>
             {member.pronouns && (
               <span className="profile-pronouns-tag">• {member.pronouns}</span>
@@ -309,8 +342,12 @@ export function UserProfileCard({
 
         {member.spotifyActivity && (
           <div className="bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
-            <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0">
-              <Music size={20} className="animate-pulse" />
+            <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0 overflow-hidden">
+              {member.spotifyActivity.albumArt ? (
+                <img src={member.spotifyActivity.albumArt} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <Music size={20} className="animate-pulse" />
+              )}
             </div>
             <div className="overflow-hidden text-xs">
               <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
@@ -366,9 +403,51 @@ export function UserProfileCard({
           </div>
         )}
 
+        {mutuals && mutuals.servers.length > 0 && (
+          <div className="profile-section">
+            <h4>MUTUAL SERVERS ({mutuals.servers.length})</h4>
+            <div className="profile-mutual-list">
+              {mutuals.servers.map((server) => (
+                <span key={server.id} className="profile-mutual-chip" title={server.name}>
+                  <span className="profile-mutual-icon" style={{ background: server.color }}>
+                    {server.iconUrl ? <img src={server.iconUrl} alt="" /> : server.icon}
+                  </span>
+                  <span className="profile-mutual-name">{server.name}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {mutuals && mutuals.friends.length > 0 && (
+          <div className="profile-section">
+            <h4>MUTUAL FRIENDS ({mutuals.friends.length})</h4>
+            <div className="profile-mutual-list">
+              {mutuals.friends.map((friend) => (
+                <span
+                  key={friend.id}
+                  className="profile-mutual-chip"
+                  title={`${friend.displayName} (@${friend.username})`}
+                >
+                  <Avatar
+                    avatar={friend.avatar}
+                    avatarUrl={friend.avatarUrl}
+                    color={friend.color}
+                    size={18}
+                  />
+                  <span className="profile-mutual-name">{friend.displayName}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="profile-section flex items-center gap-2 text-xs text-gray-400 mt-2">
           <Calendar size={14} />
           <span>Member since {joinedDate}</span>
+          {!isSelf && presence === "offline" && lastSeenLabel(member.lastSeenAt) && (
+            <span>· {lastSeenLabel(member.lastSeenAt)}</span>
+          )}
         </div>
 
         <div className="profile-card-actions flex flex-wrap gap-2 pt-2">

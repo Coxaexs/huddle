@@ -11,12 +11,19 @@
  * the response afterwards through the webhook routes.
  */
 import type { RestContext } from "./rest";
-import { discordError, ErrorCode, createMessage, resolveChannel } from "./rest";
+import {
+  discordError,
+  ErrorCode,
+  createMessage,
+  parseMessageBody,
+  resolveChannel,
+} from "./rest";
 import { dispatchToBots } from "./dispatch";
 import { bindings, type StoredMessage } from "../storage";
 import { publishMessage, publishMessageEvent } from "../hub-client";
 import { channelWithGuild, loadUser } from "./guild-data";
 import {
+  serializeMessage,
   serializeMember,
   serializeUser,
   transientSnowflake,
@@ -24,6 +31,8 @@ import {
 } from "./serialize";
 import { nativeFor, snowflakeFor } from "./snowflake";
 import { InteractionType, InteractionResponseType, MessageFlags } from "./protocol";
+import { snapshotBeforeEdit } from "../message-edits";
+import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
 
 /** Discord's window: acknowledge within 3s, edit for 15 minutes after. */
 const INTERACTION_TTL_MS = 15 * 60 * 1000;
@@ -341,7 +350,9 @@ async function interactionCallback(
   if (!token) return discordError(404, ErrorCode.UnknownInteraction, "Unknown interaction");
 
   const row = await loadInteraction(context.db, token);
-  if (!row) {
+  // The token is the bot's capability to answer, but only for its own
+  // interactions; another bot that learned it gets nothing.
+  if (!row || row.bot_id !== context.bot.id) {
     return discordError(404, ErrorCode.UnknownInteraction, "Unknown interaction");
   }
   if (row.state !== "pending") {
@@ -350,13 +361,49 @@ async function interactionCallback(
     return discordError(400, 40060, "Interaction has already been acknowledged");
   }
 
-  const body = (await context.request.json().catch(() => ({}))) as {
+  const body = (await parseMessageBody(context.request)) as {
     type?: number;
     data?: Record<string, unknown>;
   };
 
   const located = await interactionChannel(context, row);
   if (located instanceof Response) return located;
+
+  // discord.py (2.5+) always asks for `?with_response=1` and reads the
+  // interaction back from the body: the response message id is how it binds a
+  // View's buttons to the message they sit on. A bare 204 makes it raise.
+  const withResponse = context.url.searchParams.has("with_response");
+  const answer = async (
+    type: number,
+    options: {
+      message?: StoredMessage | null;
+      loading?: boolean;
+      ephemeral?: boolean;
+    } = {},
+  ): Promise<Response> => {
+    if (!withResponse) return new Response(null, { status: 204 });
+    const message = options.message
+      ? await serializeMessage(options.message, {
+          channelSnowflake: await snowflakeFor("channel", located.channel.id, located.channel.created_at),
+          guildSnowflake: located.guildSnowflake,
+          origin: context.origin,
+          basePath: context.basePath,
+        })
+      : null;
+    return json({
+      interaction: {
+        id: row.id,
+        type: row.type,
+        activity_instance_id: null,
+        response_message_id: message ? message.id : null,
+        response_message_loading: Boolean(options.loading),
+        response_message_ephemeral: Boolean(options.ephemeral),
+      },
+      resource: message ? { type, message } : { type },
+    });
+  };
+
+  const isComponent = row.type === InteractionType.MessageComponent;
 
   switch (body.type) {
     case InteractionResponseType.Pong:
@@ -365,15 +412,45 @@ async function interactionCallback(
     case InteractionResponseType.DeferredChannelMessageWithSource:
     case InteractionResponseType.DeferredUpdateMessage: {
       // "Thinking…": the bot has 15 minutes to edit this into a real answer.
+      // A deferred *update* keeps pointing at the message the button is on,
+      // so the later edit of @original changes that message in place.
+      const keepSource =
+        body.type === InteractionResponseType.DeferredUpdateMessage && isComponent;
+      const ephemeralDefer = (Number(body.data?.flags) & MessageFlags.Ephemeral) !== 0;
       await context.db
-        .prepare("UPDATE discord_interactions SET state = 'deferred' WHERE token = ?")
-        .bind(token)
+        .prepare(
+          `UPDATE discord_interactions SET state = ?,
+             response_message_id = CASE WHEN ? THEN response_message_id ELSE NULL END
+           WHERE token = ?`,
+        )
+        .bind(ephemeralDefer ? "deferred_ephemeral" : "deferred", keepSource ? 1 : 0, token)
         .run();
-      return new Response(null, { status: 204 });
+      return answer(body.type, {
+        loading: body.type === InteractionResponseType.DeferredChannelMessageWithSource,
+        ephemeral:
+          (Number(body.data?.flags) & MessageFlags.Ephemeral) !== 0,
+      });
     }
 
-    case InteractionResponseType.ChannelMessageWithSource:
-    case InteractionResponseType.UpdateMessage: {
+    case InteractionResponseType.UpdateMessage:
+      if (isComponent && row.response_message_id) {
+        const updated = await updateSourceMessage(
+          context,
+          row,
+          located.channel,
+          row.response_message_id,
+          body.data || {},
+        );
+        await context.db
+          .prepare("UPDATE discord_interactions SET state = 'replied' WHERE token = ?")
+          .bind(token)
+          .run();
+        return answer(body.type, { message: updated });
+      }
+    // An update on a slash command has no message to update: Discord treats
+    // it as a new reply, and so does this.
+    // falls through
+    case InteractionResponseType.ChannelMessageWithSource: {
       const data = body.data || {};
       const ephemeral = (Number(data.flags) & MessageFlags.Ephemeral) !== 0;
 
@@ -388,7 +465,10 @@ async function interactionCallback(
         )
         .bind(message.id, token)
         .run();
-      return new Response(null, { status: 204 });
+      return answer(InteractionResponseType.ChannelMessageWithSource, {
+        message,
+        ephemeral,
+      });
     }
 
     case InteractionResponseType.ApplicationCommandAutocompleteResult:
@@ -406,6 +486,91 @@ async function interactionCallback(
     default:
       return discordError(400, ErrorCode.InvalidFormBody, "Unknown callback type");
   }
+}
+
+/**
+ * Edits the message a button sits on, for UpdateMessage responses and edits
+ * of @original after a deferred update. Not an "edit" in the history sense:
+ * a counter ticking up on every click should not grow an edit log.
+ *
+ * Ephemeral messages were never stored, so for them the change goes straight
+ * to the one person who can see the message.
+ */
+async function updateSourceMessage(
+  context: RestContext,
+  row: InteractionRow,
+  channel: HoffleChannelRow,
+  messageId: string,
+  data: Record<string, unknown>,
+): Promise<StoredMessage> {
+  const content = data.content === undefined || data.content === null
+    ? undefined
+    : String(data.content).slice(0, 4000);
+  const existing = await context.db
+    .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
+    .bind(messageId)
+    .first<StoredMessage>();
+
+  if (!existing) {
+    // Only the runner's tabs know this message's current buttons, so send
+    // just what the bot changed and let the client merge it in; `edit(embed=…)`
+    // must not wipe the buttons it left alone.
+    const changes: Record<string, unknown> = {};
+    if (data.embeds !== undefined) changes.embeds = Array.isArray(data.embeds) ? data.embeds : [];
+    if (data.components !== undefined) {
+      changes.components = Array.isArray(data.components) ? data.components : [];
+    }
+    const payload = mergeBotPayload(null, data, context.bot.id);
+    await publishBotEdit(
+      channel.id,
+      {
+        id: messageId,
+        content,
+        payload: Object.keys(changes).length ? JSON.stringify(changes) : undefined,
+      },
+      [row.user_id],
+    );
+    return {
+      ...ephemeralShell(context, channel, messageId),
+      content: content ?? "",
+      payload,
+    };
+  }
+
+  const payload = mergeBotPayload(existing.payload, data, context.bot.id);
+  await context.db
+    .prepare("UPDATE messages SET content = COALESCE(?, content), payload = ? WHERE id = ?")
+    .bind(content ?? null, payload, messageId)
+    .run();
+  await publishBotEdit(channel.id, {
+    id: messageId,
+    content: content ?? existing.content,
+    editedAt: existing.edited_at ?? null,
+    payload,
+  });
+  return { ...existing, content: content ?? existing.content, payload };
+}
+
+/** Enough of a message for serializing one that only lives in someone's tabs. */
+function ephemeralShell(
+  context: RestContext,
+  channel: HoffleChannelRow,
+  messageId: string,
+): StoredMessage {
+  return {
+    id: messageId,
+    channel: channel.name,
+    channel_id: channel.id,
+    user_id: null,
+    author: context.bot.name.slice(0, 80),
+    avatar: (context.bot.avatar || "🤖").slice(0, 4),
+    color: "#b8a6ff",
+    content: "",
+    attachment_key: null,
+    is_bot: 1,
+    created_at: new Date().toISOString(),
+    payload: null,
+  };
 }
 
 /**
@@ -448,10 +613,7 @@ async function postInteractionMessage(
     attachment_key: null,
     is_bot: 1,
     created_at: new Date().toISOString(),
-    payload:
-      embeds.length || components.length
-        ? JSON.stringify({ embeds, components }).slice(0, 8000)
-        : null,
+    payload: botPayload(context.bot.id, embeds, components),
     // Rendering the command above the answer is how Hoffle already shows its
     // built-in bots' replies, so bot answers look native.
     command_text: row.command_name ? `/${row.command_name}` : null,
@@ -492,6 +654,23 @@ async function postInteractionMessage(
   return stored;
 }
 
+/** A stored message as the Discord message object libraries expect back. */
+async function messageResponse(
+  context: RestContext,
+  channel: HoffleChannelRow,
+  guildSnowflake: string | null,
+  message: StoredMessage,
+): Promise<Response> {
+  return json(
+    await serializeMessage(message, {
+      channelSnowflake: await snowflakeFor("channel", channel.id, channel.created_at),
+      guildSnowflake,
+      origin: context.origin,
+      basePath: context.basePath,
+    }),
+  );
+}
+
 /** GET/PATCH/DELETE /webhooks/{app}/{token}/messages/@original. */
 async function interactionMessage(
   context: RestContext,
@@ -499,7 +678,7 @@ async function interactionMessage(
   messageRef: string | undefined,
 ): Promise<Response> {
   const row = await loadInteraction(context.db, token);
-  if (!row) {
+  if (!row || row.bot_id !== context.bot.id) {
     return discordError(404, ErrorCode.UnknownInteraction, "Unknown interaction");
   }
 
@@ -512,7 +691,7 @@ async function interactionMessage(
       : await nativeFor("message", messageRef);
 
   if (context.request.method === "PATCH") {
-    const body = (await context.request.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await parseMessageBody(context.request)) as Record<string, unknown>;
 
     // A deferred interaction has no message yet: the first edit creates it,
     // which is exactly how "thinking… then answer" behaves on Discord.
@@ -522,7 +701,8 @@ async function interactionMessage(
         row,
         located.channel,
         body,
-        { ephemeral: false },
+        // `defer(ephemeral=True)` promised the runner a private answer.
+        { ephemeral: row.state === "deferred_ephemeral" },
       );
       if (created instanceof Response) return created;
       await context.db
@@ -531,31 +711,45 @@ async function interactionMessage(
         )
         .bind(created.id, token)
         .run();
-      return json({ id: await snowflakeFor("message", created.id, created.created_at) });
+      return messageResponse(context, located.channel, located.guildSnowflake, created);
     }
 
-    const content = body.content === undefined ? null : String(body.content);
-    const payload = body.embeds || body.components
-      ? JSON.stringify({
-          embeds: Array.isArray(body.embeds) ? body.embeds : [],
-          components: Array.isArray(body.components) ? body.components : [],
-        })
-      : null;
+    // A button's own message (deferred update, or a later edit of it).
+    if (row.type === InteractionType.MessageComponent && targetId === row.response_message_id) {
+      const updated = await updateSourceMessage(context, row, located.channel, targetId, body);
+      return messageResponse(context, located.channel, located.guildSnowflake, updated);
+    }
+
+    const existing = await context.db
+      .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
+      .bind(targetId)
+      .first<StoredMessage>();
+    if (!existing) {
+      // An ephemeral reply: it only exists in the runner's tabs.
+      const updated = await updateSourceMessage(context, row, located.channel, targetId, body);
+      return messageResponse(context, located.channel, located.guildSnowflake, updated);
+    }
+
+    const content = body.content === undefined || body.content === null ? null : String(body.content);
+    const payload = mergeBotPayload(existing.payload, body, context.bot.id);
     const now = new Date().toISOString();
-    await context.db
-      .prepare(
-        `UPDATE messages SET content = COALESCE(?, content),
-           payload = COALESCE(?, payload), edited_at = ? WHERE id = ?`,
-      )
-      .bind(content, payload, now, targetId)
-      .run();
-    await publishMessageEvent(located.channel.id, {
-      t: "message-edited",
-      messageId: targetId,
-      content: content ?? "",
+    await context.db.batch([
+      snapshotBeforeEdit(context.db, targetId, content ?? null, now),
+      context.db
+        .prepare(
+          `UPDATE messages SET content = COALESCE(?, content),
+             payload = ?, edited_at = ? WHERE id = ?`,
+        )
+        .bind(content, payload, now, targetId),
+    ]);
+    await publishBotEdit(located.channel.id, {
+      id: targetId,
+      content: content ?? existing.content,
       editedAt: now,
+      payload,
     });
-    return json({ id: await snowflakeFor("message", targetId) });
+    const saved = { ...existing, content: content ?? existing.content, payload, edited_at: now };
+    return messageResponse(context, located.channel, located.guildSnowflake, saved);
   }
 
   if (context.request.method === "DELETE") {
@@ -566,7 +760,7 @@ async function interactionMessage(
         .run();
       await publishMessageEvent(located.channel.id, {
         t: "message-deleted",
-        messageId: targetId,
+        id: targetId,
       });
     }
     return new Response(null, { status: 204 });
@@ -575,7 +769,16 @@ async function interactionMessage(
   if (!targetId) {
     return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
   }
-  return json({ id: await snowflakeFor("message", targetId) });
+  const stored = await context.db
+    .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
+    .bind(targetId)
+    .first<StoredMessage>();
+  return messageResponse(
+    context,
+    located.channel,
+    located.guildSnowflake,
+    stored || ephemeralShell(context, located.channel, targetId),
+  );
 }
 
 /** POST /webhooks/{app}/{token} — a followup message. */
@@ -584,13 +787,43 @@ async function interactionFollowup(
   token: string,
 ): Promise<Response> {
   const row = await loadInteraction(context.db, token);
-  if (!row) {
+  if (!row || row.bot_id !== context.bot.id) {
     return discordError(404, ErrorCode.UnknownInteraction, "Unknown interaction");
   }
   const located = await interactionChannel(context, row);
   if (located instanceof Response) return located;
 
-  const body = (await context.request.json().catch(() => ({}))) as Record<string, unknown>;
+  const body = (await parseMessageBody(context.request)) as Record<string, unknown>;
+
+  // After a defer, Discord turns the first followup into the original
+  // response: it replaces "thinking…", carries the command header, and keeps
+  // the privacy the defer promised.
+  const deferred = row.state === "deferred" || row.state === "deferred_ephemeral";
+  if (deferred && !row.response_message_id) {
+    const message = await postInteractionMessage(context, row, located.channel, body, {
+      ephemeral:
+        row.state === "deferred_ephemeral" ||
+        (Number(body.flags) & MessageFlags.Ephemeral) !== 0,
+    });
+    if (message instanceof Response) return message;
+    await context.db
+      .prepare(
+        "UPDATE discord_interactions SET state = 'replied', response_message_id = ? WHERE token = ?",
+      )
+      .bind(message.id, token)
+      .run();
+    return messageResponse(context, located.channel, located.guildSnowflake, message);
+  }
+
+  // `followup.send(ephemeral=True)` is private: it must not become a channel
+  // message everyone can read (character sheets, GM notes).
+  if ((Number(body.flags) & MessageFlags.Ephemeral) !== 0) {
+    const message = await postInteractionMessage(context, row, located.channel, body, {
+      ephemeral: true,
+    });
+    if (message instanceof Response) return message;
+    return messageResponse(context, located.channel, located.guildSnowflake, message);
+  }
   return createMessage(context, located.channel, located.guildSnowflake, body);
 }
 
@@ -598,16 +831,32 @@ async function interactionFollowup(
 // Creating an interaction from the Hoffle side
 // ---------------------------------------------------------------------------
 
+/** A command option as Discord nests them: subcommands carry their own options. */
+export interface InteractionOption {
+  name: string;
+  type?: number;
+  value?: string | number | boolean;
+  options?: InteractionOption[];
+}
+
 export interface RunCommandInput {
   /** Native ids, as the web client knows them. */
   channelId: string;
   userId: string;
   commandName: string;
   /** Raw option values by name, from the command line the user typed. */
-  options?: Array<{ name: string; value: string | number | boolean; type?: number }>;
+  options?: InteractionOption[];
   type?: number;
   /** For a button press: the custom_id the bot gave the component. */
   customId?: string;
+  /** For a component: 2 button, 3 string select. */
+  componentType?: number;
+  /** For a select: the chosen option values. */
+  values?: string[];
+  /** For a component: the (native) message it sits on. */
+  messageId?: string;
+  /** For a component: the bot that sent that message. */
+  botId?: string;
 }
 
 export type RunCommandResult =
@@ -632,15 +881,21 @@ export async function runBotCommand(
   if (!located) return { status: "unknown" };
   const serverId = located.server?.id ?? null;
 
-  const command = await db
-    .prepare(
-      `SELECT * FROM discord_commands
-       WHERE name = ? AND (server_id IS ? OR server_id IS NULL)
-       ORDER BY server_id IS NULL LIMIT 1`,
-    )
-    .bind(input.commandName.toLowerCase(), serverId)
-    .first<CommandRow>();
-  if (!command) return { status: "unknown" };
+  const isComponent = input.type === InteractionType.MessageComponent;
+  const command = isComponent
+    ? null
+    : await db
+        .prepare(
+          `SELECT * FROM discord_commands
+           WHERE name = ? AND (server_id IS ? OR server_id IS NULL)
+           ORDER BY server_id IS NULL LIMIT 1`,
+        )
+        .bind(input.commandName.toLowerCase(), serverId)
+        .first<CommandRow>();
+  const botId = isComponent ? input.botId : command?.bot_id;
+  if (!botId || (isComponent && (!input.messageId || !input.customId))) {
+    return { status: "unknown" };
+  }
 
   const user = await loadUser(db, input.userId);
   if (!user) return { status: "unknown" };
@@ -655,18 +910,21 @@ export async function runBotCommand(
     .prepare(
       `INSERT INTO discord_interactions
          (id, token, bot_id, server_id, channel_id, user_id, command_name, type,
-          state, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          state, response_message_id, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
     )
     .bind(
       interactionId,
       token,
-      command.bot_id,
+      botId,
       serverId,
       input.channelId,
       input.userId,
-      command.name,
+      command?.name ?? "",
       input.type ?? InteractionType.ApplicationCommand,
+      // A component's "original response" is the message it sits on, so an
+      // UpdateMessage answer edits that message in place.
+      isComponent ? input.messageId! : null,
       new Date(now).toISOString(),
       new Date(now + INTERACTION_TTL_MS).toISOString(),
     )
@@ -674,8 +932,8 @@ export async function runBotCommand(
 
   const [channelSnowflake, commandSnowflake, applicationId] = await Promise.all([
     snowflakeFor("channel", input.channelId, located.channel.created_at),
-    snowflakeFor("command", command.id, command.created_at),
-    snowflakeFor("application", `bot:${command.bot_id}`),
+    command ? snowflakeFor("command", command.id, command.created_at) : Promise.resolve(null),
+    snowflakeFor("application", `bot:${botId}`),
   ]);
   const guildSnowflake = located.server
     ? await snowflakeFor("guild", located.server.id, located.server.created_at)
@@ -703,16 +961,23 @@ export async function runBotCommand(
       id: interactionId,
       application_id: applicationId,
       type: input.type ?? InteractionType.ApplicationCommand,
-      data:
-        input.type === InteractionType.MessageComponent
-          ? { custom_id: input.customId, component_type: 2 }
-          : {
-              id: commandSnowflake,
-              name: command.name,
-              type: command.type,
-              options: input.options ?? [],
-              resolved: {},
-            },
+      data: isComponent
+        ? {
+            custom_id: input.customId,
+            component_type: input.componentType ?? 2,
+            ...(input.values ? { values: input.values } : {}),
+          }
+        : {
+            id: commandSnowflake,
+            name: command!.name,
+            type: command!.type,
+            options: input.options ?? [],
+            resolved: {},
+          },
+      // Libraries route a press to its View by this message's id.
+      message: isComponent
+        ? await componentMessage(db, input.messageId!, located.channel, channelSnowflake, guildSnowflake ?? null)
+        : undefined,
       guild_id: guildSnowflake,
       channel_id: channelSnowflake,
       channel: { id: channelSnowflake, type: 0, name: located.channel.name },
@@ -725,14 +990,48 @@ export async function runBotCommand(
       app_permissions: "8",
       locale: "en-US",
       guild_locale: guildSnowflake ? "en-US" : undefined,
+      // Required by discord.py 2.6+, which reads it unguarded while parsing
+      // the interaction; without it the bot's whole gateway loop dies.
+      attachment_size_limit: 25 * 1024 * 1024,
       entitlements: [],
       authorizing_integration_owners: {},
       context: guildSnowflake ? 0 : 1,
     },
-    { serverId: serverId ?? undefined, targetBotId: command.bot_id },
+    { serverId: serverId ?? undefined, targetBotId: botId },
   );
 
   return { status: delivered > 0 ? "dispatched" : "offline" };
+}
+
+/** The message a pressed component sits on, serialized for INTERACTION_CREATE. */
+async function componentMessage(
+  db: D1Database,
+  messageId: string,
+  channel: HoffleChannelRow,
+  channelSnowflake: string,
+  guildSnowflake: string | null,
+): Promise<Record<string, unknown>> {
+  const stored = await db
+    .prepare("SELECT * FROM messages WHERE id = ?")
+    .bind(messageId)
+    .first<StoredMessage>();
+  // Ephemeral messages were never stored; the id is all a library needs.
+  const message: StoredMessage = stored || {
+    id: messageId,
+    channel: channel.name,
+    channel_id: channel.id,
+    user_id: null,
+    author: "bot",
+    avatar: "🤖",
+    color: "#b8a6ff",
+    content: "",
+    attachment_key: null,
+    is_bot: 1,
+    created_at: new Date().toISOString(),
+    payload: null,
+  };
+  const serialized = await serializeMessage(message, { channelSnowflake, guildSnowflake });
+  return stored ? serialized : { ...serialized, flags: MessageFlags.Ephemeral };
 }
 
 /** The commands a channel's slash menu should offer, for the web client. */

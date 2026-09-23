@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { blockIfTimedOut } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
       multi: number;
     }>();
   if (!poll) return Response.json({ error: "No such poll." }, { status: 404 });
+  const timedOut = await blockIfTimedOut(db, poll.channel_id, user.id);
+  if (timedOut) return timedOut;
 
   const options = JSON.parse(poll.options) as string[];
   if (!Number.isInteger(choice) || choice < 0 || choice >= options.length) {

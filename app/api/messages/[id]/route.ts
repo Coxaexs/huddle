@@ -8,6 +8,7 @@ import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { channelAudience } from "@/lib/dms";
+import { snapshotBeforeEdit } from "@/lib/message-edits";
 
 export const dynamic = "force-dynamic";
 
@@ -131,10 +132,12 @@ export async function PATCH(
       return Response.json({ error: "A message cannot be empty." }, { status: 400 });
     }
     const editedAt = new Date().toISOString();
-    await db
-      .prepare("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?")
-      .bind(content, editedAt, id)
-      .run();
+    await db.batch([
+      snapshotBeforeEdit(db, id, content, editedAt),
+      db
+        .prepare("UPDATE messages SET content = ?, edited_at = ? WHERE id = ?")
+        .bind(content, editedAt, id),
+    ]);
     if (message.channel_id) {
       await publishMessageEvent(
         message.channel_id,

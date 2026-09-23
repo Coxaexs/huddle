@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { Member } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
+import { TIMEOUT_CHOICES } from "@/lib/timeouts";
 
 export interface UserMenuTarget {
   member: Pick<Member, "id" | "displayName" | "username" | "prideBadges"> & {
@@ -48,6 +49,12 @@ interface UserMenuProps {
   isBlocked?: boolean;
   onBlock?: () => void;
   onUnblock?: () => void;
+  /** Change this person's nickname in the current server, when allowed. */
+  onNickname?: () => void;
+  /** Time this person out (minutes; 0 lifts it), shown to moderators. */
+  onTimeout?: (minutes: number) => void;
+  /** When their current timeout ends, if they have one. */
+  timeoutUntil?: string | null;
 }
 
 /**
@@ -78,6 +85,9 @@ export function UserMenu({
   isBlocked = false,
   onBlock,
   onUnblock,
+  onNickname,
+  onTimeout,
+  timeoutUntil = null,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -115,6 +125,12 @@ export function UserMenu({
         <PrideBadges badges={target.member.prideBadges} mini />
         <span>@{target.member.username}</span>
       </div>
+
+      {onNickname && (
+        <button type="button" role="menuitem" onClick={onNickname}>
+          {isSelf ? "Change nickname" : "Edit nickname"}
+        </button>
+      )}
 
       {!isSelf && (
         <>
@@ -206,6 +222,39 @@ export function UserMenu({
                 (channel) => channel.id !== targetVoiceChannelId,
               ).length === 0 && (
                 <p className="user-menu-note">No other voice channels here.</p>
+              )}
+            </div>
+          )}
+          {onTimeout && (
+            <div className="user-menu-move">
+              <span className="user-menu-move-label">
+                {timeoutUntil
+                  ? `Timed out until ${new Date(timeoutUntil).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}`
+                  : "Timeout"}
+              </span>
+              {timeoutUntil ? (
+                <button type="button" role="menuitem" onClick={() => onTimeout(0)}>
+                  Remove timeout
+                </button>
+              ) : (
+                <div className="user-menu-chip-row">
+                  {TIMEOUT_CHOICES.map((choice) => (
+                    <button
+                      key={choice.minutes}
+                      type="button"
+                      role="menuitem"
+                      className="user-menu-chip"
+                      onClick={() => onTimeout(choice.minutes)}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}

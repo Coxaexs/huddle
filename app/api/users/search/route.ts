@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { statusSeenBy } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
       avatar: u.avatar,
       avatarUrl: u.avatar_url,
       color: u.color,
-      status: u.status || "offline",
+      status: statusSeenBy(u.status, isSelf),
       customStatus: u.custom_status,
       lastSeenAt: u.last_seen_at,
       isSelf,

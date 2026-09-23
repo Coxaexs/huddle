@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { blockIfTimedOut } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,25 @@ export async function POST(request: Request) {
   const channelId = body.channelId?.slice(0, 64);
   if (!channelId || !body.soundId) {
     return Response.json({ error: "Missing fields." }, { status: 400 });
+  }
+  const timedOut = await blockIfTimedOut(db, channelId, user.id);
+  if (timedOut) return timedOut;
+
+  // Built-in soundboard presets (no DB record or file download needed)
+  if (body.soundId.startsWith("preset:")) {
+    const presetId = body.soundId.slice(7);
+    const { SOUNDBOARD_PRESETS } = await import("@/lib/soundboard-presets");
+    const preset = SOUNDBOARD_PRESETS.find((p) => p.id === presetId);
+    if (!preset) {
+      return Response.json({ error: "Unknown preset sound." }, { status: 404 });
+    }
+    await publishMessageEvent(channelId, {
+      t: "soundboard",
+      url: `preset:${preset.id}`,
+      name: preset.name,
+      by: user.display_name,
+    });
+    return Response.json({ ok: true });
   }
 
   // Resolve the clip server-side so a client can't broadcast arbitrary URLs.

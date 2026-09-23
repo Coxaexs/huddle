@@ -315,6 +315,17 @@ export async function effectivePermissions(
   return mask;
 }
 
+/** True when the member holds at least one of `flags` in the server. */
+export async function canAny(
+  db: D1Database,
+  userId: string,
+  serverId: string,
+  ...flags: PermissionFlag[]
+): Promise<boolean> {
+  const permissions = await effectivePermissions(db, userId, serverId);
+  return flags.some((flag) => hasPermission(permissions, flag));
+}
+
 /** Convenience gate for a single flag. */
 export async function can(
   db: D1Database,

@@ -35,6 +35,7 @@ interface ResolvedRoll {
   roll: DiceRollEvent;
   details: string[];
   expression: string;
+  label: string;
   mode: string;
   total: number;
   modifier: number;
@@ -80,12 +81,26 @@ function resolveRoll(
   if (advantage && disadvantage) {
     return { error: "Choose advantage or disadvantage, not both." };
   }
-  const expression = input
-    .replace(/\b(adv|advantage|dis|disadvantage)\b/gi, "")
-    .replace(/\b(crit|critical)\b/gi, "")
-    .replace(/\s+/g, "");
+  // Everything that is not dice, a number or an operator is a label:
+  // `/roll d20+5 stealth` or `/roll 2d6+3 Scimitar damage`.
+  const words = input
+    .replace(/\b(adv|advantage|dis|disadvantage|crit|critical)\b/gi, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const diceWord = /^[+-]?(?:\d*d\d+(?:kh1|kl1)?|\d+)?(?:[+-](?:\d*d\d+(?:kh1|kl1)?|\d+))*[+-]?$/i;
+  const expressionWords: string[] = [];
+  const labelWords: string[] = [];
+  for (const word of words) {
+    if (diceWord.test(word)) expressionWords.push(word);
+    else labelWords.push(word);
+  }
+  const expression = expressionWords.join("");
+  const label = labelWords.join(" ").slice(0, 80);
   const tokens = expression.match(/[+-]?[^+-]+/g) || [];
-  if (!tokens.length || tokens.length > 20) {
+  if (!tokens.length) {
+    return { error: "Add some dice, like `/roll d20+3 stealth` or `/roll 2d6+2 damage`." };
+  }
+  if (tokens.length > 20) {
     return { error: "That dice expression is too complex." };
   }
 
@@ -105,6 +120,8 @@ function resolveRoll(
       const sides = parsed.sides;
       const keep = parsed.keep;
       if ((advantage || disadvantage) && count === 1 && sides === 20) count = 2;
+      // A critical hit rolls every damage die twice; modifiers are not doubled.
+      else if (criticalDamage && !keep) count = Math.min(count * 2, 100);
 
       // Use the roller's actual dice values when provided; else roll here.
       let rolls: number[];
@@ -184,8 +201,10 @@ function resolveRoll(
     ? " with advantage"
     : disadvantage
       ? " with disadvantage"
-      : "";
-  return { roll, details, expression, mode, total, modifier };
+      : criticalDamage
+        ? " as a critical hit"
+        : "";
+  return { roll, details, expression, label, mode, total, modifier };
 }
 
 export async function POST(request: Request) {
@@ -241,14 +260,24 @@ export async function POST(request: Request) {
     input = input.replace(hexMatch[0], " ").trim();
   }
 
-  // Extract named theme or named color
+  // Extract a named theme or colour (`/roll 2d20 red`), but only when colour
+  // words are the only extras; otherwise they are part of a label, as in
+  // `/roll d20+14 Adult Red Dragon Bite attack`.
   const tokens = input.split(/\s+/);
+  const isStyleWord = (token: string) =>
+    allowedThemes.includes(token.toLowerCase()) || Boolean(COLOR_NAMES[token.toLowerCase()]);
+  const extras = tokens.filter(
+    (token) =>
+      !/^[+-]?[\dd+\-khl]*$/i.test(token) &&
+      !/^(adv|advantage|dis|disadvantage|crit|critical)$/i.test(token),
+  );
+  const styleOnly = extras.length > 0 && extras.every(isStyleWord);
   const remainingTokens: string[] = [];
   for (const token of tokens) {
     const lower = token.toLowerCase();
-    if (allowedThemes.includes(lower)) {
+    if (styleOnly && allowedThemes.includes(lower)) {
       parsedTheme = lower;
-    } else if (COLOR_NAMES[lower]) {
+    } else if (styleOnly && COLOR_NAMES[lower]) {
       parsedThemeColor = COLOR_NAMES[lower];
     } else {
       remainingTokens.push(token);
@@ -276,7 +305,7 @@ export async function POST(request: Request) {
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: 400 });
   }
-  const { roll, details, expression, mode, total, modifier } = result;
+  const { roll, details, expression, label, mode, total, modifier } = result;
 
 
 
@@ -352,14 +381,19 @@ export async function POST(request: Request) {
   }
 
   return Response.json({
-    text: `Rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`,
+    text: `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`,
     kind: "dnd",
     payload: {
       type: "roll",
       name: "Dice result",
-      expression: `${expression}${mode}`,
+      expression,
+      mode: mode.trim(),
+      label: label || undefined,
+      roller: user.display_name,
       total,
+      modifier,
       details,
+      dice: roll.dice,
     },
     roll,
   });

@@ -357,9 +357,16 @@ async function hmac(key: string, value: string): Promise<string> {
     .join("");
 }
 
-/** Signs an image URL so the proxy only serves images Huddle itself linked. */
+/**
+ * Signs an image URL so the proxy only serves images Huddle itself linked.
+ * `!'()*` are escaped too, so the result is safe inside an unquoted CSS url().
+ */
 export async function signImageUrl(key: string, imageUrl: string): Promise<string> {
-  return `/hangout/api/unfurl/image?url=${encodeURIComponent(imageUrl)}&sig=${await hmac(key, imageUrl)}`;
+  const encoded = encodeURIComponent(imageUrl).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `/hangout/api/unfurl/image?url=${encoded}&sig=${await hmac(key, imageUrl)}`;
 }
 
 export async function verifyImageSignature(

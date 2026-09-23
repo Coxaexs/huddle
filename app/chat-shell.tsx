@@ -23,6 +23,8 @@ import {
   Permission,
 } from "@/lib/permissions";
 import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
+import { activeUntil } from "@/lib/timeouts";
+import { findTagQuery, mentionMatchScore, nameToHandle } from "@/lib/mention-handles";
 import {
   Search,
   Bell,
@@ -68,6 +70,8 @@ import {
   Monitor,
   Maximize2,
   Forward,
+  Timer,
+  CalendarDays,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -85,11 +89,18 @@ import {
   BotMenu,
   type BotMenuAction,
 } from "./components/bot-menu";
-import { DndCard } from "./components/dnd-card";
+import { DndCard, type DndCardProps } from "./components/dnd-card";
+import {
+  BotEmbeds,
+  type BotComponentRow,
+  type BotEmbedData,
+} from "./components/bot-embeds";
 import { DiceOverlay } from "./components/dice-overlay";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
-import { MessageBody } from "./components/message-body";
+import { MessageBody, type MentionChannel } from "./components/message-body";
+import { EditHistoryDialog } from "./components/edit-history";
+import { EventsPanel, eventIsOpen, eventWhen, useServerEvents } from "./components/events-panel";
 import {
   ServerInviteCard,
   type ResolvedInvite,
@@ -120,7 +131,13 @@ import { UserFooter } from "./components/user-footer";
 import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
-import { VoiceStage } from "./components/voice-stage";
+import { VoiceStage, SoundboardDrawer } from "./components/voice-stage";
+import { playPresetSound } from "@/lib/soundboard-presets";
+import {
+  replaceEmojiShortcodes,
+  parseQuickReaction,
+  findMatchingEmojiShortcodes,
+} from "@/lib/emoji-shortcodes";
 import { FriendsView } from "./components/friends-view";
 import { GlobalUserSearchDialog } from "./components/global-user-search-dialog";
 import { RecordingDirector } from "./components/recording-director";
@@ -165,6 +182,7 @@ import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
 import { ForwardedMessageCard, type ForwardedFromData } from "./components/forwarded-message-card";
 import { ThemeShareCard } from "./components/theme-share-card";
+import { ImageGallery } from "./components/image-gallery";
 import {
   type Theme,
   getActiveThemeId,
@@ -242,6 +260,23 @@ interface Message {
     total?: number;
     expression?: string;
     details?: string[];
+    /** D&D lookup cards and roll cards; see components/dnd-card.tsx. */
+    source?: string;
+    page?: number;
+    otherVersions?: string[];
+    tags?: string[];
+    abilities?: DndCardProps["abilities"];
+    sections?: DndCardProps["sections"];
+    image?: string;
+    lookupKind?: string;
+    suggestions?: string[];
+    dice?: DndCardProps["dice"];
+    modifier?: number;
+    mode?: string;
+    roller?: string;
+    /** Discord-style bot replies: embeds and button rows. */
+    embeds?: BotEmbedData[];
+    components?: BotComponentRow[];
     autoplay?: boolean;
     automix?: boolean;
     automix_blend_seconds?: number;
@@ -274,6 +309,22 @@ interface DmSummary {
   user: Member;
   lastMessage: string | null;
   lastAt: string | null;
+  /** Closed from the list; Cmd+K or a new message brings it back. */
+  hidden?: boolean;
+}
+
+/**
+ * The argument hint the slash menu shows for a bot command: subcommands as
+ * `<join|add|next>`, options as `<required> [optional]`.
+ */
+function commandArgsHint(options: unknown): string | undefined {
+  if (!Array.isArray(options) || !options.length) return undefined;
+  const list = options as Array<{ name: string; type?: number; required?: boolean }>;
+  const subs = list.filter((option) => option.type === 1 || option.type === 2);
+  if (subs.length) return `<${subs.map((option) => option.name).join("|")}>`;
+  return list
+    .map((option) => (option.required ? `<${option.name}>` : `[${option.name}]`))
+    .join(" ");
 }
 
 /** Effective notification level: the channel's own, else its server's, else "all". */
@@ -294,10 +345,25 @@ const DEFAULT_QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉
 /** Options for the one-tap "quick vote" on a message. */
 const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
 
-/** An @-autocomplete option: a member or a role. */
+/** An autocomplete option: a member or role after @, a channel after #. */
 type MentionOption =
   | { kind: "user"; member: Member }
-  | { kind: "role"; role: PublicRole };
+  | { kind: "role"; role: PublicRole }
+  | { kind: "channel"; channel: PublicChannel };
+
+/** Items matching `query` on any of their names, best matches first. */
+function rankMentionMatches<T>(
+  items: T[],
+  query: string,
+  names: (item: T) => Array<string | null | undefined>,
+  tieBreak: (a: T, b: T) => number,
+): T[] {
+  return items
+    .map((item) => ({ item, score: mentionMatchScore(query, names(item)) }))
+    .filter((entry): entry is { item: T; score: number } => entry.score !== null)
+    .sort((a, b) => a.score - b.score || tieBreak(a.item, b.item))
+    .map((entry) => entry.item);
+}
 
 function formatClientTime(createdAt?: string, fallbackTime?: string): string {
   if (!createdAt) return fallbackTime || "";
@@ -364,27 +430,50 @@ function pickImageFile(): Promise<File | null> {
 
 /** Fires a desktop/web notification, unless the user turned them off. Only
  *  fires when the tab is not the focused/visible one — if you're looking at
- *  the app, the unread badge already tells you. */
+ *  the app, the unread badge already tells you. Supports desktop native bridge. */
 function showNotification(title: string, body: string): void {
   try {
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") return;
-    if (window.localStorage.getItem("huddle-notify") === "off") return;
-    // Don't pop a notification while the user is actively using the app; the
+    if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
+    // Don't pop a notification while the user is actively focused on the app; the
     // in-app unread badge is the cue there.
-    if (document.visibilityState === "visible" && document.hasFocus()) return;
-    const notification = new Notification(title, { body });
-    notification.onclick = () => window.focus();
+    if (typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus()) return;
+
+    // Desktop shell (Electron) native notification
+    const win = typeof window !== "undefined" ? (window as unknown as { huddle?: { notify?: (t: string, b: string) => void } }) : null;
+    if (win?.huddle?.notify) {
+      win.huddle.notify(title, body);
+      return;
+    }
+
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
+    if (Notification.permission !== "granted") return;
+    const notification = new Notification(title, {
+      body,
+      icon: "/hangout/icon.png",
+    });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
   } catch {
     // Notifications are best-effort.
   }
 }
 
 /** Plays a soundboard clip locally (everyone in the room hears their own copy). */
-function playSound(url: string): void {
+function playSound(url: string, volume = 0.7): void {
   try {
+    const savedVol = typeof localStorage !== "undefined" ? parseFloat(localStorage.getItem("huddle_soundboard_volume") || "0.7") : 0.7;
+    const effVol = isNaN(savedVol) ? volume : Math.max(0, Math.min(1, savedVol));
+    if (url.startsWith("preset:")) {
+      playPresetSound(url.slice(7), effVol);
+      return;
+    }
     const audio = new Audio(url);
-    audio.volume = 0.7;
+    audio.volume = effVol;
     void audio.play().catch(() => undefined);
   } catch {
     // Non-fatal: a blocked autoplay just means no sound this time.
@@ -495,6 +584,7 @@ export function ChatShell() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
   const [stageChannelId, setStageChannelId] = useState<string | null>(null);
+  const [quickSoundboardOpen, setQuickSoundboardOpen] = useState(false);
   /** Channel id currently being dragged in the sidebar, for reordering. */
   const [dragChannelId, setDragChannelId] = useState<string | null>(null);
   /** Server id currently being dragged on the rail, for reordering. */
@@ -1055,8 +1145,26 @@ export function ChatShell() {
   const [botCommands, setBotCommands] = useState<SlashCommand[]>([]);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
-  /** Image opened fullscreen in the lightbox. */
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  /** Image(s) opened fullscreen in the carousel lightbox. */
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  /** Message whose edit history is open. */
+  const [editHistoryId, setEditHistoryId] = useState<string | null>(null);
+  /** Events panel for the active server, and a counter that refetches its list. */
+  const [eventsOpen, setEventsOpen] = useState(false);
+  const [eventsRefresh, setEventsRefresh] = useState(0);
+
+  const openLightbox = useCallback((images: string | string[], index = 0) => {
+    if (typeof images === "string") {
+      setLightbox({ images: [images], index: 0 });
+    } else if (Array.isArray(images) && images.length > 0) {
+      setLightbox({ images, index: Math.max(0, Math.min(index, images.length - 1)) });
+    }
+  }, []);
+
+  const setLightboxImage = useCallback((img: string | null) => {
+    if (!img) setLightbox(null);
+    else setLightbox({ images: [img], index: 0 });
+  }, []);
   /** PDF opened in the in-Huddle reader and form editor. */
   const [pdfViewer, setPdfViewer] = useState<{
     url: string;
@@ -1639,13 +1747,7 @@ export function ChatShell() {
             name: command.name,
             description: command.description || "From a connected bot",
             group: "Bots" as const,
-            args: Array.isArray(command.options) && command.options.length
-              ? (command.options as Array<{ name: string; required?: boolean }>)
-                  .map((option) =>
-                    option.required ? `<${option.name}>` : `[${option.name}]`,
-                  )
-                  .join(" ")
-              : undefined,
+            args: commandArgsHint(command.options),
           })),
         );
       })
@@ -1692,20 +1794,31 @@ export function ChatShell() {
     () => activeServer?.channels.filter((c) => c.kind === "voice") || [],
     [activeServer],
   );
+  const { events: serverEvents, reload: reloadEvents } = useServerEvents(
+    inDmHome ? null : activeServerId,
+    eventsRefresh,
+  );
+  /** The soonest event that hasn't ended, for the sidebar chip. */
+  const nextEvent = serverEvents.find((event) => eventWhen(event) !== "Ended") || null;
   const membersById = useMemo(() => {
     const map = new Map<string, Member>();
     for (const member of members) map.set(member.id, member);
     if (user) {
+      // Merge rather than replace: the member row carries this server's
+      // nickname and role ids, while `user` has the freshest profile edits.
+      const own = map.get(user.id);
       map.set(user.id, {
+        ...own,
         id: user.id,
         username: user.username,
-        displayName: user.displayName,
+        displayName: own?.nickname || user.displayName,
+        globalName: user.displayName,
         avatar: user.avatar,
         avatarUrl: user.avatarUrl,
         color: user.color,
         isAdmin: user.isAdmin,
         canInvite: user.canInvite,
-        lastSeenAt: (user as any).lastSeenAt || new Date().toISOString(),
+        lastSeenAt: own?.lastSeenAt || (user as any).lastSeenAt || new Date().toISOString(),
       });
     }
     for (const dm of dms) {
@@ -1723,6 +1836,22 @@ export function ChatShell() {
     }
     return map;
   }, [members, user, dms]);
+
+  /** Bumped when your own timeout runs out, so the composer unlocks on time. */
+  const [timeoutTick, setTimeoutTick] = useState(0);
+  /** When your timeout in the server on screen ends, if you have one. */
+  const myTimeoutUntil = useMemo(
+    () => (inDmHome || !user ? null : activeUntil(membersById.get(user.id)?.timeoutUntil)),
+    // timeoutTick re-runs this once the end time passes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [membersById, inDmHome, user, timeoutTick],
+  );
+  useEffect(() => {
+    if (!myTimeoutUntil) return;
+    const wait = Math.min(Date.parse(myTimeoutUntil) - Date.now() + 500, 2 ** 31 - 1);
+    const timer = window.setTimeout(() => setTimeoutTick((n) => n + 1), Math.max(wait, 0));
+    return () => window.clearTimeout(timer);
+  }, [myTimeoutUntil]);
 
   /**
    * The signed-in member's effective permission bitmask on the active server,
@@ -1750,6 +1879,7 @@ export function ChatShell() {
     Permission.RECORD_SESSIONS,
   );
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+  const canManageNicknames = hasPermission(myPermissions, Permission.MANAGE_NICKNAMES);
   const canCreateServerInvites =
     hasPermission(myPermissions, Permission.CREATE_INVITES) ||
     Boolean(user?.isAdmin || user?.canInvite);
@@ -1867,6 +1997,8 @@ export function ChatShell() {
     () => dms.find((dm) => dm.channelId === activeChannelId) || null,
     [dms, activeChannelId],
   );
+  /** DMs shown in the list; closed ones stay reachable through Cmd+K. */
+  const visibleDms = useMemo(() => dms.filter((dm) => !dm.hidden), [dms]);
   const isSelfDm = Boolean(
     inDmHome && activeDm && user && activeDm.user.id === user.id,
   );
@@ -1984,6 +2116,7 @@ export function ChatShell() {
       void loadServers().catch(() => undefined);
       void loadMembers().catch(() => undefined);
       void loadEmojis().catch(() => undefined);
+      setEventsRefresh((n) => n + 1);
     }, 400);
     // loadEmojis/loadServers/loadMembers are stable useCallbacks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2007,11 +2140,26 @@ export function ChatShell() {
       );
       void refreshPins(channelId);
     },
-    onMessageEdited: (channelId, id, content, editedAt) => {
+    onMessageEdited: (channelId, id, content, editedAt, payload) => {
       if (channelId !== activeChannelRef.current) return;
       setMessages((current) =>
         current.map((message) =>
-          message.id === id ? { ...message, text: content, editedAt } : message,
+          message.id === id
+            ? {
+                ...message,
+                text: typeof content === "string" ? content : message.text,
+                editedAt,
+                // Bot edits may carry only the parts they changed (an
+                // ephemeral message's new embed, say): merge, don't replace.
+                ...(payload !== undefined
+                  ? {
+                      payload: payload
+                        ? { ...message.payload, ...(payload as Message["payload"]) }
+                        : undefined,
+                    }
+                  : {}),
+              }
+            : message,
         ),
       );
     },
@@ -2136,14 +2284,40 @@ export function ChatShell() {
     if (user && userId === user.id) voice.setForcedMute(muted);
   };
 
+  /**
+   * Voice rooms with each person's current name (server nickname included)
+   * and avatar. The hub only knows what they had when their socket connected.
+   */
+  const voiceRooms = useMemo(() => {
+    const rooms: typeof hub.voice = {};
+    for (const [channelId, people] of Object.entries(hub.voice)) {
+      rooms[channelId] = people.map((person) => {
+        const member = membersById.get(person.id);
+        return member
+          ? {
+              ...person,
+              displayName: member.displayName,
+              avatar: member.avatar,
+              avatarUrl: member.avatarUrl ?? null,
+              color: member.color,
+            }
+          : person;
+      });
+    }
+    return rooms;
+  }, [hub.voice, membersById]);
+
   const voiceParticipants = useMemo(
-    () => (voice.channelId ? hub.voice[voice.channelId] || [] : []),
-    [hub.voice, voice.channelId],
+    () => (voice.channelId ? voiceRooms[voice.channelId] || [] : []),
+    [voiceRooms, voice.channelId],
   );
 
   // Leaving voice (Disconnect) closes the stage and returns to the text channel.
   useEffect(() => {
-    if (!voice.channelId) setStageChannelId(null);
+    if (!voice.channelId) {
+      setStageChannelId(null);
+      setQuickSoundboardOpen(false);
+    }
   }, [voice.channelId]);
 
   // Adopt the stored presence once the member list arrives.
@@ -2275,7 +2449,7 @@ export function ChatShell() {
   /** Display names of everyone typing in the channel you are looking at. */
   const typingNames = Object.entries(typing[activeChannelId || ""] || {})
     .filter(([userId]) => userId !== user?.id)
-    .map(([, entry]) => entry.name);
+    .map(([userId, entry]) => membersById.get(userId)?.displayName || entry.name);
 
   /** Tells the room you are typing, at most once every few seconds. */
   function noteTyping() {
@@ -2334,7 +2508,21 @@ export function ChatShell() {
   useEffect(() => {
     if (!lightbox) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setLightbox(null);
+      if (event.key === "Escape") {
+        setLightbox(null);
+      } else if (event.key === "ArrowLeft") {
+        setLightbox((prev) =>
+          prev && prev.images.length > 1
+            ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }
+            : prev,
+        );
+      } else if (event.key === "ArrowRight") {
+        setLightbox((prev) =>
+          prev && prev.images.length > 1
+            ? { ...prev, index: (prev.index + 1) % prev.images.length }
+            : prev,
+        );
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -2588,6 +2776,31 @@ export function ChatShell() {
 
 
 
+  /**
+   * Close a DM (hide it from the list) or bring it back. Nothing is deleted:
+   * the conversation reopens from Cmd+K, or on its own when a message arrives.
+   */
+  async function setDmClosed(channelId: string, closed: boolean) {
+    setDms((current) =>
+      current.map((dm) => (dm.channelId === channelId ? { ...dm, hidden: closed } : dm)),
+    );
+    if (closed && activeChannelId === channelId && inDmHome) {
+      const next = visibleDms.find((dm) => dm.channelId !== channelId);
+      setActiveChannelId(next?.channelId || null);
+      setStageChannelId(null);
+    }
+    try {
+      const data = await apiFetch<{ conversations: DmSummary[] }>("/api/dms", {
+        method: "PATCH",
+        body: JSON.stringify({ channelId, hidden: closed }),
+      });
+      setDms(data.conversations);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not do that.");
+      void loadDms().catch(() => undefined);
+    }
+  }
+
   async function openDm(targetId: string) {
     try {
       const data = await apiFetch<{
@@ -2691,6 +2904,61 @@ export function ChatShell() {
     });
   }
 
+  /** Set or clear someone's nickname in the active server (yours, or theirs with permission). */
+  function editNickname(userId: string) {
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    const serverId = activeServerId;
+    const member = membersById.get(userId);
+    const self = userId === user?.id;
+    showCustomPrompt({
+      title: self ? "Change your nickname" : `Nickname for ${member?.globalName || member?.displayName || "member"}`,
+      message: "Only shown in this server. Leave it empty to use the account name.",
+      defaultValue: member?.nickname || "",
+      placeholder: member?.globalName || member?.displayName || "",
+      confirmText: "Save",
+      maxLength: 32,
+      onConfirm: async (value) => {
+        const nickname = (value || "").trim() || null;
+        try {
+          await apiFetch(`/api/members/${userId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ serverId, nickname }),
+          });
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.id === userId
+                ? { ...m, nickname, displayName: nickname || m.globalName || m.displayName }
+                : m,
+            ),
+          );
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not change that nickname.");
+        }
+      },
+    });
+  }
+
+  /** Moderator action: time a member out of the active server (0 lifts it). */
+  async function timeoutMember(userId: string, minutes: number) {
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    try {
+      const result = await apiFetch<{ timeoutUntil: string | null }>(`/api/members/${userId}`, {
+        method: "POST",
+        body: JSON.stringify({ serverId: activeServerId, action: "timeout", minutes }),
+      });
+      setMembers((prev) =>
+        prev.map((m) => (m.id === userId ? { ...m, timeoutUntil: result.timeoutUntil } : m)),
+      );
+      setNotice(
+        result.timeoutUntil
+          ? `Timed out until ${formatClientDateTime(result.timeoutUntil)}.`
+          : "Timeout lifted.",
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not do that.");
+    }
+  }
+
   /** Moderator action: move a member into another voice channel. */
   async function moveMember(userId: string, channelId: string) {
     try {
@@ -2702,6 +2970,41 @@ export function ChatShell() {
       setNotice(name ? `Moved them to ${name}.` : "Moved them.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not move them.");
+    }
+  }
+
+  /** A button or select on a bot's message: becomes a component interaction. */
+  async function pressBotComponent(
+    message: Message,
+    customId: string,
+    componentType: number,
+    values?: string[],
+  ) {
+    const channelId = message.channelId || activeChannelId;
+    if (!channelId) return;
+    try {
+      const result = await apiFetch<{ ok: boolean; reason: string | null }>(
+        "/api/commands/component",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            channelId,
+            messageId: String(message.id),
+            customId,
+            componentType,
+            values,
+          }),
+        },
+      );
+      if (!result.ok) {
+        setNotice(
+          result.reason === "offline"
+            ? "That bot is not connected right now."
+            : "That button no longer does anything.",
+        );
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The bot didn't respond.");
     }
   }
 
@@ -3032,6 +3335,12 @@ export function ChatShell() {
       return;
     }
 
+    // A connected D&D bot (running on this Hoffle through the Discord
+    // gateway) does these for real, so it wins over the link-out stub.
+    if (DND_LINK_COMMANDS.has(name) && botCommands.some((command) => command.name === bare)) {
+      if (await runBotSlashCommand(bare, value)) return;
+    }
+
     if (DND_LINK_COMMANDS.has(name)) {
       await postBotMessage(
         dndOnline
@@ -3065,30 +3374,39 @@ export function ChatShell() {
 
     // Last: a command a connected bot registered. The server tells us whether
     // it owns the name, so an unknown one still gets the message below.
-    if (activeChannelId) {
-      try {
-        const result = await apiFetch<{ ok: boolean; reason: string | null }>(
-          "/api/commands",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              channelId: activeChannelId,
-              name: bare,
-              args: value,
-            }),
-          },
-        );
-        if (result.ok) return;
-        if (result.reason === "offline") {
-          setNotice(`The bot that owns /${bare} is not connected right now.`);
-          return;
-        }
-      } catch {
-        // Fall through to the unknown-command message.
-      }
-    }
+    if (await runBotSlashCommand(bare, value)) return;
 
     setNotice(`I don't know /${bare}. Type / to see what I do know.`);
+  }
+
+  /** Runs a bot-registered command; false when no connected bot owns it. */
+  async function runBotSlashCommand(bare: string, value: string): Promise<boolean> {
+    if (!activeChannelId) return false;
+    try {
+      const result = await apiFetch<{ ok: boolean; reason: string | null; message?: string }>(
+        "/api/commands",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: activeChannelId,
+            name: bare,
+            args: value,
+          }),
+        },
+      );
+      if (result.ok) return true;
+      if (result.reason === "usage") {
+        setNotice(result.message || `Check the arguments for /${bare}.`);
+        return true;
+      }
+      if (result.reason === "offline") {
+        setNotice(`The bot that owns /${bare} is not connected right now.`);
+        return true;
+      }
+    } catch {
+      // Treated as unknown: the caller falls back.
+    }
+    return false;
   }
 
   async function runMusicUiCommand(
@@ -3220,6 +3538,36 @@ export function ChatShell() {
           : message,
       ),
     );
+    setThreadMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+            ...message,
+            reactions: applyReaction(
+              message.reactions,
+              emoji,
+              true,
+              !message.reactions?.find((r) => r.emoji === emoji)?.mine,
+              me,
+            ),
+          }
+          : message,
+      ),
+    );
+    setThreadRoot((current) =>
+      current && current.id === messageId
+        ? {
+          ...current,
+          reactions: applyReaction(
+            current.reactions,
+            emoji,
+            true,
+            !current.reactions?.find((r) => r.emoji === emoji)?.mine,
+            me,
+          ),
+        }
+        : current,
+    );
     await apiFetch(`/api/messages/${id}/reactions`, {
       method: "POST",
       body: JSON.stringify({ emoji }),
@@ -3251,12 +3599,26 @@ export function ChatShell() {
     const text = threadDraft.trim();
     if (!text || !threadRoot || !activeChannelId) return;
     setThreadDraft("");
+
+    // Quick reaction shortcut support in threads (e.g. :+tada:, :+smiley:, :+thumbsup:)
+    const quickReaction = parseQuickReaction(text, emojiMap);
+    if (quickReaction) {
+      const targetMessage = threadMessages.length > 0
+        ? threadMessages[threadMessages.length - 1]
+        : threadRoot;
+      if (targetMessage) {
+        await toggleReaction(targetMessage.id, quickReaction.emoji);
+        return;
+      }
+    }
+
     try {
+      const processedText = replaceEmojiShortcodes(text, emojiMap);
       const data = await apiFetch<{ message: Message }>("/api/messages", {
         method: "POST",
         body: JSON.stringify({
           channelId: activeChannelId,
-          content: text,
+          content: processedText,
           threadId: String(threadRoot.id),
         }),
       });
@@ -3449,6 +3811,10 @@ export function ChatShell() {
       if (payload.action === "call") {
         if (payload.fromUserId === user?.id) return;
         startIncomingCallTone();
+        showNotification(
+          `Incoming ${payload.isVideo ? "Video" : "Voice"} Call`,
+          `${payload.fromDisplayName || "Someone"} is calling you...`,
+        );
         setIncomingDmCall({
           channelId: payload.channelId,
           fromUserId: payload.fromUserId,
@@ -3584,6 +3950,19 @@ export function ChatShell() {
       return;
     }
 
+    // Quick reaction shortcut to react to the last message in the channel (e.g. :+tada:, :+smiley:, :+thumbsup:, :+1:)
+    const quickReaction = parseQuickReaction(text, emojiMap);
+    if (quickReaction && !files.length) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage) {
+        await toggleReaction(lastMessage.id, quickReaction.emoji);
+        return;
+      } else {
+        setNotice("There are no messages in this channel to react to yet.");
+        return;
+      }
+    }
+
     try {
       // Upload every staged file, then send one message carrying them all.
       const keys: string[] = [];
@@ -3596,7 +3975,8 @@ export function ChatShell() {
         });
         keys.push(upload.key);
       }
-      await sendText(text, keys);
+      const processedText = replaceEmojiShortcodes(text, emojiMap);
+      await sendText(processedText, keys);
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "That message did not send.",
@@ -3614,11 +3994,16 @@ export function ChatShell() {
   );
   const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
 
-  // @-mention autocomplete: matches an @handle being typed at the end of the draft.
-  const mentionQuery = useMemo(() => {
-    const match = draft.match(/(?:^|\s)@([a-zA-Z0-9._-]*)$/);
-    return match ? match[1].toLowerCase() : null;
-  }, [draft]);
+  // @-mention / #-channel autocomplete for the token right before the caret.
+  const [composerCaret, setComposerCaret] = useState(0);
+  const [dismissedTagAt, setDismissedTagAt] = useState<number | null>(null);
+  const tagQuery = useMemo(
+    () => findTagQuery(draft.slice(0, composerCaret)),
+    [draft, composerCaret],
+  );
+  useEffect(() => {
+    if (!tagQuery) setDismissedTagAt(null);
+  }, [tagQuery]);
   const dmMembers: Member[] = useMemo(() => {
     if (!inDmHome || !user) return [];
     const meAsMember: Member = {
@@ -3644,36 +4029,125 @@ export function ChatShell() {
   }, [inDmHome, activeDm, user]);
 
   const mentionMatches = useMemo<MentionOption[]>(() => {
-    if (mentionQuery === null) return [];
-    const roleOptions: MentionOption[] = (activeServer?.roles || [])
-      .filter((role) => role.name.toLowerCase().startsWith(mentionQuery))
-      .map((role) => ({ kind: "role", role }));
-    const candidateMembers = inDmHome ? dmMembers : members;
-    const memberOptions: MentionOption[] = candidateMembers
-      .filter(
-        (member) =>
-          member.username.toLowerCase().startsWith(mentionQuery) ||
-          member.displayName.toLowerCase().startsWith(mentionQuery),
+    if (!tagQuery) return [];
+    const query = tagQuery.query;
+    if (tagQuery.trigger === "#") {
+      if (inDmHome) return [];
+      const channels = (activeServer?.channels || []).filter(
+        (channel) => channel.kind === "text" || channel.kind === "voice",
+      );
+      return rankMentionMatches(
+        channels,
+        query,
+        (channel) => [channel.name],
+        (a, b) =>
+          Number(a.kind === "voice") - Number(b.kind === "voice") || a.position - b.position,
       )
+        .slice(0, 10)
+        .map((channel) => ({ kind: "channel", channel }));
+    }
+    // People first: that's what @ is usually for. Nicknames, global names
+    // and usernames all match, so "@es" finds "Escanor" by any of them.
+    const memberOptions: MentionOption[] = rankMentionMatches(
+      inDmHome ? dmMembers : members,
+      query,
+      (member) => [member.displayName, member.nickname, member.globalName, member.username],
+      (a, b) => a.displayName.localeCompare(b.displayName),
+    )
+      .slice(0, 8)
       .map((member) => ({ kind: "user", member }));
-    // Roles first (they're fewer and often what you want), then people.
-    return [...roleOptions, ...memberOptions].slice(0, 8);
-  }, [mentionQuery, members, activeServer, inDmHome, dmMembers]);
-  const mentionActive = mentionQuery !== null && mentionMatches.length > 0;
+    const roleOptions: MentionOption[] = rankMentionMatches(
+      (activeServer?.roles || []).filter((role) => nameToHandle(role.name) !== ""),
+      query,
+      (role) => [role.name],
+      (a, b) => a.name.localeCompare(b.name),
+    )
+      .slice(0, 5)
+      .map((role) => ({ kind: "role", role }));
+    return [...memberOptions, ...roleOptions];
+  }, [tagQuery, members, activeServer, inDmHome, dmMembers]);
+  const mentionActive =
+    tagQuery !== null && tagQuery.start !== dismissedTagAt && mentionMatches.length > 0;
 
-  useEffect(() => setSlashIndex(0), [draft]);
+  useEffect(() => setSlashIndex(0), [draft, tagQuery?.trigger]);
 
   function pickMention(option: MentionOption) {
-    const handle =
-      option.kind === "user" ? option.member.username : option.role.name;
+    if (!tagQuery) return;
+    const token =
+      option.kind === "user"
+        ? `@${option.member.username}`
+        : option.kind === "role"
+          ? `@${nameToHandle(option.role.name)}`
+          : `#${nameToHandle(option.channel.name)}`;
+    const before = draft.slice(0, tagQuery.start);
+    // Swallow the rest of a half-typed word when picking from the middle of it.
+    const after = draft.slice(composerCaret).replace(/^[^\s]*/, "");
+    const insert = after.startsWith(" ") ? token : `${token} `;
+    const caret = before.length + insert.length + (after.startsWith(" ") ? 1 : 0);
+    setDraft(before + insert + after);
+    setComposerCaret(caret);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(caret, caret);
+    });
+  }
+
+  /** Where a #channel link in a message takes you. */
+  function openMentionedChannel(target: MentionChannel) {
+    const channel = activeServer?.channels.find((c) => c.id === target.id);
+    if (!channel) return;
+    if (channel.kind === "voice") {
+      openVoiceChannel(channel);
+      return;
+    }
+    setStageChannelId(null);
+    setActiveChannelId(channel.id);
+    setMobileNav(false);
+  }
+
+  // :-emoji autocomplete: matches a :shortcode or :+shortcode being typed at the end of the draft.
+  const emojiShortcodeMatch = useMemo(() => {
+    const match = draft.match(/(?:^|\s)(:\+?|[+]:?)([a-zA-Z0-9_+-]{1,20})$/);
+    if (!match) return null;
+    return {
+      prefix: match[1],
+      query: match[2].toLowerCase(),
+    };
+  }, [draft]);
+
+  const emojiMatches = useMemo(() => {
+    if (!emojiShortcodeMatch) return [];
+    return findMatchingEmojiShortcodes(emojiShortcodeMatch.query, emojiMap, 8);
+  }, [emojiShortcodeMatch, emojiMap]);
+
+  const emojiActive = emojiShortcodeMatch !== null && emojiMatches.length > 0;
+  const [emojiIndex, setEmojiIndex] = useState(0);
+  useEffect(() => setEmojiIndex(0), [emojiShortcodeMatch?.query]);
+
+  function pickEmojiShortcode(item: { name: string; symbol: string; isCustom?: boolean; url?: string }) {
+    if (!emojiShortcodeMatch) return;
+    const isReaction = emojiShortcodeMatch.prefix.includes("+");
+    const replacement = isReaction
+      ? `:+${item.name}:`
+      : item.isCustom
+        ? `:${item.name}: `
+        : `${item.symbol} `;
     setDraft((current) =>
-      current.replace(/@([a-zA-Z0-9._-]*)$/, `@${handle} `),
+      current.replace(/(?:^|\s)(:\+?|[+]:?)[a-zA-Z0-9_+-]{1,20}$/, (m) => {
+        const lead = m.startsWith(" ") ? " " : "";
+        return lead + replacement;
+      }),
     );
     composerRef.current?.focus();
   }
 
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (mentionActive) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedTagAt(tagQuery?.start ?? null);
+        return;
+      }
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setSlashIndex((index) => (index + 1) % mentionMatches.length);
@@ -3689,6 +4163,30 @@ export function ChatShell() {
       if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
         event.preventDefault();
         pickMention(mentionMatches[slashIndex % mentionMatches.length]);
+        return;
+      }
+    }
+    if (emojiActive) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setEmojiIndex((index) => (index + 1) % emojiMatches.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setEmojiIndex(
+          (index) => (index - 1 + emojiMatches.length) % emojiMatches.length,
+        );
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        pickEmojiShortcode(emojiMatches[emojiIndex % emojiMatches.length]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setEmojiIndex(0);
         return;
       }
     }
@@ -4166,6 +4664,10 @@ export function ChatShell() {
 
   /** Open a voice channel's stage and join it (without ever leaving on re-click). */
   function openVoiceChannel(channel: PublicChannel) {
+    if (myTimeoutUntil && voice.channelId !== channel.id) {
+      setNotice(`You are timed out here until ${formatClientDateTime(myTimeoutUntil)}.`);
+      return;
+    }
     player.prime();
     setStageChannelId(channel.id);
     setMobileNav(false);
@@ -4428,7 +4930,7 @@ export function ChatShell() {
 
   function renderChannel(channel: PublicChannel) {
     if (channel.kind === "voice") {
-      const people = hub.voice[channel.id] || [];
+      const people = voiceRooms[channel.id] || [];
       const playing = hub.players[channel.id]?.track;
       // Merge channel-reorder drag props with a drop zone that accepts a
       // dragged voice member (a moderator moving someone into this room).
@@ -4760,7 +5262,7 @@ export function ChatShell() {
             title="Direct messages"
             onClick={() => {
               setActiveServerId(DM_HOME);
-              setActiveChannelId(dms[0]?.channelId || null);
+              setActiveChannelId(visibleDms[0]?.channelId || null);
               setStageChannelId(null);
               setMobileNav(false);
             }}
@@ -4788,14 +5290,14 @@ export function ChatShell() {
             (sum, c) => sum + (unread[c.id]?.mentions || 0),
             0,
           );
-          const voiceRooms = server.channels.filter(
-            (c) => c.kind === "voice" && (hub.voice[c.id]?.length || 0) > 0,
+          const occupiedRooms = server.channels.filter(
+            (c) => c.kind === "voice" && (voiceRooms[c.id]?.length || 0) > 0,
           );
-          const voiceActive = voiceRooms.length > 0;
-          const voiceTitle = voiceRooms
+          const voiceActive = occupiedRooms.length > 0;
+          const voiceTitle = occupiedRooms
             .map(
               (c) =>
-                `🔊 ${c.name}: ${hub.voice[c.id].map((p) => p.displayName).join(", ")}`,
+                `🔊 ${c.name}: ${voiceRooms[c.id].map((p) => p.displayName).join(", ")}`,
             )
             .join("\n");
           return (
@@ -4867,7 +5369,7 @@ export function ChatShell() {
         <div className="rail-divider" />
 
         {/* Quick DMs directly on rail from Figma design */}
-        {dms.slice(0, 4).map((dm) => {
+        {visibleDms.slice(0, 4).map((dm) => {
           const isActive = inDmHome && activeChannelId === dm.channelId;
           const count = unread[dm.channelId]?.count || 0;
           const isOnline = hub.online.has(dm.user.id);
@@ -4900,7 +5402,7 @@ export function ChatShell() {
                   <span
                     className={`rail-dm-online-dot ${isOnline ? "online" : "offline"}`}
                   />
-                  {hub.voice[dm.channelId]?.length > 0 && (
+                  {voiceRooms[dm.channelId]?.length > 0 && (
                     <span className="dm-call-active-indicator" title="Active voice call" />
                   )}
                 </div>
@@ -5209,11 +5711,11 @@ export function ChatShell() {
                 </button>
               )}
             </div>
-            {dms.map((dm) => {
+            {visibleDms.map((dm) => {
               const isSelf = Boolean(user && dm.user.id === user.id);
               return (
+                <div key={dm.channelId} className="dm-row">
                 <button
-                  key={dm.channelId}
                   className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
                     }`}
                   onClick={() => {
@@ -5238,7 +5740,7 @@ export function ChatShell() {
                   ) : (
                     hub.online.has(dm.user.id) && <i className="dm-online" />
                   )}
-                  {hub.voice[dm.channelId]?.length > 0 && (
+                  {voiceRooms[dm.channelId]?.length > 0 && (
                     <PhoneCall size={12} className="text-green-400 ml-auto animate-pulse" />
                   )}
                   {(unread[dm.channelId]?.count ?? 0) > 0 && (
@@ -5247,9 +5749,19 @@ export function ChatShell() {
                     </span>
                   )}
                 </button>
+                <button
+                  type="button"
+                  className="dm-close"
+                  aria-label={`Close conversation with ${dm.user.displayName}`}
+                  title="Close (messages are kept, reopen with Cmd+K)"
+                  onClick={() => void setDmClosed(dm.channelId, true)}
+                >
+                  <X size={13} />
+                </button>
+                </div>
               );
             })}
-            {!dms.length && (
+            {!visibleDms.length && (
               <p className="sidebar-empty">
                 Right-click someone or click the note icon above to start a conversation.
               </p>
@@ -5285,6 +5797,26 @@ export function ChatShell() {
                 </span>
               )}
             </div>
+
+            <button
+              type="button"
+              className={`events-chip ${nextEvent && eventIsOpen(nextEvent) ? "is-open" : ""}`}
+              onClick={() => setEventsOpen(true)}
+              title={nextEvent ? `${nextEvent.title} · ${eventWhen(nextEvent)}` : "Plan an event"}
+            >
+              <CalendarDays size={15} />
+              {nextEvent ? (
+                <span className="events-chip-text">
+                  <strong>{nextEvent.title}</strong>
+                  <small>{eventWhen(nextEvent)}</small>
+                </span>
+              ) : (
+                <span className="events-chip-text">
+                  <strong>Events</strong>
+                </span>
+              )}
+              {serverEvents.length > 1 && <span className="events-chip-count">{serverEvents.length}</span>}
+            </button>
 
             {/* Uncategorised channels sit above every category, Discord-style. */}
             <div className="category-body" {...categoryDropProps(null)}>
@@ -5396,6 +5928,14 @@ export function ChatShell() {
               <div className="mini-voice-actions flex items-center gap-1 flex-shrink-0">
                 <button
                   type="button"
+                  className={`mini-voice-btn ${quickSoundboardOpen ? "on" : ""}`}
+                  onClick={() => setQuickSoundboardOpen((o) => !o)}
+                  title={quickSoundboardOpen ? "Close soundboard" : "Soundboard"}
+                >
+                  <Volume2 size={14} />
+                </button>
+                <button
+                  type="button"
                   className={`mini-voice-btn ${voice.screenSharing ? "on" : ""}`}
                   onClick={() =>
                     voice.screenSharing
@@ -5426,6 +5966,16 @@ export function ChatShell() {
                 </button>
               </div>
             </div>
+            {quickSoundboardOpen && (
+              <div className="soundboard-quick-popover">
+                <SoundboardDrawer
+                  serverId={servers.find((s) => s.channels.some((c) => c.id === voice.channelId))?.id || null}
+                  channelId={voice.channelId}
+                  canManage={false}
+                  onClose={() => setQuickSoundboardOpen(false)}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -5539,7 +6089,7 @@ export function ChatShell() {
                       >
                         <Maximize2 size={15} /> Call View
                       </button>
-                    ) : hub.voice[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
+                    ) : voiceRooms[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
                       <button
                         type="button"
                         className="dm-join-call-btn flex items-center gap-1.5"
@@ -5799,8 +6349,13 @@ export function ChatShell() {
                   <div className="pins-panel">
                     <div className="pins-head">
                       <strong>Pinned in {channelTitle}</strong>
-                      <button type="button" onClick={() => setPinsOpen(false)}>
-                        ×
+                      <button
+                        type="button"
+                        className="popup-close-x"
+                        onClick={() => setPinsOpen(false)}
+                        aria-label="Close pinned messages"
+                      >
+                        <X size={16} />
                       </button>
                     </div>
                     {pins.length ? (
@@ -6176,9 +6731,14 @@ export function ChatShell() {
                                 {formatClientTime(message.createdAt, message.time)}
                               </time>
                               {message.editedAt && (
-                                <span className="edited-tag" title="Edited">
+                                <button
+                                  type="button"
+                                  className="edited-tag"
+                                  title={`Edited ${formatClientDateTime(message.editedAt)} · show history`}
+                                  onClick={() => setEditHistoryId(String(message.id))}
+                                >
                                   (edited)
-                                </span>
+                                </button>
                               )}
                               {message.pinned && (
                                 <span className="pin-tag flex items-center gap-1" title="Pinned">
@@ -6205,7 +6765,10 @@ export function ChatShell() {
                               }
                             />
                           ) : message.kind === "dnd" && message.payload ? (
-                            <DndCard {...message.payload} />
+                            <DndCard
+                              {...message.payload}
+                              onCommand={(command) => void runCommand(command)}
+                            />
                           ) : message.kind === "music-settings" && message.payload ? (
                             <MusicSettingsCard
                               settings={message.payload}
@@ -6314,7 +6877,7 @@ export function ChatShell() {
                               selfHandle={user.username}
                               emojis={emojiMap}
                               onMention={openProfileByHandle}
-                              onImage={setLightbox}
+                              onImage={setLightboxImage}
                               onPdf={setPdfViewer}
                               formatTime={(d) => formatClientTime(d, "")}
                             />
@@ -6323,11 +6886,30 @@ export function ChatShell() {
                               text={message.text}
                               selfHandle={user.username}
                               onMention={openProfileByHandle}
-                              onImage={setLightbox}
+                              onImage={setLightboxImage}
                               emojis={emojiMap}
                               linkPreviews
+                              channels={activeServer?.channels}
+                              roles={activeServer?.roles}
+                              onChannel={openMentionedChannel}
                             />
                           )}
+
+                          {!message.kind &&
+                            (message.payload?.embeds?.length ||
+                              message.payload?.components?.length) ? (
+                            <BotEmbeds
+                              embeds={message.payload.embeds}
+                              components={message.payload.components}
+                              selfHandle={user.username}
+                              onMention={openProfileByHandle}
+                              onImage={setLightboxImage}
+                              emojis={emojiMap}
+                              onComponent={(customId, componentType, values) =>
+                                pressBotComponent(message, customId, componentType, values)
+                              }
+                            />
+                          ) : null}
 
                           {message.payload?.themeShare && (
                             <ThemeShareCard
@@ -6440,32 +7022,21 @@ export function ChatShell() {
                               src={message.audio}
                             />
                           )}
-                          {message.image && (
-                            <img
-                              className="message-image"
-                              src={message.image}
-                              alt="Shared attachment"
-                              onClick={() => setLightbox(message.image!)}
-                            />
-                          )}
-                          {message.images && message.images.length > 0 && (
-                            <div
-                              className={`attachment-grid count-${Math.min(
-                                message.images.length,
-                                4,
-                              )}`}
-                            >
-                              {message.images.map((url) => (
-                                <img
-                                  key={url}
-                                  className="message-image"
-                                  src={url}
-                                  alt="Shared attachment"
-                                  onClick={() => setLightbox(url)}
-                                />
-                              ))}
-                            </div>
-                          )}
+                          {(() => {
+                            const allImages = [
+                              message.image,
+                              ...(message.images || []),
+                            ].filter((img): img is string => typeof img === "string" && Boolean(img));
+                            if (allImages.length === 0) return null;
+                            return (
+                              <ImageGallery
+                                images={allImages}
+                                onOpenLightbox={(imgs, idx) =>
+                                  setLightbox({ images: imgs, index: idx })
+                                }
+                              />
+                            );
+                          })()}
                           {message.file?.type === "pdf" && (
                             <button
                               type="button"
@@ -6840,7 +7411,7 @@ export function ChatShell() {
                   )}
 
                   {mentionActive && (
-                    <div className="mention-menu">
+                    <div className="mention-menu" role="listbox" aria-label={tagQuery?.trigger === "#" ? "Channels" : "Mentions"}>
                       {mentionMatches.map((option, index) => {
                         const active = index === slashIndex % mentionMatches.length;
                         // Section headers, printed when the kind changes.
@@ -6848,9 +7419,40 @@ export function ChatShell() {
                         const header =
                           !previous || previous.kind !== option.kind ? (
                             <div className="mention-section" key={`h:${option.kind}`}>
-                              {option.kind === "user" ? "MEMBERS" : "ROLES"}
+                              {option.kind === "user"
+                                ? "MEMBERS"
+                                : option.kind === "role"
+                                  ? "ROLES"
+                                  : "CHANNELS"}
                             </div>
                           ) : null;
+
+                        if (option.kind === "channel") {
+                          const channel = option.channel;
+                          return (
+                            <div key={`channel:${channel.id}`}>
+                              {header}
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={active}
+                                className={`mention-item ${active ? "active" : ""}`}
+                                onMouseEnter={() => setSlashIndex(index)}
+                                onClick={() => pickMention(option)}
+                              >
+                                {channel.kind === "voice" ? (
+                                  <Volume2 size={16} className="mention-channel-icon" />
+                                ) : (
+                                  <Hash size={16} className="mention-channel-icon" />
+                                )}
+                                <span className="mention-primary">{channel.name}</span>
+                                <span className="mention-note">
+                                  {channel.kind === "voice" ? "Voice channel" : channel.topic || "Text channel"}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        }
 
                         if (option.kind === "role") {
                           return (
@@ -6858,6 +7460,8 @@ export function ChatShell() {
                               {header}
                               <button
                                 type="button"
+                                role="option"
+                                aria-selected={active}
                                 className={`mention-item ${active ? "active" : ""}`}
                                 onMouseEnter={() => setSlashIndex(index)}
                                 onClick={() => pickMention(option)}
@@ -6886,6 +7490,8 @@ export function ChatShell() {
                             {header}
                             <button
                               type="button"
+                              role="option"
+                              aria-selected={active}
                               className={`mention-item ${active ? "active" : ""}`}
                               onMouseEnter={() => setSlashIndex(index)}
                               onClick={() => pickMention(option)}
@@ -6902,9 +7508,50 @@ export function ChatShell() {
                               >
                                 {member.displayName}
                               </span>
-                              <span className="mention-note">@{member.username}</span>
+                              <span className="mention-note">
+                                {member.globalName && member.globalName !== member.displayName
+                                  ? `${member.globalName} · `
+                                  : ""}
+                                @{member.username}
+                              </span>
                             </button>
                           </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {emojiActive && (
+                    <div className="mention-menu">
+                      <div className="mention-section">
+                        {emojiShortcodeMatch?.prefix.includes("+")
+                          ? "REACT TO LAST MESSAGE"
+                          : "EMOJI SHORTCODES"}
+                      </div>
+                      {emojiMatches.map((item, index) => {
+                        const active = index === emojiIndex % emojiMatches.length;
+                        return (
+                          <button
+                            key={item.name}
+                            type="button"
+                            className={`mention-item ${active ? "active" : ""}`}
+                            onMouseEnter={() => setEmojiIndex(index)}
+                            onClick={() => pickEmojiShortcode(item)}
+                          >
+                            <span className="text-base shrink-0 mr-2 flex items-center justify-center w-5 h-5">
+                              {item.url ? (
+                                <img src={item.url} alt={item.name} className="w-4 h-4 object-contain" />
+                              ) : (
+                                item.symbol
+                              )}
+                            </span>
+                            <span className="mention-primary">
+                              {emojiShortcodeMatch?.prefix.includes("+")
+                                ? `:+${item.name}:`
+                                : `:${item.name}:`}
+                            </span>
+                            {item.isCustom && <span className="mention-note">Server Emoji</span>}
+                          </button>
                         );
                       })}
                     </div>
@@ -6991,7 +7638,15 @@ export function ChatShell() {
                     </div>
                   )}
 
-                  {isDmBlocked ? (
+                  {myTimeoutUntil && !isDmBlocked ? (
+                    <div className="dm-blocked-banner">
+                      <Timer size={16} className="text-amber-400 shrink-0" />
+                      <span>
+                        You are timed out in this server until{" "}
+                        {formatClientDateTime(myTimeoutUntil)}. You can still read along.
+                      </span>
+                    </div>
+                  ) : isDmBlocked ? (
                     <div className="dm-blocked-banner">
                       <ShieldAlert size={16} className="text-rose-400 shrink-0" />
                       <span>You have blocked this user. Unblock them to send messages.</span>
@@ -7030,8 +7685,12 @@ export function ChatShell() {
                         value={draft}
                         onChange={(event) => {
                           setDraft(event.target.value);
+                          setComposerCaret(event.target.selectionStart ?? event.target.value.length);
                           if (event.target.value.trim()) noteTyping();
                         }}
+                        onSelect={(event) =>
+                          setComposerCaret(event.currentTarget.selectionStart ?? 0)
+                        }
                         onKeyDown={onComposerKeyDown}
                         onPaste={(event) => {
                           // Pasting a screenshot attaches it instead of doing nothing.
@@ -7221,36 +7880,28 @@ export function ChatShell() {
                   text={threadRoot.text}
                   selfHandle={user.username}
                   onMention={openProfileByHandle}
-                  onImage={setLightbox}
+                  onImage={setLightboxImage}
                   emojis={emojiMap}
                   linkPreviews
+                  channels={activeServer?.channels}
+                  roles={activeServer?.roles}
+                  onChannel={openMentionedChannel}
                 />
-                {threadRoot.image && (
-                  <img
-                    className="message-image"
-                    src={threadRoot.image}
-                    alt="Attachment"
-                    onClick={() => setLightbox(threadRoot.image!)}
-                  />
-                )}
-                {threadRoot.images && threadRoot.images.length > 0 && (
-                  <div
-                    className={`attachment-grid count-${Math.min(
-                      threadRoot.images.length,
-                      4,
-                    )}`}
-                  >
-                    {threadRoot.images.map((url) => (
-                      <img
-                        key={url}
-                        className="message-image"
-                        src={url}
-                        alt="Attachment"
-                        onClick={() => setLightbox(url)}
-                      />
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const allImages = [
+                    threadRoot.image,
+                    ...(threadRoot.images || []),
+                  ].filter((img): img is string => typeof img === "string" && Boolean(img));
+                  if (allImages.length === 0) return null;
+                  return (
+                    <ImageGallery
+                      images={allImages}
+                      onOpenLightbox={(imgs, idx) =>
+                        setLightbox({ images: imgs, index: idx })
+                      }
+                    />
+                  );
+                })()}
                 {threadRoot.file?.type === "pdf" && (
                   <button
                     type="button"
@@ -7339,7 +7990,7 @@ export function ChatShell() {
                         selfHandle={user.username}
                         emojis={emojiMap}
                         onMention={openProfileByHandle}
-                        onImage={setLightbox}
+                        onImage={setLightboxImage}
                         onPdf={setPdfViewer}
                         formatTime={(d) => formatClientTime(d, "")}
                       />
@@ -7348,9 +7999,12 @@ export function ChatShell() {
                         text={reply.text}
                         selfHandle={user.username}
                         onMention={openProfileByHandle}
-                        onImage={setLightbox}
+                        onImage={setLightboxImage}
                         emojis={emojiMap}
                         linkPreviews
+                        channels={activeServer?.channels}
+                        roles={activeServer?.roles}
+                        onChannel={openMentionedChannel}
                       />
                     )}
                     {reply.payload?.themeShare && (
@@ -7371,32 +8025,21 @@ export function ChatShell() {
                         />
                       );
                     })()}
-                    {reply.image && (
-                      <img
-                        className="message-image"
-                        src={reply.image}
-                        alt="Attachment"
-                        onClick={() => setLightbox(reply.image!)}
-                      />
-                    )}
-                    {reply.images && reply.images.length > 0 && (
-                      <div
-                        className={`attachment-grid count-${Math.min(
-                          reply.images.length,
-                          4,
-                        )}`}
-                      >
-                        {reply.images.map((url) => (
-                          <img
-                            key={url}
-                            className="message-image"
-                            src={url}
-                            alt="Attachment"
-                            onClick={() => setLightbox(url)}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    {(() => {
+                      const allImages = [
+                        reply.image,
+                        ...(reply.images || []),
+                      ].filter((img): img is string => typeof img === "string" && Boolean(img));
+                      if (allImages.length === 0) return null;
+                      return (
+                        <ImageGallery
+                          images={allImages}
+                          onOpenLightbox={(imgs, idx) =>
+                            setLightbox({ images: imgs, index: idx })
+                          }
+                        />
+                      );
+                    })()}
                     {reply.file?.type === "pdf" && (
                       <button
                         type="button"
@@ -7634,6 +8277,15 @@ export function ChatShell() {
                   {member.displayName}
                 </strong>
                 <PrideBadges badges={member.prideBadges} mini />
+                {activeUntil(member.timeoutUntil) && (
+                  <span
+                    className="member-timeout-icon"
+                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
+                    aria-label="Timed out"
+                  >
+                    <Timer size={12} />
+                  </span>
+                )}
               </div>
               <span>
                 {(member.id === user.id ? myCustomStatus : member.customStatus) ||
@@ -7675,6 +8327,15 @@ export function ChatShell() {
                   {member.displayName}
                 </strong>
                 <PrideBadges badges={member.prideBadges} mini />
+                {activeUntil(member.timeoutUntil) && (
+                  <span
+                    className="member-timeout-icon"
+                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
+                    aria-label="Timed out"
+                  >
+                    <Timer size={12} />
+                  </span>
+                )}
               </div>
               <span>Away</span>
             </div>
@@ -7828,7 +8489,7 @@ export function ChatShell() {
           }
           targetVoiceChannelId={
             voiceChannels.find((channel) =>
-              (hub.voice[channel.id] || []).some(
+              (voiceRooms[channel.id] || []).some(
                 (person) => person.id === userMenu.member.id,
               ),
             )?.id || null
@@ -7837,7 +8498,60 @@ export function ChatShell() {
             void moveMember(userMenu.member.id, channelId);
             setUserMenu(null);
           }}
+          timeoutUntil={activeUntil(membersById.get(userMenu.member.id)?.timeoutUntil)}
+          onTimeout={
+            !inDmHome &&
+            userMenu.member.id !== user.id &&
+            membersById.has(userMenu.member.id) &&
+            !membersById.get(userMenu.member.id)?.isAdmin &&
+            activeServer?.ownerId !== userMenu.member.id &&
+            (canModerate ||
+              canManageServer ||
+              hasPermission(myPermissions, Permission.KICK_MEMBERS))
+              ? (minutes) => {
+                  const id = userMenu.member.id;
+                  setUserMenu(null);
+                  void timeoutMember(id, minutes);
+                }
+              : undefined
+          }
+          onNickname={
+            !inDmHome &&
+            membersById.has(userMenu.member.id) &&
+            (userMenu.member.id === user.id ||
+              (canManageNicknames &&
+                !membersById.get(userMenu.member.id)?.isAdmin &&
+                activeServer?.ownerId !== userMenu.member.id))
+              ? () => {
+                  const id = userMenu.member.id;
+                  setUserMenu(null);
+                  editNickname(id);
+                }
+              : undefined
+          }
         />
+      )}
+
+      {eventsOpen && activeServer && !inDmHome && user && (
+        <EventsPanel
+          serverId={activeServer.id}
+          events={serverEvents}
+          reload={reloadEvents}
+          userId={user.id}
+          canManage={canManageServer || canManageChannels}
+          voiceChannels={voiceChannels.map((channel) => ({ id: channel.id, name: channel.name }))}
+          onJoinVoice={(channelId) => {
+            const channel = voiceChannels.find((item) => item.id === channelId);
+            setEventsOpen(false);
+            if (channel) openVoiceChannel(channel);
+          }}
+          onClose={() => setEventsOpen(false)}
+          onRequestConfirm={showCustomConfirm}
+        />
+      )}
+
+      {editHistoryId && (
+        <EditHistoryDialog messageId={editHistoryId} onClose={() => setEditHistoryId(null)} />
       )}
 
       {railMenu && (
@@ -8008,7 +8722,7 @@ export function ChatShell() {
         </>
       )}
 
-      {lightbox && (
+      {lightbox && lightbox.images[lightbox.index] && (
         <div
           className="lightbox"
           role="dialog"
@@ -8023,10 +8737,63 @@ export function ChatShell() {
           >
             ×
           </button>
-          <img src={lightbox} alt="" onClick={(event) => event.stopPropagation()} />
+          {lightbox.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="lightbox-nav lightbox-prev"
+                aria-label="Previous image"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightbox((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          index:
+                            (prev.index - 1 + prev.images.length) %
+                            prev.images.length,
+                        }
+                      : null,
+                  );
+                }}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="lightbox-nav lightbox-next"
+                aria-label="Next image"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightbox((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          index: (prev.index + 1) % prev.images.length,
+                        }
+                      : null,
+                  );
+                }}
+              >
+                ›
+              </button>
+              <div
+                className="lightbox-counter"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {lightbox.index + 1} / {lightbox.images.length}
+              </div>
+            </>
+          )}
+          <img
+            key={lightbox.images[lightbox.index]}
+            src={lightbox.images[lightbox.index]}
+            alt=""
+            onClick={(event) => event.stopPropagation()}
+          />
           <a
             className="lightbox-open"
-            href={lightbox}
+            href={lightbox.images[lightbox.index]}
             target="_blank"
             rel="noreferrer"
             onClick={(event) => event.stopPropagation()}
@@ -8103,6 +8870,10 @@ export function ChatShell() {
           members={members}
           onlineUserIds={hub.online}
           canManageServer={canManageServer}
+          canManageExpressions={
+            hasPermission(myPermissions, Permission.MANAGE_EMOJIS) ||
+            hasPermission(myPermissions, Permission.MANAGE_CHANNELS)
+          }
           canCreateInvites={canCreateServerInvites}
           onClose={() => setServerSettingsOpen(false)}
           onServerUpdated={() => void loadServers().catch(() => undefined)}
@@ -8186,6 +8957,9 @@ export function ChatShell() {
             setActiveServerId(DM_HOME);
             setActiveChannelId(target.id);
             setStageChannelId(null);
+            if (dms.find((dm) => dm.channelId === target.id)?.hidden) {
+              void setDmClosed(target.id, false);
+            }
           } else if (target.type === "server") {
             setActiveServerId(target.id);
           }
@@ -8330,9 +9104,10 @@ export function ChatShell() {
               <button
                 type="button"
                 onClick={() => setMarkdownModalOpen(false)}
-                className="text-white/40 hover:text-white transition-colors text-lg"
+                className="popup-close-x"
+                aria-label="Close markdown guide"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
@@ -8495,6 +9270,14 @@ export function ChatShell() {
                       {users.length}{" "}
                       {users.length === 1 ? "reaction" : "reactions"}
                     </span>
+                    <button
+                      type="button"
+                      className="popup-close-x"
+                      onClick={() => setReactionViewer(null)}
+                      aria-label="Close reactions"
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
                   <div className="reaction-viewer-list">
                     {users.length === 0 && (

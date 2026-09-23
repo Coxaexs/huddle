@@ -135,7 +135,7 @@ export async function POST(request: Request) {
   const colors = JSON.stringify(theme.colors || {});
   const corners = Math.min(28, Math.max(4, Number(theme.corners) || 16));
   const backdrop = (theme.backdrop || "plain").slice(0, 30);
-  const customCss = (theme.customCss || "").slice(0, 30000);
+  const customCss = typeof theme.customCss === "string" ? theme.customCss : "";
   const isPublic = theme.isPublic !== false ? 1 : 0;
   const now = new Date().toISOString();
 
