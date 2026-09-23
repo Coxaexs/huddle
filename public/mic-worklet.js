@@ -47,6 +47,17 @@ const FLOOR_WINDOW_COUNT = 6;
 /** How far above the floor counts as speech, when RNNoise is not doing it. */
 const SPEECH_MARGIN_DB = 9;
 
+/**
+ * Voice focus ("voice" mode): RNNoise can tell speech from noise but not whose
+ * speech it is. What it can lean on is distance — the person at the mic is
+ * reliably louder than a TV or a flatmate across the room. So we remember how
+ * loud *your* speech has been and only let through speech within this many dB
+ * of it. The level decays slowly so moving back from the mic is forgiven.
+ */
+const FOCUS_MARGIN_DB = 12;
+const FOCUS_DECAY_DB_PER_SEC = 2;
+const FOCUS_START_DB = -45;
+
 const SILENT_DB = -100;
 
 const toDb = (linear) => (linear > 1e-10 ? 20 * Math.log10(linear) : SILENT_DB);
@@ -87,6 +98,7 @@ class MicProcessor extends AudioWorkletProcessor {
     this.inputDb = SILENT_DB;
     this.outputDb = SILENT_DB;
     this.vad = 0;
+    this.nearSpeechDb = FOCUS_START_DB;
     this.framesSinceReport = 0;
 
     // RNNoise, once (and if) the main thread hands us a compiled module.
@@ -125,7 +137,8 @@ class MicProcessor extends AudioWorkletProcessor {
   /** One 480-sample frame: denoise, measure, decide gain and gate. */
   processFrame(frame) {
     let vad = -1;
-    if (this.rnnoise && this.mode === "rnnoise") {
+    const focus = this.mode === "voice";
+    if (this.rnnoise && (this.mode === "rnnoise" || focus)) {
       vad = this.rnnoise.process(frame);
     }
 
@@ -147,9 +160,19 @@ class MicProcessor extends AudioWorkletProcessor {
     const floor = Math.min(this.floorCurrent, ...this.floorWindows);
     const floorDb = toDb(floor === Infinity ? rms : floor);
 
-    const speech =
+    let speech =
       vad >= 0 ? vad > 0.6 : rmsDb > floorDb + SPEECH_MARGIN_DB && rmsDb > -65;
-    this.vad = vad >= 0 ? vad : speech ? 1 : 0;
+
+    if (focus && speech) {
+      // Confident, loud speech teaches us what "you" sound like; everything
+      // else only lets the reference drift down slowly.
+      const decay = FOCUS_DECAY_DB_PER_SEC * (FRAME / sampleRate);
+      if (vad < 0 || vad > 0.85) {
+        this.nearSpeechDb = Math.max(rmsDb, this.nearSpeechDb - decay);
+      }
+      if (rmsDb < this.nearSpeechDb - FOCUS_MARGIN_DB) speech = false;
+    }
+    this.vad = vad >= 0 ? (speech ? vad : 0) : speech ? 1 : 0;
 
     // Auto-gain only learns from speech. Adapting during pauses would patiently
     // amplify the room until the next word arrives far too loud.
@@ -170,7 +193,10 @@ class MicProcessor extends AudioWorkletProcessor {
     // Gate decision. On "auto" we trust the speech detector; on a manual
     // threshold the user is explicitly saying how loud counts as them.
     let open = true;
-    if (this.gateEnabled) {
+    if (focus) {
+      // Voice focus is the gate; a manual threshold still applies on top.
+      open = speech && (this.sensitivity === "auto" || rmsDb > this.sensitivity);
+    } else if (this.gateEnabled) {
       open = this.sensitivity === "auto" ? speech : rmsDb > this.sensitivity;
     }
     if (open) this.holdFrames = Math.ceil(GATE_HOLD / (FRAME / sampleRate));

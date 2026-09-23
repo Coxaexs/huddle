@@ -15,6 +15,15 @@ contextBridge.exposeInMainWorld("huddle", {
   /** Re-binds the global mute shortcut to the accelerator chosen in Settings. */
   setMuteHotkey: (accelerator) =>
     ipcRenderer.send("set-mute-hotkey", String(accelerator || "")),
+  /**
+   * Global push-to-talk key (a KeyboardEvent.code, or "" to turn it off).
+   * Resolves true when the key is held globally, false if only in-window.
+   */
+  setPushToTalkKey: (code) =>
+    new Promise((resolve) => {
+      ipcRenderer.once("ptt-global", (_event, ok) => resolve(Boolean(ok)));
+      ipcRenderer.send("set-ptt-key", String(code || ""));
+    }),
   /** Trigger native OS push notification */
   notify: (title, body) =>
     ipcRenderer.send("desktop-notification", { title, body }),

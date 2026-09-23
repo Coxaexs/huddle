@@ -315,11 +315,27 @@ export function useVoice({
     const up = (event: KeyboardEvent) => {
       if (event.code === pttKey) setPttHeld(false);
     };
+    // Desktop shell: the key is watched system-wide and relayed as press and
+    // release, so PTT keeps working while you're in a game.
+    const relay = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      if (action === "ptt-down") setPttHeld(true);
+      else if (action === "ptt-up") setPttHeld(false);
+    };
+    const shell = (
+      window as unknown as {
+        huddle?: { setPushToTalkKey?: (code: string) => Promise<boolean> };
+      }
+    ).huddle;
+    void shell?.setPushToTalkKey?.(pttKey);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("huddle-hotkey", relay);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("huddle-hotkey", relay);
+      void shell?.setPushToTalkKey?.("");
       setPttHeld(false);
     };
   }, [pushToTalk, channelId, pttKey]);
@@ -1134,8 +1150,21 @@ export function useVoice({
             height: { ideal: profile.height, max: profile.height },
             frameRate: { ideal: profile.frameRate, max: profile.frameRate },
           },
-          audio: true,
-        });
+          // Desktop/app audio rides along with the video. Echo cancellation
+          // and friends are for voices: on game or music audio they pump and
+          // smear, so they are off here.
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            // Keep hearing it yourself while it is shared.
+            suppressLocalAudioPlayback: false,
+          } as MediaTrackConstraints,
+          // Chromium hints: offer "Share system audio" for whole screens and
+          // pre-tick the audio box for tabs. Ignored where unsupported.
+          systemAudio: "include",
+          windowAudio: "system",
+        } as DisplayMediaStreamOptions);
         screenStreamRef.current = stream;
         setScreenQuality(quality);
         setScreenSharing(true);

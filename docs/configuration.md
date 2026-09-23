@@ -61,6 +61,14 @@ docker compose exec hoffle npx web-push generate-vapid-keys
 
 Do not change the keys later, or existing subscriptions stop working.
 
+### Phone notifications without vendor keys (ntfy / UnifiedPush)
+
+Each user can paste an [ntfy](https://ntfy.sh) topic URL under **Settings → Appearance → Phone notifications**. Hoffle then POSTs mentions, DMs, event reminders and incoming calls (high priority) to that topic, and the ntfy app delivers them in the background on Android and iOS. Nothing here needs VAPID, APNs or FCM credentials. Run your own ntfy server if you'd rather not use ntfy.sh.
+
+| Variable                    | What it does |
+| --------------------------- | ------------ |
+| `HUDDLE_PUSH_ALLOW_PRIVATE` | Set to `1` to allow `http://` and LAN/private addresses (e.g. an `ntfy` container on the same compose network). Off by default, since the server makes these requests. |
+
 ## Integrations
 
 | Variable                | What it does |

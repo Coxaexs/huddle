@@ -634,7 +634,9 @@ export async function POST(request: Request) {
     }
   }
   if (pushTargets.size > 0) {
-    void sendPushNotifications(db, Array.from(pushTargets), {
+    // Awaited: a Worker may drop un-awaited work once the response is sent,
+    // which silently lost these notifications. sendPushNotifications never throws.
+    await sendPushNotifications(db, Array.from(pushTargets), {
       title: stored.author,
       body: stored.content ? stored.content.slice(0, 120) : "Shared an attachment",
       url: `/hangout`,

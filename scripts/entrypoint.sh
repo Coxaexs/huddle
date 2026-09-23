@@ -25,6 +25,7 @@ DND_PUBLIC_URL
 FEATURE_RECORD_SESSIONS
 GOOGLE_SITE_VERIFICATION
 HUDDLE_ICE_SERVERS
+HUDDLE_PUSH_ALLOW_PRIVATE
 KLIPY_API_KEY
 LANDING_DOMAINS
 LASTFM_API_KEY
@@ -61,6 +62,21 @@ if [ ! -f "$SECRETS_FILE" ]; then
     echo "BOOTSTRAP_CODE=$(random_string 'A-HJ-NP-Z2-9' 10)"
   } > "$SECRETS_FILE"
   umask 022
+fi
+
+# Browser push needs a VAPID key pair. Generated once and kept in the secrets
+# file (instances that existed before this get one on their next start), since
+# changing it later invalidates every subscription.
+if ! grep -q '^VAPID_PUBLIC_KEY=' "$SECRETS_FILE"; then
+  keys="$(node -e 'const k=require("web-push").generateVAPIDKeys();console.log(k.publicKey+" "+k.privateKey)' 2>/dev/null || true)"
+  if [ -n "$keys" ]; then
+    umask 077
+    {
+      echo "VAPID_PUBLIC_KEY=${keys%% *}"
+      echo "VAPID_PRIVATE_KEY=${keys##* }"
+    } >> "$SECRETS_FILE"
+    umask 022
+  fi
 fi
 
 # --- 2 & 3. Merge into the runtime env file ----------------------------------

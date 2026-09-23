@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
+import { PhonePushSettings } from "./phone-push-settings";
+import { disableWebPush, enableWebPush } from "../lib/web-push";
 import { Avatar } from "./avatar";
 import { DiceOverlay } from "./dice-overlay";
 import type { DiceRollEvent } from "@/lib/protocol";
@@ -253,14 +255,15 @@ function VoiceInput({
         <option value="off">Off</option>
         <option value="browser">Standard — your browser&apos;s filter</option>
         <option value="rnnoise">Enhanced — removes fans, keyboards, hum</option>
-        <option value="voice" disabled>
-          Remove background voices — needs the GPU service
-        </option>
+        <option value="voice">Remove background noise &amp; voices — runs on your device</option>
       </select>
       <p className="modal-hint">
-        Enhanced runs a small neural network on your own machine. It removes
-        noise, not other people talking — that needs a model too heavy for a
-        browser tab.
+        Enhanced and Remove background noise &amp; voices run a small neural
+        network on your own machine, so no GPU server is needed. The second one
+        also learns
+        how loud you are at the mic and silences quieter, farther-away speech —
+        a TV or someone across the room. If people say your first word gets
+        cut off, switch back to Enhanced.
       </p>
     </div>
   );
@@ -2901,7 +2904,7 @@ export function SettingsDialog({
               <label className="appearance-switch">
                 <span>
                   <strong>Desktop notifications</strong>
-                  <small>Ping when someone @mentions you</small>
+                  <small>Mentions, DMs and calls — even with the tab closed</small>
                 </span>
                 <input
                   type="checkbox"
@@ -2913,12 +2916,16 @@ export function SettingsDialog({
                       "huddle-notify",
                       on ? "on" : "off",
                     );
-                    if (on && typeof Notification !== "undefined") {
-                      void Notification.requestPermission();
-                    }
+                    // Subscribing asks for permission, so it has to happen
+                    // here in the click rather than on page load.
+                    void (on ? enableWebPush(true) : disableWebPush()).catch(
+                      () => undefined,
+                    );
                   }}
                 />
               </label>
+
+              <PhonePushSettings />
             </>
           )}
 

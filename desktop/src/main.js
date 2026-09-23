@@ -28,8 +28,56 @@ const MUTE_HOTKEY = "CommandOrControl+Shift+M";
  * no preload is injected into it and node integration is off.
  */
 
-const APP_URL = process.env.HUDDLE_URL || "https://deeppixel.online/hangout";
+const DEFAULT_URL = "https://deeppixel.online/hangout";
 const boundsFile = path.join(app.getPath("userData"), "window-bounds.json");
+const configFile = path.join(app.getPath("userData"), "config.json");
+
+function loadConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(configFile, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveConfig(next) {
+  try {
+    fs.writeFileSync(configFile, JSON.stringify({ ...loadConfig(), ...next }, null, 2));
+  } catch {
+    // Unwritable profile: the choice lasts for this session only.
+  }
+}
+
+/** Accepts "chat.example.com" or a full URL; returns a clean http(s) URL or "". */
+function normalizeServerUrl(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Which instance to open, most specific first:
+ *   huddle --server=https://chat.example.com   (one launch)
+ *   HUDDLE_URL=https://chat.example.com huddle (one launch)
+ *   Server → Change server… in the menu        (remembered)
+ */
+function resolveAppUrl() {
+  const flag = process.argv.find((arg) => arg.startsWith("--server="));
+  return (
+    normalizeServerUrl(flag && flag.slice("--server=".length)) ||
+    normalizeServerUrl(process.env.HUDDLE_URL) ||
+    normalizeServerUrl(loadConfig().serverUrl) ||
+    DEFAULT_URL
+  );
+}
+
+let APP_URL = resolveAppUrl();
 
 let mainWindow = null;
 let tray = null;
@@ -151,6 +199,22 @@ function createWindow() {
   });
 }
 
+// Linux: capture through PipeWire and the xdg-desktop-portal, which is how
+// screen sharing works on Wayland (and is fine on X11 too). Must be set before
+// the app is ready.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
+}
+
+function supportsLoopbackAudio() {
+  // Linux loopback goes through PulseAudio / pipewire-pulse's monitor source.
+  if (process.platform === "win32" || process.platform === "linux") return true;
+  if (process.platform !== "darwin") return false;
+  const electronMajor = Number(process.versions.electron.split(".")[0]);
+  const darwinMajor = Number(require("node:os").release().split(".")[0]);
+  return electronMajor >= 36 && darwinMajor >= 22; // Darwin 22 = macOS 13
+}
+
 /** Grant the media + display-capture permissions a call app needs. */
 function configureSession() {
   const ses = session.defaultSession;
@@ -172,15 +236,20 @@ function configureSession() {
   ses.setDisplayMediaRequestHandler(
     async (_request, callback) => {
       try {
-        const source = await pickSource();
+        // On Linux the portal shows the system's own picker, so ours would
+        // just be a second, emptier dialog in front of it.
+        const source =
+          process.platform === "linux" ? await portalSource() : await pickSource();
         if (!source) {
           callback({}); // user cancelled -> renderer gets NotAllowedError
           return;
         }
         callback({
           video: source,
-          // System audio capture only works on Windows via the loopback device.
-          audio: process.platform === "win32" ? "loopback" : undefined,
+          // Desktop audio alongside the video: Chromium's loopback capture on
+          // Windows, PulseAudio/PipeWire on Linux, and ScreenCaptureKit on
+          // macOS 13+ from Electron 36.
+          audio: supportsLoopbackAudio() ? "loopback" : undefined,
         });
       } catch {
         callback({});
@@ -190,6 +259,56 @@ function configureSession() {
     // on both platforms.
     { useSystemPicker: false },
   );
+}
+
+/** A small dialog for pointing the app at a different Hoffle instance. */
+function openServerDialog() {
+  const dialog = new BrowserWindow({
+    width: 460,
+    height: 260,
+    parent: mainWindow || undefined,
+    modal: Boolean(mainWindow),
+    show: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: "Change server",
+    backgroundColor: "#1b1b21",
+    webPreferences: {
+      preload: path.join(__dirname, "server-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  dialog.setMenuBarVisibility(false);
+  dialog.loadFile(path.join(__dirname, "server.html"));
+  dialog.webContents.once("did-finish-load", () => {
+    dialog.webContents.send("server:current", { current: APP_URL, fallback: DEFAULT_URL });
+    dialog.show();
+  });
+}
+
+function switchServer(url) {
+  APP_URL = url;
+  saveConfig({ serverUrl: url === DEFAULT_URL ? "" : url });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(APP_URL);
+  else createWindow();
+}
+
+/**
+ * Linux: asking desktopCapturer for sources opens the xdg-desktop-portal
+ * picker (GNOME, KDE, wlroots…), and the one thing chosen there comes back as
+ * the only source. On X11 without a portal we get the full list instead, so
+ * fall back to our own picker in that case.
+ */
+async function portalSource() {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 0, height: 0 },
+  });
+  if (sources.length === 1) return sources[0];
+  if (!sources.length) return null; // cancelled in the portal
+  return pickSource();
 }
 
 /** Opens a modal picker listing screens and windows; resolves the chosen source. */
@@ -258,6 +377,13 @@ function buildMenu() {
     { role: "fileMenu" },
     { role: "editMenu" },
     {
+      label: "Server",
+      submenu: [
+        { label: "Change server…", click: () => openServerDialog() },
+        { label: "Use default server", click: () => switchServer(DEFAULT_URL) },
+      ],
+    },
+    {
       label: "View",
       submenu: [
         { role: "reload" },
@@ -274,6 +400,29 @@ function buildMenu() {
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+/** Maps a DOM KeyboardEvent.code (what Settings stores) to a uiohook keycode. */
+function keycodeFor(keys, code) {
+  if (!code) return null;
+  const aliases = {
+    ControlLeft: "Ctrl",
+    ControlRight: "CtrlRight",
+    ShiftLeft: "Shift",
+    ShiftRight: "ShiftRight",
+    AltLeft: "Alt",
+    AltRight: "AltRight",
+    MetaLeft: "Meta",
+    MetaRight: "MetaRight",
+    Backquote: "Backquote",
+    CapsLock: "CapsLock",
+  };
+  let name = aliases[code];
+  if (!name && /^Key[A-Z]$/.test(code)) name = code.slice(3);
+  if (!name && /^Digit[0-9]$/.test(code)) name = code.slice(5);
+  if (!name && /^Numpad[0-9]$/.test(code)) name = code;
+  if (!name) name = code; // Space, Tab, F1…F24, Insert, Pause, etc.
+  return typeof keys[name] === "number" ? keys[name] : null;
 }
 
 // One running instance; a second launch focuses the existing window.
@@ -341,6 +490,65 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on("set-mute-hotkey", (_event, accelerator) =>
       bindMuteHotkey(accelerator),
     );
+
+    ipcMain.on("server:set", (event, input) => {
+      const url = normalizeServerUrl(input);
+      event.sender.send("server:result", url ? "" : "That doesn't look like a web address.");
+      if (!url) return;
+      BrowserWindow.fromWebContents(event.sender)?.close();
+      switchServer(url);
+    });
+
+    // Global push-to-talk. Electron's globalShortcut only reports key *presses*,
+    // and PTT needs the release too, so this uses a system keyboard hook when
+    // the optional uiohook-napi module is installed. Without it, PTT still
+    // works while the window is focused.
+    let pttKeycode = null;
+    let pttHeld = false;
+    let hook = null;
+    try {
+      hook = require("uiohook-napi");
+    } catch {
+      hook = null;
+    }
+    if (hook) {
+      const { uIOhook } = hook;
+      uIOhook.on("keydown", (event) => {
+        if (event.keycode !== pttKeycode || pttHeld) return;
+        pttHeld = true;
+        mainWindow?.webContents.send("hotkey", "ptt-down");
+      });
+      uIOhook.on("keyup", (event) => {
+        if (event.keycode !== pttKeycode || !pttHeld) return;
+        pttHeld = false;
+        mainWindow?.webContents.send("hotkey", "ptt-up");
+      });
+    }
+    let hookRunning = false;
+    ipcMain.on("set-ptt-key", (event, code) => {
+      if (!hook) {
+        event.sender.send("ptt-global", false);
+        return;
+      }
+      pttKeycode = keycodeFor(hook.UiohookKey, String(code || ""));
+      pttHeld = false;
+      try {
+        if (pttKeycode !== null && !hookRunning) {
+          hook.uIOhook.start();
+          hookRunning = true;
+        } else if (pttKeycode === null && hookRunning) {
+          hook.uIOhook.stop();
+          hookRunning = false;
+        }
+      } catch {
+        // No accessibility permission (macOS) or no X server: focused-only PTT.
+        pttKeycode = null;
+      }
+      event.sender.send("ptt-global", pttKeycode !== null);
+    });
+    app.on("will-quit", () => {
+      if (hookRunning) hook.uIOhook.stop();
+    });
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

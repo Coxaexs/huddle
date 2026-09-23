@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>Change server</title>
+    <style>
+      body { margin: 0; padding: 20px; background: #1b1b21; color: #e8e8ee; font: 14px system-ui, sans-serif; }
+      h1 { font-size: 16px; margin: 0 0 6px; }
+      p { margin: 0 0 14px; color: #a0a0ac; }
+      input { box-sizing: border-box; width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid #3a3a46; background: #121216; color: inherit; font: inherit; }
+      .error { color: #ff7a7a; min-height: 18px; margin: 6px 0 0; }
+      .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+      button { padding: 8px 14px; border-radius: 6px; border: 0; font: inherit; cursor: pointer; background: #2c2c36; color: inherit; }
+      button.primary { background: #5865f2; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <h1>Connect to a Hoffle server</h1>
+    <p>Enter your instance's address, e.g. <code>chat.example.com</code> or <code>http://192.168.1.20:8730/hangout</code>.</p>
+    <form id="form">
+      <input id="url" type="text" autocomplete="url" spellcheck="false" autofocus />
+      <div class="error" id="error"></div>
+      <div class="row">
+        <button type="button" id="default">Default</button>
+        <button type="button" id="cancel">Cancel</button>
+        <button type="submit" class="primary">Connect</button>
+      </div>
+    </form>
+    <script>
+      const input = document.getElementById("url");
+      let fallback = "";
+      window.server.onCurrent((info) => {
+        input.value = info.current;
+        fallback = info.fallback;
+        input.select();
+      });
+      window.server.onResult((error) => {
+        document.getElementById("error").textContent = error || "";
+      });
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        window.server.set(input.value);
+      });
+      document.getElementById("default").addEventListener("click", () => window.server.set(fallback));
+      document.getElementById("cancel").addEventListener("click", () => window.close());
+    </script>
+  </body>
+</html>

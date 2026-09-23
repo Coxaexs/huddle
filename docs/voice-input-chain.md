@@ -39,14 +39,20 @@ Two constraints worth knowing before changing any of this:
   allowed in a worklet. It costs one audio glitch, once, when the mode is
   switched on.
 
-## The seam for background-voice removal
+## Voice focus (background-voice removal)
 
-`SuppressionMode` includes `"voice"` and the settings dialog shows it disabled.
-Nothing implements it yet. When it is built it should be a **server-side** stage
-on the GPU box, not an in-browser model: running DeepFilterNet or similar via
-`onnxruntime-web` wants `SharedArrayBuffer`, which needs COOP/COEP headers,
-which this app does not set and which would break its cross-origin embeds and
-the recorder's calls out to `serviceUrl`.
+`"voice"` mode runs RNNoise exactly like `"rnnoise"`, then adds a
+distance-based gate in the worklet: it remembers how loud *your* confident
+speech has been (`nearSpeechDb`, decaying 2 dB/s) and treats speech more than
+`FOCUS_MARGIN_DB` (12 dB) below that as someone else. It is a heuristic, not
+speaker separation — a second person right next to the mic gets through — but
+it runs on the client with no extra download.
+
+A true separation model (DeepFilterNet or similar) should still be a
+**server-side** stage on a GPU box rather than in-browser: `onnxruntime-web`
+wants `SharedArrayBuffer`, which needs COOP/COEP headers, which this app does
+not set and which would break its cross-origin embeds and the recorder's calls
+out to `serviceUrl`.
 
 ## Why these settings are not in D1
 

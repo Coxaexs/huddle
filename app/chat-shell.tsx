@@ -155,6 +155,7 @@ import {
 import { apiFetch, apiUrl } from "./lib/client";
 import { registerMedia, unlockAudio, unregisterMedia } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
+import { enableWebPush, registerServiceWorker, showPageNotification } from "./lib/web-push";
 import {
   COMMAND_ALIASES,
   DISCORD_ONLY_COMMANDS,
@@ -431,7 +432,7 @@ function pickImageFile(): Promise<File | null> {
 /** Fires a desktop/web notification, unless the user turned them off. Only
  *  fires when the tab is not the focused/visible one — if you're looking at
  *  the app, the unread badge already tells you. Supports desktop native bridge. */
-function showNotification(title: string, body: string): void {
+function showNotification(title: string, body: string, tag?: string): void {
   try {
     if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
     // Don't pop a notification while the user is actively focused on the app; the
@@ -446,18 +447,8 @@ function showNotification(title: string, body: string): void {
     }
 
     if (typeof Notification === "undefined") return;
-    if (Notification.permission === "default") {
-      void Notification.requestPermission();
-    }
     if (Notification.permission !== "granted") return;
-    const notification = new Notification(title, {
-      body,
-      icon: "/hangout/icon.png",
-    });
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
+    void showPageNotification(title, body, tag).catch(() => undefined);
   } catch {
     // Notifications are best-effort.
   }
@@ -567,13 +558,14 @@ export function ChatShell() {
     recordSessions: true,
   });
 
-  // Register the service worker (for web push) once a signed-in user exists.
+  // Register the service worker and (re)subscribe to web push once signed in.
+  // No permission prompt here — that happens from the settings toggle.
   useEffect(() => {
     if (!user) return;
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker
-      .register("/hangout/sw.js", { scope: "/hangout" })
-      .catch(() => undefined);
+    void registerServiceWorker().then(() => {
+      if (window.localStorage.getItem("huddle-notify") === "off") return;
+      return enableWebPush(false);
+    }).catch(() => undefined);
   }, [user]);
 
   const [servers, setServers] = useState<PublicServer[]>([]);
@@ -2049,6 +2041,7 @@ export function ChatShell() {
           showNotification(
             `${incoming.author} mentioned you`,
             incoming.text.slice(0, 140),
+            `msg-${channelId}`,
           );
         }
         return;
@@ -3814,6 +3807,7 @@ export function ChatShell() {
         showNotification(
           `Incoming ${payload.isVideo ? "Video" : "Voice"} Call`,
           `${payload.fromDisplayName || "Someone"} is calling you...`,
+          `call-${payload.channelId}`,
         );
         setIncomingDmCall({
           channelId: payload.channelId,
