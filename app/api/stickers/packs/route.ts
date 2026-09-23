@@ -1,9 +1,14 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { can, Permission } from "@/lib/permissions";
+import { canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+/** Stickers and shared sounds: Manage Emojis & Stickers, or Manage Channels. */
+function canManageExpressions(db: D1Database, userId: string, serverId: string) {
+  return canAny(db, userId, serverId, Permission.MANAGE_EMOJIS, Permission.MANAGE_CHANNELS);
+}
 
 interface StickerRow {
   id: string;
@@ -43,7 +48,7 @@ export async function GET(request: Request) {
 
 /**
  * Add an uploaded image (already stored in R2 via /api/uploads) as a custom
- * sticker for a server. Gated by MANAGE_CHANNELS.
+ * sticker for a server. Needs Manage Emojis & Stickers or Manage Channels.
  */
 export async function POST(request: Request) {
   const db = bindings().DB;
@@ -63,7 +68,7 @@ export async function POST(request: Request) {
     key?: string;
   };
   const serverId = body.serverId || "";
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_CHANNELS))) {
+  if (!(await canManageExpressions(db, user.id, serverId))) {
     return Response.json(
       { error: "You do not have permission to add stickers here." },
       { status: 403 },
@@ -94,7 +99,7 @@ export async function POST(request: Request) {
   );
 }
 
-/** Remove a custom sticker. Gated by MANAGE_CHANNELS. */
+/** Remove a custom sticker. Needs Manage Emojis & Stickers or Manage Channels. */
 export async function DELETE(request: Request) {
   const db = bindings().DB;
   if (!db) {
@@ -115,7 +120,7 @@ export async function DELETE(request: Request) {
   if (!sticker) {
     return Response.json({ error: "That sticker is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, sticker.server_id, Permission.MANAGE_CHANNELS))) {
+  if (!(await canManageExpressions(db, user.id, sticker.server_id))) {
     return Response.json(
       { error: "You do not have permission to remove stickers here." },
       { status: 403 },
@@ -124,5 +129,38 @@ export async function DELETE(request: Request) {
 
   await db.prepare("DELETE FROM stickers WHERE id = ?").bind(id).run();
   await bindings().UPLOADS?.delete(sticker.key).catch(() => undefined);
+  return Response.json({ ok: true });
+}
+
+/** Rename a custom sticker. */
+export async function PATCH(request: Request) {
+  const db = bindings().DB;
+  if (!db) {
+    return Response.json(
+      { error: "Message storage is not connected." },
+      { status: 503 },
+    );
+  }
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  await ensureSchema(db);
+
+  const body = (await request.json().catch(() => ({}))) as { id?: string; name?: string };
+  const sticker = await db
+    .prepare("SELECT id, server_id, name, key FROM stickers WHERE id = ?")
+    .bind(body.id || "")
+    .first<StickerRow>();
+  if (!sticker) {
+    return Response.json({ error: "That sticker is gone." }, { status: 404 });
+  }
+  if (!(await canManageExpressions(db, user.id, sticker.server_id))) {
+    return Response.json(
+      { error: "You do not have permission to edit stickers here." },
+      { status: 403 },
+    );
+  }
+  const name = body.name?.trim().slice(0, 40);
+  if (!name) return Response.json({ error: "Give it a name." }, { status: 400 });
+  await db.prepare("UPDATE stickers SET name = ? WHERE id = ?").bind(name, sticker.id).run();
   return Response.json({ ok: true });
 }

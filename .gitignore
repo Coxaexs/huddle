@@ -24,3 +24,6 @@ state/
 
 # Local agent settings
 .claude/
+
+# Examples are safe to commit
+!.env.example

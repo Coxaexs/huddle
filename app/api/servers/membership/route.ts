@@ -97,11 +97,21 @@ export async function POST(request: Request) {
       );
     }
 
-    await addServerMember(db, server.id, user.id, code);
-    await db
-      .prepare("UPDATE invites SET uses = uses + 1 WHERE code = ?")
+    // Claim a use atomically so parallel joins can't overspend a limited invite.
+    const claimed = await db
+      .prepare(
+        `UPDATE invites SET uses = uses + 1
+          WHERE code = ? AND revoked = 0 AND (max_uses <= 0 OR uses < max_uses)`,
+      )
       .bind(code)
       .run();
+    if (!claimed.meta.changes) {
+      return Response.json(
+        { error: "That invite code is not valid any more." },
+        { status: 400 },
+      );
+    }
+    await addServerMember(db, server.id, user.id, code);
     await recordAudit(db, {
       serverId: server.id,
       actor: user,

@@ -48,7 +48,8 @@ function findDatabasePath() {
   if (fs.existsSync(miniflareD1Dir)) {
     const files = fs.readdirSync(miniflareD1Dir);
     for (const f of files) {
-      if (f.endsWith(".sqlite") && f !== "metadata.sqlite") {
+      // Skip snapshots written by `backup`, which default to this directory.
+      if (f.endsWith(".sqlite") && f !== "metadata.sqlite" && !f.startsWith("backup-")) {
         candidates.unshift(path.join(miniflareD1Dir, f));
       }
     }

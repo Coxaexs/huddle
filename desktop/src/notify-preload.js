@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld("huddle", {
   /** Re-binds the global mute shortcut to the accelerator chosen in Settings. */
   setMuteHotkey: (accelerator) =>
     ipcRenderer.send("set-mute-hotkey", String(accelerator || "")),
+  /** Trigger native OS push notification */
+  notify: (title, body) =>
+    ipcRenderer.send("desktop-notification", { title, body }),
 });
 
 ipcRenderer.on("hotkey", (_event, action) => {

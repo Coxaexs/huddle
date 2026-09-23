@@ -7,6 +7,8 @@
  * Every statement here must therefore stay idempotent.
  */
 
+import { migrateProfileImages } from "./profile-media";
+
 export const DEFAULT_SERVER_ID = "hangout";
 
 /**
@@ -15,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -269,6 +271,44 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS reactions_message_idx ON reactions(message_id)",
     ),
+    // Earlier versions of edited messages: one row per replaced text.
+    db.prepare(`CREATE TABLE IF NOT EXISTS message_edits (
+        id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        written_at TEXT NOT NULL,
+        replaced_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS message_edits_message_idx ON message_edits(message_id, replaced_at)",
+    ),
+    // Scheduled events (game nights, sessions) and who is coming.
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_events (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        channel_id TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        starts_at TEXT NOT NULL,
+        ends_at TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reminded_at TEXT,
+        started_at TEXT
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_events_server_idx ON server_events(server_id, starts_at)",
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS server_events_starts_idx ON server_events(starts_at)",
+    ),
+    db.prepare(`CREATE TABLE IF NOT EXISTS event_rsvps (
+        event_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (event_id, user_id)
+      )`),
     // @mentions, written when a message names someone. Drives unread badges.
     db.prepare(`CREATE TABLE IF NOT EXISTS mentions (
         message_id TEXT NOT NULL,
@@ -756,6 +796,19 @@ async function migrate(db: D1Database): Promise<void> {
       .prepare("ALTER TABLE server_members ADD COLUMN invite_code TEXT")
       .run();
   }
+  // Closing a DM hides it from your list (per person); messages stay.
+  const dmColumns = await columnNames(db, "dm_members");
+  if (!dmColumns.has("hidden_at")) {
+    await db.prepare("ALTER TABLE dm_members ADD COLUMN hidden_at TEXT").run();
+  }
+  // Per-server nicknames live on the membership row.
+  if (!memberColumns.has("nickname")) {
+    await db.prepare("ALTER TABLE server_members ADD COLUMN nickname TEXT").run();
+  }
+  // Timeouts: until this ISO time the member can read but not post, react or speak.
+  if (!memberColumns.has("timeout_until")) {
+    await db.prepare("ALTER TABLE server_members ADD COLUMN timeout_until TEXT").run();
+  }
 
   const recordingColumns = await columnNames(db, "recording_sessions");
   const recordingMigrations: D1PreparedStatement[] = [];
@@ -804,6 +857,7 @@ async function migrate(db: D1Database): Promise<void> {
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);
+  await migrateProfileImages(db);
   await ensureFts(db);
 
   // Record which schema version this database is now on, so anyone reading it

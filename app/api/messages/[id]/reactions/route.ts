@@ -4,6 +4,7 @@ import { dispatchReaction } from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { blockIfTimedOut } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ export async function POST(
   if (!message) {
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
+  const timedOut = await blockIfTimedOut(db, message.channel_id, user.id);
+  if (timedOut) return timedOut;
 
   const existing = await db
     .prepare(

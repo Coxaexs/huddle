@@ -40,6 +40,8 @@ import {
 import { nativeFor, snowflakeFor } from "./snowflake";
 import { SUPPORTED_API_VERSIONS } from "./protocol";
 import { handleCommandRoutes, handleInteractionRoutes } from "./interactions";
+import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
+import { snapshotBeforeEdit } from "../message-edits";
 
 /** Discord JSON error codes, for the subset of failures we can produce. */
 export const ErrorCode = {
@@ -845,7 +847,7 @@ async function messageRoutes(
         .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
         .bind(now, id)
         .run();
-      await publishMessageEvent(channel.id, { t: "message-deleted", messageId: id });
+      await publishMessageEvent(channel.id, { t: "message-deleted", id });
     }
     const snowflakes = await Promise.all(native.map((id) => snowflakeFor("message", id)));
     const { dispatchToBots } = await import("./dispatch");
@@ -887,33 +889,38 @@ async function messageRoutes(
         .run();
       await publishMessageEvent(channel.id, {
         t: "message-deleted",
-        messageId: nativeMessageId,
+        id: nativeMessageId,
       });
       await dispatchMessageDelete(nativeMessageId, channel.id);
       return new Response(null, { status: 204 });
     }
 
     if (request.method === "PATCH") {
-      const body = (await request.json().catch(() => ({}))) as {
+      const body = (await parseMessageBody(request)) as {
         content?: string;
         embeds?: unknown[];
+        components?: unknown[];
       };
+      const before = await loadMessageRow(db, nativeMessageId);
+      if (!before) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
       const now = new Date().toISOString();
-      const payload = body.embeds ? JSON.stringify({ embeds: body.embeds }) : null;
-      await db
-        .prepare(
-          `UPDATE messages SET content = COALESCE(?, content),
-             payload = COALESCE(?, payload), edited_at = ? WHERE id = ?`,
-        )
-        .bind(body.content ?? null, payload, now, nativeMessageId)
-        .run();
+      const payload = mergeBotPayload(before.payload, body, context.bot.id);
+      await db.batch([
+        snapshotBeforeEdit(db, nativeMessageId, body.content ?? null, now),
+        db
+          .prepare(
+            `UPDATE messages SET content = COALESCE(?, content),
+               payload = ?, edited_at = ? WHERE id = ?`,
+          )
+          .bind(body.content ?? null, payload, now, nativeMessageId),
+      ]);
       const row = await loadMessageRow(db, nativeMessageId);
       if (!row) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
-      await publishMessageEvent(channel.id, {
-        t: "message-edited",
-        messageId: nativeMessageId,
+      await publishBotEdit(channel.id, {
+        id: nativeMessageId,
         content: row.content,
         editedAt: now,
+        payload: row.payload,
       });
       await dispatchMessage("MESSAGE_UPDATE", row, {
         origin: context.origin,
@@ -1104,10 +1111,7 @@ export async function createMessage(
     kind: null,
     // Embeds and components round-trip through `payload`, which is how the
     // serializer reads them back out for other bots and for message fetches.
-    payload:
-      embeds.length || components.length
-        ? JSON.stringify({ embeds, components }).slice(0, 8000)
-        : null,
+    payload: botPayload(context.bot.id, embeds, components),
     reply_to: replyTo,
   };
 
@@ -1154,7 +1158,8 @@ export async function createMessage(
  * discord.js switches to multipart the moment a bot adds an attachment, so a
  * JSON-only parser would fail on exactly the bots that send images.
  */
-async function parseMessageBody(request: Request): Promise<Record<string, unknown>> {
+/** JSON or multipart (`payload_json`), as libraries send with attachments. */
+export async function parseMessageBody(request: Request): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("content-type") || "";
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -1285,7 +1290,7 @@ async function pinRoutes(
 
   await publishMessageEvent(channel.id, {
     t: "message-pinned",
-    messageId: nativeMessageId,
+    id: nativeMessageId,
     pinned: request.method === "PUT",
   });
   return new Response(null, { status: 204 });

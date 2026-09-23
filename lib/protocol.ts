@@ -304,8 +304,11 @@ export type ServerEvent =
       t: "message-edited";
       channelId: string;
       id: string;
-      content: string;
-      editedAt: string;
+      /** Absent when a bot edit changed only the embeds or buttons. */
+      content?: string;
+      editedAt?: string;
+      /** Set when a bot edit replaced the message's embeds or buttons. */
+      payload?: unknown;
       serverNow: number;
     }
   | {

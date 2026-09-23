@@ -1,108 +1,98 @@
+# Hoffle, self-hosted.
+#
+#   docker compose up -d                 start Hoffle (web app, music bot, D&D bot)
+#   docker compose logs hoffle           shows the URL and your first-account setup code
+#
+# No configuration is needed for a first run. To change settings, copy
+# .env.example to .env, edit it, and run `docker compose up -d` again.
+#
+# Optional extras, enabled with profiles (see docs/self-hosting.md):
+#   --profile livekit   LiveKit media server for larger voice rooms
+#   --profile turn      coturn relay for friends behind strict NATs
+#   --profile bridge    Discord <-> Hoffle message bridge
+
 services:
-  # ==========================================
-  # Hoffle Core: Web App & Realtime Worker
-  # ==========================================
+  # Web app, API and realtime server. Data lives in ./state.
   hoffle:
     build:
       context: .
       dockerfile: Dockerfile
+    image: hoffle:local
     container_name: hoffle
     restart: unless-stopped
     ports:
-      - "8730:8730" # Hoffle Web App & Realtime WebSocket
+      - "${HOFFLE_PORT:-8730}:8730"
     volumes:
       - ./state:/app/state
-      - ./.dev.vars:/app/.dev.vars:ro
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - NODE_ENV=production
-      - HOST=0.0.0.0
-      - PORT=8730
-      - MUSIC_HELPER_BASE_URL=http://music-bot:8731
-      - DND_BASE_URL=http://dnd-bot:8732
+      HOFFLE_PORT: ${HOFFLE_PORT:-8730}
+      MUSIC_HELPER_BASE_URL: http://music-bot:8731
+      DND_BASE_URL: http://dnd-bot:8732
     depends_on:
-      music-bot:
-        condition: service_started
-      dnd-bot:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8730/hangout/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+      - music-bot
+      - dnd-bot
 
-  # ==========================================
-  # Music Bot: Dedicated yt-dlp Audio Resolver
-  # ==========================================
+  # Resolves songs with yt-dlp for the built-in music bot. Internal only.
   music-bot:
     build:
       context: ./services/music-bot
-      dockerfile: Dockerfile
+    image: hoffle-music-bot:local
     container_name: hoffle-music-bot
     restart: unless-stopped
-    # Port NOT exposed to host — music-bot is only reachable via internal Docker network
-    # The main hoffle container calls it at http://music-bot:8731
     expose:
       - "8731"
-    environment:
-      - PORT=8731
 
-  # ==========================================
-  # D&D Bot: 5e SRD Compendium & Companion
-  # ==========================================
+  # D&D 5e SRD compendium used by the D&D companion bot. Internal only.
   dnd-bot:
     build:
       context: ./services/dnd-bot
-      dockerfile: Dockerfile
+    image: hoffle-dnd-bot:local
     container_name: hoffle-dnd-bot
     restart: unless-stopped
-    # Port NOT exposed to host — dnd-bot is only reachable via internal Docker network
-    # The main hoffle container calls it at http://dnd-bot:8732
     expose:
       - "8732"
-    environment:
-      - PORT=8732
 
-  # ==========================================
-  # Discord Bridge: Bidirectional Hoffle <-> Discord Sync
-  # ==========================================
+  # --- Optional services ----------------------------------------------------
+
+  # Discord bridge. Needs discord-bridge/.env (see discord-bridge/.env.example).
   discord-bridge:
+    profiles: [bridge]
     build:
       context: ./discord-bridge
-      dockerfile: Dockerfile
+    image: hoffle-discord-bridge:local
     container_name: hoffle-discord-bridge
     restart: unless-stopped
     env_file:
-      - ./discord-bridge/.env
+      - path: ./discord-bridge/.env
+        required: false
     environment:
-      - HUDDLE_URL=http://hoffle:8730
-      - HUDDLE_BASE_PATH=/hangout
+      HUDDLE_URL: http://hoffle:8730
+      HUDDLE_BASE_PATH: ${BASE_PATH:-/hangout}
     depends_on:
       - hoffle
-    profiles:
-      - bridge
-      - all
 
-  # ==========================================
-  # LiveKit SFU: Discord-grade Voice Relay
-  # ==========================================
+  # LiveKit SFU. Voice works peer-to-peer without it; add it for big rooms.
+  # Change the key in livekit.yaml and set LIVEKIT_* in .env before enabling.
   livekit:
+    profiles: [livekit]
     image: livekit/livekit-server:latest
     container_name: hoffle-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml
     ports:
-      - "7880:7880"         # Signaling & HTTP API
-      - "7881:7881"         # WebRTC ICE over TCP fallback
-      - "7882:7882/udp"     # WebRTC UDP media
+      - "7880:7880"       # signaling (put this behind HTTPS as wss://)
+      - "7881:7881"       # WebRTC over TCP
+      - "7882:7882/udp"   # WebRTC over UDP
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
 
-  # ==========================================
-  # Optional Coturn: STUN/TURN Relay for CGNAT / Strict Firewalls
-  # Start with: docker compose --profile turn up -d
-  # ==========================================
+  # STUN/TURN relay for people whose network blocks peer-to-peer voice.
+  # Change the password in deploy/coturn/turnserver.conf before enabling.
   coturn:
+    profiles: [turn]
     image: coturn/coturn:latest
     container_name: hoffle-coturn
     restart: unless-stopped
@@ -112,7 +102,3 @@ services:
       - "49152-49200:49152-49200/udp"
     volumes:
       - ./deploy/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    profiles:
-      - turn
-      - all
-

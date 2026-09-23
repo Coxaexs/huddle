@@ -1,11 +1,13 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { channelAudience, isDmMember } from "@/lib/dms";
+import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
+import { handleMatchesName } from "@/lib/mention-handles";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
+import { blockIfTimedOut } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
 
@@ -135,7 +137,7 @@ function extraAttachments(raw: string | null | undefined): string[] | undefined 
 /** Parses `@username` tokens from message text (used for mentions). */
 export function parseMentionHandles(text: string): string[] {
   const handles = new Set<string>();
-  for (const match of text.matchAll(/(?:^|\s)@([a-zA-Z0-9._-]{2,24})/g)) {
+  for (const match of text.matchAll(/(?:^|\s)@([a-zA-Z0-9._-]{2,32})/g)) {
     handles.add(match[1].toLowerCase());
   }
   return [...handles];
@@ -455,6 +457,8 @@ export async function POST(request: Request) {
           }
         }
       }
+      // A new message brings a closed conversation back into both lists.
+      await reopenDmForAll(db, channelId);
     } else {
       // Banned members cannot post in the server they were banned from.
       const banned = await db
@@ -467,6 +471,8 @@ export async function POST(request: Request) {
           { status: 403 },
         );
       }
+      const timedOut = await blockIfTimedOut(db, channelId, user.id);
+      if (timedOut) return timedOut;
     }
     channelName = channel.name;
   } else {
@@ -559,24 +565,28 @@ export async function POST(request: Request) {
         .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
         .bind(...handles)
         .all(),
+      // Role names can hold spaces, so they're matched by handle in JS
+      // ("Game Master" is written @Game-Master).
       serverId
         ? db
             .prepare(
-              `SELECT mr.user_id AS id
+              `SELECT mr.user_id AS id, r.name AS name
                  FROM roles r
                  JOIN member_roles mr ON mr.role_id = r.id
-                WHERE r.server_id = ? AND LOWER(r.name) IN (${placeholders})`,
+                WHERE r.server_id = ?`,
             )
-            .bind(serverId, ...handles)
+            .bind(serverId)
             .all()
-        : Promise.resolve({ results: [] as Array<{ id: string }> }),
+        : Promise.resolve({ results: [] as Array<{ id: string; name: string }> }),
     ]);
+    const roleMemberIds = ((roleRows.results || []) as Array<{ id: string; name: string }>)
+      .filter((row) => handles.some((handle) => handleMatchesName(handle, row.name)))
+      .map((row) => row.id);
     const mentionedIds = [
-      ...new Set(
-        [...(userRows.results || []), ...(roleRows.results || [])].map(
-          (r) => (r as { id: string }).id,
-        ),
-      ),
+      ...new Set([
+        ...(userRows.results || []).map((r) => (r as { id: string }).id),
+        ...roleMemberIds,
+      ]),
     ].filter((id) => id !== user.id);
     if (mentionedIds.length) {
       await db.batch(

@@ -12,6 +12,8 @@ export interface DmSummary {
   };
   lastMessage: string | null;
   lastAt: string | null;
+  /** Closed from the DM list; still reachable through the quick switcher. */
+  hidden?: boolean;
 }
 
 /**
@@ -128,7 +130,8 @@ export async function listDms(
                 ORDER BY m.created_at DESC LIMIT 1) AS last_message,
               (SELECT created_at FROM messages m
                 WHERE m.channel_id = mine.channel_id AND m.deleted_at IS NULL
-                ORDER BY m.created_at DESC LIMIT 1) AS last_at
+                ORDER BY m.created_at DESC LIMIT 1) AS last_at,
+              mine.hidden_at AS hidden_at
          FROM dm_members mine
          LEFT JOIN dm_members theirs
            ON theirs.channel_id = mine.channel_id AND theirs.user_id != mine.user_id
@@ -151,6 +154,7 @@ export async function listDms(
       color: string;
       last_message: string | null;
       last_at: string | null;
+      hidden_at?: string | null;
     }>
   ).map((row) => ({
     channelId: row.channel_id,
@@ -164,5 +168,31 @@ export async function listDms(
     },
     lastMessage: row.last_message,
     lastAt: row.last_at,
+    hidden: Boolean(row.hidden_at),
   }));
+}
+
+/**
+ * Closes (hides) or reopens a DM in one person's list. Only the list entry
+ * changes; the conversation and its messages are untouched.
+ */
+export async function setDmHidden(
+  db: D1Database,
+  channelId: string,
+  userId: string,
+  hidden: boolean,
+): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE dm_members SET hidden_at = ? WHERE channel_id = ? AND user_id = ?")
+    .bind(hidden ? new Date().toISOString() : null, channelId, userId)
+    .run();
+  return Boolean(result.meta.changes);
+}
+
+/** A new message brings a closed DM back for everyone in it. */
+export function reopenDmForAll(db: D1Database, channelId: string): Promise<unknown> {
+  return db
+    .prepare("UPDATE dm_members SET hidden_at = NULL WHERE channel_id = ? AND hidden_at IS NOT NULL")
+    .bind(channelId)
+    .run();
 }

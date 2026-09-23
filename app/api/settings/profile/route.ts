@@ -6,7 +6,9 @@ import {
 } from "@/lib/auth";
 import { publishStructureChange } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
-import { normalizePrideBadges } from "@/lib/users";
+import { normalizeProfileImage } from "@/lib/profile-media";
+import { checkProfileCss } from "@/lib/themes";
+import { normalizePrideBadges, normalizeSocialLinks } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -58,23 +60,34 @@ export async function PATCH(request: Request) {
         ? (body.color as string)
         : user.color;
 
-  const avatarUrl =
+  const avatarImage = await normalizeProfileImage(
+    db,
     body.avatarUrl !== undefined
       ? body.avatarUrl
       : body.avatarKey === null
         ? null
         : body.avatarKey
           ? `/hangout/api/uploads/${encodeURIComponent(body.avatarKey.slice(0, 240))}`
-          : user.avatar_url || null;
+          : user.avatar_url || null,
+    "Avatar",
+  );
+  if (!avatarImage.ok) return Response.json({ error: avatarImage.error }, { status: 400 });
+  const avatarUrl = avatarImage.url;
 
-  const bannerUrl =
+  const banner = await normalizeProfileImage(
+    db,
     body.bannerUrl !== undefined
       ? body.bannerUrl
       : body.bannerKey === null
         ? null
         : body.bannerKey
           ? `/hangout/api/uploads/${encodeURIComponent(body.bannerKey.slice(0, 240))}`
-          : (user as { banner_url?: string | null }).banner_url || null;
+          : user.banner_url || null,
+    "Banner",
+    true,
+  );
+  if (!banner.ok) return Response.json({ error: banner.error }, { status: 400 });
+  const bannerUrl = banner.url;
 
   const bio = body.bio !== undefined ? body.bio.trim().slice(0, 500) : (user as { bio?: string }).bio || "";
   const pronouns = body.pronouns !== undefined ? body.pronouns.trim().slice(0, 40) : (user as { pronouns?: string }).pronouns || "";
@@ -87,10 +100,14 @@ export async function PATCH(request: Request) {
       ? (body.customStatus ? body.customStatus.trim().slice(0, 120) : null)
       : (user as { custom_status?: string | null }).custom_status || null;
 
-  const customCss =
-    body.customCss !== undefined
-      ? (body.customCss ? body.customCss.slice(0, 15000) : null)
-      : (user as { custom_css?: string | null }).custom_css || null;
+  let customCss = user.custom_css || null;
+  if (body.customCss !== undefined) {
+    customCss = body.customCss || null;
+    if (customCss) {
+      const checked = checkProfileCss(customCss);
+      if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
+    }
+  }
   const customTheme =
     body.customTheme !== undefined
       ? (body.customTheme ? body.customTheme.slice(0, 100) : null)
@@ -109,35 +126,27 @@ export async function PATCH(request: Request) {
           })(),
         );
 
-  const spotifyActivity =
-    body.spotifyActivity !== undefined
-      ? body.spotifyActivity
-        ? JSON.stringify(body.spotifyActivity)
-        : null
-      : (user as { spotify_activity?: string }).spotify_activity || null;
-
-  let socialLinks: string = (user as { social_links?: string | null }).social_links || "[]";
-  if (body.socialLinks !== undefined) {
-    if (Array.isArray(body.socialLinks)) {
-      const sanitized = body.socialLinks
-        .filter(
-          (item): item is { platform: string; url: string; label?: string } =>
-            item &&
-            typeof item === "object" &&
-            typeof (item as { platform: unknown }).platform === "string" &&
-            typeof (item as { url: unknown }).url === "string",
-        )
-        .slice(0, 10)
-        .map((item) => ({
-          platform: item.platform.trim().slice(0, 30),
-          url: item.url.trim().slice(0, 300),
-          label: typeof item.label === "string" ? item.label.trim().slice(0, 50) : undefined,
-        }));
-      socialLinks = JSON.stringify(sanitized);
+  let spotifyActivity = user.spotify_activity || null;
+  if (body.spotifyActivity !== undefined) {
+    const activity = body.spotifyActivity;
+    if (!activity || typeof activity.song !== "string" || typeof activity.artist !== "string") {
+      spotifyActivity = null;
     } else {
-      socialLinks = "[]";
+      const art = await normalizeProfileImage(db, activity.albumArt, "Album art");
+      if (!art.ok) return Response.json({ error: art.error }, { status: 400 });
+      spotifyActivity = JSON.stringify({
+        song: activity.song.slice(0, 200),
+        artist: activity.artist.slice(0, 200),
+        ...(art.url ? { albumArt: art.url } : {}),
+        ...(typeof activity.isPlaying === "boolean" ? { isPlaying: activity.isPlaying } : {}),
+      });
     }
   }
+
+  const socialLinks =
+    body.socialLinks !== undefined
+      ? JSON.stringify(normalizeSocialLinks(body.socialLinks))
+      : user.social_links || "[]";
 
   const avatarFrame =
     body.avatarFrame !== undefined

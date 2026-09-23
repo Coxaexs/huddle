@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { findOrCreateDm } from "./dms";
+import { statusSeenBy } from "./users";
 
 export interface FriendUser {
   id: string;
@@ -93,7 +94,7 @@ export async function listFriends(
       avatar: r.avatar,
       avatarUrl: r.avatar_url,
       color: r.color,
-      status: r.user_status,
+      status: statusSeenBy(r.user_status, false),
       customStatus: r.custom_status,
       lastSeenAt: r.last_seen_at,
       dmChannelId: dmMap.get(r.other_id) || null,
@@ -204,7 +205,7 @@ export async function sendFriendRequest(
             avatar: target.avatar,
             avatarUrl: target.avatar_url,
             color: target.color,
-            status: target.status,
+            status: statusSeenBy(target.status, false),
             customStatus: target.custom_status,
             lastSeenAt: target.last_seen_at,
             relationshipId: existing.id,
@@ -233,7 +234,7 @@ export async function sendFriendRequest(
       avatar: target.avatar,
       avatarUrl: target.avatar_url,
       color: target.color,
-      status: target.status,
+      status: statusSeenBy(target.status, false),
       customStatus: target.custom_status,
       lastSeenAt: target.last_seen_at,
       relationshipId,

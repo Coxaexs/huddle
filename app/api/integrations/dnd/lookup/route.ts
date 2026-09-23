@@ -10,7 +10,9 @@ const KINDS: Record<string, string> = {
   item: "items",
   feat: "feats",
   race: "races",
+  species: "races",
   class: "classes",
+  subclass: "subclasses",
 };
 
 function dndBaseUrl(): URL {
@@ -23,60 +25,87 @@ function dndBaseUrl(): URL {
   return url;
 }
 
-interface Spell {
+/** Where browsers can reach the companion, for monster art. */
+function dndPublicUrl(): URL | null {
+  const configured =
+    bindings().DND_PUBLIC_URL?.trim() || bindings().DND_BASE_URL?.trim();
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    return ["http:", "https:"].includes(url.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The structured entry the companion builds; see fiveetools_lookup.py. */
+interface LookupCard {
+  kind: string;
   name: string;
-  level: number;
-  school: string;
-  ritual?: boolean;
-  concentration?: boolean;
-  casting_time?: number | string;
-  range?: string;
-  components?: string;
-  duration?: string;
-  description?: string;
+  subtitle?: string;
   source?: string;
+  source_label?: string;
+  page?: number | null;
   source_url?: string;
+  facts?: Array<{ label: string; value: string }>;
+  tags?: string[];
+  sections?: Array<{ title: string; body: string }>;
+  abilities?: Array<{ label: string; score: number; mod: string }>;
+  image_path?: string;
+  other_versions?: string[];
 }
 
-function describeSpell(spell: Spell): string {
-  const level =
-    spell.level === 0 ? "Cantrip" : `Level ${spell.level} ${spell.school}`;
-  const tags = [
-    spell.ritual ? "ritual" : "",
-    spell.concentration ? "concentration" : "",
-  ].filter(Boolean);
-  const header = `**${spell.name}** — ${level}${tags.length ? ` (${tags.join(", ")})` : ""}`;
-  const stats = [
-    spell.casting_time ? `Cast ${spell.casting_time} action` : "",
-    spell.range ? `Range ${spell.range}` : "",
-    spell.components ? `Components ${spell.components}` : "",
-    spell.duration ? `Duration ${spell.duration}` : "",
-  ]
+const clip = (value: unknown, max: number) => String(value ?? "").slice(0, max);
+
+/**
+ * Only the fields the chat card draws, each bounded, so a huge entry cannot
+ * blow up the message row it is stored in.
+ */
+function cardPayload(card: LookupCard, kind: string) {
+  const publicUrl = dndPublicUrl();
+  let image: string | undefined;
+  if (card.image_path && publicUrl) {
+    try {
+      image = new URL(card.image_path, publicUrl).toString();
+    } catch {
+      image = undefined;
+    }
+  }
+  return {
+    type: kind,
+    name: clip(card.name, 120),
+    subtitle: clip(card.subtitle, 200),
+    source: clip(card.source_label || card.source, 80),
+    page: typeof card.page === "number" ? card.page : undefined,
+    otherVersions: (card.other_versions || []).slice(0, 6).map((v) => clip(v, 16)),
+    facts: (card.facts || []).slice(0, 16).map((fact) => ({
+      label: clip(fact.label, 40),
+      value: clip(fact.value, 300),
+    })),
+    tags: (card.tags || []).slice(0, 8).map((tag) => clip(tag, 60)),
+    abilities: (card.abilities || []).slice(0, 6).map((ability) => ({
+      label: clip(ability.label, 4),
+      score: Number(ability.score) || 0,
+      mod: clip(ability.mod, 4),
+    })),
+    sections: (card.sections || []).slice(0, 8).map((section) => ({
+      title: clip(section.title, 60),
+      body: clip(section.body, 3600),
+    })),
+    image,
+  };
+}
+
+/** Plain-text fallback, used for notifications and search. */
+function summaryText(card: LookupCard): string {
+  const facts = (card.facts || [])
+    .slice(0, 4)
+    .map((fact) => `${fact.label} ${fact.value}`)
+    .join(" · ");
+  const body = (card.sections || []).find((section) => !section.title)?.body || "";
+  return [`**${card.name}**${card.subtitle ? ` — ${card.subtitle}` : ""}`, facts, body.split("\n")[0].slice(0, 400)]
     .filter(Boolean)
-    .join(" · ");
-  const body = (spell.description || "").split("\n")[0].slice(0, 700);
-  return [header, stats, body].filter(Boolean).join("\n");
-}
-
-/** Anything that is not a spell: show the fields it happens to have. */
-function describeGeneric(name: string, entry: Record<string, unknown>): string {
-  const skip = new Set(["name", "source_url", "description", "text", "entries"]);
-  const facts = Object.entries(entry)
-    .filter(
-      ([key, value]) =>
-        !skip.has(key) &&
-        (typeof value === "string" || typeof value === "number") &&
-        String(value).length < 60,
-    )
-    .slice(0, 8)
-    .map(([key, value]) => `${key.replace(/_/g, " ")} ${value}`)
-    .join(" · ");
-  const description = String(
-    entry.description || entry.text || "",
-  )
-    .split("\n")[0]
-    .slice(0, 700);
-  return [`**${name}**`, facts, description].filter(Boolean).join("\n");
+    .join("\n");
 }
 
 export async function POST(request: Request) {
@@ -87,14 +116,26 @@ export async function POST(request: Request) {
     kind?: string;
     query?: string;
   };
-  const path = KINDS[(body.kind || "").toLowerCase()];
-  const query = (body.query || "").trim().slice(0, 80);
+  const kind = (body.kind || "").toLowerCase();
+  const path = KINDS[kind];
+  let query = (body.query || "").trim().slice(0, 80);
   if (!path) {
-    return Response.json({ error: "I can look up spells, monsters, items, feats, races and classes." }, { status: 400 });
+    return Response.json(
+      { error: "I can look up spells, monsters, items, feats, races, classes and subclasses." },
+      { status: 400 },
+    );
+  }
+
+  // `/spell fireball 2024` prefers the 2024 books; 2014 is the default.
+  let edition = "2014";
+  const editionMatch = query.match(/\s+(2014|2024|5e|5\.5e)$/i);
+  if (editionMatch) {
+    edition = /2024|5\.5e/i.test(editionMatch[1]) ? "2024" : "2014";
+    query = query.slice(0, editionMatch.index).trim();
   }
   if (!query) {
     return Response.json(
-      { error: `Try \`/${body.kind} fireball\`.` },
+      { error: `Try \`/${kind} ${kind === "spell" ? "fireball" : kind === "monster" ? "goblin" : "longsword"}\`.` },
       { status: 400 },
     );
   }
@@ -102,86 +143,55 @@ export async function POST(request: Request) {
   const base = dndBaseUrl();
   try {
     const exact = await fetch(
-      new URL(`/api/lookups/${path}/${encodeURIComponent(query)}`, base),
-      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
-    );
-
-    if (exact.ok) {
-      const entry = (await exact.json()) as Record<string, unknown>;
-      const text =
-        path === "spells"
-          ? describeSpell(entry as unknown as Spell)
-          : describeGeneric(String(entry.name || query), entry);
-      const spell = entry as unknown as Spell;
-      const genericSkip = new Set([
-        "name",
-        "source_url",
-        "description",
-        "text",
-        "entries",
-      ]);
-      const facts =
-        path === "spells"
-          ? [
-              { label: "Casting time", value: String(spell.casting_time || "—") },
-              { label: "Range", value: String(spell.range || "—") },
-              { label: "Components", value: String(spell.components || "—") },
-              { label: "Duration", value: String(spell.duration || "—") },
-            ]
-          : Object.entries(entry)
-              .filter(
-                ([key, value]) =>
-                  !genericSkip.has(key) &&
-                  (typeof value === "string" || typeof value === "number") &&
-                  String(value).length < 80,
-              )
-              .slice(0, 8)
-              .map(([key, value]) => ({
-                label: key.replace(/_/g, " "),
-                value: String(value),
-              }));
-      return Response.json({
-        text,
-        link: typeof entry.source_url === "string" ? entry.source_url : undefined,
-        kind: "dnd",
-        payload: {
-          type: body.kind,
-          name: String(entry.name || query),
-          subtitle:
-            path === "spells"
-              ? spell.level === 0
-                ? `${spell.school || ""} cantrip`
-                : `Level ${spell.level} ${spell.school || ""}`.trim()
-              : String(entry.source || ""),
-          description: String(
-            entry.description || entry.text || "",
-          )
-            .split("\n")[0]
-            .slice(0, 1200),
-          facts,
-        },
-      });
-    }
-
-    // No exact hit: offer what the compendium does have.
-    const search = await fetch(
       new URL(
-        `/api/lookups/${path}/search?q=${encodeURIComponent(query)}`,
+        `/api/lookups/${path}/${encodeURIComponent(query)}?edition=${edition}`,
         base,
       ),
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
     );
-    if (search.ok) {
-      const names = (await search.json()) as string[];
-      if (Array.isArray(names) && names.length) {
+
+    if (exact.ok) {
+      const entry = (await exact.json()) as { card?: LookupCard; name?: string; source_url?: string };
+      if (entry.card) {
         return Response.json({
-          text: `No exact match for “${query}”. Did you mean: ${names
-            .slice(0, 8)
-            .join(" · ")}?`,
+          text: summaryText(entry.card),
+          link: entry.card.source_url,
+          kind: "dnd",
+          payload: cardPayload(entry.card, kind),
         });
       }
+      // An older companion without cards: show what it has.
+      return Response.json({
+        text: `**${entry.name || query}**`,
+        link: entry.source_url,
+      });
     }
-    return Response.json({ text: `Nothing in the compendium matches “${query}”.` });
+
+    // No match at all: offer close names as buttons that run the lookup.
+    const search = await fetch(
+      new URL(
+        `/api/lookups/${path}/search?q=${encodeURIComponent(query)}&limit=8&edition=${edition}`,
+        base,
+      ),
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
+    );
+    const names = search.ok ? ((await search.json()) as unknown) : [];
+    const suggestions = Array.isArray(names)
+      ? names.filter((name): name is string => typeof name === "string").slice(0, 8)
+      : [];
+    return Response.json({
+      text: suggestions.length
+        ? `No ${kind} called “${query}”. Did you mean: ${suggestions.join(" · ")}?`
+        : `Nothing in the compendium matches “${query}”.`,
+      kind: "dnd",
+      payload: {
+        type: "suggest",
+        name: `No ${kind} called “${clip(query, 60)}”`,
+        subtitle: suggestions.length ? "Did you mean one of these?" : "Check the spelling, or try part of the name.",
+        lookupKind: kind,
+        suggestions,
+      },
+    });
   } catch {
     return Response.json(
       { error: "The D&D companion is offline or unreachable." },

@@ -1,7 +1,6 @@
-import { currentUser, unauthorized, type User } from "@/lib/auth";
+import { currentUser, memberFromRow, unauthorized, userColumns, type MemberRow } from "@/lib/auth";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
-import { normalizePrideBadges } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -31,137 +30,51 @@ export async function GET(request: Request) {
   }
 
   const q = (url.searchParams.get("q") || url.searchParams.get("query") || "").trim().toLowerCase();
-  const searchPattern = q ? `%${q}%` : null;
+  // Escape LIKE wildcards so "_" and "%" in a search match themselves.
+  const searchPattern = q ? `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
+  const memberSelect = `SELECT ${userColumns("u")},
+                               m.nickname, m.timeout_until, m.joined_at, m.invite_code,
+                               i.created_by AS invite_creator_id,
+                               inv_creator.display_name AS invite_creator_name,
+                               inv_creator.username AS invite_creator_username
+                          FROM users u
+                          JOIN server_members m ON m.user_id = u.id AND m.server_id = ?1
+                          LEFT JOIN invites i ON i.code = m.invite_code
+                          LEFT JOIN users inv_creator ON inv_creator.id = i.created_by`;
 
   const [result, roleRows] = await Promise.all([
     searchPattern
       ? db
           .prepare(
-            `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                    u.bio, u.pronouns, u.tagline, u.social_links, u.avatar_frame,
-                    u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
-                    u.custom_css, u.custom_theme,
-                    u.created_at, u.last_seen_at, u.status, u.custom_status,
-                    m.joined_at, m.invite_code,
-                    i.created_by AS invite_creator_id,
-                    inv_creator.display_name AS invite_creator_name,
-                    inv_creator.username AS invite_creator_username
-               FROM users u
-               JOIN server_members m ON m.user_id = u.id AND m.server_id = ?1
-               LEFT JOIN invites i ON i.code = m.invite_code
-               LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
-              WHERE u.username_lower LIKE ?2 OR LOWER(u.display_name) LIKE ?2
-              ORDER BY u.display_name COLLATE NOCASE ASC`,
+            `${memberSelect}
+              WHERE u.username_lower LIKE ?2 ESCAPE '\\'
+                 OR LOWER(u.display_name) LIKE ?2 ESCAPE '\\'
+                 OR LOWER(m.nickname) LIKE ?2 ESCAPE '\\'
+              ORDER BY COALESCE(m.nickname, u.display_name) COLLATE NOCASE ASC`,
           )
           .bind(serverId, searchPattern)
-          .all()
+          .all<MemberRow>()
       : db
-          .prepare(
-            `SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_url, u.banner_url,
-                    u.bio, u.pronouns, u.tagline, u.social_links, u.avatar_frame,
-                    u.pride_badges, u.spotify_activity, u.color, u.is_admin, u.can_invite,
-                    u.custom_css, u.custom_theme,
-                    u.created_at, u.last_seen_at, u.status, u.custom_status,
-                    m.joined_at, m.invite_code,
-                    i.created_by AS invite_creator_id,
-                    inv_creator.display_name AS invite_creator_name,
-                    inv_creator.username AS invite_creator_username
-               FROM users u
-               JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
-               LEFT JOIN invites i ON i.code = m.invite_code
-               LEFT JOIN users inv_creator ON inv_creator.id = i.created_by
-              ORDER BY u.display_name COLLATE NOCASE ASC`,
-          )
+          .prepare(`${memberSelect} ORDER BY COALESCE(m.nickname, u.display_name) COLLATE NOCASE ASC`)
           .bind(serverId)
-          .all(),
+          .all<MemberRow>(),
     db
       .prepare("SELECT server_id, user_id, role_id FROM member_roles WHERE server_id = ?")
       .bind(serverId)
-      .all(),
+      .all<{ server_id: string; user_id: string; role_id: string }>(),
   ]);
 
   // Role assignments, keyed userId → serverId → roleId[].
   const rolesByUser = new Map<string, Record<string, string[]>>();
-  for (const row of (roleRows.results || []) as Array<{
-    server_id: string;
-    user_id: string;
-    role_id: string;
-  }>) {
+  for (const row of roleRows.results || []) {
     const byServer = rolesByUser.get(row.user_id) || {};
     (byServer[row.server_id] ||= []).push(row.role_id);
     rolesByUser.set(row.user_id, byServer);
   }
 
   return Response.json({
-    members: ((result.results || []) as unknown as User[]).map((member) => {
-      const memberRow = member as unknown as User & {
-        joined_at?: string | null;
-        invite_code?: string | null;
-        invite_creator_id?: string | null;
-        invite_creator_name?: string | null;
-        invite_creator_username?: string | null;
-      };
-      let spotifyAct = null;
-      if (member.spotify_activity) {
-        try {
-          spotifyAct = JSON.parse(member.spotify_activity);
-        } catch {
-          spotifyAct = null;
-        }
-      }
-      let socialLinks = [];
-      if ((member as unknown as { social_links?: string | null }).social_links) {
-        try {
-          const parsed = JSON.parse((member as unknown as { social_links: string }).social_links);
-          if (Array.isArray(parsed)) {
-            socialLinks = parsed;
-          }
-        } catch {
-          socialLinks = [];
-        }
-      }
-      return {
-        id: member.id,
-        username: member.username,
-        displayName: member.display_name,
-        avatar: member.avatar,
-        avatarUrl: member.avatar_url || null,
-        bannerUrl: member.banner_url || null,
-        bio: member.bio || "",
-        pronouns: member.pronouns || "",
-        tagline: (member as unknown as { tagline?: string | null }).tagline || "",
-        socialLinks,
-        avatarFrame: (member as unknown as { avatar_frame?: string | null }).avatar_frame || "none",
-        prideBadges: normalizePrideBadges(
-          (() => {
-            try {
-              return JSON.parse(member.pride_badges || "[]");
-            } catch {
-              return [];
-            }
-          })(),
-        ),
-        spotifyActivity: spotifyAct,
-        color: member.color,
-        customCss: (member as unknown as { custom_css?: string | null }).custom_css || null,
-        customTheme: (member as unknown as { custom_theme?: string | null }).custom_theme || null,
-        lastSeenAt: member.last_seen_at,
-        createdAt: member.created_at,
-        isAdmin: Boolean(member.is_admin),
-        canInvite: Boolean(member.is_admin || member.can_invite),
-        status: member.status || "online",
-        customStatus: member.custom_status || null,
-        roleIds: rolesByUser.get(member.id) || {},
-        joinedAt: memberRow.joined_at || null,
-        joinedVia: memberRow.invite_code
-          ? {
-              code: memberRow.invite_code,
-              createdById: memberRow.invite_creator_id || null,
-              creatorName: memberRow.invite_creator_name || null,
-              creatorUsername: memberRow.invite_creator_username || null,
-            }
-          : null,
-      };
-    }),
+    members: (result.results || []).map((row) =>
+      memberFromRow(row, user.id, rolesByUser.get(row.id) || {}),
+    ),
   });
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal } from "lucide-react";
 import { Avatar } from "./avatar";
+import { SoundboardTab, StickersTab } from "./expression-settings";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -26,6 +27,8 @@ interface ServerSettingsDialogProps {
   /** User ids currently online (from the hub), used for the online count. */
   onlineUserIds?: Set<string>;
   canManageServer: boolean;
+  /** Manage Emojis & Stickers or Manage Channels: edits stickers and sounds. */
+  canManageExpressions?: boolean;
   onClose: () => void;
   onServerUpdated: () => void;
   onServerDeleted: () => void;
@@ -89,6 +92,9 @@ const AUDIT_LABELS: Record<string, string> = {
   "member.move": "moved a member",
   "member.ban": "banned a member",
   "member.unban": "unbanned a member",
+  "member.nickname": "changed a nickname",
+  "member.timeout": "timed out a member",
+  "member.timeout_remove": "lifted a timeout",
   "invite.create": "created an invite",
 };
 
@@ -149,6 +155,7 @@ export function ServerSettingsDialog({
   members = [],
   onlineUserIds,
   canManageServer,
+  canManageExpressions = canManageServer,
   onClose,
   onServerUpdated,
   onServerDeleted,
@@ -1199,6 +1206,24 @@ export function ServerSettingsDialog({
               </div>
             )}
           </div>
+        )}
+
+        {tab === "stickers" && (
+          <StickersTab
+            serverId={server.id}
+            canManage={canManageExpressions}
+            onRequestConfirm={onRequestConfirm}
+            onNotice={setNotice}
+          />
+        )}
+
+        {tab === "soundboard" && (
+          <SoundboardTab
+            serverId={server.id}
+            canManage={canManageExpressions}
+            onRequestConfirm={onRequestConfirm}
+            onNotice={setNotice}
+          />
         )}
 
         {/* Tab: Members */}

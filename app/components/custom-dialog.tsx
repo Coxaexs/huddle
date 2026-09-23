@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 export interface DialogOptions {
   title: string;
@@ -60,6 +61,9 @@ export function CustomDialog({ options, onConfirm, onCancel }: CustomDialogProps
       >
         <div className="custom-dialog-header">
           <h3 id="dialog-title">{options.title}</h3>
+          <button type="button" className="popup-close-x" onClick={onCancel} aria-label="Close dialog">
+            <X size={18} />
+          </button>
         </div>
 
         {options.message && (

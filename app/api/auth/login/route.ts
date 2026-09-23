@@ -3,6 +3,7 @@ import {
   publicUser,
   sessionCookie,
   touchUser,
+  userColumns,
   verifyPassword,
   type User,
 } from "@/lib/auth";
@@ -36,9 +37,7 @@ export async function POST(request: Request) {
 
   const row = await db
     .prepare(
-      `SELECT id, username, display_name, avatar, avatar_url, color, is_admin, can_invite,
-              created_at, last_seen_at, password_hash
-         FROM users WHERE username_lower = ?`,
+      `SELECT ${userColumns()}, password_hash FROM users WHERE username_lower = ?`,
     )
     .bind(username)
     .first<User & { password_hash: string }>();

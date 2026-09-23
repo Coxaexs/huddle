@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { publishStructureChange } from "@/lib/hub-client";
+import { publishPresenceStatus, publishStructureChange } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       .run();
   }
 
+  if (status !== undefined) await publishPresenceStatus(user.id, status === "invisible");
   // Everyone's member list refreshes off the structure event.
   await publishStructureChange();
   return Response.json({ ok: true, status, customStatus: custom });

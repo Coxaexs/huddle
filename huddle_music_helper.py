@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from aiohttp import web
 import yt_dlp
 
@@ -84,4 +85,11 @@ app.router.add_post("/resolve", resolve)
 
 
 if __name__ == "__main__":
-    web.run_app(app, host="127.0.0.1", port=8731, print=None)
+    # Loopback by default so a bare-metal install is not exposed; the Docker
+    # image sets HOST=0.0.0.0 so the hoffle container can reach it.
+    web.run_app(
+        app,
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "8731")),
+        print=None,
+    )
