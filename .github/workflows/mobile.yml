@@ -55,6 +55,18 @@ jobs:
             echo "::warning::No ANDROID_KEYSTORE_BASE64 secret; release builds will be unsigned."
           fi
 
+      # Secret GOOGLE_SERVICES_JSON: the google-services.json Firebase gives you
+      # for the Android app. Without it the app builds, but has no push.
+      - name: Restore Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          else
+            echo "::warning::No GOOGLE_SERVICES_JSON secret; the app will build without push notifications."
+          fi
+
       - name: Build
         working-directory: mobile/android
         env:

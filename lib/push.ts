@@ -1,4 +1,5 @@
 import webPush from "web-push";
+import { sendFcm } from "./fcm";
 import { bindings } from "./storage";
 
 export interface PushPayload {
@@ -27,6 +28,8 @@ interface PushSubscriptionRow {
  *    for browser push services; without them only non-browser endpoints work.
  *  - "ntfy": a plain HTTP POST to an ntfy topic (ntfy.sh or your own server),
  *    which the ntfy app on Android/iOS shows as a notification.
+ *  - "fcm": Firebase Cloud Messaging for the native Android app (mobile/).
+ *    The endpoint is "fcm:<device token>"; needs FCM_SERVICE_ACCOUNT.
  *
  * Errors are swallowed: a dead subscription must never break sending a message.
  */
@@ -66,7 +69,9 @@ export async function sendPushNotifications(
     subs.map(async (sub) => {
       let gone = false;
       try {
-        if (sub.kind === "ntfy") {
+        if (sub.kind === "fcm") {
+          gone = (await sendFcm(sub.endpoint.slice(4), payload)) === "gone";
+        } else if (sub.kind === "ntfy") {
           const response = await sendNtfy(sub.endpoint, sub.auth, payload);
           gone = response.status === 404 || response.status === 410;
         } else {

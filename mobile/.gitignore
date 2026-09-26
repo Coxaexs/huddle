@@ -1,3 +1,5 @@
 node_modules/
 *.jks
 *.keystore
+google-services.json
+GoogleService-Info.plist

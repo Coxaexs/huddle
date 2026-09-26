@@ -23,6 +23,7 @@ import {
   requestVoiceBubblePermission,
   syncNativeVoice,
 } from "./lib/native-voice";
+import { registerNativePush, unregisterNativePush } from "./lib/native-push";
 import {
   MsnAdBanner,
   MsnDisplayPictures,
@@ -2517,6 +2518,11 @@ export function ChatShell() {
   // Native apps: mirror the call into the Android notification + bubble or
   // the iOS call UI, and take Mute / Deafen / Leave presses back from them.
   const nativeInVoiceRef = useRef(false);
+  // Android app: phone notifications via Firebase once you're signed in.
+  const signedInId = user?.id;
+  useEffect(() => {
+    if (signedInId) void registerNativePush();
+  }, [signedInId]);
   const voiceChannelName = voice.channelId
     ? voiceChannels.find((channel) => channel.id === voice.channelId)?.name ||
       dms.find((dm) => dm.channelId === voice.channelId)?.user.displayName ||
@@ -5167,6 +5173,8 @@ export function ChatShell() {
   }
 
   async function signOut() {
+    // Before logging out, while the request is still authenticated.
+    await unregisterNativePush();
     await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     voice.leave();
     setUser(null);
