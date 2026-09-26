@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal } from "lucide-react";
 import { Avatar } from "./avatar";
 import { SoundboardTab, StickersTab } from "./expression-settings";
+import { AutomodPanel } from "./automod-panel";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -1644,6 +1645,17 @@ export function ServerSettingsDialog({
         )}
 
         {/* Invites: server-scoped codes that let people join THIS server. */}
+        {/* The automod tab has existed in the sidebar since the beginning but
+            rendered nothing; this is the panel that finally fills it. */}
+        {tab === "automod" && (
+          <AutomodPanel
+            serverId={server.id}
+            serverName={server.name}
+            canManageServer={canManageServer}
+            onRequestConfirm={onRequestConfirm}
+          />
+        )}
+
         {tab === "invites" && (
           <div className="tab-pane invites-pane">
             <h1 className="pane-title">Invite People</h1>
@@ -2000,21 +2012,16 @@ curl -X POST "\${typeof window !== "undefined" ? window.location.origin : "https
           </div>
         )}
 
-        {/* Fallback for other sidebar items */}
-        {tab !== "profile" &&
-          tab !== "emoji" &&
-          tab !== "roles" &&
-          tab !== "bans" &&
-          tab !== "invites" &&
-          tab !== "audit_log" &&
-          tab !== "integrations" && (
+        {/* Sidebar items with no panel yet. Listed by what exists rather than
+            what doesn't, so a new panel can't end up with this under it. */}
+        {!["profile", "emoji", "stickers", "soundboard", "members", "roles", "bans", "invites",
+          "audit_log", "integrations", "automod"].includes(tab) && (
           <div className="tab-pane fallback-pane">
             <h1 className="pane-title">
               {tab.replace("_", " ").toUpperCase()}
             </h1>
-            <p className="pane-subtitle">This section is active for {server.name}.</p>
             <div className="empty-illustration-box">
-              <p>Settings & Configuration for this module are active.</p>
+              <p>This isn't available in Hoffle yet.</p>
             </div>
           </div>
         )}

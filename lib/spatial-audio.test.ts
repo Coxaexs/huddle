@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SpatialAudioPlayback, TABLE_RADIUS, listenerOrientation, tableLayout, tableSeat,
-  personalTableLayout, IMPORTANT_VOLUME_BOOST,
+  personalTableLayout, IMPORTANT_VOLUME_BOOST, MAX_TABLE_PAN, ROOM_SEND, roomImpulse,
 } from "../app/lib/spatial-audio";
 
 vi.mock("../app/lib/devices", () => ({
@@ -16,7 +16,7 @@ describe("table seats", () => {
       expect(new Set(seats.map((s) => s.pan)).size).toBe(count);
       expect(seats.reduce((sum, s) => sum + s.pan, 0)).toBeCloseTo(0);
       for (const seat of seats) {
-        expect(Math.abs(seat.pan)).toBeLessThan(0.6);
+        expect(Math.abs(seat.pan)).toBeLessThan(MAX_TABLE_PAN);
         expect(seat.z).toBeLessThan(0);
         expect(Math.hypot(seat.x, seat.z)).toBeCloseTo(1.5);
       }
@@ -189,4 +189,62 @@ it("keeps an important voice in front of the listener's face as they turn", () =
   expect(hrtf[0].positionX.setTargetAtTime.mock.lastCall?.[0]).toBeCloseTo(-TABLE_RADIUS);
   expect(hrtf[0].positionZ.setTargetAtTime.mock.lastCall?.[0]).toBeCloseTo(0);
   playback.dispose();
+});
+
+it("gives headphone listeners HRTF, levelling and a shared room without head tracking", () => {
+  const env = environment();
+  const convolvers: Array<{ buffer: unknown; connect: ReturnType<typeof vi.fn> }> = [];
+  const compressors: unknown[] = [];
+  const Base = (globalThis as unknown as { AudioContext: new () => object }).AudioContext;
+  const param = () => ({ value: 0 });
+  vi.stubGlobal("AudioContext", class extends Base {
+    sampleRate = 8000;
+    createBuffer(channels: number, length: number) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { getChannelData: (c: number) => data[c] };
+    }
+    createConvolver() {
+      const c = { buffer: null as unknown, connect: vi.fn((n: unknown) => n), disconnect: vi.fn() };
+      convolvers.push(c); return c;
+    }
+    createDynamicsCompressor() {
+      const c = { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(), connect: vi.fn((n: unknown) => n), disconnect: vi.fn() };
+      compressors.push(c); return c;
+    }
+  });
+  const playback = new SpatialAudioPlayback();
+  playback.setHeadphones(true);
+  const a = { key: "a", stream: {} as MediaStream, volume: 1, muted: false, pan: -0.4, seat: { x: -1, y: 0, z: -1 } };
+  const b = { ...a, key: "b", stream: {} as MediaStream, pan: 0.4, seat: { x: 1, y: 0, z: -1 } };
+  playback.update([a, b], true);
+  expect(env.hrtf).toHaveLength(2);
+  expect(env.panners).toHaveLength(0);
+  expect(compressors).toHaveLength(2);
+  // One reverb for the whole table, fed by every voice.
+  expect(convolvers).toHaveLength(1);
+  const send = env.gains.find((g) => g.gain.value === ROOM_SEND);
+  expect(send).toBeDefined();
+  expect(env.gains.filter((g) => g.connect.mock.calls.some(([n]) => n === send))).toHaveLength(2);
+
+  playback.setHeadphones(false);
+  expect(env.panners).toHaveLength(2);
+  playback.dispose();
+});
+
+it("builds a decaying, decorrelated room impulse", () => {
+  const data = [new Float32Array(4800), new Float32Array(4800)];
+  const context = { sampleRate: 8000, createBuffer: () => ({ getChannelData: (c: number) => data[c] }) } as unknown as BaseAudioContext;
+  roomImpulse(context);
+  expect(data[0].slice(0, 90).every((v) => v === 0)).toBe(true);
+  const energy = (from: number, to: number) => data[0].slice(from, to).reduce((sum, v) => sum + v * v, 0);
+  expect(energy(100, 600)).toBeGreaterThan(energy(3000, 3500) * 100);
+  expect(data[0].some((v, i) => v !== data[1][i])).toBe(true);
+});
+
+it("narrows the real seat angle with width so HRTF gathers voices too", () => {
+  const wide = personalTableLayout(["a"], "", { a: -MAX_TABLE_PAN }, 1).get("a")!;
+  const narrow = personalTableLayout(["a"], "", { a: -MAX_TABLE_PAN }, 0.5).get("a")!;
+  expect(wide.x).toBeCloseTo(-TABLE_RADIUS);
+  expect(narrow.x).toBeCloseTo(-TABLE_RADIUS * Math.sin(Math.PI / 4));
+  expect(Math.hypot(narrow.x, narrow.z)).toBeCloseTo(TABLE_RADIUS);
 });

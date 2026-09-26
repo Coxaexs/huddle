@@ -53,3 +53,34 @@ it("does not revive important speech after a moderator mute is removed", async (
     expect(latest().participants[0].important).toBe(false);
   }
 });
+
+it("reports when each seat was taken, and only restarts it on a real re-join", async () => {
+  vi.useFakeTimers();
+  try {
+    const { send, latest } = room();
+    vi.setSystemTime(1_000_000);
+    await send({ t: "voice-join", channelId: "room" });
+    expect(latest().participants[0].joinedAt).toBe(1_000_000);
+
+    // Everyday traffic in the room does not disturb the clock.
+    vi.setSystemTime(1_060_000);
+    await send({ t: "voice-state", muted: true });
+    expect(latest().participants[0].joinedAt).toBe(1_000_000);
+
+    // Re-announcing the same room (a reconnect) keeps the time already spent.
+    await send({ t: "voice-join", channelId: "room" });
+    expect(latest().participants[0].joinedAt).toBe(1_000_000);
+
+    // Moving rooms is a new seat.
+    await send({ t: "voice-join", channelId: "other" });
+    expect(latest().participants[0].joinedAt).toBe(1_060_000);
+
+    // Leaving clears it, and coming back starts over.
+    await send({ t: "voice-leave" });
+    vi.setSystemTime(1_120_000);
+    await send({ t: "voice-join", channelId: "room" });
+    expect(latest().participants[0].joinedAt).toBe(1_120_000);
+  } finally {
+    vi.useRealTimers();
+  }
+});

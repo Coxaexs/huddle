@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { SpatialAudioPlayback, personalTableLayout } from "../lib/spatial-audio";
 import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../lib/head-tracking";
+import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, onHeadTracking, preferenceFor }: {
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor }: {
   streams: Array<{ connectionId: string; stream: MediaStream }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
@@ -16,6 +17,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   width: number;
   deafened: boolean;
   headTracking: boolean;
+  headTrackingSource?: "airpods" | "webcam";
+  headphones?: boolean;
   onHeadTracking?: (status: HeadTrackingStatus, live: boolean) => void;
   preferenceFor: (userId: string) => { volume: number; muted: boolean };
 }) {
@@ -30,7 +33,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   // rather than through React state.
   useEffect(() => {
     if (!enabled || !headTracking) return;
-    const tracker = new HeadTracker(
+    const Tracker = headTrackingSource === "webcam" ? WebcamHeadTracker : HeadTracker;
+    const tracker = new Tracker(
       (pose) => playback.current?.setHeadPose(pose),
       (available, live) => status.current?.(available, live),
     );
@@ -42,7 +46,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
       tracker.stop();
       playback.current?.setHeadPose(null);
     };
-  }, [enabled, headTracking]);
+  }, [enabled, headTracking, headTrackingSource]);
+  useEffect(() => { playback.current?.setHeadphones(headphones); }, [headphones]);
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
     playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream }) => {
@@ -53,7 +58,12 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
       return {
         key: `${connectionId}:${stream.id}`, stream,
         important: Boolean(voice && person.important && !person.muted && !person.serverMuted),
-        volume: pref.volume, muted: deafened || pref.muted,
+        // Also drop anyone the room says is muted. In a peer-to-peer call a
+        // client owns its own microphone, so the hub can only refuse to *report*
+        // a seat as audible; every peer refusing to play a muted seat is what
+        // actually keeps a hostile client out of the room.
+        volume: pref.volume,
+        muted: deafened || pref.muted || Boolean(person?.muted || person?.serverMuted),
         pan: voice ? seat?.pan ?? null : null,
         seat: seat ? { x: seat.x, y: seat.y, z: seat.z } : null,
       };

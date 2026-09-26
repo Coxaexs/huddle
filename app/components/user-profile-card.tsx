@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MessageSquare,
   AtSign,
@@ -16,6 +16,7 @@ import {
   Edit3,
   Copy,
   Globe,
+  Plus,
 } from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE, bannerBackground, lastSeenLabel } from "@/lib/users";
@@ -118,12 +119,14 @@ interface UserProfileCardProps {
   onEditProfile?: () => void;
   /** Live presence (from the socket), overriding the member's saved status. */
   presence?: PresenceStatus | "offline";
+  /** Give or take a role; only passed when the viewer may manage roles. */
+  onToggleRole?: (roleId: string, add: boolean) => Promise<void>;
 }
 
 export function UserProfileCard({
   member,
   roles = [],
-  userRoles = [],
+  userRoles: initialUserRoles = [],
   position,
   onClose,
   onDirectMessage,
@@ -138,6 +141,7 @@ export function UserProfileCard({
   onAcceptFriend,
   onEditProfile,
   presence,
+  onToggleRole,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [currentFriendStatus, setCurrentFriendStatus] =
@@ -147,6 +151,43 @@ export function UserProfileCard({
   const [copiedId, setCopiedId] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
   const [mutuals, setMutuals] = useState<Mutuals | null>(null);
+  /** Your private note about this person; `null` until it has loaded. */
+  const [note, setNote] = useState<string | null>(null);
+  const savedNoteRef = useRef("");
+  const [noteStatus, setNoteStatus] = useState<"idle" | "saving" | "error">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    setNote(null);
+    savedNoteRef.current = "";
+    apiFetch<{ note: string }>(`/api/users/${encodeURIComponent(member.id)}/note`)
+      .then((data) => {
+        if (cancelled) return;
+        savedNoteRef.current = data.note;
+        setNote(data.note);
+      })
+      .catch(() => {
+        if (!cancelled) setNote("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [member.id]);
+
+  async function saveNote() {
+    if (note === null || note.trim() === savedNoteRef.current) return;
+    setNoteStatus("saving");
+    try {
+      const data = await apiFetch<{ note: string }>(
+        `/api/users/${encodeURIComponent(member.id)}/note`,
+        { method: "PUT", body: JSON.stringify({ note }) },
+      );
+      savedNoteRef.current = data.note;
+      setNoteStatus("idle");
+    } catch {
+      setNoteStatus("error");
+    }
+  }
 
   useEffect(() => {
     if (isSelf) return;
@@ -183,7 +224,30 @@ export function UserProfileCard({
     };
   }, [onClose]);
 
+  // Kept locally so a role given or taken here shows at once.
+  const [userRoles, setUserRoles] = useState<string[]>(initialUserRoles);
+  const initialRolesKey = initialUserRoles.join(",");
+  useEffect(() => {
+    setUserRoles(initialRolesKey ? initialRolesKey.split(",") : []);
+  }, [initialRolesKey]);
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
+
+  async function toggleRole(roleId: string, add: boolean) {
+    if (!onToggleRole) return;
+    const before = userRoles;
+    setRoleError(null);
+    setUserRoles(add ? [...before, roleId] : before.filter((id) => id !== roleId));
+    try {
+      await onToggleRole(roleId, add);
+    } catch (error) {
+      setUserRoles(before);
+      setRoleError(error instanceof Error ? error.message : "Could not change roles.");
+    }
+  }
+
   const assignedRoles = roles.filter((r) => userRoles.includes(r.id));
+  const givableRoles = roles.filter((r) => !userRoles.includes(r.id));
   const statusInfo =
     presence === "offline"
       ? { label: "Offline", color: PRESENCE.invisible.color }
@@ -198,10 +262,23 @@ export function UserProfileCard({
       })
     : "Jun 2026";
 
+  // The card's real height (it grows with roles, mutuals and the note), so it
+  // can be kept fully on screen instead of assuming a fixed size.
+  const [cardHeight, setCardHeight] = useState(440);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const measure = () => setCardHeight(card.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, []);
+
   const stylePosition: React.CSSProperties = position
     ? {
         position: "fixed",
-        top: Math.min(position.y, window.innerHeight - 440),
+        top: Math.max(12, Math.min(position.y, window.innerHeight - cardHeight - 12)),
         left: Math.min(position.x, window.innerWidth - 360),
         zIndex: 9999,
       }
@@ -382,24 +459,73 @@ export function UserProfileCard({
           )}
         </div>
 
-        {assignedRoles.length > 0 && (
+        {(assignedRoles.length > 0 || (onToggleRole && roles.length > 0)) && (
           <div className="profile-section">
-            <h4>ROLES ({assignedRoles.length})</h4>
+            <h4>{assignedRoles.length ? `ROLES (${assignedRoles.length})` : "ROLES"}</h4>
             <div className="profile-roles-list">
               {assignedRoles.map((role) => (
                 <span
                   key={role.id}
-                  className="profile-role-badge"
+                  className={`profile-role-badge ${onToggleRole ? "is-removable" : ""}`}
                   style={{ borderColor: role.color }}
                 >
-                  <span
-                    className="role-badge-dot"
-                    style={{ background: role.color }}
-                  />
+                  {onToggleRole ? (
+                    <button
+                      type="button"
+                      className="role-badge-remove"
+                      style={{ ["--role-color" as string]: role.color }}
+                      aria-label={`Remove ${role.name}`}
+                      title={`Remove ${role.name}`}
+                      onClick={() => void toggleRole(role.id, false)}
+                    >
+                      <X size={10} strokeWidth={3} />
+                    </button>
+                  ) : (
+                    <span
+                      className="role-badge-dot"
+                      style={{ background: role.color }}
+                    />
+                  )}
                   <span style={{ color: role.color }}>{role.name}</span>
                 </span>
               ))}
+              {onToggleRole && givableRoles.length > 0 && (
+                <span className="profile-role-add-wrap">
+                  <button
+                    type="button"
+                    className="profile-role-add"
+                    aria-label="Add role"
+                    title="Add role"
+                    aria-expanded={rolePickerOpen}
+                    onClick={() => setRolePickerOpen((open) => !open)}
+                  >
+                    <Plus size={12} strokeWidth={3} />
+                  </button>
+                  {rolePickerOpen && (
+                    <div className="profile-role-picker" role="menu">
+                      {givableRoles.map((role) => (
+                        <button
+                          key={role.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setRolePickerOpen(false);
+                            void toggleRole(role.id, true);
+                          }}
+                        >
+                          <span
+                            className="role-badge-dot"
+                            style={{ background: role.color }}
+                          />
+                          <span>{role.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
+              )}
             </div>
+            {roleError && <p className="profile-note-status is-error">{roleError}</p>}
           </div>
         )}
 
@@ -441,6 +567,42 @@ export function UserProfileCard({
             </div>
           </div>
         )}
+
+        <div className="profile-section profile-note">
+          <h4>
+            NOTE
+            {noteStatus === "saving" && <span className="profile-note-status"> · saving…</span>}
+            {noteStatus === "error" && (
+              <span className="profile-note-status is-error"> · couldn't save</span>
+            )}
+          </h4>
+          <textarea
+            className="profile-note-input"
+            placeholder={note === null ? "Loading…" : "Click to add a note"}
+            aria-label={`Your private note about ${member.displayName}`}
+            title="Only you can see this note"
+            maxLength={256}
+            rows={1}
+            disabled={note === null}
+            value={note ?? ""}
+            onChange={(event) => {
+              setNote(event.target.value);
+              // Grow with the text instead of scrolling inside a one-line box.
+              event.target.style.height = "auto";
+              event.target.style.height = `${event.target.scrollHeight}px`;
+            }}
+            onBlur={() => void saveNote()}
+            onKeyDown={(event) => {
+              // Enter saves, like Discord; Shift+Enter adds a line.
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              // Escape should leave the note, not close the whole card.
+              if (event.key === "Escape") event.stopPropagation();
+            }}
+          />
+        </div>
 
         <div className="profile-section flex items-center gap-2 text-xs text-gray-400 mt-2">
           <Calendar size={14} />

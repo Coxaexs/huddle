@@ -15,8 +15,27 @@ import {
   type ReactNode,
 } from "react";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
+import { ConnectionBanner } from "./components/connection-banner";
+import { convertMsnEmoticons } from "@/lib/msn-emoticons";
+import {
+  canShowVoiceBubble,
+  onNativeVoiceAction,
+  requestVoiceBubblePermission,
+  syncNativeVoice,
+} from "./lib/native-voice";
+import {
+  MsnAdBanner,
+  MsnDisplayPictures,
+  MsnFormatToolbar,
+  MsnSignInToasts,
+  MSN_EXTRA_STATUSES,
+  playNudge,
+  useMsnTheme,
+} from "./components/msn-chrome";
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
+import { channelKindInfo, channelNameRules, convertibleKinds, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
+import { shouldStartMuted } from "@/lib/stage";
 import {
   ALL_PERMISSIONS,
   hasPermission,
@@ -72,6 +91,9 @@ import {
   Forward,
   Timer,
   CalendarDays,
+  LogOut,
+  Folder,
+  FolderPlus,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -108,9 +130,18 @@ import {
 import { BattlemapBoard } from "./components/battlemap";
 import { useBattlemap } from "./hooks/use-battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
+import { GroupDmDialog } from "./components/group-dm-dialog";
+import {
+  createFolder,
+  moveToFolder,
+  railEntries,
+  removeFromFolders,
+  type ServerFolder,
+} from "@/lib/server-folders";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer, showToast } from "./components/toast";
 import { PollCard } from "./components/poll-card";
+import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
 import {
@@ -141,6 +172,7 @@ import {
 import { FriendsView } from "./components/friends-view";
 import { GlobalUserSearchDialog } from "./components/global-user-search-dialog";
 import { RecordingDirector } from "./components/recording-director";
+import { VoiceDuration } from "./components/voice-duration";
 import {
   UserMenu,
   type UserMenuTarget,
@@ -183,6 +215,7 @@ import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
 import { ForwardedMessageCard, type ForwardedFromData } from "./components/forwarded-message-card";
 import { ThemeShareCard } from "./components/theme-share-card";
+import { AiAnswerCard } from "./components/ai-answer-card";
 import { ImageGallery } from "./components/image-gallery";
 import {
   type Theme,
@@ -242,8 +275,12 @@ interface Message {
     voice?: { durationMs?: number; waveform?: number[] };
     /** Theme share cards */
     themeShare?: Theme;
+    /** A Messenger-style nudge: shakes the recipient's window. */
+    nudge?: boolean;
     /** Poll cards. */
     pollId?: string;
+    /** /ask answers: the web results the answer cites. */
+    sources?: Array<{ title: string; url: string }>;
     question?: string;
     options?: string[];
     multi?: boolean;
@@ -312,6 +349,12 @@ interface DmSummary {
   lastAt: string | null;
   /** Closed from the list; Cmd+K or a new message brings it back. */
   hidden?: boolean;
+  /** Group DMs: `user` then stands for the group (id = channel id). */
+  group?: {
+    name: string;
+    ownerId: string | null;
+    members: Member[];
+  };
 }
 
 /**
@@ -343,6 +386,16 @@ const DM_HOME = "@me";
 /** Default one-tap reactions shown on message hover. */
 const DEFAULT_QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
 
+/** One row of the mentions inbox (see /api/mentions). */
+interface MentionEntry {
+  message: Message;
+  channelName: string;
+  channelKind: string;
+  serverId: string | null;
+  serverName: string | null;
+  read: boolean;
+}
+
 /** Options for the one-tap "quick vote" on a message. */
 const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
 
@@ -350,7 +403,8 @@ const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
 type MentionOption =
   | { kind: "user"; member: Member }
   | { kind: "role"; role: PublicRole }
-  | { kind: "channel"; channel: PublicChannel };
+  | { kind: "channel"; channel: PublicChannel }
+  | { kind: "broadcast"; name: "everyone" | "here" };
 
 /** Items matching `query` on any of their names, best matches first. */
 function rankMentionMatches<T>(
@@ -388,16 +442,34 @@ function formatClientDateTime(createdAt?: string): string {
   }
 }
 
+/** Messenger's status-bar line: "Last message received at 7:06 PM on 9/26/2026." */
+function msnLastReceived(list: Message[], selfId: string | undefined): string {
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const message = list[i];
+    if (message.userId === selfId || !message.createdAt) continue;
+    const at = new Date(message.createdAt);
+    if (Number.isNaN(at.getTime())) continue;
+    return `Last message received at ${at.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    })} on ${at.toLocaleDateString()}.`;
+  }
+  return "No messages received yet.";
+}
+
 function Icon({
   children,
   label,
   onClick,
   active,
+  badge,
 }: {
   children: ReactNode;
   label: string;
   onClick?: () => void;
   active?: boolean;
+  /** A small count in the corner, hidden when zero. */
+  badge?: number;
 }) {
   return (
     <button
@@ -408,6 +480,7 @@ function Icon({
       onClick={onClick}
     >
       {children}
+      {badge ? <span className="icon-badge">{badge > 99 ? "99+" : badge}</span> : null}
     </button>
   );
 }
@@ -549,6 +622,89 @@ export function extractInviteCodes(text: string): string[] {
   return codes;
 }
 
+/**
+ * Creation-UI copy per channel kind.
+ *
+ * Presentation only, so it lives here rather than in `lib/channel-kinds.ts`,
+ * which owns behaviour. A kind missing from this map still works — the prompt
+ * falls back to plain "text" wording — so adding a kind server-side never
+ * breaks this screen.
+ */
+const CHANNEL_KIND_COPY: Record<
+  string,
+  { title: string; message: string; placeholder: string }
+> = {
+  text: {
+    title: "Create Text Channel",
+    message: "Enter name for the new text channel:",
+    placeholder: "general",
+  },
+  announcement: {
+    title: "Create Announcement Channel",
+    message: "Create a read-only feed that only moderators can post in:",
+    placeholder: "announcements",
+  },
+  forum: {
+    title: "Create Forum",
+    message: "Create a board where each post starts its own thread:",
+    placeholder: "help",
+  },
+  voice: {
+    title: "Create Voice Room",
+    message: "Enter name for the new voice room:",
+    placeholder: "Voice Lounge",
+  },
+  stage: {
+    title: "Create Stage",
+    message: "Create a voice room with an audience, where speaking is a permission:",
+    placeholder: "Friday Standup",
+  },
+};
+
+/** "an announcement", "a forum". */
+function withArticle(label: string): string {
+  const lower = label.toLowerCase();
+  return `${/^[aeiou]/.test(lower) ? "an" : "a"} ${lower}`;
+}
+
+/** Human label for a kind, for menus and badges. */
+function channelKindLabel(kind: ChannelKind): string {
+  switch (kind) {
+    case "announcement":
+      return "Announcement";
+    case "forum":
+      return "Forum";
+    case "voice":
+      return "Voice room";
+    case "stage":
+      return "Stage";
+    case "text":
+    default:
+      return "Text channel";
+  }
+}
+
+/**
+ * Icon for a kind, chosen to match what the channel actually does: a forum is a
+ * board of posts, a stage has an audience, an announcement is a broadcast.
+ */
+function channelKindIcon(kind: ChannelKind, size = 14, className?: string) {
+  switch (kind) {
+    case "announcement":
+      return <Radio size={size} className={className} aria-hidden="true" />;
+    case "forum":
+      return <MessageSquare size={size} className={className} aria-hidden="true" />;
+    case "voice":
+      return <Volume2 size={size} className={className} aria-hidden="true" />;
+    case "stage":
+      return <Users size={size} className={className} aria-hidden="true" />;
+    case "text":
+    default:
+      return <Hash size={size} className={className} aria-hidden="true" />;
+  }
+}
+
+
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
@@ -572,6 +728,10 @@ export function ChatShell() {
   const [members, setMembers] = useState<Member[]>([]);
   const [memberFilterQuery, setMemberFilterQuery] = useState("");
   const [dms, setDms] = useState<DmSummary[]>([]);
+  /** The friend picker for starting a group DM, or adding people to one. */
+  const [groupDialog, setGroupDialog] = useState<
+    { mode: "create" } | { mode: "add"; channelId: string } | null
+  >(null);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
@@ -581,6 +741,24 @@ export function ChatShell() {
   const [dragChannelId, setDragChannelId] = useState<string | null>(null);
   /** Server id currently being dragged on the rail, for reordering. */
   const [dragServerId, setDragServerId] = useState<string | null>(null);
+  /** Where a dragged server would land: between icons, or merged into one. */
+  const [serverDropHint, setServerDropHint] = useState<
+    { id: string; mode: "before" | "merge" } | null
+  >(null);
+  const [serverFolders, setServerFolders] = useState<ServerFolder[]>([]);
+  /** Folders shown open on the rail; remembered per device. */
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("huddle:open-folders") || "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const [folderMenu, setFolderMenu] = useState<{
+    folder: ServerFolder;
+    x: number;
+    y: number;
+  } | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
     try {
@@ -598,12 +776,17 @@ export function ChatShell() {
   >({});
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
+  const [mentionsOpen, setMentionsOpen] = useState(false);
+  const [mentionsTab, setMentionsTab] = useState<"all" | "unread">("all");
+  const [mentionInbox, setMentionInbox] = useState<MentionEntry[] | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
   const [outgoingFriendUserIds, setOutgoingFriendUserIds] = useState<Set<string>>(new Set());
   const [incomingFriendUserIds, setIncomingFriendUserIds] = useState<Set<string>>(new Set());
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  const blockedUserIdsRef = useRef(blockedUserIds);
+  blockedUserIdsRef.current = blockedUserIds;
   const [expandedBlockedMessages, setExpandedBlockedMessages] = useState<Set<string>>(new Set());
 
   const channelDraftsRef = useRef<Record<string, string>>({});
@@ -1019,6 +1202,11 @@ export function ChatShell() {
   );
   const [markdownModalOpen, setMarkdownModalOpen] = useState(false);
   const [theme, setTheme] = useState<"cozy" | "legacy" | "light">("cozy");
+  const msnTheme = useMsnTheme();
+  /** Contact-list groups folded shut by their arrow (MSN theme). */
+  const [collapsedGroups, setCollapsedGroups] = useState<{ online?: boolean; offline?: boolean }>({});
+  /** Like Messenger, you can't nudge again straight away. */
+  const [nudgeCooling, setNudgeCooling] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 240;
     const saved = Number(window.localStorage.getItem("huddle-sidebar-width"));
@@ -1213,6 +1401,11 @@ export function ChatShell() {
     x: number;
     y: number;
   } | null>(null);
+  /**
+   * The channel-kind picker that is open, and which context opened it:
+   * `null` for the sidebar header, a category id for that category's "+".
+   */
+  const [kindMenu, setKindMenu] = useState<{ categoryId: string | null } | null>(null);
   /** Right-click menu on a server icon in the rail. */
   const [railMenu, setRailMenu] = useState<{
     server: PublicServer;
@@ -1279,7 +1472,7 @@ export function ChatShell() {
     confirmText?: string;
     cancelText?: string;
     onConfirm: () => void;
-    /** Runs when the cancel button (or backdrop) dismisses the dialog. */
+    /** Runs only when the cancel button is clicked; backdrop, X and Escape just close. */
     onCancel?: () => void;
   }) => {
     setDialogOptions({ ...options, type: "confirm" });
@@ -1372,6 +1565,11 @@ export function ChatShell() {
     // fetch was in-flight, discard the result so we don't flash the wrong roster.
     if (activeServerRef.current !== serverId) return;
     setMembers(data.members);
+  }, []);
+
+  const loadServerFolders = useCallback(async () => {
+    const data = await apiFetch<{ folders: ServerFolder[] }>("/api/servers/folders");
+    setServerFolders(data.folders);
   }, []);
 
   const loadDms = useCallback(async () => {
@@ -1587,6 +1785,7 @@ export function ChatShell() {
   useEffect(() => {
     if (!user) return;
     void loadServers().catch(() => undefined);
+    void loadServerFolders().catch(() => undefined);
     void loadDms().catch(() => undefined);
     void loadFriendsCount().catch(() => undefined);
     void loadPrefs().catch(() => undefined);
@@ -1778,12 +1977,19 @@ export function ChatShell() {
     () => servers.find((server) => server.id === activeServerId) || null,
     [servers, activeServerId],
   );
+  // Split by capability, not by a literal kind: a forum and an announcement
+  // channel are text channels that behave differently, and a stage is a voice
+  // room. Comparing to "text"/"voice" directly is what would make the newer
+  // kinds vanish from the sidebar.
   const textChannels = useMemo(
-    () => activeServer?.channels.filter((c) => c.kind === "text") || [],
+    () =>
+      activeServer?.channels.filter(
+        (c) => channelKindInfo(c.kind).text && c.kind !== "dm",
+      ) || [],
     [activeServer],
   );
   const voiceChannels = useMemo(
-    () => activeServer?.channels.filter((c) => c.kind === "voice") || [],
+    () => activeServer?.channels.filter((c) => channelKindInfo(c.kind).appearsAsVoice) || [],
     [activeServer],
   );
   const { events: serverEvents, reload: reloadEvents } = useServerEvents(
@@ -1871,7 +2077,16 @@ export function ChatShell() {
     Permission.RECORD_SESSIONS,
   );
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+  /**
+   * Posting in an announcement channel. Matches the server's check exactly —
+   * gating the client on a different flag than the server would either hide a
+   * composer that works or offer one that always 403s.
+   */
+  const canPostAnnouncements = hasPermission(myPermissions, Permission.MANAGE_MESSAGES);
+  /** Pinning: MANAGE_MESSAGES in a server (the server checks the same), anyone in a DM. */
+  const canPin = inDmHome || canPostAnnouncements;
   const canManageNicknames = hasPermission(myPermissions, Permission.MANAGE_NICKNAMES);
+  const canMentionEveryone = hasPermission(myPermissions, Permission.MENTION_EVERYONE);
   const canCreateServerInvites =
     hasPermission(myPermissions, Permission.CREATE_INVITES) ||
     Boolean(user?.isAdmin || user?.canInvite);
@@ -1985,6 +2200,15 @@ export function ChatShell() {
     () => textChannels.find((channel) => channel.id === activeChannelId) || null,
     [textChannels, activeChannelId],
   );
+  /** Capabilities of the open channel; drives the composer's wording and gating. */
+  const activeChannelInfo = channelKindInfo(activeChannel?.kind);
+  /**
+   * Announcement channels are read-only for anyone without MANAGE_MESSAGES, so
+   * the composer is replaced by an explanation instead of a box that 403s.
+   */
+  const composerBlocked = Boolean(
+    activeChannel && activeChannelInfo.moderatorOnlyPosting && !canPostAnnouncements,
+  );
   const activeDm = useMemo(
     () => dms.find((dm) => dm.channelId === activeChannelId) || null,
     [dms, activeChannelId],
@@ -2016,6 +2240,15 @@ export function ChatShell() {
   const handleIncomingMessage = useCallback(
     (channelId: string, message: unknown) => {
       const incoming = message as Message;
+      // Nudges shake the window when they land in the open conversation or
+      // any DM, unless the sender is blocked.
+      if (
+        incoming.payload?.nudge &&
+        (channelId === activeChannelRef.current || !channelServerRef.current.get(channelId)) &&
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
+      ) {
+        playNudge();
+      }
       if (channelId !== activeChannelRef.current) {
         const serverId = channelServerRef.current.get(channelId);
         // A DM you are not looking at still deserves to bubble up the list.
@@ -2056,13 +2289,16 @@ export function ChatShell() {
             ? [...current, incoming]
             : current,
         );
-        setMessages((current) =>
-          current.map((m) =>
-            String(m.id) === incoming.threadId
-              ? { ...m, threadCount: (m.threadCount || 0) + 1 }
-              : m,
-          ),
-        );
+        if (!countedThreadRepliesRef.current.has(String(incoming.id))) {
+          countedThreadRepliesRef.current.add(String(incoming.id));
+          setMessages((current) =>
+            current.map((m) =>
+              String(m.id) === incoming.threadId
+                ? { ...m, threadCount: (m.threadCount || 0) + 1 }
+                : m,
+            ),
+          );
+        }
         return;
       }
       setMessages((current) =>
@@ -2088,6 +2324,9 @@ export function ChatShell() {
   const onDmCallRef = useRef<((payload: any) => void) | null>(null);
   /** The open thread, readable from socket handlers without re-subscribing. */
   const threadRootRef = useRef<Message | null>(null);
+  /** Thread reply ids already counted, since the POST response and the socket
+   * echo both deliver the sender's own reply. */
+  const countedThreadRepliesRef = useRef<Set<string>>(new Set());
   threadRootRef.current = threadRoot;
   /** Notification levels, readable from socket handlers. */
   const channelPrefsRef = useRef<Record<string, string>>({});
@@ -2109,6 +2348,8 @@ export function ChatShell() {
       void loadServers().catch(() => undefined);
       void loadMembers().catch(() => undefined);
       void loadEmojis().catch(() => undefined);
+      // Group DMs you were added to (or renamed) arrive as structure changes.
+      void loadDms().catch(() => undefined);
       setEventsRefresh((n) => n + 1);
     }, 400);
     // loadEmojis/loadServers/loadMembers are stable useCallbacks.
@@ -2273,6 +2514,65 @@ export function ChatShell() {
     const name = voiceChannels.find((channel) => channel.id === channelId)?.name;
     setNotice(name ? `You were moved to ${name}.` : "You were moved to another voice channel.");
   };
+  // Native apps: mirror the call into the Android notification + bubble or
+  // the iOS call UI, and take Mute / Deafen / Leave presses back from them.
+  const nativeInVoiceRef = useRef(false);
+  const voiceChannelName = voice.channelId
+    ? voiceChannels.find((channel) => channel.id === voice.channelId)?.name ||
+      dms.find((dm) => dm.channelId === voice.channelId)?.user.displayName ||
+      "Voice call"
+    : null;
+  useEffect(() => {
+    syncNativeVoice(
+      voiceChannelName
+        ? { channelName: voiceChannelName, muted: voice.muted, deafened: voice.deafened }
+        : null,
+      nativeInVoiceRef.current,
+    );
+    nativeInVoiceRef.current = Boolean(voiceChannelName);
+  }, [voiceChannelName, voice.muted, voice.deafened]);
+  const nativeVoiceActionsRef = useRef(voice);
+  nativeVoiceActionsRef.current = voice;
+  useEffect(
+    () =>
+      onNativeVoiceAction((action) => {
+        const current = nativeVoiceActionsRef.current;
+        if (action === "mute") current.toggleMute();
+        else if (action === "deafen") current.toggleDeafen();
+        else if (action === "disconnect") current.leave();
+      }),
+    [],
+  );
+  // First voice join in the Android app: offer the floating bubble once.
+  useEffect(() => {
+    if (!voice.channelId) return;
+    let asked = false;
+    try {
+      asked = window.localStorage.getItem("huddle-bubble-asked") === "1";
+    } catch {
+      // Storage blocked: ask this session.
+    }
+    if (asked) return;
+    void canShowVoiceBubble().then((granted) => {
+      if (granted) return;
+      try {
+        window.localStorage.setItem("huddle-bubble-asked", "1");
+      } catch {
+        // ignore
+      }
+      showCustomConfirm({
+        title: "Show voice controls over other apps?",
+        message:
+          "While you're in voice, a small Huddle bubble floats over other apps so you can mute or leave without switching back. Android will ask you to allow \"Display over other apps\".",
+        confirmText: "Allow",
+        cancelText: "Not now",
+        onConfirm: requestVoiceBubblePermission,
+      });
+    });
+    // showCustomConfirm is recreated each render; only a new join should ask.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.channelId]);
+
   forcedMuteRef.current = (userId, muted) => {
     if (user && userId === user.id) voice.setForcedMute(muted);
   };
@@ -2304,6 +2604,16 @@ export function ChatShell() {
     () => (voice.channelId ? voiceRooms[voice.channelId] || [] : []),
     [voiceRooms, voice.channelId],
   );
+
+  /** When the person in the open member menu took their voice seat, if any. */
+  const userMenuVoiceJoinedAt = useMemo(() => {
+    if (!userMenu) return null;
+    for (const people of Object.values(voiceRooms)) {
+      const person = people.find((entry) => entry.id === userMenu.member.id);
+      if (person) return person.joinedAt;
+    }
+    return null;
+  }, [userMenu, voiceRooms]);
 
   // Leaving voice (Disconnect) closes the stage and returns to the text channel.
   useEffect(() => {
@@ -2452,6 +2762,38 @@ export function ChatShell() {
     hub.send({ t: "typing", channelId: activeChannelId });
   }
 
+  /**
+   * Clicking anywhere outside an open dropdown closes it, instead of only its
+   * own button doing so. Each entry lists the menu and the button(s) that open
+   * it: a click on either is "inside", so the button still toggles normally.
+   * Right-click menus have their own full-screen backdrop and aren't listed.
+   */
+  useEffect(() => {
+    const popovers: Array<[boolean, string, () => void]> = [
+      [serverMenuOpen, '.server-menu-dropdown, [aria-label="Server settings"]', () => setServerMenuOpen(false)],
+      // The server menu's "Create Channel" opens this one, so it counts as inside.
+      [kindMenu !== null, ".channel-kind-picker, .server-menu-dropdown", () => setKindMenu(null)],
+      [statusOpen, ".status-menu, .user-footer-profile, .profile-dot", () => setStatusOpen(false)],
+      [quickSoundboardOpen, ".soundboard-quick-popover, .mini-voice-btn", () => setQuickSoundboardOpen(false)],
+      [emojiOpen, ".discord-emoji-picker, .popover-picker, .composer-emoji-btn", () => setEmojiOpen(false)],
+      [gifOpen, ".gif-picker, .gif-button", () => setGifOpen(false)],
+      [mentionsOpen, '.mentions-panel, [aria-label="Mentions"]', () => setMentionsOpen(false)],
+      [pinsOpen, '.pins-panel:not(.mentions-panel), [aria-label="Pinned messages"]', () => setPinsOpen(false)],
+    ];
+    const open = popovers.filter(([isOpen]) => isOpen);
+    if (!open.length) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      // A dialog opened from a menu (confirm, prompt) sits outside it; leave be.
+      if (!target?.isConnected || target.closest('[role="dialog"]:not(.popover-picker)')) return;
+      for (const [, inside, close] of open) {
+        if (!target.closest(inside)) close();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [serverMenuOpen, kindMenu, statusOpen, quickSoundboardOpen, emojiOpen, gifOpen, mentionsOpen, pinsOpen]);
+
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
@@ -2541,16 +2883,40 @@ export function ChatShell() {
     ).huddle?.setMuteHotkey?.(comboToAccelerator(voice.muteKey));
   }, [voice.muteKey]);
 
+  const unreadMentionTotal = useMemo(
+    () => Object.values(unread).reduce((sum, entry) => sum + (entry.mentions || 0), 0),
+    [unread],
+  );
+
   // Desktop shell: reflect the unread mention count on the dock/taskbar badge.
   useEffect(() => {
-    const total = Object.values(unread).reduce(
-      (sum, entry) => sum + (entry.mentions || 0),
-      0,
-    );
     (
       window as unknown as { huddle?: { setBadge?: (n: number) => void } }
-    ).huddle?.setBadge?.(total);
-  }, [unread]);
+    ).huddle?.setBadge?.(unreadMentionTotal);
+  }, [unreadMentionTotal]);
+
+  // The mentions inbox refetches when opened and whenever a new mention lands.
+  useEffect(() => {
+    if (!mentionsOpen) return;
+    let cancelled = false;
+    void apiFetch<{ mentions: MentionEntry[] }>("/api/mentions")
+      .then((data) => {
+        if (!cancelled) setMentionInbox(data.mentions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setMentionInbox([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mentionsOpen, unreadMentionTotal]);
+
+  /** Opens the channel (server or DM) a mention came from, scrolled to it. */
+  function openMention(entry: MentionEntry) {
+    setMentionsOpen(false);
+    setActiveServerId(entry.serverId || DM_HOME);
+    if (entry.message.channelId) jumpToMessage(entry.message.channelId, String(entry.message.id));
+  }
 
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
@@ -2718,6 +3084,38 @@ export function ChatShell() {
     }
   }
 
+  /** Wraps the composer selection in **bold** (the MSN "Font" button). */
+  function boldSelection() {
+    const box = composerRef.current;
+    if (!box) return;
+    const start = box.selectionStart ?? draft.length;
+    const end = box.selectionEnd ?? start;
+    const next = `${draft.slice(0, start)}**${draft.slice(start, end)}**${draft.slice(end)}`;
+    setDraft(next);
+    window.requestAnimationFrame(() => {
+      box.focus();
+      box.setSelectionRange(start + 2, end + 2);
+    });
+  }
+
+  async function sendNudge() {
+    if (!activeChannelId || nudgeCooling) return;
+    setNudgeCooling(true);
+    window.setTimeout(() => setNudgeCooling(false), 10_000);
+    try {
+      await apiFetch("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: activeChannelId,
+          content: "sent a nudge!",
+          payload: { nudge: true },
+        }),
+      });
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't send the nudge.");
+    }
+  }
+
   const handleShareThemeToChat = useCallback(
     async (themeToShare: Theme) => {
       if (!activeChannelRef.current) return;
@@ -2811,6 +3209,97 @@ export function ChatShell() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not open that.");
     }
+  }
+
+  /** Picking one friend opens your DM with them; two or more make a group. */
+  async function createGroupDm(userIds: string[], name: string) {
+    if (userIds.length === 1 && !name) {
+      await openDm(userIds[0]);
+      return;
+    }
+    const data = await apiFetch<{ channelId: string; conversations: DmSummary[] }>(
+      "/api/dms/groups",
+      { method: "POST", body: JSON.stringify({ userIds, name }) },
+    );
+    setDms(data.conversations);
+    setActiveServerId(DM_HOME);
+    setActiveChannelId(data.channelId);
+    setStageChannelId(null);
+    setMobileNav(false);
+  }
+
+  async function addToGroupDm(channelId: string, userIds: string[]) {
+    const data = await apiFetch<{ conversations: DmSummary[] }>("/api/dms/groups", {
+      method: "PATCH",
+      body: JSON.stringify({ channelId, addUserIds: userIds }),
+    });
+    setDms(data.conversations);
+  }
+
+  function renameGroupDm(dm: DmSummary) {
+    showCustomPrompt({
+      title: "Rename group",
+      message: "Leave it empty to name the group after its members.",
+      defaultValue: dm.group?.name || "",
+      placeholder: "Group name",
+      confirmText: "Save",
+      maxLength: 100,
+      onConfirm: (value) => {
+        void apiFetch<{ conversations: DmSummary[] }>("/api/dms/groups", {
+          method: "PATCH",
+          body: JSON.stringify({ channelId: dm.channelId, name: value || "" }),
+        })
+          .then((data) => setDms(data.conversations))
+          .catch((error) =>
+            setNotice(error instanceof Error ? error.message : "Could not rename it."),
+          );
+      },
+    });
+  }
+
+  function removeFromGroupDm(dm: DmSummary, member: { id: string; displayName: string }) {
+    showCustomConfirm({
+      title: `Remove ${member.displayName}`,
+      message: `Remove ${member.displayName} from ${dm.user.displayName}? They will lose access to its messages.`,
+      isDanger: true,
+      confirmText: "Remove",
+      onConfirm: () => {
+        void apiFetch<{ conversations: DmSummary[] }>("/api/dms/groups", {
+          method: "DELETE",
+          body: JSON.stringify({ channelId: dm.channelId, userId: member.id }),
+        })
+          .then((data) => setDms(data.conversations))
+          .catch((error) =>
+            setNotice(error instanceof Error ? error.message : "Could not remove them."),
+          );
+      },
+    });
+  }
+
+  function leaveGroupDm(dm: DmSummary) {
+    showCustomConfirm({
+      title: `Leave '${dm.user.displayName}'`,
+      message:
+        "Are you sure you want to leave? You won't be able to rejoin unless someone adds you back.",
+      isDanger: true,
+      confirmText: "Leave Group",
+      onConfirm: () => {
+        void apiFetch<{ conversations: DmSummary[] }>("/api/dms/groups", {
+          method: "DELETE",
+          body: JSON.stringify({ channelId: dm.channelId }),
+        })
+          .then((data) => {
+            setDms(data.conversations);
+            if (activeChannelId === dm.channelId) {
+              setActiveChannelId(null);
+              setStageChannelId(null);
+            }
+          })
+          .catch((error) =>
+            setNotice(error instanceof Error ? error.message : "Could not leave it."),
+          );
+      },
+    });
   }
 
   async function deleteMessage(id: string | number) {
@@ -3039,6 +3528,35 @@ export function ChatShell() {
         setNotice(
           error instanceof Error ? error.message : "Could not create the poll.",
         );
+      }
+      return;
+    }
+
+    // /ask_gm belongs to the D&D bot; while it isn't connected here, the
+    // built-in AI answers instead of a link to the companion.
+    const gmFallback =
+      name === "ask_gm" && !botCommands.some((command) => command.name === "ask_gm");
+    if (name === "ask" || gmFallback) {
+      // The server posts the answer itself (with the "/ask ..." header), so
+      // nothing here should pick up the pending invocation.
+      pendingCommandRef.current = null;
+      if (!value) {
+        setNotice("Try: /ask how do spell slots work? (start with web: to force a web search)");
+        return;
+      }
+      if (!activeChannelId) return;
+      setNotice("✦ Huddle AI is thinking…");
+      try {
+        await apiFetch("/api/ai/ask", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: activeChannelId,
+            question: gmFallback ? `noweb: As a D&D 5e Game Master: ${value}` : value,
+          }),
+        });
+        setNotice("");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "The AI did not answer.");
       }
       return;
     }
@@ -3605,6 +4123,25 @@ export function ChatShell() {
       }
     }
 
+    // In an AI answer's thread every reply is a follow-up question. Both the
+    // question and the answer arrive over the socket like any thread reply.
+    if (threadRoot.kind === "ai") {
+      try {
+        await apiFetch("/api/ai/ask", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: activeChannelId,
+            question: text,
+            threadId: String(threadRoot.id),
+          }),
+        });
+      } catch (error) {
+        setThreadDraft(text);
+        setNotice(error instanceof Error ? error.message : "The AI did not answer.");
+      }
+      return;
+    }
+
     try {
       const processedText = replaceEmojiShortcodes(text, emojiMap);
       const data = await apiFetch<{ message: Message }>("/api/messages", {
@@ -3615,15 +4152,24 @@ export function ChatShell() {
           threadId: String(threadRoot.id),
         }),
       });
-      setThreadMessages((current) => [...current, data.message]);
-      // Bump the reply count on the root message in the main view.
-      setMessages((current) =>
-        current.map((m) =>
-          m.id === threadRoot.id
-            ? { ...m, threadCount: (m.threadCount || 0) + 1 }
-            : m,
-        ),
+      // The socket echo may have already delivered this reply; don't add or
+      // count it twice.
+      setThreadMessages((current) =>
+        current.some((m) => m.id === data.message.id)
+          ? current
+          : [...current, data.message],
       );
+      if (!countedThreadRepliesRef.current.has(String(data.message.id))) {
+        countedThreadRepliesRef.current.add(String(data.message.id));
+        // Bump the reply count on the root message in the main view.
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === threadRoot.id
+              ? { ...m, threadCount: (m.threadCount || 0) + 1 }
+              : m,
+          ),
+        );
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Reply did not send.");
     }
@@ -3932,7 +4478,10 @@ export function ChatShell() {
 
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
-    const text = draft.trim();
+    const typed = draft.trim();
+    // The MSN theme turns :) (Y) <3 into pictures, as Messenger did. Never
+    // inside a slash command, where the text is an argument.
+    const text = msnTheme && !typed.startsWith("/") ? convertMsnEmoticons(typed) : typed;
     const files = pendingFiles;
     if (!text && !files.length) return;
 
@@ -3972,6 +4521,10 @@ export function ChatShell() {
       const processedText = replaceEmojiShortcodes(text, emojiMap);
       await sendText(processedText, keys);
     } catch (error) {
+      // Put the message back so a dropped connection or a rate limit does not
+      // eat what someone typed — unless they have already started a new one.
+      setDraft((current) => (current ? current : text));
+      setPendingFiles((current) => (current.length ? current : files));
       setNotice(
         error instanceof Error ? error.message : "That message did not send.",
       );
@@ -4010,6 +4563,11 @@ export function ChatShell() {
       lastSeenAt: new Date().toISOString(),
     };
     if (!activeDm) return [meAsMember];
+    if (activeDm.group) {
+      return activeDm.group.members.map((member) =>
+        member.id === user.id ? meAsMember : member,
+      );
+    }
     const otherAsMember: Member = {
       id: activeDm.user.id,
       username: activeDm.user.username,
@@ -4027,15 +4585,19 @@ export function ChatShell() {
     const query = tagQuery.query;
     if (tagQuery.trigger === "#") {
       if (inDmHome) return [];
-      const channels = (activeServer?.channels || []).filter(
-        (channel) => channel.kind === "text" || channel.kind === "voice",
-      );
+      // Voice rooms stay listed: people link `#kitchen-table` to send someone
+      // into a room, so only the DM pseudo-kind is excluded.
+      const channels = (activeServer?.channels || []).filter((channel) => {
+        const info = channelKindInfo(channel.kind);
+        return (info.text || info.appearsAsVoice) && channel.kind !== "dm";
+      });
       return rankMentionMatches(
         channels,
         query,
         (channel) => [channel.name],
         (a, b) =>
-          Number(a.kind === "voice") - Number(b.kind === "voice") || a.position - b.position,
+          Number(channelKindInfo(a.kind).appearsAsVoice) -
+            Number(channelKindInfo(b.kind).appearsAsVoice) || a.position - b.position,
       )
         .slice(0, 10)
         .map((channel) => ({ kind: "channel", channel }));
@@ -4058,8 +4620,17 @@ export function ChatShell() {
     )
       .slice(0, 5)
       .map((role) => ({ kind: "role", role }));
-    return [...memberOptions, ...roleOptions];
-  }, [tagQuery, members, activeServer, inDmHome, dmMembers]);
+    const broadcastOptions: MentionOption[] =
+      inDmHome || !canMentionEveryone
+        ? []
+        : rankMentionMatches(
+            ["everyone", "here"] as const,
+            query,
+            (name) => [name],
+            () => 0,
+          ).map((name) => ({ kind: "broadcast", name }));
+    return [...memberOptions, ...roleOptions, ...broadcastOptions];
+  }, [tagQuery, members, activeServer, inDmHome, dmMembers, canMentionEveryone]);
   const mentionActive =
     tagQuery !== null && tagQuery.start !== dismissedTagAt && mentionMatches.length > 0;
 
@@ -4072,7 +4643,9 @@ export function ChatShell() {
         ? `@${option.member.username}`
         : option.kind === "role"
           ? `@${nameToHandle(option.role.name)}`
-          : `#${nameToHandle(option.channel.name)}`;
+          : option.kind === "broadcast"
+            ? `@${option.name}`
+            : `#${nameToHandle(option.channel.name)}`;
     const before = draft.slice(0, tagQuery.start);
     // Swallow the rest of a half-typed word when picking from the middle of it.
     const after = draft.slice(composerCaret).replace(/^[^\s]*/, "");
@@ -4090,7 +4663,9 @@ export function ChatShell() {
   function openMentionedChannel(target: MentionChannel) {
     const channel = activeServer?.channels.find((c) => c.id === target.id);
     if (!channel) return;
-    if (channel.kind === "voice") {
+    // `appearsAsVoice` rather than `kind === "voice"`, so a stage room is joined
+    // the same way a voice room is.
+    if (channelKindInfo(channel.kind).appearsAsVoice) {
       openVoiceChannel(channel);
       return;
     }
@@ -4425,15 +5000,19 @@ export function ChatShell() {
   }
 
   async function createChannel(
-    kind: "text" | "voice",
+    kind: ChannelKind,
     categoryId: string | null = null,
   ) {
     if (!activeServerId || activeServerId === DM_HOME) return;
+    const copy = CHANNEL_KIND_COPY[kind] ?? CHANNEL_KIND_COPY.text;
     showCustomPrompt({
-      title: kind === "text" ? "Create Text Channel" : "Create Voice Room",
-      message: `Enter name for the new ${kind === "text" ? "text channel" : "voice room"}:`,
-      placeholder: kind === "text" ? "general" : "Voice Lounge",
+      title: copy.title,
+      message: copy.message,
+      placeholder: copy.placeholder,
       confirmText: "Create Channel",
+      // Voice-room and stage names are free-form; text-like ones become
+      // `#mentions`, so they get the shorter cap the server also enforces.
+      maxLength: channelNameRules(kind).maxLength,
       onConfirm: async (name) => {
         if (!name?.trim()) return;
         try {
@@ -4445,12 +5024,54 @@ export function ChatShell() {
             },
           );
           setServers(data.servers);
-          if (kind === "text") setActiveChannelId(data.channelId);
+          // Only text-like kinds become the open channel. Dropping someone into
+          // an empty voice room they just created is a dead end.
+          if (channelKindInfo(kind).text) setActiveChannelId(data.channelId);
         } catch (error) {
           setNotice(error instanceof Error ? error.message : "Could not create it.");
         }
       },
     });
+  }
+
+  /** Turns a channel into another kind of the same family, keeping its messages. */
+  async function changeChannelKind(channel: { id: string; name: string }, kind: ChannelKind) {
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(`/api/channels/${channel.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ kind }),
+      });
+      setServers(data.servers);
+      setNotice(`#${channel.name} is now ${withArticle(channelKindLabel(kind))}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not change the channel type.");
+    }
+  }
+
+  /**
+   * The kind picker's menu, shared by the sidebar header and each category so
+   * both offer the same five kinds instead of only text and voice.
+   */
+  function renderKindMenu(categoryId: string | null) {
+    return (
+      <div className="channel-kind-menu" role="menu" aria-label="Channel type">
+        {CREATABLE_CHANNEL_KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setKindMenu(null);
+              void createChannel(kind, categoryId);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              {channelKindIcon(kind)} {channelKindLabel(kind)}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
   }
 
   async function renameChannel(channel: PublicChannel) {
@@ -4459,6 +5080,7 @@ export function ChatShell() {
       message: `Enter a new name for ${channel.name}:`,
       defaultValue: channel.name,
       confirmText: "Save Name",
+      maxLength: 25,
       onConfirm: async (name) => {
         if (!name?.trim()) return;
         try {
@@ -4665,7 +5287,14 @@ export function ChatShell() {
     player.prime();
     setStageChannelId(channel.id);
     setMobileNav(false);
-    if (voice.channelId !== channel.id) void voice.join(channel.id);
+    if (voice.channelId !== channel.id) {
+      // A stage opens you in the audience unless SPEAK says otherwise. This is
+      // the only place SPEAK is enforced, and it is what makes the audience real:
+      // without it everyone would join with a live microphone and the roster's
+      // "on stage" list would be meaningless.
+      const startMuted = shouldStartMuted(channel.kind, hasPermission(myPermissions, Permission.SPEAK));
+      void voice.join(channel.id, { startMuted });
+    }
   }
 
   function toggleCategory(id: string) {
@@ -4897,7 +5526,41 @@ export function ChatShell() {
     }
   }
 
-  /** Drag props for a server on the rail: drop places the dragged one before it. */
+  /** Saves the folder layout: shown at once, then stored on the account. */
+  function saveServerFolders(next: ServerFolder[]) {
+    setServerFolders(next);
+    void apiFetch<{ folders: ServerFolder[] }>("/api/servers/folders", {
+      method: "PUT",
+      body: JSON.stringify({ folders: next }),
+    }).catch((error) => {
+      setNotice(error instanceof Error ? error.message : "Could not save folders.");
+      void loadServerFolders().catch(() => undefined);
+    });
+  }
+
+  function toggleFolderOpen(folderId: string) {
+    setOpenFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      try {
+        localStorage.setItem("huddle:open-folders", JSON.stringify([...next]));
+      } catch {
+        // Private mode: folders just start closed next time.
+      }
+      return next;
+    });
+  }
+
+  function folderIdOf(serverId: string): string | null {
+    return serverFolders.find((folder) => folder.serverIds.includes(serverId))?.id || null;
+  }
+
+  /**
+   * Drag props for a server on the rail. Dropping on the middle of another
+   * server groups the two into a folder (like Discord); dropping near its edge
+   * places the dragged one before it, joining or leaving folders to match.
+   */
   function serverDragProps(server: PublicServer) {
     return {
       draggable: true,
@@ -4906,24 +5569,237 @@ export function ChatShell() {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application/x-huddle-server", server.id);
       },
-      onDragEnd: () => setDragServerId(null),
+      onDragEnd: () => {
+        setDragServerId(null);
+        setServerDropHint(null);
+      },
       onDragOver: (event: DragEvent<HTMLElement>) => {
         if (dragServerId && dragServerId !== server.id) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
+          const box = event.currentTarget.getBoundingClientRect();
+          const y = (event.clientY - box.top) / box.height;
+          const mode = y > 0.25 && y < 0.75 ? "merge" : "before";
+          if (serverDropHint?.id !== server.id || serverDropHint.mode !== mode) {
+            setServerDropHint({ id: server.id, mode });
+          }
+        }
+      },
+      onDragLeave: (event: DragEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setServerDropHint((hint) => (hint?.id === server.id ? null : hint));
         }
       },
       onDrop: (event: DragEvent<HTMLElement>) => {
         if (!dragServerId) return;
         event.preventDefault();
         event.stopPropagation();
+        const merge = serverDropHint?.id === server.id && serverDropHint.mode === "merge";
+        setServerDropHint(null);
+        const targetFolder = folderIdOf(server.id);
+        if (merge) {
+          saveServerFolders(
+            targetFolder
+              ? moveToFolder(serverFolders, dragServerId, targetFolder)
+              : createFolder(serverFolders, server.id, dragServerId, crypto.randomUUID()),
+          );
+          if (targetFolder && !openFolders.has(targetFolder)) toggleFolderOpen(targetFolder);
+          setDragServerId(null);
+          return;
+        }
+        if (targetFolder !== folderIdOf(dragServerId)) {
+          saveServerFolders(
+            targetFolder
+              ? moveToFolder(serverFolders, dragServerId, targetFolder)
+              : removeFromFolders(serverFolders, dragServerId),
+          );
+        }
         void dropServer(dragServerId, server.id);
       },
     };
   }
 
+  /** Drop props for a folder's icon: dropping a server there files it inside. */
+  function folderDropProps(folder: ServerFolder) {
+    return {
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        if (dragServerId && !folder.serverIds.includes(dragServerId)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          if (serverDropHint?.id !== folder.id) {
+            setServerDropHint({ id: folder.id, mode: "merge" });
+          }
+        }
+      },
+      onDragLeave: (event: DragEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setServerDropHint((hint) => (hint?.id === folder.id ? null : hint));
+        }
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        if (!dragServerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setServerDropHint(null);
+        saveServerFolders(moveToFolder(serverFolders, dragServerId, folder.id));
+        setDragServerId(null);
+      },
+    };
+  }
+
+  /** One server icon on the rail (loose, or inside an open folder). */
+  function renderRailServer(server: PublicServer) {
+    const isActive = server.id === activeServerId;
+    const initials =
+      server.name
+        .split(/\s+/)
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "SV";
+    const hasUnread =
+      !isActive && server.channels.some((c) => unread[c.id]?.unread);
+    const mentionTotal = server.channels.reduce(
+      (sum, c) => sum + (unread[c.id]?.mentions || 0),
+      0,
+    );
+    const occupiedRooms = server.channels.filter(
+      (c) => channelKindInfo(c.kind).appearsAsVoice && (voiceRooms[c.id]?.length || 0) > 0,
+    );
+    const voiceActive = occupiedRooms.length > 0;
+    const voiceTitle = occupiedRooms
+      .map(
+        (c) =>
+          `🔊 ${c.name}: ${voiceRooms[c.id].map((p) => p.displayName).join(", ")}`,
+      )
+      .join("\n");
+    return (
+      <div
+        key={server.id}
+        className={`rail-item ${dragServerId === server.id ? "dragging" : ""} ${serverDropHint?.id === server.id ? `drop-${serverDropHint.mode}` : ""
+        }`}
+        {...serverDragProps(server)}
+      >
+        {isActive ? (
+          <span
+            className="rail-active-pill"
+            style={{ background: server.color || "#a78bfa" }}
+          />
+        ) : (
+          hasUnread && <span className="rail-unread-pill" />
+        )}
+        <button
+          className={`space-mark ${isActive ? "active-space" : ""}`}
+          style={
+            isActive ? { background: server.color || "#a78bfa" } : undefined
+          }
+          aria-label={server.name}
+          title={server.name}
+          onClick={() => {
+            setActiveServerId(server.id);
+            setStageChannelId(null);
+            setMobileNav(false);
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRailMenu({ server, x: event.clientX, y: event.clientY });
+          }}
+        >
+          {server.iconUrl ? (
+            <img
+              src={server.iconUrl}
+              alt={server.name}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "14px",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            server.icon || initials
+          )}
+          {mentionTotal > 0 && (
+            <span className="rail-badge">{mentionTotal}</span>
+          )}
+          {voiceActive && (
+            <span className="rail-voice-badge" title={voiceTitle}>
+              <Volume2 size={11} />
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  /** A folder on the rail: a mini grid when closed, its servers when open. */
+  function renderRailFolder(folder: ServerFolder, folderServers: PublicServer[]) {
+    const open = openFolders.has(folder.id);
+    const containsActive = folderServers.some((server) => server.id === activeServerId);
+    const hasUnread = folderServers.some(
+      (server) => server.id !== activeServerId && server.channels.some((c) => unread[c.id]?.unread),
+    );
+    const mentionTotal = folderServers.reduce(
+      (sum, server) =>
+        sum + server.channels.reduce((n, c) => n + (unread[c.id]?.mentions || 0), 0),
+      0,
+    );
+    const label = folder.name || folderServers.map((server) => server.name).join(", ");
+    return (
+      <div
+        key={`folder-${folder.id}`}
+        className={`rail-folder ${open ? "is-open" : ""}`}
+        style={{ ["--folder-color" as string]: folder.color }}
+      >
+        <div
+          className={`rail-item ${serverDropHint?.id === folder.id ? "drop-merge" : ""}`}
+          {...folderDropProps(folder)}
+        >
+          {!open && containsActive ? (
+            <span className="rail-active-pill" />
+          ) : (
+            !open && hasUnread && <span className="rail-unread-pill" />
+          )}
+          <button
+            type="button"
+            className="rail-folder-mark"
+            aria-label={`${label} folder, ${open ? "open" : "closed"}`}
+            aria-expanded={open}
+            title={label}
+            onClick={() => toggleFolderOpen(folder.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setFolderMenu({ folder, x: event.clientX, y: event.clientY });
+            }}
+          >
+            {open ? (
+              <Folder size={20} fill="currentColor" />
+            ) : (
+              <span className="rail-folder-grid">
+                {folderServers.slice(0, 4).map((server) => (
+                  <span
+                    key={server.id}
+                    style={{ background: server.color || "#a78bfa" }}
+                  >
+                    {server.iconUrl ? (
+                      <img src={server.iconUrl} alt="" />
+                    ) : (
+                      server.icon || server.name.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                ))}
+              </span>
+            )}
+            {!open && mentionTotal > 0 && <span className="rail-badge">{mentionTotal}</span>}
+          </button>
+        </div>
+        {open && folderServers.map((server) => renderRailServer(server))}
+      </div>
+    );
+  }
+
   function renderChannel(channel: PublicChannel) {
-    if (channel.kind === "voice") {
+    if (channelKindInfo(channel.kind).appearsAsVoice) {
       const people = voiceRooms[channel.id] || [];
       const playing = hub.players[channel.id]?.track;
       // Merge channel-reorder drag props with a drop zone that accepts a
@@ -4979,7 +5855,7 @@ export function ChatShell() {
             }}
           >
             <span className={`speaker-icon ${isConnectedVoice ? "text-emerald-400" : ""}`}>
-              <Volume2 size={16} />
+              {channelKindIcon(channel.kind, 16)}
             </span>
             <span className={isConnectedVoice ? "font-semibold text-[#c8bdf5]" : ""}>{channel.name}</span>
             {isConnectedVoice ? (
@@ -5057,6 +5933,11 @@ export function ChatShell() {
                         : person.displayName}
                       {isSpeaking && isConnectedVoice ? " (speaking)" : ""}
                     </span>
+                    <VoiceDuration
+                      className="voice-member-timer"
+                      joinedAt={person.joinedAt}
+                      serverNow={hub.serverNow}
+                    />
                     {isSpeaking && (
                       <Mic size={12} className="text-emerald-400 ml-auto animate-pulse" />
                     )}
@@ -5118,7 +5999,7 @@ export function ChatShell() {
         }}
       >
         {unread[channel.id]?.unread && <span className="unread-pill" />}
-        <Hash size={16} className="channel-hash shrink-0" />
+        {channelKindIcon(channel.kind, 16, "channel-hash shrink-0")}
         <span>{channel.name}</span>
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>
@@ -5240,6 +6121,16 @@ export function ChatShell() {
         "--members-w": membersOpen && !stageChannel ? `${membersWidth}px` : "0px",
       } as React.CSSProperties}
     >
+      <ConnectionBanner connected={hub.connected} />
+      {msnTheme && (
+        <MsnSignInToasts
+          online={hub.online}
+          people={members.map((m) => ({ ...m, name: m.displayName }))}
+          selfId={user?.id ?? null}
+          connected={hub.connected}
+          onOpen={(id) => void openDm(id)}
+        />
+      )}
 
       {/* Tapping outside the drawer on a phone closes it. */}
       <div
@@ -5269,88 +6160,11 @@ export function ChatShell() {
         </div>
 
         <div className="rail-divider" />
-        {servers.map((server) => {
-          const isActive = server.id === activeServerId;
-          const initials =
-            server.name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase() || "SV";
-          const hasUnread =
-            !isActive && server.channels.some((c) => unread[c.id]?.unread);
-          const mentionTotal = server.channels.reduce(
-            (sum, c) => sum + (unread[c.id]?.mentions || 0),
-            0,
-          );
-          const occupiedRooms = server.channels.filter(
-            (c) => c.kind === "voice" && (voiceRooms[c.id]?.length || 0) > 0,
-          );
-          const voiceActive = occupiedRooms.length > 0;
-          const voiceTitle = occupiedRooms
-            .map(
-              (c) =>
-                `🔊 ${c.name}: ${voiceRooms[c.id].map((p) => p.displayName).join(", ")}`,
-            )
-            .join("\n");
-          return (
-            <div
-              key={server.id}
-              className={`rail-item ${dragServerId === server.id ? "dragging" : ""}`}
-              {...serverDragProps(server)}
-            >
-              {isActive ? (
-                <span
-                  className="rail-active-pill"
-                  style={{ background: server.color || "#a78bfa" }}
-                />
-              ) : (
-                hasUnread && <span className="rail-unread-pill" />
-              )}
-              <button
-                className={`space-mark ${isActive ? "active-space" : ""}`}
-                style={
-                  isActive ? { background: server.color || "#a78bfa" } : undefined
-                }
-                aria-label={server.name}
-                title={server.name}
-                onClick={() => {
-                  setActiveServerId(server.id);
-                  setStageChannelId(null);
-                  setMobileNav(false);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setRailMenu({ server, x: event.clientX, y: event.clientY });
-                }}
-              >
-                {server.iconUrl ? (
-                  <img
-                    src={server.iconUrl}
-                    alt={server.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "14px",
-                      objectFit: "cover",
-                    }}
-                  />
-                ) : (
-                  server.icon || initials
-                )}
-                {mentionTotal > 0 && (
-                  <span className="rail-badge">{mentionTotal}</span>
-                )}
-                {voiceActive && (
-                  <span className="rail-voice-badge" title={voiceTitle}>
-                    <Volume2 size={11} />
-                  </span>
-                )}
-              </button>
-            </div>
-          );
-        })}
+        {railEntries(servers, serverFolders).map((entry) =>
+          entry.kind === "server"
+            ? renderRailServer(entry.server)
+            : renderRailFolder(entry.folder, entry.servers),
+        )}
         <button
           className="space-mark add-space"
           aria-label="Create a server"
@@ -5366,7 +6180,7 @@ export function ChatShell() {
         {visibleDms.slice(0, 4).map((dm) => {
           const isActive = inDmHome && activeChannelId === dm.channelId;
           const count = unread[dm.channelId]?.count || 0;
-          const isOnline = hub.online.has(dm.user.id);
+          const presence = presenceOf(dm.user);
           return (
             <div key={dm.channelId} className="rail-item">
               {isActive && (
@@ -5393,9 +6207,11 @@ export function ChatShell() {
                     avatarUrl={dm.user.avatarUrl}
                     color={dm.user.color}
                   />
-                  <span
-                    className={`rail-dm-online-dot ${isOnline ? "online" : "offline"}`}
-                  />
+                  {!dm.group && (
+                    <span
+                      className={`rail-dm-online-dot is-${presence === "invisible" ? "offline" : presence}`}
+                    />
+                  )}
                   {voiceRooms[dm.channelId]?.length > 0 && (
                     <span className="dm-call-active-indicator" title="Active voice call" />
                   )}
@@ -5427,6 +6243,25 @@ export function ChatShell() {
                 {PRESENCE[key].label}
               </button>
             ))}
+            {msnTheme &&
+              MSN_EXTRA_STATUSES.map((extra) => (
+                <button
+                  key={extra.label}
+                  type="button"
+                  className={myStatus === extra.status && myCustomStatus === extra.text ? "active" : ""}
+                  onClick={() => {
+                    autoIdleRef.current = false;
+                    void savePresence({ status: extra.status, customStatus: extra.text });
+                    setStatusOpen(false);
+                  }}
+                >
+                  <span
+                    className="status-dot"
+                    style={{ background: PRESENCE[extra.status].color }}
+                  />
+                  {extra.label}
+                </button>
+              ))}
             <div className="status-menu-divider" />
             <button
               type="button"
@@ -5582,7 +6417,8 @@ export function ChatShell() {
                 type="button"
                 onClick={() => {
                   setServerMenuOpen(false);
-                  createChannel("text");
+                  // The same five-kind picker as the sidebar's "+".
+                  setKindMenu({ categoryId: null });
                 }}
               >
                 <span className="flex items-center gap-2">
@@ -5695,6 +6531,16 @@ export function ChatShell() {
             <div className="section-label flex items-center justify-between">
               <span>DIRECT MESSAGES</span>
               {user && (
+                <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="hover:text-white transition-colors"
+                  title="Create DM or group"
+                  aria-label="Create DM or group"
+                  onClick={() => setGroupDialog({ mode: "create" })}
+                >
+                  <Plus size={14} />
+                </button>
                 <button
                   type="button"
                   className="hover:text-white transition-colors"
@@ -5703,6 +6549,7 @@ export function ChatShell() {
                 >
                   <StickyNote size={14} />
                 </button>
+                </span>
               )}
             </div>
             {visibleDms.map((dm) => {
@@ -5717,7 +6564,13 @@ export function ChatShell() {
                     setStageChannelId(null);
                     setMobileNav(false);
                   }}
-                  onContextMenu={(event) => openUserMenu(event, dm.user)}
+                  onContextMenu={(event) => {
+                    if (dm.group) {
+                      event.preventDefault();
+                      return;
+                    }
+                    openUserMenu(event, dm.user);
+                  }}
                 >
                   {unread[dm.channelId]?.unread && <span className="unread-pill" />}
                   <Avatar
@@ -5726,10 +6579,20 @@ export function ChatShell() {
                     avatarUrl={dm.user.avatarUrl}
                     color={dm.user.color}
                   />
+                  {dm.group ? (
+                    <span className="dm-group-label">
+                      <span className="truncate">{dm.user.displayName}</span>
+                      <small>
+                        {dm.group.members.length}{" "}
+                        {dm.group.members.length === 1 ? "Member" : "Members"}
+                      </small>
+                    </span>
+                  ) : (
                   <span className="flex items-center gap-1.5 truncate">
                     {isSelf ? `${dm.user.displayName} (Notes)` : dm.user.displayName}
                   </span>
-                  {isSelf ? (
+                  )}
+                  {dm.group ? null : isSelf ? (
                     <StickyNote size={12} className="text-amber-400/80 ml-auto flex-shrink-0" />
                   ) : (
                     hub.online.has(dm.user.id) && <i className="dm-online" />
@@ -5774,20 +6637,22 @@ export function ChatShell() {
                   >
                     <ChevronDown size={14} /><Plus size={14} />
                   </button>
-                  <button
-                    aria-label="Add text channel"
-                    title="Add text channel"
-                    onClick={() => createChannel("text")}
-                  >
-                    <Hash size={14} /><Plus size={14} />
-                  </button>
-                  <button
-                    aria-label="Add voice room"
-                    title="Add voice room"
-                    onClick={() => createChannel("voice")}
-                  >
-                    <Volume2 size={14} /><Plus size={14} />
-                  </button>
+                  {/* One picker for all five kinds. Separate text/voice buttons
+                      made the other three undiscoverable. */}
+                  <span className="channel-kind-picker">
+                    <button
+                      aria-label="Create channel"
+                      title="Create channel"
+                      aria-haspopup="menu"
+                      aria-expanded={kindMenu?.categoryId === null}
+                      onClick={() =>
+                        setKindMenu(kindMenu?.categoryId === null ? null : { categoryId: null })
+                      }
+                    >
+                      <Plus size={14} />
+                    </button>
+                    {kindMenu?.categoryId === null && renderKindMenu(null)}
+                  </span>
                 </span>
               )}
             </div>
@@ -5842,13 +6707,24 @@ export function ChatShell() {
                     </button>
                     {canManageChannels && (
                       <span className="category-actions">
-                        <button
-                          aria-label={`Add channel to ${category.name}`}
-                          title="Add text channel here"
-                          onClick={() => createChannel("text", category.id)}
-                        >
-                          +
-                        </button>
+                        <span className="channel-kind-picker">
+                          <button
+                            aria-label={`Add channel to ${category.name}`}
+                            title="Add channel here"
+                            aria-haspopup="menu"
+                            aria-expanded={kindMenu?.categoryId === category.id}
+                            onClick={() =>
+                              setKindMenu(
+                                kindMenu?.categoryId === category.id
+                                  ? null
+                                  : { categoryId: category.id },
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                          {kindMenu?.categoryId === category.id && renderKindMenu(category.id)}
+                        </span>
                         <button
                           aria-label={`Delete ${category.name}`}
                           title="Delete category"
@@ -6041,7 +6917,7 @@ export function ChatShell() {
               </button>
               <span className="big-hash">
                 {stageChannel ? (
-                  <Volume2 size={20} />
+                  channelKindIcon(stageChannel.kind, 20)
                 ) : inDmHome ? (
                   isSelfDm ? (
                     <StickyNote size={20} />
@@ -6049,7 +6925,7 @@ export function ChatShell() {
                     <AtSign size={20} />
                   )
                 ) : (
-                  <Hash size={20} />
+                  channelKindIcon(activeChannel?.kind ?? "text", 20)
                 )}
               </span>
               <div className="channel-heading">
@@ -6063,7 +6939,9 @@ export function ChatShell() {
                       ? activeDm
                         ? isSelfDm
                           ? "Your personal space for notes, drafts, and to-dos"
-                          : `Just you and ${activeDm.user.displayName}`
+                          : activeDm.group
+                            ? `${activeDm.group.members.length} ${activeDm.group.members.length === 1 ? "member" : "members"}`
+                            : `Just you and ${activeDm.user.displayName}`
                         : "Pick a conversation"
                       : activeChannel?.topic ||
                       (activeChannel
@@ -6072,7 +6950,35 @@ export function ChatShell() {
                 </span>
               </div>
               <div className="header-actions">
-                {inDmHome && activeChannelId && !isSelfDm && (
+                {inDmHome && activeDm?.group && (
+                  <div className="dm-call-actions">
+                    <button
+                      type="button"
+                      className="dm-call-btn flex items-center gap-1.5"
+                      onClick={() => setGroupDialog({ mode: "add", channelId: activeDm.channelId })}
+                      title="Add friends to this group"
+                    >
+                      <UserPlus size={15} /> Add
+                    </button>
+                    <button
+                      type="button"
+                      className="dm-call-btn flex items-center gap-1.5"
+                      onClick={() => renameGroupDm(activeDm)}
+                      title="Rename group"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="dm-call-btn flex items-center gap-1.5"
+                      onClick={() => leaveGroupDm(activeDm)}
+                      title="Leave group"
+                    >
+                      <LogOut size={15} />
+                    </button>
+                  </div>
+                )}
+                {inDmHome && activeChannelId && !isSelfDm && !activeDm?.group && (
                   <div className="dm-call-actions">
                     {dmCall && dmCall.channelId === activeChannelId ? (
                       <button
@@ -6142,6 +7048,14 @@ export function ChatShell() {
                   </Icon>
                 )}
                 <Icon
+                  label="Mentions"
+                  active={mentionsOpen}
+                  badge={unreadMentionTotal}
+                  onClick={() => setMentionsOpen((open) => !open)}
+                >
+                  <AtSign size={18} />
+                </Icon>
+                <Icon
                   label="Pinned messages"
                   active={pinsOpen}
                   onClick={() => setPinsOpen((open) => !open)}
@@ -6172,12 +7086,19 @@ export function ChatShell() {
                 channelName={stageChannel.name}
                 participants={voiceParticipants}
                 connectionId={hub.connectionId}
+                serverNow={hub.serverNow}
                 voice={voice}
                 joined={voice.channelId === stageChannel.id}
                 onJoin={() => void openVoiceChannel(stageChannel)}
                 onExit={() => setStageChannelId(null)}
                 serverId={stageChannel.serverId}
                 canManageSounds={canManageChannels}
+                // A stage has an audience, so the view splits the room into
+                // audible and listening, and offers the listening half a hand.
+                stageMode={channelKindInfo(stageChannel.kind).kind === "stage"}
+                // Hosts host: moving seats on and off the stage is a moderation
+                // action, and the hub rechecks the same permission.
+                canManageStage={hasPermission(myPermissions, Permission.MUTE_MEMBERS)}
                 userId={user.id}
                 userName={user.displayName}
                 activity={roomActivity}
@@ -6339,6 +7260,77 @@ export function ChatShell() {
                   </div>
                 )}
 
+                {mentionsOpen && (
+                  <div className="pins-panel mentions-panel">
+                    <div className="pins-head">
+                      <strong>Mentions</strong>
+                      <button
+                        type="button"
+                        className="popup-close-x"
+                        onClick={() => setMentionsOpen(false)}
+                        aria-label="Close mentions"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <div className="mentions-tabs" role="tablist">
+                      {(["all", "unread"] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="tab"
+                          aria-selected={mentionsTab === tab}
+                          className={mentionsTab === tab ? "active" : ""}
+                          onClick={() => setMentionsTab(tab)}
+                        >
+                          {tab === "all" ? "All" : `Unread${unreadMentionTotal ? ` (${unreadMentionTotal})` : ""}`}
+                        </button>
+                      ))}
+                    </div>
+                    {(() => {
+                      if (!mentionInbox) return <p className="pins-empty">Loading…</p>;
+                      const shown =
+                        mentionsTab === "unread"
+                          ? mentionInbox.filter((entry) => !entry.read)
+                          : mentionInbox;
+                      if (!shown.length) {
+                        return (
+                          <p className="pins-empty">
+                            {mentionsTab === "unread"
+                              ? "You're all caught up."
+                              : "Nobody has mentioned you yet."}
+                          </p>
+                        );
+                      }
+                      return shown.map((entry) => (
+                        <button
+                          type="button"
+                          key={entry.message.id}
+                          className={`search-result mention-entry ${entry.read ? "" : "is-unread"}`}
+                          onClick={() => openMention(entry)}
+                        >
+                          <span className="search-result-meta">
+                            {entry.serverName ? (
+                              <>
+                                {entry.serverName} · <span className="channel-hash">#</span>
+                                {entry.channelName}
+                              </>
+                            ) : (
+                              "Direct message"
+                            )}
+                            {" · "}
+                            {formatClientDateTime(entry.message.createdAt)}
+                          </span>
+                          <span className="search-result-meta">
+                            <strong>{entry.message.author}</strong>
+                          </span>
+                          <span className="search-result-snippet">{entry.message.text}</span>
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
+
                 {pinsOpen && (
                   <div className="pins-panel">
                     <div className="pins-head">
@@ -6371,16 +7363,18 @@ export function ChatShell() {
                         >
                           <div className="flex items-center justify-between mb-1">
                             <strong className="text-xs text-white">{pin.author}</strong>
+                            {canPin && (
                             <button
-                              type="button"
-                              className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void togglePin(pin);
-                              }}
-                            >
-                              Unpin
-                            </button>
+                                type="button"
+                                className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void togglePin(pin);
+                                }}
+                              >
+                                Unpin
+                              </button>
+                            )}
                           </div>
                           <p className="text-xs text-gray-300 line-clamp-3">{pin.text}</p>
                         </div>
@@ -6511,7 +7505,29 @@ export function ChatShell() {
                   </section>
                 )}
 
-                <div className="messages" aria-live="polite">
+                {/* A forum's posts are its top-level messages, so the board
+                    replaces the chat list rather than sitting beside it. The
+                    list stays mounted (just hidden) so scroll position and
+                    read-marking keep working when you switch back. */}
+                {activeChannelInfo.threadContainer && !inDmHome && (
+                  <ForumBoard
+                    posts={messages}
+                    channelName={channelTitle}
+                    canPost={!composerBlocked}
+                    onOpenPost={(postId) => {
+                      // Resolved here rather than passed through, so the board
+                      // never has to know about the richer Message type.
+                      const post = messages.find((m) => m.id === postId);
+                      if (post) void openThread(post);
+                    }}
+                    onNewPost={() => composerRef.current?.focus()}
+                  />
+                )}
+
+                <div
+                  className={`messages ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}
+                  aria-live="polite"
+                >
                   <div className="channel-intro">
                     <div className="cozy-intro-pill">
                       <span className="cozy-intro-icon">
@@ -6529,7 +7545,9 @@ export function ChatShell() {
                         {inDmHome
                           ? isSelfDm
                             ? "This is your personal space for notes, drafts, and reminders."
-                            : `this is the beginning of your conversation with ${channelTitle}`
+                            : activeDm?.group
+                              ? `welcome to the beginning of ${channelTitle}`
+                              : `this is the beginning of your conversation with ${channelTitle}`
                           : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
                       </span>
                     </div>
@@ -6542,13 +7560,97 @@ export function ChatShell() {
                         {inDmHome
                           ? isSelfDm
                             ? "Messages sent here are private and only visible to you. Great for jotting down thoughts, saving links, or staging drafts."
-                            : "This conversation is only visible to the two of you."
+                            : activeDm?.group
+                              ? "Welcome to the beginning of this group. Only its members can see it."
+                              : "This conversation is only visible to the two of you."
                           : "This is the start of the channel. Be excellent to each other."}
                       </p>
                     </div>
                   </div>
 
                   {messages.map((message, index) => {
+                    if (message.kind?.startsWith("system-")) {
+                      const pinnedId =
+                        message.kind === "system-pin" &&
+                          message.payload &&
+                          typeof (message.payload as { messageId?: unknown }).messageId === "string"
+                          ? (message.payload as { messageId: string }).messageId
+                          : null;
+                      const actor =
+                        (message.userId && membersById.get(message.userId)) ||
+                        (message.userId &&
+                          activeDm?.group?.members.find((m) => m.id === message.userId)) ||
+                        null;
+                      const actorName = actor?.displayName || message.author;
+                      // The stored text starts with the name it had when posted;
+                      // show the current name and keep the rest of the sentence.
+                      const rest = message.text.startsWith(message.author)
+                        ? message.text.slice(message.author.length)
+                        : ` ${message.text}`;
+                      return (
+                        <div
+                          key={message.id}
+                          id={`msg-${message.id}`}
+                          className={`system-message system-message--${message.kind.slice(7)}`}
+                        >
+                          <span className="system-message-icon" aria-hidden="true">
+                            {message.kind === "system-pin" ? (
+                              <Pin size={15} />
+                            ) : message.kind === "system-group-leave" ||
+                              message.kind === "system-group-remove" ? (
+                              <LogOut size={15} />
+                            ) : message.kind === "system-group-rename" ? (
+                              <Pencil size={15} />
+                            ) : (
+                              <UserPlus size={15} />
+                            )}
+                          </span>
+                          <p>
+                            <button
+                              type="button"
+                              className="system-message-actor"
+                              onClick={(event) => {
+                                if (actor) openUserMenu(event, actor as Member);
+                              }}
+                            >
+                              {actorName}
+                            </button>
+                            {message.kind === "system-pin" ? (
+                              <>
+                                {" pinned "}
+                                {pinnedId ? (
+                                  <button
+                                    type="button"
+                                    className="system-message-link"
+                                    onClick={() => {
+                                      if (activeChannelId) jumpToMessage(activeChannelId, pinnedId);
+                                    }}
+                                  >
+                                    a message
+                                  </button>
+                                ) : (
+                                  "a message"
+                                )}
+                                {" to this channel. See all "}
+                                <button
+                                  type="button"
+                                  className="system-message-link"
+                                  onClick={() => setPinsOpen(true)}
+                                >
+                                  pinned messages
+                                </button>
+                                .
+                              </>
+                            ) : (
+                              rest
+                            )}
+                            <time title={formatClientDateTime(message.createdAt)}>
+                              {formatClientTime(message.createdAt, message.time)}
+                            </time>
+                          </p>
+                        </div>
+                      );
+                    }
                     const author = message.userId
                       ? membersById.get(message.userId)
                       : undefined;
@@ -6581,6 +7683,18 @@ export function ChatShell() {
                           >
                             Show message
                           </button>
+                        </div>
+                      );
+                    }
+
+                    if (message.payload?.nudge) {
+                      return (
+                        <div key={message.id} id={`msg-${message.id}`} className="nudge-line">
+                          <span className="nudge-line-rule" aria-hidden="true" />
+                          {message.userId === user.id
+                            ? "You have just sent a nudge."
+                            : `${author?.displayName || message.author} has just sent you a nudge.`}
+                          <span className="nudge-line-rule" aria-hidden="true" />
                         </div>
                       );
                     }
@@ -6675,7 +7789,9 @@ export function ChatShell() {
                               if (author) openUserMenu(event, author);
                             }}
                             onClick={(event) => {
-                              if (touchInput && author) openUserMenu(event, author);
+                              // Same as clicking the name: show their profile card,
+                              // opened beside the avatar. Right-click keeps the menu.
+                              if (author) openProfile(author, event);
                             }}
                           />
                         )}
@@ -6758,6 +7874,24 @@ export function ChatShell() {
                                 message.payload.trackId
                               }
                             />
+                          ) : message.kind === "ai" ? (
+                            <AiAnswerCard
+                              messageId={message.id}
+                              channelId={activeChannelId}
+                              question={message.payload?.question}
+                              sources={message.payload?.sources}
+                              threadCount={message.threadCount}
+                              onOpenThread={() => void openThread(message)}
+                              onError={setNotice}
+                            >
+                              <MessageBody
+                                text={message.text}
+                                selfHandle={user.username}
+                                onMention={openProfileByHandle}
+                                onImage={setLightboxImage}
+                                emojis={emojiMap}
+                              />
+                            </AiAnswerCard>
                           ) : message.kind === "dnd" && message.payload ? (
                             <DndCard
                               {...message.payload}
@@ -7051,7 +8185,7 @@ export function ChatShell() {
                             </button>
                           )}
 
-                          {(message.threadCount ?? 0) > 0 && (
+                          {(message.threadCount ?? 0) > 0 && message.kind !== "ai" && (
                             <button
                               type="button"
                               className="thread-link inline-flex items-center gap-1.5"
@@ -7322,16 +8456,18 @@ export function ChatShell() {
                               <Pencil size={16} />
                             </button>
                           )}
+                          {canPin && (
                           <button
-                            type="button"
-                            title={message.pinned ? "Unpin" : "Pin"}
-                            onClick={() => {
-                              void togglePin(message);
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            <Pin size={16} />
-                          </button>
+                              type="button"
+                              title={message.pinned ? "Unpin" : "Pin"}
+                              onClick={() => {
+                                void togglePin(message);
+                                setOpenActionsId(null);
+                              }}
+                            >
+                              <Pin size={16} />
+                            </button>
+                          )}
                           {canDelete && (
                             <button
                               type="button"
@@ -7417,7 +8553,9 @@ export function ChatShell() {
                                 ? "MEMBERS"
                                 : option.kind === "role"
                                   ? "ROLES"
-                                  : "CHANNELS"}
+                                  : option.kind === "broadcast"
+                                    ? "NOTIFY"
+                                    : "CHANNELS"}
                             </div>
                           ) : null;
 
@@ -7434,14 +8572,34 @@ export function ChatShell() {
                                 onMouseEnter={() => setSlashIndex(index)}
                                 onClick={() => pickMention(option)}
                               >
-                                {channel.kind === "voice" ? (
-                                  <Volume2 size={16} className="mention-channel-icon" />
-                                ) : (
-                                  <Hash size={16} className="mention-channel-icon" />
-                                )}
+                                {channelKindIcon(channel.kind, 16, "mention-channel-icon")}
                                 <span className="mention-primary">{channel.name}</span>
                                 <span className="mention-note">
-                                  {channel.kind === "voice" ? "Voice channel" : channel.topic || "Text channel"}
+                                  {channel.topic || channelKindLabel(channel.kind)}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (option.kind === "broadcast") {
+                          return (
+                            <div key={`broadcast:${option.name}`}>
+                              {header}
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={active}
+                                className={`mention-item ${active ? "active" : ""}`}
+                                onMouseEnter={() => setSlashIndex(index)}
+                                onClick={() => pickMention(option)}
+                              >
+                                <AtSign size={16} className="mention-channel-icon" />
+                                <span className="mention-primary">@{option.name}</span>
+                                <span className="mention-note">
+                                  {option.name === "everyone"
+                                    ? "Notify every member of this server"
+                                    : "Notify everyone who is online"}
                                 </span>
                               </button>
                             </div>
@@ -7652,7 +8810,36 @@ export function ChatShell() {
                         Unblock
                       </button>
                     </div>
+                  ) : composerBlocked ? (
+                    <div className="dm-blocked-banner">
+                      <Radio size={16} className="text-violet-400 shrink-0" />
+                      <span>
+                        This is an announcement channel, so only moderators can post here.
+                      </span>
+                    </div>
                   ) : (
+                    <>
+                    {msnTheme && (
+                      <MsnFormatToolbar
+                        onFont={boldSelection}
+                        onEmoticons={() => {
+                          setEmojiOpen((open) => !open);
+                          setGifOpen(false);
+                        }}
+                        onWinks={() => {
+                          setGifOpen((open) => !open);
+                          setEmojiOpen(false);
+                        }}
+                        onVoiceClip={voiceRecorder.start}
+                        onHandwriting={(file) => {
+                          acceptAttachment([file]);
+                          composerRef.current?.focus();
+                        }}
+                        channelId={activeChannelId}
+                        onNudge={() => void sendNudge()}
+                        nudgeCooling={nudgeCooling || !activeChannelId}
+                      />
+                    )}
                     <div className="composer">
                       {voiceRecorder.state !== "idle" ? (
                         <VoiceRecordingBar recorder={voiceRecorder} />
@@ -7698,10 +8885,18 @@ export function ChatShell() {
                           activeChannelId
                             ? isSelfDm
                               ? "Jot down a note or link to yourself..."
-                              : `Message ${inDmHome ? "" : "#"}${channelTitle}`
+                              : activeChannelInfo.threadContainer
+                                ? "Start a new post…"
+                                : activeChannelInfo.moderatorOnlyPosting
+                                  ? `Post an announcement in #${channelTitle}`
+                                  : `Message ${inDmHome ? "" : "#"}${channelTitle}`
                             : "Pick a channel first"
                         }
-                        aria-label={`Message ${channelTitle}`}
+                        aria-label={
+                          activeChannelInfo.threadContainer
+                            ? `New post in ${channelTitle}`
+                            : `Message ${channelTitle}`
+                        }
                         rows={1}
                         disabled={!activeChannelId}
                       />
@@ -7765,6 +8960,7 @@ export function ChatShell() {
                       </>
                       )}
                     </div>
+                    </>
                   )}
 
                   <div className="composer-hint">
@@ -7775,12 +8971,18 @@ export function ChatShell() {
                           <i />
                           <i />
                         </span>
-                        {typingNames.length === 1
+                        {msnTheme
+                          ? typingNames.length === 1
+                            ? `${typingNames[0]} is writing a message...`
+                            : `${typingNames.slice(0, 3).join(", ")} are writing messages...`
+                          : typingNames.length === 1
                           ? `${typingNames[0]} is typing…`
                           : typingNames.length === 2
                             ? `${typingNames[0]} and ${typingNames[1]} are typing…`
                             : `${typingNames.length} people are typing…`}
                       </span>
+                    ) : msnTheme ? (
+                      <span className="msn-status-bar">{msnLastReceived(messages, user?.id)}</span>
                     ) : (
                       <span className="composer-hint-keys">
                         <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands
@@ -7789,6 +8991,21 @@ export function ChatShell() {
                   </div>
                 </form>
               </>
+            )}
+            {msnTheme && (
+              <MsnDisplayPictures
+                them={
+                  inDmHome && activeDm
+                    ? { ...activeDm.user, name: activeDm.user.displayName }
+                    : {
+                        name: activeServer?.name || "Huddle",
+                        avatar: activeServer?.icon || "H",
+                        avatarUrl: activeServer?.iconUrl,
+                        color: "#3a6ea5",
+                      }
+                }
+                me={user ? { ...user, name: user.displayName } : null}
+              />
             )}
           </>
         )}
@@ -8232,10 +9449,22 @@ export function ChatShell() {
           </div>
         </div>
 
-        <div className="member-panel-title online-title">
-          <span>ONLINE — {onlineMembers.length}</span>
+        <div
+          className={`member-panel-title online-title ${msnTheme && collapsedGroups.online ? "msn-collapsed" : ""}`}
+          role={msnTheme ? "button" : undefined}
+          tabIndex={msnTheme ? 0 : undefined}
+          aria-expanded={msnTheme ? !collapsedGroups.online : undefined}
+          onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, online: !g.online }))}
+          onKeyDown={(event) => {
+            if (msnTheme && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              setCollapsedGroups((g) => ({ ...g, online: !g.online }));
+            }
+          }}
+        >
+          <span>{msnTheme ? `Online (${onlineMembers.length})` : `ONLINE — ${onlineMembers.length}`}</span>
         </div>
-        {onlineMembers.map((member) => (
+        {!(msnTheme && collapsedGroups.online) && onlineMembers.map((member) => (
           <div
             className="member clickable-name"
             key={member.id}
@@ -8299,10 +9528,22 @@ export function ChatShell() {
           </div>
         ))}
 
-        <div className="member-panel-title offline-title">
-          <span>OFFLINE — {offlineMembers.length}</span>
+        <div
+          className={`member-panel-title offline-title ${msnTheme && collapsedGroups.offline ? "msn-collapsed" : ""}`}
+          role={msnTheme ? "button" : undefined}
+          tabIndex={msnTheme ? 0 : undefined}
+          aria-expanded={msnTheme ? !collapsedGroups.offline : undefined}
+          onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, offline: !g.offline }))}
+          onKeyDown={(event) => {
+            if (msnTheme && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              setCollapsedGroups((g) => ({ ...g, offline: !g.offline }));
+            }
+          }}
+        >
+          <span>{msnTheme ? `Not Online (${offlineMembers.length})` : `OFFLINE — ${offlineMembers.length}`}</span>
         </div>
-        {offlineMembers.map((member) => (
+        {!(msnTheme && collapsedGroups.offline) && offlineMembers.map((member) => (
           <div
             className="member offline-member clickable-name"
             key={member.id}
@@ -8335,6 +9576,7 @@ export function ChatShell() {
             </div>
           </div>
         ))}
+        {msnTheme && <MsnAdBanner onClick={() => setGlobalSearchOpen(true)} />}
       </aside>
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
@@ -8350,6 +9592,8 @@ export function ChatShell() {
           seatPans={voice.tableSeatPans}
           width={voice.tableWidth}
           headTracking={voice.headTracking}
+          headTrackingSource={voice.headTrackingSource}
+          headphones={voice.spatialOutput === "headphones"}
           onHeadTracking={voice.onHeadTracking}
           deafened={voice.deafened}
           preferenceFor={(id) => {
@@ -8460,6 +9704,18 @@ export function ChatShell() {
           }}
           canModerate={canModerate}
           canManage={canManageServer && !inDmHome}
+          onRemoveFromGroup={
+            inDmHome &&
+              activeDm?.group &&
+              activeDm.group.ownerId === user.id &&
+              userMenu.member.id !== user.id &&
+              activeDm.group.members.some((m) => m.id === userMenu.member.id)
+              ? () => {
+                removeFromGroupDm(activeDm, userMenu.member);
+                setUserMenu(null);
+              }
+              : undefined
+          }
           onKick={() => {
             void moderateMember(userMenu.member.id, "kick");
             setUserMenu(null);
@@ -8488,6 +9744,8 @@ export function ChatShell() {
               ),
             )?.id || null
           }
+          voiceJoinedAt={userMenuVoiceJoinedAt}
+          serverNow={hub.serverNow}
           onMove={(channelId) => {
             void moveMember(userMenu.member.id, channelId);
             setUserMenu(null);
@@ -8580,6 +9838,18 @@ export function ChatShell() {
             >
               Mark as read
             </button>
+            {folderIdOf(railMenu.server.id) && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  saveServerFolders(removeFromFolders(serverFolders, railMenu.server.id));
+                  setRailMenu(null);
+                }}
+              >
+                Remove from folder
+              </button>
+            )}
             <div className="user-menu-divider" />
             <div className="user-menu-head">
               <span>Notifications</span>
@@ -8613,6 +9883,108 @@ export function ChatShell() {
         </>
       )}
 
+      {folderMenu && (
+        <>
+          <div
+            className="menu-shade"
+            onClick={() => setFolderMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setFolderMenu(null);
+            }}
+          />
+          <div
+            className="user-menu"
+            role="menu"
+            style={{
+              left: Math.min(folderMenu.x, (globalThis.innerWidth || 1200) - 240),
+              top: Math.min(folderMenu.y, (globalThis.innerHeight || 800) - 260),
+            }}
+          >
+            <div className="user-menu-head">
+              <strong>{folderMenu.folder.name || "Server folder"}</strong>
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                for (const server of servers) {
+                  if (folderMenu.folder.serverIds.includes(server.id)) markServerRead(server);
+                }
+                setFolderMenu(null);
+              }}
+            >
+              Mark folder as read
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const target = folderMenu.folder;
+                setFolderMenu(null);
+                showCustomPrompt({
+                  title: "Folder name",
+                  message: "Leave it empty to show the servers' names.",
+                  defaultValue: target.name,
+                  placeholder: "Games, Friends, Work…",
+                  confirmText: "Save",
+                  maxLength: 40,
+                  onConfirm: (value) =>
+                    saveServerFolders(
+                      serverFolders.map((folder) =>
+                        folder.id === target.id
+                          ? { ...folder, name: (value || "").trim() }
+                          : folder,
+                      ),
+                    ),
+                });
+              }}
+            >
+              Rename folder
+            </button>
+            <div className="user-menu-divider" />
+            <div className="user-menu-head">
+              <span>Colour</span>
+            </div>
+            <div className="rail-folder-colors">
+              {["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#9b59b6", "#1abc9c", "#747f8d"].map(
+                (color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={`Colour ${color}`}
+                    className={folderMenu.folder.color === color ? "is-current" : ""}
+                    style={{ background: color }}
+                    onClick={() => {
+                      saveServerFolders(
+                        serverFolders.map((folder) =>
+                          folder.id === folderMenu.folder.id ? { ...folder, color } : folder,
+                        ),
+                      );
+                      setFolderMenu(null);
+                    }}
+                  />
+                ),
+              )}
+            </div>
+            <div className="user-menu-divider" />
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => {
+                saveServerFolders(
+                  serverFolders.filter((folder) => folder.id !== folderMenu.folder.id),
+                );
+                setFolderMenu(null);
+              }}
+            >
+              Ungroup servers
+            </button>
+          </div>
+        </>
+      )}
+
       {channelMenu && (
         <>
           <div
@@ -8633,7 +10005,8 @@ export function ChatShell() {
           >
             <div className="user-menu-head">
               <strong>
-                {channelMenu.channel.kind === "voice" ? "◖))" : "#"}{" "}
+                {channelKindIcon(channelMenu.channel.kind)}
+                {" "}
                 {channelMenu.channel.name}
               </strong>
               <span>Notifications</span>
@@ -8698,6 +10071,22 @@ export function ChatShell() {
                 >
                   Set Slowmode
                 </button>
+                {convertibleKinds(channelMenu.channel.kind).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const channel = channelMenu.channel;
+                      setChannelMenu(null);
+                      void changeChannelKind(channel, kind);
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      {channelKindIcon(kind)} Make it {withArticle(channelKindLabel(kind))}
+                    </span>
+                  </button>
+                ))}
                 <button
                   type="button"
                   role="menuitem"
@@ -8834,9 +10223,16 @@ export function ChatShell() {
           onMicSettings={voice.setMicSettings}
           subscribeMicTelemetry={voice.subscribeMicTelemetry}
           inCall={Boolean(voice.channelId)}
+          relay={voice.relay}
+          onCheckRelay={() => void voice.recheckRelay()}
           headTracking={voice.headTracking}
           setHeadTracking={voice.setHeadTracking}
           headTrackingOffered={voice.headTrackingOffered}
+          airpodsOffered={voice.airpodsOffered}
+          headTrackingSource={voice.headTrackingSource}
+          setHeadTrackingSource={voice.setHeadTrackingSource}
+          spatialOutput={voice.spatialOutput}
+          setSpatialOutput={voice.setSpatialOutput}
           headTrackingStatus={voice.headTrackingStatus}
           recenterHead={voice.recenterHead}
           tableMode={voice.tableMode}
@@ -8917,8 +10313,35 @@ export function ChatShell() {
             setDialogCancel(null);
             cancel?.();
           }}
+          onDismiss={() => {
+            setDialogOptions(null);
+            setDialogCallback(null);
+            setDialogCancel(null);
+          }}
         />
       )}
+
+      <GroupDmDialog
+        open={Boolean(groupDialog)}
+        existingMemberIds={
+          groupDialog?.mode === "add"
+            ? dms
+              .find((dm) => dm.channelId === groupDialog.channelId)
+              ?.group?.members.map((member) => member.id) || []
+            : undefined
+        }
+        groupName={
+          groupDialog?.mode === "add"
+            ? dms.find((dm) => dm.channelId === groupDialog.channelId)?.user.displayName
+            : undefined
+        }
+        onClose={() => setGroupDialog(null)}
+        onSubmit={(userIds, name) =>
+          groupDialog?.mode === "add"
+            ? addToGroupDm(groupDialog.channelId, userIds)
+            : createGroupDm(userIds, name)
+        }
+      />
 
       <QuickSwitcher
         open={quickSwitcherOpen}
@@ -8940,7 +10363,7 @@ export function ChatShell() {
             if (target.serverId && target.serverId !== activeServerId) {
               setActiveServerId(target.serverId);
             }
-            if (target.kind === "voice") {
+            if (channelKindInfo(target.kind).appearsAsVoice) {
               setStageChannelId(target.id);
               void voice.join(target.id);
             } else {
@@ -8995,6 +10418,23 @@ export function ChatShell() {
           }
           position={profileCardTarget.pos}
           onClose={() => setProfileCardTarget(null)}
+          onToggleRole={
+            canManageServer && activeServer && !inDmHome
+              ? async (roleId, add) => {
+                const serverId = activeServer.id;
+                await apiFetch("/api/roles/assign", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    serverId,
+                    userId: profileCardTarget.member.id,
+                    roleId,
+                    add,
+                  }),
+                });
+                void loadMembers().catch(() => undefined);
+              }
+              : undefined
+          }
           isSelf={user?.id === profileCardTarget.member.id}
           presence={presenceOf(profileCardTarget.member)}
           isBlocked={blockedUserIds.has(profileCardTarget.member.id)}

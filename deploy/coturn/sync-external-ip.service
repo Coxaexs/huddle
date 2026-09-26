@@ -1,0 +1,10 @@
+[Unit]
+Description=Point coturn's relay address at the address DNS resolves to
+Documentation=file:/home/coxaexs/huddle/docs/self-hosting.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Only touches the file when the address actually changed.
+ExecStart=/usr/local/sbin/sync-external-ip.sh xray.deeppixel.online

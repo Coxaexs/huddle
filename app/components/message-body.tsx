@@ -115,6 +115,14 @@ function renderInline(
       );
     } else if (match[2]) {
       const handle = token.slice(1);
+      if (handle === "everyone" || handle === "here") {
+        parts.push(
+          <span key={key} className="mention mention-everyone">
+            {token}
+          </span>,
+        );
+        continue;
+      }
       const role = options.roles?.find((r) => handleMatchesName(handle, r.name));
       if (role) {
         parts.push(

@@ -1,10 +1,18 @@
+/**
+ * Servers, channels, categories and roles as the client sees them.
+ *
+ * `kind` on a channel is the one field that changes behaviour elsewhere: it
+ * decides whether the channel takes messages, holds a voice call, or restricts
+ * posting. See `lib/channel-kinds.ts` for those rules.
+ */
 import { DM_SERVER_ID } from "./schema";
+import { isChannelKind, type ChannelKind } from "./channel-kinds";
 
 export interface ChannelRow {
   id: string;
   server_id: string;
   name: string;
-  kind: "text" | "voice" | "dm";
+  kind: ChannelKind;
   topic: string;
   position: number;
   category_id: string | null;
@@ -43,7 +51,7 @@ export interface PublicChannel {
   id: string;
   serverId: string;
   name: string;
-  kind: "text" | "voice" | "dm";
+  kind: ChannelKind;
   topic: string;
   slowmode?: number;
   position: number;
@@ -83,8 +91,9 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     id: channel.id,
     serverId: channel.server_id,
     name: channel.name,
-    kind:
-      channel.kind === "voice" ? "voice" : channel.kind === "dm" ? "dm" : "text",
+    // An unrecognized kind (a row from an older build, or one hand-edited in
+    // the database) renders as a plain text channel rather than disappearing.
+    kind: isChannelKind(channel.kind) ? channel.kind : "text",
     topic: channel.topic || "",
     slowmode: (channel as { slowmode?: number }).slowmode || 0,
     position: channel.position,

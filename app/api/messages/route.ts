@@ -1,10 +1,14 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { enforceAutomod } from "@/lib/automod";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
+import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
 import { isBlockedBetween } from "@/lib/friends";
 import { dispatchMessage } from "@/lib/discord/dispatch";
-import { publishMessage } from "@/lib/hub-client";
+import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
+import { can, Permission } from "@/lib/permissions";
+import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
@@ -404,9 +408,11 @@ export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
+  const limited = await limitUser(db, WRITE_RATE_LIMITS.message, user.id);
+  if (limited) return limited;
 
   const body = (await request.json()) as PostBody;
-  const content = body.content?.trim().slice(0, 4000) || "";
+  const content = body.content?.trim() || "";
   // The first key stays in attachment_key; any extras go to the JSON column,
   // so existing rows and older clients keep rendering the same way.
   const allKeys = [
@@ -435,7 +441,7 @@ export async function POST(request: Request) {
   if (channelId) {
     const channel = await db
       .prepare(
-        "SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN ('text', 'dm')",
+        `SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN (${textChannelKindsSql()})`,
       )
       .bind(channelId)
       .first<{ name: string; kind: string; server_id: string }>();
@@ -473,6 +479,20 @@ export async function POST(request: Request) {
       }
       const timedOut = await blockIfTimedOut(db, channelId, user.id);
       if (timedOut) return timedOut;
+
+      // An announcement channel is a read-only feed for everyone without
+      // MANAGE_MESSAGES, which is what separates it from a text channel.
+      // Threads under an announcement are where members discuss it, so
+      // replies there stay open to everyone.
+      if (channelKindInfo(channel.kind).moderatorOnlyPosting && !body.threadId) {
+        const mayPost = await can(db, user.id, serverId, Permission.MANAGE_MESSAGES);
+        if (!mayPost) {
+          return Response.json(
+            { error: "Only moderators can post announcements here." },
+            { status: 403 },
+          );
+        }
+      }
     }
     channelName = channel.name;
   } else {
@@ -520,6 +540,83 @@ export async function POST(request: Request) {
     command_by: body.asBot ? body.commandBy?.trim().slice(0, 80) || null : null,
   };
 
+  // Resolve @mentions before writing anything: automod needs the count, and a
+  // refused message must leave no row behind. A handle can be a username or a
+  // role name; a role expands to its members.
+  const handles = content ? parseMentionHandles(content) : [];
+  let mentionedIds: string[] = [];
+  if (handles.length && channelId) {
+    const placeholders = handles.map(() => "?").join(",");
+    const [userRows, roleRows] = await Promise.all([
+      db
+        .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
+        .bind(...handles)
+        .all(),
+      // Role names can hold spaces, so they're matched by handle in JS
+      // ("Game Master" is written @Game-Master).
+      serverId
+        ? db
+            .prepare(
+              `SELECT mr.user_id AS id, r.name AS name
+                 FROM roles r
+                 JOIN member_roles mr ON mr.role_id = r.id
+                WHERE r.server_id = ?`,
+            )
+            .bind(serverId)
+            .all()
+        : Promise.resolve({ results: [] as Array<{ id: string; name: string }> }),
+    ]);
+    const roleMemberIds = ((roleRows.results || []) as Array<{ id: string; name: string }>)
+      .filter((row) => handles.some((handle) => handleMatchesName(handle, row.name)))
+      .map((row) => row.id);
+    // @everyone pings every member of the server; @here only those online.
+    // Both need MENTION_EVERYONE, and mean nothing in DMs.
+    const wantsEveryone = handles.includes("everyone");
+    const wantsHere = handles.includes("here");
+    let broadcastIds: string[] = [];
+    if (
+      (wantsEveryone || wantsHere) &&
+      serverId &&
+      !audience &&
+      (await can(db, user.id, serverId, Permission.MENTION_EVERYONE))
+    ) {
+      const members = await db
+        .prepare("SELECT user_id FROM server_members WHERE server_id = ?")
+        .bind(serverId)
+        .all<{ user_id: string }>();
+      broadcastIds = (members.results || []).map((row) => row.user_id);
+      if (!wantsEveryone) {
+        const online = new Set((await hubState())?.online || []);
+        broadcastIds = broadcastIds.filter((id) => online.has(id));
+      }
+    }
+    mentionedIds = [
+      ...new Set([
+        ...(userRows.results || []).map((r) => (r as { id: string }).id),
+        ...roleMemberIds,
+        ...broadcastIds,
+      ]),
+    ].filter((id) => id !== user.id);
+  }
+
+  // ---- Automod ------------------------------------------------------------
+  // Skipped for DMs (a server's rules must not police a private conversation)
+  // and for anyone who can moderate — otherwise the first thing a keyword rule
+  // does is lock an admin out of their own server. Bot-flagged posts come from
+  // a member's browser, so they still get the keyword and mention rules.
+  if (serverId && !audience) {
+    const refused = await enforceAutomod(db, {
+      serverId,
+      channelId,
+      userId: user.id,
+      text: stored.content,
+      mentionCount: mentionedIds.length,
+      asBot: Boolean(body.asBot),
+      mayModerate: () => can(db, user.id, serverId!, Permission.MODERATE),
+    });
+    if (refused) return refused;
+  }
+
   await db
     .prepare(
       `INSERT INTO messages
@@ -555,51 +652,20 @@ export async function POST(request: Request) {
 
   const message = publicMessage(stored);
 
-  // Resolve @mentions to real members and record them (drives unread badges).
-  // A handle can be a username or a role name; a role expands to its members.
-  const handles = content ? parseMentionHandles(content) : [];
-  if (handles.length && channelId) {
-    const placeholders = handles.map(() => "?").join(",");
-    const [userRows, roleRows] = await Promise.all([
-      db
-        .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
-        .bind(...handles)
-        .all(),
-      // Role names can hold spaces, so they're matched by handle in JS
-      // ("Game Master" is written @Game-Master).
-      serverId
-        ? db
-            .prepare(
-              `SELECT mr.user_id AS id, r.name AS name
-                 FROM roles r
-                 JOIN member_roles mr ON mr.role_id = r.id
-                WHERE r.server_id = ?`,
-            )
-            .bind(serverId)
-            .all()
-        : Promise.resolve({ results: [] as Array<{ id: string; name: string }> }),
-    ]);
-    const roleMemberIds = ((roleRows.results || []) as Array<{ id: string; name: string }>)
-      .filter((row) => handles.some((handle) => handleMatchesName(handle, row.name)))
-      .map((row) => row.id);
-    const mentionedIds = [
-      ...new Set([
-        ...(userRows.results || []).map((r) => (r as { id: string }).id),
-        ...roleMemberIds,
-      ]),
-    ].filter((id) => id !== user.id);
-    if (mentionedIds.length) {
-      await db.batch(
-        mentionedIds.map((id) =>
-          db
-            .prepare(
-              "INSERT OR IGNORE INTO mentions (message_id, user_id, channel_id, created_at) VALUES (?, ?, ?, ?)",
-            )
-            .bind(stored.id, id, channelId, stored.created_at),
-        ),
-      );
-      message.mentions = mentionedIds;
-    }
+  // Record the mentions resolved before the insert. Doing it here keeps the
+  // write after the message row exists, so an automod refusal above cannot
+  // leave orphaned mention rows behind.
+  if (mentionedIds.length && channelId) {
+    await db.batch(
+      mentionedIds.map((id) =>
+        db
+          .prepare(
+            "INSERT OR IGNORE INTO mentions (message_id, user_id, channel_id, created_at) VALUES (?, ?, ?, ?)",
+          )
+          .bind(stored.id, id, channelId, stored.created_at),
+      ),
+    );
+    message.mentions = mentionedIds;
   }
 
   // Resolve the reply preview for the pushed event, if any.

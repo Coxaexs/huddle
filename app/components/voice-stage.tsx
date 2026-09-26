@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Mic,
   Megaphone,
+  Hand,
   SlidersHorizontal,
   MicOff,
   Headphones,
@@ -25,6 +26,8 @@ import {
   PhoneOff,
   Users,
   X,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
 import {
@@ -43,8 +46,10 @@ import type { ScreenShareQuality } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { TableAudioMenu, type TableControls } from "./table-audio-menu";
 import { Avatar } from "./avatar";
+import { isOnStage, splitStageRoster } from "@/lib/stage";
 import { DiceOverlay } from "./dice-overlay";
 import { RoomActivities } from "./room-activities";
+import { VoiceDuration } from "./voice-duration";
 
 interface Sound {
   id: string;
@@ -62,6 +67,14 @@ interface VoiceApi extends TableControls {
   muted: boolean;
   forcedMute: boolean;
   deafened: boolean;
+  /** Stage rooms: this tab's hand is up, and the way to change that. */
+  handRaised: boolean;
+  toggleHand: () => void;
+  /** Stage rooms: put a seat on stage or take it off. Moderator-only. */
+  setStageSpeaker: (connectionId: string, allowed: boolean) => void;
+  /** Videos this tab stopped receiving (to save data), and the switch for it. */
+  hiddenVideo: Record<string, { camera: boolean; screen: boolean }>;
+  setVideoHidden: (connectionId: string, which: "camera" | "screen", hidden: boolean) => void;
   speaking: Set<string>;
   remoteStreams: Array<{ connectionId: string; stream: MediaStream }>;
   peerStates: Record<string, string>;
@@ -91,10 +104,20 @@ interface VoiceStageProps {
   channelName: string;
   participants: VoiceParticipant[];
   connectionId: string | null;
+  /** The hub's clock, for each person's live "in voice for" timer. */
+  serverNow?: () => number;
   voice: VoiceApi;
   /** Server the room belongs to, for its soundboard. */
   serverId: string | null;
   canManageSounds: boolean;
+  /**
+   * This room is a stage: it has an audience, so participants are split into
+   * those whose mic is live and those watching, and the watchers can ask for
+   * the floor.
+   */
+  stageMode?: boolean;
+  /** Viewer may move seats on and off the stage (MUTE_MEMBERS). */
+  canManageStage?: boolean;
   userId: string;
   userName: string;
   activity: RoomActivity | null;
@@ -131,10 +154,64 @@ interface VideoTile {
   self: boolean;
   mirrored: boolean;
   connecting: boolean;
+  /** Remote tiles only: whose video it is and which one, for hiding it. */
+  remoteId?: string;
+  videoKind?: "camera" | "screen";
+  /** This viewer stopped receiving it; the sender no longer sends it here. */
+  hidden?: boolean;
 }
 
 function hasLiveVideo(stream: MediaStream): boolean {
   return stream.getVideoTracks().some((track) => track.readyState === "live");
+}
+
+/**
+ * A tile's picture, or a placeholder once the viewer has stopped receiving it,
+ * plus the small corner button that switches between the two.
+ */
+function TileVideo({
+  tile,
+  onHide,
+}: {
+  tile: VideoTile;
+  onHide?: (tile: VideoTile, hidden: boolean) => void;
+}) {
+  const what = tile.videoKind === "camera" ? "camera" : "screen share";
+  return (
+    <>
+      {tile.hidden ? (
+        <div className="video-hidden-placeholder">
+          <EyeOff size={22} aria-hidden="true" />
+          <span>{tile.videoKind === "camera" ? "Camera hidden" : "Screen share hidden"}</span>
+          <small>Not using your data</small>
+        </div>
+      ) : (
+        <VideoSurface stream={tile.stream} mirrored={tile.mirrored} />
+      )}
+      {!tile.self && tile.remoteId && onHide && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="video-hide-btn"
+          title={tile.hidden ? `Show this ${what} again` : `Stop receiving this ${what} (saves data)`}
+          aria-label={tile.hidden ? `Show this ${what}` : `Hide this ${what}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onHide(tile, !tile.hidden);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onHide(tile, !tile.hidden);
+          }}
+        >
+          {tile.hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+          {tile.hidden ? "Show" : "Hide"}
+        </span>
+      )}
+    </>
+  );
 }
 
 /** Attaches a MediaStream to a <video>, replacing it only when it changes. */
@@ -173,9 +250,12 @@ export function VoiceStage({
   channelName,
   participants,
   connectionId,
+  serverNow,
   voice,
   serverId,
   canManageSounds,
+  stageMode = false,
+  canManageStage = false,
   userId,
   userName,
   activity,
@@ -202,6 +282,29 @@ export function VoiceStage({
   const [cameraTab, setCameraTab] = useState<"blur" | "images" | "fx">("blur");
   const [customBgs, setCustomBgs] = useState<CustomBackgroundItem[]>(() => loadCustomBackgrounds());
   const bgFileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Stage roster split. The rules live in `lib/stage.ts` so they can be tested
+   * without a live call; this only supplies the participants.
+   */
+  const { onStage, audience } = stageMode
+    ? splitStageRoster(participants)
+    : { onStage: [] as VoiceParticipant[], audience: [] as VoiceParticipant[] };
+  const self = participants.find((person) => person.connectionId === connectionId) || null;
+  /** True when this tab is in the audience and could therefore ask for the floor. */
+  const amAudience = Boolean(self && !isOnStage(self));
+
+  /** Live seat time for one person, when the shell handed us the hub's clock. */
+  function seatTime(person: VoiceParticipant, className: string) {
+    if (!serverNow) return null;
+    return (
+      <VoiceDuration
+        className={className}
+        joinedAt={person.joinedAt}
+        serverNow={serverNow}
+      />
+    );
+  }
 
   function handleBgUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -266,12 +369,16 @@ export function VoiceStage({
         : person?.screenStreamId === stream.id
           ? `${person?.displayName} · screen`
           : person?.displayName || "Screen share";
+    const videoKind = person?.cameraStreamId === stream.id ? "camera" : "screen";
     videoTiles.push({
       key: `${remoteId}:${stream.id}`,
       stream,
       label,
       self: false,
       mirrored: false,
+      remoteId,
+      videoKind,
+      hidden: voice.hiddenVideo[remoteId]?.[videoKind] === true,
       connecting:
         voice.peerStates[remoteId] !== undefined &&
         voice.peerStates[remoteId] !== "connected",
@@ -281,6 +388,13 @@ export function VoiceStage({
   const focused = focusedKey
     ? videoTiles.find((tile) => tile.key === focusedKey) || null
     : null;
+
+  function hideTile(tile: VideoTile, hidden: boolean) {
+    if (!tile.remoteId || !tile.videoKind) return;
+    voice.setVideoHidden(tile.remoteId, tile.videoKind, hidden);
+    // A hidden video has nothing to fill the big view with.
+    if (hidden && focusedKey === tile.key) setFocusedKey(null);
+  }
 
   // Esc leaves the focused view (the first Esc in fullscreen just exits that).
   useEffect(() => {
@@ -387,6 +501,108 @@ export function VoiceStage({
           {voice.important && <button type="button" onClick={voice.toggleImportant}>Finish</button>}
         </div>
       )}
+      {stageMode && (
+        <div className="stage-roster" role="status">
+          <div className="stage-roster-group">
+            <span className="stage-roster-label">On stage · {onStage.length}</span>
+            {canManageStage ? (
+              <span className="stage-roster-list">
+                {onStage.length === 0 && <span className="stage-roster-names">Nobody yet</span>}
+                {onStage.map((person) => {
+                  const name = person.connectionId === connectionId ? "You" : person.displayName;
+                  return (
+                    <span key={person.connectionId} className="stage-roster-person">
+                      {name}
+                      <button
+                        type="button"
+                        className="stage-promote-btn"
+                        onClick={() => voice.setStageSpeaker(person.connectionId, false)}
+                        aria-label={`Move ${name} to the audience`}
+                      >
+                        Move down
+                      </button>
+                    </span>
+                  );
+                })}
+              </span>
+            ) : (
+              <span className="stage-roster-names">
+                {onStage.length
+                  ? onStage
+                      .map((p) => (p.connectionId === connectionId ? "You" : p.displayName))
+                      .join(", ")
+                  : "Nobody yet"}
+              </span>
+            )}
+          </div>
+
+          <div className="stage-roster-group">
+            <span className="stage-roster-label">Audience · {audience.length}</span>
+            {/* A host gets one control per person; everyone else gets a plain
+                list, since a row of buttons they cannot use is noise. */}
+            {canManageStage ? (
+              <span className="stage-roster-list">
+                {audience.length === 0 && <span className="stage-roster-names">Nobody yet</span>}
+                {audience.map((person) => {
+                  const name = person.connectionId === connectionId ? "You" : person.displayName;
+                  return (
+                    <span key={person.connectionId} className="stage-roster-person">
+                      {name}
+                      {person.handRaised && (
+                        <Hand size={12} aria-hidden="true" className="tile-hand" />
+                      )}
+                      <button
+                        type="button"
+                        className="stage-promote-btn"
+                        onClick={() => voice.setStageSpeaker(person.connectionId, true)}
+                        aria-label={`Bring ${name} on stage`}
+                      >
+                        Bring up
+                      </button>
+                    </span>
+                  );
+                })}
+              </span>
+            ) : (
+              <span className="stage-roster-names">
+                {audience.length
+                  ? audience
+                      .map((p) => {
+                        const name = p.connectionId === connectionId ? "You" : p.displayName;
+                        // The hand is the only bit of this worth surfacing
+                        // loudly; it is the whole reason the roster exists.
+                        return p.handRaised ? `${name} ✋` : name;
+                      })
+                      .join(", ")
+                  : "Nobody yet"}
+              </span>
+            )}
+          </div>
+
+          {amAudience && (
+            <button
+              type="button"
+              className={`stage-hand-btn ${self?.handRaised ? "is-up" : ""}`}
+              onClick={voice.toggleHand}
+              // Hosts promote from the participant menu, which already owns
+              // server-mute; this only asks.
+              title="Ask the hosts for the floor"
+            >
+              <Hand size={14} aria-hidden="true" />
+              {self?.handRaised ? "Lower hand" : "Raise hand"}
+            </button>
+          )}
+
+          {!amAudience && self && (
+            <span className="stage-roster-hint">
+              {self.muted
+                ? "You are on stage. Unmute to talk."
+                : "You are on stage and everyone can hear you."}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="voice-stage-topbar">
         <div className="voice-stage-topbar-info">
           <Volume2 size={16} className="voice-stage-volume-icon" />
@@ -470,6 +686,7 @@ export function VoiceStage({
                       <span className="table-seat-name">
                         {p.connectionId === connectionId ? "You" : p.displayName}
                       </span>
+                      {seatTime(p, "table-seat-time")}
                       {isSpeaking && (
                         <span className="text-[10px] text-[#a78bfa] font-bold">speaking</span>
                       )}
@@ -496,6 +713,19 @@ export function VoiceStage({
               <div className="voice-focus-bar">
                 <span className="live-dot" /> LIVE
                 <strong>{focused.label}</strong>
+                {focused.remoteId && (
+                  <button
+                    type="button"
+                    className="voice-focus-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      hideTile(focused, true);
+                    }}
+                    title="Stop receiving this video (saves data)"
+                  >
+                    <EyeOff size={16} />
+                  </button>
+                )}
                 {!isFullscreen && !windowFull && (
                   <button
                     type="button"
@@ -532,7 +762,7 @@ export function VoiceStage({
                   className={`film-tile ${tile.key === focusedKey ? "active" : ""}`}
                   onClick={() => setFocusedKey(tile.key)}
                 >
-                  <VideoSurface stream={tile.stream} mirrored={tile.mirrored} />
+                  <TileVideo tile={tile} onHide={hideTile} />
                   <span>{tile.label}</span>
                 </button>
               ))}
@@ -553,6 +783,7 @@ export function VoiceStage({
                   <span>
                     {person.connectionId === connectionId ? "You" : person.displayName}
                   </span>
+                  {seatTime(person, "film-voice-time")}
                 </div>
               ))}
             </div>
@@ -569,10 +800,10 @@ export function VoiceStage({
               <figure
                 key={tile.key}
                 className={`stage-tile video-tile ${tile.connecting ? "tile-connecting" : ""}`}
-                onClick={() => setFocusedKey(tile.key)}
-                title="Click to focus"
+                onClick={() => !tile.hidden && setFocusedKey(tile.key)}
+                title={tile.hidden ? undefined : "Click to focus"}
               >
-                <VideoSurface stream={tile.stream} mirrored={tile.mirrored} />
+                <TileVideo tile={tile} onHide={hideTile} />
                 <figcaption>
                   <span className="tile-live">
                     <span className="live-dot" /> {tile.label}
@@ -606,6 +837,7 @@ export function VoiceStage({
                         ? "You"
                         : person.displayName}
                     </span>
+                    {seatTime(person, "tile-voice-time")}
                     {person.important && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Speaking important"><Megaphone size={13} /> Important</span>}
                     {person.muted && !person.bot && (
                       <span
@@ -613,6 +845,14 @@ export function VoiceStage({
                         title={person.serverMuted ? "Muted for everyone" : "Muted"}
                       >
                         <MicOff size={14} />
+                      </span>
+                    )}
+                    {person.handRaised && (
+                      // Shown next to the mute badge rather than replacing it:
+                      // a hand up is always accompanied by a mute, so the two
+                      // together are what "wants the floor" looks like.
+                      <span className="tile-hand" title="Raised hand">
+                        <Hand size={14} />
                       </span>
                     )}
                   </figcaption>

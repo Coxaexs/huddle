@@ -13,6 +13,8 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
+import { can, Permission } from "./permissions";
+import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import {
   emptyPlayer,
@@ -36,9 +38,18 @@ interface Attachment {
   color: string;
   channelId: string | null;
   voiceChannelId: string | null;
+  /** Hub-clock ms this seat was taken; null whenever voiceChannelId is null. */
+  voiceJoinedAt: number | null;
   muted: boolean;
   deafened: boolean;
   important?: boolean;
+  /** Stage rooms: this seat is asking for the floor. */
+  handRaised?: boolean;
+  /**
+   * Stage rooms: this seat may be heard. Absent means "not yet decided", which
+   * for a stage is the same as no: the floor is granted, never assumed.
+   */
+  speakAllowed?: boolean;
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
@@ -51,6 +62,15 @@ interface Attachment {
 /** How long after the last track ends before the bot leaves the room. */
 const IDLE_LEAVE_MS = 60_000;
 
+/**
+ * Ceiling on the hub's channel-kind cache.
+ *
+ * Sized for "every voice channel anyone is likely to touch in one wake of the
+ * object", not for the whole database: the cache is only meant to spare the hot
+ * path a query, and clearing it costs at most one extra read per channel.
+ */
+const CHANNEL_CACHE_LIMIT = 500;
+
 export class HuddleHub extends DurableObject {
   private players = new Map<string, PlayerState>();
   /** People muted for everyone, by user id. */
@@ -59,6 +79,16 @@ export class HuddleHub extends DurableObject {
   private recordings = new Map<string, RecordingState>();
   private loaded: Promise<void> | null = null;
   private readonly db: D1Database | null;
+  /**
+   * channelId -> kind and owning server, for voice rooms only.
+   *
+   * Read on every voice-join and every stage mute decision, which is far too
+   * hot for a query each time. A channel's kind never changes, so a cache entry
+   * cannot go stale in a way that matters. Only successful lookups are stored
+   * and the map is capped, so a client inventing channel ids cannot grow it
+   * without bound.
+   */
+  private readonly channelCache = new Map<string, { kind: string; serverId: string }>();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -241,6 +271,7 @@ export class HuddleHub extends DurableObject {
         socket.serializeAttachment({
           ...attachment,
           voiceChannelId: null,
+          voiceJoinedAt: null,
           cameraStreamId: null,
           screenStreamId: null,
         });
@@ -311,6 +342,7 @@ export class HuddleHub extends DurableObject {
       color: url.searchParams.get("color") || "#ffd67c",
       channelId: null,
       voiceChannelId: null,
+      voiceJoinedAt: null,
       muted: false,
       deafened: false,
       cameraStreamId: null,
@@ -403,6 +435,7 @@ export class HuddleHub extends DurableObject {
 
             const room = other.voiceChannelId;
             other.voiceChannelId = null;
+            other.voiceJoinedAt = null;
             other.cameraStreamId = null;
             other.screenStreamId = null;
             entry.socket.serializeAttachment(other);
@@ -423,7 +456,28 @@ export class HuddleHub extends DurableObject {
 
         attachment.important = false;
         attachment.voiceChannelId = event.channelId;
-        attachment.muted = false;
+        // A re-announce of the same room (a reconnect on the same socket) keeps
+        // the clock running; only a genuinely new seat starts it over.
+        if (previous !== event.channelId || attachment.voiceJoinedAt == null) {
+          attachment.voiceJoinedAt = Date.now();
+        }
+        // A stage seat arrives in the audience. This is decided here, from the
+        // database, rather than taken from the client: the client also mutes
+        // itself on join, but a modified one simply would not, and then it would
+        // be heard by the whole room.
+        const info = await this.channelInfo(event.channelId);
+        if (info.kind === "stage") {
+          attachment.speakAllowed = await this.seatMaySpeak(info.serverId, attachment.userId);
+        } else {
+          // Not a stage, so the floor is not something anyone has to be granted.
+          attachment.speakAllowed = true;
+        }
+        attachment.handRaised = false;
+        attachment.muted = resolveSeatMute({
+          kind: info.kind,
+          speakAllowed: attachment.speakAllowed,
+          requestedMuted: false,
+        });
         attachment.deafened = false;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
@@ -445,6 +499,7 @@ export class HuddleHub extends DurableObject {
         attachment.important = false;
         const previous = attachment.voiceChannelId;
         attachment.voiceChannelId = null;
+        attachment.voiceJoinedAt = null;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);
@@ -456,9 +511,24 @@ export class HuddleHub extends DurableObject {
         if (typeof event.important === "boolean" && attachment.voiceChannelId) {
           attachment.important = event.important;
         }
-        if (typeof event.muted === "boolean") attachment.muted = event.muted;
+        if (typeof event.muted === "boolean") {
+          // A stage seat cannot unmute itself out of the audience. Without this
+          // check the auto-mute on join is cosmetic: a client could skip
+          // straight to `muted: false` and be heard.
+          if (event.muted === false && (await this.seatIsSilenced(attachment))) {
+            attachment.muted = true;
+          } else {
+            attachment.muted = event.muted;
+          }
+        }
         if (typeof event.deafened === "boolean") {
           attachment.deafened = event.deafened;
+        }
+        if (typeof event.handRaised === "boolean") {
+          attachment.handRaised = event.handRaised;
+          // A hand raised while unmuted makes no sense: being heard is what the
+          // hand was asking for, so taking the floor lowers it.
+          if (!attachment.muted && !attachment.deafened) attachment.handRaised = false;
         }
         if (attachment.muted || attachment.deafened || this.forcedMutes.has(attachment.userId)) {
           attachment.important = false;
@@ -473,6 +543,34 @@ export class HuddleHub extends DurableObject {
         if (attachment.voiceChannelId) {
           this.broadcastVoice(attachment.voiceChannelId);
         }
+        return;
+      }
+
+      case "stage-speaker": {
+        // Addresses one seat rather than one person: the same account can be in
+        // the audience on one device and on stage on another.
+        const target = this.seatFor(event.connectionId);
+        if (!target) return;
+        const room = target.attachment.voiceChannelId;
+        // Both must be in the same room, or a moderator elsewhere could reach
+        // into a stage they are not watching.
+        if (!room || room !== attachment.voiceChannelId) return;
+
+        const info = await this.channelInfo(room);
+        if (info.kind !== "stage") return;
+        if (!(await this.seatMayPromote(info.serverId, attachment.userId))) return;
+
+        target.attachment.speakAllowed = event.allowed;
+        // Being brought up answers the raised hand.
+        if (event.allowed) target.attachment.handRaised = false;
+        if (!event.allowed) {
+          // Taking the floor away silences the seat now rather than waiting for
+          // it to co-operate, and clears the hand it was holding up.
+          target.attachment.muted = true;
+          target.attachment.handRaised = false;
+        }
+        target.socket.serializeAttachment(target.attachment);
+        this.broadcastVoice(room);
         return;
       }
 
@@ -590,6 +688,70 @@ export class HuddleHub extends DurableObject {
     return null;
   }
 
+  /** The socket and its attachment for a connection, or null once it has gone. */
+  private seatFor(
+    connectionId: string,
+  ): { socket: WebSocket; attachment: Attachment } | null {
+    for (const entry of this.sockets()) {
+      if (entry.attachment.connectionId === connectionId) return entry;
+    }
+    return null;
+  }
+
+  /**
+   * A voice channel's kind and owning server.
+   *
+   * Anything unknown answers "text", which is the safe default: it is not a
+   * stage, so no seat is muted on the strength of a channel id that does not
+   * exist.
+   */
+  private async channelInfo(channelId: string): Promise<{ kind: string; serverId: string }> {
+    const cached = this.channelCache.get(channelId);
+    if (cached) return cached;
+    if (!this.db) return { kind: "text", serverId: "" };
+
+    const row = await this.db
+      .prepare("SELECT kind, server_id FROM channels WHERE id = ?")
+      .bind(channelId)
+      .first<{ kind: string; server_id: string }>()
+      .catch(() => null);
+    if (!row) return { kind: "text", serverId: "" };
+
+    // Clear rather than evict: this map is tiny and a wholesale reset is easier
+    // to reason about than an LRU that only ever runs under attack.
+    if (this.channelCache.size >= CHANNEL_CACHE_LIMIT) this.channelCache.clear();
+    const info = { kind: row.kind, serverId: row.server_id };
+    this.channelCache.set(channelId, info);
+    return info;
+  }
+
+  /** Whether this member holds SPEAK in that server. */
+  private async seatMaySpeak(serverId: string, userId: string): Promise<boolean> {
+    if (!this.db || !serverId) return false;
+    // A permission lookup that fails is treated as "no": refusing the floor is
+    // recoverable by a moderator, being heard is not.
+    return can(this.db, userId, serverId, Permission.SPEAK).catch(() => false);
+  }
+
+  /** Whether this seat is in a stage and not allowed to be heard. */
+  private async seatIsSilenced(attachment: Attachment): Promise<boolean> {
+    if (!attachment.voiceChannelId) return false;
+    const info = await this.channelInfo(attachment.voiceChannelId);
+    if (info.kind !== "stage") return false;
+    return attachment.speakAllowed !== true;
+  }
+
+  /**
+   * Whether this member may move people between the audience and the stage.
+   *
+   * MUTE_MEMBERS rather than SPEAK: a stage host is a moderator of the room, and
+   * someone who merely has the floor should not be able to hand it out.
+   */
+  private async seatMayPromote(serverId: string, userId: string): Promise<boolean> {
+    if (!this.db || !serverId) return false;
+    return can(this.db, userId, serverId, Permission.MUTE_MEMBERS).catch(() => false);
+  }
+
   private onlineUserIds(): string[] {
     return [
       ...new Set(
@@ -603,23 +765,32 @@ export class HuddleHub extends DurableObject {
   private participantsIn(channelId: string): VoiceParticipant[] {
     const participants: VoiceParticipant[] = this.sockets()
       .filter((entry) => entry.attachment.voiceChannelId === channelId)
-      .map(({ attachment }) => ({
-        connectionId: attachment.connectionId,
-        id: attachment.userId,
-        username: attachment.username,
-        displayName: attachment.displayName,
-        avatar: attachment.avatar,
-        avatarUrl: attachment.avatarUrl,
-        color: attachment.color,
-        muted: attachment.muted || this.forcedMutes.has(attachment.userId),
-        deafened: attachment.deafened,
-        serverMuted: this.forcedMutes.has(attachment.userId),
-        important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
-        cameraStreamId: attachment.cameraStreamId,
-        screenStreamId: attachment.screenStreamId,
-        bot: attachment.bot || undefined,
-        recorder: attachment.recorder || undefined,
-      }));
+      .map(({ socket, attachment }) => {
+        // A socket that entered voice before this field existed gets seeded
+        // once here, so its timer starts now instead of reading as zero.
+        if (attachment.voiceJoinedAt == null) {
+          attachment.voiceJoinedAt = Date.now();
+          socket.serializeAttachment(attachment);
+        }
+        return {
+          connectionId: attachment.connectionId,
+          id: attachment.userId,
+          username: attachment.username,
+          displayName: attachment.displayName,
+          avatar: attachment.avatar,
+          avatarUrl: attachment.avatarUrl,
+          color: attachment.color,
+          joinedAt: attachment.voiceJoinedAt,
+          muted: attachment.muted || this.forcedMutes.has(attachment.userId),
+          deafened: attachment.deafened,
+          serverMuted: this.forcedMutes.has(attachment.userId),
+          important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
+          cameraStreamId: attachment.cameraStreamId,
+          screenStreamId: attachment.screenStreamId,
+          bot: attachment.bot || undefined,
+          recorder: attachment.recorder || undefined,
+        };
+      });
     return participants;
   }
 

@@ -12,10 +12,32 @@ export interface PresenceUser {
 export interface VoiceParticipant extends PresenceUser {
   /** Per-tab id: the same person can be in voice from two devices. */
   connectionId: string;
+  /**
+   * Hub-clock milliseconds when this seat was taken. Clients tick it against
+   * the hub's `serverNow` to show how long someone has been in the room, so it
+   * has to be the hub's number rather than each browser's own clock.
+   */
+  joinedAt: number;
   muted: boolean;
   deafened: boolean;
   /** Muted for the whole Huddle by someone, not just for themselves. */
   serverMuted?: boolean;
+  /**
+   * This person's hand is up in a stage channel: they would like the floor.
+   *
+   * Only meaningful in a stage room, which is the one kind with an audience.
+   * It rides the existing voice-state broadcast rather than getting its own
+   * message, so it reaches every client without new plumbing.
+   */
+  handRaised?: boolean;
+  /**
+   * Whether this seat may be heard in a stage room.
+   *
+   * Decided by the server on join, from the member's SPEAK permission, and
+   * changed afterwards only by a moderator. Clients read it to decide whether
+   * to offer an unmute control; they never get to decide it themselves.
+   */
+  speakAllowed?: boolean;
   /** Speaker requests centred playback with a modest volume boost. */
   important?: boolean;
   /**
@@ -183,10 +205,23 @@ export type ClientEvent =
       important?: boolean;
       muted?: boolean;
       deafened?: boolean;
+      /** Stage only: whether this person's hand is up. */
+      handRaised?: boolean;
       cameraStreamId?: string | null;
       screenStreamId?: string | null;
     }
   | { t: "signal"; to: string; data: unknown }
+  | {
+      /**
+       * A moderator putting a stage seat on stage, or taking it off.
+       *
+       * Addressed by connection rather than user so it moves one seat: the same
+       * person may be in the audience on one device and on stage on another.
+       */
+      t: "stage-speaker";
+      connectionId: string;
+      allowed: boolean;
+    }
   | { t: "player"; channelId: string; action: PlayerAction }
   | { t: "typing"; channelId: string }
   | {

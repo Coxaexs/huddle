@@ -28,6 +28,62 @@ Running without Docker (`npm run serve`)? Put the same settings in `.dev.vars` i
 | ---------------- | --------- | ------------ |
 | `BOOTSTRAP_CODE` | generated | Code required to create the first (owner) account. After that account exists, it no longer does anything. |
 | `BOT_TOKEN`      | generated | Global secret for system bots, the music publisher and internal services. Treat it like a password. |
+| `HUDDLE_CSP`     | unset     | `1` sends the bundled Content-Security-Policy. See [Content-Security-Policy](#content-security-policy). |
+| `HUDDLE_CSP_POLICY` | unset  | Send this policy verbatim instead of the bundled one. Overrides `HUDDLE_CSP`. |
+
+### Response headers
+
+Every response carries these, with no configuration:
+
+| Header | Value | Why |
+| ------ | ----- | --- |
+| `X-Content-Type-Options` | `nosniff` | Stops a mislabelled upload from being executed as HTML. |
+| `X-Frame-Options` | `SAMEORIGIN` | Stops Hoffle being framed by another site. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Keeps invite tokens out of the `Referer` sent to third-party hosts via link previews. |
+| `Permissions-Policy` | camera/microphone/display-capture for `self` only; geolocation, payment, USB denied | Voice and screen share need those three; nothing here needs the rest. |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Only sent when the request arrived over HTTPS. |
+
+### Content-Security-Policy
+
+Left off by default. A policy that does not match your setup breaks voice, uploads
+or themes *silently* — the browser blocks the request and the app just stops
+working — so it is opt-in rather than on by default.
+
+```bash
+HUDDLE_CSP=1
+```
+
+Then check, in this order, before leaving it on: join a voice room, upload an
+image and a PDF, apply a custom theme, send a voice message, open a link preview,
+and start the music bot. If any of those break, either leave the CSP off or write
+your own with `HUDDLE_CSP_POLICY`.
+
+The bundled policy allows `blob:` (the dice renderer, the noise-suppression
+worklet and the session recorder all run from blob URLs), `'wasm-unsafe-eval'`
+(MediaPipe selfie segmentation), `'unsafe-inline'` for styles (themes inject CSS),
+and `ws:`/`wss:` for the realtime socket and LiveKit. Tightening it means
+checking those features still work.
+
+## Rate limiting
+
+Built in, no configuration. Fixed windows, counted in the database so they hold
+across restarts and worker isolates:
+
+| Action | Budget |
+| ------ | ------ |
+| Login | 10 attempts per 5 minutes, per IP **and** per username |
+| Signup | 5 attempts per 10 minutes, per IP |
+
+Per-username login limiting means one attacker cannot lock you out by hammering
+your name, and a botnet cannot avoid the IP limit by rotating for a single
+account. Both buckets must have room for a login to proceed. Exceeding a budget
+returns `429` with a `Retry-After` header.
+
+Behind a reverse proxy, the client address comes from `CF-Connecting-IP`, then
+the first hop of `X-Forwarded-For`, then `X-Real-IP`. If none is present every
+request shares one bucket — it fails closed (over-limiting) rather than open, so
+make sure your proxy sets one of those headers.
+
 
 ## Web address
 
@@ -40,7 +96,7 @@ Running without Docker (`npm run serve`)? Put the same settings in `.dev.vars` i
 
 | Variable             | Default | What it does |
 | -------------------- | ------- | ------------ |
-| `HUDDLE_ICE_SERVERS` | Cloudflare public STUN | JSON array of [`RTCIceServer`](https://developer.mozilla.org/docs/Web/API/RTCIceServer) objects. Add your TURN server here. See [Voice](self-hosting.md#voice-when-calls-do-not-connect). |
+| `HUDDLE_ICE_SERVERS` | Cloudflare public STUN | JSON array of [`RTCIceServer`](https://developer.mozilla.org/docs/Web/API/RTCIceServer) objects. Add your TURN server here, then verify it with `npm run check:turn -- --ice-servers "$HUDDLE_ICE_SERVERS"`. See [Voice](self-hosting.md#voice-when-calls-do-not-connect). |
 | `LIVEKIT_URL`        | unset   | `wss://` address of a LiveKit server. When set with the two keys below, voice goes through LiveKit instead of peer-to-peer. |
 | `LIVEKIT_API_KEY`    | unset   | Key name from `livekit.yaml`. |
 | `LIVEKIT_API_SECRET` | unset   | Secret from `livekit.yaml`. |
@@ -74,6 +130,9 @@ Each user can paste an [ntfy](https://ntfy.sh) topic URL under **Settings → Ap
 | Variable                | What it does |
 | ----------------------- | ------------ |
 | `KLIPY_API_KEY`         | Enables GIF search in the message box ([klipy.com](https://klipy.com)). Without it, pasting or uploading GIFs still works. |
+| `GEMINI_API_KEY`        | Enables `/ask` ([free key](https://aistudio.google.com/apikey)). Answers use Flash-Lite, search DuckDuckGo when a question needs current info, and allow 3 questions a minute and 60 an hour per user. |
+| `GEMINI_MODEL`          | Models `/ask` tries in order, comma separated. Default `gemini-3.1-flash-lite,gemini-3.5-flash-lite`. |
+| `AI_DAILY_LIMIT`        | `/ask` answers per day for the whole server, default 200, which keeps a free key under its quota. |
 | `LASTFM_API_KEY`, `LASTFM_SECRET` | Last.fm "now playing" integration. |
 | `MUSICWATCH_PASSWORD`   | Password for the external music dashboard. |
 | `MUSICWATCH_BASE_URL`, `MUSICWATCH_PUBLIC_URL` | Address of an external music dashboard, if you run one. |

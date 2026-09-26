@@ -210,6 +210,34 @@ docker compose exec hoffle npm run admin -- backup /app/state/hoffle-db-backup.s
 
 The file appears at `state/hoffle-db-backup.sqlite`. It does not include uploaded files.
 
+### Full backups without stopping Hoffle
+
+`scripts/backup.sh` snapshots everything (database, uploads and voice/hub state) while Hoffle keeps running. It copies each database with SQLite's own backup command, so the copy is never half-written. It needs `sqlite3` on the host (`sudo apt install sqlite3`).
+
+```bash
+sudo scripts/backup.sh state backups
+```
+
+This writes `backups/hoffle-<time>.tar.gz` and keeps the newest 14 (set `KEEP=30` to change that, or `KEEP=0` to keep them all). To run it every night, add it to root's crontab:
+
+```bash
+(sudo crontab -l 2>/dev/null; echo "0 4 * * * cd $PWD && scripts/backup.sh state backups") | sudo crontab -
+```
+
+To restore one, stop Hoffle first. The restore checks every database before touching anything, and moves the current `state/` aside instead of deleting it:
+
+```bash
+docker compose stop hoffle
+```
+
+```bash
+sudo scripts/restore.sh backups/hoffle-<time>.tar.gz state
+```
+
+```bash
+docker compose start hoffle
+```
+
 ## Admin commands
 
 Run these from the Hoffle folder:
@@ -236,21 +264,85 @@ docker compose exec hoffle npm run admin -- create-invite [max_uses] [expiry_hou
 
 By default, voice and video go directly between browsers (peer-to-peer). Your server's upload speed does not matter and nothing extra is needed. This works for most home networks.
 
-It fails when someone is behind a very strict network: some mobile carriers, university or office Wi-Fi, or carrier-grade NAT. The symptom is that they can see people in the voice room but hear nothing. The fix is a **TURN relay**, which Hoffle ships with:
+It fails when someone is behind a very strict network: some mobile carriers, university or office Wi-Fi, or carrier-grade NAT. They can see the room and hear the people they can reach directly, but not the ones they cannot — so the usual report is **"some of my friends can't hear each other, but I can hear all of them"**, or a one-to-one call that never connects. Those pairs are the ones that need a relay. The fix is a **TURN relay**, which Hoffle ships with:
 
 1. Edit `deploy/coturn/turnserver.conf` and change the password on the `user=hoffle:...` line.
-2. Forward port `3478` (TCP and UDP) and ports `49152-49200` (UDP) on your router to the Hoffle machine.
-3. Add this to `.env`, with your domain or public IP and the password you chose:
+2. Set `external-ip` in that file to this machine's `<public ip>/<private ip>`:
 
    ```
-   HUDDLE_ICE_SERVERS=[{"urls":["turn:chat.example.com:3478?transport=udp","turn:chat.example.com:3478?transport=tcp"],"username":"hoffle","credential":"YOUR_PASSWORD"},{"urls":["stun:stun.cloudflare.com:3478"]}]
+   external-ip=203.0.113.10/192.168.1.198
    ```
 
-4. Start it:
+   This is the address coturn hands to every peer as the relay candidate. Get
+   it wrong — or leave a private address, or an address your ISP has since
+   reassigned — and calls still negotiate and then carry no audio, which is
+   invisible until someone on a strict network cannot hear anyone.
+3. Forward these ports on your router to the Hoffle machine:
+
+   | Port | Protocol | Why |
+   | ---- | -------- | --- |
+   | `3478` | TCP and UDP | the relay's control port |
+   | `5349` | TCP | the same over TLS, for networks that only allow HTTPS-like traffic |
+   | `49152-49200` | UDP | the relay's media ports, as `min-port`/`max-port` in the config |
+
+   Forwards must be permanent rules, not UPnP leases: router firmware drops
+   UPnP mappings on reboot, and the failure that follows looks exactly like a
+   broken app.
+4. Add this to `.env`, with your domain or public IP and the password you chose:
+
+   ```
+   HUDDLE_ICE_SERVERS=[{"urls":["turn:chat.example.com:3478?transport=udp","turn:chat.example.com:3478?transport=tcp"],"username":"hoffle","credential":"YOUR_PASSWORD"},{"urls":["stun:chat.example.com:3478"]}]
+   ```
+
+5. Start it:
 
    ```bash
    docker compose --profile turn up -d
    ```
+
+6. Check it, from inside your network:
+
+   ```bash
+   npm run check:turn -- --ice-servers "$HUDDLE_ICE_SERVERS"
+   ```
+
+   Every entry should say OK and print the same address it resolved the name to.
+   The interesting failure is the one where it prints a relay address that is
+   private, or a public address that is not the one it reached: that is
+   `external-ip`, and no peer will ever connect through that relay.
+
+   Ask a friend on a different network to run the same command if you want to
+   be certain the ports really are open from outside; anything that passes from
+   your own LAN but fails from theirs is a router or ISP problem, not Hoffle.
+
+### The relay stops working after a while
+
+Two things rot quietly on a home connection, and both produce "some people
+cannot hear each other" rather than an error:
+
+- **The public address changes.** Most ISPs hand out a new one eventually, and
+  `external-ip` is a fixed line in a config file. Either move the relay to a
+  host with a static address (a small VPS is plenty), or keep the line in sync
+  with the script Hoffle ships for it:
+
+  ```bash
+  sudo install -m 755 deploy/coturn/sync-external-ip.sh /usr/local/sbin/
+  sudo install -m 644 deploy/coturn/sync-external-ip.service deploy/coturn/sync-external-ip.timer /etc/systemd/system/
+  sudo systemctl enable --now sync-external-ip.timer
+  ```
+
+  It resolves the name clients actually connect to, rewrites `external-ip`, and
+  restarts coturn — but only when the address really changed, so a working relay
+  is never interrupted for nothing. Check what it would do without touching
+  anything:
+
+  ```bash
+  /usr/local/sbin/sync-external-ip.sh turn.example.com --dry-run
+  ```
+
+- **The port forwards disappear.** Many routers only keep UPnP or "temporary"
+  forwards, and a firmware update can clear hand-written ones. Re-check with
+  `npm run check:turn` from outside the network.
 
 ### Big voice rooms: LiveKit
 

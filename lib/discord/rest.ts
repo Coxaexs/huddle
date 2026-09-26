@@ -30,15 +30,33 @@ import {
   serializeChannel,
   serializeMessage,
   serializeRole,
+  serializeThread,
+  serializeThreadMember,
   serializeUser,
+  botUserSnowflake,
   everyoneRole,
   intToColor,
   colorToInt,
+  avatarHash,
   type HoffleChannelRow,
   type HoffleRoleRow,
+  type HoffleThreadRow,
 } from "./serialize";
 import { nativeFor, snowflakeFor } from "./snowflake";
-import { SUPPORTED_API_VERSIONS } from "./protocol";
+import { ChannelType, SUPPORTED_API_VERSIONS } from "./protocol";
+import {
+  DEFAULT_AUTO_ARCHIVE_DURATION,
+  THREAD_ARCHIVE_DURATIONS,
+  ensureThreadTable,
+  insertThread,
+  listThreads,
+  loadThread,
+  loadThreadByAnchor,
+  nativeThread,
+  persistThread,
+  threadStats,
+  updateThread,
+} from "./threads";
 import { handleCommandRoutes, handleInteractionRoutes } from "./interactions";
 import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
 import { snapshotBeforeEdit } from "../message-edits";
@@ -61,6 +79,8 @@ export const ErrorCode = {
   InvalidFormBody: 50035,
   MissingPermissions: 50013,
   CannotSendEmptyMessage: 50006,
+  /** Discord's code for a message that already has a thread on it. */
+  ThreadAlreadyCreated: 160004,
 } as const;
 
 export function discordError(
@@ -489,6 +509,53 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
     return banRoutes(context, nativeGuildId, subId);
   }
 
+  if (sub === "audit-logs") {
+    if (context.request.method !== "GET") {
+      return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+    }
+    return auditLogRoute(context, nativeGuildId);
+  }
+
+  if (sub === "invites") {
+    if (context.request.method !== "GET") {
+      return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+    }
+    return guildInviteRoute(context, nativeGuildId, guildSnowflake);
+  }
+
+  if (sub === "threads") {
+    // GET /guilds/{id}/threads/active — the only listing Discord offers for
+    // live threads, and how a bot discovers threads that already exist.
+    if (subId !== "active" || context.request.method !== "GET") {
+      return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+    }
+    await ensureThreadTable(context.db);
+    const rows = await listThreads(context.db, {
+      serverId: nativeGuildId,
+      archived: false,
+      limit: 100,
+    });
+    const stats = await threadStats(
+      context.db,
+      rows.map((thread) => thread.id),
+    );
+    const threads = await Promise.all(
+      rows.map((thread) =>
+        serializeThread(thread, {
+          guildSnowflake,
+          stats: stats.get(thread.id),
+          viewerBotId: context.bot.id,
+        }),
+      ),
+    );
+    // Discord's active list has no `has_more`: everything live fits in one
+    // response, and clients do not page it.
+    return json({
+      threads,
+      members: threads.map((thread) => thread.member).filter(Boolean),
+    });
+  }
+
   if (sub === "emojis") {
     const rows = await context.db
       .prepare("SELECT id, name, created_at FROM emojis WHERE server_id = ? ORDER BY name")
@@ -601,10 +668,10 @@ async function memberRoutes(
 
   const membership = await db
     .prepare(
-      "SELECT joined_at FROM server_members WHERE server_id = ? AND user_id = ?",
+      "SELECT joined_at, nickname FROM server_members WHERE server_id = ? AND user_id = ?",
     )
     .bind(nativeGuildId, nativeUserId)
-    .first<{ joined_at: string }>();
+    .first<{ joined_at: string; nickname: string | null }>();
   if (!membership) return discordError(404, ErrorCode.UnknownMember, "Unknown Member");
 
   // DELETE /guilds/{id}/members/{uid} — a kick.
@@ -629,6 +696,42 @@ async function memberRoutes(
     return new Response(null, { status: 204 });
   }
 
+  // PATCH /guilds/{id}/members/{uid} — the nickname. Discord also allows roles,
+  // mutes and timeouts here; Hoffle keeps those on the membership tables and
+  // has dedicated routes for them, so a body that only sets those is answered
+  // with the member as it really stands rather than a claim that it changed.
+  if (request.method === "PATCH") {
+    const body = (await request.json().catch(() => ({}))) as { nick?: string | null };
+    const nickname =
+      body.nick === null || body.nick === undefined
+        ? null
+        : String(body.nick).trim().slice(0, 32) || null;
+    await db
+      .prepare("UPDATE server_members SET nickname = ? WHERE server_id = ? AND user_id = ?")
+      .bind(nickname, nativeGuildId, nativeUserId)
+      .run();
+
+    const user = await loadUser(db, nativeUserId);
+    if (!user) return discordError(404, ErrorCode.UnknownMember, "Unknown Member");
+    const roleRows = await db
+      .prepare("SELECT role_id FROM member_roles WHERE server_id = ? AND user_id = ?")
+      .bind(nativeGuildId, nativeUserId)
+      .all<{ role_id: string }>();
+    const { serializeMember } = await import("./serialize");
+    const member = await serializeMember(user, {
+      joined_at: membership.joined_at,
+      nick: nickname,
+      roles: (roleRows.results || []).map((r) => r.role_id),
+    });
+    const { dispatchToBots } = await import("./dispatch");
+    await dispatchToBots(
+      "GUILD_MEMBER_UPDATE",
+      { guild_id: guildSnowflake, roles: member.roles, user: member.user, nick: member.nick },
+      { serverId: nativeGuildId },
+    );
+    return json(member);
+  }
+
   const user = await loadUser(db, nativeUserId);
   if (!user) return discordError(404, ErrorCode.UnknownMember, "Unknown Member");
 
@@ -641,6 +744,7 @@ async function memberRoutes(
   return json(
     await serializeMember(user, {
       joined_at: membership.joined_at,
+      nick: membership.nickname,
       roles: (roleRows.results || []).map((r) => r.role_id),
     }),
   );
@@ -721,30 +825,333 @@ async function banRoutes(
 }
 
 // ---------------------------------------------------------------------------
+// Audit log and invites
+// ---------------------------------------------------------------------------
+
+/**
+ * Discord's audit log action types, against the dotted verbs `recordAudit`
+ * writes. The mapping is deliberately partial: a verb with no Discord
+ * counterpart is reported as 0 rather than filed under a neighbouring action,
+ * because a moderation bot filtering on `action_type` would then act on the
+ * wrong thing. Hoffle-only events (a member joining, a server being created)
+ * name their verb in `reason` instead, so the entry still says what happened.
+ */
+const AUDIT_ACTION_TYPES: Record<string, number> = {
+  "server.update": 1,
+  "channel.create": 10,
+  "channel.update": 11,
+  "channel.delete": 12,
+  "member.kick": 20,
+  "member.ban": 22,
+  "member.unban": 23,
+  "member.nickname": 24,
+  "member.timeout": 24,
+  "member.timeout_remove": 24,
+  "member.move": 26,
+  "bot.create": 28,
+  "role.create": 30,
+  "role.update": 31,
+  "role.delete": 32,
+  "invite.create": 40,
+  "invite.delete": 42,
+  "automod.rule.create": 140,
+  "automod.rule.update": 141,
+  "automod.rule.delete": 142,
+};
+
+/**
+ * GET /guilds/{id}/audit-logs.
+ *
+ * Entries come back newest first in a single page, so Discord's snowflake-based
+ * `before`/`after` paging has nothing to page here and is ignored; the filters a
+ * bot normally sets — `user_id`, `action_type` and `limit` — are honoured.
+ */
+async function auditLogRoute(
+  context: RestContext,
+  nativeGuildId: string,
+): Promise<Response> {
+  const params = context.url.searchParams;
+  const limit = Math.min(Math.max(Number(params.get("limit") || 50), 1), 100);
+  const wantedAction = params.get("action_type");
+
+  const rows = await context.db
+    .prepare(
+      `SELECT id, actor_id, actor_name, action, target_id, target_name, detail, created_at
+         FROM audit_log WHERE server_id = ?
+        ORDER BY created_at DESC LIMIT ?`,
+    )
+    .bind(nativeGuildId, limit)
+    .all<{
+      id: string;
+      actor_id: string | null;
+      actor_name: string;
+      action: string;
+      target_id: string | null;
+      target_name: string | null;
+      detail: string | null;
+      created_at: string;
+    }>();
+
+  // Discord returns the actors alongside the entries rather than inlining
+  // them, so a client can build one user cache entry per actor.
+  const actorIds = [
+    ...new Set((rows.results || []).map((row) => row.actor_id).filter(Boolean)),
+  ] as string[];
+  const actors = await Promise.all(actorIds.map((id) => loadUser(context.db, id)));
+  const users = await Promise.all(
+    actors.map((user) => (user ? serializeUser(user) : Promise.resolve(null))),
+  );
+  const userSnowflakeById = new Map(
+    actorIds.map((id, index) => [id, users[index]?.id as string | undefined]),
+  );
+
+  const wantedUserId = params.get("user_id");
+  const nativeWantedUserId = wantedUserId
+    ? await nativeFor("user", wantedUserId)
+    : null;
+
+  const entries: Record<string, unknown>[] = [];
+  for (const row of rows.results || []) {
+    const actionType = AUDIT_ACTION_TYPES[row.action] ?? 0;
+    if (wantedAction && Number(wantedAction) !== actionType) continue;
+    if (wantedUserId && nativeWantedUserId !== row.actor_id) continue;
+    entries.push({
+      id: await snowflakeFor("audit", row.id, row.created_at),
+      action_type: actionType,
+      // An actor may be missing: the log records system actions by name only.
+      user_id: row.actor_id ? userSnowflakeById.get(row.actor_id) : undefined,
+      target_id: await auditTargetSnowflake(row.action, row.target_id),
+      // Discord lists the fields an update changed. Hoffle stores one
+      // human-readable detail instead, which reaches the client as `reason`.
+      changes: [],
+      reason: row.detail || row.action,
+    });
+  }
+
+  return json({
+    audit_log_entries: entries,
+    users: users.filter(Boolean),
+    integrations: [],
+    webhooks: [],
+    threads: [],
+    application_commands: [],
+    auto_moderation_rules: [],
+    // Present and empty on purpose: discord.js reduces this array without a
+    // guard, so leaving it out breaks every audit log fetch.
+    guild_scheduled_events: [],
+  });
+}
+
+/**
+ * The snowflake an entry's target id belongs to, which only the verb reveals:
+ * the log stores a bare native id because the target may be a channel, a role
+ * or an account. Bot targets use the same derived user id a bot's own account
+ * reports, so a BOT_ADD entry points at something a client can resolve.
+ */
+async function auditTargetSnowflake(
+  action: string,
+  targetId: string | null,
+): Promise<string | undefined> {
+  if (!targetId) return undefined;
+  if (action.startsWith("member.")) return snowflakeFor("user", targetId);
+  if (action.startsWith("channel.")) return snowflakeFor("channel", targetId);
+  if (action.startsWith("role.")) return snowflakeFor("role", targetId);
+  if (action.startsWith("bot.")) return botUserSnowflake(targetId);
+  return undefined;
+}
+
+/**
+ * GET /guilds/{id}/invites.
+ *
+ * Hoffle invite codes belong to the whole server and never expire, which
+ * Discord's invite object has no way to express. The shape is filled in the
+ * least misleading way that still loads: `max_age: 0` is Discord's own "never
+ * expires", and `channel` is the server's first text channel — there because
+ * libraries dereference `invite.channel`, not because the code is limited to
+ * it.
+ */
+async function guildInviteRoute(
+  context: RestContext,
+  nativeGuildId: string,
+  guildSnowflake: string,
+): Promise<Response> {
+  const db = context.db;
+  const [invites, guild, channel] = await Promise.all([
+    db
+      .prepare(
+        `SELECT code, created_by, created_at, max_uses, uses
+           FROM invites
+          WHERE server_id = ? AND revoked = 0
+          ORDER BY created_at DESC LIMIT 100`,
+      )
+      .bind(nativeGuildId)
+      .all<{
+        code: string;
+        created_by: string | null;
+        created_at: string;
+        max_uses: number;
+        uses: number;
+      }>(),
+    db
+      .prepare("SELECT id, name, icon FROM servers WHERE id = ?")
+      .bind(nativeGuildId)
+      .first<{ id: string; name: string; icon: string }>(),
+    db
+      .prepare(
+        `SELECT id, name, created_at FROM channels
+          WHERE server_id = ? AND kind = 'text'
+          ORDER BY position, created_at LIMIT 1`,
+      )
+      .bind(nativeGuildId)
+      .first<{ id: string; name: string; created_at: string }>(),
+  ]);
+
+  const channelSnowflake = channel
+    ? await snowflakeFor("channel", channel.id, channel.created_at)
+    : null;
+  const rows = invites.results || [];
+
+  const inviterIds = [
+    ...new Set(rows.map((row) => row.created_by).filter(Boolean)),
+  ] as string[];
+  const inviterById = new Map<string, Record<string, unknown>>();
+  for (const id of inviterIds) {
+    const user = await loadUser(db, id);
+    if (user) inviterById.set(id, await serializeUser(user));
+  }
+
+  return json(
+    rows.map((invite) => ({
+      code: invite.code,
+      // Invite type 0 is a plain guild invite, which is all Hoffle has.
+      type: 0,
+      guild: {
+        id: guildSnowflake,
+        name: guild?.name ?? "",
+        icon: guild ? avatarHash(guild.icon) : null,
+        features: [],
+        splash: null,
+        banner: null,
+        description: null,
+        vanity_url_code: null,
+      },
+      channel: channel
+        ? { id: channelSnowflake, name: channel.name, type: ChannelType.GuildText }
+        : undefined,
+      inviter: invite.created_by
+        ? inviterById.get(invite.created_by)
+        : undefined,
+      uses: invite.uses,
+      max_uses: invite.max_uses,
+      // Hoffle codes never expire and grant no temporary membership, which is
+      // exactly how Discord spells both of those.
+      max_age: 0,
+      temporary: false,
+      created_at: invite.created_at,
+      expires_at: null,
+    })),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Channels and messages
 // ---------------------------------------------------------------------------
+
+/**
+ * What a channel id in the path resolved to.
+ *
+ * A thread is a channel to Discord but not a row in `channels` here: its
+ * replies live against the parent channel, and only the thread itself is in
+ * `discord_threads`. Both are returned so message routes can store a reply the
+ * way the web UI does (parent channel id plus thread id) while still reporting
+ * the thread's own id as `channel_id` to clients.
+ */
+export interface ResolvedChannel {
+  /** The channel messages are stored against: for a thread, its parent. */
+  channel: HoffleChannelRow;
+  /** Set when the id named a thread rather than a plain channel. */
+  thread?: HoffleThreadRow;
+  guildSnowflake: string | null;
+  isDm: boolean;
+}
 
 export async function resolveChannel(
   context: RestContext,
   channelId: string,
-): Promise<
-  | { channel: HoffleChannelRow; guildSnowflake: string | null; isDm: boolean }
-  | Response
-> {
+): Promise<ResolvedChannel | Response> {
   const nativeId = await nativeFor("channel", channelId);
   if (!nativeId) return discordError(404, ErrorCode.UnknownChannel, "Unknown Channel");
 
   const located = await channelWithGuild(context.db, nativeId);
-  if (!located) return discordError(404, ErrorCode.UnknownChannel, "Unknown Channel");
+  if (located) {
+    if (!botCanSeeServer(context.bot, located.channel.server_id)) {
+      return discordError(403, ErrorCode.MissingAccess, "Missing Access");
+    }
 
-  if (!botCanSeeServer(context.bot, located.channel.server_id)) {
+    const guildSnowflake = located.server
+      ? await snowflakeFor("guild", located.server.id, located.server.created_at)
+      : null;
+    return { channel: located.channel, guildSnowflake, isDm: located.isDm };
+  }
+
+  await ensureThreadTable(context.db);
+  // A thread a bot opened has a row; one started in the web UI is only the id
+  // its replies carry, and is recognised from the message it hangs off. Both
+  // are addressable the same way afterwards, which is what makes the web UI's
+  // thread panel and a bot's thread object the same thread.
+  const thread =
+    (await loadThread(context.db, nativeId)) ??
+    (await nativeThread(context.db, nativeId));
+
+  // A thread is only reachable through its parent: replies are stored there,
+  // and a thread whose channel is gone has nowhere to list from.
+  const parent = thread
+    ? await channelWithGuild(context.db, thread.channel_id)
+    : null;
+  if (!thread || !parent) {
+    return discordError(404, ErrorCode.UnknownChannel, "Unknown Channel");
+  }
+
+  const serverId = thread.server_id || parent.channel.server_id;
+  if (!botCanSeeServer(context.bot, serverId)) {
     return discordError(403, ErrorCode.MissingAccess, "Missing Access");
   }
 
-  const guildSnowflake = located.server
-    ? await snowflakeFor("guild", located.server.id, located.server.created_at)
-    : null;
-  return { channel: located.channel, guildSnowflake, isDm: located.isDm };
+  return {
+    channel: parent.channel,
+    thread: { ...thread, server_id: serverId },
+    guildSnowflake: parent.server
+      ? await snowflakeFor("guild", parent.server.id, parent.server.created_at)
+      : null,
+    isDm: false,
+  };
+}
+
+/**
+ * The id clients see as `channel_id`. For a thread that is the thread's own id,
+ * never its parent's: Discord addresses everything posted in a thread by the
+ * thread, and clients route the message into the thread's cache on that basis.
+ */
+async function visibleChannelSnowflake(
+  channel: HoffleChannelRow,
+  thread?: HoffleThreadRow,
+): Promise<string> {
+  return thread
+    ? snowflakeFor("channel", thread.id, thread.created_at)
+    : snowflakeFor("channel", channel.id, channel.created_at);
+}
+
+/** A thread's tallies, loaded for one thread at a time. */
+async function statsForThread(
+  db: D1Database,
+  threadId: string,
+): Promise<{ messageCount: number; memberCount: number; lastMessageId: string | null }> {
+  const stats = (await threadStats(db, [threadId])).get(threadId);
+  return {
+    messageCount: stats?.messageCount ?? 0,
+    memberCount: stats?.memberCount ?? 0,
+    lastMessageId: stats?.lastMessageId ?? null,
+  };
 }
 
 async function channelRoutes(
@@ -756,10 +1163,11 @@ async function channelRoutes(
 
   const resolved = await resolveChannel(context, channelId);
   if (resolved instanceof Response) return resolved;
-  const { channel, guildSnowflake } = resolved;
+  const { channel, guildSnowflake, thread } = resolved;
 
   if (!sub) {
     if (context.request.method === "GET") {
+      if (thread) return json(await serializeThreadResponse(context, thread, guildSnowflake));
       return json(await serializeChannel(channel, guildSnowflake || ""));
     }
     if (context.request.method === "PATCH") {
@@ -767,7 +1175,14 @@ async function channelRoutes(
         name?: string;
         topic?: string;
         position?: number;
+        archived?: boolean;
+        locked?: boolean;
+        auto_archive_duration?: number;
       };
+      // Renaming or archiving a thread is the same endpoint as renaming a
+      // channel on Discord, so one body serves both and only the fields that
+      // exist on a thread are read from it.
+      if (thread) return patchThread(context, thread, guildSnowflake, body);
       await context.db
         .prepare("UPDATE channels SET name = ?, topic = ?, position = ? WHERE id = ?")
         .bind(
@@ -798,16 +1213,32 @@ async function channelRoutes(
   }
 
   if (sub === "messages") {
-    return messageRoutes(context, channel, guildSnowflake, [
-      messageId,
-      subSub,
-      emoji,
-      reactionUser,
-    ]);
+    return messageRoutes(
+      context,
+      channel,
+      guildSnowflake,
+      [messageId, subSub, emoji, reactionUser],
+      thread,
+    );
   }
 
   if (sub === "pins") {
-    return pinRoutes(context, channel, guildSnowflake, messageId);
+    return pinRoutes(context, channel, guildSnowflake, messageId, thread);
+  }
+
+  if (sub === "threads") {
+    await ensureThreadTable(context.db);
+    // GET /channels/{id}/threads/archived/{public|private}
+    if (messageId === "archived") {
+      return archivedThreadRoutes(context, channel, guildSnowflake, subSub);
+    }
+    if (context.request.method === "POST" && !messageId) {
+      return startThread(context, channel, guildSnowflake, null);
+    }
+  }
+
+  if (sub === "thread-members") {
+    return threadMemberRoutes(context, thread, messageId);
   }
 
   if (sub === "permissions" || sub === "invites" || sub === "webhooks") {
@@ -819,17 +1250,293 @@ async function channelRoutes(
   return discordError(404, ErrorCode.GeneralError, "404: Not Found");
 }
 
+// ---------------------------------------------------------------------------
+// Threads
+// ---------------------------------------------------------------------------
+
+/**
+ * A thread channel payload with its live tallies and the caller's own thread
+ * member object, which is what a client needs to fill in `thread.members`.
+ */
+async function serializeThreadResponse(
+  context: RestContext,
+  thread: HoffleThreadRow,
+  guildSnowflake: string | null,
+): Promise<Record<string, unknown>> {
+  return serializeThread(thread, {
+    guildSnowflake,
+    stats: await statsForThread(context.db, thread.id),
+    viewerBotId: context.bot.id,
+  });
+}
+
+/**
+ * GET/PUT/DELETE /channels/{thread.id}/thread-members/@me.
+ *
+ * Membership is not a list Hoffle keeps: every bot that can see the server can
+ * read and post in a public thread, so joining and leaving change nothing and
+ * the same member object answers all three. Pretending a leave had been
+ * recorded would only make the next GET disagree with reality.
+ */
+async function threadMemberRoutes(
+  context: RestContext,
+  thread: HoffleThreadRow | undefined,
+  memberId: string | undefined,
+): Promise<Response> {
+  // A bot can only speak for itself, so any other user id, and the list of
+  // members, has nothing behind it here.
+  if (memberId !== "@me") {
+    return discordError(404, ErrorCode.UnknownMember, "Unknown Member");
+  }
+  if (!thread) {
+    return discordError(400, ErrorCode.InvalidFormBody, "This channel is not a thread");
+  }
+  const method = context.request.method;
+  if (method === "PUT" || method === "DELETE") {
+    return new Response(null, { status: 204 });
+  }
+  if (method === "GET") {
+    return json(
+      await serializeThreadMember(
+        await snowflakeFor("channel", thread.id, thread.created_at),
+        await botUserSnowflake(context.bot.id),
+        thread.created_at,
+      ),
+    );
+  }
+  return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+}
+
+/** PATCH /channels/{thread.id}: rename, retime or archive a thread. */
+async function patchThread(
+  context: RestContext,
+  thread: HoffleThreadRow,
+  guildSnowflake: string | null,
+  body: {
+    name?: string;
+    archived?: boolean;
+    locked?: boolean;
+    auto_archive_duration?: number;
+  },
+): Promise<Response> {
+  if (
+    body.auto_archive_duration !== undefined &&
+    !THREAD_ARCHIVE_DURATIONS.includes(body.auto_archive_duration)
+  ) {
+    return discordError(
+      400,
+      ErrorCode.InvalidFormBody,
+      `auto_archive_duration: must be one of ${THREAD_ARCHIVE_DURATIONS.join(", ")}`,
+    );
+  }
+  const name = body.name?.trim().slice(0, 100);
+  // A thread that only existed as a message anchor gets its row here, so the
+  // change has somewhere to live.
+  const stored = await persistThread(context.db, thread);
+  const updated = await updateThread(context.db, stored.id, {
+    name: name || undefined,
+    auto_archive_duration: body.auto_archive_duration,
+    archived: body.archived,
+    locked: body.locked,
+  });
+  if (!updated) return discordError(404, ErrorCode.UnknownChannel, "Unknown Channel");
+
+  const payload = await serializeThreadResponse(context, updated, guildSnowflake);
+  const { dispatchToBots } = await import("./dispatch");
+  await dispatchToBots("THREAD_UPDATE", payload, { serverId: updated.server_id });
+  return json(payload);
+}
+
+/**
+ * POST /channels/{id}/threads and POST /channels/{id}/messages/{mid}/threads,
+ * which differ only in whether a starter message names the thread.
+ *
+ * Discord lets a message have one thread and no more, and reuses the message's
+ * id as the thread's. Keying the thread on the message copies both behaviours,
+ * and it is also what makes the bot's thread and the web UI's thread panel the
+ * same thread rather than two parallel ones.
+ */
+async function startThread(
+  context: RestContext,
+  channel: HoffleChannelRow,
+  guildSnowflake: string | null,
+  anchorNativeId: string | null,
+): Promise<Response> {
+  const db = context.db;
+  await ensureThreadTable(db);
+
+  const body = (await context.request.json().catch(() => ({}))) as {
+    name?: string;
+    type?: number;
+    auto_archive_duration?: number;
+    // Accepted for shape and deliberately unused: `invitable` only governs who
+    // may add members to a private thread, and this surface creates none.
+    invitable?: boolean;
+  };
+
+  if (channel.server_id === DM_SERVER_ID) {
+    // Discord has no threads in a direct message either.
+    return discordError(
+      400,
+      ErrorCode.InvalidFormBody,
+      "Direct messages have no threads",
+    );
+  }
+
+  // Discord's split is worth keeping: a public thread needs a message to hang
+  // off, while the same endpoint without one can only make a private thread.
+  // Hoffle threads are readable by everyone in the server and carry no
+  // membership list, so a private thread would be a promise this surface
+  // cannot keep — refusing is kinder than silently downgrading it. A missing
+  // `type` is therefore read as public rather than as Discord's private
+  // default, and the response says which kind it made.
+  const type = body.type ?? ChannelType.PublicThread;
+  if (type !== ChannelType.PublicThread) {
+    return discordError(
+      400,
+      ErrorCode.InvalidFormBody,
+      type === ChannelType.PrivateThread || type === ChannelType.AnnouncementThread
+        ? "Private and announcement threads are not supported: every thread here is public"
+        : "Unsupported thread type",
+    );
+  }
+
+  const name = (body.name || "").trim().slice(0, 100);
+  if (!name) {
+    return discordError(400, ErrorCode.InvalidFormBody, "name: This field is required");
+  }
+
+  const autoArchive = body.auto_archive_duration ?? DEFAULT_AUTO_ARCHIVE_DURATION;
+  if (!THREAD_ARCHIVE_DURATIONS.includes(autoArchive)) {
+    return discordError(
+      400,
+      ErrorCode.InvalidFormBody,
+      `auto_archive_duration: must be one of ${THREAD_ARCHIVE_DURATIONS.join(", ")}`,
+    );
+  }
+
+  // Only a thread this surface created counts as already existing. A thread the
+  // web UI started on the same message is the same thread, so opening one here
+  // adopts it — the name and archive window come from this request — instead of
+  // failing with an error about a thread the bot can see but never made.
+  if (anchorNativeId && (await loadThreadByAnchor(db, anchorNativeId))) {
+    return discordError(
+      400,
+      ErrorCode.ThreadAlreadyCreated,
+      "A thread has already been created for this message",
+    );
+  }
+
+  const thread = await insertThread(db, {
+    // A thread started on its own has no message to borrow an id from, so it
+    // gets one of its own. Nothing in the web UI anchors a thread panel except
+    // a message, so such a thread is reachable by bots only.
+    id: anchorNativeId ?? crypto.randomUUID(),
+    channel_id: channel.id,
+    server_id: channel.server_id,
+    name,
+    anchor_message_id: anchorNativeId,
+    type: ChannelType.PublicThread,
+    auto_archive_duration: autoArchive,
+    owner_bot_id: context.bot.id,
+  });
+
+  const payload = await serializeThread(thread, {
+    guildSnowflake,
+    stats: await statsForThread(db, thread.id),
+    viewerBotId: context.bot.id,
+  });
+  const { dispatchToBots } = await import("./dispatch");
+  await dispatchToBots("THREAD_CREATE", payload, { serverId: channel.server_id });
+  return json(payload, 201);
+}
+
+/**
+ * GET /channels/{id}/threads/archived/{public|private}.
+ *
+ * Discord archives a thread once it has been silent for its archive window and
+ * lists it here afterwards. Hoffle keeps no such clock, so this returns the
+ * threads a bot archived by hand; until then the list is legitimately empty,
+ * and the payload stays well-formed because libraries iterate it either way.
+ */
+async function archivedThreadRoutes(
+  context: RestContext,
+  channel: HoffleChannelRow,
+  guildSnowflake: string | null,
+  type: string | undefined,
+): Promise<Response> {
+  if (context.request.method !== "GET") {
+    return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+  }
+  if (type !== "public" && type !== "private") {
+    return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+  }
+
+  const limit = Math.min(
+    Math.max(Number(context.url.searchParams.get("limit") || 50), 1),
+    100,
+  );
+  // `before` is an ISO timestamp on this route rather than a snowflake, so
+  // anything unparseable is ignored instead of becoming a filter that matches
+  // nothing.
+  const before = context.url.searchParams.get("before");
+  const beforeIso =
+    before && !Number.isNaN(Date.parse(before))
+      ? new Date(before).toISOString()
+      : null;
+
+  // Private threads are never created here, so that list is empty by
+  // definition rather than by query.
+  const rows =
+    type === "public"
+      ? await listThreads(context.db, {
+          channelId: channel.id,
+          archived: true,
+          before: beforeIso,
+          limit: limit + 1,
+        })
+      : [];
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const stats = await threadStats(
+    context.db,
+    page.map((thread) => thread.id),
+  );
+  const threads = await Promise.all(
+    page.map((thread) =>
+      serializeThread(thread, {
+        guildSnowflake,
+        stats: stats.get(thread.id),
+        viewerBotId: context.bot.id,
+      }),
+    ),
+  );
+
+  return json({
+    threads,
+    // Discord lists a thread member object per returned thread the caller has
+    // joined. A bot can read every thread in its guild, so that is all of them
+    // — the same object each thread payload already carries.
+    members: threads.map((thread) => thread.member).filter(Boolean),
+    has_more: hasMore,
+  });
+}
+
 async function messageRoutes(
   context: RestContext,
   channel: HoffleChannelRow,
   guildSnowflake: string | null,
   [messageId, sub, emoji, reactionUser]: Array<string | undefined>,
+  thread?: HoffleThreadRow,
 ): Promise<Response> {
   const { db, request } = context;
 
   if (!messageId) {
-    if (request.method === "GET") return listMessages(context, channel, guildSnowflake);
-    if (request.method === "POST") return createMessage(context, channel, guildSnowflake);
+    if (request.method === "GET") return listMessages(context, channel, guildSnowflake, thread);
+    if (request.method === "POST") {
+      return createMessage(context, channel, guildSnowflake, undefined, thread);
+    }
   }
 
   if (messageId === "bulk-delete" && request.method === "POST") {
@@ -855,7 +1562,7 @@ async function messageRoutes(
       "MESSAGE_DELETE_BULK",
       {
         ids: snowflakes,
-        channel_id: await snowflakeFor("channel", channel.id, channel.created_at),
+        channel_id: await visibleChannelSnowflake(channel, thread),
         guild_id: guildSnowflake ?? undefined,
       },
       { serverId: channel.server_id },
@@ -870,6 +1577,31 @@ async function messageRoutes(
     return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
   }
 
+  // /channels/{id}/messages/{mid}/threads — the same thread creation as
+  // /channels/{id}/threads, anchored on this message.
+  if (sub === "threads") {
+    if (request.method !== "POST") {
+      return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+    }
+    if (thread) {
+      return discordError(
+        400,
+        ErrorCode.InvalidFormBody,
+        "A thread cannot contain another thread",
+      );
+    }
+    // The message has to be in this channel: Discord resolves the thread
+    // against the channel in the path, not against the message alone.
+    const anchor = await db
+      .prepare(
+        "SELECT id FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL",
+      )
+      .bind(nativeMessageId, channel.id)
+      .first<{ id: string }>();
+    if (!anchor) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+    return startThread(context, channel, guildSnowflake, nativeMessageId);
+  }
+
   // Reactions: /messages/{id}/reactions/{emoji}/{user}
   if (sub === "reactions") {
     return reactionRoutes(context, channel, nativeMessageId, emoji, reactionUser);
@@ -879,7 +1611,7 @@ async function messageRoutes(
     if (request.method === "GET") {
       const row = await loadMessageRow(db, nativeMessageId);
       if (!row) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
-      return json(await buildMessage(context, row, channel, guildSnowflake));
+      return json(await buildMessage(context, row, channel, guildSnowflake, thread));
     }
 
     if (request.method === "DELETE") {
@@ -926,7 +1658,7 @@ async function messageRoutes(
         origin: context.origin,
         basePath: context.basePath,
       });
-      return json(await buildMessage(context, row, channel, guildSnowflake));
+      return json(await buildMessage(context, row, channel, guildSnowflake, thread));
     }
   }
 
@@ -953,12 +1685,13 @@ async function buildMessage(
   row: StoredMessage,
   channel: HoffleChannelRow,
   guildSnowflake: string | null,
+  thread?: HoffleThreadRow,
 ): Promise<Record<string, unknown>> {
   const [author, mentions, reactions, channelSnowflake] = await Promise.all([
     row.user_id ? loadUser(context.db, row.user_id) : Promise.resolve(null),
     loadMentionedUsers(context.db, row.id),
     loadReactions(context.db, row.id),
-    snowflakeFor("channel", channel.id, channel.created_at),
+    visibleChannelSnowflake(channel, thread),
   ]);
   return serializeMessage(row, {
     channelSnowflake,
@@ -975,6 +1708,7 @@ async function listMessages(
   context: RestContext,
   channel: HoffleChannelRow,
   guildSnowflake: string | null,
+  thread?: HoffleThreadRow,
 ): Promise<Response> {
   const params = context.url.searchParams;
   const limit = Math.min(Math.max(Number(params.get("limit") || 50), 1), 100);
@@ -985,8 +1719,22 @@ async function listMessages(
   const after = params.get("after");
   const around = params.get("around");
 
-  const clauses: string[] = ["channel_id = ?", "deleted_at IS NULL"];
-  const binds: unknown[] = [channel.id];
+  // A thread's replies are rows of the parent channel, so listing either one
+  // means narrowing on `thread_id` rather than swapping tables. The parent's
+  // own history excludes them, which is also what the web UI does: thread
+  // replies belong in the thread panel, not in the channel flow.
+  const scopeClauses = ["channel_id = ?", "deleted_at IS NULL"];
+  const scopeBinds: unknown[] = [channel.id];
+  if (thread) {
+    scopeClauses.push("thread_id = ?");
+    scopeBinds.push(thread.id);
+  } else {
+    scopeClauses.push("thread_id IS NULL");
+  }
+  const scope = scopeClauses.join(" AND ");
+
+  const clauses = [...scopeClauses];
+  const binds: unknown[] = [...scopeBinds];
 
   const anchorNative = async (id: string | null) =>
     id ? await nativeFor("message", id) : null;
@@ -1011,26 +1759,26 @@ async function listMessages(
     sql = `
       SELECT * FROM (
         SELECT ${MESSAGE_COLUMNS} FROM messages
-        WHERE channel_id = ? AND deleted_at IS NULL
+        WHERE ${scope}
           AND created_at <= (SELECT created_at FROM messages WHERE id = ?)
         ORDER BY created_at DESC LIMIT ?
       )
       UNION
       SELECT * FROM (
         SELECT ${MESSAGE_COLUMNS} FROM messages
-        WHERE channel_id = ? AND deleted_at IS NULL
+        WHERE ${scope}
           AND created_at > (SELECT created_at FROM messages WHERE id = ?)
         ORDER BY created_at ASC LIMIT ?
       )
       ORDER BY created_at DESC`;
     const rows = await context.db
       .prepare(sql)
-      .bind(channel.id, aroundId, half + 1, channel.id, aroundId, half)
+      .bind(...scopeBinds, aroundId, half + 1, ...scopeBinds, aroundId, half)
       .all<StoredMessage>();
     return json(
       await Promise.all(
         (rows.results || []).map((row) =>
-          buildMessage(context, row, channel, guildSnowflake),
+          buildMessage(context, row, channel, guildSnowflake, thread),
         ),
       ),
     );
@@ -1049,7 +1797,7 @@ async function listMessages(
 
   return json(
     await Promise.all(
-      results.map((row) => buildMessage(context, row, channel, guildSnowflake)),
+      results.map((row) => buildMessage(context, row, channel, guildSnowflake, thread)),
     ),
   );
 }
@@ -1072,6 +1820,7 @@ export async function createMessage(
   channel: HoffleChannelRow,
   guildSnowflake: string | null,
   override?: CreateMessageBody,
+  thread?: HoffleThreadRow,
 ): Promise<Response> {
   const body =
     override ??
@@ -1101,7 +1850,7 @@ export async function createMessage(
     author: (body.username || context.bot.name).slice(0, 80),
     avatar: (context.bot.avatar || "🤖").slice(0, 4),
     color: "#b8a6ff",
-    content: content.slice(0, 4000),
+    content,
     attachment_key: null,
     is_bot: 1,
     created_at: new Date().toISOString(),
@@ -1113,14 +1862,18 @@ export async function createMessage(
     // serializer reads them back out for other bots and for message fetches.
     payload: botPayload(context.bot.id, embeds, components),
     reply_to: replyTo,
+    // A thread reply is stored against the parent channel and points at the
+    // thread, exactly as the web UI writes one — that is what keeps the same
+    // thread readable from both the bot surface and the thread panel.
+    thread_id: thread?.id ?? null,
   };
 
   await context.db
     .prepare(
       `INSERT INTO messages
          (id, channel, channel_id, user_id, author, avatar, color, content,
-          attachment_key, is_bot, created_at, payload, reply_to)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?)`,
+          attachment_key, is_bot, created_at, payload, reply_to, thread_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -1134,6 +1887,7 @@ export async function createMessage(
       stored.created_at,
       stored.payload,
       stored.reply_to,
+      stored.thread_id ?? null,
     )
     .run();
 
@@ -1150,7 +1904,7 @@ export async function createMessage(
     basePath: context.basePath,
   });
 
-  return json(await buildMessage(context, stored, channel, guildSnowflake), 200);
+  return json(await buildMessage(context, stored, channel, guildSnowflake, thread), 200);
 }
 
 /**
@@ -1248,22 +2002,26 @@ async function pinRoutes(
   channel: HoffleChannelRow,
   guildSnowflake: string | null,
   messageId: string | undefined,
+  thread?: HoffleThreadRow,
 ): Promise<Response> {
   const { db, request } = context;
 
   if (!messageId) {
+    // Pins follow the same scope as the history around them: a thread's pins
+    // are its own replies, and the parent channel's are the messages in it.
     const rows = await db
       .prepare(
         `SELECT ${MESSAGE_COLUMNS} FROM messages
          WHERE channel_id = ? AND pinned_at IS NOT NULL AND deleted_at IS NULL
+           ${thread ? "AND thread_id = ?" : "AND thread_id IS NULL"}
          ORDER BY pinned_at DESC`,
       )
-      .bind(channel.id)
+      .bind(...(thread ? [channel.id, thread.id] : [channel.id]))
       .all<StoredMessage>();
     return json(
       await Promise.all(
         (rows.results || []).map((row) =>
-          buildMessage(context, row, channel, guildSnowflake),
+          buildMessage(context, row, channel, guildSnowflake, thread),
         ),
       ),
     );

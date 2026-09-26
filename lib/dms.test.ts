@@ -84,10 +84,10 @@ describe("Direct Messages & Notes to Self", () => {
 
   it("lists self-DMs with user's own profile info", async () => {
     const mockDb = {
-      prepare: () => ({
+      prepare: (sql: string) => ({
         bind: () => ({
           all: async () => ({
-            results: [
+            results: sql.includes("c.is_group = 1") ? [] : [
               {
                 channel_id: "self-channel-123",
                 id: "alice",
@@ -110,5 +110,53 @@ describe("Direct Messages & Notes to Self", () => {
     expect(dms[0].channelId).toBe("self-channel-123");
     expect(dms[0].user.id).toBe("alice");
     expect(dms[0].lastMessage).toBe("My personal note");
+  });
+
+  it("lists group DMs with their members and a fallback name", async () => {
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          all: async () => {
+            if (sql.includes("c.is_group = 1")) {
+              return {
+                results: [
+                  {
+                    channel_id: "group-1",
+                    name: "",
+                    owner_id: "alice",
+                    created_at: "2026-09-20T00:00:00Z",
+                    hidden_at: null,
+                    last_message: null,
+                    last_at: null,
+                  },
+                ],
+              };
+            }
+            if (sql.includes("dm.channel_id IN")) {
+              return {
+                results: ["alice", "bob", "cy"].map((id) => ({
+                  channel_id: "group-1",
+                  id,
+                  username: id,
+                  display_name: id[0].toUpperCase() + id.slice(1),
+                  avatar: "",
+                  avatar_url: null,
+                  color: "#000000",
+                })),
+              };
+            }
+            return { results: [] };
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const [group] = await listDms(mockDb, "alice");
+    expect(group.channelId).toBe("group-1");
+    expect(group.user.id).toBe("group-1");
+    expect(group.user.displayName).toBe("Bob, Cy");
+    expect(group.group?.ownerId).toBe("alice");
+    expect(group.group?.members).toHaveLength(3);
+    expect(group.lastAt).toBe("2026-09-20T00:00:00Z");
   });
 });

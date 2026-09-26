@@ -82,7 +82,14 @@ export async function dispatchMessage(
       message.user_id ? loadUser(db, message.user_id) : Promise.resolve(null),
       loadMentionedUsers(db, message.id),
       loadReactions(db, message.id),
-      snowflakeFor("channel", channelId, located.channel.created_at),
+      // A reply in a thread is stored against the parent channel but belongs to
+      // the thread as far as clients are concerned: Discord addresses it by the
+      // thread id, and so do the REST routes. Reporting the parent here instead
+      // would put the same message in a different channel depending on whether
+      // a bot read it from the gateway or from /channels/{id}/messages.
+      message.thread_id
+        ? snowflakeFor("channel", message.thread_id)
+        : snowflakeFor("channel", channelId, located.channel.created_at),
     ]);
 
     const guildSnowflake = located.server
@@ -119,9 +126,17 @@ export async function dispatchMessageDelete(
   try {
     const located = await channelWithGuild(db, channelId);
     if (!located) return;
+    // The reply's row is soft-deleted rather than gone, so it can still say
+    // which thread it belonged to — the same rule dispatchMessage applies.
+    const row = await db
+      .prepare("SELECT thread_id FROM messages WHERE id = ?")
+      .bind(messageId)
+      .first<{ thread_id: string | null }>();
     const [id, channelSnowflake] = await Promise.all([
       snowflakeFor("message", messageId),
-      snowflakeFor("channel", channelId, located.channel.created_at),
+      row?.thread_id
+        ? snowflakeFor("channel", row.thread_id)
+        : snowflakeFor("channel", channelId, located.channel.created_at),
     ]);
     const guildSnowflake = located.server
       ? await snowflakeFor("guild", located.server.id, located.server.created_at)

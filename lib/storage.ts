@@ -27,6 +27,12 @@ export interface HuddleBindings {
   HUDDLE_PUSH_ALLOW_PRIVATE?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
+  /** Optional: enables /ask (Gemini free tier). */
+  GEMINI_API_KEY?: string;
+  /** Comma-separated Gemini models for /ask, tried in order. */
+  GEMINI_MODEL?: string;
+  /** Instance-wide /ask answers per day; keeps a free key inside its quota. */
+  AI_DAILY_LIMIT?: string;
   /** Last.fm API key for live scrobbler integration. */
   LASTFM_API_KEY?: string;
   LASTFM_SECRET?: string;

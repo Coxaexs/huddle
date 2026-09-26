@@ -20,16 +20,29 @@ export interface TableControls {
   headTracking: boolean;
   setHeadTracking: (enabled: boolean) => void;
   headTrackingOffered: boolean;
+  airpodsOffered: boolean;
+  headTrackingSource: "airpods" | "webcam";
+  setHeadTrackingSource: (source: "airpods" | "webcam") => void;
+  spatialOutput: "headphones" | "speakers";
+  setSpatialOutput: (output: "headphones" | "speakers") => void;
   headTrackingStatus: { status: HeadTrackingStatus; live: boolean };
   recenterHead: () => void;
 }
 
 /** Head tracking can be wanted, unavailable, waiting for poses, or actually running. */
-function headTrackingHint({ headTracking, headTrackingStatus }: TableControls): string {
-  if (!headTracking) return "Keeps the table still while you turn, like Apple spatial audio.";
-  if (headTrackingStatus.status === "denied") return "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness.";
-  if (headTrackingStatus.status === "unsupported") return "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max.";
-  if (!headTrackingStatus.live) return "Waiting for your headphones to report their position…";
+export function headTrackingHint({ headTracking, headTrackingStatus, headTrackingSource, airpodsOffered }: Pick<TableControls, "headTracking" | "headTrackingStatus" | "headTrackingSource" | "airpodsOffered">): string {
+  const webcam = headTrackingSource === "webcam";
+  if (!headTracking) return webcam
+    ? "Keeps the table still while you turn. Uses your camera on this device only — video never leaves it."
+    : "Keeps the table still while you turn, like Apple spatial audio.";
+  if (headTrackingStatus.status === "denied") return webcam
+    ? "Camera access is blocked for Huddle — allow it in your browser's site settings."
+    : "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness.";
+  if (!webcam && !airpodsOffered) return "AirPods head tracking needs the Huddle desktop app on a Mac. The camera stays off.";
+  if (headTrackingStatus.status === "unsupported") return webcam
+    ? "Couldn't start the camera or the face tracker. Check that a webcam is connected and not in use by another app."
+    : "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max.";
+  if (!headTrackingStatus.live) return webcam ? "Looking for your face… sit facing the camera." : "Waiting for your headphones to report their position…";
   return "Tracking your head — the table stays put as you look around.";
 }
 
@@ -137,12 +150,26 @@ export function TableAudioMenu({ participants, listenerId, controls, onClose }: 
           )}
         </section>}
 
+        <label className="table-field" htmlFor="table-output"><span><Headphones size={16} /> Listening on</span>
+          <select id="table-output" value={controls.spatialOutput}
+            onChange={(event) => controls.setSpatialOutput(event.target.value === "speakers" ? "speakers" : "headphones")}>
+            <option value="headphones">Headphones · 3D sound</option>
+            <option value="speakers">Speakers · stereo</option>
+          </select>
+          <small>Headphones place voices around you, in front and at a distance. Speakers keep simple left–right panning.</small>
+        </label>
+
         {controls.headTrackingOffered && <section className="table-head-tracking">
           <label>
             <input type="checkbox" checked={controls.headTracking}
               onChange={(event) => controls.setHeadTracking(event.target.checked)} />
-            Follow my head (AirPods)
+            Follow my head
           </label>
+          <select aria-label="Head tracking source" value={controls.headTrackingSource}
+            onChange={(event) => controls.setHeadTrackingSource(event.target.value === "webcam" ? "webcam" : "airpods")}>
+            <option value="airpods">AirPods (no camera)</option>
+            <option value="webcam">Webcam</option>
+          </select>
           <small>{headTrackingHint(controls)}</small>
           {controls.headTracking && controls.headTrackingStatus.live && (
             <button type="button" className="table-reset" onClick={controls.recenterHead}>

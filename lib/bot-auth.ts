@@ -19,6 +19,35 @@ export function generateBotToken(): string {
   return `hfl_bot_${randomHex}`;
 }
 
+/** The companion D&D bot: one identity across every server, like the system bot. */
+const DND_BOT: BotIdentity = {
+  id: "dnd-bot",
+  name: "D&D Bot",
+  avatar: "⚔",
+  serverId: null,
+  isMaster: true,
+  kind: "dnd",
+};
+
+/**
+ * The D&D bot's token, derived from BOT_TOKEN so it needs no setup of its own:
+ * the dndbot on the same machine computes the same value from the same secret
+ * and connects by itself. It is a one-way hash, so holding it never reveals
+ * BOT_TOKEN, and rotating BOT_TOKEN rotates it too.
+ *
+ * Mirrored in dndbot's bot.py (`_derived_hoffle_token`); keep them in step.
+ */
+export async function dndBotToken(botToken: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`hoffle-dndbot:${botToken}`),
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `hfl_dnd_${hex}`;
+}
+
 /**
  * Extracts and verifies the bot token from the request.
  * Accepts `Authorization: Bot <token>` or `Authorization: Bearer <token>`.
@@ -54,7 +83,13 @@ export async function authenticateBot(
     };
   }
 
-  // 2. Check server-specific bot in DB
+  // 2. The built-in D&D bot
+  if (runtime.BOT_TOKEN && token.startsWith("hfl_dnd_")) {
+    if (token === (await dndBotToken(runtime.BOT_TOKEN))) return { ...DND_BOT };
+    return null;
+  }
+
+  // 3. Check server-specific bot in DB
   const db = runtime.DB;
   if (!db) return null;
 
@@ -99,6 +134,7 @@ export async function botById(
   db: D1Database,
   botId: string,
 ): Promise<BotIdentity | null> {
+  if (botId === DND_BOT.id) return { ...DND_BOT };
   if (botId === "system-bot") {
     return {
       id: "system-bot",
