@@ -27,3 +27,7 @@ state/
 
 # Examples are safe to commit
 !.env.example
+
+# Android release signing key: never commit.
+*.jks
+*.keystore

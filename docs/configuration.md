@@ -117,6 +117,16 @@ docker compose exec hoffle npx web-push generate-vapid-keys
 
 Do not change the keys later, or existing subscriptions stop working.
 
+### Native Android app notifications (Firebase)
+
+The Android app in `mobile/` gets notifications through Firebase Cloud Messaging, since browser push can't run inside the app.
+
+| Variable              | What it does |
+| --------------------- | ------------ |
+| `FCM_SERVICE_ACCOUNT` | The Firebase service-account key (Project settings → Service accounts → **Generate new private key**), as one line of JSON. |
+
+The matching `google-services.json` goes into the app build; see `mobile/README.md`. iOS isn't covered: a sideloaded app can't receive Apple push notifications.
+
 ### Phone notifications without vendor keys (ntfy / UnifiedPush)
 
 Each user can paste an [ntfy](https://ntfy.sh) topic URL under **Settings → Appearance → Phone notifications**. Hoffle then POSTs mentions, DMs, event reminders and incoming calls (high priority) to that topic, and the ntfy app delivers them in the background on Android and iOS. Nothing here needs VAPID, APNs or FCM credentials. Run your own ntfy server if you'd rather not use ntfy.sh.
