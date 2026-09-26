@@ -64,6 +64,42 @@ export interface HoffleRoleRow {
 }
 
 /**
+ * A thread, which Discord models as a channel but Hoffle stores beside its
+ * parent: replies carry the thread id in `messages.thread_id`. A thread a bot
+ * opened has a row in `discord_threads` for its name, archive deadline and
+ * owner; one started in the web UI has no row until something changes it, and
+ * is recognised from the message it hangs off.
+ */
+export interface HoffleThreadRow {
+  /** Native thread id. Equal to the anchor message's id when one exists. */
+  id: string;
+  /** Native parent channel id: where replies are stored and listed. */
+  channel_id: string;
+  server_id: string;
+  name: string;
+  /** The message a thread was started from, when it was started from one. */
+  anchor_message_id?: string | null;
+  type?: number;
+  auto_archive_duration?: number;
+  /** Bot row that opened the thread; Discord reports the bot's user id. */
+  owner_bot_id?: string | null;
+  /** Account row that started it, for a thread opened in the web UI. */
+  owner_user_id?: string | null;
+  locked?: number;
+  archived?: number;
+  /** When the archive flag last changed, for Discord's `archive_timestamp`. */
+  archive_timestamp?: string | null;
+  created_at?: string;
+}
+
+/** Message tallies Discord puts directly on a thread channel object. */
+export interface ThreadStats {
+  messageCount: number;
+  memberCount: number;
+  lastMessageId?: string | null;
+}
+
+/**
  * Discord serves avatars from a CDN keyed by a content hash. Hoffle stores a
  * URL, so the hash is derived from it: it only has to be stable for a given
  * image and change when the image does, which is what busts client caches.
@@ -127,13 +163,24 @@ export async function serializeUser(
   };
 }
 
+/**
+ * The snowflake for a bot's own account.
+ *
+ * A bot has no row in `users`, so its user id is derived from its `server_bots`
+ * row instead. The prefix keeps that id from ever colliding with a real
+ * account's, and this is the one place that decides what it looks like.
+ */
+export function botUserSnowflake(botId: string): Promise<string> {
+  return snowflakeFor("user", `bot:${botId}`);
+}
+
 /** The bot's own account, which has no row in `users`. */
 export async function serializeBotUser(bot: {
   id: string;
   name: string;
   avatar: string;
 }): Promise<Record<string, unknown>> {
-  const id = await snowflakeFor("user", `bot:${bot.id}`);
+  const id = await botUserSnowflake(bot.id);
   return {
     id,
     username: bot.name,
@@ -296,6 +343,91 @@ export async function serializeDmChannel(
     type: recipients.length > 1 ? ChannelType.GroupDM : ChannelType.DM,
     last_message_id: null,
     recipients: await Promise.all(recipients.map((r) => serializeUser(r))),
+    flags: 0,
+  };
+}
+
+/**
+ * A thread, serialized as the channel Discord clients model it as.
+ *
+ * Everything Discord puts on a thread that Hoffle has no source for is present
+ * at its "none" value rather than invented: `archived` is only true once a bot
+ * has asked for it, and `locked` follows it. `message_count` and `member_count`
+ * are the real tallies, which Discord defines as excluding the starter message
+ * and stopping at an approximate count — counting the replies is therefore
+ * exactly right, not merely close.
+ */
+export async function serializeThread(
+  thread: HoffleThreadRow,
+  parts: {
+    guildSnowflake?: string | null;
+    stats?: ThreadStats;
+    /** The bot reading it. It can always post, so it is always a member. */
+    viewerBotId?: string | null;
+  } = {},
+): Promise<Record<string, unknown>> {
+  const id = await snowflakeFor("channel", thread.id, thread.created_at);
+  // A thread a bot opened is owned by that bot's account; one started in the
+  // web UI is owned by the person whose message it hangs off.
+  const ownerId = thread.owner_user_id
+    ? await snowflakeFor("user", thread.owner_user_id)
+    : thread.owner_bot_id
+      ? await botUserSnowflake(thread.owner_bot_id)
+      : null;
+  const stats = parts.stats ?? { messageCount: 0, memberCount: 0, lastMessageId: null };
+  // Discord defines archive_timestamp as when the archive flag last changed, so
+  // a thread that has never been archived reports its own creation time.
+  const archiveTimestamp =
+    thread.archive_timestamp || thread.created_at || new Date().toISOString();
+
+  const payload: Record<string, unknown> = {
+    id,
+    type: thread.type ?? ChannelType.PublicThread,
+    guild_id: parts.guildSnowflake ?? undefined,
+    // For a thread, parent_id is the channel it hangs off, not a category.
+    parent_id: await snowflakeFor("channel", thread.channel_id),
+    name: thread.name,
+    owner_id: ownerId ?? undefined,
+    last_message_id: stats.lastMessageId
+      ? await snowflakeFor("message", stats.lastMessageId)
+      : null,
+    applied_tags: [],
+    flags: 0,
+    thread_metadata: {
+      archived: Boolean(thread.archived),
+      auto_archive_duration: thread.auto_archive_duration ?? 1440,
+      archive_timestamp: archiveTimestamp,
+      locked: Boolean(thread.locked),
+    },
+    message_count: stats.messageCount,
+    member_count: stats.memberCount,
+    // Discord counts messages that were sent rather than messages that exist,
+    // so the starter message shows up here but never in message_count.
+    total_message_sent: stats.messageCount + (thread.anchor_message_id ? 1 : 0),
+  };
+
+  if (parts.viewerBotId) {
+    payload.member = await serializeThreadMember(
+      id,
+      await botUserSnowflake(parts.viewerBotId),
+      thread.created_at,
+    );
+  }
+
+  return payload;
+}
+
+/** A thread member, which a thread payload carries for its reader. */
+export async function serializeThreadMember(
+  threadSnowflake: string,
+  userSnowflake: string,
+  joinedAt?: string | null,
+): Promise<Record<string, unknown>> {
+  return {
+    // Discord sends the thread's id as `id` on this object, not the user's.
+    id: threadSnowflake,
+    user_id: userSnowflake,
+    join_timestamp: joinedAt || new Date().toISOString(),
     flags: 0,
   };
 }

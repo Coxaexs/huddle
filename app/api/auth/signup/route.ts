@@ -10,8 +10,16 @@ import {
 } from "@/lib/auth";
 import { DEFAULT_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { checkRateLimit, clientIp, RateLimitError } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Signup is the one endpoint where an unauthenticated caller makes us spend CPU
+ * on a password hash *and* consumes a scarce resource (an invite use), so it is
+ * throttled harder than login.
+ */
+const SIGNUP_RATE_LIMIT = { limit: 5, windowSeconds: 600 } as const;
 
 interface SignupBody {
   username?: string;
@@ -31,6 +39,17 @@ export async function POST(request: Request) {
   await ensureSchema(db);
 
   const body = (await request.json().catch(() => ({}))) as SignupBody;
+
+  // Count the attempt before doing any work: this route hashes a password even
+  // when the invite code turns out to be invalid.
+  const limited = await checkRateLimit({
+    db,
+    action: "signup-ip",
+    key: clientIp(request),
+    ...SIGNUP_RATE_LIMIT,
+  });
+  if (!limited.allowed) return new RateLimitError(limited.retryAfter).response();
+
   const username = (body.username || "").trim();
   const password = body.password || "";
   const displayName = (body.displayName || "").trim().slice(0, 40) || username;

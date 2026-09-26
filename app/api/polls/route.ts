@@ -1,6 +1,10 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { channelAudience } from "@/lib/dms";
+import { enforceAutomod } from "@/lib/automod";
+import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
+import { channelAudience, isDmMember } from "@/lib/dms";
 import { publishMessage } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
+import { blockIfTimedOut } from "@/lib/timeouts";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "../messages/route";
@@ -45,11 +49,46 @@ export async function POST(request: Request) {
   }
 
   const channel = await db
-    .prepare("SELECT name, kind FROM channels WHERE id = ?")
+    .prepare(
+      `SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN (${textChannelKindsSql()})`,
+    )
     .bind(channelId)
-    .first<{ name: string; kind: string }>();
+    .first<{ name: string; kind: string; server_id: string }>();
   if (!channel) {
     return Response.json({ error: "That channel is gone." }, { status: 404 });
+  }
+  // A poll is a message, so it gets the same gates as one: DM membership,
+  // bans, timeouts, read-only announcement channels and automod.
+  if (channel.kind === "dm") {
+    if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
+  } else {
+    const banned = await db
+      .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
+      .bind(channel.server_id, user.id)
+      .first();
+    if (banned) {
+      return Response.json({ error: "You are banned from this server." }, { status: 403 });
+    }
+    const timedOut = await blockIfTimedOut(db, channelId, user.id);
+    if (timedOut) return timedOut;
+    if (
+      channelKindInfo(channel.kind).moderatorOnlyPosting &&
+      !(await can(db, user.id, channel.server_id, Permission.MANAGE_MESSAGES))
+    ) {
+      return Response.json(
+        { error: "Only moderators can post announcements here." },
+        { status: 403 },
+      );
+    }
+    const refused = await enforceAutomod(db, {
+      serverId: channel.server_id,
+      channelId,
+      userId: user.id,
+      text: [question, ...options].join("\n"),
+      checkRepeat: false,
+      mayModerate: () => can(db, user.id, channel.server_id, Permission.MODERATE),
+    });
+    if (refused) return refused;
   }
 
   const pollId = crypto.randomUUID();

@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { enforceAutomod } from "@/lib/automod";
 import {
   dispatchMessageById,
   dispatchMessageDelete,
@@ -7,8 +8,9 @@ import { publishMessageEvent } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
-import { channelAudience } from "@/lib/dms";
+import { channelAudience, isDmMember } from "@/lib/dms";
 import { snapshotBeforeEdit } from "@/lib/message-edits";
+import { postSystemMessage } from "@/lib/system-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -127,9 +129,29 @@ export async function PATCH(
         { status: 403 },
       );
     }
-    const content = body.content.trim().slice(0, 4000);
+    const content = body.content.trim();
     if (!content) {
       return Response.json({ error: "A message cannot be empty." }, { status: 400 });
+    }
+    // Edits go through automod too, or any blocked word could be posted by
+    // sending something harmless and editing it a second later.
+    if (message.channel_id) {
+      const channel = await db
+        .prepare("SELECT server_id, kind FROM channels WHERE id = ?")
+        .bind(message.channel_id)
+        .first<{ server_id: string | null; kind: string }>();
+      const serverId = channel?.kind !== "dm" ? channel?.server_id : null;
+      if (serverId) {
+        const refused = await enforceAutomod(db, {
+          serverId,
+          channelId: message.channel_id,
+          userId: user.id,
+          text: content,
+          checkRepeat: false,
+          mayModerate: () => can(db, user.id, serverId, Permission.MODERATE),
+        });
+        if (refused) return refused;
+      }
     }
     const editedAt = new Date().toISOString();
     await db.batch([
@@ -151,6 +173,28 @@ export async function PATCH(
     return Response.json({ ok: true, content, editedAt });
   }
 
+  // Pinning changes the channel for everyone: in a server it takes
+  // MANAGE_MESSAGES, as on Discord; in a DM, either participant may pin.
+  if (message.channel_id) {
+    const channel = await db
+      .prepare("SELECT server_id, kind FROM channels WHERE id = ?")
+      .bind(message.channel_id)
+      .first<{ server_id: string | null; kind: string }>();
+    const allowed =
+      channel?.kind === "dm"
+        ? await isDmMember(db, message.channel_id, user.id)
+        : Boolean(
+            channel?.server_id &&
+              (await can(db, user.id, channel.server_id, Permission.MANAGE_MESSAGES)),
+          );
+    if (!allowed) {
+      return Response.json(
+        { error: "You need Manage Messages to pin in this channel." },
+        { status: 403 },
+      );
+    }
+  }
+
   const pinned = body.pinned ?? !message.pinned_at;
 
   await db
@@ -164,6 +208,17 @@ export async function PATCH(
       { t: "message-pinned", id, pinned },
       await channelAudience(db, message.channel_id),
     );
+    // Only a fresh pin is announced, not re-pinning or unpinning.
+    if (pinned && !message.pinned_at) {
+      await postSystemMessage(
+        db,
+        message.channel_id,
+        user,
+        "system-pin",
+        `${user.display_name} pinned a message to this channel.`,
+        { messageId: id },
+      );
+    }
   }
   return Response.json({ ok: true, pinned });
 }

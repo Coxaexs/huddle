@@ -16,7 +16,14 @@ on:
     branches: [main]
 
 jobs:
+  # Runs before deploy so a type error or a failing test cannot reach the
+  # production machine. Without this the deploy job was the only thing between a
+  # push to main and the running server.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

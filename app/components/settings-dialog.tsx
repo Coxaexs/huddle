@@ -14,6 +14,8 @@ import { Avatar } from "./avatar";
 import { DiceOverlay } from "./dice-overlay";
 import type { DiceRollEvent } from "@/lib/protocol";
 import type { HeadTrackingStatus } from "../lib/head-tracking";
+import type { RelayStatus } from "../hooks/use-voice";
+import { headTrackingHint } from "./table-audio-menu";
 import {
   BUILTIN_THEMES,
   type Theme,
@@ -329,11 +331,19 @@ interface SettingsDialogProps {
   ) => () => void;
   /** Whether a call is running, so the meter can read the real chain. */
   inCall?: boolean;
+  /** What the relay check found, and a way to run it again. */
+  relay?: RelayStatus;
+  onCheckRelay?: () => void;
   tableMode?: boolean;
   onTableMode?: (enabled: boolean) => void;
   headTracking?: boolean;
   setHeadTracking?: (enabled: boolean) => void;
   headTrackingOffered?: boolean;
+  airpodsOffered?: boolean;
+  headTrackingSource?: "airpods" | "webcam";
+  setHeadTrackingSource?: (source: "airpods" | "webcam") => void;
+  spatialOutput?: "headphones" | "speakers";
+  setSpatialOutput?: (output: "headphones" | "speakers") => void;
   headTrackingStatus?: { status: HeadTrackingStatus; live: boolean };
   recenterHead?: () => void;
   tableHostId?: string;
@@ -452,11 +462,18 @@ export function SettingsDialog({
   onMicSettings,
   subscribeMicTelemetry,
   inCall = false,
+  relay,
+  onCheckRelay,
   tableMode = false,
   onTableMode,
   headTracking = false,
   setHeadTracking,
   headTrackingOffered = false,
+  airpodsOffered = false,
+  headTrackingSource = "airpods",
+  setHeadTrackingSource,
+  spatialOutput = "headphones",
+  setSpatialOutput,
   headTrackingStatus = { status: "unsupported", live: false },
   recenterHead,
   tableHostId = "",
@@ -850,8 +867,10 @@ export function SettingsDialog({
 
   const handleSelectTheme = (th: Theme) => {
     setActiveThemeId(th.id);
-    applyThemeToDocument(th);
+    // onTheme re-applies the plain base theme (e.g. "light"), so apply the
+    // chosen one after it or themes built on a base get wiped.
     onTheme(th.baseTheme);
+    applyThemeToDocument(th);
     if (th.colors.lavender) setAccent(th.colors.lavender);
     if (typeof th.corners === "number") setCorners(th.corners);
     if (th.backdrop && ["plain", "aurora", "dots"].includes(th.backdrop)) {
@@ -2013,6 +2032,22 @@ export function SettingsDialog({
                 while you are in a call swaps it without dropping the call.
               </p>
 
+              {relay && (
+                <>
+                  <label>Voice relay</label>
+                  <p className="modal-hint" role="status">{relay.detail}</p>
+                  {onCheckRelay && (
+                    <button
+                      type="button"
+                      onClick={onCheckRelay}
+                      disabled={relay.state === "checking"}
+                    >
+                      {relay.state === "checking" ? "Checking…" : "Check again"}
+                    </button>
+                  )}
+                </>
+              )}
+
               {onTableMode && (
                 <>
                   <label>
@@ -2020,21 +2055,32 @@ export function SettingsDialog({
                       onChange={(event) => onTableMode(event.target.checked)} />
                     Table Mode / Spatial Audio
                   </label>
-                  <p className="modal-hint">Places voices around you. Best with headphones. Only changes what you hear.</p>
+                  <p className="modal-hint">Places voices around you. Only changes what you hear.</p>
+                  {tableMode && setSpatialOutput && (
+                    <>
+                      <label htmlFor="spatial-output">Listening on</label>
+                      <select id="spatial-output" value={spatialOutput}
+                        onChange={(event) => setSpatialOutput(event.target.value === "speakers" ? "speakers" : "headphones")}>
+                        <option value="headphones">Headphones · 3D sound</option>
+                        <option value="speakers">Speakers · stereo</option>
+                      </select>
+                    </>
+                  )}
                   {tableMode && headTrackingOffered && setHeadTracking && (
                     <>
                       <label>
                         <input type="checkbox" checked={headTracking}
                           onChange={(event) => setHeadTracking(event.target.checked)} />
-                        Follow my head (AirPods spatial audio)
+                        Follow my head
                       </label>
-                      <p className="modal-hint">
-                        {headTrackingStatus.status === "denied"
-                          ? "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness."
-                          : headTracking && headTrackingStatus.status === "unsupported"
-                            ? "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max."
-                            : "The table holds still while you turn your head, so looking at someone brings their voice in front of you."}
-                      </p>
+                      {setHeadTrackingSource && (
+                        <select aria-label="Head tracking source" value={headTrackingSource}
+                          onChange={(event) => setHeadTrackingSource(event.target.value === "webcam" ? "webcam" : "airpods")}>
+                          <option value="airpods">AirPods (no camera)</option>
+                          <option value="webcam">Webcam</option>
+                        </select>
+                      )}
+                      <p className="modal-hint">{headTrackingHint({ headTracking, headTrackingStatus, headTrackingSource, airpodsOffered })}</p>
                       {headTracking && headTrackingStatus.live && (
                         <button type="button" onClick={recenterHead}>Face forward</button>
                       )}
@@ -2486,7 +2532,7 @@ export function SettingsDialog({
               {appearanceSubtab === "installed" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-5">
                   {[...BUILTIN_THEMES, ...customThemes].map((th) => {
-                    const isActive = activeThemeId === th.id || (theme === th.id);
+                    const isActive = activeThemeId ? activeThemeId === th.id : theme === th.id;
                     const colors = th.colors || {};
                     const isShareOpen = themeShareMenuId === th.id;
 

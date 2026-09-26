@@ -1,0 +1,19 @@
+{
+  "appId": "online.hoffle.huddle",
+  "appName": "Huddle",
+  "webDir": "www",
+  "server": {
+    "url": "https://chat.hoffle.online",
+    "cleartext": false,
+    "errorPath": "index.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#16131f"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#16131f",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

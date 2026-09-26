@@ -216,6 +216,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Huddle",
     args: "Question? | option | option",
   },
+  {
+    name: "ask",
+    args: "<question>",
+    description: "Ask the AI; it searches the web when the question needs it",
+    group: "Huddle",
+  },
   { name: "flip", description: "Flip a coin", group: "Huddle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
   {

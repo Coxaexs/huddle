@@ -4,7 +4,7 @@ vi.mock("cloudflare:workers", () => ({
   env: {},
 }));
 
-import { generateBotToken, authenticateBot } from "./bot-auth";
+import { generateBotToken, authenticateBot, dndBotToken } from "./bot-auth";
 import { setBindings } from "./storage";
 
 describe("Bot Authentication & Token Management", () => {
@@ -34,6 +34,16 @@ describe("Bot Authentication & Token Management", () => {
     const bot2 = await authenticateBot(reqBearer);
     expect(bot2).not.toBeNull();
     expect(bot2?.isMaster).toBe(true);
+  });
+
+  it("accepts the D&D bot's token derived from BOT_TOKEN, and nothing close to it", async () => {
+    setBindings({ BOT_TOKEN: "master-secret-token" });
+    const token = await dndBotToken("master-secret-token");
+    expect(token).toMatch(/^hfl_dnd_[a-f0-9]{64}$/);
+    const auth = (value: string) =>
+      authenticateBot(new Request("http://x/", { headers: { Authorization: `Bot ${value}` } }));
+    expect((await auth(token))?.id).toBe("dnd-bot");
+    expect(await auth(await dndBotToken("other-secret"))).toBeNull();
   });
 
   it("returns null when no authorization header is provided or token is invalid", async () => {

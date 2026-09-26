@@ -28,7 +28,8 @@ export type SnowflakeKind =
   | "attachment"
   | "interaction"
   | "command"
-  | "webhook";
+  | "webhook"
+  | "audit";
 
 /**
  * Per-isolate memo. D1 is the source of truth, but a READY payload resolves

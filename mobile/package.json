@@ -1,0 +1,17 @@
+{
+  "name": "huddle-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Huddle for Android and iOS: a Capacitor shell around chat.hoffle.online with native voice controls",
+  "scripts": {
+    "sync": "cap sync",
+    "android": "cap open android",
+    "ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2"
+  }
+}

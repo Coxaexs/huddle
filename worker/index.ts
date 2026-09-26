@@ -9,6 +9,7 @@ import handler from "vinext/server/app-router-entry";
 import { currentUser } from "../lib/auth";
 import { hub } from "../lib/hub-client";
 import { featureFlags } from "../lib/features";
+import { withSecurityHeaders } from "../lib/security-headers";
 
 export { HuddleHub } from "../lib/hub";
 export { DiscordGateway } from "../lib/discord/gateway";
@@ -23,10 +24,71 @@ interface WorkerEnv {
   FEATURE_RECORD_SESSIONS?: string;
   BASE_PATH?: string;
   LANDING_DOMAINS?: string;
+  /** Set to a truthy value to send the recommended Content-Security-Policy. */
+  HUDDLE_CSP?: string;
+  /** An exact Content-Security-Policy to send instead of the recommended one. */
+  HUDDLE_CSP_POLICY?: string;
 }
 
 export default {
+  /**
+   * Every response — pages, API routes, uploads, the bot surface — leaves
+   * through here so the security headers in `lib/security-headers.ts` are
+   * applied in exactly one place. WebSocket upgrades pass through untouched.
+   */
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
+    const started = Date.now();
+    let response: Response;
+    try {
+      response = await handleRequest(request, env, ctx);
+    } catch (error) {
+      logRequest(request, 500, started, error);
+      response = Response.json({ error: "Something went wrong." }, { status: 500 });
+      return withSecurityHeaders(request, response, {
+        csp: env?.HUDDLE_CSP,
+        cspPolicy: env?.HUDDLE_CSP_POLICY,
+      });
+    }
+    if (response.status >= 500) logRequest(request, response.status, started);
+    return withSecurityHeaders(request, response, {
+      csp: env?.HUDDLE_CSP,
+      cspPolicy: env?.HUDDLE_CSP_POLICY,
+    });
+  },
+};
+
+/**
+ * One JSON line per server error, so `wrangler tail`, `docker logs` or any log
+ * shipper can filter and count them. Query strings are left out: they can carry
+ * invite codes and tokens.
+ */
+function logRequest(request: Request, status: number, started: number, error?: unknown) {
+  const url = new URL(request.url);
+  console.error(
+    JSON.stringify({
+      level: "error",
+      at: new Date().toISOString(),
+      method: request.method,
+      path: url.pathname,
+      status,
+      ms: Date.now() - started,
+      ray: request.headers.get("cf-ray") ?? undefined,
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : error === undefined
+            ? undefined
+            : String(error),
+    }),
+  );
+}
+
+async function handleRequest(
+  request: Request,
+  env: WorkerEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  {
     const url = new URL(request.url);
     const basePath = (env?.BASE_PATH ?? DEFAULT_BASE_PATH).replace(/\/+$/, "");
     const effectiveBasePath = basePath || DEFAULT_BASE_PATH;
@@ -184,5 +246,5 @@ export default {
     }
 
     return handler.fetch(request, env as never, ctx as never);
-  },
-};
+  }
+}

@@ -7,7 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["**/*.test.ts"],
+    // `.test.tsx` matters: without it a component test is written, silently not
+    // collected, and the suite still reports green.
+    include: ["**/*.test.ts", "**/*.test.tsx"],
   },
   resolve: {
     alias: {

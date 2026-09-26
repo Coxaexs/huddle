@@ -5,6 +5,7 @@ import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { convertibleKinds, normalizeChannelName } from "@/lib/channel-kinds";
 
 export const dynamic = "force-dynamic";
 
@@ -43,23 +44,48 @@ export async function PATCH(
     name?: string;
     topic?: string;
     slowmode?: number;
+    /** Switch to another kind in the same family (text/announcement/forum, voice/stage). */
+    kind?: string;
   };
-  const name =
-    channel.kind === "text"
-      ? body.name
-          ?.trim()
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9_-]/g, "")
-          .slice(0, 40)
-      : body.name?.trim().slice(0, 40);
+
+  let kind = channel.kind;
+  if (body.kind && body.kind !== channel.kind) {
+    if (!(convertibleKinds(channel.kind) as string[]).includes(body.kind)) {
+      return Response.json(
+        { error: "A channel can only switch between text, announcement and forum, or voice and stage." },
+        { status: 400 },
+      );
+    }
+    // Same rule as deleting: a server always keeps one plain text channel.
+    if (channel.kind === "text") {
+      const siblings = await db
+        .prepare("SELECT COUNT(*) AS count FROM channels WHERE server_id = ? AND kind = 'text'")
+        .bind(channel.server_id)
+        .first<{ count: number }>();
+      if ((siblings?.count ?? 0) <= 1) {
+        return Response.json(
+          { error: "A server needs at least one text channel." },
+          { status: 400 },
+        );
+      }
+    }
+    kind = body.kind as typeof channel.kind;
+  }
+
+  // Normalized for the kind it will be, so a rename can't dodge the slug rules.
+  const name = body.name !== undefined
+    ? normalizeChannelName(kind, body.name)
+    : kind !== channel.kind
+      ? normalizeChannelName(kind, channel.name)
+      : "";
 
   await db
-    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ? WHERE id = ?")
+    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ?, kind = ? WHERE id = ?")
     .bind(
       name || channel.name,
       body.topic?.trim().slice(0, 120) ?? channel.topic,
       typeof body.slowmode === "number" ? Math.max(0, Math.min(300, body.slowmode)) : (channel as { slowmode?: number }).slowmode || 0,
+      kind,
       id,
     )
     .run();

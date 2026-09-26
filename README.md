@@ -3,7 +3,10 @@
 Hoffle is a self-hosted chat app for friend groups and communities, like your own private Discord. Your server, your data, no subscriptions.
 
 - **Text channels and DMs** with replies, reactions, edits, polls, stickers, custom emoji and link previews
+- **Search** with operators: `from:`, `in:`, `has:`, `before:`, `after:`, `pinned:` and quoted phrases
 - **Voice and video rooms** with screen sharing, spatial audio and noise suppression
+- **Announcement, forum and stage channels**, alongside text and voice
+- **Automod** rules per server: block or time out on keywords, mention spam, links, caps and repeats
 - **Music bot** that plays synced music into voice rooms
 - **Tabletop tools**: battlemaps, 3D dice and a D&D 5e companion
 - **Runs real Discord bots**: discord.js and discord.py bots work unchanged
@@ -72,6 +75,26 @@ The `hoffle` container runs the web app and realtime server: a Cloudflare Worker
 
 More detail: [audio architecture](docs/audio-architecture.md) · [spatial audio](docs/spatial-audio.md) · [voice input chain](docs/voice-input-chain.md).
 
+## Search operators
+
+Type these into the search box, mixed freely with normal words:
+
+| Operator | Example | Finds |
+| -------- | ------- | ----- |
+| `from:` | `from:alice` | Messages by that person. Username or display name, `@` optional. |
+| `in:` | `in:general` | Messages in that channel. Name or id, `#` optional. |
+| `has:link` | `has:link` | Messages with a link preview. |
+| `has:image` | `has:image` | Messages with an image attached. |
+| `has:file` | `has:file` | Messages with any attachment. |
+| `has:audio` | `has:audio` | Voice messages. |
+| `before:` / `after:` | `after:2024-01-01` | Messages outside a date. `before:` excludes that day. |
+| `pinned:` | `pinned:true` | Pinned messages only. |
+| `"…"` | `"exact phrase"` | Keeps those words together. |
+
+`from:` and `in:` accept a comma-separated list (`from:alice,bob`). An operator
+with a value Hoffle does not recognise is searched for as plain text, so a typo
+shows you that it found nothing instead of quietly ignoring your filter.
+
 ## Development
 
 Requires Node.js 22.
@@ -83,6 +106,35 @@ npm run dev        # dev server on http://localhost:3001
 npm test           # unit tests
 npm run build && npm run serve   # production build on :8730
 ```
+
+### Checks
+
+`npm run verify` runs both of the checks CI enforces, and is what to run before
+pushing:
+
+| Command | What it does |
+| ------- | ------------ |
+| `npm run typecheck` | `tsc --noEmit`. The build strips types rather than checking them, so this is the only thing that catches a type error. |
+| `npm test` | Vitest. Unit tests plus the accessibility and component tests. |
+| `npm run verify` | Both, in order. |
+
+`.github/workflows/verify.yml` runs the same two commands on every push and pull
+request, and `deploy.yml` will not deploy unless it passes.
+
+### Testing conventions
+
+- Component and accessibility tests need a DOM, so they start with
+  `// @vitest-environment jsdom` rather than switching the whole suite over.
+  `vitest.config.ts` collects both `*.test.ts` and `*.test.tsx`.
+- Accessibility assertions use `test/a11y.ts`, which runs
+  [axe-core](https://github.com/dequelabs/axe-core) over rendered markup and
+  reports the failing selectors in the error. Rules that need real layout
+  (`color-contrast`, `scrollable-region-focusable`) are disabled because jsdom
+  has no layout engine — leaving them on would produce failures nobody can fix.
+- Anything reaching Cloudflare bindings needs
+  `vi.mock("cloudflare:workers", () => ({ env: {} }))` and a hand-rolled fake
+  `D1Database`; see `lib/rate-limit.test.ts` for a fake that models the SQL it
+  stands in for rather than just recording calls.
 
 ## License
 

@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 9;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -104,6 +104,41 @@ async function migrate(db: D1Database): Promise<void> {
       )`),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)",
+    ),
+    // Fixed-window counters for login/signup throttling. One row per bucket per
+    // window; `lib/rate-limit.ts` prunes expired rows opportunistically.
+    db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+        key TEXT PRIMARY KEY,
+        window_start INTEGER NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS rate_limits_window_idx ON rate_limits(window_start)",
+    ),
+    // One row per /ask answer, so its limits can be a true rolling window
+    // (fixed windows let 3/min become 6 in a few seconds across a boundary).
+    db.prepare(`CREATE TABLE IF NOT EXISTS ai_usage (
+        user_id TEXT NOT NULL,
+        at INTEGER NOT NULL
+      )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS ai_usage_user_idx ON ai_usage(user_id, at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS ai_usage_at_idx ON ai_usage(at)"),
+    // Per-server automod rules. `config` is a JSON blob whose shape depends on
+    // `kind`; lib/automod.ts is the only thing that reads it, and it validates
+    // on the way out so a malformed row can never match anything.
+    db.prepare(`CREATE TABLE IF NOT EXISTS automod_rules (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        action TEXT NOT NULL DEFAULT 'block',
+        timeout_minutes INTEGER NOT NULL DEFAULT 0,
+        config TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS automod_rules_server_idx ON automod_rules(server_id)",
     ),
     db.prepare(`CREATE TABLE IF NOT EXISTS invites (
         code TEXT PRIMARY KEY,
@@ -812,6 +847,33 @@ async function migrate(db: D1Database): Promise<void> {
   if (!dmColumns.has("hidden_at")) {
     await db.prepare("ALTER TABLE dm_members ADD COLUMN hidden_at TEXT").run();
   }
+  // Group DMs are DM channels with more than two seats; the flag keeps a group
+  // that shrinks to two people from being mistaken for a 1:1 conversation.
+  const channelFlags = await columnNames(db, "channels");
+  if (!channelFlags.has("is_group")) {
+    await db
+      .prepare("ALTER TABLE channels ADD COLUMN is_group INTEGER NOT NULL DEFAULT 0")
+      .run();
+  }
+  // Private notes you keep about other people (only you ever see yours).
+  await db
+    .prepare(`CREATE TABLE IF NOT EXISTS user_notes (
+        owner_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        note TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (owner_id, target_id)
+      )`)
+    .run();
+  // Server folders on the rail, per person: a JSON list of
+  // { id, name, color, serverIds } in rail order.
+  await db
+    .prepare(`CREATE TABLE IF NOT EXISTS server_folders (
+        user_id TEXT PRIMARY KEY,
+        folders TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`)
+    .run();
   // Per-server nicknames live on the membership row.
   if (!memberColumns.has("nickname")) {
     await db.prepare("ALTER TABLE server_members ADD COLUMN nickname TEXT").run();

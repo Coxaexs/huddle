@@ -1,5 +1,10 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import {
+  isCreatableKind,
+  normalizeChannelName,
+  type ChannelKind,
+} from "@/lib/channel-kinds";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -33,18 +38,12 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
-  const kind = body.kind === "voice" ? "voice" : "text";
-  // Text channels keep the discord-ish lowercase-with-dashes shape; voice
-  // rooms are allowed to be pretty.
-  const name =
-    kind === "text"
-      ? body.name
-          ?.trim()
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9_-]/g, "")
-          .slice(0, 40)
-      : body.name?.trim().slice(0, 40);
+  // Anything unrecognised falls back to text, so an older client that only
+  // knows text/voice keeps working against a newer server.
+  const kind: ChannelKind = isCreatableKind(body.kind) ? body.kind : "text";
+  // Text-like names keep the discord-ish lowercase-with-dashes shape because
+  // they appear in `#mentions`; voice rooms and stages are allowed to be pretty.
+  const name = normalizeChannelName(kind, body.name);
   if (!name) {
     return Response.json({ error: "Give the channel a name." }, { status: 400 });
   }

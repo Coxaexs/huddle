@@ -8,6 +8,9 @@ export interface Vector { x: number; y: number; z: number }
 /** Where the seats sit relative to the listener; also how far ahead a centred voice is. */
 export const TABLE_RADIUS = 1.5;
 
+/** Automatic seats fan out this far either side; HRTF keeps ±75° clearly apart. */
+const TABLE_ARC = 5 * Math.PI / 12;
+
 /**
  * The listener's facing vectors for a head pose, in the Web Audio frame: +X right,
  * +Y up, and a listener at rest facing -Z, straight at the middle of the table.
@@ -34,7 +37,7 @@ export function tableSeat(index: number, count: number, isHost = false): TableSe
   if (center && index === count - 1) return { pan: 0, x: 0, y: 0, z: -TABLE_RADIUS };
   const pairedIndex = Math.max(0, Math.min(count - 1, index));
   const pair = Math.floor(pairedIndex / 2) + 1;
-  const angle = (pairedIndex % 2 === 0 ? -1 : 1) * pair / Math.floor(count / 2) * Math.PI / 3;
+  const angle = (pairedIndex % 2 === 0 ? -1 : 1) * pair / Math.floor(count / 2) * TABLE_ARC;
   return { pan: 0.65 * Math.sin(angle), x: TABLE_RADIUS * Math.sin(angle), y: 0, z: -TABLE_RADIUS * Math.cos(angle) };
 }
 
@@ -62,7 +65,8 @@ export function personalTableLayout(
   for (const [id, seat] of seats) {
     const custom = overrides[id];
     const pan = id === hostId ? 0 : Number.isFinite(custom) ? Math.max(-MAX_TABLE_PAN, Math.min(MAX_TABLE_PAN, custom)) : seat.pan;
-    const angle = Math.asin(pan / MAX_TABLE_PAN);
+    // Width narrows the real seats too, so it still gathers voices under HRTF.
+    const angle = Math.asin(pan / MAX_TABLE_PAN) * spread;
     seats.set(id, { pan: pan * spread, x: TABLE_RADIUS * Math.sin(angle), y: 0, z: -TABLE_RADIUS * Math.cos(angle) });
   }
   return seats;
@@ -77,17 +81,43 @@ export interface PlaybackInput {
   pan: number | null; // null: music, screen share, or unknown stream
   seat?: Vector | null; // Head-tracked seating; absent falls back to stereo panning.
 }
-/** Stereo panning is screen-locked; HRTF adds height, front/back and head tracking. */
+/** Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking. */
 type Mode = "stereo" | "hrtf";
 type Entry = {
   input: PlaybackInput;
   element: HTMLAudioElement;
   mode?: Mode;
   source?: MediaStreamAudioSourceNode;
+  leveler?: DynamicsCompressorNode;
   panner?: StereoPannerNode | PannerNode;
   gain?: GainNode;
 };
 type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
+
+/** How much of each headphone voice reaches the shared room; enough to leave the head, not echo. */
+export const ROOM_SEND = 0.1;
+
+/**
+ * A small furnished room: 12 ms before the first reflection, then a dark tail that
+ * is gone in about half a second. Each ear gets its own noise so the room is wide.
+ */
+export function roomImpulse(context: BaseAudioContext, random = Math.random): AudioBuffer {
+  const rate = context.sampleRate;
+  const length = Math.floor(rate * 0.6);
+  const predelay = Math.floor(rate * 0.012);
+  const buffer = context.createBuffer(2, length, rate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = buffer.getChannelData(channel);
+    let dark = 0;
+    for (let i = predelay; i < length; i++) {
+      const t = (i - predelay) / rate;
+      // A one-pole low-pass: soft furnishings swallow the highs first.
+      dark += (random() * 2 - 1 - dark) * 0.35;
+      data[i] = dark * Math.exp(-t / 0.11);
+    }
+  }
+  return buffer;
+}
 
 /** Head motion is continuous; a short glide absorbs sensor jitter without audible lag. */
 const HEAD_GLIDE = 0.03;
@@ -116,6 +146,8 @@ export class SpatialAudioPlayback {
   private sinkReady = false;
   private sinkVersion = 0;
   private headPose: HeadPose | null = null;
+  private headphones = false;
+  private room: GainNode | null = null;
 
   constructor() {
     window.addEventListener("pointerdown", this.resume);
@@ -144,9 +176,37 @@ export class SpatialAudioPlayback {
     this.refresh();
   }
 
-  /** HRTF needs a head pose and a context that can build panners; stereo always works. */
+  /**
+   * Headphones get binaural HRTF even without head tracking; loudspeakers already
+   * put the room around the listener, so they keep plain stereo panning.
+   */
+  setHeadphones(headphones: boolean) {
+    if (this.disposed || this.headphones === headphones) return;
+    const before = this.mode();
+    this.headphones = headphones;
+    if (this.mode() === before) return;
+    for (const entry of this.entries.values()) this.chain(entry);
+    this.refresh();
+  }
+
+  /** HRTF needs headphones or a head pose, and a context that can build panners; stereo always works. */
   private mode(): Mode {
-    return this.headPose && typeof this.context?.createPanner === "function" ? "hrtf" : "stereo";
+    return (this.headPose || this.headphones) && typeof this.context?.createPanner === "function" ? "hrtf" : "stereo";
+  }
+
+  /** One reverb shared by every voice, built the first time a headphone voice needs it. */
+  private roomInput(context: SinkContext): GainNode | null {
+    if (this.room) return this.room;
+    if (typeof context.createConvolver !== "function" || typeof context.createBuffer !== "function") return null;
+    try {
+      const reverb = context.createConvolver();
+      reverb.buffer = roomImpulse(context);
+      const send = context.createGain();
+      send.gain.value = ROOM_SEND;
+      send.connect(reverb).connect(context.destination);
+      this.room = send;
+    } catch { /* A dry mix still works. */ }
+    return this.room;
   }
 
   private resume = () => {
@@ -217,11 +277,21 @@ export class SpatialAudioPlayback {
     if (entry.mode === wanted) return;
     if (entry.mode) this.detach(entry);
     let source: MediaStreamAudioSourceNode | undefined;
+    let leveler: DynamicsCompressorNode | undefined;
     let panner: StereoPannerNode | PannerNode | undefined;
     let gain: GainNode | undefined;
     try {
       // The stream's source node survives a mode change; only the panner is swapped.
       source = entry.source ?? context.createMediaStreamSource(input.stream);
+      if (typeof context.createDynamicsCompressor === "function") {
+        // Gentle levelling so a quiet mic and a loud one sit at the same table.
+        leveler = context.createDynamicsCompressor();
+        leveler.threshold.value = -26;
+        leveler.knee.value = 12;
+        leveler.ratio.value = 3;
+        leveler.attack.value = 0.005;
+        leveler.release.value = 0.2;
+      }
       if (wanted === "hrtf") {
         const spatial = context.createPanner();
         spatial.panningModel = "HRTF";
@@ -236,11 +306,15 @@ export class SpatialAudioPlayback {
       }
       gain = context.createGain();
       gain.gain.value = 0;
-      source.connect(panner).connect(gain).connect(context.destination);
-      Object.assign(entry, { source, panner, gain, mode: wanted });
+      (leveler ? source.connect(leveler) : source).connect(panner).connect(gain).connect(context.destination);
+      if (wanted === "hrtf") {
+        const room = this.roomInput(context);
+        if (room) gain.connect(room);
+      }
+      Object.assign(entry, { source, leveler, panner, gain, mode: wanted });
     } catch {
-      source?.disconnect(); panner?.disconnect(); gain?.disconnect();
-      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.mode = undefined;
+      source?.disconnect(); leveler?.disconnect(); panner?.disconnect(); gain?.disconnect();
+      entry.source = undefined; entry.leveler = undefined; entry.panner = undefined; entry.gain = undefined; entry.mode = undefined;
     }
   }
 
@@ -325,8 +399,10 @@ export class SpatialAudioPlayback {
   /** Drops the spatial path but keeps the stream's source node for reuse. */
   private detach(entry: Entry) {
     entry.source?.disconnect();
+    entry.leveler?.disconnect();
     entry.panner?.disconnect();
     entry.gain?.disconnect();
+    entry.leveler = undefined;
     entry.panner = undefined;
     entry.gain = undefined;
     entry.mode = undefined;
@@ -348,6 +424,8 @@ export class SpatialAudioPlayback {
     window.removeEventListener("huddle-speaker-change", this.changeSink);
     for (const entry of this.entries.values()) this.remove(entry);
     this.entries.clear();
+    this.room?.disconnect();
+    this.room = null;
     if (this.context) {
       this.context.onstatechange = null;
       void this.context.close().catch(() => undefined);

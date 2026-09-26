@@ -6,6 +6,11 @@ import { apiFetch } from "../lib/client";
 import { cameraConstraints, unlockAudio } from "../lib/devices";
 import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
 import { HEAD_RECENTER_EVENT, headTrackingPossible, type HeadTrackingStatus } from "../lib/head-tracking";
+import { webcamHeadTrackingPossible } from "../lib/webcam-head-tracking";
+import { privateAddress, turnOnly } from "../lib/ice";
+
+export type HeadTrackingSource = "airpods" | "webcam";
+export type SpatialOutput = "headphones" | "speakers";
 import {
   openMicrophone,
   readMicSettings,
@@ -31,9 +36,90 @@ import {
 export type { BackgroundMode };
 
 interface SignalPayload {
-  kind: "offer" | "answer" | "candidate";
+  kind: "offer" | "answer" | "candidate" | "video-pause";
   description?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
+  /** video-pause: which of the sender's videos this viewer does not want sent. */
+  paused?: VideoPause;
+}
+
+/** A viewer's choice to stop receiving someone's camera or screen share. */
+export interface VideoPause {
+  camera: boolean;
+  screen: boolean;
+}
+
+const NO_PAUSE: VideoPause = { camera: false, screen: false };
+
+/** What the relay check learned, for the voice settings panel. */
+export type RelayState =
+  | "unknown"
+  | "checking"
+  | "ok"
+  | "no-turn"
+  | "unreachable"
+  | "private";
+
+export interface RelayStatus {
+  state: RelayState;
+  /** One line, written to be read by a person, not a log. */
+  detail: string;
+  /** The relay address the server handed us, when there was one. */
+  address?: string;
+  checkedAt?: number;
+}
+
+/**
+ * Asks the configured TURN servers for a relay candidate, which is what ICE
+ * does for two people who cannot reach each other directly.
+ *
+ * It has to be gathered rather than guessed: a browser finishes a handshake
+ * through a relay that carries nothing, so the only honest test is to look at
+ * what the relay hands back. Nothing back means it refused us or is
+ * unreachable; a private address means it is advertising an address on the
+ * wrong side of its own NAT, which no peer can send to.
+ */
+async function gatherRelay(
+  servers: RTCIceServer[],
+  timeoutMs = 6000,
+): Promise<{ relay: { address: string; port: number } | null; error: string }> {
+  const peer = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: "relay" });
+  let failure = "";
+  // Attached before the offer, so the first refusal is not missed.
+  peer.onicecandidateerror = (event) => {
+    const details = event as RTCPeerConnectionIceErrorEvent;
+    failure = details.errorCode
+      ? `${details.errorCode} ${details.errorText || ""}${details.url ? ` from ${details.url}` : ""}`.trim()
+      : "";
+  };
+  try {
+    peer.createDataChannel("relay-check");
+    await peer.setLocalDescription(await peer.createOffer());
+    return await new Promise((resolve) => {
+      const finish = (relay: { address: string; port: number } | null) => {
+        window.clearTimeout(timer);
+        peer.onicecandidate = null;
+        peer.onicegatheringstatechange = null;
+        peer.onicecandidateerror = null;
+        resolve({ relay, error: failure });
+      };
+      const timer = window.setTimeout(() => finish(null), timeoutMs);
+      peer.onicecandidate = (event) => {
+        const candidate = event.candidate;
+        if (!candidate || candidate.type !== "relay") return;
+        finish({ address: candidate.address || "", port: candidate.port || 0 });
+      };
+      // Gathering can end without a relay candidate — an unreachable server
+      // finishes this way — so do not sit out the full timeout.
+      peer.onicegatheringstatechange = () => {
+        if (peer.iceGatheringState === "complete") finish(null);
+      };
+    });
+  } catch {
+    return { relay: null, error: failure };
+  } finally {
+    peer.close();
+  }
 }
 
 interface UseVoiceOptions {
@@ -56,7 +142,9 @@ const SCREEN_SHARE_CONSTRAINTS: Record<
   "1080p60": { width: 1920, height: 1080, frameRate: 60 },
 };
 
-const VOICE_BITRATE = 128_000;
+// Mono Opus voice is transparent well below this; staying lean matters because
+// every speaker uploads one copy per listener in the mesh.
+const VOICE_BITRATE = 64_000;
 const SCREEN_AUDIO_BITRATE = 256_000;
 /** How much of the room "Clip that!" keeps buffered. */
 const CLIP_SECONDS = 30;
@@ -74,8 +162,38 @@ async function tuneAudioSender(
     // noise-floor switching is distracting in a persistent friends' room.
     // Not in the DOM typings yet, but implemented where it matters.
     (encoding as RTCRtpEncodingParameters & { dtx?: string }).dtx = "disabled";
+    // Ask the OS/router to put voice ahead of screen share and camera packets.
+    encoding.priority = "high";
+    encoding.networkPriority = "high";
   }
   await sender.setParameters(parameters).catch(() => undefined);
+}
+
+/** Target for incoming audio's jitter buffer; Chrome's adaptive default often idles at 80+ ms. */
+const AUDIO_JITTER_TARGET_MS = 30;
+
+/**
+ * Opus parameters the default negotiation leaves loose: in-band FEC so a lost
+ * packet is rebuilt from its neighbour, no DTX, and 10 ms packets when the far
+ * side accepts them. Applied to every Opus payload type in the description.
+ */
+function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T): T {
+  if (!description.sdp) return description;
+  const opus = [...description.sdp.matchAll(/a=rtpmap:(\d+) opus\/48000/gi)].map((m) => m[1]);
+  let sdp = description.sdp;
+  for (const pt of opus) {
+    sdp = sdp.replace(new RegExp(`a=fmtp:${pt} ([^\r\n]*)`, "g"), (_line, params: string) => {
+      const map = new Map(params.split(";").filter(Boolean).map((kv) => {
+        const [k, v = ""] = kv.trim().split("=");
+        return [k, v] as const;
+      }));
+      map.set("useinbandfec", "1");
+      map.set("usedtx", "0");
+      map.set("minptime", "10");
+      return `a=fmtp:${pt} ${[...map].map(([k, v]) => `${k}=${v}`).join(";")}`;
+    });
+  }
+  return { ...description, sdp };
 }
 
 /**
@@ -94,6 +212,12 @@ export function useVoice({
 }: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  /**
+   * Stage rooms only: this tab's hand is up, asking for the floor. Purely a
+   * signal to the hosts — it never changes whether the mic is live, which stays
+   * governed by `muted`.
+   */
+  const [handRaised, setHandRaised] = useState(false);
   const [tableMode, setTableModeState] = useState(() => {
     try { return typeof window !== "undefined" && localStorage.getItem("huddle-table-mode") === "on"; }
     catch { return false; }
@@ -109,7 +233,34 @@ export function useVoice({
   );
   // Resolved after mount so the server and the first client render agree.
   const [headTrackingOffered, setHeadTrackingOffered] = useState(false);
-  useEffect(() => setHeadTrackingOffered(headTrackingPossible()), []);
+  const [airpodsOffered, setAirpodsOffered] = useState(false);
+  useEffect(() => {
+    const airpods = headTrackingPossible();
+    setAirpodsOffered(airpods);
+    setHeadTrackingOffered(airpods || webcamHeadTrackingPossible());
+  }, []);
+  // Null until chosen: then AirPods where the desktop shell can read them, else the webcam.
+  // An explicit AirPods choice is honoured everywhere and never falls back to the camera.
+  const [storedHeadTrackingSource, setHeadTrackingSourceState] = useState<HeadTrackingSource | null>(() => {
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("huddle-head-tracking-source") : null;
+      return stored === "webcam" || stored === "airpods" ? stored : null;
+    } catch { return null; }
+  });
+  const headTrackingSource: HeadTrackingSource = storedHeadTrackingSource ?? (airpodsOffered ? "airpods" : "webcam");
+  const setHeadTrackingSource = useCallback((source: HeadTrackingSource) => {
+    setHeadTrackingSourceState(source);
+    setHeadTrackingStatus({ status: "unsupported", live: false });
+    try { localStorage.setItem("huddle-head-tracking-source", source); } catch { /* Session only. */ }
+  }, []);
+  const [spatialOutput, setSpatialOutputState] = useState<SpatialOutput>(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem("huddle-spatial-output") === "speakers" ? "speakers" : "headphones"; }
+    catch { return "headphones"; }
+  });
+  const setSpatialOutput = useCallback((output: SpatialOutput) => {
+    setSpatialOutputState(output);
+    try { localStorage.setItem("huddle-spatial-output", output); } catch { /* Session only. */ }
+  }, []);
   const [tableSeatPans, setTableSeatPans] = useState<Record<string, number>>({});
   const [tableWidth, setTableWidth] = useState(1);
   // Share one observed join order between the preview and actual playback.
@@ -242,6 +393,16 @@ export function useVoice({
   const cameraBackgroundImageRef = useRef<string>(cameraBackgroundImage);
   cameraBackgroundImageRef.current = cameraBackgroundImage;
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
+  /**
+   * Videos each remote viewer asked us not to send them. Enforced at the
+   * sender (encodings switched off), so the bytes really stop — hiding the
+   * picture on the viewer's side alone would still spend their data.
+   */
+  const pausedByPeerRef = useRef(new Map<string, VideoPause>());
+  /** Videos this tab asked each remote person to stop sending. */
+  const [hiddenVideo, setHiddenVideoState] = useState<Record<string, VideoPause>>({});
+  const hiddenVideoRef = useRef(hiddenVideo);
+  hiddenVideoRef.current = hiddenVideo;
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: "stun:stun.l.google.com:19302" },
@@ -293,6 +454,28 @@ export function useVoice({
       ?.getAudioTracks()
       .forEach((track) => (track.enabled = on));
   }, [channelId, pushToTalk, pttHeld, muted, forcedMute]);
+
+  /**
+   * Follow the server's view of this seat's microphone.
+   *
+   * The hub decides who may be heard in a stage, and refuses to record a seat
+   * without the floor as unmuted. A client that skipped its own auto-mute would
+   * otherwise sit there with a live microphone whose audio every peer is
+   * already dropping, so adopt the server's answer instead.
+   *
+   * Scoped to `speakAllowed === false` on purpose. Only there is the mismatch
+   * unresolvable — everywhere else the server will agree with us once the
+   * broadcast catches up, and re-muting would fight the user's own click.
+   */
+  useEffect(() => {
+    if (!channelId) return;
+    const mine = (rooms[channelId] || []).find(
+      (person) => person.connectionId === connectionId,
+    );
+    if (!mine) return;
+    if (mine.speakAllowed !== false || !mine.muted || muted) return;
+    setMuted(true);
+  }, [rooms, channelId, connectionId, muted]);
 
   // Errors are meant to be noticed, not to linger: a one-off network blip or
   // a blocked camera must not leave a scary banner up until the next join.
@@ -461,13 +644,124 @@ export function useVoice({
   const pttPress = useCallback(() => setPttHeld(true), []);
   const pttRelease = useCallback(() => setPttHeld(false), []);
 
+  const [relay, setRelay] = useState<RelayStatus>({
+    state: "unknown",
+    detail: "Not checked yet. Join a voice room to test the relay.",
+  });
+  /** Bumped when the ICE configuration arrives, so the check can wait for it. */
+  const [iceGeneration, setIceGeneration] = useState(0);
+
   useEffect(() => {
-    apiFetch<{ iceServers: RTCIceServer[] }>("/api/voice/ice")
-      .then((data) => {
-        if (data.iceServers?.length) iceServersRef.current = data.iceServers;
-      })
-      .catch(() => undefined);
+    let cancelled = false;
+    /**
+     * The relay list decides whether people behind strict networks can be heard
+     * at all. A failed fetch used to leave this tab on public STUN with nothing
+     * to show for it, so retry, and say so in the console where a self-hoster
+     * will look.
+     */
+    const load = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const data = await apiFetch<{
+            iceServers: RTCIceServer[];
+            source?: string;
+            note?: string;
+          }>("/api/voice/ice");
+          if (cancelled) return;
+          if (data.iceServers?.length) iceServersRef.current = data.iceServers;
+          if (data.source !== "configured") {
+            console.warn(
+              `Huddle voice: ${data.note || "no TURN server is configured."}`,
+            );
+          }
+          setIceGeneration((current) => current + 1);
+          return;
+        } catch (error) {
+          if (attempt === 2) {
+            console.warn(
+              "Huddle voice: the ICE server list did not load; sticking to public STUN.",
+              error,
+            );
+          } else {
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, 750 * (attempt + 1)),
+            );
+          }
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  /**
+   * Gathers a relay candidate and reports what came back. Worth doing because
+   * every way a relay fails is silent: calls connect, and then one pair hears
+   * nothing while everyone else is fine.
+   */
+  const checkRelay = useCallback(async () => {
+    const turn = turnOnly(iceServersRef.current);
+    if (!turn.length) {
+      setRelay({
+        state: "no-turn",
+        detail:
+          "No TURN server is configured. Voice still works for most people, but anyone behind a strict network will not be able to hear everyone.",
+        checkedAt: Date.now(),
+      });
+      return;
+    }
+
+    setRelay({ state: "checking", detail: "Asking the relay for an address…" });
+    const { relay: granted, error } = await gatherRelay(turn);
+    if (!granted) {
+      setRelay({
+        state: "unreachable",
+        detail: `The relay did not answer${
+          error ? ` (${error})` : ""
+        }. Until it does, people behind strict networks cannot reach each other.`,
+        checkedAt: Date.now(),
+      });
+      // A configured relay that does not answer is a misconfiguration someone
+      // has to fix, and the only clue otherwise is a friend who cannot hear
+      // another friend. A relay that was never configured is a documented
+      // default, so that one stays in the panel rather than nagging.
+      setError(
+        "Your voice relay is not answering, so friends on strict networks cannot hear each other. Check the TURN server and the ports it needs.",
+      );
+      return;
+    }
+
+    const address = `${granted.address}:${granted.port}`;
+    const bad = privateAddress(granted.address);
+    if (bad) {
+      setRelay({
+        state: "private",
+        detail: `The relay handed out ${address}, which is ${bad}. Its external-ip does not match its public address, so no peer can reach it.`,
+        address,
+        checkedAt: Date.now(),
+      });
+      setError(
+        "Your voice relay handed out a private address, so nobody can connect through it. Set external-ip in the coturn config.",
+      );
+      return;
+    }
+
+    setRelay({
+      state: "ok",
+      detail: `Relay reachable at ${address}.`,
+      address,
+      checkedAt: Date.now(),
+    });
+  }, []);
+
+  // The answer changes with the network, so ask once per call rather than once
+  // per page: a laptop that moved to another wifi is a different question.
+  useEffect(() => {
+    if (!channelId || !iceGeneration) return;
+    void checkRelay();
+  }, [channelId, iceGeneration, checkRelay]);
 
   const playRoomTone = useCallback((kind: "join" | "leave") => {
     try {
@@ -576,10 +870,53 @@ export function useVoice({
     micChainRef.current?.update(next);
   }, []);
 
+  /**
+   * Switches our camera/screen senders to one peer on or off to match what that
+   * peer asked for. Senders have no encodings until negotiation finishes, so
+   * this is re-run after every offer/answer as well.
+   */
+  const applyVideoPause = useCallback(async (remoteId: string) => {
+    const peer = peersRef.current.get(remoteId);
+    if (!peer) return;
+    const wanted = pausedByPeerRef.current.get(remoteId) || NO_PAUSE;
+    const camera = cameraStreamRef.current?.getTracks() || [];
+    const screen = screenStreamRef.current?.getTracks() || [];
+    for (const sender of peer.getSenders()) {
+      const track = sender.track;
+      if (!track) continue;
+      const which = camera.includes(track) ? "camera" : screen.includes(track) ? "screen" : null;
+      if (!which) continue;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) continue;
+      const active = !wanted[which];
+      if (params.encodings.every((encoding) => encoding.active === active)) continue;
+      params.encodings = params.encodings.map((encoding) => ({ ...encoding, active }));
+      await sender.setParameters(params).catch(() => undefined);
+    }
+  }, []);
+
+  /** Stop (or resume) receiving one person's camera or screen share. */
+  const setVideoHidden = useCallback(
+    (remoteId: string, which: keyof VideoPause, hidden: boolean) => {
+      const next = { ...(hiddenVideoRef.current[remoteId] || NO_PAUSE), [which]: hidden };
+      hiddenVideoRef.current = { ...hiddenVideoRef.current, [remoteId]: next };
+      setHiddenVideoState(hiddenVideoRef.current);
+      send({
+        t: "signal",
+        to: remoteId,
+        data: { kind: "video-pause", paused: next } satisfies SignalPayload,
+      });
+    },
+    [send],
+  );
+
   const closePeer = useCallback((remoteId: string) => {
     const peer = peersRef.current.get(remoteId);
     peer?.close();
     peersRef.current.delete(remoteId);
+    // A rebuilt connection starts sending again until the viewer re-asks,
+    // which it does as soon as the new connection is up.
+    pausedByPeerRef.current.delete(remoteId);
     restartedRef.current.delete(remoteId);
     setPeerStates((current) => {
       const next = { ...current };
@@ -642,7 +979,14 @@ export function useVoice({
           );
           return exists ? current : [...current, { connectionId: remoteId, stream }];
         });
-        if (event.track.kind === "audio") watchLevel(remoteId, stream);
+        if (event.track.kind === "audio") {
+          // Not in every browser's typings/implementation yet; harmless where absent.
+          const receiver = event.receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null };
+          if ("jitterBufferTarget" in receiver) {
+            try { receiver.jitterBufferTarget = AUDIO_JITTER_TARGET_MS; } catch { /* unsupported */ }
+          }
+          watchLevel(remoteId, stream);
+        }
       };
 
       peer.onconnectionstatechange = () => {
@@ -650,21 +994,44 @@ export function useVoice({
           ...current,
           [remoteId]: peer.connectionState,
         }));
+        // Re-state what we don't want from them on every (re)connection.
+        const hidden = hiddenVideoRef.current[remoteId];
+        if (peer.connectionState === "connected" && hidden && (hidden.camera || hidden.screen)) {
+          send({
+            t: "signal",
+            to: remoteId,
+            data: { kind: "video-pause", paused: hidden } satisfies SignalPayload,
+          });
+        }
         if (peer.connectionState === "closed") closePeer(remoteId);
+      };
+
+      peer.onicecandidateerror = (event) => {
+        // ICE reports a relay it could not use here, long before anything a
+        // person could see. Without this a broken TURN server is just silence.
+        const details = event as RTCPeerConnectionIceErrorEvent;
+        if (!details.errorCode) return;
+        console.warn(
+          `Huddle voice: ICE could not use ${details.url || "a candidate"} (${details.errorCode} ${
+            details.errorText || ""
+          })`.trim(),
+        );
       };
 
       peer.oniceconnectionstatechange = () => {
         if (peer.iceConnectionState !== "failed") return;
-        // One ICE restart covers a network that changed underneath us. If that
-        // does not take, say so: silence with no explanation is the worst
-        // possible failure mode here.
-        if (!restartedRef.current.has(remoteId)) {
+        // A restart only flags the next offer: without one actually going out,
+        // nothing happens on the wire at all. If we are mid-handshake there is
+        // no offer to hang it on, so rebuild from scratch instead.
+        if (!restartedRef.current.has(remoteId) && peer.signalingState === "stable") {
           restartedRef.current.add(remoteId);
           try {
             peer.restartIce();
           } catch {
             closePeer(remoteId);
+            return;
           }
+          void negotiateRef.current(remoteId, peer).catch(() => closePeer(remoteId));
           return;
         }
         setError(
@@ -689,6 +1056,15 @@ export function useVoice({
       }
       const data = raw as SignalPayload;
 
+      if (data.kind === "video-pause") {
+        pausedByPeerRef.current.set(from, {
+          camera: data.paused?.camera === true,
+          screen: data.paused?.screen === true,
+        });
+        await applyVideoPause(from);
+        return;
+      }
+
       // An offer for a peer that has gone bad means the other side rebuilt the
       // connection; throw ours away so the fresh handshake can land.
       const existing = peersRef.current.get(from);
@@ -705,12 +1081,22 @@ export function useVoice({
 
       try {
         if (data.kind === "offer" && data.description) {
+          // Two tabs can offer at once — a reconnect, or the watchdog on both
+          // sides deciding a pair is slow. One side has to give way, and it has
+          // to be the same side every time or both keep losing: the peer with
+          // the higher id plays polite and rolls its own offer back, while the
+          // other keeps the offer it already sent.
+          if (peer.signalingState === "have-local-offer") {
+            const polite = Boolean(connectionId && connectionId > from);
+            if (!polite) return;
+            await peer.setLocalDescription({ type: "rollback" });
+          }
           await peer.setRemoteDescription(data.description);
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
             await peer.addIceCandidate(candidate).catch(() => undefined);
           }
           pendingCandidatesRef.current.delete(from);
-          const answer = await peer.createAnswer();
+          const answer = tuneOpusSdp(await peer.createAnswer());
           await peer.setLocalDescription(answer);
           send({
             t: "signal",
@@ -732,8 +1118,10 @@ export function useVoice({
           if (unsent) {
             await negotiateRef.current(from, peer).catch(() => undefined);
           }
+          await applyVideoPause(from);
         } else if (data.kind === "answer" && data.description) {
           await peer.setRemoteDescription(data.description);
+          await applyVideoPause(from);
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
             await peer.addIceCandidate(candidate).catch(() => undefined);
           }
@@ -753,7 +1141,7 @@ export function useVoice({
         closePeer(from);
       }
     },
-    [closePeer, createPeer, send],
+    [applyVideoPause, closePeer, connectionId, createPeer, send],
   );
   handleSignalRef.current = handleSignal;
 
@@ -764,7 +1152,7 @@ export function useVoice({
       peerSinceRef.current.set(remoteId, Date.now());
       void (async () => {
         try {
-          const offer = await peer.createOffer();
+          const offer = tuneOpusSdp(await peer.createOffer());
           await peer.setLocalDescription(offer);
           send({
             t: "signal",
@@ -927,7 +1315,7 @@ export function useVoice({
   const negotiatePeer = useCallback(
     async (remoteId: string, peer: RTCPeerConnection) => {
       if (peer.signalingState !== "stable") return;
-      const offer = await peer.createOffer();
+      const offer = tuneOpusSdp(await peer.createOffer());
       await peer.setLocalDescription(offer);
       send({
         t: "signal",
@@ -1209,7 +1597,12 @@ export function useVoice({
     earlySignalsRef.current = [];
     announcedConnectionRef.current = null;
     setRemoteStreams([]);
+    hiddenVideoRef.current = {};
+    setHiddenVideoState({});
     setSpeaking(new Set());
+    // A raised hand belongs to the room you raised it in, so it does not follow
+    // you into the next one.
+    setHandRaised(false);
     channelIdRef.current = null;
     setChannelId(null);
     setLocalVideos([]);
@@ -1217,7 +1610,7 @@ export function useVoice({
   }, [closePeer, playRoomTone, send, stopCamera, stopScreenShare]);
 
   const join = useCallback(
-    async (nextChannelId: string) => {
+    async (nextChannelId: string, options?: { startMuted?: boolean }) => {
       setError("");
       // Re-selecting the room you are already in is a no-op: the stage view owns
       // "leave" now (an explicit Disconnect button), so a click never drops you.
@@ -1232,7 +1625,11 @@ export function useVoice({
         micChainRef.current = chain;
         // Peers get the processed track; the raw capture stays inside the chain.
         localStreamRef.current = chain.stream;
-        setMuted(false);
+        // A stage opens you in the audience. The central mic gate further down
+        // keys off this state, so setting it here is what actually keeps the
+        // microphone closed rather than merely showing a muted icon.
+        const startMuted = options?.startMuted === true;
+        setMuted(startMuted);
         setDeafened(false);
         // Set the ref before announcing the join. React updates it on the next
         // render, which can lose a race with the first offer coming back.
@@ -1248,6 +1645,9 @@ export function useVoice({
         if (send({ t: "voice-join", channelId: nextChannelId })) {
           announcedConnectionRef.current = connectionId;
         }
+        // Tell the room about the opening mute, or it would list this seat as
+        // "on stage" until the user touched a control.
+        if (startMuted) send({ t: "voice-state", muted: true });
         playRoomTone("join");
       } catch {
         setError(
@@ -1285,11 +1685,42 @@ export function useVoice({
     if (!next && deafened) {
       setDeafened(false);
       playUndeafenSound();
-      send({ t: "voice-state", muted: false, deafened: false });
+      // Taking the floor answers your own request, so the hand comes down.
+      setHandRaised(false);
+      send({ t: "voice-state", muted: false, deafened: false, handRaised: false });
     } else {
-      send({ t: "voice-state", muted: next });
+      if (!next) setHandRaised(false);
+      send({ t: "voice-state", muted: next, ...(next ? {} : { handRaised: false }) });
     }
-  }, [forcedMute, muted, deafened, send]);
+  }, [forcedMute, muted, deafened, handRaised, send]);
+
+  /**
+   * Raise or lower this tab's hand in a stage room.
+   *
+   * Deliberately refuses while unmuted: if the mic is already live you have the
+   * floor, so there is nothing to ask for, and a raised hand next to a speaking
+   * person reads as a bug.
+   */
+  const toggleHand = useCallback(() => {
+    if (!channelId || forcedMute) return;
+    if (!handRaised && !muted && !deafened) return;
+    const next = !handRaised;
+    setHandRaised(next);
+    send({ t: "voice-state", handRaised: next });
+  }, [channelId, forcedMute, handRaised, muted, deafened, send]);
+
+  /**
+   * Move a stage seat on or off the stage.
+   *
+   * The hub re-checks the caller's permission, so a client that calls this
+   * without MUTE_MEMBERS is ignored rather than obeyed.
+   */
+  const setStageSpeaker = useCallback(
+    (targetConnectionId: string, allowed: boolean) => {
+      send({ t: "stage-speaker", connectionId: targetConnectionId, allowed });
+    },
+    [send],
+  );
 
   const toggleDeafen = useCallback(() => {
     const next = !deafened;
@@ -1362,6 +1793,11 @@ export function useVoice({
     headTracking,
     setHeadTracking,
     headTrackingOffered,
+    airpodsOffered,
+    headTrackingSource,
+    setHeadTrackingSource,
+    spatialOutput,
+    setSpatialOutput,
     headTrackingStatus,
     onHeadTracking,
     recenterHead,
@@ -1374,6 +1810,14 @@ export function useVoice({
     forcedMute,
     setForcedMute,
     deafened,
+    /** Stage rooms only: this tab wants the floor. */
+    handRaised,
+    toggleHand,
+    /** Videos this tab chose not to receive, by connection id. */
+    hiddenVideo,
+    setVideoHidden,
+    /** Stage rooms: move a seat on or off the stage. Moderator-only, rechecked by the hub. */
+    setStageSpeaker,
     speaking,
     remoteStreams,
     peerStates,
@@ -1398,6 +1842,9 @@ export function useVoice({
     localVideos,
     error,
     setError,
+    /** What the relay check found, and a way to ask again. */
+    relay,
+    recheckRelay: checkRelay,
     join,
     leave,
     toggleMute,

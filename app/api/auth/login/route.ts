@@ -9,8 +9,21 @@ import {
 } from "@/lib/auth";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import {
+  attemptKey,
+  checkRateLimit,
+  clientIp,
+  RateLimitError,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Guessing-friendly windows: the budget is per IP *and* per username, so one
+ * attacker cannot lock a victim out by hammering their name from elsewhere, and
+ * a botnet cannot evade the limit by spreading across IPs for one account.
+ */
+const LOGIN_RATE_LIMIT = { limit: 10, windowSeconds: 300 } as const;
 
 export async function POST(request: Request) {
   const db = bindings().DB;
@@ -33,6 +46,28 @@ export async function POST(request: Request) {
       { error: "Enter your username and password." },
       { status: 400 },
     );
+  }
+
+  // Throttle before touching PBKDF2, so guessing is expensive for the attacker
+  // and cheap for us. Both buckets are counted: the IP one stops a single host
+  // spraying many accounts, the username one stops one account being ground
+  // down from a rotating set of addresses.
+  const [byIp, byUser] = await Promise.all([
+    checkRateLimit({
+      db,
+      action: "login-ip",
+      key: clientIp(request),
+      ...LOGIN_RATE_LIMIT,
+    }),
+    checkRateLimit({
+      db,
+      action: "login-user",
+      key: attemptKey(username),
+      ...LOGIN_RATE_LIMIT,
+    }),
+  ]);
+  if (!byIp.allowed || !byUser.allowed) {
+    return new RateLimitError(Math.max(byIp.retryAfter, byUser.retryAfter)).response();
   }
 
   const row = await db

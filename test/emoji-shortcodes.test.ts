@@ -60,8 +60,8 @@ describe("Emoji Shortcodes & Quick-Reactions System", () => {
     expect(thumbsup).not.toBeNull();
     expect(thumbsup?.emoji).toBe("👍");
 
-    // :+1:
-    const plusOne = parseQuickReaction(":+1:");
+    // The leading + is the reaction prefix, so the :+1: shortcode needs a second one.
+    const plusOne = parseQuickReaction(":++1:");
     expect(plusOne).not.toBeNull();
     expect(plusOne?.emoji).toBe("👍");
 

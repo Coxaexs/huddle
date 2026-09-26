@@ -90,15 +90,19 @@ services:
       - ./livekit.yaml:/etc/livekit.yaml:ro
 
   # STUN/TURN relay for people whose network blocks peer-to-peer voice.
-  # Change the password in deploy/coturn/turnserver.conf before enabling.
+  # Change the password in deploy/coturn/turnserver.conf before enabling, and
+  # set external-ip there to this machine's <public ip>/<private ip> — a relay
+  # that advertises the wrong address is silent, see `npm run check:turn`.
+  # With host networking coturn can see the LAN address directly, which is what
+  # external-ip's private half has to match.
   coturn:
     profiles: [turn]
     image: coturn/coturn:latest
     container_name: hoffle-coturn
     restart: unless-stopped
-    ports:
-      - "3478:3478/tcp"
-      - "3478:3478/udp"
-      - "49152-49200:49152-49200/udp"
+    network_mode: host
     volumes:
       - ./deploy/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    # Host networking publishes nothing itself: coturn opens 3478/udp+tcp,
+    # 5349/tcp and the relay range on the machine's own interfaces, so those are
+    # the ports to forward at the router.

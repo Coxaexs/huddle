@@ -1,5 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { sniffUpload } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,10 @@ export async function POST(request: Request) {
   // Uploads write to shared storage, so they need a signed-in member.
   const user = await currentUser(request);
   if (!user) return unauthorized();
+  const db = bindings().DB;
+  if (db) await ensureSchema(db);
+  const limited = await limitUser(db, WRITE_RATE_LIMITS.upload, user.id);
+  if (limited) return limited;
 
   const form = await request.formData();
   // `image` remains accepted for profile pictures and older clients.
@@ -65,29 +72,30 @@ export async function POST(request: Request) {
   }
 
   const bytes = await upload.arrayBuffer();
-  if (isPdf) {
-    const signature = new TextDecoder().decode(bytes.slice(0, 5));
-    if (signature !== "%PDF-") {
-      return Response.json({ error: "That file is not a valid PDF." }, { status: 400 });
-    }
+  // The declared type only picked the size limit above. What gets stored and
+  // served is what the bytes actually are, and it must match the family the
+  // client claimed so a "PDF" cannot turn out to be something else.
+  const sniffed = sniffUpload(bytes.slice(0, 64));
+  const claimed = isPdf ? "pdf" : isClip ? "clip" : isAudio ? "audio" : "image";
+  const compatible =
+    sniffed &&
+    (sniffed.family === claimed ||
+      // MediaRecorder audio is webm/mp4, and m4a sniffs as audio either way.
+      (claimed === "audio" && sniffed.family === "clip") ||
+      (claimed === "clip" && sniffed.family === "audio"));
+  if (!sniffed || !compatible) {
+    return Response.json(
+      { error: "That file's contents don't match a supported image, PDF, audio or clip format." },
+      { status: 400 },
+    );
   }
-  const fallbackName = isPdf
-    ? "document.pdf"
-    : `image.${
-        upload.type === "image/png"
-          ? "png"
-          : upload.type === "image/webp"
-            ? "webp"
-            : upload.type === "image/gif"
-              ? "gif"
-              : "jpg"
-      }`;
+  const fallbackName = `${sniffed.family === "pdf" ? "document" : sniffed.family}.${sniffed.extension}`;
   const safeName = (upload.name || fallbackName)
     .replace(/[^a-zA-Z0-9._ -]+/g, "_")
     .replace(/\s+/g, " ")
     .slice(-100);
   const key = `${crypto.randomUUID()}--${safeName || fallbackName}`;
-  const contentType = isPdf ? "application/pdf" : upload.type;
+  const contentType = sniffed.contentType;
   await bucket.put(key, bytes, {
     httpMetadata: { contentType },
   });

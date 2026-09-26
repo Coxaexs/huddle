@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Member } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
+import { VoiceDuration } from "./voice-duration";
 import { TIMEOUT_CHOICES } from "@/lib/timeouts";
 
 export interface UserMenuTarget {
@@ -42,6 +43,10 @@ interface UserMenuProps {
   /** The voice channel this person is currently sitting in, if any. */
   targetVoiceChannelId?: string | null;
   onMove?: (channelId: string) => void;
+  /** Hub-clock ms when this person's current voice seat started, if any. */
+  voiceJoinedAt?: number | null;
+  /** The hub's clock, so the "in voice for" timer agrees with everyone else's. */
+  serverNow?: () => number;
   /** Whether viewer is instance owner */
   isOwner?: boolean;
   onToggleInvitePermission?: () => void;
@@ -55,6 +60,8 @@ interface UserMenuProps {
   onTimeout?: (minutes: number) => void;
   /** When their current timeout ends, if they have one. */
   timeoutUntil?: string | null;
+  /** Shown to a group DM's owner on its other members. */
+  onRemoveFromGroup?: () => void;
 }
 
 /**
@@ -74,12 +81,15 @@ export function UserMenu({
   canModerate = true,
   canManage = false,
   onKick,
+  onRemoveFromGroup,
   onBan,
   banned = false,
   onUnban,
   voiceChannels = [],
   targetVoiceChannelId = null,
   onMove,
+  voiceJoinedAt = null,
+  serverNow,
   isOwner = false,
   onToggleInvitePermission,
   isBlocked = false,
@@ -112,11 +122,23 @@ export function UserMenu({
     };
   }, [onClose]);
 
-  // Keep the menu on screen when the click was near an edge.
-  const style = {
-    left: Math.min(target.x, (globalThis.innerWidth || 1200) - 240),
-    top: Math.min(target.y, (globalThis.innerHeight || 800) - 260),
-  };
+  // Keep the menu on screen when the click was near an edge. The height
+  // depends on which actions you have, so measure it after rendering.
+  const [pos, setPos] = useState({ left: target.x, top: target.y });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const margin = 12;
+    const { width, height } = el.getBoundingClientRect();
+    const maxLeft = window.innerWidth - width - margin;
+    const maxTop = window.innerHeight - height - margin;
+    setPos({
+      left: Math.max(margin, Math.min(target.x, maxLeft)),
+      // Near the bottom, open upward from the cursor like native menus do.
+      top: Math.max(margin, target.y > maxTop ? Math.min(target.y - height, maxTop) : target.y),
+    });
+  }, [target.x, target.y, target.member.id]);
+  const style = pos;
 
   return (
     <div className="user-menu" ref={ref} style={style} role="menu">
@@ -124,6 +146,11 @@ export function UserMenu({
         <strong>{target.member.displayName}</strong>
         <PrideBadges badges={target.member.prideBadges} mini />
         <span>@{target.member.username}</span>
+        {serverNow && voiceJoinedAt ? (
+          <span className="user-menu-voice-time">
+            <VoiceDuration joinedAt={voiceJoinedAt} serverNow={serverNow} />
+          </span>
+        ) : null}
       </div>
 
       {onNickname && (
@@ -257,6 +284,11 @@ export function UserMenu({
                 </div>
               )}
             </div>
+          )}
+          {onRemoveFromGroup && (
+            <button type="button" role="menuitem" className="danger" onClick={onRemoveFromGroup}>
+              Remove from group
+            </button>
           )}
           {canManage && onKick && (
             <button type="button" role="menuitem" className="danger" onClick={onKick}>
