@@ -41,7 +41,7 @@ Then in GitHub → Settings → Secrets and variables → Actions, add:
 - `ANDROID_KEYSTORE_BASE64`: output of `base64 -w0 huddle-release.jks`
 - `ANDROID_KEYSTORE_PASSWORD`: the keystore password
 - `ANDROID_KEY_ALIAS`: `huddle`
-- `ANDROID_KEY_PASSWORD`: the key password (same as the keystore one unless you chose otherwise)
+- `ANDROID_KEY_PASSWORD` (optional): only if your key has a different password from the keystore
 
 In Play Console, create the app with package name `online.hoffle.huddle`, and
 upload the `.aab` to the Internal testing track first.

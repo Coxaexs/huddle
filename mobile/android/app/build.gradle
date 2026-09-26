@@ -26,7 +26,9 @@ android {
                 storeFile file(keystorePath)
                 storePassword System.getenv("HUDDLE_KEYSTORE_PASSWORD")
                 keyAlias System.getenv("HUDDLE_KEY_ALIAS")
-                keyPassword System.getenv("HUDDLE_KEY_PASSWORD")
+                // PKCS12 keystores (keytool's default) use one password for
+                // both, so the key password secret is optional.
+                keyPassword System.getenv("HUDDLE_KEY_PASSWORD") ?: System.getenv("HUDDLE_KEYSTORE_PASSWORD")
             }
         }
     }
