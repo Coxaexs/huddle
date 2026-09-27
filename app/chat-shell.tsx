@@ -24,6 +24,7 @@ import {
   syncNativeVoice,
 } from "./lib/native-voice";
 import { registerNativePush, unregisterNativePush } from "./lib/native-push";
+import { useMobileShell } from "./hooks/use-mobile-shell";
 import {
   MsnAdBanner,
   MsnDisplayPictures,
@@ -1507,6 +1508,13 @@ export function ChatShell() {
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  // Whether the reader is parked at the latest message; new messages only
+  // pull the view down when they are, otherwise the jump button counts them.
+  const nearBottomRef = useRef(true);
+  const [showJumpLatest, setShowJumpLatest] = useState(false);
+  const [unseenCount, setUnseenCount] = useState(0);
+  const lastSeenTailRef = useRef<string | number | null>(null);
   const unreadRef = useRef(rawUnread);
   unreadRef.current = rawUnread;
   const initialChannelScrollRef = useRef<{
@@ -2517,6 +2525,12 @@ export function ChatShell() {
   };
   // Native apps: mirror the call into the Android notification + bubble or
   // the iOS call UI, and take Mute / Deafen / Leave presses back from them.
+  useMobileShell({
+    navOpen: mobileNav,
+    membersOpen,
+    setNavOpen: setMobileNav,
+    setMembersOpen,
+  });
   const nativeInVoiceRef = useRef(false);
   // Android app: phone notifications via Firebase once you're signed in.
   const signedInId = user?.id;
@@ -2994,10 +3008,54 @@ export function ChatShell() {
         return;
       }
       messageEndRef.current?.scrollIntoView({ behavior: "auto" });
+      nearBottomRef.current = true;
+      setUnseenCount(0);
+      lastSeenTailRef.current = messages[messages.length - 1]?.id ?? null;
       return;
     }
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const tail = messages[messages.length - 1];
+    const tailChanged = (tail?.id ?? null) !== lastSeenTailRef.current;
+    if (nearBottomRef.current || (tailChanged && tail && user && tail.userId === user.id)) {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      nearBottomRef.current = true;
+      setUnseenCount(0);
+      lastSeenTailRef.current = tail?.id ?? null;
+    } else if (tailChanged && tail) {
+      const lastIdx = messages.findIndex((m) => m.id === lastSeenTailRef.current);
+      setUnseenCount(lastIdx >= 0 ? messages.length - 1 - lastIdx : (n) => n + 1);
+      lastSeenTailRef.current = tail.id;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChannelId, messages, messagesLoadedFor]);
+
+  useEffect(() => {
+    nearBottomRef.current = true;
+    setShowJumpLatest(false);
+    setUnseenCount(0);
+  }, [activeChannelId]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = distance < 120;
+    nearBottomRef.current = near;
+    if (near) setUnseenCount(0);
+    setShowJumpLatest(distance > Math.max(300, el.clientHeight * 0.6));
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = true;
+    setUnseenCount(0);
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Very long jumps would take ages to animate; snap most of the way first.
+    if (!reduce && el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight * 4) {
+      el.scrollTop = el.scrollHeight - el.clientHeight * 2;
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  }, []);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("huddle-theme");
@@ -3496,6 +3554,48 @@ export function ChatShell() {
     }
   }
 
+  /**
+   * Opens the music dashboard (or its DJ booth) scoped to one voice room
+   * with no password, like Discord's /web. The tab opens before the request
+   * so the browser still counts it as a click; if it is blocked the link is
+   * posted instead.
+   */
+  async function openMusicDashboard(page?: "dj") {
+    const label = page === "dj" ? "DJ booth" : "music dashboard";
+    const voiceChannelId =
+      voice.channelId ||
+      voiceChannels.find((channel) => hub.players[channel.id]?.track)?.id ||
+      voiceChannels[0]?.id;
+    if (!voiceChannelId) {
+      setNotice("This server does not have a voice room yet.");
+      return;
+    }
+    const tab = window.open("about:blank", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      const { url } = await apiFetch<{ url: string }>(
+        "/api/integrations/musicwatch/web-link",
+        { method: "POST", body: JSON.stringify({ voiceChannelId, page }) },
+      );
+      if (tab) {
+        tab.location.href = url;
+        pendingCommandRef.current = null;
+      } else {
+        await postBotMessage(
+          `Here's the ${label} for this voice room.`,
+          { link: url, actionLabel: `Open ${label}` },
+        );
+      }
+    } catch (error) {
+      tab?.close();
+      setNotice(
+        error instanceof Error && error.message
+          ? `Couldn't open the ${label}: ${error.message}`
+          : "The music server looks offline. Start it first, then try again.",
+      );
+    }
+  }
+
   async function runCommand(raw: string) {
     const [rawName, ...parts] = raw.trim().split(/\s+/);
     const bare = rawName.replace(/^\//, "").toLowerCase();
@@ -3670,6 +3770,15 @@ export function ChatShell() {
       return;
     }
 
+    if (name === "join" && voice.channelId) {
+      // In Huddle the bot has no idle seat: it joins the room by itself
+      // whenever something plays and leaves when the queue ends.
+      await postBotMessage(
+        "I'll hop into this voice room as soon as something plays. Use `/play <song>` or play a playlist from `/web`.",
+      );
+      return;
+    }
+
     if (DISCORD_ONLY_COMMANDS.has(name)) {
       // These drive the bot's Discord voice connection, not Huddle playback.
       try {
@@ -3752,14 +3861,12 @@ export function ChatShell() {
     }
 
     if (name === "music" || name === "web") {
-      await postBotMessage(
-        musicWatchOnline
-          ? "The music dashboard is online. It can see this Huddle's voice rooms as well as Discord."
-          : "The music server looks offline. Start musicwatchtogether first, then try again.",
-        musicDashboardUrl
-          ? { link: musicDashboardUrl, actionLabel: "Open music dashboard" }
-          : undefined,
-      );
+      await openMusicDashboard();
+      return;
+    }
+
+    if (name === "dj") {
+      await openMusicDashboard("dj");
       return;
     }
 
@@ -6095,12 +6202,11 @@ export function ChatShell() {
       ? [
         {
           label: "Open dashboard",
-          onSelect: () =>
-            window.open(
-              musicDashboardUrl,
-              "_blank",
-              "noopener,noreferrer",
-            ),
+          onSelect: () => void openMusicDashboard(),
+        },
+        {
+          label: "Open DJ booth",
+          onSelect: () => void openMusicDashboard("dj"),
         },
       ]
       : []),
@@ -7533,6 +7639,8 @@ export function ChatShell() {
                 )}
 
                 <div
+                  ref={messagesScrollRef}
+                  onScroll={handleMessagesScroll}
                   className={`messages ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}
                   aria-live="polite"
                 >
@@ -8507,6 +8615,24 @@ export function ChatShell() {
                     );
                   })}
                   <div ref={messageEndRef} />
+                </div>
+
+                <div className={`jump-latest-anchor ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}>
+                  <button
+                    type="button"
+                    className={`jump-latest ${showJumpLatest || unseenCount > 0 ? "visible" : ""} ${unseenCount > 0 ? "has-unseen" : ""}`}
+                    onClick={jumpToLatest}
+                    aria-label={unseenCount > 0 ? `Jump to latest, ${unseenCount} new message${unseenCount === 1 ? "" : "s"}` : "Jump to latest message"}
+                    tabIndex={showJumpLatest || unseenCount > 0 ? 0 : -1}
+                    aria-hidden={!(showJumpLatest || unseenCount > 0)}
+                  >
+                    {unseenCount > 0 && (
+                      <span className="jump-latest-count">
+                        {unseenCount > 99 ? "99+" : unseenCount} new
+                      </span>
+                    )}
+                    <ChevronDown size={18} strokeWidth={2.4} />
+                  </button>
                 </div>
 
                 {(notice || voice.error) && (

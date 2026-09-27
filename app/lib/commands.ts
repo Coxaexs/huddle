@@ -177,6 +177,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Rooms",
   },
   { name: "web", description: "Open the music dashboard", group: "Rooms" },
+  {
+    name: "dj",
+    description: "Open the DJ booth: two decks, mixer, FX and Auto DJ",
+    group: "Rooms",
+  },
 
   // ---- D&D ----
   {
