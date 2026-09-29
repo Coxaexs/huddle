@@ -12,6 +12,7 @@ import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
+import { stripTextStyle } from "@/lib/text-style";
 
 export const dynamic = "force-dynamic";
 
@@ -365,7 +366,7 @@ async function decorateMessages(
     if (message.replyTo) {
       const parent = inPage.get(message.replyTo) || fetched.get(message.replyTo);
       message.replyPreview = parent
-        ? { author: parent.author, text: parent.content.slice(0, 120) }
+        ? { author: parent.author, text: stripTextStyle(parent.content).slice(0, 120) }
         : null;
     }
   }
@@ -677,7 +678,7 @@ export async function POST(request: Request) {
     if (parent) {
       message.replyPreview = {
         author: parent.author,
-        text: parent.content.slice(0, 120),
+        text: stripTextStyle(parent.content).slice(0, 120),
       };
     }
   }
@@ -703,8 +704,8 @@ export async function POST(request: Request) {
     // Awaited: a Worker may drop un-awaited work once the response is sent,
     // which silently lost these notifications. sendPushNotifications never throws.
     await sendPushNotifications(db, Array.from(pushTargets), {
-      title: stored.author,
-      body: stored.content ? stored.content.slice(0, 120) : "Shared an attachment",
+      title: stripTextStyle(stored.author),
+      body: stored.content ? stripTextStyle(stored.content).slice(0, 120) : "Shared an attachment",
       url: `/hangout`,
       tag: `msg-${stored.channel_id || stored.channel}`,
     });

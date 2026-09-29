@@ -44,6 +44,12 @@ services:
     restart: unless-stopped
     expose:
       - "8731"
+    # Optional: YouTube cookies for age-restricted videos. Export a
+    # Netscape cookies.txt from a logged-in browser to ./state/youtube-cookies.txt.
+    # environment:
+    #   YTDLP_COOKIES: /cookies/youtube-cookies.txt
+    # volumes:
+    #   - ./state/youtube-cookies.txt:/cookies/youtube-cookies.txt:ro
 
   # D&D 5e SRD compendium used by the D&D companion bot. Internal only.
   dnd-bot:

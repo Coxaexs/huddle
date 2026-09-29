@@ -153,9 +153,16 @@ export interface Track {
   artist: string;
   thumbnail: string | null;
   duration: number | null;
+  /** Empty until the bot resolves a queued placeholder (see `query`). */
   audioUrl: string;
   pageUrl: string | null;
   requestedBy: string;
+  /** Search the bot resolves this placeholder from, just before it plays. */
+  query?: string;
+  /** The saved playlist this track was queued from. */
+  playlist?: { name: string; cover: string | null } | null;
+  /** Transition out of this track into the next (the bot's mixer spec). */
+  mix?: Record<string, unknown> | null;
 }
 
 export interface PlayerState {
@@ -236,6 +243,12 @@ export type ClientEvent =
 export type PlayerAction =
   | { name: "play"; track: Track; startNow?: boolean }
   | { name: "enqueue"; track: Track }
+  /** A whole playlist at once; `startNow` replaces what is playing. */
+  | { name: "enqueueMany"; tracks: Track[]; startNow?: boolean }
+  /** The bot's mixer played a transition: the next track is already running. */
+  | { name: "mixAdvance"; fromTrackId: string; positionMs: number }
+  /** Fills in a placeholder's audio once the bot has looked it up. */
+  | { name: "resolve"; trackId: string; track: Partial<Track> }
   | { name: "playnext"; track: Track }
   | { name: "move"; from: number; to: number }
   | { name: "skipto"; index: number }

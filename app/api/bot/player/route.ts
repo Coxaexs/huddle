@@ -1,6 +1,6 @@
 import { playerCommand, playerState } from "@/lib/hub-client";
 import { resolveTrack } from "@/lib/music";
-import type { PlayerAction } from "@/lib/protocol";
+import type { PlayerAction, Track } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -47,6 +47,19 @@ export async function POST(request: Request) {
     action?: PlayerAction;
     query?: string;
     requestedBy?: string;
+    /** Placeholders queued at once and resolved by the bot as they come up. */
+    tracks?: Array<{
+      query?: string;
+      title?: string;
+      artist?: string;
+      thumbnail?: string | null;
+      duration?: number | null;
+      mix?: Record<string, unknown> | null;
+    }>;
+    startNow?: boolean;
+    playlist?: { name?: string; cover?: string | null };
+    /** Look up the audio for a queued placeholder. */
+    resolveTrackId?: string;
   };
   const channelId = body.channelId || "";
   const channel = await findChannel(db, channelId);
@@ -55,6 +68,69 @@ export async function POST(request: Request) {
       { error: "That is not a Huddle voice channel." },
       { status: 404 },
     );
+  }
+
+  if (body.tracks?.length) {
+    const requestedBy = body.requestedBy || "Music dashboard";
+    const playlist = body.playlist?.name
+      ? { name: body.playlist.name.slice(0, 80), cover: body.playlist.cover || null }
+      : null;
+    const tracks: Track[] = body.tracks
+      .filter((item) => item.query?.trim())
+      .slice(0, 500)
+      .map((item) => ({
+        id: crypto.randomUUID(),
+        title: (item.title || item.query || "Unknown").slice(0, 200),
+        artist: (item.artist || "").slice(0, 200),
+        thumbnail: item.thumbnail || null,
+        duration: typeof item.duration === "number" ? item.duration : null,
+        audioUrl: "",
+        pageUrl: null,
+        requestedBy,
+        query: item.query!.trim().slice(0, 500),
+        playlist,
+        mix: item.mix && typeof item.mix === "object" ? item.mix : null,
+      }));
+    return Response.json({
+      state: await playerCommand(channelId, {
+        name: "enqueueMany",
+        tracks,
+        startNow: Boolean(body.startNow),
+      }),
+    });
+  }
+
+  if (body.resolveTrackId) {
+    const state = await playerState(channelId);
+    const pending = [state?.track, ...(state?.queue || [])].find(
+      (track) => track?.id === body.resolveTrackId,
+    );
+    if (!pending) {
+      return Response.json({ error: "That track is no longer queued." }, { status: 404 });
+    }
+    if (pending.audioUrl || !pending.query) {
+      return Response.json({ state });
+    }
+    const resolved = await resolveTrack(pending.query, pending.requestedBy).catch(
+      (error: Error) => error,
+    );
+    if (resolved instanceof Error) {
+      return Response.json({ error: resolved.message }, { status: 502 });
+    }
+    // Keep the playlist's own title and cover; take the real audio details.
+    return Response.json({
+      state: await playerCommand(channelId, {
+        name: "resolve",
+        trackId: pending.id,
+        track: {
+          audioUrl: resolved.audioUrl,
+          pageUrl: resolved.pageUrl,
+          duration: resolved.duration ?? pending.duration,
+          artist: pending.artist || resolved.artist,
+          thumbnail: pending.thumbnail || resolved.thumbnail,
+        },
+      }),
+    });
   }
 
   // `query` is the convenience form: resolve it, then play or queue it.

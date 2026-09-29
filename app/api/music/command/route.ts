@@ -199,7 +199,7 @@ export async function POST(request: Request) {
         const active = name === "autoplay" ? state.autoplay : state.automix;
         const text = `${name === "autoplay" ? "Smart Autoplay" : "AutoMix"} is **${active ? "on" : "off"}** in this room.${
           name === "automix" && active
-            ? ` Blend: ${state.automix_blend_seconds || 8}s.`
+            ? " Songs now flow into each other like a Spotify Mix: the bot matches tempo and key and picks a Fade, Rise, Blend, Wave, Melt or Slam for each transition."
             : ""
         }`;
         if (!body.silent) await say(db, textChannelId, text);
@@ -351,7 +351,7 @@ export async function POST(request: Request) {
         const text = [
           "**Music settings**",
           `Smart Autoplay: **${state.autoplay ? "On" : "Off"}**`,
-          `AutoMix: **${state.automix ? "On" : "Off"}** · ${state.automix_blend_seconds || 8}s`,
+          `AutoMix: **${state.automix ? "On (auto transitions)" : "Off"}**`,
           `Filter: **${state.audio_filter || "off"}** · Crossfade: **${state.crossfade_seconds || 0}s**`,
           `Artist diversity: **${state.artist_diversity ? "On" : "Off"}** · Vibe matching: **${state.vibe_match ? "On" : "Off"}**`,
           "Use `/autoplay on`, `/automix on`, or the music dashboard to change them.",

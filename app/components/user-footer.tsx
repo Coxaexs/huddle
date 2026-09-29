@@ -5,6 +5,8 @@ import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check, User } 
 import { Avatar } from "./avatar";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
+import { StyledText } from "./message-body";
+import { stripTextStyle } from "@/lib/text-style";
 
 interface UserFooterProps {
   user: PublicUser;
@@ -69,7 +71,7 @@ export function UserFooter({
       <div
         className="user-footer-profile"
         onClick={onOpenStatusMenu}
-        title={`${user.displayName} · ${customStatus || presenceInfo.label}`}
+        title={stripTextStyle(`${user.displayName} · ${customStatus || presenceInfo.label}`)}
         role="button"
         tabIndex={0}
       >
@@ -86,9 +88,9 @@ export function UserFooter({
           />
         </div>
         <div className="user-footer-info">
-          <span className="user-footer-name">{user.displayName}</span>
+          <span className="user-footer-name"><StyledText text={user.displayName} /></span>
           <span className="user-footer-status">
-            {customStatus || presenceInfo.label}
+            <StyledText text={customStatus || presenceInfo.label} />
           </span>
         </div>
       </div>

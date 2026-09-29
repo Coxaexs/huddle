@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Check, Volume2 } from "lucide-react";
 import { highlight } from "../lib/highlight";
 import { LinkPreviewCard } from "./link-preview";
 import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
 import { handleMatchesName } from "@/lib/mention-handles";
+import { TAG_PATTERN, TAG_SOURCE, describeTag, PER_LETTER_EFFECTS } from "@/lib/text-style";
 
 /** At most this many preview cards under one message. */
 const MAX_PREVIEWS = 3;
@@ -27,9 +28,19 @@ export function isImageUrl(value: string): boolean {
  * emphasis markers.
  * Order matters — the first alternative that matches at a position wins, so
  * the longer fences (**, ~~, ||, __) are listed before the single-character one.
+ * Messenger Plus!-style `[tag]…[/tag]` decorations come last (named groups).
  */
-const INLINE_PATTERN =
-  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,32})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)|((?<![\w#/&])#[a-zA-Z0-9._-]{1,32})/g;
+const MARKDOWN_PATTERN =
+  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,32})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)|((?<![\w#/&])#[a-zA-Z0-9._-]{1,32})/;
+
+const INLINE_PATTERN = new RegExp(
+  MARKDOWN_PATTERN.source +
+    // 12+: [c=red]…[/c], [font=comic]…[/font], [rainbow]…[/rainbow] (lib/text-style.ts)
+    `|(?:${TAG_SOURCE})` +
+    // A personal emoticon (lib/msn-contacts.ts): [emo:<upload key>|(cat)]
+    `|(?:\\[emo:(?<emokey>[A-Za-z0-9._-]{1,160})\\|(?<emoname>[^\\]\\s|]{1,12})\\])`,
+  "gi",
+);
 
 /** A channel a `#name` token can link to. */
 export interface MentionChannel {
@@ -77,6 +88,30 @@ function Spoiler({ children }: { children: ReactNode }) {
       {children}
     </span>
   );
+}
+
+/**
+ * Gives every letter of the plain-text parts its own span, so wave / bounce /
+ * shake can stagger them. Nested elements (mentions, emoji) move as one.
+ */
+function splitLetters(nodes: ReactNode[], keyPrefix: string): ReactNode[] {
+  let index = 0;
+  return nodes.flatMap((node, n): ReactNode[] => {
+    if (typeof node !== "string") return [node];
+    return Array.from(node).map((char, c) =>
+      char.trim() ? (
+        <span
+          key={`${keyPrefix}-l${n}-${c}`}
+          className="fx-letter"
+          style={{ "--fx-i": index++ } as CSSProperties}
+        >
+          {char}
+        </span>
+      ) : (
+        char
+      ),
+    );
+  });
 }
 
 /** Renders one line of inline markup into React nodes. */
@@ -223,10 +258,87 @@ function renderInline(
           {channel.name}
         </button>,
       );
+    } else if (match.groups?.emokey) {
+      const { emokey, emoname } = match.groups;
+      parts.push(
+        <img
+          key={key}
+          className="custom-emoji personal-emoticon"
+          src={`/hangout/api/uploads/${encodeURIComponent(emokey)}`}
+          alt={emoname}
+          title={emoname}
+        />,
+      );
+    } else if (match.groups?.tag) {
+      const { tag, arg, body = "", end } = match.groups;
+      const styled = describeTag(tag, arg, end);
+      if (!styled) {
+        // Unknown colour/font: show exactly what was typed, markup inside and all.
+        parts.push(token);
+        continue;
+      }
+      let inner = renderInline(body, options, images, `${key}t`);
+      if (PER_LETTER_EFFECTS.has(styled.tag)) inner = splitLetters(inner, key);
+      const Tag =
+        styled.tag === "b" ? "strong"
+        : styled.tag === "i" ? "em"
+        : styled.tag === "u" ? "u"
+        : styled.tag === "s" ? "s"
+        : styled.tag === "sup" ? "sup"
+        : styled.tag === "sub" ? "sub"
+        : "span";
+      parts.push(
+        <Tag
+          key={key}
+          className={styled.className || undefined}
+          style={styled.style}
+        >
+          {inner}
+        </Tag>,
+      );
     }
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
   return parts;
+}
+
+/** Tags that would break a one-line name or status: they render as plain text there. */
+const BLOCKED_IN_LINES = new Set(["size", "sup", "sub"]);
+
+function renderStyledLine(text: string, keyPrefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(TAG_PATTERN)) {
+    const index = match.index ?? 0;
+    const { tag = "", arg, body = "", end } = match.groups ?? {};
+    const styled = BLOCKED_IN_LINES.has(tag.toLowerCase()) ? null : describeTag(tag, arg, end);
+    if (!styled) continue;
+    if (index > lastIndex) parts.push(text.slice(lastIndex, index));
+    lastIndex = index + match[0].length;
+    const key = `${keyPrefix}-${index}`;
+    let inner = renderStyledLine(body, `${key}t`);
+    if (PER_LETTER_EFFECTS.has(styled.tag)) inner = splitLetters(inner, key);
+    const Tag =
+      styled.tag === "b" ? "strong" : styled.tag === "i" ? "em" : styled.tag === "u" ? "u" : styled.tag === "s" ? "s" : "span";
+    parts.push(
+      <Tag key={key} className={styled.className || undefined} style={styled.style}>
+        {inner}
+      </Tag>,
+    );
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
+/**
+ * A display name or status line with Messenger Plus!-style decorations
+ * (`[c=red]Ana[/c]`, `[rainbow]…[/rainbow]`) and nothing else: no links,
+ * mentions or markdown, and no size changes.
+ */
+export function StyledText({ text, className }: { text: string | null | undefined; className?: string }) {
+  if (!text) return null;
+  if (!text.includes("[")) return className ? <span className={className}>{text}</span> : <>{text}</>;
+  return <span className={`styled-text ${className ?? ""}`.trim()}>{renderStyledLine(text, "st")}</span>;
 }
 
 /** A fenced code block with a language label, copy button, and syntax highlighting. */
@@ -283,7 +395,8 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 /**
  * Message text with Discord-flavoured markdown: **bold**, *italic*,
  * __underline__, ~~strike~~, `code`, ```blocks```, > quotes, ||spoilers||,
- * plus clickable links and @mentions. Everything becomes React nodes — no HTML
+ * -# subtext, plus [c=red]colour[/c], [f=comic]fonts[/f] and [wave]effects[/wave]
+ * (lib/text-style.ts), clickable links and @mentions. Everything becomes React nodes — no HTML
  * is ever injected — and bare image links render as the picture itself.
  */
 export function MessageBody({
@@ -385,6 +498,17 @@ export function MessageBody({
           <Tag key={`h${key}`} className={`message-heading h${level}`}>
             {renderInline(heading[2], options, images, key)}
           </Tag>,
+        );
+        return;
+      }
+      // -# small print, like Discord's subtext.
+      const subtext = line.match(/^-#\s+(.+)$/);
+      if (subtext) {
+        flush(`p${key}`);
+        blocks.push(
+          <small key={`st${key}`} className="message-subtext">
+            {renderInline(subtext[1], options, images, key)}
+          </small>,
         );
         return;
       }

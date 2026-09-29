@@ -8,7 +8,7 @@ import {
   validateUsername,
   type User,
 } from "@/lib/auth";
-import { DEFAULT_SERVER_ID, ensureSchema } from "@/lib/schema";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { checkRateLimit, clientIp, RateLimitError } from "@/lib/rate-limit";
 
@@ -65,6 +65,8 @@ export async function POST(request: Request) {
   const isFirstUser = (total?.count ?? 0) === 0;
 
   const inviteCode = (body.invite || "").trim().toUpperCase();
+  let defaultTheme: string | null = null;
+  let defaultServerId: string | null = null;
 
   // Huddle is on the public internet, so the very first signup can be gated
   // too: set BOOTSTRAP_CODE and nobody can claim the place before you do.
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
     }
     const invite = await db
       .prepare(
-        "SELECT code, server_id, max_uses, uses, revoked FROM invites WHERE code = ?",
+        "SELECT code, server_id, max_uses, uses, revoked, default_theme, default_server_id FROM invites WHERE code = ?",
       )
       .bind(inviteCode)
       .first<{
@@ -95,6 +97,8 @@ export async function POST(request: Request) {
         max_uses: number;
         uses: number;
         revoked: number;
+        default_theme: string | null;
+        default_server_id: string | null;
       }>();
     if (
       !invite ||
@@ -115,6 +119,8 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+    defaultTheme = invite.default_theme || null;
+    defaultServerId = invite.default_server_id || null;
   }
 
   const taken = await db
@@ -185,20 +191,25 @@ export async function POST(request: Request) {
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 
-  // Server membership: every new account joins the default (home) server.
-  // Server invite codes are rejected above, so we never land here with a
-  // server-scoped invite — everyone goes to DEFAULT_SERVER_ID.
-  const now2 = new Date().toISOString();
-  await db
-    .prepare(
-      "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
-    )
-    .bind(DEFAULT_SERVER_ID, user.id, now2)
-    .run();
+  // New accounts start with no servers unless the invite picked one.
+  if (defaultServerId) {
+    const server = await db
+      .prepare("SELECT id FROM servers WHERE id = ?")
+      .bind(defaultServerId)
+      .first();
+    if (server) {
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+        )
+        .bind(defaultServerId, user.id, new Date().toISOString())
+        .run();
+    }
+  }
 
   const token = await createSession(db, user.id);
   return Response.json(
-    { user: publicUser(user) },
+    { user: publicUser(user), defaultTheme },
     { status: 201, headers: { "Set-Cookie": sessionCookie(request, token) } },
   );
 }

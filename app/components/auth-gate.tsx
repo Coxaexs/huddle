@@ -8,7 +8,8 @@ import type { PublicUser } from "@/lib/users";
 interface AuthGateProps {
   /** True when nobody has signed up yet: the first account skips the invite. */
   bootstrap: boolean;
-  onSignedIn: (user: PublicUser) => void;
+  /** `defaultTheme` is the invite's starting theme id, on signup only. */
+  onSignedIn: (user: PublicUser, defaultTheme?: string | null) => void;
 }
 
 export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
@@ -32,11 +33,14 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
         mode === "signup"
           ? { username, password, displayName, invite }
           : { username, password };
-      const data = await apiFetch<{ user: PublicUser }>(path, {
+      const data = await apiFetch<{
+        user: PublicUser;
+        defaultTheme?: string | null;
+      }>(path, {
         method: "POST",
         body: JSON.stringify(body),
       });
-      onSignedIn(data.user);
+      onSignedIn(data.user, data.defaultTheme || null);
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "That did not work.",

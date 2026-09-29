@@ -6,6 +6,7 @@ import { bannerBackground, type Member } from "@/lib/users";
 import { Avatar } from "./avatar";
 import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
+import { StyledText } from "./message-body";
 
 interface ProfileCardProps {
   member: Member;
@@ -95,7 +96,7 @@ export function ProfileCard({
         <div className="profile-body">
           <div className="profile-name">
             <strong style={{ color: nameColor || undefined }}>
-              {member.displayName}
+              <StyledText text={member.displayName} />
             </strong>
             {member.isAdmin && <span className="profile-badge owner">OWNER</span>}
             <PrideBadges badges={member.prideBadges} compact />
@@ -110,7 +111,7 @@ export function ProfileCard({
             </div>
           )}
           {member.customStatus && (
-            <div className="profile-custom-status">{member.customStatus}</div>
+            <div className="profile-custom-status"><StyledText text={member.customStatus} /></div>
           )}
 
           {roles.length > 0 && (

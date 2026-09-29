@@ -77,8 +77,8 @@ describe("Theme System & Serialization", () => {
     `;
     const scoped = scopeProfileCss(rawCss, "user_123");
     expect(scoped).toContain(".user-profile-scoped-user_123");
-    expect(scoped).toContain(".user-profile-scoped-user_123{ border: 2px solid cyan; }");
-    expect(scoped).toContain(".user-profile-scoped-user_123 .profile-banner{");
+    expect(scoped).toContain(".user-profile-scoped-user_123.user-profile-scoped-user_123{ border: 2px solid cyan; }");
+    expect(scoped).toContain(".user-profile-scoped-user_123.user-profile-scoped-user_123 .profile-banner{");
   });
 
   it("refuses profile CSS that could escape the card", () => {
@@ -113,8 +113,10 @@ describe("Theme System & Serialization", () => {
     expect(checked.ok).toBe(true);
     const scoped = scopeProfileCss(css, "u1");
     expect(scoped).toContain("@keyframes spin { from {");
-    expect(scoped).toContain("@media (max-width: 500px){.user-profile-scoped-u1 .profile-banner{");
-    expect(scoped).toContain(".user-profile-scoped-u1:hover, .user-profile-scoped-u1 :is(.a, .b) > .c{");
+    expect(scoped).toContain("@media (max-width: 500px){.user-profile-scoped-u1.user-profile-scoped-u1 .profile-banner{");
+    expect(scoped).toContain(
+      ".user-profile-scoped-u1.user-profile-scoped-u1:hover, .user-profile-scoped-u1.user-profile-scoped-u1 :is(.a, .b) > .c{",
+    );
   });
 
   it("accepts every built-in profile CSS preset", () => {

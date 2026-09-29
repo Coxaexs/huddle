@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  DEEPPIXEL_URL,
   DEFAULT_TIERS,
   type ActivityStroke,
   type InitiativeEntry,
@@ -34,6 +35,8 @@ import {
   ChevronDown,
   Eraser,
   Undo2,
+  Gamepad2,
+  Maximize2,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 
@@ -89,6 +92,12 @@ const ACTIVITY_CHOICES: Array<{
     icon: <Dices size={20} />,
     name: "Initiative Tracker",
     description: "Roll, sort, and take turns in combat",
+  },
+  {
+    kind: "deeppixel",
+    icon: <Gamepad2 size={20} />,
+    name: "DeepPixel",
+    description: "Multiplayer property board game with bots",
   },
 ];
 
@@ -186,6 +195,20 @@ function embeddedWatchUrl(raw: string) {
   } catch {
     return raw;
   }
+}
+
+/**
+ * Everyone in the room opens the same game code; the first to arrive creates it.
+ * `pid` is the Hoffle user id, so a reload or a second device takes back the same seat.
+ */
+function deepPixelUrl(gameId: string, name: string, userId: string) {
+  const url = new URL(DEEPPIXEL_URL);
+  url.searchParams.set("gameId", gameId);
+  url.searchParams.set("name", name.slice(0, 20));
+  url.searchParams.set("pid", userId);
+  url.searchParams.set("create", "1");
+  url.searchParams.set("embed", "1");
+  return url.toString();
 }
 
 function activityTitle(kind: RoomActivityKind) {
@@ -743,6 +766,7 @@ export function RoomActivities({
   onOpen,
 }: RoomActivitiesProps) {
   const [busy, setBusy] = useState(false);
+  const gameFrameRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [guess, setGuess] = useState("");
 
@@ -847,6 +871,7 @@ export function RoomActivities({
             : kind === "initiative"
               ? { round: 1, turnIndex: 0, entries: [] }
               : {};
+    // deeppixel: the server picks the shared game code
     await action({ action: "open", kind, state });
   }
 
@@ -861,10 +886,19 @@ export function RoomActivities({
     void action({ action: "update", state: nextState });
   }
 
-  if (!open) return null;
+  // DeepPixel stays mounted while collapsed so players don't drop out of the game
+  if (!open && activity?.kind !== "deeppixel") return null;
+
+  const deepPixelSrc =
+    activity?.kind === "deeppixel"
+      ? deepPixelUrl(String(activity.state.gameId || ""), userName, userId)
+      : "";
 
   return (
-    <section className={`room-activity ${activity ? `kind-${activity.kind}` : ""}`}>
+    <section
+      className={`room-activity ${activity ? `kind-${activity.kind}` : ""}`}
+      style={open ? undefined : { display: "none" }}
+    >
       <header className="room-activity-head">
         <div>
           <span>
@@ -882,9 +916,23 @@ export function RoomActivities({
           </div>
         </div>
         <div>
-          {activity?.kind === "watch" && (
+          {activity?.kind === "deeppixel" && (
+            <button
+              type="button"
+              onClick={() => void gameFrameRef.current?.requestFullscreen?.()}
+              aria-label="Play full screen"
+              title="Full screen"
+            >
+              <Maximize2 size={15} />
+            </button>
+          )}
+          {(activity?.kind === "watch" || activity?.kind === "deeppixel") && (
             <a
-              href={String(activity.state.url || "")}
+              href={
+                activity.kind === "deeppixel"
+                  ? deepPixelSrc
+                  : String(activity.state.url || "")
+              }
               target="_blank"
               rel="noreferrer"
             >
@@ -928,6 +976,15 @@ export function RoomActivities({
             src={embeddedWatchUrl(String(activity.state.url || ""))}
             title="Watch Together"
             allow="autoplay; fullscreen; clipboard-write"
+          />
+        </div>
+      ) : activity.kind === "deeppixel" ? (
+        <div className="watch-embed deeppixel-embed" ref={gameFrameRef}>
+          <iframe
+            src={deepPixelSrc}
+            title="DeepPixel"
+            allow="autoplay; fullscreen; clipboard-write; screen-wake-lock"
+            allowFullScreen
           />
         </div>
       ) : activity.kind === "whiteboard" ? (

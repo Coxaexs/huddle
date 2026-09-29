@@ -48,8 +48,16 @@ export interface MicChain {
   processing: boolean;
   /** True once RNNoise is loaded and running. */
   rnnoise: boolean;
+  /** False while the processing graph is stopped, so `stream` carries silence. */
+  readonly live: boolean;
   update(next: Partial<MicSettings>): void;
   onTelemetry(listener: (telemetry: MicTelemetry) => void): () => void;
+  /**
+   * Wakes the processing graph. A phone suspends (iOS: "interrupts") every
+   * AudioContext while the page is in the background and does not always
+   * restart it on return, which leaves the processed track silent.
+   */
+  resume(): void;
   stop(): void;
 }
 
@@ -223,6 +231,7 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
     raw,
     processing: false,
     rnnoise: false,
+    live: true,
     update(next) {
       // The browser's own processing is the only thing left to steer here, so
       // it stands in for the neural modes rather than leaving you unfiltered.
@@ -231,6 +240,12 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
     onTelemetry(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    resume() {
+      // Only the meter runs through Web Audio here; the call itself does not.
+      if (meter && meter.context.state !== "running") {
+        void meter.context.resume().catch(() => undefined);
+      }
     },
     stop() {
       listeners.clear();
@@ -322,6 +337,9 @@ export async function openMicrophone(
       get rnnoise() {
         return rnnoiseReady;
       },
+      get live() {
+        return context?.state === "running";
+      },
       update(next) {
         // Live settings: a slider moving must not rebuild the track, or every
         // peer renegotiates and the room hears a dropout.
@@ -340,6 +358,11 @@ export async function openMicrophone(
       onTelemetry(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
+      },
+      resume() {
+        if (context && context.state !== "running") {
+          void context.resume().catch(() => undefined);
+        }
       },
       stop() {
         listeners.clear();

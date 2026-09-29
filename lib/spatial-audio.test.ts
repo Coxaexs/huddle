@@ -129,6 +129,28 @@ it("centres and boosts important voices even with table mode off, then restores 
   playback.dispose();
 });
 
+it("boosts a voice past 100% through Web Audio, and hands it back to the element below", async () => {
+  const { elements, gains, panners } = environment();
+  const playback = new SpatialAudioPlayback();
+  const input = { key: "a", stream: {} as MediaStream, volume: 1.6, muted: false, pan: -0.4 };
+  playback.update([input], false);
+  await Promise.resolve();
+  expect(panners).toHaveLength(0);
+  expect(elements[0].muted).toBe(true);
+  expect(gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(1.6, 0, 0.025);
+  playback.update([{ ...input, volume: 5 }], false);
+  expect(gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(2, 0, 0.025);
+  playback.update([{ ...input, volume: 0.5 }], false);
+  expect(gains[0].gain.value).toBe(0);
+  expect(elements[0].muted).toBe(false);
+  expect(elements[0].volume).toBe(0.5);
+  // Table mode swaps the boost for a panned path at the same level.
+  playback.update([input], true);
+  expect(panners).toHaveLength(1);
+  expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1.6, 0, 0.025);
+  playback.dispose();
+});
+
 it("turns the listener rather than the table, keeping the seats orthonormal", () => {
   const ahead = listenerOrientation({ yaw: 0, pitch: 0, roll: 0 });
   expect(ahead.forward.z).toBeCloseTo(-1);
