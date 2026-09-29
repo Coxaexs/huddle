@@ -360,6 +360,21 @@ export function useVoice({
    */
   const micGateRef = useRef(true);
   /**
+   * A copy of the raw microphone that goes on the wire instead of the processed
+   * track while Huddle is in the background. Phones (and some Windows setups)
+   * stop rendering Web Audio for a hidden app, and the processed track is made
+   * by Web Audio, so without this switching apps silently muted you.
+   */
+  const backgroundMicRef = useRef<MediaStreamTrack | null>(null);
+  /** Every track that mute, deafen and push-to-talk must switch together. */
+  const micTracks = useCallback(
+    (): MediaStreamTrack[] => [
+      ...(localStreamRef.current?.getAudioTracks() || []),
+      ...(backgroundMicRef.current ? [backgroundMicRef.current] : []),
+    ],
+    [],
+  );
+  /**
    * Level readings arrive twenty times a second. Holding them in state would
    * re-render the whole app at 20 Hz, so they live in a ref and the meters that
    * want them subscribe for themselves.
@@ -450,10 +465,8 @@ export function useVoice({
   useEffect(() => {
     const on = !forcedMute && (pushToTalk ? pttHeld : !muted);
     micGateRef.current = on;
-    localStreamRef.current
-      ?.getAudioTracks()
-      .forEach((track) => (track.enabled = on));
-  }, [channelId, pushToTalk, pttHeld, muted, forcedMute]);
+    micTracks().forEach((track) => (track.enabled = on));
+  }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks]);
 
   /**
    * Follow the server's view of this seat's microphone.
@@ -941,7 +954,9 @@ export function useVoice({
       peersRef.current.set(remoteId, peer);
       peerSinceRef.current.set(remoteId, Date.now());
 
-      for (const track of localStreamRef.current?.getTracks() || []) {
+      for (const own of localStreamRef.current?.getTracks() || []) {
+        // Someone joining while we are in the background gets the raw copy too.
+        const track = own.kind === "audio" && backgroundMicRef.current ? backgroundMicRef.current : own;
         const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
         if (track.kind === "audio") {
           void tuneAudioSender(sender, VOICE_BITRATE);
@@ -1511,6 +1526,9 @@ export function useVoice({
           }
         }
       }
+      // The background copy belonged to the old device.
+      backgroundMicRef.current?.stop();
+      backgroundMicRef.current = null;
       // Stop the old chain only once the new track is live everywhere, and stop
       // the *chain* rather than the track: the raw device is inside it, and a
       // microphone nobody released is a light that never goes out.
@@ -1522,6 +1540,86 @@ export function useVoice({
       setError("That microphone could not be opened.");
     }
   }, [openMicChain]);
+
+  /**
+   * Coming back from another app on a phone. While the browser sat in the
+   * background the OS suspended every AudioContext (so the processed mic track
+   * went silent), may have paused the remote audio elements, and on some
+   * phones ended the microphone capture outright. None of that recovers by
+   * itself, so you would be "in" the room with nobody hearing anybody.
+   *
+   * The seat itself is restored by useHub reconnecting and the re-announce
+   * effect above; this puts the audio back.
+   */
+  useEffect(() => {
+    if (!channelId) return;
+    // Points every peer's mic sender that currently carries `from` at `to`.
+    const swapMic = (from: MediaStreamTrack, to: MediaStreamTrack) => {
+      const swaps: Promise<void>[] = [];
+      for (const peer of peersRef.current.values()) {
+        for (const sender of peer.getSenders()) {
+          if (sender.track === from) swaps.push(sender.replaceTrack(to).catch(() => undefined));
+        }
+      }
+      return Promise.all(swaps);
+    };
+    // Leaving the app: send the raw microphone, which the OS keeps capturing
+    // (with the foreground service on Android), instead of the Web Audio track
+    // it is about to stop rendering. You lose RNNoise and the gate meanwhile.
+    const toRawMic = () => {
+      const chain = micChainRef.current;
+      const processed = localStreamRef.current?.getAudioTracks()[0];
+      const raw = chain?.raw.getAudioTracks()[0];
+      if (backgroundMicRef.current || !chain?.processing || !processed) return;
+      if (!raw || raw.readyState === "ended") return;
+      const copy = raw.clone();
+      copy.enabled = micGateRef.current;
+      backgroundMicRef.current = copy;
+      void swapMic(processed, copy);
+    };
+    // Back again: return to the processed track, but only once its graph is
+    // actually running, or we would trade a working mic for a silent one.
+    const toProcessedMic = () => {
+      const copy = backgroundMicRef.current;
+      const processed = localStreamRef.current?.getAudioTracks()[0];
+      if (!copy || !processed || !micChainRef.current?.live) return;
+      backgroundMicRef.current = null;
+      processed.enabled = copy.enabled;
+      void swapMic(copy, processed).then(() => copy.stop());
+    };
+    const wakeAudio = () => {
+      micChainRef.current?.resume();
+      void audioContextRef.current?.resume().catch(() => undefined);
+      void clipMixRef.current?.context.resume().catch(() => undefined);
+      unlockAudio();
+      toProcessedMic();
+      // resume() settles asynchronously; look again once it has had a moment.
+      window.setTimeout(toProcessedMic, 300);
+    };
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") toRawMic();
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      wakeAudio();
+      // Playback may still be refused until a real touch, so take the first one.
+      window.addEventListener("pointerdown", wakeAudio, { once: true, capture: true });
+      const raw = micChainRef.current?.raw.getAudioTracks()[0];
+      if (raw && raw.readyState === "ended") void switchMicrophone();
+    };
+    if (document.visibilityState === "hidden") toRawMic();
+    document.addEventListener("visibilitychange", onHidden);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pagehide", toRawMic);
+    window.addEventListener("pageshow", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", toRawMic);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onVisible);
+      window.removeEventListener("pointerdown", wakeAudio, { capture: true });
+    };
+  }, [channelId, switchMicrophone]);
 
   const startScreenShare = useCallback(
     async (quality: ScreenShareQuality = screenQuality) => {
@@ -1589,6 +1687,8 @@ export function useVoice({
     // on localStreamRef would leave the microphone open forever.
     micChainRef.current?.stop();
     micChainRef.current = null;
+    backgroundMicRef.current?.stop();
+    backgroundMicRef.current = null;
     micTelemetryRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -1662,17 +1762,17 @@ export function useVoice({
   const setForcedMute = useCallback((next: boolean) => {
     setForcedMuteState(next);
     if (next) {
-      localStreamRef.current?.getAudioTracks().forEach((track) => {
+      micTracks().forEach((track) => {
         track.enabled = false;
       });
       setMuted(true);
     }
-  }, []);
+  }, [micTracks]);
 
   const toggleMute = useCallback(() => {
     if (forcedMute) return;
     const next = !muted;
-    localStreamRef.current?.getAudioTracks().forEach((track) => {
+    micTracks().forEach((track) => {
       track.enabled = !next;
     });
     setMuted(next);
@@ -1692,7 +1792,7 @@ export function useVoice({
       if (!next) setHandRaised(false);
       send({ t: "voice-state", muted: next, ...(next ? {} : { handRaised: false }) });
     }
-  }, [forcedMute, muted, deafened, handRaised, send]);
+  }, [forcedMute, muted, deafened, handRaised, send, micTracks]);
 
   /**
    * Raise or lower this tab's hand in a stage room.
@@ -1732,13 +1832,13 @@ export function useVoice({
     }
     // Deafening also mutes you, the way Discord does it.
     if (next && !muted) {
-      localStreamRef.current?.getAudioTracks().forEach((track) => {
+      micTracks().forEach((track) => {
         track.enabled = false;
       });
       setMuted(true);
     }
     send({ t: "voice-state", deafened: next, muted: next ? true : muted });
-  }, [deafened, muted, send]);
+  }, [deafened, muted, send, micTracks]);
 
   const setMuteKey = useCallback((combo: string) => {
     setMuteKeyState(combo);

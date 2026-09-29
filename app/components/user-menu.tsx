@@ -62,6 +62,8 @@ interface UserMenuProps {
   timeoutUntil?: string | null;
   /** Shown to a group DM's owner on its other members. */
   onRemoveFromGroup?: () => void;
+  /** Theme extras appended at the bottom (the MSN theme's groups and alerts). */
+  extra?: React.ReactNode;
 }
 
 /**
@@ -98,6 +100,7 @@ export function UserMenu({
   onNickname,
   onTimeout,
   timeoutUntil = null,
+  extra,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -207,7 +210,7 @@ export function UserMenu({
             <input
               type="range"
               min={0}
-              max={100}
+              max={200}
               step={1}
               value={pref.volume}
               onChange={(event) => onVolume(Number(event.target.value))}
@@ -345,6 +348,7 @@ export function UserMenu({
           <p className="user-menu-note">This is you.</p>
         </>
       )}
+      {extra}
     </div>
   );
 }

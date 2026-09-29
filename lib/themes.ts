@@ -127,7 +127,31 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#d4352b",
       mint: "#3fa82f",
     },
-    // The look itself lives in globals.css under [data-custom-theme-id="msn"].
+    // The look itself lives in globals.css under [data-custom-theme-id^="msn"].
+  },
+  {
+    id: "msn-dark",
+    name: "MSN Messenger Dark",
+    description: "The same Messenger, after dark: midnight glass, glowing blue and \"says:\".",
+    baseTheme: "legacy",
+    isBuiltin: true,
+    corners: 3,
+    backdrop: "plain",
+    colors: {
+      ink: "#e6eefc",
+      muted: "#9fb2d4",
+      line: "#2c4675",
+      paper: "#0b1426",
+      panel: "#101d36",
+      chatBg: "#0e1930",
+      lavender: "#4c9dff",
+      lavenderSoft: "#16294d",
+      lavenderMuted: "#223b6b",
+      coral: "#ff6b5e",
+      mint: "#5ed05a",
+    },
+    // Shares every MSN rule with "msn"; colour overrides are in globals.css
+    // under [data-custom-theme-id="msn-dark"].
   },
   {
     id: "cyberpunk",
@@ -775,7 +799,9 @@ export function scopeProfileCss(rawCss: string, userId: string): string {
   if (!checked.ok || !checked.css) return "";
 
   const scopeClass = `.user-profile-scoped-${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-  const prefixed = prefixCssBlocks(checked.css, scopeClass);
+  // The class twice: the owner's CSS should outrank the app's own profile
+  // styling, theme rules like `[data-theme=light] .profile-card` included.
+  const prefixed = prefixCssBlocks(checked.css, `${scopeClass}${scopeClass}`);
   // @scope gives exact encapsulation; the prefixed copy covers webviews without it.
   return `@scope (${scopeClass}) {
 ${checked.css}

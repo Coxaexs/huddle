@@ -31,9 +31,28 @@ import {
   MsnFormatToolbar,
   MsnSignInToasts,
   MSN_EXTRA_STATUSES,
+  messageFontStyle,
+  MsnFileTransfer,
+  MsnPicturePicker,
+  MsnSoundsDialog,
+  MsnHoverCard,
+  MsnWhatsNew,
+  fileNameFromUrl,
+  findWink,
+  flashTitle,
+  playMessageChime,
   playNudge,
+  playWink,
   useMsnTheme,
 } from "./components/msn-chrome";
+import { TextStyleMenu } from "./components/text-style-menu";
+import { GameCard, GamesPicker } from "./components/game-card";
+import { MsnToday, shouldShowMsnToday } from "./components/msn-today";
+import { useMsnContacts, usePersonalEmoticons, useWhatsNew } from "./hooks/use-msn-extras";
+import { applyPersonalEmoticons } from "@/lib/msn-contacts";
+import { msnPictureFile, type MsnPicture } from "./lib/msn-pictures";
+import { GAME_INFO, isGameKind, type GameKind, type GameState } from "@/lib/games";
+import { applyMessageFont, readMessageFont, saveMessageFont, stripTextStyle, type MessageFont } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import { channelKindInfo, channelNameRules, convertibleKinds, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
@@ -74,6 +93,8 @@ import {
   PhoneCall,
   Video,
   Vote,
+  Gamepad2,
+  Type,
   ChevronDown,
   X,
   User,
@@ -122,7 +143,7 @@ import {
 import { DiceOverlay } from "./components/dice-overlay";
 import { GifPicker } from "./components/gif-picker";
 import { LyricsNow } from "./components/lyrics-now";
-import { MessageBody, type MentionChannel } from "./components/message-body";
+import { MessageBody, StyledText, isImageUrl, type MentionChannel } from "./components/message-body";
 import { EditHistoryDialog } from "./components/edit-history";
 import { EventsPanel, eventIsOpen, eventWhen, useServerEvents } from "./components/events-panel";
 import {
@@ -279,6 +300,12 @@ interface Message {
     themeShare?: Theme;
     /** A Messenger-style nudge: shakes the recipient's window. */
     nudge?: boolean;
+    /** A Messenger wink: a full-window animation (MSN_WINKS id). */
+    wink?: string;
+    /** A conversation game (lib/games.ts), played inside this message. */
+    game?: GameState;
+    /** Sent automatically while its author was away (MSN auto-message). */
+    autoReply?: boolean;
     /** Poll cards. */
     pollId?: string;
     /** /ask answers: the web results the answer cites. */
@@ -507,7 +534,9 @@ function pickImageFile(): Promise<File | null> {
 /** Fires a desktop/web notification, unless the user turned them off. Only
  *  fires when the tab is not the focused/visible one — if you're looking at
  *  the app, the unread badge already tells you. Supports desktop native bridge. */
-function showNotification(title: string, body: string, tag?: string): void {
+function showNotification(rawTitle: string, rawBody: string, tag?: string): void {
+  const title = stripTextStyle(rawTitle);
+  const body = stripTextStyle(rawBody);
   try {
     if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
     // Don't pop a notification while the user is actively focused on the app; the
@@ -595,10 +624,13 @@ function applyReaction(
   return list;
 }
 
-/** Audio-taper curve: makes the whole 0–100 slider feel evenly useful. */
+/**
+ * Audio-taper curve: makes the whole 0–100 slider feel evenly useful. Above
+ * 100% it boosts linearly, so 200% is twice as loud as the original (+6 dB).
+ */
 function volumeGain(percent: number): number {
-  const normalized = Math.max(0, Math.min(1, percent / 100));
-  return normalized * normalized;
+  const normalized = Math.max(0, Math.min(2, percent / 100));
+  return normalized <= 1 ? normalized * normalized : normalized;
 }
 
 /** Hover text for a reaction pill: who reacted with this emoji. */
@@ -1206,7 +1238,7 @@ export function ChatShell() {
   const [theme, setTheme] = useState<"cozy" | "legacy" | "light">("cozy");
   const msnTheme = useMsnTheme();
   /** Contact-list groups folded shut by their arrow (MSN theme). */
-  const [collapsedGroups, setCollapsedGroups] = useState<{ online?: boolean; offline?: boolean }>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean | undefined>>({});
   /** Like Messenger, you can't nudge again straight away. */
   const [nudgeCooling, setNudgeCooling] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -1322,6 +1354,17 @@ export function ChatShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
+  const [gamesOpen, setGamesOpen] = useState(false);
+  /** The MSN "Font" dialog's choice: wraps everything you send while that theme is on. */
+  const [messageFont, setMessageFont] = useState<MessageFont | null>(null);
+  useEffect(() => setMessageFont(readMessageFont()), []);
+  /** MSN's Sounds dialog; which sound (if any) plays is chosen there (app/lib/msn-sounds.ts). */
+  const [soundsOpen, setSoundsOpen] = useState(false);
+  const msnSoundsRef = useRef(false);
+  msnSoundsRef.current = msnTheme;
+  const msnThemeRef = useRef(msnTheme);
+  msnThemeRef.current = msnTheme;
   const [slashIndex, setSlashIndex] = useState(0);
   /** Slash commands registered by connected bots, offered beside our own. */
   const [botCommands, setBotCommands] = useState<SlashCommand[]>([]);
@@ -1426,6 +1469,28 @@ export function ChatShell() {
   const [statusOpen, setStatusOpen] = useState(false);
   /** Your own presence, mirrored locally so the dot reacts instantly. */
   const [myStatus, setMyStatus] = useState<PresenceStatus>("online");
+  /**
+   * Messenger Plus!'s auto-message: while you're Away or Busy, the first DM
+   * from each person gets this reply once (per stretch of being away).
+   */
+  const [autoReply, setAutoReply] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      setAutoReply(window.localStorage.getItem("huddle-msn-autoreply"));
+    } catch {
+      // Storage blocked: off.
+    }
+  }, []);
+  const autoReplyRef = useRef<{ text: string | null; away: boolean; replied: Set<string> }>({
+    text: null,
+    away: false,
+    replied: new Set(),
+  });
+  autoReplyRef.current.text = autoReply;
+  const nowAway = myStatus === "idle" || myStatus === "dnd";
+  // Back online: the next time you're away, everyone gets the reply again.
+  if (!nowAway && autoReplyRef.current.away) autoReplyRef.current.replied = new Set();
+  autoReplyRef.current.away = nowAway;
   const [myCustomStatus, setMyCustomStatus] = useState<string | null>(null);
   /** True while auto-idle is holding you at "idle" after inactivity. */
   const autoIdleRef = useRef(false);
@@ -1481,6 +1546,130 @@ export function ChatShell() {
     setDialogCallback(() => () => options.onConfirm());
     setDialogCancel(() => options.onCancel || null);
   };
+
+  // ---- MSN contact list extras: groups, quiet sign-ins, personal emoticons ----
+  const msnContacts = useMsnContacts(msnTheme && Boolean(user));
+  // One entry per person: the server roster has their status, so it wins over
+  // the slimmer DM copy (comparing both would report changes that aren't).
+  const whatsNewPeople = useMemo(() => {
+    const byId = new Map<string, Member>();
+    for (const person of [...members, ...dms.filter((dm) => !dm.group).map((dm) => dm.user)]) {
+      if (!byId.has(person.id)) byId.set(person.id, person);
+    }
+    return [...byId.values()];
+  }, [members, dms]);
+  const whatsNew = useWhatsNew(msnTheme && Boolean(user), whatsNewPeople, user?.id ?? null);
+  const personalEmoticons = usePersonalEmoticons(msnTheme && Boolean(user));
+
+  function createContactGroup(thenPlace?: string) {
+    showCustomPrompt({
+      title: "Create a group",
+      message: "Name your new contact group, like Friends, Family or Coworkers.",
+      placeholder: "Friends",
+      confirmText: "Create",
+      maxLength: 32,
+      onConfirm: (name) => {
+        const clean = name?.trim();
+        if (!clean) return;
+        const id = `g${Date.now().toString(36)}`;
+        msnContacts.update((current) => ({
+          ...current,
+          groups: [...current.groups, { id, name: clean }],
+          placement: thenPlace ? { ...current.placement, [thenPlace]: id } : current.placement,
+        }));
+      },
+    });
+  }
+
+  function renameContactGroup(groupId: string) {
+    const group = msnContacts.contacts.groups.find((g) => g.id === groupId);
+    if (!group) return;
+    showCustomPrompt({
+      title: "Rename group",
+      defaultValue: group.name,
+      confirmText: "Rename",
+      maxLength: 32,
+      onConfirm: (name) => {
+        const clean = name?.trim();
+        if (!clean) return;
+        msnContacts.update((current) => ({
+          ...current,
+          groups: current.groups.map((g) => (g.id === groupId ? { ...g, name: clean } : g)),
+        }));
+      },
+    });
+  }
+
+  function deleteContactGroup(groupId: string) {
+    const group = msnContacts.contacts.groups.find((g) => g.id === groupId);
+    if (!group) return;
+    showCustomConfirm({
+      title: `Delete "${group.name}"?`,
+      message: "The contacts in it go back to Online / Not Online. Nobody is removed.",
+      confirmText: "Delete group",
+      isDanger: true,
+      onConfirm: () =>
+        msnContacts.update((current) => ({
+          ...current,
+          groups: current.groups.filter((g) => g.id !== groupId),
+          placement: Object.fromEntries(
+            Object.entries(current.placement).filter(([, id]) => id !== groupId),
+          ),
+        })),
+    });
+  }
+
+  /** Messenger 2009's contact hover card: a short wait, then a mini profile. */
+  const [hoverCard, setHoverCard] = useState<{ member: Member; top: number; left: number } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  function queueHoverCard(member: Member | null, anchor?: HTMLElement) {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    if (!member || !anchor) {
+      hoverTimer.current = window.setTimeout(() => setHoverCard(null), 150);
+      return;
+    }
+    hoverTimer.current = window.setTimeout(() => {
+      const rect = anchor.getBoundingClientRect();
+      setHoverCard({
+        member,
+        top: Math.min(rect.top, window.innerHeight - 190),
+        left: Math.max(8, rect.left - 268),
+      });
+    }, 550);
+  }
+
+  /** Messenger's Display Picture dialog. */
+  const [pictureOpen, setPictureOpen] = useState(false);
+  async function setStockPicture(picture: MsnPicture) {
+    const file = await msnPictureFile(picture);
+    const form = new FormData();
+    form.append("file", file);
+    const upload = await apiFetch<{ key: string }>("/api/uploads", { method: "POST", body: form });
+    const data = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ avatarKey: upload.key, avatar: user?.avatar }),
+    });
+    setUser(data.user);
+    void loadMembers().catch(() => undefined);
+  }
+
+  function placeContact(userId: string, groupId: string | null) {
+    msnContacts.update((current) => {
+      const placement = { ...current.placement };
+      if (groupId) placement[userId] = groupId;
+      else delete placement[userId];
+      return { ...current, placement };
+    });
+  }
+
+  function toggleSignInAlert(userId: string) {
+    msnContacts.update((current) => ({
+      ...current,
+      quiet: current.quiet.includes(userId)
+        ? current.quiet.filter((id) => id !== userId)
+        : [...current.quiet, userId],
+    }));
+  }
 
   // The shared battlemap for the open voice stage (map, GM flag, hide state,
   // create/open, dropping your own token, and socket reconciliation).
@@ -2258,6 +2447,71 @@ export function ChatShell() {
       ) {
         playNudge();
       }
+      // Winks play under the same rules.
+      if (
+        incoming.payload?.wink &&
+        (channelId === activeChannelRef.current || !channelServerRef.current.get(channelId)) &&
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
+      ) {
+        playWink(incoming.payload.wink);
+      }
+      // Messenger's "new message" chime, for other people's messages you
+      // aren't looking at: the open conversation while the window is in the
+      // background, any DM, or a mention elsewhere.
+      if (
+        msnSoundsRef.current &&
+        user &&
+        incoming.userId !== user.id &&
+        !incoming.bot &&
+        !incoming.payload?.nudge &&
+        !incoming.payload?.wink &&
+        (channelId !== activeChannelRef.current || !document.hasFocus()) &&
+        (channelId === activeChannelRef.current ||
+          !channelServerRef.current.get(channelId) ||
+          Boolean(incoming.mentions?.includes(user.id))) &&
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        notifyLevel(channelPrefsRef.current, channelId, channelServerRef.current.get(channelId)) !== "nothing"
+      ) {
+        playMessageChime();
+      }
+      // Away with an auto-message set: answer a DM once, never an auto-reply.
+      if (
+        msnThemeRef.current &&
+        autoReplyRef.current.text &&
+        autoReplyRef.current.away &&
+        user &&
+        incoming.userId &&
+        incoming.userId !== user.id &&
+        !incoming.bot &&
+        !incoming.payload?.autoReply &&
+        !channelServerRef.current.get(channelId) &&
+        !autoReplyRef.current.replied.has(channelId) &&
+        !blockedUserIdsRef.current.has(incoming.userId)
+      ) {
+        autoReplyRef.current.replied.add(channelId);
+        void apiFetch("/api/messages", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId,
+            content: `[i]Auto-message:[/i] ${autoReplyRef.current.text}`,
+            payload: { autoReply: true },
+          }),
+        }).catch(() => autoReplyRef.current.replied.delete(channelId));
+      }
+      // …and blink the tab title while the window is in the background.
+      if (
+        msnThemeRef.current &&
+        user &&
+        incoming.userId !== user.id &&
+        !incoming.bot &&
+        !document.hasFocus() &&
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        (channelId === activeChannelRef.current ||
+          !channelServerRef.current.get(channelId) ||
+          Boolean(incoming.mentions?.includes(user.id)))
+      ) {
+        flashTitle(`${stripTextStyle(incoming.author)} says…`);
+      }
       if (channelId !== activeChannelRef.current) {
         const serverId = channelServerRef.current.get(channelId);
         // A DM you are not looking at still deserves to bubble up the list.
@@ -2772,7 +3026,7 @@ export function ChatShell() {
   /** Display names of everyone typing in the channel you are looking at. */
   const typingNames = Object.entries(typing[activeChannelId || ""] || {})
     .filter(([userId]) => userId !== user?.id)
-    .map(([userId, entry]) => membersById.get(userId)?.displayName || entry.name);
+    .map(([userId, entry]) => stripTextStyle(membersById.get(userId)?.displayName || entry.name));
 
   /** Tells the room you are typing, at most once every few seconds. */
   function noteTyping() {
@@ -2795,8 +3049,10 @@ export function ChatShell() {
       [kindMenu !== null, ".channel-kind-picker, .server-menu-dropdown", () => setKindMenu(null)],
       [statusOpen, ".status-menu, .user-footer-profile, .profile-dot", () => setStatusOpen(false)],
       [quickSoundboardOpen, ".soundboard-quick-popover, .mini-voice-btn", () => setQuickSoundboardOpen(false)],
-      [emojiOpen, ".discord-emoji-picker, .popover-picker, .composer-emoji-btn", () => setEmojiOpen(false)],
-      [gifOpen, ".gif-picker, .gif-button", () => setGifOpen(false)],
+      [emojiOpen, ".discord-emoji-picker, .popover-picker, .composer-emoji-btn, .msn-format-shell", () => setEmojiOpen(false)],
+      [gifOpen, ".gif-picker, .gif-button, .msn-format-shell", () => setGifOpen(false)],
+      [formatOpen, ".text-style-menu, .composer-format-btn", () => setFormatOpen(false)],
+      [gamesOpen, ".games-picker, .composer-games-btn", () => setGamesOpen(false)],
       [mentionsOpen, '.mentions-panel, [aria-label="Mentions"]', () => setMentionsOpen(false)],
       [pinsOpen, '.pins-panel:not(.mentions-panel), [aria-label="Pinned messages"]', () => setPinsOpen(false)],
     ];
@@ -2812,7 +3068,7 @@ export function ChatShell() {
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [serverMenuOpen, kindMenu, statusOpen, quickSoundboardOpen, emojiOpen, gifOpen, mentionsOpen, pinsOpen]);
+  }, [serverMenuOpen, kindMenu, statusOpen, quickSoundboardOpen, emojiOpen, gifOpen, formatOpen, mentionsOpen, pinsOpen]);
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -2931,6 +3187,76 @@ export function ChatShell() {
     };
   }, [mentionsOpen, unreadMentionTotal]);
 
+  /** MSN Today: opens by itself once a day in the MSN theme, or from the status menu. */
+  const [todayOpen, setTodayOpen] = useState(false);
+  const todayCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!msnTheme || !user || !hub.connected || !servers.length || todayCheckedRef.current) return;
+    todayCheckedRef.current = true;
+    // Let presence settle so "contacts online" isn't empty.
+    const timer = window.setTimeout(() => {
+      if (shouldShowMsnToday()) setTodayOpen(true);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [msnTheme, user, hub.connected, servers.length]);
+
+  /** Everything MSN Today shows, built only while it's open. */
+  const todayData = useMemo(() => {
+    if (!todayOpen || !user) return null;
+    const channelInfo = new Map<string, { serverId: string; serverName: string; name: string }>();
+    for (const server of servers) {
+      for (const channel of server.channels) {
+        channelInfo.set(channel.id, { serverId: server.id, serverName: server.name, name: channel.name });
+      }
+    }
+    const goTo = (serverId: string, channelId: string) => {
+      setTodayOpen(false);
+      setActiveServerId(serverId);
+      setStageChannelId(null);
+      setActiveChannelId(channelId);
+    };
+    const people = new Map<string, { id: string; name: string; avatar: string; avatarUrl?: string | null; color: string }>();
+    for (const person of [...dms.filter((dm) => !dm.group).map((dm) => dm.user), ...members]) {
+      if (person.id === user.id || !hub.online.has(person.id) || people.has(person.id)) continue;
+      people.set(person.id, { ...person, name: person.displayName });
+    }
+    const waiting = Object.entries(unread)
+      .filter(([, entry]) => entry.count > 0)
+      .flatMap(([channelId, entry]) => {
+        const dm = dms.find((d) => d.channelId === channelId);
+        const info = channelInfo.get(channelId);
+        if (!dm && !info) return [];
+        return [
+          {
+            key: channelId,
+            label: dm ? stripTextStyle(dm.user.displayName) : `#${info!.name} in ${info!.serverName}`,
+            count: entry.count,
+            mentions: entry.mentions,
+            open: () => goTo(dm ? DM_HOME : info!.serverId, channelId),
+          },
+        ];
+      })
+      .sort((a, b) => b.mentions - a.mentions || b.count - a.count);
+    const playing = Object.entries(hub.players).flatMap(([channelId, player]) => {
+      const info = channelInfo.get(channelId);
+      if (!player?.track || player.paused || !info) return [];
+      return [
+        {
+          room: info.name,
+          title: player.track.title,
+          artist: player.track.artist,
+          open: () => {
+            setTodayOpen(false);
+            setActiveServerId(info.serverId);
+            setStageChannelId(channelId);
+          },
+        },
+      ];
+    });
+    return { online: [...people.values()], waiting, playing, channelInfo };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayOpen, user, servers, dms, members, hub.online, hub.players, unread]);
+
   /** Opens the channel (server or DM) a mention came from, scrolled to it. */
   function openMention(entry: MentionEntry) {
     setMentionsOpen(false);
@@ -2941,6 +3267,44 @@ export function ChatShell() {
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
+
+  /**
+   * MSN's "Show what I'm listening to": while it's on, your status line
+   * follows the song playing in your voice room ("♫ Title - Artist") and goes
+   * back to what it was when the music stops.
+   */
+  const [shareListening, setShareListening] = useState(false);
+  useEffect(() => {
+    try {
+      setShareListening(window.localStorage.getItem("huddle-msn-listening") === "1");
+    } catch {
+      // Storage blocked: stays off.
+    }
+  }, []);
+  const statusBeforeMusic = useRef<string | null | undefined>(undefined);
+  const listeningTo =
+    msnTheme && shareListening && roomPlayer?.track && !roomPlayer.paused
+      ? `♫ ${roomPlayer.track.title}${roomPlayer.track.artist ? ` - ${roomPlayer.track.artist}` : ""}`.slice(0, 80)
+      : null;
+  useEffect(() => {
+    if (!user) return;
+    // Settle first, so a skip or a quick pause doesn't write twice.
+    const timer = window.setTimeout(() => {
+      if (listeningTo) {
+        if (myCustomStatus === listeningTo) return;
+        if (statusBeforeMusic.current === undefined) {
+          statusBeforeMusic.current = myCustomStatus?.startsWith("♫ ") ? null : myCustomStatus;
+        }
+        void savePresence({ customStatus: listeningTo });
+      } else if (statusBeforeMusic.current !== undefined) {
+        const previous = statusBeforeMusic.current;
+        statusBeforeMusic.current = undefined;
+        if (myCustomStatus?.startsWith("♫ ")) void savePresence({ customStatus: previous });
+      }
+    }, 2000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listeningTo, user?.id]);
   const botStreaming = voiceParticipants.some(
     (participant) => participant.bot,
   );
@@ -3148,18 +3512,93 @@ export function ChatShell() {
     }
   }
 
-  /** Wraps the composer selection in **bold** (the MSN "Font" button). */
-  function boldSelection() {
+  /**
+   * Wraps the composer selection in `open` … `close` (bold, colours, fonts,
+   * effects). With nothing selected the tags land at the caret with the caret
+   * between them, ready to type into.
+   */
+  function wrapSelection(open: string, close: string) {
     const box = composerRef.current;
     if (!box) return;
-    const start = box.selectionStart ?? draft.length;
+    const current = box.value;
+    const start = box.selectionStart ?? current.length;
     const end = box.selectionEnd ?? start;
-    const next = `${draft.slice(0, start)}**${draft.slice(start, end)}**${draft.slice(end)}`;
+    const next = `${current.slice(0, start)}${open}${current.slice(start, end)}${close}${current.slice(end)}`;
     setDraft(next);
     window.requestAnimationFrame(() => {
       box.focus();
-      box.setSelectionRange(start + 2, end + 2);
+      box.setSelectionRange(start + open.length, end + open.length);
     });
+  }
+
+  /**
+   * The newest game invitation waiting for you in this conversation, shown
+   * the Messenger way: a bar across the top with Accept (Alt+C) / Decline (Alt+D).
+   */
+  const pendingInvite = useMemo(() => {
+    if (!msnTheme || !user) return null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      const game = message.kind === "game" ? message.payload?.game : undefined;
+      if (!game || game.status !== "waiting") continue;
+      if (game.players[0].id === user.id || (game.invitee && game.invitee !== user.id)) continue;
+      return { id: String(message.id), game };
+    }
+    return null;
+  }, [msnTheme, user, messages]);
+  const answerInvite = useCallback(async (action: "join" | "decline") => {
+    if (!pendingInvite) return;
+    try {
+      await apiFetch("/api/games", {
+        method: "POST",
+        body: JSON.stringify({ action, messageId: pendingInvite.id }),
+      });
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't answer the invitation.");
+    }
+  }, [pendingInvite]);
+  useEffect(() => {
+    if (!pendingInvite) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "c" || key === "d") {
+        event.preventDefault();
+        void answerInvite(key === "c" ? "join" : "decline");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pendingInvite, answerInvite]);
+
+  /** Sends a game invitation into this conversation (MSN's Games menu, /game). */
+  async function startGame(kind: GameKind, solo = false) {
+    if (!activeChannelId) return;
+    try {
+      await apiFetch("/api/games", {
+        method: "POST",
+        body: JSON.stringify({ action: "start", channelId: activeChannelId, kind, solo }),
+      });
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't start the game.");
+    }
+  }
+
+  async function sendWink(id: string) {
+    const wink = findWink(id);
+    if (!activeChannelId || !wink) return;
+    try {
+      await apiFetch("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: activeChannelId,
+          content: `sent a wink: ${wink.emoji} ${wink.name}`,
+          payload: { wink: wink.id },
+        }),
+      });
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Couldn't send the wink.");
+    }
   }
 
   async function sendNudge() {
@@ -3611,6 +4050,29 @@ export function ChatShell() {
     if (name === "markdown") {
       setMarkdownModalOpen((prev) => !prev);
       setNotice("Markdown enabled! Use ```cpp for code blocks, **bold**, *italic*.");
+      return;
+    }
+
+    // /game tictactoe | connect4 | rps | mines | rota [solo]
+    if (name === "game") {
+      const [pick = "", mode = ""] = value.split(/\s+/);
+      const solo = /^(solo|alone|tek)$/i.test(mode);
+      const aliases: Record<string, GameKind> = {
+        ttt: "tictactoe",
+        "tic-tac-toe": "tictactoe",
+        four: "connect4",
+        "connect-4": "connect4",
+        minesweeper: "mines",
+        flags: "mines",
+        route: "rota",
+        countries: "rota",
+      };
+      const kind = aliases[pick.toLowerCase()] ?? pick.toLowerCase();
+      if (!isGameKind(kind)) {
+        setNotice("Try: /game tictactoe, /game connect4, /game rps, /game mines or /game rota");
+        return;
+      }
+      await startGame(kind, solo);
       return;
     }
 
@@ -4632,7 +5094,14 @@ export function ChatShell() {
         keys.push(upload.key);
       }
       const processedText = replaceEmojiShortcodes(text, emojiMap);
-      await sendText(processedText, keys);
+      // MSN sends everything in the font picked in its Font dialog (not a
+      // bare GIF/sticker link, which has to stay a link to show as a picture).
+      // Your own emoticons turn into their pictures for everyone, too.
+      const styled =
+        msnTheme && !isImageUrl(processedText)
+          ? applyMessageFont(applyPersonalEmoticons(processedText, personalEmoticons.emoticons), messageFont)
+          : processedText;
+      await sendText(styled, keys);
     } catch (error) {
       // Put the message back so a dropped connection or a rate limit does not
       // eat what someone typed — unless they have already started a new one.
@@ -4824,6 +5293,15 @@ export function ChatShell() {
   }
 
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Ctrl/Cmd+B, I, U format the selection, as in any editor.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      const fence = { b: "**", i: "*", u: "__" }[event.key.toLowerCase()];
+      if (fence) {
+        event.preventDefault();
+        wrapSelection(fence, fence);
+        return;
+      }
+    }
     if (mentionActive) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -5346,7 +5824,9 @@ export function ChatShell() {
       <main className="app-shell">
         <AuthGate
           bootstrap={bootstrap}
-          onSignedIn={(signedIn) => {
+          onSignedIn={(signedIn, defaultTheme) => {
+            const startTheme = defaultTheme && findThemeById(defaultTheme);
+            if (startTheme) applyTheme(startTheme);
             setUser(signedIn);
             setBootstrap(false);
           }}
@@ -6237,13 +6717,91 @@ export function ChatShell() {
     >
       <ConnectionBanner connected={hub.connected} />
       {msnTheme && (
+        <>
+        {soundsOpen && <MsnSoundsDialog onClose={() => setSoundsOpen(false)} />}
+        {hoverCard && (
+          <MsnHoverCard
+            name={hoverCard.member.displayName}
+            username={hoverCard.member.username}
+            avatar={hoverCard.member.avatar}
+            avatarUrl={hoverCard.member.avatarUrl}
+            color={hoverCard.member.color}
+            presence={
+              PRESENCE[
+                (presenceOf(hoverCard.member) === "offline"
+                  ? "invisible"
+                  : presenceOf(hoverCard.member)) as PresenceStatus
+              ]
+            }
+            offline={presenceOf(hoverCard.member) === "offline"}
+            personalMessage={
+              hoverCard.member.id === user?.id ? myCustomStatus : hoverCard.member.customStatus
+            }
+            group={
+              msnContacts.contacts.groups.find(
+                (g) => g.id === msnContacts.contacts.placement[hoverCard.member.id],
+              )?.name
+            }
+            style={{ top: hoverCard.top, left: hoverCard.left }}
+            onEnter={() => hoverTimer.current && window.clearTimeout(hoverTimer.current)}
+            onLeave={() => queueHoverCard(null)}
+            onMessage={
+              hoverCard.member.id === user?.id
+                ? undefined
+                : () => {
+                    const id = hoverCard.member.id;
+                    setHoverCard(null);
+                    void openDm(id);
+                  }
+            }
+            onProfile={() => {
+              const member = hoverCard.member;
+              setHoverCard(null);
+              openProfile(member);
+            }}
+          />
+        )}
+        {pictureOpen && (
+          <MsnPicturePicker
+            onPick={setStockPicture}
+            onBrowse={() => {
+              setPictureOpen(false);
+              setSettingsOpen(true);
+            }}
+            onClose={() => setPictureOpen(false)}
+          />
+        )}
+        {todayOpen && todayData && user && (
+          <MsnToday
+            userName={user.displayName}
+            online={todayData.online}
+            waiting={todayData.waiting}
+            playing={todayData.playing}
+            whatsNew={whatsNew.feed}
+            serverIds={servers.map((server) => server.id)}
+            onOpenPerson={(id) => {
+              setTodayOpen(false);
+              void openDm(id);
+            }}
+            onOpenEvent={(event) => {
+              setTodayOpen(false);
+              setActiveServerId(event.serverId);
+              setStageChannelId(null);
+              setEventsOpen(true);
+            }}
+            onClose={() => setTodayOpen(false)}
+          />
+        )}
         <MsnSignInToasts
           online={hub.online}
-          people={members.map((m) => ({ ...m, name: m.displayName }))}
+          people={members
+            .filter((m) => !msnContacts.contacts.quiet.includes(m.id))
+            .map((m) => ({ ...m, name: m.displayName }))}
           selfId={user?.id ?? null}
           connected={hub.connected}
           onOpen={(id) => void openDm(id)}
         />
+        </>
       )}
 
       {/* Tapping outside the drawer on a phone closes it. */}
@@ -6376,6 +6934,106 @@ export function ChatShell() {
                   {extra.label}
                 </button>
               ))}
+            {msnTheme && (
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={shareListening}
+                className={shareListening ? "active" : ""}
+                onClick={() => {
+                  const next = !shareListening;
+                  setShareListening(next);
+                  try {
+                    window.localStorage.setItem("huddle-msn-listening", next ? "1" : "0");
+                  } catch {
+                    // Storage blocked: applies until reload.
+                  }
+                  setStatusOpen(false);
+                }}
+              >
+                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
+                  {shareListening ? "✓" : "♫"}
+                </span>
+                Show what I&apos;m listening to
+              </button>
+            )}
+            {msnTheme && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusOpen(false);
+                  setSoundsOpen(true);
+                }}
+              >
+                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
+                  🔔
+                </span>
+                Sounds…
+              </button>
+            )}
+            {msnTheme && (
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={Boolean(autoReply)}
+                className={autoReply ? "active" : ""}
+                onClick={() => {
+                  setStatusOpen(false);
+                  showCustomPrompt({
+                    title: "Auto-reply when away",
+                    message:
+                      "While you're Away or Busy, the first person to message you in each DM gets this reply. Leave it empty to turn it off.",
+                    defaultValue: autoReply ?? "I'm away from my computer right now. I'll get back to you soon!",
+                    confirmText: "Save",
+                    maxLength: 200,
+                    onConfirm: (text) => {
+                      if (text === undefined) return;
+                      const clean = text.trim() || null;
+                      setAutoReply(clean);
+                      try {
+                        if (clean) window.localStorage.setItem("huddle-msn-autoreply", clean);
+                        else window.localStorage.removeItem("huddle-msn-autoreply");
+                      } catch {
+                        // Storage blocked: applies until reload.
+                      }
+                    },
+                  });
+                }}
+              >
+                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
+                  {autoReply ? "✓" : "💬"}
+                </span>
+                Auto-reply when away…
+              </button>
+            )}
+            {msnTheme && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusOpen(false);
+                  setPictureOpen(true);
+                }}
+              >
+                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
+                  🖼
+                </span>
+                Change display picture…
+              </button>
+            )}
+            {msnTheme && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusOpen(false);
+                  setTodayOpen(true);
+                }}
+              >
+                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
+                  ☀
+                </span>
+                Open MSN Today
+              </button>
+            )}
             <div className="status-menu-divider" />
             <button
               type="button"
@@ -6695,7 +7353,7 @@ export function ChatShell() {
                   />
                   {dm.group ? (
                     <span className="dm-group-label">
-                      <span className="truncate">{dm.user.displayName}</span>
+                      <span className="truncate"><StyledText text={dm.user.displayName} /></span>
                       <small>
                         {dm.group.members.length}{" "}
                         {dm.group.members.length === 1 ? "Member" : "Members"}
@@ -6703,7 +7361,8 @@ export function ChatShell() {
                     </span>
                   ) : (
                   <span className="flex items-center gap-1.5 truncate">
-                    {isSelf ? `${dm.user.displayName} (Notes)` : dm.user.displayName}
+                    <StyledText text={dm.user.displayName} />
+                    {isSelf && " (Notes)"}
                   </span>
                   )}
                   {dm.group ? null : isSelf ? (
@@ -7638,12 +8297,36 @@ export function ChatShell() {
                   />
                 )}
 
+                {pendingInvite && (
+                  <div className="msn-info-bar" role="status">
+                    <span className="msn-info-icon" aria-hidden="true">
+                      {GAME_INFO[pendingInvite.game.kind].emoji}
+                    </span>
+                    <span>
+                      <StyledText text={pendingInvite.game.players[0].name} /> has invited you to play{" "}
+                      <strong>{GAME_INFO[pendingInvite.game.kind].name}</strong>. Do you want to{" "}
+                      <button type="button" onClick={() => void answerInvite("join")}>
+                        Accept
+                      </button>{" "}
+                      (Alt+C) or{" "}
+                      <button type="button" onClick={() => void answerInvite("decline")}>
+                        Decline
+                      </button>{" "}
+                      (Alt+D) the invitation?
+                    </span>
+                  </div>
+                )}
                 <div
                   ref={messagesScrollRef}
                   onScroll={handleMessagesScroll}
                   className={`messages ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}
                   aria-live="polite"
                 >
+                  {msnTheme && (
+                    <p className="msn-warning">
+                      Never give out your password or credit card number in an instant message conversation.
+                    </p>
+                  )}
                   <div className="channel-intro">
                     <div className="cozy-intro-pill">
                       <span className="cozy-intro-icon">
@@ -7809,7 +8492,23 @@ export function ChatShell() {
                           <span className="nudge-line-rule" aria-hidden="true" />
                           {message.userId === user.id
                             ? "You have just sent a nudge."
-                            : `${author?.displayName || message.author} has just sent you a nudge.`}
+                            : `${stripTextStyle(author?.displayName || message.author)} has just sent you a nudge.`}
+                          <span className="nudge-line-rule" aria-hidden="true" />
+                        </div>
+                      );
+                    }
+                    const wink = findWink(message.payload?.wink);
+                    if (wink) {
+                      return (
+                        <div key={message.id} id={`msg-${message.id}`} className="nudge-line wink-line">
+                          <span className="nudge-line-rule" aria-hidden="true" />
+                          <span className="wink-line-emoji" aria-hidden="true">{wink.emoji}</span>
+                          {message.userId === user.id
+                            ? `You have just sent a wink: ${wink.name}.`
+                            : `${stripTextStyle(author?.displayName || message.author)} has just sent you a wink: ${wink.name}.`}
+                          <button type="button" className="wink-replay" onClick={() => playWink(wink.id)}>
+                            Play
+                          </button>
                           <span className="nudge-line-rule" aria-hidden="true" />
                         </div>
                       );
@@ -7949,7 +8648,7 @@ export function ChatShell() {
                                   if (author) openProfile(author);
                                 }}
                               >
-                                {author?.displayName || message.author}
+                                <StyledText text={author?.displayName || message.author} />
                               </strong>
                               {author && <PrideBadges badges={author.prideBadges} mini />}
                               {message.bot && <span className="bot-tag">BOT</span>}
@@ -8087,6 +8786,13 @@ export function ChatShell() {
                               src={message.audio}
                               durationMs={message.payload?.voice?.durationMs}
                               waveform={message.payload?.voice?.waveform}
+                            />
+                          ) : message.kind === "game" && message.payload?.game ? (
+                            <GameCard
+                              messageId={String(message.id)}
+                              game={message.payload.game}
+                              userId={user.id}
+                              onPlayAgain={(kind, solo) => void startGame(kind, solo)}
                             />
                           ) : message.kind === "poll" && message.payload?.pollId ? (
                             <PollCard
@@ -8266,6 +8972,19 @@ export function ChatShell() {
                               src={message.audio}
                             />
                           )}
+                          <MsnFileTransfer
+                            enabled={msnTheme && !message.bot}
+                            messageId={String(message.id)}
+                            mine={message.userId === user.id}
+                            fromName={author?.displayName || message.author}
+                            createdAt={message.createdAt}
+                            fileNames={[
+                              ...[message.image, ...(message.images || [])]
+                                .filter((img): img is string => typeof img === "string" && Boolean(img))
+                                .map(fileNameFromUrl),
+                              ...(message.file ? [message.file.name] : []),
+                            ]}
+                          >
                           {(() => {
                             const allImages = [
                               message.image,
@@ -8300,6 +9019,7 @@ export function ChatShell() {
                               <b aria-hidden="true">Open</b>
                             </button>
                           )}
+                          </MsnFileTransfer>
 
                           {(message.threadCount ?? 0) > 0 && message.kind !== "ai" && (
                             <button
@@ -8792,7 +9512,7 @@ export function ChatShell() {
                                 className="mention-primary"
                                 style={{ color: roleColorFor(member) || undefined }}
                               >
-                                {member.displayName}
+                                <StyledText text={member.displayName} />
                               </span>
                               <span className="mention-note">
                                 {member.globalName && member.globalName !== member.displayName
@@ -8857,6 +9577,32 @@ export function ChatShell() {
                         composerRef.current?.focus();
                       }}
                       onEmojiChange={() => void loadEmojis().catch(() => undefined)}
+                    />
+                  )}
+
+                  {gamesOpen && !msnTheme && (
+                    <GamesPicker
+                      inVoice={Boolean(voice.channelId)}
+                      onClose={() => setGamesOpen(false)}
+                      onStart={(kind, solo) => {
+                        setGamesOpen(false);
+                        void startGame(kind, solo);
+                      }}
+                      onActivities={() => {
+                        setGamesOpen(false);
+                        if (!voice.channelId) return;
+                        setStageChannelId(voice.channelId);
+                        window.setTimeout(() => window.dispatchEvent(new Event("huddle:open-activities")), 150);
+                      }}
+                    />
+                  )}
+
+                  {formatOpen && !msnTheme && (
+                    <TextStyleMenu
+                      onWrap={(open, close) => {
+                        wrapSelection(open, close);
+                        setFormatOpen(false);
+                      }}
                     />
                   )}
 
@@ -8953,9 +9699,28 @@ export function ChatShell() {
                     </div>
                   ) : (
                     <>
+                    {msnTheme &&
+                      inDmHome &&
+                      activeDm &&
+                      !activeDm.group &&
+                      !isSelfDm &&
+                      hub.connected &&
+                      !hub.online.has(activeDm.user.id) && (
+                        <p className="msn-offline-note">
+                          <span aria-hidden="true">ⓘ</span>
+                          <StyledText text={activeDm.user.displayName} /> appears to be offline. Messages you
+                          send will be delivered when they sign in.
+                        </p>
+                      )}
                     {msnTheme && (
                       <MsnFormatToolbar
-                        onFont={boldSelection}
+                        messageFont={messageFont}
+                        onMessageFont={(font) => {
+                          setMessageFont(font);
+                          saveMessageFont(font);
+                          composerRef.current?.focus();
+                        }}
+                        onWrap={wrapSelection}
                         onEmoticons={() => {
                           setEmojiOpen((open) => !open);
                           setGifOpen(false);
@@ -8963,6 +9728,18 @@ export function ChatShell() {
                         onWinks={() => {
                           setGifOpen((open) => !open);
                           setEmojiOpen(false);
+                        }}
+                        onSendWink={(id) => void sendWink(id)}
+                        onStartGame={(kind, solo) => void startGame(kind, solo)}
+                        personalEmoticons={personalEmoticons.emoticons}
+                        onAddEmoticon={personalEmoticons.add}
+                        onRemoveEmoticon={(shortcut) => void personalEmoticons.remove(shortcut).catch(() => undefined)}
+                        inVoice={Boolean(voice.channelId)}
+                        onActivities={() => {
+                          if (!voice.channelId) return;
+                          setStageChannelId(voice.channelId);
+                          // The stage mounts first, then opens its panel.
+                          window.setTimeout(() => window.dispatchEvent(new Event("huddle:open-activities")), 150);
                         }}
                         onVoiceClip={voiceRecorder.start}
                         onHandwriting={(file) => {
@@ -9033,13 +9810,29 @@ export function ChatShell() {
                         }
                         rows={1}
                         disabled={!activeChannelId}
+                        style={msnTheme ? messageFontStyle(messageFont) : undefined}
                       />
+                      <button
+                        type="button"
+                        className={`composer-emoji-btn composer-format-btn ${formatOpen ? "active" : ""}`}
+                        onClick={() => {
+                          setFormatOpen((open) => !open);
+                          setEmojiOpen(false);
+                          setGifOpen(false);
+                        }}
+                        aria-label="Text formatting"
+                        title="Colours, fonts and effects"
+                        aria-expanded={formatOpen}
+                      >
+                        <Type size={18} />
+                      </button>
                       <button
                         type="button"
                         className="composer-emoji-btn"
                         onClick={() => {
                           setEmojiOpen((open) => !open);
                           setGifOpen(false);
+                          setFormatOpen(false);
                         }}
                         aria-label="Open Emoji Picker"
                         title="Open Emoji Picker"
@@ -9065,6 +9858,22 @@ export function ChatShell() {
                         title="Create a Poll"
                       >
                         <Vote size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`composer-emoji-btn composer-games-btn ${gamesOpen ? "active" : ""}`}
+                        onClick={() => {
+                          setGamesOpen((open) => !open);
+                          setEmojiOpen(false);
+                          setGifOpen(false);
+                          setFormatOpen(false);
+                        }}
+                        aria-label="Games"
+                        title="Play a game"
+                        aria-expanded={gamesOpen}
+                        disabled={!activeChannelId}
+                      >
+                        <Gamepad2 size={18} />
                       </button>
                       <button
                         type="button"
@@ -9139,6 +9948,7 @@ export function ChatShell() {
                       }
                 }
                 me={user ? { ...user, name: user.displayName } : null}
+                onChangeMine={() => setPictureOpen(true)}
               />
             )}
           </>
@@ -9583,27 +10393,52 @@ export function ChatShell() {
           </div>
         </div>
 
-        <div
-          className={`member-panel-title online-title ${msnTheme && collapsedGroups.online ? "msn-collapsed" : ""}`}
-          role={msnTheme ? "button" : undefined}
-          tabIndex={msnTheme ? 0 : undefined}
-          aria-expanded={msnTheme ? !collapsedGroups.online : undefined}
-          onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, online: !g.online }))}
-          onKeyDown={(event) => {
-            if (msnTheme && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              setCollapsedGroups((g) => ({ ...g, online: !g.online }));
-            }
-          }}
-        >
-          <span>{msnTheme ? `Online (${onlineMembers.length})` : `ONLINE — ${onlineMembers.length}`}</span>
-        </div>
-        {!(msnTheme && collapsedGroups.online) && onlineMembers.map((member) => (
+        {(() => {
+          // One row per contact; Online and Not Online share it, and so do
+          // the MSN theme's own groups.
+          const row = (member: Member, offline: boolean) =>
+            offline ? (
+          <div
+            className="member offline-member clickable-name"
+            key={member.id}
+            {...userMenuHandlers(member)}
+            onClick={() => openProfile(member)}
+              onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
+              onMouseLeave={() => msnTheme && queueHoverCard(null)}
+          >
+            <Avatar
+              className="member-avatar"
+              avatar={member.avatar}
+              avatarUrl={member.avatarUrl}
+              color={member.color}
+            />
+            <div>
+              <div className="member-name-line">
+                <strong style={{ color: roleColorFor(member) || undefined }}>
+                  <StyledText text={member.displayName} />
+                </strong>
+                <PrideBadges badges={member.prideBadges} mini />
+                {activeUntil(member.timeoutUntil) && (
+                  <span
+                    className="member-timeout-icon"
+                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
+                    aria-label="Timed out"
+                  >
+                    <Timer size={12} />
+                  </span>
+                )}
+              </div>
+              <span>Away</span>
+            </div>
+          </div>
+            ) : (
           <div
             className="member clickable-name"
             key={member.id}
             {...userMenuHandlers(member)}
             onClick={() => openProfile(member)}
+              onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
+              onMouseLeave={() => msnTheme && queueHoverCard(null)}
           >
             <Avatar
               className="member-avatar"
@@ -9631,7 +10466,7 @@ export function ChatShell() {
             <div>
               <div className="member-name-line">
                 <strong style={{ color: roleColorFor(member) || undefined }}>
-                  {member.displayName}
+                  <StyledText text={member.displayName} />
                 </strong>
                 <PrideBadges badges={member.prideBadges} mini />
                 {activeUntil(member.timeoutUntil) && (
@@ -9645,7 +10480,7 @@ export function ChatShell() {
                 )}
               </div>
               <span>
-                {(member.id === user.id ? myCustomStatus : member.customStatus) ||
+                <StyledText text={(member.id === user.id ? myCustomStatus : member.customStatus) ||
                   (member.id === user.id
                     ? "Here now"
                     : prefFor(member.id).muted
@@ -9656,60 +10491,94 @@ export function ChatShell() {
                           (presenceOf(member) === "offline"
                             ? "invisible"
                             : presenceOf(member)) as PresenceStatus
-                        ].label)}
+                        ].label)} />
               </span>
             </div>
           </div>
-        ))}
-
-        <div
-          className={`member-panel-title offline-title ${msnTheme && collapsedGroups.offline ? "msn-collapsed" : ""}`}
-          role={msnTheme ? "button" : undefined}
-          tabIndex={msnTheme ? 0 : undefined}
-          aria-expanded={msnTheme ? !collapsedGroups.offline : undefined}
-          onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, offline: !g.offline }))}
-          onKeyDown={(event) => {
-            if (msnTheme && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              setCollapsedGroups((g) => ({ ...g, offline: !g.offline }));
-            }
-          }}
-        >
-          <span>{msnTheme ? `Not Online (${offlineMembers.length})` : `OFFLINE — ${offlineMembers.length}`}</span>
-        </div>
-        {!(msnTheme && collapsedGroups.offline) && offlineMembers.map((member) => (
-          <div
-            className="member offline-member clickable-name"
-            key={member.id}
-            {...userMenuHandlers(member)}
-            onClick={() => openProfile(member)}
-          >
-            <Avatar
-              className="member-avatar"
-              avatar={member.avatar}
-              avatarUrl={member.avatarUrl}
-              color={member.color}
-            />
-            <div>
-              <div className="member-name-line">
-                <strong style={{ color: roleColorFor(member) || undefined }}>
-                  {member.displayName}
-                </strong>
-                <PrideBadges badges={member.prideBadges} mini />
-                {activeUntil(member.timeoutUntil) && (
-                  <span
-                    className="member-timeout-icon"
-                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
-                    aria-label="Timed out"
-                  >
-                    <Timer size={12} />
-                  </span>
-                )}
-              </div>
-              <span>Away</span>
+            );
+          const placement = msnTheme ? msnContacts.contacts.placement : {};
+          const groups = msnTheme ? msnContacts.contacts.groups : [];
+          const unplaced = (list: Member[]) =>
+            groups.length ? list.filter((m) => !groups.some((g) => g.id === placement[m.id])) : list;
+          const looseOnline = unplaced(onlineMembers);
+          const looseOffline = unplaced(offlineMembers);
+          const header = (key: string, label: string, extraClass: string, tools?: ReactNode) => (
+            <div
+              className={`member-panel-title ${extraClass} ${msnTheme && collapsedGroups[key] ? "msn-collapsed" : ""}`}
+              role={msnTheme ? "button" : undefined}
+              tabIndex={msnTheme ? 0 : undefined}
+              aria-expanded={msnTheme ? !collapsedGroups[key] : undefined}
+              onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, [key]: !g[key] }))}
+              onKeyDown={(event) => {
+                if (msnTheme && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  setCollapsedGroups((g) => ({ ...g, [key]: !g[key] }));
+                }
+              }}
+            >
+              <span>{label}</span>
+              {tools}
             </div>
-          </div>
-        ))}
+          );
+          return (
+            <>
+              {groups.map((group) => {
+                const inGroupOnline = onlineMembers.filter((m) => placement[m.id] === group.id);
+                const inGroupOffline = offlineMembers.filter((m) => placement[m.id] === group.id);
+                return (
+                  <div key={group.id} className="msn-contact-group">
+                    {header(
+                      `group:${group.id}`,
+                      `${group.name} (${inGroupOnline.length}/${inGroupOnline.length + inGroupOffline.length})`,
+                      "msn-group-title",
+                      <span className="msn-group-tools" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" title="Rename group" onClick={() => renameContactGroup(group.id)}>
+                          ✎
+                        </button>
+                        <button type="button" title="Delete group" onClick={() => deleteContactGroup(group.id)}>
+                          ×
+                        </button>
+                      </span>,
+                    )}
+                    {!collapsedGroups[`group:${group.id}`] && (
+                      <>
+                        {inGroupOnline.map((member) => row(member, false))}
+                        {inGroupOffline.map((member) => row(member, true))}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              {header(
+                "online",
+                msnTheme ? `Online (${looseOnline.length})` : `ONLINE — ${looseOnline.length}`,
+                "online-title",
+              )}
+              {!(msnTheme && collapsedGroups.online) && looseOnline.map((member) => row(member, false))}
+              {header(
+                "offline",
+                msnTheme ? `Not Online (${looseOffline.length})` : `OFFLINE — ${looseOffline.length}`,
+                "offline-title",
+              )}
+              {!(msnTheme && collapsedGroups.offline) && looseOffline.map((member) => row(member, true))}
+              {msnTheme && (
+                <button type="button" className="msn-add-group" onClick={() => createContactGroup()}>
+                  + Create a group
+                </button>
+              )}
+            </>
+          );
+        })()}
+        {msnTheme && (
+          <MsnWhatsNew
+            feed={whatsNew.feed}
+            onClear={whatsNew.clear}
+            onOpen={(id) => {
+              const person = whatsNewPeople.find((p) => p.id === id);
+              if (person) openProfile(person);
+            }}
+          />
+        )}
         {msnTheme && <MsnAdBanner onClick={() => setGlobalSearchOpen(true)} />}
       </aside>
 
@@ -9783,6 +10652,66 @@ export function ChatShell() {
         <UserMenu
           target={userMenu}
           isSelf={userMenu.member.id === user.id}
+          extra={
+            msnTheme && userMenu.member.id !== user.id ? (
+              <div className="msn-menu-extra">
+                <div className="user-menu-divider" />
+                <p className="user-menu-note">Contact group</p>
+                {msnContacts.contacts.groups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={msnContacts.contacts.placement[userMenu.member.id] === group.id}
+                    className={msnContacts.contacts.placement[userMenu.member.id] === group.id ? "active" : ""}
+                    onClick={() => {
+                      placeContact(userMenu.member.id, group.id);
+                      setUserMenu(null);
+                    }}
+                  >
+                    {msnContacts.contacts.placement[userMenu.member.id] === group.id ? "✓ " : ""}
+                    {group.name}
+                  </button>
+                ))}
+                {msnContacts.contacts.placement[userMenu.member.id] && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      placeContact(userMenu.member.id, null);
+                      setUserMenu(null);
+                    }}
+                  >
+                    Remove from group
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const id = userMenu.member.id;
+                    setUserMenu(null);
+                    createContactGroup(id);
+                  }}
+                >
+                  New group…
+                </button>
+                <div className="user-menu-divider" />
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={!msnContacts.contacts.quiet.includes(userMenu.member.id)}
+                  onClick={() => {
+                    toggleSignInAlert(userMenu.member.id);
+                    setUserMenu(null);
+                  }}
+                >
+                  {msnContacts.contacts.quiet.includes(userMenu.member.id) ? "" : "✓ "}
+                  Alert me when they sign in
+                </button>
+              </div>
+            ) : undefined
+          }
           isOwner={Boolean(user.isAdmin)}
           onToggleInvitePermission={
             user.isAdmin && !userMenu.member.isAdmin && userMenu.member.id !== user.id

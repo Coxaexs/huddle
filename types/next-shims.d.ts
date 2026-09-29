@@ -27,3 +27,7 @@ declare module "next/headers" {
     get(name: string): { name: string; value: string } | undefined;
   }>;
 }
+
+declare module "next/navigation" {
+  export function notFound(): never;
+}

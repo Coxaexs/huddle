@@ -2,10 +2,23 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {
   themeColor: "#7b63e6",
+  width: "device-width",
+  initialScale: 1,
+  // Stops iOS zooming in whenever a text box gets focus (it does that for
+  // inputs under 16px) and then staying zoomed.
+  maximumScale: 1,
+  // Lets the page reach under the notch/status bar so env(safe-area-inset-*)
+  // reports real values; the layout pads itself (see globals.css).
+  viewportFit: "cover",
 };
+
+const LANDING_TITLE = "Hoffle: the free, open-source Discord alternative";
+const LANDING_DESCRIPTION =
+  "Voice chat, 1080p screen sharing with sound, music together and D&D tools for your friends. Free, open source, no Nitro. Browser, desktop or self-hosted.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -17,64 +30,54 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ||
     (host.startsWith("localhost") ? "http" : "https");
 
-  const baseUrl = `${protocol}://${host}`;
-  const isProd = host.includes("hoffle.online") || host.includes("hoffle.com");
-  const canonicalUrl = isProd ? "https://hoffle.online" : baseUrl;
+  const icons = {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  };
 
+  // Chat instances (chat.hoffle.online, deeppixel.online/hangout, anyone's
+  // self-hosted server) are login screens; keep them out of search results so
+  // they don't compete with the landing page or expose private servers.
+  if (!isLandingHost(host)) {
+    return {
+      metadataBase: new URL(`${protocol}://${host}`),
+      title: { default: "Hoffle", template: "%s · Hoffle" },
+      description: "Voice and chat for your friends.",
+      icons,
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const site = "https://hoffle.online";
   return {
-    metadataBase: new URL(baseUrl),
-    title: {
-      default: "Hoffle · Open-Source Discord Alternative",
-      template: "%s · Hoffle",
-    },
-    description:
-      "An open-source, self-hostable Discord alternative for your favorite communities. Enjoy crystal-clear WebRTC voice, 1080p60 screen sharing, synchronized music bots, and total privacy.",
-    keywords: [
-      "Hoffle",
-      "Discord alternative",
-      "open source discord",
-      "self hosted chat",
-      "voice chat",
-      "WebRTC voice chat",
-      "screen share",
-      "music bot",
-      "gaming voice channels",
-      "free discord alternative",
-      "private community chat",
-    ],
-    authors: [{ name: "Hoffle", url: "https://hoffle.online" }],
-    creator: "Hoffle",
-    publisher: "Hoffle",
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    icons: {
-      icon: "/favicon.svg",
-      shortcut: "/favicon.svg",
-      apple: "/favicon.svg",
-    },
+    metadataBase: new URL(site),
+    title: LANDING_TITLE,
+    description: LANDING_DESCRIPTION,
+    authors: [{ name: "coxaexs", url: "https://github.com/Coxaexs" }],
+    // www.hoffle.online and hoffle.com serve the same page; this is the one to index.
+    alternates: { canonical: `${site}/` },
+    icons,
     openGraph: {
-      title: "Hoffle · Open-Source Discord Alternative",
-      description:
-        "An open-source, self-hostable Discord alternative for your favorite communities. High-fidelity voice, screen share, and zero subscriptions.",
-      url: canonicalUrl,
+      title: LANDING_TITLE,
+      description: LANDING_DESCRIPTION,
+      url: `${site}/`,
       siteName: "Hoffle",
       locale: "en_US",
       type: "website",
       images: [
         {
           url: "/og.png",
-          width: 1730,
-          height: 909,
-          alt: "Hoffle - Open Source Discord Alternative",
+          width: 1200,
+          height: 630,
+          alt: "Hoffle in its Cozy and MSN Messenger themes",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Hoffle · Open-Source Discord Alternative",
-      description:
-        "An open-source, self-hostable Discord alternative for your favorite communities.",
+      title: LANDING_TITLE,
+      description: LANDING_DESCRIPTION,
       images: ["/og.png"],
     },
     robots: {
@@ -97,37 +100,11 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Hoffle",
-  applicationCategory: "CommunicationApplication",
-  operatingSystem: "Web, Windows, macOS, Linux, iOS, Android",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
-  description:
-    "An open-source, self-hostable Discord alternative for your favorite communities with high-fidelity voice, screen share, and zero subscriptions.",
-  url: "https://hoffle.online",
-  image: "https://hoffle.online/og.png",
-  author: {
-    "@type": "Organization",
-    name: "Hoffle",
-    url: "https://hoffle.online",
-  },
-};
-
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
         <link rel="manifest" href="/hangout/manifest.json" />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
       </head>
       <body>{children}</body>
     </html>

@@ -89,7 +89,6 @@ export function MusicSettingsCard({
     }
   }
 
-  const blend = settings.automix_blend_seconds || 8;
   const crossfade = settings.crossfade_seconds || 0;
   const filter = settings.audio_filter || "off";
 
@@ -118,7 +117,7 @@ export function MusicSettingsCard({
         />
         <Toggle
           label="AutoMix DJ"
-          hint="Seamless track blending"
+          hint="Spotify-style auto transitions"
           enabled={Boolean(settings.automix)}
           onClick={() => void apply(`/automix ${settings.automix ? "off" : "on"}`)}
         />
@@ -142,24 +141,6 @@ export function MusicSettingsCard({
 
       <div className="music-card-section-label">Mix & Transition Timings</div>
       <div className="music-slider-grid">
-        <label>
-          <span>AutoMix blend <b>{blend}s</b></span>
-          <input
-            type="range"
-            min={4}
-            max={15}
-            value={blend}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                automix_blend_seconds: Number(event.target.value),
-              }))
-            }
-            onPointerUp={(event) =>
-              void apply(`/automixblend ${(event.target as HTMLInputElement).value}`)
-            }
-          />
-        </label>
         <label>
           <span>Crossfade <b>{crossfade}s</b></span>
           <input

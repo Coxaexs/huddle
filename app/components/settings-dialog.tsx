@@ -18,6 +18,7 @@ import type { RelayStatus } from "../hooks/use-voice";
 import { headTrackingHint } from "./table-audio-menu";
 import {
   BUILTIN_THEMES,
+  findThemeById,
   type Theme,
   type ThemeColors,
   applyThemeToDocument,
@@ -311,6 +312,8 @@ interface Invite {
   revoked: boolean;
   spent: boolean;
   note: string;
+  defaultTheme?: string | null;
+  defaultServerId?: string | null;
 }
 
 interface SettingsDialogProps {
@@ -1103,12 +1106,26 @@ export function SettingsDialog({
     }
   }
 
+  const [inviteTheme, setInviteTheme] = useState("");
+  const [inviteServer, setInviteServer] = useState("");
+  const [inviteServers, setInviteServers] = useState<PublicServer[]>([]);
+  useEffect(() => {
+    if (tab !== "invites") return;
+    apiFetch<{ servers: PublicServer[] }>("/api/servers")
+      .then((data) => setInviteServers(data.servers || []))
+      .catch(() => undefined);
+  }, [tab]);
+
   async function createInvite() {
     setError("");
     try {
       const data = await apiFetch<{ invite: Invite }>("/api/invites", {
         method: "POST",
-        body: JSON.stringify({ maxUses: 1 }),
+        body: JSON.stringify({
+          maxUses: 1,
+          defaultTheme: inviteTheme || undefined,
+          defaultServerId: inviteServer || undefined,
+        }),
       });
       setInvites((list) => [data.invite, ...list]);
     } catch (failure) {
@@ -2287,9 +2304,39 @@ export function SettingsDialog({
           {tab === "invites" && (
             <>
               <p className="modal-hint">
-                Anyone with a code can create an account here. Every member sees
-                every server automatically.
+                Anyone with a code can create an account here. Pick the theme
+                they start with and a server they join right away.
               </p>
+              <div className="invite-defaults">
+                <label>
+                  Default theme
+                  <select
+                    value={inviteTheme}
+                    onChange={(event) => setInviteTheme(event.target.value)}
+                  >
+                    <option value="">Their own choice</option>
+                    {BUILTIN_THEMES.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Default server
+                  <select
+                    value={inviteServer}
+                    onChange={(event) => setInviteServer(event.target.value)}
+                  >
+                    <option value="">None</option>
+                    {inviteServers.map((server) => (
+                      <option key={server.id} value={server.id}>
+                        {server.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <button type="button" className="primary" onClick={createInvite}>
                 Create an invite code
               </button>
@@ -2297,6 +2344,21 @@ export function SettingsDialog({
                 {invites.map((invite) => (
                   <li key={invite.code}>
                     <code>{invite.code}</code>
+                    {(invite.defaultTheme || invite.defaultServerId) && (
+                      <span className="invite-defaults-tag">
+                        {[
+                          invite.defaultTheme &&
+                            (findThemeById(invite.defaultTheme)?.name ||
+                              invite.defaultTheme),
+                          invite.defaultServerId &&
+                            (inviteServers.find(
+                              (server) => server.id === invite.defaultServerId,
+                            )?.name || invite.defaultServerId),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
                     <span>
                       {invite.revoked
                         ? "revoked"

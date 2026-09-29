@@ -86,6 +86,8 @@ export function usePlayer({
       return;
     }
 
+    // A queued placeholder has no audio until the bot resolves it.
+    if (!track.audioUrl) return;
     const audio = ensureAudio();
     if (trackIdRef.current !== track.id) {
       trackIdRef.current = track.id;

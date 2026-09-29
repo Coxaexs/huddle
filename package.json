@@ -26,6 +26,7 @@
     "livekit-client": "^2.22.3",
     "livekit-server-sdk": "^2.19.1",
     "lucide-react": "^1.27.0",
+    "marked": "^16.4.2",
     "node": "22.23.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",

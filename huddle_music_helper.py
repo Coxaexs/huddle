@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import shutil
+import tempfile
 from aiohttp import web
 import yt_dlp
 
@@ -17,6 +19,16 @@ YDL_OPTIONS = {
     # android/web clients hides DASH audio-only formats on modern YouTube and
     # leaves only low-quality itag 18.
 }
+
+# Age-restricted videos need a signed-in YouTube session. Point
+# YTDLP_COOKIES at a Netscape-format cookies.txt exported from a browser.
+# yt-dlp writes the jar back on exit, so work on a private copy and leave a
+# read-only mount untouched.
+_cookies_source = os.environ.get("YTDLP_COOKIES", "").strip()
+if _cookies_source and os.path.isfile(_cookies_source):
+    _cookies_copy = os.path.join(tempfile.mkdtemp(prefix="ytdlp-"), "cookies.txt")
+    shutil.copyfile(_cookies_source, _cookies_copy)
+    YDL_OPTIONS["cookiefile"] = _cookies_copy
 
 
 def resolve_track(query: str) -> dict:
@@ -76,7 +88,14 @@ async def resolve(request: web.Request):
         )
         return web.json_response(result)
     except Exception as error:
-        return web.json_response({"error": str(error)}, status=502)
+        message = str(error)
+        if "confirm your age" in message and "cookiefile" not in YDL_OPTIONS:
+            message = (
+                "That video is age-restricted and the music bot has no YouTube "
+                "cookies. Try another upload, or ask the server admin to set "
+                "YTDLP_COOKIES."
+            )
+        return web.json_response({"error": message}, status=502)
 
 
 app = web.Application(client_max_size=1024 * 1024)

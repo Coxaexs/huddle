@@ -8,6 +8,7 @@ import {
 import { recordAudit } from "@/lib/audit";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
+import { BUILTIN_THEMES } from "@/lib/themes";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
@@ -21,6 +22,8 @@ interface InviteRow {
   revoked: number;
   note: string | null;
   server_id: string | null;
+  default_theme: string | null;
+  default_server_id: string | null;
 }
 
 function publicInvite(invite: InviteRow) {
@@ -32,6 +35,8 @@ function publicInvite(invite: InviteRow) {
     revoked: Boolean(invite.revoked),
     note: invite.note || "",
     serverId: invite.server_id || null,
+    defaultTheme: invite.default_theme || null,
+    defaultServerId: invite.default_server_id || null,
     spent: invite.max_uses > 0 && invite.uses >= invite.max_uses,
   };
 }
@@ -59,13 +64,13 @@ export async function GET(request: Request) {
   const result = serverId
     ? await db
         .prepare(
-          "SELECT code, created_at, max_uses, uses, revoked, note, server_id FROM invites WHERE server_id = ? ORDER BY created_at DESC LIMIT 50",
+          "SELECT code, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id FROM invites WHERE server_id = ? ORDER BY created_at DESC LIMIT 50",
         )
         .bind(serverId)
         .all()
     : await db
         .prepare(
-          "SELECT code, created_at, max_uses, uses, revoked, note, server_id FROM invites WHERE server_id IS NULL ORDER BY created_at DESC LIMIT 50",
+          "SELECT code, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id FROM invites WHERE server_id IS NULL ORDER BY created_at DESC LIMIT 50",
         )
         .all();
   return Response.json({
@@ -94,6 +99,10 @@ export async function POST(request: Request) {
     note?: string;
     /** When set, redeeming the code joins the invitee to this server. */
     serverId?: string;
+    /** Account invites only: built-in theme id the new member starts with. */
+    defaultTheme?: string;
+    /** Account invites only: server the new member joins on signup. */
+    defaultServerId?: string;
   };
   const maxUses = Number.isFinite(body.maxUses)
     ? Math.max(0, Math.min(100, Math.trunc(body.maxUses as number)))
@@ -129,6 +138,28 @@ export async function POST(request: Request) {
     }
   }
 
+  let defaultTheme: string | null = null;
+  let defaultServerId: string | null = null;
+  if (!serverId) {
+    const themeId = body.defaultTheme?.trim();
+    if (themeId) {
+      if (!BUILTIN_THEMES.some((theme) => theme.id === themeId)) {
+        return Response.json({ error: "Unknown theme." }, { status: 400 });
+      }
+      defaultTheme = themeId;
+    }
+    const targetServer = body.defaultServerId?.slice(0, 64);
+    if (targetServer) {
+      if (!(await isServerMember(db, targetServer, user.id))) {
+        return Response.json(
+          { error: "You are not a member of that server." },
+          { status: 403 },
+        );
+      }
+      defaultServerId = targetServer;
+    }
+  }
+
   const invite: InviteRow = {
     code: generateInviteCode(),
     created_at: new Date().toISOString(),
@@ -137,11 +168,13 @@ export async function POST(request: Request) {
     revoked: 0,
     note: body.note?.trim().slice(0, 80) || null,
     server_id: serverId,
+    default_theme: defaultTheme,
+    default_server_id: defaultServerId,
   };
 
   await db
     .prepare(
-      "INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id) VALUES (?, ?, ?, ?, 0, 0, ?, ?)",
+      "INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
     )
     .bind(
       invite.code,
@@ -150,6 +183,8 @@ export async function POST(request: Request) {
       invite.max_uses,
       invite.note,
       invite.server_id,
+      invite.default_theme,
+      invite.default_server_id,
     )
     .run();
 

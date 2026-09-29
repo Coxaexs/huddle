@@ -133,9 +133,15 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     let retry: number | undefined;
     let heartbeat: number | undefined;
     let attempt = 0;
+    /** When anything last arrived, and when the oldest unanswered ping left. */
+    let lastMessageAt = 0;
+    let pingSentAt = 0;
+    let probe: number | undefined;
 
     const connect = () => {
       if (disposed) return;
+      window.clearTimeout(retry);
+      window.clearTimeout(probe);
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(
         `${protocol}//${window.location.host}${basePath}/api/realtime`,
@@ -144,14 +150,23 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
 
       socket.onopen = () => {
         attempt = 0;
+        lastMessageAt = Date.now();
+        pingSentAt = 0;
         setState((current) => ({ ...current, connected: true }));
-        heartbeat = window.setInterval(
-          () => send({ t: "ping" }),
-          25_000,
-        );
+        heartbeat = window.setInterval(() => {
+          // A ping that went a whole beat without any reply means the socket
+          // is half-open (a phone that slept, a network that changed under
+          // it): readyState still says OPEN, but nothing will ever arrive.
+          if (pingSentAt && lastMessageAt < pingSentAt) {
+            restart();
+            return;
+          }
+          if (send({ t: "ping" })) pingSentAt = Date.now();
+        }, 25_000);
       };
 
       socket.onmessage = (event) => {
+        lastMessageAt = Date.now();
         let payload: ServerEvent;
         try {
           payload = JSON.parse(event.data as string) as ServerEvent;
@@ -358,11 +373,61 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       socket.onerror = () => socket.close();
     };
 
+    /**
+     * Drop the current socket and dial again right now. Closing a dead socket
+     * can take minutes to report back through onclose, so detach it first
+     * rather than waiting for that.
+     */
+    const restart = () => {
+      const socket = socketRef.current;
+      if (socket) {
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
+        socket.close();
+      }
+      window.clearInterval(heartbeat);
+      setState((current) => ({ ...current, connected: false }));
+      attempt = 0;
+      connect();
+    };
+
+    /**
+     * Coming back to the page (switching back from another app on a phone,
+     * reopening a laptop, the network returning) is exactly when the socket is
+     * most likely dead. Skip the backoff, and check a socket that claims to be
+     * open with a ping it has a few seconds to answer. The voice seat hangs
+     * off this connection, so every second here is a second out of the call.
+     */
+    const wake = () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      const socket = socketRef.current;
+      if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+        restart();
+        return;
+      }
+      if (socket.readyState !== WebSocket.OPEN) return;
+      const sentAt = Date.now();
+      if (!send({ t: "ping" })) return;
+      window.clearTimeout(probe);
+      probe = window.setTimeout(() => {
+        if (socketRef.current === socket && lastMessageAt < sentAt) restart();
+      }, 4000);
+    };
+
     connect();
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("pageshow", wake);
+    window.addEventListener("online", wake);
 
     return () => {
       disposed = true;
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("pageshow", wake);
+      window.removeEventListener("online", wake);
       window.clearTimeout(retry);
+      window.clearTimeout(probe);
       window.clearInterval(heartbeat);
       socketRef.current?.close();
       socketRef.current = null;

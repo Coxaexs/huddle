@@ -434,6 +434,28 @@ async function migrate(db: D1Database): Promise<void> {
     ),
     // One shared activity surface per voice room. Each activity owns a bounded
     // JSON state; the optional secret keeps Draw & Guess prompts off viewers.
+    // Conversation games (lib/games.ts): the public state rides in the
+    // message payload; what players mustn't see yet (mines, hidden throws)
+    // stays here, keyed by the game's message.
+    // MSN contact list extras, one JSON blob per user: custom groups, who is
+    // in which, and whose sign-ins shouldn't pop a toast (lib/msn-contacts.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS msn_contacts (
+        user_id TEXT PRIMARY KEY,
+        data TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL
+      )`),
+    // Personal emoticons: a picture you type with your own shortcut, "(cat)".
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_emoticons (
+        user_id TEXT NOT NULL,
+        shortcut TEXT NOT NULL,
+        upload_key TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, shortcut)
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS conversation_games (
+        message_id TEXT PRIMARY KEY,
+        secret TEXT NOT NULL DEFAULT '{}'
+      )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS room_activities (
         channel_id TEXT PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -834,6 +856,13 @@ async function migrate(db: D1Database): Promise<void> {
   const inviteColumns = await columnNames(db, "invites");
   if (!inviteColumns.has("server_id")) {
     await db.prepare("ALTER TABLE invites ADD COLUMN server_id TEXT").run();
+  }
+  // Account invites can pick the new member's starting theme and server.
+  if (!inviteColumns.has("default_theme")) {
+    await db.prepare("ALTER TABLE invites ADD COLUMN default_theme TEXT").run();
+  }
+  if (!inviteColumns.has("default_server_id")) {
+    await db.prepare("ALTER TABLE invites ADD COLUMN default_server_id TEXT").run();
   }
 
   const memberColumns = await columnNames(db, "server_members");

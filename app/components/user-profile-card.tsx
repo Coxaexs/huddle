@@ -25,6 +25,8 @@ import type { PublicRole } from "@/lib/servers";
 import { PrideBadges } from "./pride-badges";
 import { apiFetch } from "../lib/client";
 import { scopeProfileCss } from "@/lib/themes";
+import { StyledText } from "./message-body";
+import { stripTextStyle } from "@/lib/text-style";
 
 export type FriendRelationshipStatus = "none" | "friend" | "incoming" | "outgoing";
 
@@ -351,16 +353,16 @@ export function UserProfileCard({
         </div>
 
         {member.customStatus && (
-          <div className="profile-status-bubble" title={member.customStatus}>
+          <div className="profile-status-bubble" title={stripTextStyle(member.customStatus)}>
             <span className="profile-status-bubble-tail" />
-            <span className="profile-status-bubble-text">{member.customStatus}</span>
+            <span className="profile-status-bubble-text"><StyledText text={member.customStatus} /></span>
           </div>
         )}
       </div>
 
       <div className="profile-card-body">
         <div className="profile-card-header">
-          <h2 className="profile-display-name">{member.displayName}</h2>
+          <h2 className="profile-display-name"><StyledText text={member.displayName} /></h2>
           <div className="profile-identity-sub">
             {member.nickname && member.globalName && member.globalName !== member.nickname && (
               <span className="profile-global-name" title="Account display name">

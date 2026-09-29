@@ -25,6 +25,10 @@ state/
 # Local agent settings
 .claude/
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Examples are safe to commit
 !.env.example
 

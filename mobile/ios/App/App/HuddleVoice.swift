@@ -61,7 +61,7 @@ public class HuddleVoicePlugin: CAPPlugin, CAPBridgedPlugin, CXProviderDelegate 
         let name = call.getString("channelName") ?? "Voice"
         muted = call.getBool("muted") ?? false
         try? AVAudioSession.sharedInstance().setCategory(
-            .playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+            .playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
         guard useCallKit else {
             call.resolve()
             return

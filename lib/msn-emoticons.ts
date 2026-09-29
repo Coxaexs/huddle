@@ -79,3 +79,15 @@ export function convertMsnEmoticons(text: string): string {
     return emoji ? lead + emoji : whole;
   });
 }
+
+/**
+ * The emoticon menu's grid: each picture once, with the first shortcut that
+ * types it (so hovering teaches `(Y)` for 👍, as Messenger's tooltips did).
+ */
+export const MSN_EMOTICON_MENU: ReadonlyArray<{ emoji: string; shortcut: string }> = (() => {
+  const seen = new Map<string, string>();
+  for (const [shortcut, emoji] of Object.entries(EMOTICONS)) {
+    if (!seen.has(emoji)) seen.set(emoji, shortcut);
+  }
+  return [...seen].map(([emoji, shortcut]) => ({ emoji, shortcut }));
+})();

@@ -176,6 +176,9 @@ function createWindow() {
       nodeIntegration: false,
       spellcheck: true,
       preload: path.join(__dirname, "notify-preload.js"),
+      // A voice app keeps working while you are in a game: don't throttle the
+      // page when the window is minimised, hidden to the tray or behind others.
+      backgroundThrottling: false,
     },
   });
 

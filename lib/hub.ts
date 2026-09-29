@@ -933,6 +933,48 @@ export class HuddleHub extends DurableObject {
         });
         break;
       }
+      case "enqueueMany": {
+        const tracks = action.tracks.slice(0, 500);
+        if (!tracks.length) break;
+        if (action.startNow || !state.track) {
+          if (action.startNow) {
+            if (state.track) {
+              state.history = [state.track, ...(state.history || [])].slice(0, 25);
+            }
+            state.queue = [];
+          }
+          state.track = tracks[0];
+          state.positionMs = 0;
+          state.updatedAt = now;
+          state.paused = false;
+          state.queue.push(...tracks.slice(1));
+        } else {
+          state.queue.push(...tracks);
+        }
+        break;
+      }
+      case "mixAdvance":
+        // Ignore a late marker once someone has already skipped ahead.
+        if (state.track?.id !== action.fromTrackId || !state.queue.length) break;
+        this.advance(state, now);
+        state.positionMs = Math.max(0, Math.round(action.positionMs));
+        break;
+      case "resolve": {
+        const { id: _id, ...patch } = action.track;
+        if (state.track?.id === action.trackId) {
+          const wasPending = !state.track.audioUrl;
+          state.track = { ...state.track, ...patch };
+          // A placeholder starts from the top once its audio exists.
+          if (wasPending && state.track.audioUrl) {
+            state.positionMs = 0;
+            state.updatedAt = now;
+          }
+        } else {
+          const index = state.queue.findIndex((t) => t.id === action.trackId);
+          if (index >= 0) state.queue[index] = { ...state.queue[index], ...patch };
+        }
+        break;
+      }
       case "enqueue":
         if (!state.track) {
           state.track = action.track;

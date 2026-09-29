@@ -72,17 +72,23 @@ export function personalTableLayout(
   return seats;
 }
 
+/** Personal volume can boost a quiet voice up to twice its level (+6 dB). */
+export const MAX_VOLUME = 2;
+
 export interface PlaybackInput {
   key: string;
   stream: MediaStream;
-  volume: number;
+  volume: number; // 0..MAX_VOLUME; above 1 needs Web Audio, since media elements stop at 1.
   muted: boolean;
   important?: boolean;
   pan: number | null; // null: music, screen share, or unknown stream
   seat?: Vector | null; // Head-tracked seating; absent falls back to stereo panning.
 }
-/** Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking. */
-type Mode = "stereo" | "hrtf";
+/**
+ * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
+ * "boost" is an unpanned gain for a stream turned up past what an <audio> element can play.
+ */
+type Mode = "stereo" | "hrtf" | "boost";
 type Entry = {
   input: PlaybackInput;
   element: HTMLAudioElement;
@@ -153,6 +159,10 @@ export class SpatialAudioPlayback {
     window.addEventListener("pointerdown", this.resume);
     window.addEventListener("keydown", this.resume);
     window.addEventListener("huddle-speaker-change", this.changeSink);
+    // A phone suspends the context while the browser is in the background.
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.resumeWhenVisible);
+    }
   }
 
   /**
@@ -212,6 +222,9 @@ export class SpatialAudioPlayback {
   private resume = () => {
     if (this.needsContext) void this.context?.resume().catch(() => undefined);
   };
+  private resumeWhenVisible = () => {
+    if (document.visibilityState === "visible") this.resume();
+  };
   private changeSink = () => { void this.configureSink(); };
   private async configureSink() {
     const context = this.context;
@@ -230,7 +243,7 @@ export class SpatialAudioPlayback {
 
   update(inputs: PlaybackInput[], enabled: boolean) {
     this.enabled = enabled;
-    this.needsContext = enabled || inputs.some((input) => input.important && input.pan !== null);
+    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || input.volume > 1);
     if (this.needsContext && !this.context) {
       try {
         this.context = new AudioContext({ latencyHint: "interactive" });
@@ -272,8 +285,8 @@ export class SpatialAudioPlayback {
     const { input } = entry;
     const context = this.context;
     if (!context) return;
-    if (!(this.enabled || input.important) || input.pan === null) return;
-    const wanted = this.mode();
+    const wanted = this.spatialFor(input) ? this.mode() : input.volume > 1 ? "boost" : undefined;
+    if (!wanted) return;
     if (entry.mode === wanted) return;
     if (entry.mode) this.detach(entry);
     let source: MediaStreamAudioSourceNode | undefined;
@@ -283,7 +296,8 @@ export class SpatialAudioPlayback {
     try {
       // The stream's source node survives a mode change; only the panner is swapped.
       source = entry.source ?? context.createMediaStreamSource(input.stream);
-      if (typeof context.createDynamicsCompressor === "function") {
+      // A boost plays the stream as it would natively, only louder: no levelling or panning.
+      if (wanted !== "boost" && typeof context.createDynamicsCompressor === "function") {
         // Gentle levelling so a quiet mic and a loud one sit at the same table.
         leveler = context.createDynamicsCompressor();
         leveler.threshold.value = -26;
@@ -301,12 +315,13 @@ export class SpatialAudioPlayback {
         // Every seat sits at one radius, so distance only ever colours the mix.
         spatial.rolloffFactor = 0.4;
         panner = spatial;
-      } else {
+      } else if (wanted === "stereo") {
         panner = context.createStereoPanner();
       }
       gain = context.createGain();
       gain.gain.value = 0;
-      (leveler ? source.connect(leveler) : source).connect(panner).connect(gain).connect(context.destination);
+      const levelled = leveler ? source.connect(leveler) : source;
+      (panner ? levelled.connect(panner) : levelled).connect(gain).connect(context.destination);
       if (wanted === "hrtf") {
         const room = this.roomInput(context);
         if (room) gain.connect(room);
@@ -368,20 +383,28 @@ export class SpatialAudioPlayback {
     }
   }
 
+  private spatialFor(input: PlaybackInput): boolean {
+    return (this.enabled || !!input.important) && input.pan !== null;
+  }
+
   private refresh() {
     if (this.disposed) return;
+    const live = this.sinkReady && this.context?.state === "running";
     for (const entry of this.entries.values()) {
       const { input, element, panner, gain } = entry;
-      const spatial = (this.enabled || !!input.important) && input.pan !== null && !!panner && this.sinkReady && this.context?.state === "running";
-      const volume = Math.max(0, Math.min(1, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1);
+      const spatial = this.spatialFor(input);
+      // Web Audio carries the stream when it is spatial or boosted; otherwise the element does.
+      const routed = live && !!gain && (spatial ? !!panner : input.volume > 1 && entry.mode === "boost");
+      const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1);
       element.volume = Math.min(1, volume);
-      element.muted = input.muted || spatial;
-      if (gain && panner && this.context) {
+      element.muted = input.muted || routed;
+      if (gain && this.context) {
         const now = this.context.currentTime;
         // Mute/bypass is immediate; volume and position changes glide.
         holdParameter(gain.gain, now);
-        if (spatial && !input.muted) gain.gain.setTargetAtTime(volume, now, 0.025);
+        if (routed && !input.muted) gain.gain.setTargetAtTime(volume, now, 0.025);
         else { gain.gain.cancelScheduledValues(now); gain.gain.value = 0; }
+        if (!panner) continue;
         if (entry.mode === "hrtf") {
           this.seat(entry, now);
         } else {
@@ -422,6 +445,9 @@ export class SpatialAudioPlayback {
     window.removeEventListener("pointerdown", this.resume);
     window.removeEventListener("keydown", this.resume);
     window.removeEventListener("huddle-speaker-change", this.changeSink);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.resumeWhenVisible);
+    }
     for (const entry of this.entries.values()) this.remove(entry);
     this.entries.clear();
     this.room?.disconnect();

@@ -28,6 +28,8 @@ import {
   X,
   EyeOff,
   Eye,
+  ChevronUp as PeopleUp,
+  ChevronDown as PeopleDown,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
 import {
@@ -277,6 +279,16 @@ export function VoiceStage({
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
+  // The MSN Games menu opens this panel from the chat side.
+  useEffect(() => {
+    const open = () => setActivitiesOpen(true);
+    window.addEventListener("huddle:open-activities", open);
+    return () => window.removeEventListener("huddle:open-activities", open);
+  }, []);
+  // A running activity takes over the stage like a Discord Activity; the
+  // people grid folds away behind a pill above the call controls.
+  const activityTakeover = activitiesOpen && Boolean(activity);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const [cameraBgMenuOpen, setCameraBgMenuOpen] = useState(false);
   const [cameraTab, setCameraTab] = useState<"blur" | "images" | "fx">("blur");
@@ -480,7 +492,13 @@ export function VoiceStage({
   }
 
   return (
-    <div className="voice-stage">
+    <div
+      className={`voice-stage${activityTakeover ? " activity-takeover" : ""}${
+        activityTakeover && activity?.kind === "deeppixel" ? " takeover-dark" : ""
+      }${
+        activityTakeover && peopleOpen ? " show-people" : ""
+      }`}
+    >
       {tableMenuOpen && <TableAudioMenu participants={participants} listenerId={connectionId} controls={voice} onClose={() => setTableMenuOpen(false)} />}
       {recording}
       {battlemap}
@@ -869,6 +887,20 @@ export function VoiceStage({
           channelId={voice.channelId}
           canManage={canManageSounds}
         />
+      )}
+
+      {activityTakeover && (
+        <button
+          type="button"
+          className="activity-people-pill"
+          onClick={() => setPeopleOpen((open) => !open)}
+          aria-expanded={peopleOpen}
+          aria-label={peopleOpen ? "Hide people" : "Show people in the call"}
+        >
+          {peopleOpen ? <PeopleDown size={14} /> : <PeopleUp size={14} />}
+          <Users size={15} />
+          <span>{participants.length}</span>
+        </button>
       )}
 
       <div className="voice-stage-bottom-bar">

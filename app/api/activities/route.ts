@@ -216,6 +216,14 @@ function cleanState(
       running: Boolean(input.running),
     };
   }
+  if (kind === "deeppixel") {
+    const gameId = String(input.gameId || "").toUpperCase();
+    return {
+      gameId: /^[A-Z0-9]{4,8}$/.test(gameId)
+        ? gameId
+        : crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase(),
+    };
+  }
   if (kind === "initiative") {
     const round = Math.max(0, Math.min(9999, Number(input.round) || 1));
     const turnIndex = Math.max(
