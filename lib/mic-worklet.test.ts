@@ -24,6 +24,7 @@ interface Telemetry {
 }
 
 interface Settings {
+  initialGainDb?: number;
   mode?: string;
   gainDb?: number;
   autoGain?: boolean;
@@ -79,8 +80,11 @@ function render(
 ) {
   const processor = new Processor({ processorOptions: settings });
   let latest: Telemetry | null = null;
+  const history: Telemetry[] = [];
   processor.port.postMessage = (message: { type: string } & Telemetry) => {
-    if (message.type === "telemetry") latest = message;
+    if (message.type !== "telemetry") return;
+    latest = message;
+    history.push(message);
   };
   if (rnnoise) processor.handleMessage({ type: "wasm", bytes: rnnoiseBytes });
 
@@ -107,6 +111,8 @@ function render(
     rmsDb: 20 * Math.log10(Math.sqrt(energy / tail.length) + 1e-12),
     peak,
     telemetry: latest as Telemetry | null,
+    history,
+    rendered,
   };
 }
 
@@ -168,7 +174,47 @@ describe("mic worklet", () => {
 
   it("never lets a large boost clip", () => {
     const { peak } = render({ ...OFF, gainDb: 30 }, speech(0.3), { seconds: 3 });
-    expect(peak).toBeLessThanOrEqual(1);
+    // The limiter holds -1 dBFS rather than soft-clipping towards 0.
+    expect(peak).toBeLessThanOrEqual(0.892);
+  });
+
+  it("levels the speaker, not each word", () => {
+    // Words whose loudness swings ±8 dB. Chasing each one is what pumps.
+    const word = (t: number) => {
+      const index = Math.floor(t / 0.3);
+      const swing = Math.pow(10, (((index * 7919) % 17) - 8) / 20);
+      return t % 0.3 < 0.22 ? 0.05 * swing * tone(t) * Math.sin((Math.PI * (t % 0.3)) / 0.22) : 0;
+    };
+    const { history } = render({ mode: "off", autoGain: true, gate: false }, word, { seconds: 20 });
+    const settled = history.slice(history.length / 2).map((t) => t.gainDb);
+    const mean = settled.reduce((a, b) => a + b, 0) / settled.length;
+    const spread = Math.sqrt(settled.reduce((a, b) => a + (b - mean) ** 2, 0) / settled.length);
+    expect(spread).toBeLessThan(1.5);
+  });
+
+  it("starts from the gain a microphone settled on last time", () => {
+    const { history } = render(
+      { mode: "off", autoGain: true, gate: false, initialGainDb: 14 },
+      () => 0,
+      { seconds: 0.5 },
+    );
+    expect(history[0].gainDb).toBe(14);
+  });
+
+  it("opens the gate in time for the first sound of a word", () => {
+    const gated: Settings = { mode: "off", autoGain: false, gainDb: 0, gate: true, sensitivity: "auto" };
+    const onset = 2;
+    const { rendered } = render(
+      gated,
+      (t) => (t >= onset && t < onset + 0.4 ? 0.1 * Math.sin(2 * Math.PI * 150 * t) : 0),
+      { seconds: 3 },
+    );
+    // Whatever the chain's latency, the word's first 20 ms must come out whole.
+    const start = rendered.findIndex((v, i) => i > onset * SAMPLE_RATE - 10 && Math.abs(v) > 1e-3);
+    let energy = 0;
+    for (let i = start; i < start + 960; i++) energy += rendered[i] ** 2;
+    const rms = Math.sqrt(energy / 960);
+    expect(rms).toBeGreaterThan(0.9 * (0.1 / Math.SQRT2));
   });
 
   it("gates out an idle room but not a voice in it", () => {
