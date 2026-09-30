@@ -25915,3 +25915,50 @@ a.link-preview-author:hover {
   stroke-linecap: round;
   opacity: .8;
 }
+
+/* "New audio device — switch to it?" (device-switch-prompt.tsx). Styled as a
+   toast that waits for an answer, so it sits where toasts do, above them. */
+.device-prompt {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 10001;
+  display: flex;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #2b2d31;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #f2f3f5;
+  font-size: 14px;
+  line-height: 1.4;
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.device-prompt-icon {
+  flex: none;
+  color: #5865f2;
+  padding-top: 1px;
+}
+.device-prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.device-prompt-name {
+  color: #b5bac1;
+  overflow-wrap: anywhere;
+}
+.device-prompt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .device-prompt {
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}

@@ -163,6 +163,7 @@ import {
 } from "@/lib/server-folders";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer, showToast } from "./components/toast";
+import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
 import { PollCard } from "./components/poll-card";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
@@ -11668,6 +11669,11 @@ export function ChatShell() {
 
       <BlahajBuddy />
       <ToastContainer />
+      <DeviceSwitchPrompt
+        inCall={Boolean(voice.channelId)}
+        activeMicrophone={voice.activeMicrophone}
+        onMicrophoneChange={() => void voice.switchMicrophone()}
+      />
 
       {reactionPicker && (
         <div

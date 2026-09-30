@@ -63,6 +63,13 @@ const GATE_ATTACK = 0.004;
 const GATE_RELEASE = 0.12;
 const GATE_HOLD = 0.35;
 /**
+ * The hold is earned: it grows with how long the sound that opened the gate
+ * lasted (twice as long, up to GATE_HOLD). A sentence gets all of it; a gulp
+ * or a cough that fooled the detector for a few frames is let go almost at
+ * once instead of being stretched into a third of a second of open mic.
+ */
+const GATE_HOLD_PER_SPEECH = 2;
+/**
  * RNNoise's speech probability flickers around any single threshold; opening
  * high and closing lower keeps the gate from chattering on a soft word.
  */
@@ -78,6 +85,20 @@ const VAD_STAY = 0.4;
 const LIMIT = 0.891;
 const LIMIT_BLOCK = 48;
 const LIMIT_RELEASE = 0.08;
+
+/**
+ * Voice clarity: a high-pass under the voice and a gentle cut to the low end.
+ *
+ * Nothing a voice needs lives below ~90 Hz — only desk thumps, fan rumble and
+ * the pop of a "p" — and a microphone close to the mouth (every headset) adds
+ * several dB of boom around 100–200 Hz that makes a voice sound muffled and
+ * bassy on the other end. The browser's own processing does the high-pass
+ * only while echo cancellation is on, so it is done here, first, where the
+ * noise floor, the gate and auto-gain all see the cleaned-up signal.
+ */
+const HIGH_PASS_HZ = 90;
+const LOW_SHELF_HZ = 200;
+const LOW_SHELF_DB = -4;
 
 /**
  * The noise floor is the quietest frame seen recently, measured over three
@@ -125,6 +146,11 @@ class MicProcessor extends AudioWorkletProcessor {
     /** "auto", or a dBFS number the user dialled in. */
     this.sensitivity = settings.sensitivity === undefined ? "auto" : settings.sensitivity;
     this.gateEnabled = settings.gate !== false;
+    this.clarity = settings.clarity !== false;
+    this.equaliser = [
+      biquad(highPass(HIGH_PASS_HZ, sampleRate)),
+      biquad(lowShelf(LOW_SHELF_HZ, LOW_SHELF_DB, sampleRate)),
+    ];
 
     // Input accumulates until there is a whole frame; output is primed with one
     // frame of silence so the drain never runs dry. That priming, the gate's
@@ -140,6 +166,7 @@ class MicProcessor extends AudioWorkletProcessor {
     // Gate and level state.
     this.gateGain = 0;
     this.holdFrames = 0;
+    this.openFrames = 0;
     this.speaking = false;
     this.speechPower = 0;
     this.speechSeconds = 0;
@@ -165,6 +192,7 @@ class MicProcessor extends AudioWorkletProcessor {
 
     // RNNoise, once (and if) the main thread hands us a compiled module.
     this.rnnoise = null;
+    this.vadFrame = new Float32Array(FRAME);
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
     this.port.postMessage({ type: "started" });
@@ -179,6 +207,7 @@ class MicProcessor extends AudioWorkletProcessor {
       if (message.autoGain !== undefined) this.autoGain = message.autoGain;
       if (message.sensitivity !== undefined) this.sensitivity = message.sensitivity;
       if (message.gate !== undefined) this.gateEnabled = message.gate;
+      if (message.clarity !== undefined) this.clarity = message.clarity;
       // Leaving auto-gain hands control back to the slider immediately rather
       // than drifting there from wherever the AGC happened to be.
       if (message.autoGain === false) this.gainDb = this.manualGainDb;
@@ -198,10 +227,23 @@ class MicProcessor extends AudioWorkletProcessor {
 
   /** One 480-sample frame: denoise, measure, decide gain and gate. */
   processFrame(frame) {
+    // Always run, so switching it off and on again never starts from stale
+    // filter state (which clicks); only the result is optional.
+    for (const filter of this.equaliser) filter.run(frame, this.clarity);
+
     let vad = -1;
     const focus = this.mode === "voice";
-    if (this.rnnoise && (this.mode === "rnnoise" || focus)) {
-      vad = this.rnnoise.process(frame);
+    if (this.rnnoise) {
+      if (this.mode === "rnnoise" || focus) {
+        vad = this.rnnoise.process(frame);
+      } else {
+        // Listening only. The gate still needs to know speech from a swallow,
+        // a sip or a click — loudness alone cannot tell them apart, and on
+        // loudness alone they all open it — while what you send stays exactly
+        // what the chosen mode makes of it.
+        this.vadFrame.set(frame);
+        vad = this.rnnoise.process(this.vadFrame);
+      }
     }
 
     let sum = 0;
@@ -258,8 +300,17 @@ class MicProcessor extends AudioWorkletProcessor {
     } else if (this.gateEnabled) {
       open = this.sensitivity === "auto" ? speech : rmsDb > this.sensitivity;
     }
-    if (open) this.holdFrames = Math.ceil(GATE_HOLD / secondsPerFrame);
-    else if (this.holdFrames > 0) this.holdFrames -= 1;
+    if (open) {
+      this.openFrames += 1;
+      this.holdFrames = Math.min(
+        Math.ceil(GATE_HOLD / secondsPerFrame),
+        this.openFrames * GATE_HOLD_PER_SPEECH,
+      );
+    } else if (this.holdFrames > 0) {
+      this.holdFrames -= 1;
+    } else {
+      this.openFrames = 0;
+    }
     const openNow = open || this.holdFrames > 0 ? 1 : 0;
 
     // What leaves now is the frame before this one, gated by what both of them
@@ -398,6 +449,52 @@ class MicProcessor extends AudioWorkletProcessor {
 
     return true;
   }
+}
+
+/**
+ * Biquad coefficients, from the Audio EQ Cookbook (R. Bristow-Johnson), each
+ * already divided through by a0.
+ */
+function highPass(frequency, rate) {
+  const w = (2 * Math.PI * frequency) / rate;
+  const alpha = Math.sin(w) / (2 * Math.SQRT1_2);
+  const cos = Math.cos(w);
+  const a0 = 1 + alpha;
+  return [(1 + cos) / 2 / a0, -(1 + cos) / a0, (1 + cos) / 2 / a0, (-2 * cos) / a0, (1 - alpha) / a0];
+}
+
+function lowShelf(frequency, gainDb, rate) {
+  const A = Math.pow(10, gainDb / 40);
+  const w = (2 * Math.PI * frequency) / rate;
+  const cos = Math.cos(w);
+  // Shelf slope S = 1: the steepest that stays free of a bump at the corner.
+  const alpha = (Math.sin(w) / 2) * Math.SQRT2;
+  const root = 2 * Math.sqrt(A) * alpha;
+  const a0 = A + 1 + (A - 1) * cos + root;
+  return [
+    (A * (A + 1 - (A - 1) * cos + root)) / a0,
+    (2 * A * (A - 1 - (A + 1) * cos)) / a0,
+    (A * (A + 1 - (A - 1) * cos - root)) / a0,
+    (-2 * (A - 1 + (A + 1) * cos)) / a0,
+    (A + 1 + (A - 1) * cos - root) / a0,
+  ];
+}
+
+/** One filter with its own memory (transposed direct form II), run in place. */
+function biquad([b0, b1, b2, a1, a2]) {
+  let z1 = 0;
+  let z2 = 0;
+  return {
+    run(samples, apply) {
+      for (let i = 0; i < samples.length; i++) {
+        const x = samples[i];
+        const y = b0 * x + z1;
+        z1 = b1 * x - a1 * y + z2;
+        z2 = b2 * x - a2 * y;
+        if (apply) samples[i] = y;
+      }
+    },
+  };
 }
 
 /** The gain that keeps a block of `samples` from `offset` under the ceiling. */
