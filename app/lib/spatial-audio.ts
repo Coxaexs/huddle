@@ -94,7 +94,6 @@ type Entry = {
   element: HTMLAudioElement;
   mode?: Mode;
   source?: MediaStreamAudioSourceNode;
-  leveler?: DynamicsCompressorNode;
   panner?: StereoPannerNode | PannerNode;
   gain?: GainNode;
 };
@@ -290,22 +289,17 @@ export class SpatialAudioPlayback {
     if (entry.mode === wanted) return;
     if (entry.mode) this.detach(entry);
     let source: MediaStreamAudioSourceNode | undefined;
-    let leveler: DynamicsCompressorNode | undefined;
     let panner: StereoPannerNode | PannerNode | undefined;
     let gain: GainNode | undefined;
     try {
       // The stream's source node survives a mode change; only the panner is swapped.
       source = entry.source ?? context.createMediaStreamSource(input.stream);
-      // A boost plays the stream as it would natively, only louder: no levelling or panning.
-      if (wanted !== "boost" && typeof context.createDynamicsCompressor === "function") {
-        // Gentle levelling so a quiet mic and a loud one sit at the same table.
-        leveler = context.createDynamicsCompressor();
-        leveler.threshold.value = -26;
-        leveler.knee.value = 12;
-        leveler.ratio.value = 3;
-        leveler.attack.value = 0.005;
-        leveler.release.value = 0.2;
-      }
+      // No compressor here, deliberately. Levelling is each sender's job (the
+      // mic chain's auto-gain), and a DynamicsCompressorNode always adds its
+      // own make-up gain — about 10 dB at voice levels — which made a voice
+      // jump in volume whenever it moved between this path and the plain
+      // element: switching apps, a context the phone suspended, or being
+      // marked important. Unity gain here means both paths sound the same.
       if (wanted === "hrtf") {
         const spatial = context.createPanner();
         spatial.panningModel = "HRTF";
@@ -320,16 +314,15 @@ export class SpatialAudioPlayback {
       }
       gain = context.createGain();
       gain.gain.value = 0;
-      const levelled = leveler ? source.connect(leveler) : source;
-      (panner ? levelled.connect(panner) : levelled).connect(gain).connect(context.destination);
+      (panner ? source.connect(panner) : source).connect(gain).connect(context.destination);
       if (wanted === "hrtf") {
         const room = this.roomInput(context);
         if (room) gain.connect(room);
       }
-      Object.assign(entry, { source, leveler, panner, gain, mode: wanted });
+      Object.assign(entry, { source, panner, gain, mode: wanted });
     } catch {
-      source?.disconnect(); leveler?.disconnect(); panner?.disconnect(); gain?.disconnect();
-      entry.source = undefined; entry.leveler = undefined; entry.panner = undefined; entry.gain = undefined; entry.mode = undefined;
+      source?.disconnect(); panner?.disconnect(); gain?.disconnect();
+      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.mode = undefined;
     }
   }
 
@@ -422,10 +415,8 @@ export class SpatialAudioPlayback {
   /** Drops the spatial path but keeps the stream's source node for reuse. */
   private detach(entry: Entry) {
     entry.source?.disconnect();
-    entry.leveler?.disconnect();
     entry.panner?.disconnect();
     entry.gain?.disconnect();
-    entry.leveler = undefined;
     entry.panner = undefined;
     entry.gain = undefined;
     entry.mode = undefined;

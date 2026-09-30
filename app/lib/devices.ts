@@ -46,7 +46,13 @@ export function saveDevice(kind: DeviceKind, deviceId: string): void {
 /** What the input chain needs from getUserMedia, so the two do not fight. */
 interface CaptureIntent {
   mode: "off" | "browser" | "rnnoise" | "voice";
-  autoGain: boolean;
+  /**
+   * Whether the browser should level the input itself. Only when auto-gain is
+   * wanted and our own worklet is not there to do it: with the worklet running
+   * it is always ours, and with auto-gain off the level is the user's slider.
+   */
+  browserGain: boolean;
+  echoCancellation: boolean;
 }
 
 /**
@@ -57,16 +63,16 @@ interface CaptureIntent {
  * of the call, and denoising an already-denoised signal sounds worse than
  * either alone. Echo cancellation is the exception — it runs inside the capture
  * with a reference to what is being played, which nothing downstream can
- * reconstruct, so it always stays on.
+ * reconstruct, so it stays on unless you say you are on headphones.
  */
 export function microphoneConstraints(
-  intent: CaptureIntent = { mode: "browser", autoGain: false },
+  intent: CaptureIntent = { mode: "browser", browserGain: true, echoCancellation: true },
 ): MediaTrackConstraints {
   const deviceId = savedDevice("microphone");
   return {
-    echoCancellation: true,
+    echoCancellation: intent.echoCancellation,
     noiseSuppression: intent.mode === "browser",
-    autoGainControl: !intent.autoGain,
+    autoGainControl: intent.browserGain,
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   };
 }
