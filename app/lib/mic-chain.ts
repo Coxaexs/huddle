@@ -14,7 +14,7 @@
  */
 
 import { basePath } from "./client";
-import { microphoneConstraints } from "./devices";
+import { microphoneConstraints, savedDevice } from "./devices";
 
 export type SuppressionMode = "off" | "browser" | "rnnoise" | "voice";
 
@@ -26,6 +26,12 @@ export interface MicSettings {
   /** Gate threshold in dBFS, or "auto" to let voice detection decide. */
   sensitivity: number | "auto";
   gate: boolean;
+  /**
+   * The browser's echo cancellation. Only worth turning off on headphones,
+   * where there is no echo to cancel but it still dulls you slightly while
+   * someone else is talking at the same time.
+   */
+  echoCancellation: boolean;
 }
 
 export interface MicTelemetry {
@@ -67,6 +73,7 @@ const KEYS = {
   autoGain: "huddle-mic-auto-gain",
   sensitivity: "huddle-mic-sensitivity",
   gate: "huddle-mic-gate",
+  echoCancellation: "huddle-mic-echo-cancellation",
 };
 
 export const DEFAULT_SETTINGS: MicSettings = {
@@ -75,6 +82,7 @@ export const DEFAULT_SETTINGS: MicSettings = {
   autoGain: true,
   sensitivity: "auto",
   gate: true,
+  echoCancellation: true,
 };
 
 export const GAIN_RANGE = { min: -12, max: 30 };
@@ -114,6 +122,7 @@ export function readMicSettings(): MicSettings {
         ? clamp(sensitivity, SENSITIVITY_RANGE.min, SENSITIVITY_RANGE.max)
         : "auto",
     gate: store.getItem(KEYS.gate) !== "off",
+    echoCancellation: store.getItem(KEYS.echoCancellation) !== "off",
   };
 }
 
@@ -136,6 +145,7 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
   store.setItem(KEYS.autoGain, merged.autoGain ? "on" : "off");
   store.setItem(KEYS.sensitivity, String(merged.sensitivity));
   store.setItem(KEYS.gate, merged.gate ? "on" : "off");
+  store.setItem(KEYS.echoCancellation, merged.echoCancellation ? "on" : "off");
   return merged;
 }
 
@@ -165,6 +175,39 @@ function loadRnnoise(): Promise<ArrayBuffer> {
 }
 
 /**
+ * Fired on `window` whenever a chain's processing graph starts or stops, so
+ * whoever put its track on the wire can react (see `MicChain.live`).
+ */
+export const MIC_STATE_EVENT = "huddle-mic-state";
+
+/**
+ * Where auto-gain settled on a given microphone last time. Handing it to the
+ * next chain means the first words of a call already come out at the right
+ * level, instead of the room hearing the gain find its feet.
+ */
+function gainKey(): string {
+  return `huddle-mic-agc-gain:${savedDevice("microphone") || "default"}`;
+}
+
+function readSettledGain(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const value = Number(window.localStorage.getItem(gainKey()));
+    return Number.isFinite(value) ? clamp(value, GAIN_RANGE.min, GAIN_RANGE.max) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveSettledGain(gainDb: number): void {
+  try {
+    window.localStorage.setItem(gainKey(), gainDb.toFixed(1));
+  } catch {
+    // Private mode; the next call just starts from 0 dB.
+  }
+}
+
+/**
  * Re-applies the capture-level constraints to a live track.
  *
  * Switching suppression modes changes what the browser's own processing should
@@ -172,9 +215,14 @@ function loadRnnoise(): Promise<ArrayBuffer> {
  * the microphone instead would mean a new track, and a new track in a mesh call
  * means every peer renegotiates and everyone hears the gap.
  */
-function applyCapture(raw: MediaStream, settings: MicSettings): void {
+function applyCapture(raw: MediaStream, settings: MicSettings, worklet: boolean): void {
+  const intent = {
+    mode: settings.mode,
+    browserGain: !worklet && settings.autoGain,
+    echoCancellation: settings.echoCancellation,
+  };
   for (const track of raw.getAudioTracks()) {
-    void track.applyConstraints(microphoneConstraints(settings)).catch(() => {
+    void track.applyConstraints(microphoneConstraints(intent)).catch(() => {
       // A browser that will not retune mid-flight keeps the old settings; the
       // worklet half of the chain still responds.
     });
@@ -194,7 +242,9 @@ function browserFallback(settings: MicSettings): MicSettings {
 }
 
 function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
-  applyCapture(raw, browserFallback(readMicSettings()));
+  // Auto-gain included: with no worklet the browser's is the only one left,
+  // and a raw microphone with none at all is quieter than anyone expects.
+  applyCapture(raw, browserFallback(readMicSettings()), false);
   const listeners = new Set<(telemetry: MicTelemetry) => void>();
   let meter: { context: AudioContext; timer: number } | null = null;
 
@@ -235,7 +285,7 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
     update(next) {
       // The browser's own processing is the only thing left to steer here, so
       // it stands in for the neural modes rather than leaving you unfiltered.
-      applyCapture(raw, browserFallback({ ...readMicSettings(), ...next }));
+      applyCapture(raw, browserFallback({ ...readMicSettings(), ...next }), false);
     },
     onTelemetry(listener) {
       listeners.add(listener);
@@ -271,8 +321,13 @@ export async function openMicrophone(
 ): Promise<MicChain> {
   const settings = { ...readMicSettings(), ...overrides };
 
+  // Opened as if the worklet will run; the fallback re-tunes it if not.
   const raw = await navigator.mediaDevices.getUserMedia({
-    audio: microphoneConstraints(settings),
+    audio: microphoneConstraints({
+      mode: settings.mode,
+      browserGain: false,
+      echoCancellation: settings.echoCancellation,
+    }),
   });
 
   let context: AudioContext | null = null;
@@ -285,7 +340,9 @@ export async function openMicrophone(
       throw new Error(`unusable context: ${context.state} @ ${context.sampleRate}`);
     }
 
-    await context.audioWorklet.addModule(`${basePath}/mic-worklet.js`);
+    // Versioned so a browser holding an older copy in its cache picks up a
+    // retuned worklet; bump it whenever `public/mic-worklet.js` changes.
+    await context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=2`);
 
     const source = context.createMediaStreamSource(raw);
     const node = new AudioWorkletNode(context, "mic-processor", {
@@ -294,7 +351,7 @@ export async function openMicrophone(
       outputChannelCount: [1],
       channelCount: 1,
       channelCountMode: "explicit",
-      processorOptions: settings,
+      processorOptions: { ...settings, initialGainDb: readSettledGain() },
     });
     const destination = new MediaStreamAudioDestinationNode(context, {
       channelCount: 1,
@@ -302,12 +359,24 @@ export async function openMicrophone(
     source.connect(node);
     node.connect(destination);
 
+    let current = settings;
     const listeners = new Set<(telemetry: MicTelemetry) => void>();
     let rnnoiseReady = false;
+    let settledGain: number | null = null;
+    let savedAt = 0;
     node.port.onmessage = (event) => {
       const message = event.data;
       if (message?.type === "telemetry") {
-        for (const listener of listeners) listener(message as MicTelemetry);
+        const telemetry = message as MicTelemetry;
+        // Only while you talk: that is when auto-gain is actually learning.
+        if (current.autoGain && telemetry.vad > 0) {
+          settledGain = telemetry.gainDb;
+          if (Date.now() - savedAt > 5000) {
+            savedAt = Date.now();
+            saveSettledGain(settledGain);
+          }
+        }
+        for (const listener of listeners) listener(telemetry);
       } else if (message?.type === "rnnoise") {
         rnnoiseReady = Boolean(message.ready);
       }
@@ -329,7 +398,8 @@ export async function openMicrophone(
     };
     ensureRnnoise(settings.mode);
 
-    let current = settings;
+    context.onstatechange = () => window.dispatchEvent(new Event(MIC_STATE_EVENT));
+
     const chain: MicChain = {
       stream: destination.stream,
       raw,
@@ -348,12 +418,7 @@ export async function openMicrophone(
 
         const previous = current;
         current = { ...current, ...next };
-        if (
-          current.mode !== previous.mode ||
-          current.autoGain !== previous.autoGain
-        ) {
-          applyCapture(raw, current);
-        }
+        if (current.mode !== previous.mode) applyCapture(raw, current, true);
       },
       onTelemetry(listener) {
         listeners.add(listener);
@@ -367,6 +432,8 @@ export async function openMicrophone(
       stop() {
         listeners.clear();
         node.port.onmessage = null;
+        if (settledGain !== null) saveSettledGain(settledGain);
+        if (context) context.onstatechange = null;
         try {
           source.disconnect();
           node.disconnect();
