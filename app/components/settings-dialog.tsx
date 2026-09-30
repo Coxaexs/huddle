@@ -110,7 +110,10 @@ function VoiceInput({
     return subscribe(setTelemetry);
   }, [inCall, subscribe]);
 
+  /** Bumped by every stop, so a microphone still opening knows it is too late. */
+  const testRunRef = useRef(0);
   const stopTest = useCallback(() => {
+    testRunRef.current += 1;
     testChainRef.current?.stop();
     testChainRef.current = null;
     setTesting(false);
@@ -138,6 +141,20 @@ function VoiceInput({
   // the meter goes on showing the old behaviour while you drag the slider.
   const change = (next: Partial<MicSettings>) => {
     onChange(next);
+    if (next.echoCancellation !== undefined && testChainRef.current) {
+      // Part of the capture itself, so the preview needs a fresh microphone
+      // too — the same thing the call does.
+      testChainRef.current.stop();
+      testChainRef.current = null;
+      const run = testRunRef.current;
+      openMicrophone().then((chain) => {
+        // The dialog may have closed, or the test stopped, while it opened.
+        if (run !== testRunRef.current) return chain.stop();
+        chain.onTelemetry(setTelemetry);
+        testChainRef.current = chain;
+      }, stopTest);
+      return;
+    }
     testChainRef.current?.update(next);
   };
 
@@ -246,6 +263,22 @@ function VoiceInput({
           )}
         </>
       )}
+
+      <label className="appearance-switch">
+        <span>
+          <strong>Echo cancellation</strong>
+          <small>
+            Keep this on with speakers. On headphones you can turn it off: there
+            is no echo to cancel, and your voice stays fuller when people talk
+            over each other.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.echoCancellation}
+          onChange={(event) => change({ echoCancellation: event.target.checked })}
+        />
+      </label>
 
       <label htmlFor="settings-suppression">Noise suppression</label>
       <select

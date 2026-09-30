@@ -18,21 +18,66 @@ const FRAME = 480;
 /** A worklet is handed audio in blocks of this size and cannot ask for more. */
 const QUANTUM = 128;
 
-/** Where auto-gain tries to land speech. Loud enough to hear, far from clipping. */
-const TARGET_RMS_DB = -18;
+/**
+ * Auto-gain. It levels *you*, not your syllables: what it steers by is a
+ * running estimate of how loud your speech is over the last second or so, and
+ * the gain it applies may only drift a few dB a second. Chasing each 10 ms
+ * frame instead is what makes a voice pump — loud words ducked, quiet ones
+ * swelled — and that wobble is most of the difference between "fine" and the
+ * smooth, even voice people know from Discord. Peaks the slow loop cannot
+ * catch are the limiter's job, not the gain's.
+ */
+const TARGET_RMS_DB = -20;
 const GAIN_MIN_DB = -12;
 const GAIN_MAX_DB = 30;
-/** Turning down is a clipping emergency; turning up can afford to be gentle. */
-const GAIN_DOWN_DB_PER_SEC = 40;
-const GAIN_UP_DB_PER_SEC = 6;
+/**
+ * Seconds of speech the level estimate averages over, once it has settled.
+ * Only speech advances it, so this is seconds of talking, not of clock.
+ */
+const LEVEL_WINDOW = 1.5;
+/** The first moments of a call adapt quickly; after that, gently. */
+const WARMUP_SECONDS = 1.5;
+const WARMUP_WINDOW = 0.15;
+const WARMUP_DB_PER_SEC = 18;
+const GAIN_UP_DB_PER_SEC = 3;
+const GAIN_DOWN_DB_PER_SEC = 6;
+/**
+ * A cough or a desk thump lasts a frame or two, and so does a breathy word
+ * ending. Capping how far one frame can pull the estimate either way keeps
+ * either from moving the next sentence.
+ */
+const LEVEL_OUTLIER_DB = 10;
+/**
+ * Never boost the room's own noise above this. A quiet voice in a noisy room
+ * is better a little quiet than drowned in hiss that was made twenty dB louder
+ * along with it.
+ */
+const MAX_NOISE_DB = -50;
 
-/** Gate envelope timings, in seconds. Release is slow so word tails survive. */
-const GATE_ATTACK = 0.005;
-const GATE_RELEASE = 0.08;
-const GATE_HOLD = 0.25;
+/**
+ * Gate envelope timings, in seconds. Release is slow so word tails survive,
+ * and the hold rides over the gaps between words so a sentence reaches the
+ * room in one piece rather than chopped at every breath.
+ */
+const GATE_ATTACK = 0.004;
+const GATE_RELEASE = 0.12;
+const GATE_HOLD = 0.35;
+/**
+ * RNNoise's speech probability flickers around any single threshold; opening
+ * high and closing lower keeps the gate from chattering on a soft word.
+ */
+const VAD_OPEN = 0.6;
+const VAD_STAY = 0.4;
 
-/** Where the soft knee starts, -1 dBFS. Above this the curve bends to 0 dBFS. */
+/**
+ * The limiter: a gain that dips just ahead of any peak that would pass
+ * -1 dBFS and recovers smoothly afterwards. It works on 1 ms blocks and looks
+ * one block ahead, so the dip is a ramp rather than a step — audible as
+ * nothing at all, where a clipper would crackle.
+ */
 const LIMIT = 0.891;
+const LIMIT_BLOCK = 48;
+const LIMIT_RELEASE = 0.08;
 
 /**
  * The noise floor is the quietest frame seen recently, measured over three
@@ -70,16 +115,21 @@ class MicProcessor extends AudioWorkletProcessor {
 
     const settings = (options && options.processorOptions) || {};
     this.mode = settings.mode || "browser";
-    this.gainDb = 0;
     this.manualGainDb = settings.gainDb || 0;
     this.autoGain = settings.autoGain !== false;
+    // Where auto-gain settled last time on this microphone, so the first words
+    // of a call are already at the right level instead of the first seconds.
+    this.gainDb = this.autoGain
+      ? clamp(Number(settings.initialGainDb) || 0, GAIN_MIN_DB, GAIN_MAX_DB)
+      : this.manualGainDb;
     /** "auto", or a dBFS number the user dialled in. */
     this.sensitivity = settings.sensitivity === undefined ? "auto" : settings.sensitivity;
     this.gateEnabled = settings.gate !== false;
 
     // Input accumulates until there is a whole frame; output is primed with one
-    // frame of silence so the drain never runs dry. That priming is the 10 ms
-    // of latency this chain costs.
+    // frame of silence so the drain never runs dry. That priming, the gate's
+    // one frame of lookahead and the limiter's 1 ms are the 21 ms of latency
+    // this chain costs.
     this.inBuffer = new Float32Array(FRAME);
     this.inLength = 0;
     this.outBuffer = new Float32Array(FRAME * 4);
@@ -89,12 +139,24 @@ class MicProcessor extends AudioWorkletProcessor {
 
     // Gate and level state.
     this.gateGain = 0;
-    this.gateTarget = 0;
     this.holdFrames = 0;
+    this.speaking = false;
+    this.speechPower = 0;
+    this.speechSeconds = 0;
+    // The gate looks one frame ahead: each frame is held back until the next
+    // has been heard, so a word's first consonant opens the gate in time for
+    // itself instead of arriving 10 ms before the gate does.
+    this.pending = new Float32Array(FRAME);
+    this.pendingOpen = 0;
+    // The limiter's one-block lookahead, and the gain it had reached.
+    this.limitBlock = new Float32Array(LIMIT_BLOCK);
+    this.limitGain = 1;
+    this.limitRelease = 1 - Math.exp(-LIMIT_BLOCK / (LIMIT_RELEASE * sampleRate));
+    this.output = new Float32Array(FRAME);
     this.floorWindows = new Array(FLOOR_WINDOW_COUNT).fill(Infinity);
     this.floorCurrent = Infinity;
     this.floorFrames = 0;
-    this.currentGain = 1;
+    this.currentGain = fromDb(this.gainDb);
     this.inputDb = SILENT_DB;
     this.outputDb = SILENT_DB;
     this.vad = 0;
@@ -161,12 +223,17 @@ class MicProcessor extends AudioWorkletProcessor {
     const floorDb = toDb(floor === Infinity ? rms : floor);
 
     let speech =
-      vad >= 0 ? vad > 0.6 : rmsDb > floorDb + SPEECH_MARGIN_DB && rmsDb > -65;
+      vad >= 0
+        ? vad > (this.speaking ? VAD_STAY : VAD_OPEN)
+        : rmsDb > floorDb + (this.speaking ? SPEECH_MARGIN_DB - 3 : SPEECH_MARGIN_DB) &&
+          rmsDb > -65;
+    this.speaking = speech;
 
+    const secondsPerFrame = FRAME / sampleRate;
     if (focus && speech) {
       // Confident, loud speech teaches us what "you" sound like; everything
       // else only lets the reference drift down slowly.
-      const decay = FOCUS_DECAY_DB_PER_SEC * (FRAME / sampleRate);
+      const decay = FOCUS_DECAY_DB_PER_SEC * secondsPerFrame;
       if (vad < 0 || vad > 0.85) {
         this.nearSpeechDb = Math.max(rmsDb, this.nearSpeechDb - decay);
       }
@@ -177,15 +244,7 @@ class MicProcessor extends AudioWorkletProcessor {
     // Auto-gain only learns from speech. Adapting during pauses would patiently
     // amplify the room until the next word arrives far too loud.
     if (this.autoGain) {
-      if (speech && rmsDb > SILENT_DB) {
-        const desired = clamp(TARGET_RMS_DB - rmsDb, GAIN_MIN_DB, GAIN_MAX_DB);
-        const secondsPerFrame = FRAME / sampleRate;
-        const step =
-          (desired < this.gainDb ? GAIN_DOWN_DB_PER_SEC : GAIN_UP_DB_PER_SEC) *
-          secondsPerFrame;
-        const delta = desired - this.gainDb;
-        this.gainDb += Math.abs(delta) < step ? delta : Math.sign(delta) * step;
-      }
+      if (speech && rmsDb > SILENT_DB) this.learnLevel(rms, floorDb, secondsPerFrame);
     } else {
       this.gainDb = this.manualGainDb;
     }
@@ -199,39 +258,35 @@ class MicProcessor extends AudioWorkletProcessor {
     } else if (this.gateEnabled) {
       open = this.sensitivity === "auto" ? speech : rmsDb > this.sensitivity;
     }
-    if (open) this.holdFrames = Math.ceil(GATE_HOLD / (FRAME / sampleRate));
+    if (open) this.holdFrames = Math.ceil(GATE_HOLD / secondsPerFrame);
     else if (this.holdFrames > 0) this.holdFrames -= 1;
-    this.gateTarget = open || this.holdFrames > 0 ? 1 : 0;
+    const openNow = open || this.holdFrames > 0 ? 1 : 0;
 
-    // Apply gain and the gate envelope per sample. Both are ramped: a gate that
-    // switches instantly clicks, and a gain that jumps zippers.
+    // What leaves now is the frame before this one, gated by what both of them
+    // decided: if this frame opens the gate, the ramp starts in the last one.
+    const out = this.output;
+    const gateTarget = Math.max(this.pendingOpen, openNow);
     const targetGain = fromDb(this.gainDb);
     const attack = Math.exp(-1 / (GATE_ATTACK * sampleRate));
     const release = Math.exp(-1 / (GATE_RELEASE * sampleRate));
-    let peak = 0;
+    const coefficient = gateTarget > this.gateGain ? attack : release;
+    for (let i = 0; i < FRAME; i++) {
+      this.gateGain = gateTarget + (this.gateGain - gateTarget) * coefficient;
+      // Both are ramped: a gate that switches instantly clicks, and a gain
+      // that jumps zippers.
+      this.currentGain += (targetGain - this.currentGain) * 0.002;
+      out[i] = this.pending[i] * this.currentGain * this.gateGain;
+    }
+    this.pending.set(frame);
+    this.pendingOpen = openNow;
+
+    this.limit(out);
     let outSum = 0;
     for (let i = 0; i < FRAME; i++) {
-      const coefficient = this.gateTarget > this.gateGain ? attack : release;
-      this.gateGain = this.gateTarget + (this.gateGain - this.gateTarget) * coefficient;
-      this.currentGain += (targetGain - this.currentGain) * 0.02;
-
-      let sample = frame[i] * this.currentGain * this.gateGain;
-      const magnitude = sample < 0 ? -sample : sample;
-      if (magnitude > LIMIT) {
-        // Soft knee above the ceiling: audible as compression, never as clipping.
-        const over = (magnitude - LIMIT) / (1 - LIMIT);
-        sample = (sample < 0 ? -1 : 1) * (LIMIT + (1 - LIMIT) * Math.tanh(over));
-      }
-      frame[i] = sample;
-      const absolute = sample < 0 ? -sample : sample;
-      if (absolute > peak) peak = absolute;
-      outSum += sample * sample;
+      frame[i] = out[i];
+      outSum += out[i] * out[i];
     }
     this.outputDb = toDb(Math.sqrt(outSum / FRAME));
-
-    // A frame that still peaks near full scale means the AGC is behind; pull it
-    // down now rather than waiting for the slow loop to notice.
-    if (this.autoGain && peak > 0.99) this.gainDb = Math.max(GAIN_MIN_DB, this.gainDb - 1);
 
     this.framesSinceReport += 1;
     if (this.framesSinceReport >= 5) {
@@ -248,6 +303,69 @@ class MicProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /**
+   * One frame of speech into the level estimate, and the gain a step towards
+   * whatever puts that level on target.
+   */
+  learnLevel(rms, floorDb, secondsPerFrame) {
+    const warming = this.speechSeconds < WARMUP_SECONDS;
+    this.speechSeconds += secondsPerFrame;
+
+    // Averaged as power, so it follows loudness the way ears do, with any
+    // single frame's say capped either way.
+    const power = rms * rms;
+    if (this.speechPower === 0) {
+      this.speechPower = power;
+    } else {
+      const window = warming ? WARMUP_WINDOW : LEVEL_WINDOW;
+      const spread = fromDb(LEVEL_OUTLIER_DB);
+      const capped = clamp(power, this.speechPower / spread, this.speechPower * spread);
+      this.speechPower += (capped - this.speechPower) * (secondsPerFrame / window);
+    }
+    const levelDb = toDb(Math.sqrt(this.speechPower));
+
+    let desired = clamp(TARGET_RMS_DB - levelDb, GAIN_MIN_DB, GAIN_MAX_DB);
+    if (floorDb > -90) desired = Math.min(desired, Math.max(0, MAX_NOISE_DB - floorDb));
+
+    const rate = warming
+      ? WARMUP_DB_PER_SEC
+      : desired < this.gainDb
+        ? GAIN_DOWN_DB_PER_SEC
+        : GAIN_UP_DB_PER_SEC;
+    const step = rate * secondsPerFrame;
+    const delta = desired - this.gainDb;
+    this.gainDb += Math.abs(delta) < step ? delta : Math.sign(delta) * step;
+  }
+
+  /**
+   * Holds `samples` under LIMIT in place, one 1 ms block behind.
+   *
+   * Each block gets the gain it needs to stay under the ceiling; the gain at a
+   * block edge is the lower of its two neighbours' (and of the slow recovery
+   * from the last dip), and inside a block it ramps linearly edge to edge. Both
+   * ends of every ramp are then at or below what that block needs, so no
+   * sample can pass the ceiling, and nothing ever changes in a single step.
+   */
+  limit(samples) {
+    const blocks = FRAME / LIMIT_BLOCK;
+    const held = this.limitBlock;
+    let needHeld = blockNeed(held, 0);
+    for (let b = 0; b < blocks; b++) {
+      const offset = b * LIMIT_BLOCK;
+      const need = blockNeed(samples, offset);
+      const recovered = this.limitGain + (1 - this.limitGain) * this.limitRelease;
+      const edge = Math.min(needHeld, need, recovered);
+      const from = this.limitGain;
+      for (let i = 0; i < LIMIT_BLOCK; i++) {
+        const gain = from + ((edge - from) * i) / LIMIT_BLOCK;
+        const next = samples[offset + i];
+        samples[offset + i] = held[i] * gain;
+        held[i] = next;
+      }
+      this.limitGain = edge;
+      needHeld = need;
+    }
+  }
   process(inputs, outputs) {
     const input = inputs[0] && inputs[0][0];
     const output = outputs[0] && outputs[0][0];
@@ -280,6 +398,16 @@ class MicProcessor extends AudioWorkletProcessor {
 
     return true;
   }
+}
+
+/** The gain that keeps a block of `samples` from `offset` under the ceiling. */
+function blockNeed(samples, offset) {
+  let peak = 0;
+  for (let i = offset; i < offset + LIMIT_BLOCK; i++) {
+    const magnitude = samples[i] < 0 ? -samples[i] : samples[i];
+    if (magnitude > peak) peak = magnitude;
+  }
+  return peak > LIMIT ? LIMIT / peak : 1;
 }
 
 /**

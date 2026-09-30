@@ -11,7 +11,9 @@ import { privateAddress, turnOnly } from "../lib/ice";
 
 export type HeadTrackingSource = "airpods" | "webcam";
 export type SpatialOutput = "headphones" | "speakers";
+import { nativePlatform } from "../lib/native-voice";
 import {
+  MIC_STATE_EVENT,
   openMicrophone,
   readMicSettings,
   writeMicSettings,
@@ -142,10 +144,26 @@ const SCREEN_SHARE_CONSTRAINTS: Record<
   "1080p60": { width: 1920, height: 1080, frameRate: 60 },
 };
 
-// Mono Opus voice is transparent well below this; staying lean matters because
-// every speaker uploads one copy per listener in the mesh.
-const VOICE_BITRATE = 64_000;
-const SCREEN_AUDIO_BITRATE = 256_000;
+/**
+ * Voice bitrate for a mesh of `listeners` other connections.
+ *
+ * In a mesh you upload one full copy of your voice per listener, so a busy
+ * room multiplies it — and a saturated uplink drops packets, which is what a
+ * robotic, choppy voice actually is. Mono Opus speech is near-transparent at
+ * 32–48 kbps, so spending less per copy as the room fills trades a difference
+ * nobody hears for one everybody would. A camera or screen share already
+ * competes for the same uplink, so it counts as a crowd of its own.
+ */
+export function voiceBitrate(listeners: number, sendingVideo: boolean): number {
+  if (listeners >= 5) return 32_000;
+  if (listeners >= 3 || sendingVideo) return 48_000;
+  return 64_000;
+}
+
+/** Screen-share audio is music and games, so it keeps more — but not per copy in a crowd. */
+export function screenAudioBitrate(listeners: number): number {
+  return listeners >= 3 ? 128_000 : 256_000;
+}
 /** How much of the room "Clip that!" keeps buffered. */
 const CLIP_SECONDS = 30;
 
@@ -167,6 +185,19 @@ async function tuneAudioSender(
     encoding.networkPriority = "high";
   }
   await sender.setParameters(parameters).catch(() => undefined);
+}
+
+/**
+ * iOS (Safari, and the app's WKWebView) interrupts every AudioContext of a page
+ * that leaves the screen. iPadOS reports itself as a Mac, hence the touch check.
+ */
+function interruptsHiddenAudio(): boolean {
+  if (nativePlatform() === "ios") return true;
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  );
 }
 
 /** Target for incoming audio's jitter buffer; Chrome's adaptive default often idles at 80+ ms. */
@@ -345,6 +376,8 @@ export function useVoice({
   const [error, setError] = useState("");
   /** Per-peer RTCPeerConnection state, so tiles can say "connecting". */
   const [peerStates, setPeerStates] = useState<Record<string, string>>({});
+  /** Connections actually receiving us, which is what the uplink pays for. */
+  const listenerCount = Object.values(peerStates).filter((state) => state === "connected").length;
 
   /**
    * The input chain. `localStreamRef` below holds its *processed* output, which
@@ -361,9 +394,10 @@ export function useVoice({
   const micGateRef = useRef(true);
   /**
    * A copy of the raw microphone that goes on the wire instead of the processed
-   * track while Huddle is in the background. Phones (and some Windows setups)
-   * stop rendering Web Audio for a hidden app, and the processed track is made
-   * by Web Audio, so without this switching apps silently muted you.
+   * track while its Web Audio graph is not running — which a phone may do to a
+   * hidden app, and without this, switching apps would silently mute you. It
+   * is strictly a stand-in: the raw capture has no auto-gain or gate, so the
+   * room hears you noticeably quieter on it.
    */
   const backgroundMicRef = useRef<MediaStreamTrack | null>(null);
   /** Every track that mute, deafen and push-to-talk must switch together. */
@@ -467,6 +501,22 @@ export function useVoice({
     micGateRef.current = on;
     micTracks().forEach((track) => (track.enabled = on));
   }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks]);
+
+  // Re-spend the uplink whenever the room or what we send changes: see
+  // voiceBitrate. Encoder bitrate changes apply live, without renegotiating.
+  const sendingVideo = cameraOn || screenSharing;
+  useEffect(() => {
+    if (!channelId) return;
+    const voice = voiceBitrate(listenerCount, sendingVideo);
+    const screen = new Set(screenStreamRef.current?.getAudioTracks() || []);
+    for (const peer of peersRef.current.values()) {
+      for (const sender of peer.getSenders()) {
+        if (sender.track?.kind !== "audio") continue;
+        const bitrate = screen.has(sender.track) ? screenAudioBitrate(listenerCount) : voice;
+        void tuneAudioSender(sender, bitrate);
+      }
+    }
+  }, [channelId, listenerCount, sendingVideo]);
 
   /**
    * Follow the server's view of this seat's microphone.
@@ -878,10 +928,18 @@ export function useVoice({
    * room would hear a dropout every time someone nudged a slider.
    */
   const setMicSettings = useCallback((next: Partial<MicSettings>) => {
+    const before = readMicSettings();
     const merged = writeMicSettings(next);
     setMicSettingsState(merged);
     micChainRef.current?.update(next);
+    // Echo cancellation lives inside the capture itself, and browsers will not
+    // reliably retune that on a running track, so it takes a fresh one. That
+    // is the same swap as changing microphone: a blip, not a renegotiation.
+    if (merged.echoCancellation !== before.echoCancellation && micChainRef.current) {
+      void switchMicrophoneRef.current();
+    }
   }, []);
+  const switchMicrophoneRef = useRef<() => Promise<void>>(async () => {});
 
   /**
    * Switches our camera/screen senders to one peer on or off to match what that
@@ -959,13 +1017,13 @@ export function useVoice({
         const track = own.kind === "audio" && backgroundMicRef.current ? backgroundMicRef.current : own;
         const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
         if (track.kind === "audio") {
-          void tuneAudioSender(sender, VOICE_BITRATE);
+          void tuneAudioSender(sender, voiceBitrate(peersRef.current.size, Boolean(cameraStreamRef.current || screenStreamRef.current)));
         }
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {
         const sender = peer.addTrack(track, screenStreamRef.current as MediaStream);
         if (track.kind === "audio") {
-          void tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+          void tuneAudioSender(sender, screenAudioBitrate(peersRef.current.size));
         }
       }
       for (const track of cameraStreamRef.current?.getTracks() || []) {
@@ -1540,6 +1598,7 @@ export function useVoice({
       setError("That microphone could not be opened.");
     }
   }, [openMicChain]);
+  switchMicrophoneRef.current = switchMicrophone;
 
   /**
    * Coming back from another app on a phone. While the browser sat in the
@@ -1563,9 +1622,9 @@ export function useVoice({
       }
       return Promise.all(swaps);
     };
-    // Leaving the app: send the raw microphone, which the OS keeps capturing
-    // (with the foreground service on Android), instead of the Web Audio track
-    // it is about to stop rendering. You lose RNNoise and the gate meanwhile.
+    // The processed track has stopped (or, on iOS, is about to): send the raw
+    // microphone, which the OS keeps capturing, instead. You lose auto-gain,
+    // RNNoise and the gate meanwhile.
     const toRawMic = () => {
       const chain = micChainRef.current;
       const processed = localStreamRef.current?.getAudioTracks()[0];
@@ -1596,8 +1655,22 @@ export function useVoice({
       // resume() settles asynchronously; look again once it has had a moment.
       window.setTimeout(toProcessedMic, 300);
     };
+    // Only iOS has to be pre-empted: WebKit interrupts a hidden page's audio
+    // and may not run this script again until it is back, so the swap has to
+    // happen on the way out. Everywhere else the processed track keeps flowing
+    // in the background (Android's foreground service keeps the whole page
+    // alive), and swapping anyway is what made you drop in volume the moment
+    // you switched apps. There, the raw mic only stands in for a graph that
+    // has actually stopped, which the chain announces.
+    const leaving = () => {
+      if (interruptsHiddenAudio()) toRawMic();
+    };
     const onHidden = () => {
-      if (document.visibilityState === "hidden") toRawMic();
+      if (document.visibilityState === "hidden") leaving();
+    };
+    const onMicState = () => {
+      if (micChainRef.current?.live) toProcessedMic();
+      else toRawMic();
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -1607,14 +1680,16 @@ export function useVoice({
       const raw = micChainRef.current?.raw.getAudioTracks()[0];
       if (raw && raw.readyState === "ended") void switchMicrophone();
     };
-    if (document.visibilityState === "hidden") toRawMic();
+    if (document.visibilityState === "hidden") leaving();
     document.addEventListener("visibilitychange", onHidden);
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("pagehide", toRawMic);
+    window.addEventListener("pagehide", leaving);
     window.addEventListener("pageshow", onVisible);
+    window.addEventListener(MIC_STATE_EVENT, onMicState);
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
-      window.removeEventListener("pagehide", toRawMic);
+      window.removeEventListener("pagehide", leaving);
+      window.removeEventListener(MIC_STATE_EVENT, onMicState);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pageshow", onVisible);
       window.removeEventListener("pointerdown", wakeAudio, { capture: true });
@@ -1664,7 +1739,7 @@ export function useVoice({
           for (const track of stream.getTracks()) {
             const sender = peer.addTrack(track, stream);
             if (track.kind === "audio") {
-              await tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+              await tuneAudioSender(sender, screenAudioBitrate(peersRef.current.size));
             }
           }
           await negotiatePeer(remoteId, peer);
