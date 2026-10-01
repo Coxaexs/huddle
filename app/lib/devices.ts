@@ -33,6 +33,9 @@ export function savedDevice(kind: DeviceKind): string {
   return window.localStorage.getItem(STORAGE_KEY[kind]) || "";
 }
 
+/** Fired on `window` after any device choice is saved, so open pickers can follow. */
+export const DEVICE_SAVED_EVENT = "huddle-device-saved";
+
 export function saveDevice(kind: DeviceKind, deviceId: string): void {
   if (typeof window === "undefined") return;
   if (deviceId) window.localStorage.setItem(STORAGE_KEY[kind], deviceId);
@@ -41,6 +44,7 @@ export function saveDevice(kind: DeviceKind, deviceId: string): void {
     applySinkToAll();
     window.dispatchEvent(new Event("huddle-speaker-change"));
   }
+  window.dispatchEvent(new Event(DEVICE_SAVED_EVENT));
 }
 
 /** What the input chain needs from getUserMedia, so the two do not fight. */
@@ -183,4 +187,50 @@ export async function primeDeviceLabels(video = false): Promise<void> {
   } catch {
     // Without permission the selects still work, just with generic names.
   }
+}
+
+/** A real microphone or speaker, as the hot-plug watcher tracks them. */
+export interface AudioDevice {
+  kind: "microphone" | "speaker";
+  deviceId: string;
+  label: string;
+  /** Groups the input and output halves of one headset. */
+  groupId: string;
+}
+
+/**
+ * The real audio devices in an enumeration. Chromium also lists "default" and
+ * (on Windows) "communications" as aliases for whatever the OS currently
+ * prefers; those change label rather than appear, and are never "new".
+ * Unlabelled entries are skipped too: without a media permission every
+ * device is anonymous, and "Switch to Microphone 3?" helps nobody.
+ */
+export function audioDevices(devices: MediaDeviceInfo[]): AudioDevice[] {
+  const result: AudioDevice[] = [];
+  for (const device of devices) {
+    if (device.kind !== "audioinput" && device.kind !== "audiooutput") continue;
+    if (!device.deviceId || device.deviceId === "default" || device.deviceId === "communications") continue;
+    if (!device.label) continue;
+    result.push({
+      kind: device.kind === "audioinput" ? "microphone" : "speaker",
+      deviceId: device.deviceId,
+      label: device.label,
+      groupId: device.groupId,
+    });
+  }
+  return result;
+}
+
+/** What was plugged in and pulled out between two `audioDevices` readings. */
+export function diffAudioDevices(
+  before: AudioDevice[],
+  after: AudioDevice[],
+): { added: AudioDevice[]; removed: AudioDevice[] } {
+  const key = (device: AudioDevice) => `${device.kind}:${device.deviceId}`;
+  const had = new Set(before.map(key));
+  const has = new Set(after.map(key));
+  return {
+    added: after.filter((device) => !had.has(key(device))),
+    removed: before.filter((device) => !has.has(key(device))),
+  };
 }

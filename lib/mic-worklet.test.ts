@@ -24,6 +24,7 @@ interface Telemetry {
 }
 
 interface Settings {
+  clarity?: boolean;
   initialGainDb?: number;
   mode?: string;
   gainDb?: number;
@@ -147,13 +148,23 @@ const both =
   (a: (t: number) => number, b: (t: number) => number) => (t: number) =>
     a(t) + b(t);
 
-const OFF: Settings = { mode: "off", autoGain: false, gainDb: 0, gate: false };
+const OFF: Settings = { mode: "off", autoGain: false, gainDb: 0, gate: false, clarity: false };
 
 describe("mic worklet", () => {
   it("passes audio through untouched when nothing is enabled", () => {
     const expected = 20 * Math.log10(0.2 * Math.sqrt((0.36 + 0.09 + 0.01) / 2));
     const { rmsDb } = render(OFF, (t) => 0.2 * tone(t), { seconds: 3 });
     expect(rmsDb).toBeCloseTo(expected, 1);
+  });
+
+  it("trims rumble and low-end boom but leaves the voice itself alone", () => {
+    const at = (frequency: number, clarity: boolean) =>
+      render({ ...OFF, clarity }, (t) => 0.3 * Math.sin(2 * Math.PI * frequency * t), { seconds: 2 }).rmsDb;
+    const cut = (frequency: number) => at(frequency, false) - at(frequency, true);
+    expect(cut(50)).toBeGreaterThan(12);
+    expect(cut(120)).toBeGreaterThan(3);
+    expect(cut(1000)).toBeLessThan(0.2);
+    expect(cut(4000)).toBeLessThan(0.2);
   });
 
   it("applies manual gain exactly", () => {
@@ -202,7 +213,7 @@ describe("mic worklet", () => {
   });
 
   it("opens the gate in time for the first sound of a word", () => {
-    const gated: Settings = { mode: "off", autoGain: false, gainDb: 0, gate: true, sensitivity: "auto" };
+    const gated: Settings = { mode: "off", autoGain: false, gainDb: 0, gate: true, sensitivity: "auto", clarity: false };
     const onset = 2;
     const { rendered } = render(
       gated,
@@ -267,6 +278,34 @@ describe("mic worklet", () => {
       const quiet = render(withAgc, both(speech(0.02), hiss(0.02)), { rnnoise: true, seconds: 16 });
       const loud = render(withAgc, both(speech(0.6), hiss(0.02)), { rnnoise: true, seconds: 16 });
       expect(Math.abs(quiet.rmsDb - loud.rmsDb)).toBeLessThan(4);
+    });
+  });
+
+  describe("gate with the speech detector", () => {
+    // Browser suppression: RNNoise only listens here, it does not filter.
+    const gated: Settings = { mode: "browser", autoGain: false, gainDb: 0, gate: true, sensitivity: "auto" };
+
+    /** A slurp of tea: 300 ms of soft, low-passed noise, every two seconds. */
+    const sip = (() => {
+      const noise = hiss(1);
+      let smooth = 0;
+      return (t: number) => {
+        smooth += (noise() - smooth) * 0.3;
+        const phase = t % 2;
+        return phase < 0.3 ? 0.05 * smooth * Math.sin((Math.PI * phase) / 0.3) : 0;
+      };
+    })();
+
+    it("does not open for a sip that loudness alone lets through", () => {
+      const byLoudness = render(gated, both(sip, hiss(0.0008)));
+      const bySpeech = render(gated, both(sip, hiss(0.0008)), { rnnoise: true });
+      expect(byLoudness.rmsDb).toBeGreaterThan(-60);
+      expect(bySpeech.rmsDb).toBeLessThan(-80);
+    });
+
+    it("still opens for speech", () => {
+      const { rmsDb } = render(gated, both(speech(0.2), hiss(0.004)), { rnnoise: true });
+      expect(rmsDb).toBeGreaterThan(-30);
     });
   });
 
