@@ -266,6 +266,21 @@ function VoiceInput({
 
       <label className="appearance-switch">
         <span>
+          <strong>Voice clarity</strong>
+          <small>
+            Trims the rumble and boomy low end that headsets and close-up mics
+            add, so you don&apos;t come across muffled or bassy.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.clarity}
+          onChange={(event) => change({ clarity: event.target.checked })}
+        />
+      </label>
+
+      <label className="appearance-switch">
+        <span>
           <strong>Echo cancellation</strong>
           <small>
             Keep this on with speakers. On headphones you can turn it off: there
@@ -320,6 +335,7 @@ import { SocialPlatformIcon } from "./user-profile-card";
 import { apiFetch } from "../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
+  DEVICE_SAVED_EVENT,
   listDevices,
   primeDeviceLabels,
   saveDevice,
@@ -786,9 +802,18 @@ export function SettingsDialog({
     // Labels stay blank until the page has held a media permission once.
     void primeDeviceLabels().then(refresh);
     navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
+    // A switch accepted from the hot-plug prompt changes the saved choice
+    // under this open page.
+    const followSaved = () => {
+      setMicId(savedDevice("microphone"));
+      setSpeakerId(savedDevice("speaker"));
+      setCameraId(savedDevice("camera"));
+    };
+    window.addEventListener(DEVICE_SAVED_EVENT, followSaved);
     return () => {
       cancelled = true;
       navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
+      window.removeEventListener(DEVICE_SAVED_EVENT, followSaved);
     };
   }, [tab]);
 

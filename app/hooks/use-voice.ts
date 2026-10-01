@@ -1601,6 +1601,16 @@ export function useVoice({
   switchMicrophoneRef.current = switchMicrophone;
 
   /**
+   * The capture device actually live in this call — which, after an unplug,
+   * may be the system default rather than the saved choice. Null out of a call.
+   */
+  const activeMicrophone = useCallback((): { deviceId: string; ended: boolean } | null => {
+    const track = micChainRef.current?.raw.getAudioTracks()[0];
+    if (!track) return null;
+    return { deviceId: track.getSettings().deviceId || "", ended: track.readyState === "ended" };
+  }, []);
+
+  /**
    * Coming back from another app on a phone. While the browser sat in the
    * background the OS suspended every AudioContext (so the processed mic track
    * went silent), may have paused the remote audio elements, and on some
@@ -2011,6 +2021,7 @@ export function useVoice({
     startCamera,
     stopCamera,
     switchMicrophone,
+    activeMicrophone,
     micSettings,
     setMicSettings,
     subscribeMicTelemetry,

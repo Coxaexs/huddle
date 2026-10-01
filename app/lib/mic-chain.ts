@@ -32,6 +32,8 @@ export interface MicSettings {
    * someone else is talking at the same time.
    */
   echoCancellation: boolean;
+  /** Trim the rumble and low-end boom a close-up mic adds (see the worklet). */
+  clarity: boolean;
 }
 
 export interface MicTelemetry {
@@ -74,6 +76,7 @@ const KEYS = {
   sensitivity: "huddle-mic-sensitivity",
   gate: "huddle-mic-gate",
   echoCancellation: "huddle-mic-echo-cancellation",
+  clarity: "huddle-mic-clarity",
 };
 
 export const DEFAULT_SETTINGS: MicSettings = {
@@ -83,6 +86,7 @@ export const DEFAULT_SETTINGS: MicSettings = {
   sensitivity: "auto",
   gate: true,
   echoCancellation: true,
+  clarity: true,
 };
 
 export const GAIN_RANGE = { min: -12, max: 30 };
@@ -123,6 +127,7 @@ export function readMicSettings(): MicSettings {
         : "auto",
     gate: store.getItem(KEYS.gate) !== "off",
     echoCancellation: store.getItem(KEYS.echoCancellation) !== "off",
+    clarity: store.getItem(KEYS.clarity) !== "off",
   };
 }
 
@@ -146,6 +151,7 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
   store.setItem(KEYS.sensitivity, String(merged.sensitivity));
   store.setItem(KEYS.gate, merged.gate ? "on" : "off");
   store.setItem(KEYS.echoCancellation, merged.echoCancellation ? "on" : "off");
+  store.setItem(KEYS.clarity, merged.clarity ? "on" : "off");
   return merged;
 }
 
@@ -322,13 +328,25 @@ export async function openMicrophone(
   const settings = { ...readMicSettings(), ...overrides };
 
   // Opened as if the worklet will run; the fallback re-tunes it if not.
-  const raw = await navigator.mediaDevices.getUserMedia({
-    audio: microphoneConstraints({
-      mode: settings.mode,
-      browserGain: false,
-      echoCancellation: settings.echoCancellation,
-    }),
+  const constraints = microphoneConstraints({
+    mode: settings.mode,
+    browserGain: false,
+    echoCancellation: settings.echoCancellation,
   });
+  let raw: MediaStream;
+  try {
+    raw = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+  } catch (error) {
+    // The chosen microphone is unplugged. Join on the system default rather
+    // than not at all; plugging it back in offers to switch back.
+    const name = (error as DOMException)?.name;
+    if (!constraints.deviceId || (name !== "NotFoundError" && name !== "OverconstrainedError")) {
+      throw error;
+    }
+    const anyDevice = { ...constraints };
+    delete anyDevice.deviceId;
+    raw = await navigator.mediaDevices.getUserMedia({ audio: anyDevice });
+  }
 
   let context: AudioContext | null = null;
   try {
@@ -342,7 +360,7 @@ export async function openMicrophone(
 
     // Versioned so a browser holding an older copy in its cache picks up a
     // retuned worklet; bump it whenever `public/mic-worklet.js` changes.
-    await context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=2`);
+    await context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=3`);
 
     const source = context.createMediaStreamSource(raw);
     const node = new AudioWorkletNode(context, "mic-processor", {
@@ -382,11 +400,13 @@ export async function openMicrophone(
       }
     };
 
-    // The binary is only worth fetching for people who turned it on, so it is
-    // pulled lazily here and again if the mode changes later.
+    // Fetched for everyone: besides denoising in its own modes, RNNoise is the
+    // speech detector the gate relies on in all of them, so a swallow or a sip
+    // of tea does not open your mic. The mode argument is kept so a failed
+    // fetch is retried on the next change.
     let requested = false;
-    const ensureRnnoise = (mode: SuppressionMode) => {
-      if ((mode !== "rnnoise" && mode !== "voice") || requested) return;
+    const ensureRnnoise = (_mode: SuppressionMode) => {
+      if (requested) return;
       requested = true;
       loadRnnoise().then(
         // A copy, not a transfer: the buffer is cached for the next chain.
