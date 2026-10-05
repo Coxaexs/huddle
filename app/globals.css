@@ -26414,6 +26414,12 @@ a.link-preview-author:hover {
   line-height: 1.4;
   animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
+/* A second prompt (the headphones one, right after a headset is plugged in)
+   stacks above the first instead of covering it. */
+.device-prompt + .device-prompt {
+  bottom: 210px;
+}
+
 .device-prompt-icon {
   flex: none;
   color: #5865f2;
