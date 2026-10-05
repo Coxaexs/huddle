@@ -14,6 +14,9 @@ on:
       - "lib/**"
       - "worker/**"
       - "public/**"
+      - "docs/**"
+      - "README.md"
+      - "services/**"
       - "huddle_music_helper.py"
   workflow_dispatch:
 

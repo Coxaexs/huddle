@@ -107,6 +107,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <link rel="manifest" href="/hangout/manifest.json" />
+        {/* Safari skips SVG favicons and falls back to a letter, so it gets PNGs. */}
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2" />
       </head>
       <body>{children}</body>
     </html>

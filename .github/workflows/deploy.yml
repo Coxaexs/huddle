@@ -25,11 +25,21 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
     steps:
+      # Without the secrets there is nowhere to deploy to (the production
+      # machine is then updated by hand), so skip instead of failing the run.
+      - name: Check deploy secrets
+        if: env.DEPLOY_HOST == ''
+        run: echo "::notice::DEPLOY_HOST is not set, so nothing is deployed. Add the secrets listed at the top of deploy.yml to deploy on push."
+
       - name: Checkout
+        if: env.DEPLOY_HOST != ''
         uses: actions/checkout@v4
 
       - name: Deploy to production
+        if: env.DEPLOY_HOST != ''
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
