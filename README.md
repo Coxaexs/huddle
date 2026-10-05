@@ -7,7 +7,7 @@ Hoffle is a self-hosted chat app for friend groups and communities, like your ow
 - **Voice and video rooms** with screen sharing, spatial audio and noise suppression
 - **Announcement, forum and stage channels**, alongside text and voice
 - **Automod** rules per server: block or time out on keywords, mention spam, links, caps and repeats
-- **Music bot** that plays synced music into voice rooms
+- **Music bot** that plays synced music into voice rooms, plus the full [Music + Watch bot](https://github.com/Coxaexs/musicwatchtogether) (dashboard, DJ booth, lyrics, Watch Together) as an optional container
 - **Tabletop tools**: battlemaps, 3D dice and a D&D 5e companion
 - **Runs real Discord bots**: discord.js and discord.py bots work unchanged
 - **Discord bridge** to mirror channels between Discord and Hoffle
@@ -44,6 +44,7 @@ That's it. No config files needed.
 | Back up or update my server                       | [Backups](docs/self-hosting.md#backups) · [Updating](docs/self-hosting.md#updating) |
 | Reset a password or promote an admin              | [Admin commands](docs/self-hosting.md#admin-commands) |
 | Run Hoffle on Unraid, TrueNAS or Synology         | [Single-container install](docs/self-hosting.md#single-container-install-unraid-truenas-synology) |
+| Add the full music bot (dashboard, DJ booth, Watch Together) | [Music bot](docs/self-hosting.md#music-bot) |
 | Run my Discord bot, or write a new one            | [Bots](docs/bots.md) |
 | Bridge a Discord server                           | [Discord bridge](docs/self-hosting.md#discord-bridge) |
 
@@ -64,14 +65,15 @@ Everything Hoffle stores (messages, accounts, uploads) is in the `state/` folder
 ## How it fits together
 
 ```
- browser ──► hoffle (port 8730) ──► music-bot   (yt-dlp, internal)
+ browser ──► hoffle (port 8730) ──► music-bot   (song lookup with yt-dlp, internal)
                 │                └► dnd-bot     (5e SRD, internal)
                 └── state/  database, uploads, secrets
 
- optional:  livekit (big voice rooms) · coturn (TURN relay) · discord-bridge
+ optional:  livekit (big voice rooms) · musicwatch (full music bot)
+            coturn (TURN relay) · discord-bridge
 ```
 
-The `hoffle` container runs the web app and realtime server: a Cloudflare Worker running locally in Wrangler, with SQLite for data and the disk for uploads. The bot containers are only reachable from inside Docker. Voice is peer-to-peer by default, so it needs no extra servers until your rooms get large.
+The `hoffle` container runs the web app and realtime server: a Cloudflare Worker running locally in Wrangler, with SQLite for data and the disk for uploads. The bot containers are only reachable from inside Docker. Voice is peer-to-peer by default, so it needs no extra servers until your rooms get large; then add LiveKit, which chat.hoffle.online uses.
 
 More detail: [audio architecture](docs/audio-architecture.md) · [spatial audio](docs/spatial-audio.md) · [voice input chain](docs/voice-input-chain.md).
 

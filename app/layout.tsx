@@ -30,10 +30,12 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ||
     (host.startsWith("localhost") ? "http" : "https");
 
+  // The purple "H" app icon, the same one the desktop and phone apps use.
+  // Browsers that skip SVG favicons fetch /favicon.ico; Safari wants a PNG.
   const icons = {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
+    icon: "/favicon.svg?v=2",
+    shortcut: "/favicon.ico?v=2",
+    apple: "/apple-touch-icon.png?v=2",
   };
 
   // Chat instances (chat.hoffle.online, deeppixel.online/hangout, anyone's

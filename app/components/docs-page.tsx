@@ -132,7 +132,7 @@ export function DocsPage({ doc }: { doc: Doc }) {
             <span aria-hidden> / </span>
             {doc.slug ? <a href="/docs" className="hover:text-(--ink)">Docs</a> : <span>Docs</span>}
           </nav>
-          <h1 className="lp-display mt-3 text-4xl font-extrabold leading-[1.02] sm:text-[52px]">{doc.title}</h1>
+          <h1 className="lp-display mt-3 text-3xl font-bold leading-tight sm:text-[40px]">{doc.title}</h1>
           <p className="mt-4 text-sm text-(--muted)">
             From <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink-2)">{doc.path}</code> in the repo.{" "}
             <a href={`${REPO}/edit/main/${doc.path}`} className="font-semibold text-(--violet) underline underline-offset-2">

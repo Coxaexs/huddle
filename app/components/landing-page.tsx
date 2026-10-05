@@ -47,94 +47,128 @@ const THEMES: ShowcaseTheme[] = [
   },
 ];
 
+const MUSIC_BOT_REPO = "https://github.com/Coxaexs/musicwatchtogether";
+
 const FEATURES: { title: string; items: ReactNode[] }[] = [
   {
     title: "Voice and screen sharing",
     items: [
-      "Noise suppression that runs on your own device, so the fan, the keyboard and the TV stay out of the call.",
-      "Screen share at 1080p and 60 fps, with the game or movie audio included.",
+      "Noise suppression (RNNoise) runs on your own device, so fans, keyboards and the TV stay out of the call.",
+      "Screen share up to 1080p at 60 fps with the game or film audio, plus 24 fps film modes that stay smooth.",
       "Push-to-talk that keeps working while a game has focus (desktop app).",
-      "Someone says something legendary? Hit Clip and the last 30 seconds are saved.",
+      "Clip saves the last 30 seconds of the call.",
       "Spatial audio seating and virtual backgrounds.",
     ],
   },
   {
-    title: "Things to do together",
+    title: "Music and watching together",
     items: [
-      "A music bot the whole room shares: one queue, and everyone hears the same second of the same song.",
-      "Watch together, a whiteboard, Draw & Guess, tier lists, polls and a soundboard.",
+      <>
+        A music bot with one shared queue, synced so everyone hears the same second of the song. It's{" "}
+        <a href={MUSIC_BOT_REPO} className="font-semibold text-(--violet) underline decoration-dotted underline-offset-2">
+          its own open-source project
+        </a>{" "}
+        and also plays in Discord voice channels.
+      </>,
+      "A two-deck DJ booth, lyrics, and Watch Together rooms for YouTube and reels.",
+      "A whiteboard, Draw & Guess, tier lists, polls and a soundboard.",
     ],
   },
   {
-    title: "D&D night",
+    title: "D&D",
     items: [
       "Battlemaps with tokens and fog of war.",
-      "3D dice with real physics, rolled where everyone can see them.",
-      "A spell and monster compendium, so nobody has to leave the call to look something up.",
+      "3D dice with physics, rolled where everyone can see them.",
+      "A spell and monster compendium inside the call.",
     ],
   },
   {
     title: "Chat",
     items: [
       "Threads, replies, reactions, custom emoji and stickers, GIFs and voice messages.",
-      "Link previews, events with RSVPs, and search.",
+      "Link previews, events with RSVPs, and search with filters.",
     ],
   },
   {
-    title: "Your Discord bots",
+    title: "Discord bots",
     items: [
-      "Hoffle speaks the Discord bot API, so bots written with discord.js or discord.py connect without changes.",
-      "A bridge for the channels you still keep on Discord.",
+      "Hoffle implements the Discord bot API, so bots written with discord.js or discord.py connect without code changes.",
+      "A bridge mirrors channels you still keep on Discord.",
     ],
   },
   {
-    title: "Make it yours",
+    title: "Themes",
     items: [
-      "Themes you can make and share, profile banners, pride badges and a nickname per server.",
+      "Cozy, Light, Classic and MSN Messenger, plus themes you write in CSS and share.",
+      "Profile banners, pride badges and a nickname per server.",
     ],
   },
 ];
 
+/**
+ * Discord's side is its free plan, from discord.com/nitro and Discord's help
+ * centre. Check these again before changing them; they move.
+ */
 const COMPARISON: { label: string; discord: string; hoffle: string }[] = [
-  { label: "Price", discord: "Free, with Nitro for the good stuff", hoffle: "Free. There is no paid tier" },
-  { label: "Screen share", discord: "720p on the free plan", hoffle: "1080p60 with sound, for everyone" },
-  { label: "Themes", discord: "A few colour themes, Nitro only", hoffle: "Free themes, custom CSS, shareable" },
-  { label: "Ads", discord: "Sponsored Quests", hoffle: "None, and no trackers" },
+  { label: "Price", discord: "Free; Nitro is $9.99 a month (US)", hoffle: "Free, no paid tier" },
+  { label: "Screen share", discord: "720p at 30 fps (1080p60 and up with Nitro)", hoffle: "Up to 1080p at 60 fps, with audio" },
+  { label: "File uploads", discord: "10 MB per file", hoffle: "8 MB images, 20 MB PDFs, 40 MB video clips" },
+  { label: "Mic quality", discord: "64 kbps default, up to 96 kbps", hoffle: "64 kbps Opus with packet redundancy" },
+  { label: "Custom emoji in other servers", discord: "Nitro only", hoffle: "Free" },
+  { label: "People in one voice room", discord: "Up to 99 (25 with video)", hoffle: "No set limit; the server's upload is the limit, about 4 Mbps per 1080p viewer" },
   { label: "Source code", discord: "Closed", hoffle: "Open source, AGPL-3.0" },
-  { label: "Run it yourself", discord: "No", hoffle: "One docker compose command" },
-  { label: "Existing bots", discord: "Yes", hoffle: "discord.js and discord.py bots connect as-is" },
-  { label: "Phone", discord: "Native apps", hoffle: "Works in the phone's browser; add it to your home screen" },
-  { label: "Huge public servers", discord: "Built for it", hoffle: "Not really. Voice is peer-to-peer and suits about 8 people, unless the server adds LiveKit" },
+  { label: "Host it yourself", discord: "No", hoffle: "Yes, with Docker" },
+  { label: "Bots", discord: "Yes", hoffle: "discord.js and discord.py bots connect unchanged" },
+  { label: "Phone", discord: "iOS and Android apps", hoffle: "Phone browser, added to the home screen" },
+];
+
+const VOICE_POINTS: { title: string; body: string }[] = [
+  {
+    title: "Everyone uploads once",
+    body: "Calls go through a LiveKit media server. You send your mic and screen to the server once and it forwards them, so a room isn't capped at the 6 to 8 people a peer-to-peer call can carry.",
+  },
+  {
+    title: "A slow connection only affects itself",
+    body: "Screen shares are sent in two sizes (simulcast). A viewer on a weak connection gets the smaller one, and the sharer and everyone else keep the full picture.",
+  },
+  {
+    title: "Modes for films and for desktops",
+    body: "Film modes run at 24 fps and give up resolution before frames, so movies don't stutter. Desktop modes keep text sharp and give up frames first.",
+  },
+  {
+    title: "Fewer dropouts",
+    body: "Mic audio is sent with redundant packets, so a lost packet is rebuilt instead of heard as a gap. If the media server can't be reached, the call falls back to peer-to-peer.",
+  },
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
-    q: "Is Hoffle actually free?",
-    a: "Yes. There's no paid tier and nothing is locked. The code is open source under the AGPL-3.0, so it stays that way.",
+    q: "Is it free?",
+    a: "Yes. There's no paid tier and nothing is locked. The code is AGPL-3.0, so it stays open.",
   },
   {
     q: "How do I get in?",
-    a: "chat.hoffle.online is invite-only for now, so ask a friend who's already on it for an invite code. If none of your friends are, host your own Hoffle; the first account on a new server becomes the owner and can invite everyone else.",
+    a: "chat.hoffle.online is invite-only for now, so you need an invite code from someone who's on it. Or run your own: the first account on a new server becomes the owner and can invite everyone else.",
   },
   {
     q: "Do my friends have to install anything?",
-    a: "No. Everything works in the browser. The desktop app adds push-to-talk that works in games, a proper screen-share picker with desktop audio, and notifications in your taskbar or dock.",
+    a: "No, it works in the browser. The desktop app adds push-to-talk that works in games, a screen-share picker with desktop audio, and taskbar or dock notifications.",
   },
   {
     q: "How many people fit in a voice call?",
-    a: "Voice is peer-to-peer by default, which works well for friend groups up to about 8 people. For bigger rooms, whoever runs the server can switch on the optional LiveKit media server.",
+    a: "On chat.hoffle.online calls go through LiveKit, so there's no fixed limit; the server's upload speed is what runs out first. A self-hosted server without LiveKit uses peer-to-peer calls, which work well up to about 8 people.",
   },
   {
     q: "Is there a phone app?",
-    a: "Open chat.hoffle.online on your phone and add it to your home screen. For notifications while it's closed, install the free ntfy app and paste your topic into Hoffle's settings. No Google or Apple account needed.",
+    a: "Open chat.hoffle.online on your phone and add it to your home screen. For notifications while it's closed, install the free ntfy app and paste your topic into Hoffle's settings.",
   },
   {
     q: "Who can read my messages?",
-    a: "Whoever runs the server you're on, the same as with any chat app. There are no ads and no trackers. If you'd rather that be you, host it yourself and your data never leaves your machine.",
+    a: "Whoever runs the server you're on, like with any chat app. There are no ads or trackers. If you'd rather that be you, host it yourself.",
   },
   {
-    q: "Is the MSN theme a joke?",
-    a: "Only partly. It's a complete theme: Luna-blue windows, “says:” in front of every message, emoticons that turn into pictures, sign-in toasts, nudges, winks and handwriting. Pick it in Settings.",
+    q: "What does the MSN Messenger theme change?",
+    a: "The whole layout, not only the colours: a contact list with groups, “says:” before each message, display pictures, personal emoticons, nudges, winks, handwriting, chat backgrounds, sign-in toasts with their own sounds, and an MSN Today window. Pick it in Settings → Appearance.",
   },
 ];
 
@@ -158,7 +192,7 @@ const jsonLd = {
       name: "Hoffle",
       url: `${SITE}/`,
       description:
-        "A free, open-source Discord alternative for friend groups: voice chat, 1080p60 screen sharing with sound, a shared music bot, D&D tools and themes including MSN Messenger. Use it in the browser, on the desktop, or self-host it.",
+        "A free, open-source chat app for friend groups: voice chat through LiveKit, 1080p60 screen sharing with sound, a shared music bot, D&D tools, and themes including MSN Messenger. Use it in the browser, on the desktop, or self-host it.",
       applicationCategory: "CommunicationApplication",
       operatingSystem: "Web, Windows, macOS, Linux, Android, iOS",
       isAccessibleForFree: true,
@@ -197,9 +231,11 @@ function Buddy({ className = "" }: { className?: string }) {
 }
 
 const button =
-  "inline-flex h-12 items-center justify-center gap-2 rounded-full px-6 text-[15px] font-bold transition";
-const primaryButton = `${button} bg-(--ink) text-(--paper) hover:bg-(--violet)`;
+  "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-[15px] font-semibold transition";
+const primaryButton = `${button} bg-(--violet) text-white hover:bg-(--ink)`;
 const secondaryButton = `${button} border border-(--line) bg-(--card) text-(--ink) hover:border-(--ink)`;
+const sectionTitle = "lp-display text-3xl font-bold leading-tight sm:text-4xl";
+const link = "font-semibold text-(--violet) underline decoration-dotted underline-offset-2";
 
 /* ─── Page ─────────────────────────────────────────────────────────────── */
 
@@ -219,49 +255,68 @@ export function LandingPage() {
         {/* ── Hero ──────────────────────────────────────────────────── */}
         <section className="px-4 pt-14 sm:px-6 sm:pt-20">
           <div className="mx-auto max-w-6xl">
-            <h1 className="lp-display max-w-[15ch] text-[44px] font-extrabold leading-[0.98] sm:text-[76px]">
-              Voice chat for your friends, minus the Nitro upsell.
+            <h1 className="lp-display max-w-[22ch] text-4xl font-bold leading-[1.1] sm:text-[56px]">
+              A chat app for small groups, with voice, screen sharing and game night built in.
             </h1>
-            <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <p className="max-w-[60ch] text-lg leading-relaxed text-(--ink-2)">
-                Hoffle is a free, open-source Discord alternative for small groups. Voice chat, screen sharing at
-                1080p with sound, music everyone hears at the same time, and a D&amp;D table, without a paid tier.
-                Use it in your browser, on your desktop, or on your own server.
+            <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <p className="max-w-[62ch] text-lg leading-relaxed text-(--ink-2)">
+                I started Hoffle for my own friend group, who spent most evenings in a Discord call. It has the
+                things we used every night: voice, 1080p screen sharing with sound, a music bot, and D&amp;D tools.
+                It's free and open source, and it runs in the browser, as a desktop app, or on your own server.
               </p>
               <div className="flex flex-wrap gap-3">
                 <a href={APP_URL} className={primaryButton}>Open Hoffle</a>
                 <DownloadButton releases={RELEASES} appUrl={APP_URL} className={secondaryButton} />
               </div>
             </div>
-            <div className="mt-14 sm:mt-16">
+            <div className="mt-12 sm:mt-14">
               <ThemeShowcase themes={THEMES} />
             </div>
           </div>
         </section>
 
         {/* ── Features ─────────────────────────────────────────────── */}
-        <section id="features" className="scroll-mt-4 px-4 py-24 sm:px-6 sm:py-32">
-          <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1fr_2fr]">
-            <div>
-              <h2 className="lp-display text-4xl font-extrabold leading-[1.02] sm:text-5xl">What's in it</h2>
-              <p className="mt-4 max-w-sm leading-relaxed text-(--ink-2)">
-                Everything here works today and costs nothing. No bots to invite for the basics, no second app for game night.
-              </p>
-            </div>
-            <div className="grid gap-x-10 gap-y-10 sm:grid-cols-2">
+        <section id="features" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
+          <div className="mx-auto max-w-6xl">
+            <h2 className={sectionTitle}>Features</h2>
+            <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">
+              All of this is in the app today, for everyone.
+            </p>
+            <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
               {FEATURES.map((group) => (
-                <div key={group.title} className="border-t-2 border-(--ink) pt-4">
-                  <h3 className="lp-display text-xl font-extrabold">{group.title}</h3>
-                  <ul className="mt-3 space-y-2.5 text-[15px] leading-relaxed text-(--ink-2)">
+                <div key={group.title}>
+                  <h3 className="text-lg font-bold">{group.title}</h3>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-(--ink-2) marker:text-(--muted)">
                     {group.items.map((item, i) => (
-                      <li key={i} className="relative pl-4 before:absolute before:left-0 before:top-[0.7em] before:h-[2px] before:w-2 before:bg-(--coral)">
-                        {item}
-                      </li>
+                      <li key={i}>{item}</li>
                     ))}
                   </ul>
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── Voice (LiveKit) ──────────────────────────────────────── */}
+        <section id="voice" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
+            <div>
+              <h2 className={sectionTitle}>How voice works</h2>
+              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">
+                Since October 2026, calls on chat.hoffle.online run through{" "}
+                <a href="https://livekit.io" className={link}>LiveKit</a>, an open-source media server. Before
+                that, every call was peer-to-peer, which got heavy past about 8 people or when several people
+                watched one screen share. Self-hosted servers can turn it on with a Docker profile and three settings.
+              </p>
+            </div>
+            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
+              {VOICE_POINTS.map((point) => (
+                <div key={point.title}>
+                  <dt className="font-bold">{point.title}</dt>
+                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </section>
 
@@ -272,21 +327,28 @@ export function LandingPage() {
           className="relative scroll-mt-4 overflow-hidden px-4 pb-28 pt-20 sm:px-6 sm:pt-24"
           style={{ background: "linear-gradient(180deg,#1f5fcf 0%,#4a8fe8 45%,#a9d0f5 78%,#d9ecfb 100%)" }}
         >
-          {/* A rolling green hill, in the spirit of a certain desktop wallpaper. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute -bottom-[38%] left-1/2 h-[70%] w-[160%] -translate-x-1/2 rounded-[50%]"
+            className="pointer-events-none absolute -bottom-[46%] left-1/2 h-[66%] w-[160%] -translate-x-1/2 rounded-[50%]"
             style={{ background: "radial-gradient(ellipse at 50% 20%,#8fd35a 0%,#5aa82e 45%,#3b7f1c 100%)" }}
           />
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
             <div className="text-white">
-              <h2 id="msn-title" className="lp-display text-4xl font-extrabold leading-[1.02] [text-shadow:0_2px_0_rgba(0,40,120,.35)] sm:text-[56px]">
-                Yes, there's an MSN Messenger theme.
+              <h2 id="msn-title" className="lp-display text-3xl font-bold leading-tight [text-shadow:0_1px_0_rgba(0,40,120,.35)] sm:text-[44px]">
+                The MSN Messenger theme
               </h2>
               <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/90">
-                Switch it on and Hoffle turns into Windows Live Messenger, circa 2006. Every message starts with “Mira says:”,
-                friends sign in with a toast and a chime, and you can nudge someone until their window shakes.
+                A full second interface for Hoffle, modelled on Windows Live Messenger. It changes the layout and
+                behaviour, not only the colours: messages read “Mira says:”, friends signing in show a toast, and a
+                nudge shakes the other person's window.
               </p>
+              <ul className="mt-5 max-w-md list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-white/90">
+                <li>A contact list with your own groups, and a quiet list</li>
+                <li>Display pictures, personal emoticons, winks and handwriting</li>
+                <li>Statuses like Be Right Back and Out to Lunch</li>
+                <li>A sound for each event, picked in its Sounds settings</li>
+                <li>MSN Today: who's around, unread conversations and what's playing</li>
+              </ul>
               <ul className="lp-msn mt-6 flex flex-wrap gap-2 text-sm" aria-label="Emoticons that turn into pictures when you send them">
                 {[
                   [":)", "🙂"],
@@ -300,9 +362,6 @@ export function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-6 max-w-md text-[15px] leading-relaxed text-white/85">
-                Also included: display pictures, winks, handwriting, chat backgrounds, and statuses like Be Right Back and Out to Lunch.
-              </p>
             </div>
 
             {/* An XP-style window around the real screenshot. */}
@@ -348,44 +407,49 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ── vs Discord ───────────────────────────────────────────── */}
-        <section id="vs-discord" className="scroll-mt-4 px-4 py-24 sm:px-6 sm:py-32">
+        {/* ── Compared to Discord ──────────────────────────────────── */}
+        <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
           <div className="mx-auto max-w-4xl">
-            <h2 className="lp-display text-4xl font-extrabold leading-[1.02] sm:text-5xl">Hoffle vs. Discord, honestly</h2>
-            <p className="mt-4 max-w-2xl leading-relaxed text-(--ink-2)">
-              Discord is great at huge public communities. Hoffle is for the group chat you actually talk in, and it
-              doesn't hold the nice parts back for subscribers.
+            <h2 className={sectionTitle}>Compared to Discord</h2>
+            <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">
+              Discord's free plan next to Hoffle, in numbers. Discord is the better choice for large public
+              communities and has proper phone apps; Hoffle is aimed at groups of friends.
             </p>
-            <div className="mt-10 overflow-hidden rounded-2xl border border-(--line) bg-(--card)">
-              <table className="w-full border-collapse text-left text-[13px] sm:text-[15px]">
+            <div className="mt-8 overflow-x-auto rounded-xl border border-(--line)">
+              <table className="w-full min-w-[560px] border-collapse text-left text-[14px] sm:text-[15px]">
                 <caption className="sr-only">Hoffle compared with Discord&apos;s free plan</caption>
                 <thead>
-                  <tr className="border-b border-(--line) text-sm">
-                    <th scope="col" className="w-[24%] px-3 py-3 font-semibold text-(--muted) sm:px-5 sm:py-4"><span className="sr-only">Feature</span></th>
-                    <th scope="col" className="w-[33%] px-3 py-3 font-bold text-(--ink-2) sm:px-5 sm:py-4">Discord</th>
-                    <th scope="col" className="w-[43%] bg-(--paper-2) px-3 py-3 font-extrabold sm:px-5 sm:py-4">Hoffle</th>
+                  <tr className="border-b border-(--line) bg-(--paper-2) text-sm">
+                    <th scope="col" className="w-[28%] px-4 py-3 font-semibold text-(--muted)"><span className="sr-only">Feature</span></th>
+                    <th scope="col" className="w-[34%] px-4 py-3 font-semibold">Discord (free)</th>
+                    <th scope="col" className="w-[38%] px-4 py-3 font-semibold">Hoffle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {COMPARISON.map((row) => (
                     <tr key={row.label} className="border-b border-(--line) last:border-b-0">
-                      <th scope="row" className="px-3 py-3 align-top font-bold sm:px-5 sm:py-4">{row.label}</th>
-                      <td className="px-3 py-3 align-top text-(--ink-2) sm:px-5 sm:py-4">{row.discord}</td>
-                      <td className="bg-(--paper-2) px-3 py-3 align-top font-semibold sm:px-5 sm:py-4">{row.hoffle}</td>
+                      <th scope="row" className="px-4 py-3 align-top font-semibold">{row.label}</th>
+                      <td className="px-4 py-3 align-top text-(--ink-2)">{row.discord}</td>
+                      <td className="px-4 py-3 align-top">{row.hoffle}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="mt-3 text-sm text-(--muted)">
+              Discord figures are from{" "}
+              <a href="https://discord.com/nitro" className="underline underline-offset-2">discord.com/nitro</a>{" "}
+              and Discord's help centre, October 2026. Hoffle's upload limits are those of chat.hoffle.online.
+            </p>
           </div>
         </section>
 
         {/* ── Download ─────────────────────────────────────────────── */}
-        <section id="download" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-24 sm:px-6">
+        <section id="download" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[7fr_5fr]">
             <div>
-              <h2 className="lp-display text-4xl font-extrabold leading-[1.02] sm:text-5xl">Get Hoffle</h2>
-              <p className="mt-4 max-w-xl leading-relaxed text-(--ink-2)">
+              <h2 className={sectionTitle}>Download</h2>
+              <p className="mt-3 max-w-xl leading-relaxed text-(--ink-2)">
                 The browser version does nearly everything. The desktop app adds push-to-talk that works in games,
                 desktop audio in screen shares, and notifications in your taskbar or dock.
               </p>
@@ -399,21 +463,21 @@ export function LandingPage() {
                 ].map((row) => (
                   <li key={row.name}>
                     <a href={row.href} className="group flex items-center gap-4 py-4">
-                      <span className="w-24 shrink-0 font-extrabold">{row.name}</span>
+                      <span className="w-24 shrink-0 font-bold">{row.name}</span>
                       <span className="min-w-0 flex-1 text-sm text-(--muted)">{row.file}</span>
-                      <span className="shrink-0 text-sm font-bold text-(--violet) group-hover:underline">{row.action} →</span>
+                      <span className="shrink-0 text-sm font-semibold text-(--violet) group-hover:underline">{row.action} →</span>
                     </a>
                   </li>
                 ))}
               </ul>
               <p className="mt-6 max-w-xl text-sm leading-relaxed text-(--ink-2)">
-                <b className="text-(--ink)">Notifications on your phone, no Big Tech account.</b> Install the free{" "}
-                <a href="https://ntfy.sh" className="font-semibold text-(--violet) underline decoration-dotted underline-offset-2">ntfy</a>{" "}
-                app, paste your topic into Hoffle's settings, and mentions, DMs and calls come through with the app closed.
+                <b className="text-(--ink)">Phone notifications without a Google or Apple account:</b> install the free{" "}
+                <a href="https://ntfy.sh" className={link}>ntfy</a>{" "}
+                app and paste your topic into Hoffle's settings. Mentions, DMs and calls then arrive with the app closed.
               </p>
             </div>
             <div className="mx-auto w-full max-w-[300px]">
-              <div className="rounded-[44px] border-[10px] border-(--ink) bg-(--ink) shadow-[0_40px_70px_-35px_rgba(40,28,10,.6)]">
+              <div className="rounded-[44px] border-[10px] border-(--ink) bg-(--ink) shadow-[0_30px_60px_-35px_rgba(20,15,40,.5)]">
                 <img
                   src="/shots/hoffle-phone-780.webp"
                   width={390}
@@ -429,30 +493,32 @@ export function LandingPage() {
         </section>
 
         {/* ── Self-host ────────────────────────────────────────────── */}
-        <section id="self-host" className="scroll-mt-4 bg-(--ink) px-4 py-24 text-(--paper) sm:px-6 sm:py-28">
+        <section id="self-host" className="scroll-mt-4 bg-(--ink) px-4 py-20 text-white sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
             <div>
-              <h2 className="lp-display text-4xl font-extrabold leading-[1.02] sm:text-5xl">Host your own in one command</h2>
-              <p className="mt-5 max-w-lg leading-relaxed text-white/75">
-                It runs on a spare PC, a small home server or a cheap VPS. The first account you make becomes the owner,
-                and everything (accounts, messages, uploads) lives in one <code className="rounded bg-white/10 px-1.5 py-0.5 text-[14px]">./state</code> folder
-                that you back up by copying it.
+              <h2 className={sectionTitle}>Run your own</h2>
+              <p className="mt-4 max-w-lg leading-relaxed text-white/75">
+                Hoffle runs on a spare PC, a home server or a small VPS with Docker. The first account you create
+                becomes the owner. Accounts, messages and uploads all live in one{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 text-[14px]">state</code> folder, so a backup is
+                a copy of that folder.
               </p>
-              <ul className="mt-6 space-y-2 text-[15px] text-white/85">
-                {[
-                  "Nothing to configure for a first run",
-                  "Optional TURN relay for friends on strict networks",
-                  "Optional LiveKit for big voice rooms",
-                  "Point the desktop app at your server from its menu",
-                ].map((line) => (
-                  <li key={line} className="relative pl-4 before:absolute before:left-0 before:top-[0.7em] before:h-[2px] before:w-2 before:bg-(--coral)">{line}</li>
-                ))}
+              <ul className="mt-5 list-disc space-y-1.5 pl-5 text-[15px] text-white/85 marker:text-white/40">
+                <li>No configuration needed for a first run</li>
+                <li>LiveKit for bigger voice rooms: <code className="text-[14px]">--profile livekit</code></li>
+                <li>
+                  The full{" "}
+                  <a href={MUSIC_BOT_REPO} className="underline decoration-dotted underline-offset-2">music bot</a>:{" "}
+                  <code className="text-[14px]">--profile musicbot</code>
+                </li>
+                <li>A TURN relay for friends on strict networks: <code className="text-[14px]">--profile turn</code></li>
+                <li>The desktop app can point at your server from its menu</li>
               </ul>
-              <a href={SELF_HOST_GUIDE} className="mt-8 inline-block font-bold text-white underline decoration-(--coral) decoration-2 underline-offset-4 hover:decoration-white">
-                Read the self-hosting guide
+              <a href={SELF_HOST_GUIDE} className="mt-7 inline-block font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white">
+                Self-hosting guide, step by step
               </a>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0e0b14]">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0e0b14]">
               <div className="flex h-11 items-center justify-between border-b border-white/10 px-4">
                 <span className="font-mono text-xs text-white/50">terminal</span>
                 <CopyButton text={SELF_HOST} />
@@ -468,13 +534,13 @@ export function LandingPage() {
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────── */}
-        <section id="faq" className="scroll-mt-4 px-4 py-24 sm:px-6 sm:py-32">
+        <section id="faq" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1fr_2fr]">
-            <h2 className="lp-display text-4xl font-extrabold leading-[1.02] sm:text-5xl">Questions</h2>
+            <h2 className={sectionTitle}>Questions</h2>
             <div className="lp-faq divide-y divide-(--line) border-y border-(--line)">
               {FAQS.map((item, i) => (
                 <details key={item.q} open={i === 0} className="group py-1">
-                  <summary className="flex items-center justify-between gap-6 py-4 text-lg font-bold">{item.q}</summary>
+                  <summary className="flex items-center justify-between gap-6 py-4 text-lg font-semibold">{item.q}</summary>
                   <p className="max-w-[62ch] pb-5 leading-relaxed text-(--ink-2)">{item.a}</p>
                 </details>
               ))}
@@ -482,28 +548,24 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ── Closing ──────────────────────────────────────────────── */}
-        <section className="px-4 pb-24 sm:px-6">
-          <div className="mx-auto max-w-6xl rounded-3xl bg-(--coral) px-6 py-14 text-white sm:px-14 sm:py-16">
-            <h2 className="lp-display max-w-[18ch] text-4xl font-extrabold leading-[1.02] sm:text-[52px]">
-              Made by one person, for their friends.
-            </h2>
-            <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-white/90">
-              No investors, no ads, no roadmap to a paid tier. If Hoffle made your game nights better, star it on
-              GitHub or tell one friend about it.
+        {/* ── About ────────────────────────────────────────────────── */}
+        <section className="border-t border-(--line) px-4 py-16 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl leading-relaxed text-(--ink-2)">
+              Hoffle is a one-person project with no ads and no investors. Bug reports and pull requests are
+              welcome on GitHub.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href={REPO} className={`${button} bg-white text-(--ink) hover:bg-(--paper)`}>
-                <GithubMark className="h-4 w-4" /> Star on GitHub
+            <div className="flex flex-wrap gap-3">
+              <a href={REPO} className={secondaryButton}>
+                <GithubMark className="h-4 w-4" /> Hoffle on GitHub
               </a>
               {SUPPORT_URL && (
-                <a href={SUPPORT_URL} className={`${button} border border-white/60 text-white hover:bg-white/10`}>Buy me a coffee</a>
+                <a href={SUPPORT_URL} className={secondaryButton}>Support the project</a>
               )}
             </div>
           </div>
         </section>
       </main>
-
     </SiteShell>
   );
 }
