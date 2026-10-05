@@ -84,6 +84,15 @@ if ! grep -q '^VAPID_PUBLIC_KEY=' "$SECRETS_FILE"; then
   fi
 fi
 
+# Password Hoffle uses to log into the music bot's dashboard (the optional
+# musicwatch container reads it from this same file). Older instances get one
+# on their next start.
+if ! grep -q '^MUSICWATCH_PASSWORD=' "$SECRETS_FILE"; then
+  umask 077
+  echo "MUSICWATCH_PASSWORD=$(random_string 'a-zA-Z0-9' 32)" >> "$SECRETS_FILE"
+  umask 022
+fi
+
 # --- 2 & 3. Merge into the runtime env file ----------------------------------
 : > "$RUNTIME_ENV"
 chmod 600 "$RUNTIME_ENV"

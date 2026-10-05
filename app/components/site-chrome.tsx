@@ -21,18 +21,21 @@ export function GithubMark({ className = "" }: { className?: string }) {
   );
 }
 
+/** The app icon and name, as in the browser tab and on the desktop. */
 function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`lp-display font-extrabold ${className}`}>
-      hoffle<span className="text-(--coral)">.</span>
+    <span className={`inline-flex items-center gap-2.5 font-bold tracking-tight ${className}`}>
+      <img src="/favicon.svg?v=2" alt="" width={40} height={40} className="h-[1.6em] w-[1.6em] shadow-[0_2px_8px_-2px_rgba(106,77,219,.6)] rounded-[22%]" />
+      <span className="text-(--violet)">Hoffle</span>
     </span>
   );
 }
 
 const NAV = [
   { href: "/#features", label: "Features" },
-  { href: "/#msn", label: "MSN theme" },
-  { href: "/#vs-discord", label: "vs. Discord" },
+  { href: "/#voice", label: "Voice" },
+  { href: "/#msn", label: "MSN Messenger theme" },
+  { href: "/#compare", label: "Compared to Discord" },
   { href: "/#download", label: "Download" },
   { href: "/docs", label: "Docs" },
 ];
@@ -45,29 +48,21 @@ export function SiteShell({ children }: { children: ReactNode }) {
   return (
     <div className="lp-root min-h-screen w-full overflow-x-clip bg-(--paper) text-(--ink) antialiased selection:bg-(--violet) selection:text-white">
       {/* React hoists these into <head>. */}
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        precedence="default"
-        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap"
-      />
       <style>{`
         .lp-root {
-          --paper: #f5f0e6;
-          --paper-2: #ede5d5;
-          --card: #fbf8f2;
-          --ink: #1a1523;
-          --ink-2: #4b4458;
-          --muted: #6e6679;
-          --line: #d9cfbd;
+          --paper: #ffffff;
+          --paper-2: #f4f3f8;
+          --card: #ffffff;
+          --ink: #17151f;
+          --ink-2: #45414f;
+          --muted: #6b6676;
+          --line: #e2e0e8;
           --violet: #6a4ddb;
-          --coral: #d9603f;
-          font-family: Nunito, ui-sans-serif, system-ui, sans-serif;
+          --coral: #6a4ddb;
+          font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
         .lp-display {
-          font-family: "Bricolage Grotesque", Nunito, ui-sans-serif, system-ui, sans-serif;
-          font-optical-sizing: auto;
-          letter-spacing: -0.025em;
+          letter-spacing: -0.015em;
         }
         .lp-root a:focus-visible, .lp-root button:focus-visible, .lp-root summary:focus-visible {
           outline: 3px solid var(--violet); outline-offset: 3px; border-radius: 8px;
@@ -77,9 +72,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <header className="border-b border-(--line)">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <a href="/" aria-label="Hoffle home">
-            <Wordmark className="text-2xl" />
+            <Wordmark className="text-[22px]" />
           </a>
-          <nav aria-label="Main" className="hidden items-center gap-7 text-[15px] font-semibold text-(--ink-2) md:flex">
+          <nav aria-label="Main" className="hidden items-center gap-6 text-[15px] font-medium text-(--ink-2) lg:flex">
             {NAV.map((item) => (
               <a key={item.href} href={item.href} className="hover:text-(--ink)">{item.label}</a>
             ))}
@@ -88,7 +83,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <a href={REPO} className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)" aria-label="Hoffle on GitHub">
               <GithubMark className="h-5 w-5" />
             </a>
-            <a href={APP_URL} className="inline-flex h-10 items-center rounded-full bg-(--ink) px-4 text-sm font-bold text-(--paper) hover:bg-(--violet)">
+            <a href={APP_URL} className="inline-flex h-10 items-center rounded-lg bg-(--violet) px-4 text-sm font-semibold text-white hover:bg-(--ink)">
               Open Hoffle
             </a>
           </div>
@@ -99,13 +94,18 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
       <footer className="border-t border-(--line) px-4 py-10 text-sm text-(--muted) sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            <Wordmark className="text-base text-(--ink)" /> Open source under the AGPL-3.0. Made by{" "}
-            <a href="https://abdullahturk.com" rel="author" className="font-semibold text-(--ink) hover:underline">
-              Abdullah Türk
-            </a>
-            .
-          </p>
+          <div className="space-y-1.5">
+            <p>
+              Hoffle is open source under the AGPL-3.0. Made by{" "}
+              <a href="https://abdullahturk.com" rel="author" className="font-semibold text-(--ink) hover:underline">
+                Abdullah Türk
+              </a>
+              .
+            </p>
+            <p className="text-xs">
+              Hoffle is not affiliated with or endorsed by Discord Inc. Discord is a trademark of Discord Inc.
+            </p>
+          </div>
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 font-semibold">
             <a href={APP_URL} className="hover:text-(--ink)">Web app</a>
             <a href="/#download" className="hover:text-(--ink)">Download</a>

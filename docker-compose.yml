@@ -9,6 +9,8 @@
 # Optional extras, enabled with profiles (see docs/self-hosting.md):
 #   --profile livekit   LiveKit media server for larger voice rooms
 #   --profile turn      coturn relay for friends behind strict NATs
+#   --profile musicbot  the full Music + Watch bot (dashboard, DJ booth,
+#                       lyrics, Watch Together, optional Discord)
 #   --profile bridge    Discord <-> Hoffle message bridge
 
 services:
@@ -31,6 +33,13 @@ services:
       HOFFLE_PORT: ${HOFFLE_PORT:-8730}
       MUSIC_HELPER_BASE_URL: http://music-bot:8731
       DND_BASE_URL: http://dnd-bot:8732
+      # The Music + Watch bot (--profile musicbot). Without the profile the
+      # sidebar just shows it as offline.
+      MUSICWATCH_BASE_URL: ${MUSICWATCH_BASE_URL:-http://musicwatch:8722}
+      # Where browsers reach its dashboard and Watch Together rooms: your
+      # Hoffle address, with /musicbot/ and /watch/ proxied to port 8722
+      # (see docs/self-hosting.md#music-bot).
+      MUSICWATCH_PUBLIC_URL: ${MUSICWATCH_PUBLIC_URL:-http://localhost:${HOFFLE_PORT:-8730}}
     depends_on:
       - music-bot
       - dnd-bot
@@ -62,6 +71,37 @@ services:
       - "8732"
 
   # --- Optional services ----------------------------------------------------
+
+  # The full music bot from github.com/Coxaexs/musicwatchtogether: dashboard,
+  # DJ booth, lyrics and Watch Together, playing in Hoffle voice rooms. Set
+  # DISCORD_TOKEN in .env and the same bot also plays in Discord. It reads
+  # Hoffle's generated secrets from ./state/secrets.env, so start Hoffle first.
+  musicwatch:
+    profiles: [musicbot]
+    build:
+      context: ./services/musicwatch
+      args:
+        MUSICBOT_REF: ${MUSICBOT_REF:-main}
+    image: hoffle-musicwatch:local
+    container_name: hoffle-musicwatch
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8722:8722"   # for your reverse proxy only
+    volumes:
+      - ./state/musicwatch:/data
+      # Read-only, for secrets.env. The whole folder rather than the file, so
+      # the very first start cannot race Hoffle into creating the file.
+      - ./state:/hoffle:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HUDDLE_BASE_URL: http://hoffle:8730${BASE_PATH:-/hangout}
+      MUSIC_HELPER_URL: http://music-bot:8731
+      WEB_SERVER_URL: ${MUSICWATCH_PUBLIC_URL:-http://localhost:8722}
+    depends_on:
+      - hoffle
+      - music-bot
 
   # Discord bridge. Needs discord-bridge/.env (see discord-bridge/.env.example).
   discord-bridge:

@@ -15,6 +15,7 @@ This guide takes you from nothing to a running Hoffle that your friends can join
 - [Admin commands](#admin-commands)
 - [Voice: when calls do not connect](#voice-when-calls-do-not-connect)
 - [Optional extras](#optional-extras)
+- [Music bot](#music-bot)
 - [Single-container install (Unraid, TrueNAS, Synology)](#single-container-install-unraid-truenas-synology)
 - [Troubleshooting](#troubleshooting)
 - [Uninstalling](#uninstalling)
@@ -24,6 +25,9 @@ This guide takes you from nothing to a running Hoffle that your friends can join
 - A computer that stays on: a home server, an old laptop, a Raspberry Pi 4/5 (64-bit OS), or a cheap VPS. 2 GB of RAM is comfortable, 1 GB works.
 - About 3 GB of free disk space for the images, plus room for uploads.
 - Linux, macOS or Windows. Linux is the most common choice for a server.
+- About 15 minutes. Most of it is waiting for the first build.
+
+Every command below goes in a terminal: **Terminal** on macOS and Linux, **PowerShell** on Windows. Type or paste one command at a time and wait for it to finish before the next.
 
 ## 1. Install Docker
 
@@ -39,7 +43,9 @@ Hoffle runs in Docker, so you install nothing else by hand.
   sudo usermod -aG docker $USER
   ```
 
-- **macOS / Windows**: install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it.
+  Then log out and back in (or reboot). Until you do, every `docker` command fails with *permission denied while trying to connect to the Docker daemon socket*.
+
+- **macOS / Windows**: install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. Leave it running: when Docker Desktop is closed, Hoffle stops too. On Windows, also install [Git for Windows](https://git-scm.com/download/win) for the next step.
 
 Check that it works. Both commands should print a version:
 
@@ -63,7 +69,9 @@ git clone https://github.com/Coxaexs/huddle.git hoffle
 cd hoffle
 ```
 
-No `git`? Download the ZIP from the GitHub page (green **Code** button → **Download ZIP**), unzip it, and open a terminal in that folder.
+No `git`? Download the ZIP from the GitHub page (green **Code** button → **Download ZIP**), unzip it, and open a terminal in that folder. You won't be able to update with `git pull` later, so prefer `git` if you can.
+
+Every command from here on is run inside this `hoffle` folder. If you open a new terminal later, `cd` into it first.
 
 ## 3. Start it
 
@@ -71,9 +79,15 @@ No `git`? Download the ZIP from the GitHub page (green **Code** button → **Dow
 docker compose up -d
 ```
 
-The first start builds Hoffle on your machine, which takes 3 to 10 minutes depending on the computer. Later starts take seconds.
+The first start builds Hoffle on your machine, which takes 3 to 10 minutes depending on the computer (longer on a Raspberry Pi). Later starts take seconds. It is finished when you get your prompt back and every line ends in *Started* or *Running*.
 
-When it finishes, look at the log:
+Check that it is up:
+
+```bash
+docker compose ps
+```
+
+The `hoffle` line should say `Up`. For the first minute it says `(health: starting)`; that is normal. Then look at the log:
 
 ```bash
 docker compose logs hoffle
@@ -103,6 +117,8 @@ Open the address from the log in your browser. If Hoffle runs on another compute
 
 Choose **Claim this Hoffle**, pick a username and password, and enter the setup code. That account is the owner and admin.
 
+If the page asks you to sign in instead of offering **Claim this Hoffle**, someone already created the first account. On a fresh install that was most likely you; see [Troubleshooting](#troubleshooting) to start over.
+
 Lost the code? Print it again:
 
 ```bash
@@ -125,10 +141,30 @@ You need three things:
 2. **Ports 80 and 443 forwarded** on your router to the Hoffle machine. A VPS already has them open.
 3. **A reverse proxy** that gets a free HTTPS certificate and forwards traffic to Hoffle.
 
-The easiest reverse proxy is [Caddy](https://caddyserver.com/docs/install). It gets and renews certificates by itself. After installing it, put this in `/etc/caddy/Caddyfile` (replace the domain):
+Before you start, check the domain really points at you. This should print your public IP (the one [ifconfig.me](https://ifconfig.me) shows):
+
+```bash
+nslookup chat.example.com
+```
+
+The easiest reverse proxy is [Caddy](https://caddyserver.com/docs/install). It gets and renews certificates by itself. Install it on the same machine as Hoffle, then replace everything in `/etc/caddy/Caddyfile` with this (use your own domain):
 
 ```
 chat.example.com {
+    reverse_proxy localhost:8730
+}
+```
+
+If you also run the [music bot](#music-bot), use this instead, so its dashboard and Watch Together rooms open from the same address:
+
+```
+chat.example.com {
+    handle_path /musicbot/* {
+        reverse_proxy localhost:8722
+    }
+    handle /watch/* {
+        reverse_proxy localhost:8722
+    }
     reverse_proxy localhost:8730
 }
 ```
@@ -140,6 +176,8 @@ sudo systemctl reload caddy
 ```
 
 Open `https://chat.example.com` and you are done. WebSockets (live chat and voice signalling) work through Caddy with no extra configuration.
+
+If the page does not load, `sudo journalctl -u caddy --since "10 minutes ago"` says why. Almost always it is one of: the domain does not point at this machine yet (DNS changes can take an hour), ports 80/443 are not forwarded, or a firewall blocks them (`sudo ufw allow 80,443/tcp` on Ubuntu).
 
 If you already use nginx, start from [`deploy/nginx.example.conf`](../deploy/nginx.example.conf). Remember the WebSocket upgrade headers for `/api/realtime` and set `client_max_body_size` high enough for uploads. Nginx Proxy Manager, Traefik and Cloudflare Tunnel also work. Point them at port 8730 and enable WebSocket support.
 
@@ -153,7 +191,7 @@ Hoffle works without any configuration. To change something:
 cp .env.example .env
 ```
 
-Edit `.env` in any text editor. Every option is explained in the file, and there is a full list in [configuration.md](configuration.md). Then apply it:
+Edit `.env` in any text editor (`nano .env` on a server: save with Ctrl+O, Enter, quit with Ctrl+X). Remove the `#` in front of a line to use it. Every option is explained in the file, and there is a full list in [configuration.md](configuration.md). Then apply it:
 
 ```bash
 docker compose up -d
@@ -177,6 +215,8 @@ git pull
 ```bash
 docker compose up -d --build
 ```
+
+If you use extras, pass the same `--profile` flags as when you started them, for example `docker compose --profile livekit --profile musicbot up -d --build`. Otherwise those containers keep running their old version.
 
 Your messages, accounts and uploads live in the `state/` folder and are kept across updates. Take a [backup](#backups) before big updates, just in case.
 
@@ -303,7 +343,7 @@ It fails when someone is behind a very strict network: some mobile carriers, uni
 6. Check it, from inside your network:
 
    ```bash
-   npm run check:turn -- --ice-servers "$HUDDLE_ICE_SERVERS"
+   docker compose exec hoffle sh -c 'npm run check:turn -- --ice-servers "$HUDDLE_ICE_SERVERS"'
    ```
 
    Every entry should say OK and print the same address it resolved the name to.
@@ -342,11 +382,17 @@ cannot hear each other" rather than an error:
 
 - **The port forwards disappear.** Many routers only keep UPnP or "temporary"
   forwards, and a firmware update can clear hand-written ones. Re-check with
-  `npm run check:turn` from outside the network.
+  the check command above from outside the network.
 
 ### Big voice rooms: LiveKit
 
-Peer-to-peer voice gets heavy past about 6 to 8 people with video, because everyone sends their stream to everyone else. [LiveKit](https://livekit.io) is a media server that fixes this. Each person sends once, and the server forwards the stream.
+Peer-to-peer voice gets heavy past about 6 to 8 people with video, because everyone sends their stream to everyone else. [LiveKit](https://livekit.io) is a media server that fixes this. Each person sends once, and the server forwards the stream. chat.hoffle.online runs this way. With LiveKit, Hoffle also:
+
+- sends screen shares in two sizes, so a viewer on a slow connection gets the small one without slowing down everyone else;
+- skips encoding sizes nobody is watching;
+- sends the mic with redundant packets, so a lost packet is rebuilt instead of heard as a gap.
+
+Your server's **upload** speed becomes the limit: roughly 4 Mbps per viewer of a 1080p30 share and 2 Mbps per viewer at 720p. A home connection with 40 Mbps upload handles about ten 1080p viewers.
 
 1. Make a key and secret:
 
@@ -354,7 +400,15 @@ Peer-to-peer voice gets heavy past about 6 to 8 people with video, because every
    openssl rand -hex 32
    ```
 
-2. Copy `livekit.yaml.example` to `livekit.yaml` and replace the line under `keys:` with `hoffle: <that secret>`. `livekit.yaml` is git-ignored, so the secret never ends up in a commit.
+2. Copy the example config and put the secret in it:
+
+   ```bash
+   cp livekit.yaml.example livekit.yaml
+   ```
+
+   Open `livekit.yaml` and replace `replace-with-the-output-of-openssl-rand-hex-32` with the secret, so the line reads `hoffle: 3f9c...`. `livekit.yaml` is git-ignored, so the secret never ends up in a commit.
+
+   Do this **before** starting the profile. If `livekit.yaml` does not exist, Docker creates an empty folder with that name and LiveKit will not start; delete the folder (`sudo rm -rf livekit.yaml`) and copy the file again.
 3. LiveKit needs its own HTTPS address. Point a subdomain such as `livekit.example.com` at your server, and proxy it to port 7880 (in Caddy: `livekit.example.com { reverse_proxy localhost:7880 }`).
 4. Forward ports `7881` (TCP) and `7882` (UDP) to the Hoffle machine.
 5. Add to `.env`:
@@ -371,7 +425,11 @@ Peer-to-peer voice gets heavy past about 6 to 8 people with video, because every
    docker compose --profile livekit up -d
    ```
 
-If LiveKit is unreachable, Hoffle falls back to peer-to-peer on its own.
+7. Check it: `docker compose --profile livekit logs livekit` should show it starting without errors, and `https://livekit.example.com` should answer `OK` in the browser.
+
+If LiveKit is unreachable, Hoffle falls back to peer-to-peer on its own, so a mistake here never takes voice down.
+
+LiveKit looks up your public IP once, when it starts. If your ISP gives you a new address, voice through LiveKit stops working until you restart it: `docker compose --profile livekit restart livekit`.
 
 ## Optional extras
 
@@ -385,7 +443,7 @@ When you run `stop`, `down` or `logs` for an extra, pass the same `--profile` fl
 
 ### Built-in bots
 
-The music bot and the D&D companion start automatically with `docker compose up -d`. Switch them on per server under **Server Settings → Bots & Integrations**. For writing your own bots, see [bots.md](bots.md).
+The basic music player and the D&D companion start automatically with `docker compose up -d`. Switch them on per server under **Server Settings → Bots & Integrations**. For the full music bot, see [Music bot](#music-bot). For writing your own bots, see [bots.md](bots.md).
 
 ### Discord bridge
 
@@ -400,6 +458,59 @@ Mirrors messages between Discord channels and Hoffle channels, both ways.
    ```bash
    docker compose --profile bridge up -d
    ```
+
+## Music bot
+
+The full music bot is a separate open-source project, [musicwatchtogether](https://github.com/Coxaexs/musicwatchtogether). It is the bot chat.hoffle.online uses, and it adds to the basic player:
+
+- a web dashboard for the queue, playlists and history
+- a two-deck DJ booth (`/dj` in a voice room)
+- synced lyrics
+- Watch Together and Reels rooms
+- optionally the same bot in your Discord server, with one shared queue
+
+It runs as one more container. Docker builds it straight from its GitHub repository, so you download nothing extra.
+
+1. Make sure Hoffle itself has started at least once (steps 1 to 3 above). The bot reads the passwords it needs from Hoffle's `state/secrets.env`, which Hoffle creates on its first start. You do not have to copy any passwords yourself.
+2. Start it:
+
+   ```bash
+   docker compose --profile musicbot up -d
+   ```
+
+   The first build takes a few minutes.
+3. Check it:
+
+   ```bash
+   docker compose --profile musicbot logs musicwatch
+   ```
+
+   You should see the dashboard start on port 8722 and *running for Hoffle only*. In Hoffle, the Music + Watch bot in the sidebar shows as online.
+4. For the dashboard and Watch Together links to open in the browser, Hoffle has to be on HTTPS with the second Caddyfile from [Putting Hoffle on the internet](#putting-hoffle-on-the-internet-https), and `.env` needs your address:
+
+   ```
+   MUSICWATCH_PUBLIC_URL=https://chat.example.com
+   ```
+
+   Then run `docker compose --profile musicbot up -d` again. Music in voice rooms works without this step; only the links need it.
+
+**Also in Discord (optional).** Create a bot at the [Discord Developer Portal](https://discord.com/developers/applications), invite it to your server with the *Connect* and *Speak* permissions, and add its token to `.env`:
+
+```
+DISCORD_TOKEN=your-discord-bot-token
+```
+
+Run `docker compose --profile musicbot up -d` again. For Spotify links, also set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from the [Spotify developer dashboard](https://developer.spotify.com/dashboard).
+
+The bot keeps its playlists, settings and history in `state/musicwatch/`, so the normal [backups](#backups) cover it. To update it to the newest version of the bot:
+
+```bash
+docker compose --profile musicbot build --no-cache musicwatch
+```
+
+```bash
+docker compose --profile musicbot up -d
+```
 
 ## Single-container install (Unraid, TrueNAS, Synology)
 
@@ -416,6 +527,31 @@ docker run -d --name hoffle --restart unless-stopped -p 8730:8730 -v "$(pwd)/sta
 On a NAS, map `/app/state` to a share of your choice and port `8730` to any free port. Settings from [configuration.md](configuration.md) can be passed as container environment variables. The setup code appears in the container log, as described above.
 
 ## Troubleshooting
+
+**`permission denied while trying to connect to the Docker daemon socket`.**
+You added yourself to the `docker` group but have not logged out and back in yet. Do that, or put `sudo` in front of the command for now.
+
+**`exec /app/scripts/entrypoint.sh: no such file or directory` (Windows).**
+Git converted the scripts to Windows line endings. Fix it from the `hoffle` folder, then rebuild:
+
+```bash
+git config core.autocrlf false
+```
+
+```bash
+git rm --cached -r . -q
+```
+
+```bash
+git reset --hard
+```
+
+```bash
+docker compose up -d --build
+```
+
+**`Bind for 0.0.0.0:8730 failed: port is already allocated`.**
+Something else uses port 8730. Set `HOFFLE_PORT=8731` in `.env` and run `docker compose up -d`.
 
 **`docker compose logs hoffle` shows no setup code box.**
 Someone has already created an account. If that was you, sign in. If you want to start completely fresh, see [Uninstalling](#uninstalling).
@@ -434,15 +570,18 @@ The code is wrong or missing. Print it with `docker exec hoffle cat /app/state/s
 - If it only fails for some friends, set up the [TURN relay](#voice-when-calls-do-not-connect).
 
 **Music bot says it can't find songs.**
-YouTube changes often. Rebuild the music bot to get the newest yt-dlp:
+YouTube changes often. Rebuild the music containers to get the newest yt-dlp (leave out `musicwatch` if you don't use the full music bot):
 
 ```bash
-docker compose build --no-cache music-bot
+docker compose --profile musicbot build --no-cache music-bot musicwatch
 ```
 
 ```bash
-docker compose up -d
+docker compose --profile musicbot up -d
 ```
+
+**The Music + Watch bot shows as offline.**
+Check `docker compose --profile musicbot ps`. If `musicwatch` keeps restarting, its log (`docker compose --profile musicbot logs musicwatch`) says why; *Could not read BOT_TOKEN* means Hoffle has not started yet, so run `docker compose up -d` first.
 
 **I changed `.env` but nothing happened.**
 Run `docker compose up -d` again. Docker only applies new settings when it recreates the container.
@@ -455,7 +594,7 @@ Collect the output of `docker compose ps` and `docker compose logs --tail 100 ho
 
 ## Uninstalling
 
-Stop and remove the containers:
+Stop and remove the containers (with the same `--profile` flags you use, if any):
 
 ```bash
 docker compose down
