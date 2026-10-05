@@ -6,8 +6,8 @@ import { SpatialAudioPlayback, personalTableLayout } from "../lib/spatial-audio"
 import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../lib/head-tracking";
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor }: {
-  streams: Array<{ connectionId: string; stream: MediaStream }>;
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor }: {
+  streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
   enabled: boolean;
@@ -21,6 +21,7 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   headphones?: boolean;
   onHeadTracking?: (status: HeadTrackingStatus, live: boolean) => void;
   preferenceFor: (userId: string) => { volume: number; muted: boolean };
+  streamPreferenceFor?: (streamId: string, userId?: string) => { volume: number; muted: boolean };
 }) {
   const playback = useRef<SpatialAudioPlayback | null>(null);
   const status = useRef(onHeadTracking);
@@ -50,24 +51,36 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   useEffect(() => { playback.current?.setHeadphones(headphones); }, [headphones]);
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
-    playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream }) => {
+    playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream, kind }) => {
       const person = participants.find((p) => p.connectionId === connectionId);
       const pref = person ? preferenceFor(person.id) : { volume: 1, muted: false };
-      const voice = person && !person.bot && !person.recorder && stream.id !== person.screenStreamId && !stream.getVideoTracks().length;
+      const isScreen = kind
+        ? kind === "screen"
+        : stream.id === person?.screenStreamId || stream.getVideoTracks().length > 0;
+      const voice = person && !person.bot && !person.recorder && !isScreen;
       const seat = voice ? seats.get(connectionId) : undefined;
+
+      let volume = pref.volume;
+      let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted);
+
+      if (isScreen) {
+        const streamPref = streamPreferenceFor ? streamPreferenceFor(stream.id, person?.id) : null;
+        volume = streamPref ? streamPref.volume : 1;
+        // Screenshare audio stays audible even when the streamer mutes their microphone!
+        // It only mutes if the watcher is deafened, the watcher muted this stream, or the audio tracks are disabled.
+        const tracksDisabled = !stream.getAudioTracks().some((t) => t.enabled);
+        muted = deafened || Boolean(streamPref?.muted) || tracksDisabled;
+      }
+
       return {
         key: `${connectionId}:${stream.id}`, stream,
-        important: Boolean(voice && person.important && !person.muted && !person.serverMuted),
-        // Also drop anyone the room says is muted. In a peer-to-peer call a
-        // client owns its own microphone, so the hub can only refuse to *report*
-        // a seat as audible; every peer refusing to play a muted seat is what
-        // actually keeps a hostile client out of the room.
-        volume: pref.volume,
-        muted: deafened || pref.muted || Boolean(person?.muted || person?.serverMuted),
+        important: Boolean(voice && person?.important && !person?.muted && !person?.serverMuted),
+        volume,
+        muted,
         pan: voice ? seat?.pan ?? null : null,
         seat: seat ? { x: seat.x, y: seat.y, z: seat.z } : null,
       };
     }), enabled);
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor]);
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor]);
   return null;
 }

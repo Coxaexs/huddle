@@ -1,6 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 import { findChannel, isServerMember } from "@/lib/servers";
+import { isDmMember } from "@/lib/dms";
+import { DM_SERVER_ID } from "@/lib/schema";
 import { AccessToken } from "livekit-server-sdk";
 import { timeoutInChannel } from "@/lib/timeouts";
 
@@ -44,10 +46,32 @@ export async function GET(request: Request) {
     );
   }
 
+  // The hub's connection id for this tab, which is how every other client
+  // knows this seat. It goes into the identity after the authenticated user,
+  // so a client can only ever claim connections as itself — receivers check
+  // the user half against the hub's roster before trusting the rest.
+  const connectionId = searchParams.get("connectionId")?.trim() || "";
+  if (connectionId && !/^[A-Za-z0-9_-]{1,64}$/.test(connectionId)) {
+    return Response.json({ error: "Invalid connectionId" }, { status: 400 });
+  }
+
   const db = b.DB;
   if (db && !recorder) {
     const channel = await findChannel(db, channelId);
-    if (channel?.server_id) {
+    // A room name is just a string to LiveKit, so an unknown one would mint a
+    // private room for anyone who asked.
+    if (!channel) {
+      return Response.json({ error: "No such channel." }, { status: 404 });
+    }
+    // A DM or group call: the people in that conversation, nobody else.
+    if (channel.server_id === DM_SERVER_ID) {
+      if (!(await isDmMember(db, channelId, user!.id))) {
+        return Response.json(
+          { error: "You are not in this conversation." },
+          { status: 403 },
+        );
+      }
+    } else if (channel.server_id) {
       const isMember = await isServerMember(db, channel.server_id, user!.id);
       if (!isMember) {
         return Response.json(
@@ -61,7 +85,8 @@ export async function GET(request: Request) {
   // A timed-out member may listen but not speak or share.
   const timedOut = db && user ? await timeoutInChannel(db, channelId, user.id) : null;
 
-  const identity = user ? user.id : "recorder";
+  const base = user ? user.id : "recorder";
+  const identity = connectionId ? `${base}|${connectionId}` : base;
   const name = user ? user.display_name || user.username : "Session Recorder";
 
   const at = new AccessToken(apiKey, apiSecret, {

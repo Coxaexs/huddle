@@ -46,6 +46,12 @@ export interface VoiceParticipant extends PresenceUser {
    */
   cameraStreamId?: string | null;
   screenStreamId?: string | null;
+  /**
+   * This seat sends and receives through the LiveKit media server. Two such
+   * seats never connect directly; anyone else (bots, older clients, a client
+   * whose LiveKit connection failed) is still reached peer-to-peer.
+   */
+  sfu?: boolean;
   /** True for the music bot, which has no microphone. */
   bot?: boolean;
   /** Recorder bots are always labelled independently from ordinary bots. */
@@ -165,9 +171,28 @@ export interface Track {
   mix?: Record<string, unknown> | null;
 }
 
+/**
+ * What an outside source (the bot's DJ booth) has on air. While it is set the
+ * room hears that instead of the hub's own track, which waits paused.
+ */
+export interface LiveTrack {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string | null;
+  duration: number | null;
+  /** Position (ms) as of `updatedAt`, like the player's own clock. */
+  positionMs: number;
+  updatedAt: number;
+  paused: boolean;
+  source: "dj";
+}
+
 export interface PlayerState {
   channelId: string;
   track: Track | null;
+  /** Set while the DJ booth is on air; see heard(). */
+  live?: LiveTrack | null;
   queue: Track[];
   /** Most recent first; what /history lists. */
   history: Track[];
@@ -197,6 +222,53 @@ export function emptyPlayer(channelId: string): PlayerState {
  * Where the track should be right now. The hub only stores a position plus the
  * timestamp it was taken, so every listener derives the same clock.
  */
+/**
+ * The player as the room hears it: the DJ booth's track while it is on air,
+ * else the hub's own. Its track has no audio, so nobody plays it locally (the
+ * bot streams the booth).
+ */
+export function heard(state: PlayerState, now?: number): PlayerState;
+export function heard(state: PlayerState | null | undefined, now?: number): PlayerState | null;
+export function heard(state: PlayerState | null | undefined, now = Date.now()): PlayerState | null {
+  const live = liveTrack(state, now);
+  if (!state || !live) return state ?? null;
+  return {
+    ...state,
+    track: {
+      id: live.id,
+      title: live.title,
+      artist: live.artist,
+      thumbnail: live.thumbnail,
+      duration: live.duration,
+      audioUrl: "",
+      pageUrl: null,
+      requestedBy: "DJ booth",
+    },
+    paused: live.paused,
+    positionMs: live.positionMs,
+    updatedAt: live.updatedAt,
+  };
+}
+
+/**
+ * The booth re-sends its track at least every 20 s. One not heard from in two
+ * minutes is a booth that died without handing the room back: ignore it.
+ */
+export const LIVE_STALE_MS = 120_000;
+
+export function liveTrack(
+  state: PlayerState | null | undefined,
+  now = Date.now(),
+): LiveTrack | null {
+  const live = state?.live;
+  return live && now - live.updatedAt < LIVE_STALE_MS ? live : null;
+}
+
+/** Transport controls that belong to the DJ booth while it is on air. */
+export const LIVE_OWNED_ACTIONS: ReadonlySet<PlayerAction["name"]> = new Set([
+  "pause", "resume", "toggle", "seek", "skip", "skipto", "stop", "ended",
+]);
+
 export function playbackPosition(state: PlayerState, now = Date.now()): number {
   if (!state.track) return 0;
   if (state.paused) return state.positionMs;
@@ -205,7 +277,7 @@ export function playbackPosition(state: PlayerState, now = Date.now()): number {
 
 export type ClientEvent =
   | { t: "subscribe"; channelId: string }
-  | { t: "voice-join"; channelId: string }
+  | { t: "voice-join"; channelId: string; sfu?: boolean }
   | { t: "voice-leave" }
   | {
       t: "voice-state";
@@ -216,6 +288,8 @@ export type ClientEvent =
       handRaised?: boolean;
       cameraStreamId?: string | null;
       screenStreamId?: string | null;
+      /** Dropped back to peer-to-peer after the media server failed. */
+      sfu?: boolean;
     }
   | { t: "signal"; to: string; data: unknown }
   | {
@@ -264,7 +338,9 @@ export type PlayerAction =
   | { name: "shuffle" }
   | { name: "clear" }
   | { name: "remove"; index: number }
-  | { name: "ended"; trackId: string };
+  | { name: "ended"; trackId: string }
+  /** The DJ booth's on-air track (null when the booth hands the room back). */
+  | { name: "live"; live: Omit<LiveTrack, "updatedAt"> | null };
 
 export type ServerEvent =
   | {

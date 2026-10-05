@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Mic,
   Megaphone,
@@ -28,6 +28,10 @@ import {
   X,
   EyeOff,
   Eye,
+  ExternalLink,
+  LayoutGrid,
+  MoreHorizontal,
+  ChevronDown,
   ChevronUp as PeopleUp,
   ChevronDown as PeopleDown,
 } from "lucide-react";
@@ -44,7 +48,12 @@ import {
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
-import type { ScreenShareQuality } from "../hooks/use-voice";
+import {
+  nextScreenQuality,
+  SCREEN_SHARE_QUALITIES,
+  screenQualityLabel,
+  type ScreenShareQuality,
+} from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { TableAudioMenu, type TableControls } from "./table-audio-menu";
 import { Avatar } from "./avatar";
@@ -78,12 +87,18 @@ interface VoiceApi extends TableControls {
   hiddenVideo: Record<string, { camera: boolean; screen: boolean }>;
   setVideoHidden: (connectionId: string, which: "camera" | "screen", hidden: boolean) => void;
   speaking: Set<string>;
-  remoteStreams: Array<{ connectionId: string; stream: MediaStream }>;
+  /** `kind` is set for LiveKit streams, whose ids are not the sender's. */
+  remoteStreams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" }>;
   peerStates: Record<string, string>;
   screenSharing: boolean;
+  screenShareAudio?: boolean;
+  setScreenShareAudio?: (enabled: boolean) => void;
+  hasScreenAudio?: boolean;
+  screenAudioMuted?: boolean;
+  toggleScreenAudio?: () => void;
   screenQuality: ScreenShareQuality;
   setScreenQuality: (quality: ScreenShareQuality) => void;
-  startScreenShare: () => void | Promise<void>;
+  startScreenShare: (quality?: ScreenShareQuality, withAudio?: boolean) => void | Promise<void>;
   stopScreenShare: () => void;
   cameraOn: boolean;
   cameraBackground?: BackgroundMode;
@@ -147,6 +162,19 @@ interface VoiceStageProps {
     event: React.MouseEvent,
     participant: VoiceParticipant,
   ) => void;
+  /** Pop out active screenshare to floating movable preview. */
+  onPopout?: () => void;
+  /** Whether to hide the internal topbar (e.g. when shell renders unified header). */
+  hideTopbar?: boolean;
+  /** Controlled view mode ("grid" | "table" | "map"). */
+  viewMode?: "grid" | "table" | "map";
+  onViewModeChange?: (mode: "grid" | "table" | "map") => void;
+  /** Notifies parent shell of the focused stream info for unified topbar. */
+  onFocusedChange?: (info: { streamerName: string; isScreen: boolean; streamId?: string; participantId?: string; self?: boolean } | null) => void;
+  /** Watcher stream audio volume and mute controls. */
+  streamPreferenceFor?: (streamId: string, userId?: string) => { volume: number; muted: boolean };
+  onSetStreamVolume?: (streamId: string, userId: string | undefined, volume: number) => void;
+  onToggleStreamMute?: (streamId: string, userId: string | undefined) => void;
 }
 
 interface VideoTile {
@@ -163,7 +191,7 @@ interface VideoTile {
   hidden?: boolean;
 }
 
-function hasLiveVideo(stream: MediaStream): boolean {
+export function hasLiveVideo(stream: MediaStream): boolean {
   return stream.getVideoTracks().some((track) => track.readyState === "live");
 }
 
@@ -273,9 +301,28 @@ export function VoiceStage({
   onDiceRollDone,
   recording,
   onOpenParticipantMenu,
+  onPopout,
+  hideTopbar = false,
+  viewMode: controlledViewMode,
+  onViewModeChange,
+  onFocusedChange,
+  streamPreferenceFor,
+  onSetStreamVolume,
+  onToggleStreamMute,
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "table" | "map">("grid");
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [screenSharePopoverOpen, setScreenSharePopoverOpen] = useState(false);
+  const [internalViewMode, setInternalViewMode] = useState<"grid" | "table" | "map">("grid");
+  const viewMode = controlledViewMode ?? internalViewMode;
+
+  const handleViewModeChange = useCallback(
+    (mode: "grid" | "table" | "map") => {
+      setInternalViewMode(mode);
+      onViewModeChange?.(mode);
+    },
+    [onViewModeChange],
+  );
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [activitiesOpen, setActivitiesOpen] = useState(Boolean(activity));
@@ -372,16 +419,18 @@ export function VoiceStage({
       connecting: false,
     });
   }
-  for (const { connectionId: remoteId, stream } of voice.remoteStreams) {
+  for (const { connectionId: remoteId, stream, kind } of voice.remoteStreams) {
     if (!hasLiveVideo(stream)) continue;
     const person = participants.find((p) => p.connectionId === remoteId);
+    const isCamera = kind ? kind === "camera" : person?.cameraStreamId === stream.id;
+    const isScreen = kind ? kind === "screen" : person?.screenStreamId === stream.id;
     const label =
-      person?.cameraStreamId === stream.id
+      person && isCamera
         ? `${person.displayName} · camera`
-        : person?.screenStreamId === stream.id
-          ? `${person?.displayName} · screen`
+        : person && isScreen
+          ? `${person.displayName} · screen`
           : person?.displayName || "Screen share";
-    const videoKind = person?.cameraStreamId === stream.id ? "camera" : "screen";
+    const videoKind = isCamera ? "camera" : "screen";
     videoTiles.push({
       key: `${remoteId}:${stream.id}`,
       stream,
@@ -400,6 +449,47 @@ export function VoiceStage({
   const focused = focusedKey
     ? videoTiles.find((tile) => tile.key === focusedKey) || null
     : null;
+
+  const focusedPerson = focused?.remoteId
+    ? participants.find((p) => p.connectionId === focused.remoteId)
+    : focused?.self
+      ? self
+      : null;
+  const streamerName = focusedPerson?.displayName || (focused?.self ? "You" : focused?.label?.split(" · ")[0] || "Stream");
+
+  // Notify parent shell of focused streamer name and stream kind for unified topbar.
+  // Depends on primitives only: `focused` is a fresh object every render, and the
+  // parent re-renders us on each notify, so object deps would loop forever.
+  const focusedStreamId = focused?.stream.id;
+  const focusedIsScreen = focused?.videoKind === "screen";
+  const focusedSelf = Boolean(focused?.self);
+  const focusedParticipantId = focusedPerson?.id;
+  useEffect(() => {
+    if (!onFocusedChange) return;
+    onFocusedChange(
+      focusedStreamId
+        ? {
+            streamerName,
+            isScreen: focusedIsScreen,
+            streamId: focusedStreamId,
+            participantId: focusedParticipantId,
+            self: focusedSelf,
+          }
+        : null,
+    );
+  }, [focusedStreamId, focusedIsScreen, focusedSelf, focusedParticipantId, streamerName, onFocusedChange]);
+
+  // Auto-focus a screenshare once when it first appears; leaving the focused
+  // view must stick, so tiles already seen are never re-grabbed.
+  const seenScreenKeys = useRef(new Set<string>());
+  const screenKeys = videoTiles.filter((t) => t.videoKind === "screen" && !t.hidden).map((t) => t.key).join("|");
+  useEffect(() => {
+    const keys = screenKeys ? screenKeys.split("|") : [];
+    const fresh = keys.find((key) => !seenScreenKeys.current.has(key));
+    for (const key of keys) seenScreenKeys.current.add(key);
+    if (fresh && !focusedKey) setFocusedKey(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenKeys]);
 
   function hideTile(tile: VideoTile, hidden: boolean) {
     if (!tile.remoteId || !tile.videoKind) return;
@@ -457,6 +547,61 @@ export function VoiceStage({
   useEffect(() => {
     if (!focused) setWindowFull(false);
   }, [focused]);
+
+  // Controls overlay auto-hide (hides when not hovered / idle for 3 seconds)
+  const [showFocusBar, setShowFocusBar] = useState(true);
+  const isFocusBarHoveredRef = useRef(false);
+  const focusBarTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startFocusBarTimer = useCallback(() => {
+    if (focusBarTimerRef.current) {
+      clearTimeout(focusBarTimerRef.current);
+    }
+    focusBarTimerRef.current = setTimeout(() => {
+      if (!isFocusBarHoveredRef.current) {
+        setShowFocusBar(false);
+      }
+    }, 3000);
+  }, []);
+
+  const handleFocusMainMouseMove = useCallback(() => {
+    setShowFocusBar(true);
+    if (!isFocusBarHoveredRef.current) {
+      startFocusBarTimer();
+    }
+  }, [startFocusBarTimer]);
+
+  const handleFocusMainMouseLeave = useCallback(() => {
+    if (!isFocusBarHoveredRef.current) {
+      startFocusBarTimer();
+    }
+  }, [startFocusBarTimer]);
+
+  const handleFocusBarMouseEnter = useCallback(() => {
+    isFocusBarHoveredRef.current = true;
+    setShowFocusBar(true);
+    if (focusBarTimerRef.current) {
+      clearTimeout(focusBarTimerRef.current);
+      focusBarTimerRef.current = null;
+    }
+  }, []);
+
+  const handleFocusBarMouseLeave = useCallback(() => {
+    isFocusBarHoveredRef.current = false;
+    startFocusBarTimer();
+  }, [startFocusBarTimer]);
+
+  useEffect(() => {
+    if (focused) {
+      setShowFocusBar(true);
+      startFocusBarTimer();
+    }
+    return () => {
+      if (focusBarTimerRef.current) {
+        clearTimeout(focusBarTimerRef.current);
+      }
+    };
+  }, [focused?.key, startFocusBarTimer]);
 
   useEffect(() => {
     const onChange = () =>
@@ -621,34 +766,78 @@ export function VoiceStage({
         </div>
       )}
 
-      <div className="voice-stage-topbar">
-        <div className="voice-stage-topbar-info">
-          <Volume2 size={16} className="voice-stage-volume-icon" />
-          <div className="voice-stage-title-wrap">
-            <h2 className="voice-stage-title">{channelName}</h2>
-            <span className="voice-stage-sub">{participants.length} in call</span>
+      {!hideTopbar && (
+        <div className="voice-stage-topbar">
+          <div className="voice-stage-topbar-info flex items-center gap-2 min-w-0">
+            <Volume2 size={16} className="voice-stage-volume-icon text-[var(--muted)] flex-shrink-0" />
+            <div className="voice-stage-title-wrap min-w-0 flex items-center gap-2">
+              <h2 className="voice-stage-title truncate">{channelName}</h2>
+              {focused && (
+                <>
+                  <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
+                  <div className="voice-stage-stream-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--line)] text-xs text-[var(--ink)] font-semibold truncate">
+                    <Monitor size={13} className="text-[var(--lavender)] flex-shrink-0" />
+                    <span className="truncate">{streamerName}'s Screen</span>
+                  </div>
+                </>
+              )}
+              <span className="voice-stage-sub text-xs text-[var(--muted)] flex-shrink-0">· {participants.length} in call</span>
+            </div>
+          </div>
+
+          <div className="voice-stage-topbar-actions flex items-center gap-2 flex-shrink-0">
+            {focused && (
+              <div className="voice-stream-quality-pill flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--panel)] border border-[var(--line)] shadow-sm">
+                <button
+                  type="button"
+                  className="voice-quality-btn text-[11px] font-bold text-[var(--ink)] hover:text-[var(--lavender)] transition-colors cursor-pointer"
+                  title="Click to cycle screen resolution & FPS"
+                  onClick={() => {
+                    const nextQ = nextScreenQuality(voice.screenQuality);
+                    voice.setScreenQuality(nextQ);
+                  }}
+                >
+                  {screenQualityLabel(voice.screenQuality)}
+                </button>
+                <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">
+                  LIVE
+                </span>
+              </div>
+            )}
+
+            {onPopout && focused && (
+              <button
+                type="button"
+                className="voice-stage-topbar-btn"
+                onClick={onPopout}
+                title="Pop out to floating movable preview"
+              >
+                <ExternalLink size={15} />
+              </button>
+            )}
+
+            <div className="voice-view-switcher">
+              {(["grid", "table", "map"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`voice-view-pill ${viewMode === mode ? "active" : ""}`}
+                  onClick={() => {
+                    handleViewModeChange(mode);
+                    if (mode === "map" && onToggleBattlemap && !battlemapOpen) {
+                      onToggleBattlemap();
+                    } else if (mode !== "map" && onToggleBattlemap && battlemapOpen) {
+                      onToggleBattlemap();
+                    }
+                  }}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="voice-view-switcher">
-          {(["grid", "table", "map"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`voice-view-pill ${viewMode === mode ? "active" : ""}`}
-              onClick={() => {
-                setViewMode(mode);
-                if (mode === "map" && onToggleBattlemap && !battlemapOpen) {
-                  onToggleBattlemap();
-                } else if (mode !== "map" && onToggleBattlemap && battlemapOpen) {
-                  onToggleBattlemap();
-                }
-              }}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
       <div className="voice-stage-body">
         {!joined ? (
@@ -722,15 +911,93 @@ export function VoiceStage({
             <div
               className={`voice-focus-main ${windowFull ? "window-full" : ""}`}
               ref={focusMainRef}
+              onMouseMove={handleFocusMainMouseMove}
+              onMouseLeave={handleFocusMainMouseLeave}
               onClick={() => {
                 if (!isFullscreen && !windowFull) setFocusedKey(null);
               }}
               title={isFullscreen || windowFull ? undefined : "Click to return to the grid"}
             >
               <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
-              <div className="voice-focus-bar">
-                <span className="live-dot" /> LIVE
-                <strong>{focused.label}</strong>
+
+              {/* Discord-style bottom-left pill on the video (Screenshot 3) */}
+              <div className="voice-video-streamer-pill" onClick={(e) => e.stopPropagation()}>
+                <Monitor size={14} className="text-white/90" />
+                <span>{streamerName}</span>
+              </div>
+
+              {/* Video control overlays */}
+              <div
+                className={`voice-focus-bar ${!showFocusBar ? "is-hidden" : ""}`}
+                onClick={(e) => e.stopPropagation()}
+                onMouseEnter={handleFocusBarMouseEnter}
+                onMouseLeave={handleFocusBarMouseLeave}
+              >
+                <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">LIVE</span>
+                <span className="voice-focus-stream-title truncate max-w-[200px]">{streamerName}'s Screen</span>
+
+                {/* Watcher Stream Audio Volume Slider */}
+                {focused.videoKind === "screen" && !focused.self && (
+                  (() => {
+                    const pref = streamPreferenceFor ? streamPreferenceFor(focused.stream.id, focusedPerson?.id) : { volume: 100, muted: false };
+                    return (
+                      <div
+                        className="voice-focus-volume flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="hover:text-[var(--lavender)] transition-colors p-0.5 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleStreamMute?.(focused.stream.id, focusedPerson?.id);
+                          }}
+                          title={pref.muted ? "Unmute stream audio" : `Stream audio: ${pref.volume}% (Click to mute)`}
+                        >
+                          {pref.muted || pref.volume === 0 ? (
+                            <VolumeX size={14} className="text-rose-400" />
+                          ) : pref.volume < 50 ? (
+                            <Volume1 size={14} />
+                          ) : (
+                            <Volume2 size={14} />
+                          )}
+                        </button>
+                        <input
+                          type="range"
+                          min={0}
+                          max={200}
+                          step={1}
+                          value={pref.muted ? 0 : pref.volume}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            onSetStreamVolume?.(focused.stream.id, focusedPerson?.id, Number(e.target.value));
+                          }}
+                          className="w-16 accent-[var(--lavender)] h-1 cursor-pointer"
+                          title={`Stream volume: ${pref.muted ? "Muted" : `${pref.volume}%`}`}
+                        />
+                        <span className="text-[10px] font-mono w-7 text-right select-none text-white/90">
+                          {pref.muted ? "0%" : `${pref.volume}%`}
+                        </span>
+                      </div>
+                    );
+                  })()
+                )}
+
+                {/* Streamer Mute Own Stream Audio Button */}
+                {focused.videoKind === "screen" && focused.self && (
+                  <button
+                    type="button"
+                    className={`voice-focus-full ${voice.screenAudioMuted ? "text-amber-400" : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      voice.toggleScreenAudio?.();
+                    }}
+                    title={voice.screenAudioMuted ? "Unmute stream audio" : "Mute stream audio"}
+                  >
+                    {voice.screenAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                  </button>
+                )}
+
                 {focused.remoteId && (
                   <button
                     type="button"
@@ -741,7 +1008,7 @@ export function VoiceStage({
                     }}
                     title="Stop receiving this video (saves data)"
                   >
-                    <EyeOff size={16} />
+                    <EyeOff size={15} />
                   </button>
                 )}
                 {!isFullscreen && !windowFull && (
@@ -755,7 +1022,7 @@ export function VoiceStage({
                     aria-label={theater ? "Show people" : "Hide people"}
                     title={theater ? "Show people" : "Hide people"}
                   >
-                    <Users size={16} />
+                    <Users size={15} />
                   </button>
                 )}
                 <button
@@ -767,43 +1034,67 @@ export function VoiceStage({
                   }}
                   aria-label={isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}
                 >
-                  {isFullscreen || windowFull ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  {isFullscreen || windowFull ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                 </button>
               </div>
             </div>
 
+            {/* Bottom filmstrip with participant tiles and active screenshare (Screenshot 3) */}
             <div className="voice-filmstrip">
-              {videoTiles.map((tile) => (
-                <button
-                  type="button"
-                  key={tile.key}
-                  className={`film-tile ${tile.key === focusedKey ? "active" : ""}`}
-                  onClick={() => setFocusedKey(tile.key)}
-                >
-                  <TileVideo tile={tile} onHide={hideTile} />
-                  <span>{tile.label}</span>
-                </button>
-              ))}
-              {participants.map((person) => (
-                <div
-                  className="film-tile avatar-film"
-                  key={`a:${person.connectionId}`}
-                  onContextMenu={(event) => {
-                    if (person.connectionId === connectionId) return;
-                    onOpenParticipantMenu?.(event, person);
-                  }}
-                >
-                  <Avatar
-                    avatar={person.avatar}
-                    avatarUrl={person.avatarUrl}
-                    color={person.color}
-                  />
-                  <span>
-                    {person.connectionId === connectionId ? "You" : person.displayName}
-                  </span>
-                  {seatTime(person, "film-voice-time")}
-                </div>
-              ))}
+              {videoTiles.map((tile) => {
+                const isStreamerSpeaking = tile.remoteId ? voice.speaking.has(tile.remoteId) : voice.speaking.has("self");
+                const tilePerson = tile.remoteId ? participants.find((p) => p.connectionId === tile.remoteId) : self;
+                const tileName = tilePerson?.displayName || (tile.self ? "You" : tile.label);
+                return (
+                  <button
+                    type="button"
+                    key={tile.key}
+                    className={`film-tile video-film-tile ${tile.key === focusedKey ? "active" : ""} ${isStreamerSpeaking ? "is-speaking" : ""}`}
+                    onClick={() => setFocusedKey(tile.key)}
+                  >
+                    <div className="film-video-wrap">
+                      <TileVideo tile={tile} onHide={hideTile} />
+                    </div>
+                    <span className="film-live-pill">LIVE</span>
+                    <span className="film-tile-label truncate">
+                      <Monitor size={11} className="inline mr-1" />
+                      {tileName}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {participants.map((person) => {
+                const isSpeaking = selfSpeaking(person);
+                return (
+                  <div
+                    className={`film-tile avatar-film ${isSpeaking ? "is-speaking" : ""}`}
+                    key={`a:${person.connectionId}`}
+                    onContextMenu={(event) => {
+                      if (person.connectionId === connectionId) return;
+                      onOpenParticipantMenu?.(event, person);
+                    }}
+                  >
+                    <div className="avatar-film-center">
+                      <Avatar
+                        className={`film-avatar ${isSpeaking ? "is-speaking" : ""}`}
+                        avatar={person.avatar}
+                        avatarUrl={person.avatarUrl}
+                        color={person.color}
+                      />
+                    </div>
+                    <div className="film-person-footer">
+                      {person.muted && !person.bot && (
+                        <MicOff size={11} className="film-person-muted-icon" />
+                      )}
+                      <span className="film-person-name truncate">
+                        {person.connectionId === connectionId ? "You" : person.displayName}
+                      </span>
+                    </div>
+                    {seatTime(person, "film-voice-time")}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -1234,43 +1525,119 @@ export function VoiceStage({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
-            onClick={() =>
-              voice.screenSharing
-                ? voice.stopScreenShare()
-                : void voice.startScreenShare()
-            }
-            title={voice.screenSharing ? "Stop sharing" : "Share screen"}
-          >
-            <Monitor size={18} />
-          </button>
+          {/* Screen Share Button & Options Popover */}
+          <div className="relative inline-flex items-center">
+            <button
+              type="button"
+              className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
+              onClick={() => {
+                if (voice.screenSharing) {
+                  voice.stopScreenShare();
+                } else {
+                  setScreenSharePopoverOpen((o) => !o);
+                }
+              }}
+              title={voice.screenSharing ? "Stop sharing screen" : "Share screen"}
+            >
+              <Monitor size={18} />
+            </button>
+
+            {/* If streamer is sharing screen, show stream audio mute toggle right here in the dock! */}
+            {voice.screenSharing && (
+              <button
+                type="button"
+                className={`vctrl-btn ml-1 ${voice.screenAudioMuted ? "text-amber-400 bg-amber-500/10" : ""}`}
+                onClick={voice.toggleScreenAudio}
+                title={voice.screenAudioMuted ? "Unmute stream audio" : "Mute stream audio"}
+              >
+                {voice.screenAudioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
+            )}
+
+            {/* Screen share setup popover when starting to share */}
+            {screenSharePopoverOpen && !voice.screenSharing && (
+              <div
+                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-3.5 rounded-2xl bg-[var(--panel)] border border-[var(--line)] shadow-2xl flex flex-col gap-3 min-w-[280px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--ink)]">
+                    <Monitor size={14} className="text-[var(--lavender)]" />
+                    <span>Share Screen</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-[var(--muted)] hover:text-[var(--ink)] p-1 rounded-md transition-colors cursor-pointer"
+                    onClick={() => setScreenSharePopoverOpen(false)}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* Resolution & FPS presets */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">Quality</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {SCREEN_SHARE_QUALITIES.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          voice.screenQuality === q
+                            ? "bg-[var(--lavender)] text-white shadow-sm"
+                            : "bg-[var(--line)]/50 text-[var(--ink)] hover:bg-[var(--line)]"
+                        }`}
+                        onClick={() => voice.setScreenQuality(q)}
+                      >
+                        {q.replace("p", "p · ")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Share audio checkbox (persists to localStorage) */}
+                <div className="p-2.5 rounded-xl bg-[var(--line)]/30 border border-[var(--line)] flex flex-col gap-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[var(--ink)] select-none">
+                    <input
+                      type="checkbox"
+                      checked={voice.screenShareAudio ?? true}
+                      onChange={(e) => voice.setScreenShareAudio?.(e.target.checked)}
+                      className="accent-[var(--lavender)] rounded"
+                    />
+                    <span>Share stream audio</span>
+                  </label>
+                  <p className="text-[10px] text-[var(--muted)] leading-tight pl-5">
+                    Captures tab, game, or system sound so viewers can hear it
+                  </p>
+                </div>
+
+                {/* Start Sharing button */}
+                <button
+                  type="button"
+                  className="w-full py-2 px-3 rounded-xl bg-[var(--lavender)] text-white text-xs font-bold hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  onClick={() => {
+                    setScreenSharePopoverOpen(false);
+                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio ?? true);
+                  }}
+                >
+                  <Monitor size={14} />
+                  <span>Start Sharing</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="vctrl-divider" />
 
           <button
             type="button"
-            className={`vctrl-btn ${viewMode === "table" ? "active" : ""}`}
-            onClick={() => setViewMode((m) => (m === "table" ? "grid" : "table"))}
-            title="Voice Table"
+            className={`vctrl-btn ${!focused ? "active" : ""}`}
+            onClick={() => setFocusedKey(focused ? null : (videoTiles[0]?.key || null))}
+            title={focused ? "Show all participants in grid" : "Focus active stream"}
           >
-            <Volume2 size={18} />
+            <LayoutGrid size={18} />
           </button>
-          {onToggleBattlemap && (
-            <button
-              type="button"
-              className={`vctrl-btn ${viewMode === "map" || battlemapOpen ? "active" : ""}`}
-              onClick={() => {
-                const next = viewMode === "map" ? "grid" : "map";
-                setViewMode(next);
-                onToggleBattlemap();
-              }}
-              title="Battlemap"
-            >
-              <Map size={18} />
-            </button>
-          )}
+
           <button
             type="button"
             className={`vctrl-btn ${activitiesOpen ? "active" : ""}`}
@@ -1279,53 +1646,117 @@ export function VoiceStage({
           >
             <Sparkles size={18} />
           </button>
-          <button
-            type="button"
-            className={`vctrl-btn ${soundboardOpen ? "active" : ""}`}
-            onClick={() => setSoundboardOpen((open) => !open)}
-            title="Soundboard"
-          >
-            <Volume2 size={18} />
-          </button>
-          <button
-            type="button"
-            className={`vctrl-btn ${clipping === "done" ? "active" : ""}`}
-            disabled={clipping === "working" || !onClip}
-            title={`Clip the last ${voice.clipSeconds}s`}
-            onClick={async () => {
-              setClipping("working");
-              try {
-                const clip = await voice.takeClip();
-                if (clip && onClip) {
-                  await onClip(clip);
-                  setClipping("done");
-                  window.setTimeout(() => setClipping("idle"), 2500);
-                } else {
-                  setClipping("idle");
-                }
-              } catch {
-                setClipping("idle");
-              }
-            }}
-          >
-            {clipping === "working" ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : clipping === "done" ? (
-              <Check size={18} />
-            ) : (
-              <Scissors size={18} />
+
+          {/* More Options Popover Menu */}
+          <div className="relative inline-flex items-center">
+            <button
+              type="button"
+              className={`vctrl-btn ${moreMenuOpen ? "active" : ""}`}
+              onClick={() => setMoreMenuOpen((o) => !o)}
+              title="More call options"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {moreMenuOpen && (
+              <div className="vctrl-more-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-1.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] shadow-xl flex flex-col gap-1 min-w-[180px]">
+                <button
+                  type="button"
+                  className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  onClick={() => {
+                    setSoundboardOpen((o) => !o);
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <Volume2 size={15} className="text-[var(--lavender)]" />
+                  <span>{soundboardOpen ? "Close Soundboard" : "Soundboard"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  onClick={() => {
+                    handleViewModeChange(viewMode === "table" ? "grid" : "table");
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <Volume1 size={15} className="text-[var(--mint)]" />
+                  <span>Voice Table</span>
+                </button>
+                {onToggleBattlemap && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    onClick={() => {
+                      const next = viewMode === "map" ? "grid" : "map";
+                      handleViewModeChange(next);
+                      onToggleBattlemap();
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <Map size={15} className="text-[var(--coral)]" />
+                    <span>Battlemap</span>
+                  </button>
+                )}
+                {onClip && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    disabled={clipping === "working"}
+                    onClick={async () => {
+                      setMoreMenuOpen(false);
+                      setClipping("working");
+                      try {
+                        const clip = await voice.takeClip();
+                        if (clip && onClip) {
+                          await onClip(clip);
+                          setClipping("done");
+                          window.setTimeout(() => setClipping("idle"), 2500);
+                        } else {
+                          setClipping("idle");
+                        }
+                      } catch {
+                        setClipping("idle");
+                      }
+                    }}
+                  >
+                    <Scissors size={15} className="text-amber-400" />
+                    <span>Clip Last {voice.clipSeconds}s</span>
+                  </button>
+                )}
+              </div>
             )}
-          </button>
+          </div>
 
           <div className="vctrl-divider" />
 
           <button
             type="button"
-            className="vctrl-btn danger active"
+            className="vctrl-btn danger active disconnect-pill-btn"
             onClick={() => (joined ? voice.leave() : onExit?.())}
-            title={joined ? "Leave call" : "Close"}
+            title={joined ? "Disconnect" : "Close"}
           >
             <PhoneOff size={18} />
+          </button>
+
+          <div className="vctrl-divider" />
+
+          {onPopout && (
+            <button
+              type="button"
+              className="vctrl-btn"
+              onClick={onPopout}
+              title="Pop out into floating movable preview"
+            >
+              <ExternalLink size={17} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="vctrl-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen || windowFull ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
           </button>
         </div>
         {clipping === "done" && (

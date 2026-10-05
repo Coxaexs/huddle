@@ -81,7 +81,8 @@ services:
       - hoffle
 
   # LiveKit SFU. Voice works peer-to-peer without it; add it for big rooms.
-  # Change the key in livekit.yaml and set LIVEKIT_* in .env before enabling.
+  # Copy livekit.yaml.example to livekit.yaml, set its key, and set LIVEKIT_*
+  # in .env before enabling.
   livekit:
     profiles: [livekit]
     image: livekit/livekit-server:latest

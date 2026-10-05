@@ -18,6 +18,8 @@ import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import {
   emptyPlayer,
+  LIVE_OWNED_ACTIONS,
+  liveTrack,
   playbackPosition,
   type ClientEvent,
   type PlayerAction,
@@ -53,6 +55,8 @@ interface Attachment {
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
+  /** Media goes through LiveKit rather than the mesh; see VoiceParticipant.sfu. */
+  sfu?: boolean;
   bot: boolean;
   recorder: boolean;
   /** Connected but appearing offline: left out of every presence list. */
@@ -455,6 +459,7 @@ export class HuddleHub extends DurableObject {
         }
 
         attachment.important = false;
+        attachment.sfu = event.sfu === true;
         attachment.voiceChannelId = event.channelId;
         // A re-announce of the same room (a reconnect on the same socket) keeps
         // the clock running; only a genuinely new seat starts it over.
@@ -538,6 +543,9 @@ export class HuddleHub extends DurableObject {
         }
         if (event.screenStreamId !== undefined) {
           attachment.screenStreamId = event.screenStreamId;
+        }
+        if (typeof event.sfu === "boolean") {
+          attachment.sfu = event.sfu;
         }
         socket.serializeAttachment(attachment);
         if (attachment.voiceChannelId) {
@@ -628,6 +636,13 @@ export class HuddleHub extends DurableObject {
       }
 
       case "player": {
+        // While the DJ booth is on air, play/pause/skip belong to the booth.
+        if (
+          liveTrack(this.players.get(event.channelId)) &&
+          LIVE_OWNED_ACTIONS.has(event.action.name)
+        ) {
+          return;
+        }
         await this.applyPlayerAction(event.channelId, event.action);
         return;
       }
@@ -787,6 +802,7 @@ export class HuddleHub extends DurableObject {
           important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
           cameraStreamId: attachment.cameraStreamId,
           screenStreamId: attachment.screenStreamId,
+          sfu: attachment.sfu || undefined,
           bot: attachment.bot || undefined,
           recorder: attachment.recorder || undefined,
         };
@@ -1037,6 +1053,11 @@ export class HuddleHub extends DurableObject {
         break;
       case "skip":
         this.advance(state, now);
+        break;
+      case "live":
+        state.live = action.live
+          ? { ...action.live, source: "dj", updatedAt: now }
+          : null;
         break;
       case "ended":
         // Ignore a stale "ended" from a client that was still on the old track.

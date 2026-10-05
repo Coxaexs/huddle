@@ -56,6 +56,7 @@ import { applyMessageFont, readMessageFont, saveMessageFont, stripTextStyle, typ
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import { channelKindInfo, channelNameRules, convertibleKinds, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
+import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT, VOICE_BITRATE_MAX, VOICE_BITRATE_MIN } from "@/lib/voice-quality";
 import { shouldStartMuted } from "@/lib/stage";
 import {
   ALL_PERMISSIONS,
@@ -81,6 +82,7 @@ import {
   Trash2,
   StickyNote,
   Hash,
+  Volume1,
   Volume2,
   VolumeX,
   Radio,
@@ -111,6 +113,7 @@ import {
   AudioLines,
   Monitor,
   Maximize2,
+  ExternalLink,
   Forward,
   Timer,
   CalendarDays,
@@ -163,6 +166,7 @@ import {
 } from "@/lib/server-folders";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer, showToast } from "./components/toast";
+import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
 import { PollCard } from "./components/poll-card";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
@@ -185,7 +189,8 @@ import { UserFooter } from "./components/user-footer";
 import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
-import { VoiceStage, SoundboardDrawer } from "./components/voice-stage";
+import { VoiceStage, SoundboardDrawer, hasLiveVideo } from "./components/voice-stage";
+import { FloatingScreenPreview } from "./components/floating-screen-preview";
 import { playPresetSound } from "@/lib/soundboard-presets";
 import {
   replaceEmojiShortcodes,
@@ -204,6 +209,9 @@ import {
 import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
 import {
+  nextScreenQuality,
+  SCREEN_SHARE_QUALITIES,
+  screenQualityLabel,
   useVoice,
   type ScreenShareQuality,
 } from "./hooks/use-voice";
@@ -770,6 +778,15 @@ export function ChatShell() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
   const [stageChannelId, setStageChannelId] = useState<string | null>(null);
+  const [pipDismissed, setPipDismissed] = useState(false);
+  const [voiceViewMode, setVoiceViewMode] = useState<"grid" | "table" | "map">("grid");
+  const [focusedStreamInfo, setFocusedStreamInfo] = useState<{
+    streamerName: string;
+    isScreen: boolean;
+    streamId?: string;
+    participantId?: string;
+    self?: boolean;
+  } | null>(null);
   const [quickSoundboardOpen, setQuickSoundboardOpen] = useState(false);
   /** Channel id currently being dragged in the sidebar, for reordering. */
   const [dragChannelId, setDragChannelId] = useState<string | null>(null);
@@ -1504,6 +1521,76 @@ export function ChatShell() {
     (id: string): VoicePref =>
       voicePrefs[id] || { volume: 100, muted: false },
     [voicePrefs],
+  );
+
+  const [streamAudioPrefs, setStreamAudioPrefs] = useState<
+    Record<string, { volume: number; muted: boolean }>
+  >(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("huddle:stream-preferences");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const streamPreferenceFor = useCallback(
+    (streamId: string, userId?: string) => {
+      const key = userId || streamId;
+      return (
+        streamAudioPrefs[key] ||
+        streamAudioPrefs[streamId] || { volume: 100, muted: false }
+      );
+    },
+    [streamAudioPrefs],
+  );
+
+  const setStreamVolume = useCallback(
+    (streamId: string, userId: string | undefined, volume: number) => {
+      setStreamAudioPrefs((prev) => {
+        const key = userId || streamId;
+        const current =
+          prev[key] || prev[streamId] || { volume: 100, muted: false };
+        const next = {
+          ...prev,
+          [key]: {
+            ...current,
+            volume: Math.max(0, Math.min(200, Math.round(volume))),
+          },
+        };
+        try {
+          localStorage.setItem(
+            "huddle:stream-preferences",
+            JSON.stringify(next),
+          );
+        } catch {}
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleStreamMute = useCallback(
+    (streamId: string, userId: string | undefined) => {
+      setStreamAudioPrefs((prev) => {
+        const key = userId || streamId;
+        const current =
+          prev[key] || prev[streamId] || { volume: 100, muted: false };
+        const next = {
+          ...prev,
+          [key]: { ...current, muted: !current.muted },
+        };
+        try {
+          localStorage.setItem(
+            "huddle:stream-preferences",
+            JSON.stringify(next),
+          );
+        } catch {}
+        return next;
+      });
+    },
+    [],
   );
 
   const [musicWatchOnline, setMusicWatchOnline] = useState<boolean | null>(null);
@@ -2756,10 +2843,20 @@ export function ChatShell() {
     onDmCall: (payload) => onDmCallRef.current?.(payload),
   });
 
+  const roomBitrates = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const server of servers) {
+      for (const channel of server.channels) {
+        if (channel.bitrate) map[channel.id] = channel.bitrate;
+      }
+    }
+    return map;
+  }, [servers]);
   const voice = useVoice({
     connectionId: hub.connectionId,
     rooms: hub.voice,
     send: hub.send,
+    roomBitrates,
   });
   voiceSignalRef.current = voice.handleSignal;
   voiceChannelRef.current = voice.channelId;
@@ -2879,6 +2976,103 @@ export function ChatShell() {
     [voiceRooms, voice.channelId],
   );
 
+  /** Active screenshare or camera stream in the joined room for floating PiP */
+  const floatingStream = useMemo(() => {
+    if (!voice.channelId) return null;
+
+    // 1. Look for remote screen shares
+    for (const remote of voice.remoteStreams) {
+      if (!hasLiveVideo(remote.stream)) continue;
+      const person = voiceParticipants.find((p) => p.connectionId === remote.connectionId);
+      const isScreen = remote.kind ? remote.kind === "screen" : person?.screenStreamId === remote.stream.id;
+      if (person && isScreen && !voice.hiddenVideo[remote.connectionId]?.screen) {
+        return {
+          stream: remote.stream,
+          streamerName: person.displayName,
+          kind: "screen" as const,
+          participantId: person.id,
+          isSelf: false,
+        };
+      }
+    }
+
+    // 2. Look for local screen share
+    for (const local of voice.localVideos) {
+      if (local.kind === "screen" && hasLiveVideo(local.stream)) {
+        return {
+          stream: local.stream,
+          streamerName: user?.displayName || "You",
+          kind: "screen" as const,
+          participantId: user?.id,
+          isSelf: true,
+        };
+      }
+    }
+
+    // 3. Fallback to any remote video stream (e.g. camera) that is not hidden
+    for (const remote of voice.remoteStreams) {
+      if (!hasLiveVideo(remote.stream)) continue;
+      const person = voiceParticipants.find((p) => p.connectionId === remote.connectionId);
+      const isCamera = remote.kind ? remote.kind === "camera" : person?.cameraStreamId === remote.stream.id;
+      const kind = isCamera ? "camera" : "screen";
+      if (voice.hiddenVideo[remote.connectionId]?.[kind]) continue;
+      return {
+        stream: remote.stream,
+        streamerName: person?.displayName || "Remote Stream",
+        kind: kind as "screen" | "camera",
+        participantId: person?.id,
+        isSelf: false,
+      };
+    }
+
+    // 4. Fallback to local camera
+    for (const local of voice.localVideos) {
+      if (hasLiveVideo(local.stream)) {
+        return {
+          stream: local.stream,
+          streamerName: user?.displayName || "You",
+          kind: local.kind,
+          participantId: user?.id,
+          isSelf: true,
+        };
+      }
+    }
+
+    return null;
+  }, [
+    voice.channelId,
+    voice.remoteStreams,
+    voice.localVideos,
+    voice.hiddenVideo,
+    voiceParticipants,
+    user?.displayName,
+    user?.id,
+  ]);
+
+  // When a new stream starts, automatically reopen the floating preview if not on stage
+  useEffect(() => {
+    if (floatingStream) {
+      setPipDismissed(false);
+    }
+  }, [floatingStream?.stream.id]);
+
+  /** Stream currently focused or active in screenshare for the unified top header */
+  const activeScreenShare = useMemo(() => {
+    if (focusedStreamInfo?.isScreen) {
+      return focusedStreamInfo;
+    }
+    if (floatingStream?.kind === "screen") {
+      return {
+        streamerName: floatingStream.streamerName,
+        isScreen: true,
+        streamId: floatingStream.stream.id,
+        participantId: floatingStream.participantId,
+        self: floatingStream.isSelf,
+      };
+    }
+    return null;
+  }, [focusedStreamInfo, floatingStream]);
+
   /** When the person in the open member menu took their voice seat, if any. */
   const userMenuVoiceJoinedAt = useMemo(() => {
     if (!userMenu) return null;
@@ -2894,6 +3088,7 @@ export function ChatShell() {
     if (!voice.channelId) {
       setStageChannelId(null);
       setQuickSoundboardOpen(false);
+      setPipDismissed(false);
     }
   }, [voice.channelId]);
 
@@ -5731,6 +5926,35 @@ export function ChatShell() {
     });
   }
 
+  async function editChannelBitrate(channel: PublicChannel) {
+    const current = Math.round(clampVoiceBitrate(channel.bitrate) / 1000);
+    showCustomPrompt({
+      title: `Voice Bitrate for ${channel.name}`,
+      message:
+        `The most each speaker sends, in kbps (${VOICE_BITRATE_MIN / 1000}–${VOICE_BITRATE_MAX / 1000}). ` +
+        `64 is clear speech; go higher for music or singing. Bigger rooms automatically send ` +
+        `less per person, so nobody's upload gets swamped.`,
+      defaultValue: String(current),
+      placeholder: String(VOICE_BITRATE_DEFAULT / 1000),
+      confirmText: "Set Bitrate",
+      onConfirm: async (value) => {
+        const kbps = parseInt(value || "", 10);
+        if (!Number.isFinite(kbps)) return;
+        const bitrate = clampVoiceBitrate(kbps * 1000);
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "PATCH", body: JSON.stringify({ bitrate }) },
+          );
+          setServers(data.servers);
+          setNotice(`Voice bitrate set to ${bitrate / 1000} kbps`);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not set the bitrate.");
+        }
+      },
+    });
+  }
+
   async function deleteChannel(channel: PublicChannel) {
     showCustomConfirm({
       title: `Delete '${channel.name}'?`,
@@ -7559,7 +7783,11 @@ export function ChatShell() {
             <div className="mini-voice-bar-header">
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className="mini-voice-dot animate-pulse" />
-                <div className="mini-voice-info min-w-0">
+                <div
+                  className="mini-voice-info min-w-0 cursor-pointer"
+                  onClick={() => setStageChannelId(voice.channelId)}
+                  title="Open voice channel"
+                >
                   <span className="mini-voice-name truncate">
                     {servers
                       .flatMap((s) => s.channels)
@@ -7701,13 +7929,20 @@ export function ChatShell() {
                   channelKindIcon(activeChannel?.kind ?? "text", 20)
                 )}
               </span>
-              <div className="channel-heading">
-                <strong>{stageChannel ? stageChannel.name : channelTitle}</strong>
-                <span>
+              <div className="channel-heading min-w-0 flex items-center gap-2">
+                <strong className="truncate">{stageChannel ? stageChannel.name : channelTitle}</strong>
+                {stageChannel && activeScreenShare && (
+                  <>
+                    <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
+                    <div className="voice-stage-stream-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--line)] text-xs text-[var(--ink)] font-semibold truncate">
+                      <Monitor size={13} className="text-[var(--lavender)] flex-shrink-0" />
+                      <span className="truncate">{activeScreenShare.streamerName}'s Screen</span>
+                    </div>
+                  </>
+                )}
+                <span className="text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
                   {stageChannel
-                    ? voiceParticipants.length === 1
-                      ? "Just you so far"
-                      : `${voiceParticipants.length} in the room`
+                    ? `· ${voiceParticipants.length === 1 ? "1 in call" : `${voiceParticipants.length} in call`}`
                     : inDmHome
                       ? activeDm
                         ? isSelfDm
@@ -7722,7 +7957,117 @@ export function ChatShell() {
                         : "Create a channel to start talking")}
                 </span>
               </div>
-              <div className="header-actions">
+              <div className="header-actions items-center">
+                {stageChannel && (
+                  <div className="voice-stage-header-controls flex items-center gap-2 mr-1 flex-shrink-0">
+                    {activeScreenShare && (
+                      <>
+                        <div className="voice-stream-quality-pill flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--panel)] border border-[var(--line)] shadow-sm">
+                          <button
+                            type="button"
+                            className="voice-quality-btn text-[11px] font-bold text-[var(--ink)] hover:text-[var(--lavender)] transition-colors cursor-pointer"
+                            title="Click to cycle screen resolution & FPS"
+                            onClick={() => {
+                              const nextQ = nextScreenQuality(voice.screenQuality);
+                              voice.setScreenQuality(nextQ);
+                            }}
+                          >
+                            {screenQualityLabel(voice.screenQuality)}
+                          </button>
+                          <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">
+                            LIVE
+                          </span>
+                        </div>
+
+                        {/* Streamer Audio Mute Toggle (if you are sharing screen) */}
+                        {(activeScreenShare.self || voice.screenSharing) && (
+                          <button
+                            type="button"
+                            className={`voice-stage-topbar-btn ${voice.screenAudioMuted ? "text-amber-400 bg-amber-500/10" : ""}`}
+                            onClick={voice.toggleScreenAudio}
+                            title={voice.screenAudioMuted ? "Stream audio muted (click to unmute)" : "Mute stream audio"}
+                          >
+                            {voice.screenAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                          </button>
+                        )}
+
+                        {/* Watcher Stream Audio Volume Slider (if watching someone else) */}
+                        {!(activeScreenShare.self || voice.screenSharing) && (
+                          (() => {
+                            const sId = activeScreenShare.streamId || "";
+                            const pId = activeScreenShare.participantId;
+                            const pref = streamPreferenceFor(sId, pId);
+                            return (
+                              <div className="voice-stream-volume-pill flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--panel)] border border-[var(--line)] shadow-sm">
+                                <button
+                                  type="button"
+                                  className="hover:text-[var(--lavender)] transition-colors cursor-pointer p-0.5"
+                                  onClick={() => toggleStreamMute(sId, pId)}
+                                  title={pref.muted ? "Unmute stream audio" : `Stream audio: ${pref.volume}% (Click to mute)`}
+                                >
+                                  {pref.muted || pref.volume === 0 ? (
+                                    <VolumeX size={14} className="text-rose-400" />
+                                  ) : pref.volume < 50 ? (
+                                    <Volume1 size={14} />
+                                  ) : (
+                                    <Volume2 size={14} />
+                                  )}
+                                </button>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={200}
+                                  step={1}
+                                  value={pref.muted ? 0 : pref.volume}
+                                  onChange={(e) => setStreamVolume(sId, pId, Number(e.target.value))}
+                                  className="w-16 accent-[var(--lavender)] h-1 cursor-pointer"
+                                  title={`Stream volume: ${pref.muted ? "Muted" : `${pref.volume}%`}`}
+                                />
+                                <span className="text-[11px] font-mono text-[var(--ink)] w-7 text-right select-none">
+                                  {pref.muted ? "0%" : `${pref.volume}%`}
+                                </span>
+                              </div>
+                            );
+                          })()
+                        )}
+
+                        <button
+                          type="button"
+                          className="voice-stage-topbar-btn"
+                          onClick={() => {
+                            setStageChannelId(null);
+                            setPipDismissed(false);
+                          }}
+                          title="Pop out to floating movable preview"
+                        >
+                          <ExternalLink size={15} />
+                        </button>
+                      </>
+                    )}
+
+                    <div className="voice-view-switcher">
+                      {(["grid", "table", "map"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={`voice-view-pill ${voiceViewMode === mode ? "active" : ""}`}
+                          onClick={() => {
+                            setVoiceViewMode(mode);
+                            if (mode === "map" && !battlemap) {
+                              void openBattlemap();
+                            } else if (mode !== "map" && battlemap) {
+                              closeBattlemap();
+                            }
+                          }}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="w-[1px] h-5 bg-[var(--line)] mx-1 opacity-60 flex-shrink-0" />
+                  </div>
+                )}
                 {inDmHome && activeDm?.group && (
                   <div className="dm-call-actions">
                     <button
@@ -7864,6 +8209,17 @@ export function ChatShell() {
                 joined={voice.channelId === stageChannel.id}
                 onJoin={() => void openVoiceChannel(stageChannel)}
                 onExit={() => setStageChannelId(null)}
+                onPopout={() => {
+                  setStageChannelId(null);
+                  setPipDismissed(false);
+                }}
+                hideTopbar={true}
+                viewMode={voiceViewMode}
+                onViewModeChange={setVoiceViewMode}
+                onFocusedChange={setFocusedStreamInfo}
+                streamPreferenceFor={streamPreferenceFor}
+                onSetStreamVolume={setStreamVolume}
+                onToggleStreamMute={toggleStreamMute}
                 serverId={stageChannel.serverId}
                 canManageSounds={canManageChannels}
                 // A stage has an audience, so the view splits the room into
@@ -10334,9 +10690,9 @@ export function ChatShell() {
                     )
                   }
                 >
-                  <option value="720p30">720p30</option>
-                  <option value="1080p30">1080p30</option>
-                  <option value="1080p60">1080p60</option>
+                  {SCREEN_SHARE_QUALITIES.map((quality) => (
+                    <option key={quality} value={quality}>{quality}</option>
+                  ))}
                 </select>
                 <button
                   className={voice.screenSharing ? "sharing" : ""}
@@ -10611,6 +10967,10 @@ export function ChatShell() {
                 muted: pref.muted,
               };
             }
+            return { volume: volumeGain(pref.volume), muted: pref.muted };
+          }}
+          streamPreferenceFor={(streamId, userId) => {
+            const pref = streamPreferenceFor(streamId, userId);
             return { volume: volumeGain(pref.volume), muted: pref.muted };
           }}
         />
@@ -11134,6 +11494,19 @@ export function ChatShell() {
                 >
                   Set Slowmode
                 </button>
+                {channelKindInfo(channelMenu.channel.kind).voice && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const channel = channelMenu.channel;
+                      setChannelMenu(null);
+                      void editChannelBitrate(channel);
+                    }}
+                  >
+                    Voice Bitrate ({Math.round(clampVoiceBitrate(channelMenu.channel.bitrate) / 1000)} kbps)
+                  </button>
+                )}
                 {convertibleKinds(channelMenu.channel.kind).map((kind) => (
                   <button
                     key={kind}
@@ -11311,6 +11684,8 @@ export function ChatShell() {
           deafenKey={voice.deafenKey}
           onMuteKey={voice.setMuteKey}
           onDeafenKey={voice.setDeafenKey}
+          screenShareAudio={voice.screenShareAudio}
+          onScreenShareAudioChange={voice.setScreenShareAudio}
           server={inDmHome ? null : activeServer}
           members={members}
           canManageServer={canManageServer}
@@ -11668,6 +12043,11 @@ export function ChatShell() {
 
       <BlahajBuddy />
       <ToastContainer />
+      <DeviceSwitchPrompt
+        inCall={Boolean(voice.channelId)}
+        activeMicrophone={voice.activeMicrophone}
+        onMicrophoneChange={() => void voice.switchMicrophone()}
+      />
 
       {reactionPicker && (
         <div
@@ -11817,6 +12197,39 @@ export function ChatShell() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* Floating Movable Screen Share Preview (Picture-in-Picture) */}
+      {floatingStream && !pipDismissed && stageChannelId !== voice.channelId && (
+        <FloatingScreenPreview
+          channelName={
+            servers
+              .flatMap((s) => s.channels)
+              .find((c) => c.id === voice.channelId)?.name || "Voice Room"
+          }
+          stream={floatingStream.stream}
+          streamerName={floatingStream.streamerName}
+          streamKind={floatingStream.kind}
+          viewerCount={voiceParticipants.length}
+          volume={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).volume}
+          muted={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).muted}
+          onVolumeChange={(vol) => setStreamVolume(floatingStream.stream.id, floatingStream.participantId, vol)}
+          onToggleMute={() => toggleStreamMute(floatingStream.stream.id, floatingStream.participantId)}
+          isSelf={floatingStream.isSelf}
+          onMaximize={() => {
+            if (voice.channelId) {
+              const targetChannel = servers
+                .flatMap((s) => s.channels)
+                .find((c) => c.id === voice.channelId);
+              if (targetChannel?.serverId && targetChannel.serverId !== activeServerId) {
+                setActiveServerId(targetChannel.serverId);
+              }
+              setStageChannelId(voice.channelId);
+              setPipDismissed(false);
+            }
+          }}
+          onClose={() => setPipDismissed(true)}
+        />
       )}
     </main>
   );

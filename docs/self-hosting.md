@@ -354,7 +354,7 @@ Peer-to-peer voice gets heavy past about 6 to 8 people with video, because every
    openssl rand -hex 32
    ```
 
-2. In `livekit.yaml`, replace the line under `keys:` with `hoffle: <that secret>`.
+2. Copy `livekit.yaml.example` to `livekit.yaml` and replace the line under `keys:` with `hoffle: <that secret>`. `livekit.yaml` is git-ignored, so the secret never ends up in a commit.
 3. LiveKit needs its own HTTPS address. Point a subdomain such as `livekit.example.com` at your server, and proxy it to port 7880 (in Caddy: `livekit.example.com { reverse_proxy localhost:7880 }`).
 4. Forward ports `7881` (TCP) and `7882` (UDP) to the Hoffle machine.
 5. Add to `.env`:

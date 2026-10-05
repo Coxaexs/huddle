@@ -14,6 +14,8 @@ state/
 
 # Secrets
 .dev.vars
+# Holds the LiveKit API secret; livekit.yaml.example is the template.
+livekit.yaml
 .env
 .env.*
 

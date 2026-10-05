@@ -20,8 +20,8 @@ LANDING_DOMAINS=hoffle.online,www.hoffle.online
 # When set, voice channels use the LiveKit SFU for higher participant counts and lower upload usage.
 # If omitted or ports are closed, Hoffle automatically falls back to P2P mesh WebRTC.
 # LIVEKIT_URL=ws://127.0.0.1:7880
-# LIVEKIT_API_KEY=devkey
-# LIVEKIT_API_SECRET=f4a0c134a9b0419a77f5ae7c0a0b373b
+# LIVEKIT_API_KEY=hoffle
+# LIVEKIT_API_SECRET=the-secret-from-your-livekit.yaml
 
 # [OPTIONAL] Web Push Notifications (Offline DMs and @mentions)
 # Generate keys with: npx web-push generate-vapid-keys

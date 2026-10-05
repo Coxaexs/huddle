@@ -6,6 +6,7 @@ import { ensureSchema } from "@/lib/schema";
 import { findChannel, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 import { convertibleKinds, normalizeChannelName } from "@/lib/channel-kinds";
+import { clampVoiceBitrate } from "@/lib/voice-quality";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,8 @@ export async function PATCH(
     name?: string;
     topic?: string;
     slowmode?: number;
+    /** Voice channels: the per-speaker ceiling, in bits per second. */
+    bitrate?: number;
     /** Switch to another kind in the same family (text/announcement/forum, voice/stage). */
     kind?: string;
   };
@@ -80,11 +83,12 @@ export async function PATCH(
       : "";
 
   await db
-    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ?, kind = ? WHERE id = ?")
+    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, kind = ? WHERE id = ?")
     .bind(
       name || channel.name,
       body.topic?.trim().slice(0, 120) ?? channel.topic,
       typeof body.slowmode === "number" ? Math.max(0, Math.min(300, body.slowmode)) : (channel as { slowmode?: number }).slowmode || 0,
+      typeof body.bitrate === "number" ? clampVoiceBitrate(body.bitrate) : (channel as { bitrate?: number }).bitrate || 0,
       kind,
       id,
     )
