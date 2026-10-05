@@ -16,19 +16,22 @@ const {
 const path = require("node:path");
 const fs = require("node:fs");
 
-/** Global hotkey that toggles your mic even when Huddle isn't focused. */
+/** Global hotkey that toggles your mic even when Hoffle isn't focused. */
 const MUTE_HOTKEY = "CommandOrControl+Shift+M";
 
 /**
- * Huddle desktop shell.
+ * Hoffle desktop shell.
  *
- * A thin Electron wrapper around the hosted app at deeppixel.online/hangout.
+ * A thin Electron wrapper around the hosted app at chat.hoffle.online/hangout.
  * Chromium gives us identical WebRTC behaviour on macOS and Windows, plus a
  * proper screen-share source picker (below). The remote site runs sandboxed:
  * no preload is injected into it and node integration is off.
  */
 
-const DEFAULT_URL = "https://deeppixel.online/hangout";
+const DEFAULT_URL = "https://chat.hoffle.online/hangout";
+// The app was called Huddle until 1.1.0. Keep its old settings folder so the
+// rename doesn't forget the saved server, hotkeys and window size.
+app.setPath("userData", path.join(app.getPath("appData"), "Huddle"));
 const boundsFile = path.join(app.getPath("userData"), "window-bounds.json");
 const configFile = path.join(app.getPath("userData"), "config.json");
 
@@ -110,11 +113,11 @@ function createTray() {
     icon = nativeImage.createEmpty();
   }
   tray = new Tray(icon);
-  tray.setToolTip("Huddle");
+  tray.setToolTip("Hoffle");
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: "Open Huddle",
+      label: "Open Hoffle",
       click: () => {
         if (!mainWindow) {
           createWindow();
@@ -133,7 +136,7 @@ function createTray() {
     },
     { type: "separator" },
     {
-      label: "Quit Huddle",
+      label: "Quit Hoffle",
       click: () => {
         isQuitting = true;
         app.quit();
@@ -169,7 +172,7 @@ function createWindow() {
     minWidth: 940,
     minHeight: 600,
     backgroundColor: "#1b1b21",
-    title: "Huddle",
+    title: "Hoffle",
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -449,7 +452,7 @@ if (!app.requestSingleInstanceLock()) {
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");
         const notification = new Notification({
-          title: String(title || "Huddle"),
+          title: String(title || "Hoffle"),
           body: String(body || ""),
           icon: fs.existsSync(iconPath) ? iconPath : undefined,
         });

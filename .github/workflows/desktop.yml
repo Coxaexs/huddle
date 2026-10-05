@@ -13,6 +13,8 @@ permissions:
 jobs:
   build:
     strategy:
+      # One platform failing should not cancel the others' builds.
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -30,6 +32,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # uiohook-napi (global push-to-talk) compiles against the X11 headers.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxkbfile-dev libxrandr-dev libxinerama-dev
+        working-directory: .
       - run: npm install
       # Unsigned builds. To sign/notarize, add CSC_LINK / CSC_KEY_PASSWORD
       # (and APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID for mac)
@@ -37,7 +43,7 @@ jobs:
       - run: npm run ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
         with:
-          name: huddle-${{ matrix.os }}
+          name: hoffle-${{ matrix.os }}
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.zip

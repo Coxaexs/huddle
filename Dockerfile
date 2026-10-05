@@ -25,6 +25,9 @@ COPY worker/ /app/worker/
 COPY public/ /app/public/
 COPY types/ /app/types/
 COPY scripts/ /app/scripts/
+# The site's /docs pages are built from these markdown files.
+COPY README.md /app/
+COPY docs/ /app/docs/
 
 # Build client bundle and worker
 RUN npm run build

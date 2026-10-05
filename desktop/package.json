@@ -1,8 +1,8 @@
 {
   "name": "huddle-desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Huddle desktop app (Electron shell around deeppixel.online/hangout)",
+  "description": "Hoffle desktop app (Electron shell around chat.hoffle.online)",
   "author": "coxaexs",
   "main": "src/main.js",
   "scripts": {
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "online.deeppixel.huddle",
-    "productName": "Huddle",
+    "productName": "Hoffle",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -51,13 +51,13 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSCameraUsageDescription": "Huddle uses your camera for video calls.",
-        "NSMicrophoneUsageDescription": "Huddle uses your microphone for voice chat.",
-        "NSScreenCaptureUsageDescription": "Huddle needs screen recording to share your screen."
+        "NSCameraUsageDescription": "Hoffle uses your camera for video calls.",
+        "NSMicrophoneUsageDescription": "Hoffle uses your microphone for voice chat.",
+        "NSScreenCaptureUsageDescription": "Hoffle needs screen recording to share your screen."
       }
     },
     "dmg": {
-      "title": "Huddle"
+      "title": "Hoffle"
     },
     "win": {
       "icon": "build/icon.ico",
@@ -75,7 +75,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Huddle"
+      "shortcutName": "Hoffle"
     },
     "linux": {
       "icon": "build/icon.png",
