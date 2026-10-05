@@ -167,6 +167,7 @@ import {
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { ToastContainer, showToast } from "./components/toast";
 import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
+import { HeadphoneEchoPrompt } from "./components/headphone-echo-prompt";
 import { PollCard } from "./components/poll-card";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
@@ -12047,6 +12048,11 @@ export function ChatShell() {
         inCall={Boolean(voice.channelId)}
         activeMicrophone={voice.activeMicrophone}
         onMicrophoneChange={() => void voice.switchMicrophone()}
+      />
+      <HeadphoneEchoPrompt
+        inCall={Boolean(voice.channelId)}
+        echoCancellation={voice.micSettings.echoCancellation}
+        onEchoCancellation={(on) => voice.setMicSettings({ echoCancellation: on })}
       />
 
       {reactionPicker && (
