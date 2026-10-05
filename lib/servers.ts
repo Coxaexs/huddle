@@ -6,7 +6,8 @@
  * posting. See `lib/channel-kinds.ts` for those rules.
  */
 import { DM_SERVER_ID } from "./schema";
-import { isChannelKind, type ChannelKind } from "./channel-kinds";
+import { channelKindInfo, isChannelKind, type ChannelKind } from "./channel-kinds";
+import { clampVoiceBitrate } from "./voice-quality";
 
 export interface ChannelRow {
   id: string;
@@ -14,6 +15,8 @@ export interface ChannelRow {
   name: string;
   kind: ChannelKind;
   topic: string;
+  slowmode?: number;
+  bitrate?: number;
   position: number;
   category_id: string | null;
   created_at: string;
@@ -54,6 +57,8 @@ export interface PublicChannel {
   kind: ChannelKind;
   topic: string;
   slowmode?: number;
+  /** Voice channels: the most each speaker sends, in bits per second. */
+  bitrate?: number;
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -96,6 +101,9 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     kind: isChannelKind(channel.kind) ? channel.kind : "text",
     topic: channel.topic || "",
     slowmode: (channel as { slowmode?: number }).slowmode || 0,
+    ...(channelKindInfo(channel.kind).voice
+      ? { bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate) }
+      : {}),
     position: channel.position,
     categoryId: channel.category_id || null,
   };
@@ -197,7 +205,7 @@ export async function listServers(
           .all(),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, kind, topic, slowmode, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, position, category_id, created_at
            FROM channels WHERE server_id != ?1 AND ${filter}
           ORDER BY position ASC, created_at ASC`,
     ),
@@ -260,10 +268,11 @@ export async function findChannel(
   db: D1Database,
   channelId: string,
 ): Promise<ChannelRow | null> {
+  // Every column, not a list: some callers run before ensureSchema has added
+  // the newer ones (slowmode, bitrate), and naming a missing column fails the
+  // whole query. Updates read their current values from here, too.
   return db
-    .prepare(
-      "SELECT id, server_id, name, kind, topic, position, category_id, created_at FROM channels WHERE id = ?",
-    )
+    .prepare("SELECT * FROM channels WHERE id = ?")
     .bind(channelId)
     .first<ChannelRow>();
 }

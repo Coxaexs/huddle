@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import { cameraConstraints, unlockAudio } from "../lib/devices";
@@ -8,10 +8,14 @@ import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
 import { HEAD_RECENTER_EVENT, headTrackingPossible, type HeadTrackingStatus } from "../lib/head-tracking";
 import { webcamHeadTrackingPossible } from "../lib/webcam-head-tracking";
 import { privateAddress, turnOnly } from "../lib/ice";
+import { SfuVoice, type SfuPublishKind, type SfuRemoteStream, type SfuStreamKind } from "../lib/sfu-voice";
 
 export type HeadTrackingSource = "airpods" | "webcam";
 export type SpatialOutput = "headphones" | "speakers";
+import { nativePlatform } from "../lib/native-voice";
+import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
 import {
+  MIC_STATE_EVENT,
   openMicrophone,
   readMicSettings,
   writeMicSettings,
@@ -129,23 +133,109 @@ interface UseVoiceOptions {
   send: (event: ClientEvent) => boolean;
   /** Recorder capture pages disable the unrelated rolling "Clip that!" buffer. */
   enableClips?: boolean;
+  /** Each voice channel's bitrate ceiling, keyed by channel id. */
+  roomBitrates?: Record<string, number>;
 }
 
-export type ScreenShareQuality = "720p30" | "1080p30" | "1080p60";
+export type ScreenShareQuality = "720p30" | "900p24" | "900p30" | "1080p24" | "1080p30" | "1080p60";
+
+/** Every offered quality, lowest first: the order pickers show and cycle through. */
+export const SCREEN_SHARE_QUALITIES: ScreenShareQuality[] = [
+  "720p30", "900p24", "900p30", "1080p24", "1080p30", "1080p60",
+];
+
+/** "900p 24FPS" — for the live badge. */
+export function screenQualityLabel(quality: ScreenShareQuality): string {
+  const [height, fps] = quality.split("p");
+  return `${height}p ${fps}FPS`;
+}
+
+/** The quality after this one, wrapping round. */
+export function nextScreenQuality(quality: ScreenShareQuality): ScreenShareQuality {
+  const index = SCREEN_SHARE_QUALITIES.indexOf(quality);
+  return SCREEN_SHARE_QUALITIES[(index + 1) % SCREEN_SHARE_QUALITIES.length];
+}
+
+/** 24 fps is the film setting: smooth motion matters more than crisp text. */
+export function isFilmQuality(quality: ScreenShareQuality): boolean {
+  return quality.endsWith("p24");
+}
 
 const SCREEN_SHARE_CONSTRAINTS: Record<
   ScreenShareQuality,
   { width: number; height: number; frameRate: number }
 > = {
   "720p30": { width: 1280, height: 720, frameRate: 30 },
+  "900p24": { width: 1600, height: 900, frameRate: 24 },
+  "900p30": { width: 1600, height: 900, frameRate: 30 },
+  "1080p24": { width: 1920, height: 1080, frameRate: 24 },
   "1080p30": { width: 1920, height: 1080, frameRate: 30 },
   "1080p60": { width: 1920, height: 1080, frameRate: 60 },
 };
 
-// Mono Opus voice is transparent well below this; staying lean matters because
-// every speaker uploads one copy per listener in the mesh.
-const VOICE_BITRATE = 64_000;
-const SCREEN_AUDIO_BITRATE = 256_000;
+/**
+ * Voice bitrate for a mesh of `listeners` other connections, under the
+ * channel's own ceiling (`room`, set in its settings).
+ *
+ * In a mesh you upload one full copy of your voice per listener, so a busy
+ * room multiplies it — and a saturated uplink drops packets, which is what a
+ * robotic, choppy voice actually is. So the ceiling is what a small call gets,
+ * and a fuller one spends less per copy: a share of the ceiling, and never
+ * more than UPLINK_BUDGET across everyone. A camera or screen share already
+ * competes for the same uplink, so it counts as a crowd of its own. At the
+ * default 64 kbps that is 64 / 48 / 32 kbps for 1–2 / 3–4 / 5+ listeners.
+ */
+const UPLINK_BUDGET = 600_000;
+const CROWD_FLOOR = 32_000;
+
+export function voiceBitrate(
+  listeners: number,
+  sendingVideo: boolean,
+  room: number = VOICE_BITRATE_DEFAULT,
+): number {
+  const share = listeners >= 5 ? 0.5 : listeners >= 3 || sendingVideo ? 0.75 : 1;
+  const budget = UPLINK_BUDGET / Math.max(1, listeners);
+  const wanted = Math.min(room * share, budget);
+  return Math.round(Math.min(room, Math.max(CROWD_FLOOR, wanted)));
+}
+
+/** Screen-share audio is music and games, so it keeps more — but not per copy in a crowd. */
+export function screenAudioBitrate(listeners: number): number {
+  return listeners >= 3 ? 128_000 : 256_000;
+}
+/** Screen-share audio through the media server: uploaded once, so it keeps its quality. */
+const SFU_SCREEN_AUDIO_BITRATE = 192_000;
+
+/** One remote person's stream. `kind` is set where the sender's stream id cannot be matched (LiveKit). */
+export interface RemoteVoiceStream {
+  connectionId: string;
+  stream: MediaStream;
+  kind?: SfuStreamKind;
+}
+
+/**
+ * Whether this tab connects to `person` directly. A seat in the LiveKit room
+ * meets other LiveKit seats there, and everyone else over the mesh.
+ */
+function meshWith(person: VoiceParticipant, sfu: boolean): boolean {
+  return !sfu || person.bot === true || person.sfu !== true;
+}
+
+/** LiveKit's address and a token for one room, or null when this instance has none. */
+async function sfuGrant(
+  channelId: string,
+  connectionId: string,
+): Promise<{ url: string; token: string } | null> {
+  try {
+    const data = await apiFetch<{ enabled?: boolean; url?: string; token?: string }>(
+      `/api/voice/token?channelId=${encodeURIComponent(channelId)}&connectionId=${encodeURIComponent(connectionId)}`,
+    );
+    return data.enabled && data.url && data.token ? { url: data.url, token: data.token } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How much of the room "Clip that!" keeps buffered. */
 const CLIP_SECONDS = 30;
 
@@ -169,8 +259,26 @@ async function tuneAudioSender(
   await sender.setParameters(parameters).catch(() => undefined);
 }
 
-/** Target for incoming audio's jitter buffer; Chrome's adaptive default often idles at 80+ ms. */
-const AUDIO_JITTER_TARGET_MS = 30;
+/**
+ * iOS (Safari, and the app's WKWebView) interrupts every AudioContext of a page
+ * that leaves the screen. iPadOS reports itself as a Mac, hence the touch check.
+ */
+function interruptsHiddenAudio(): boolean {
+  if (nativePlatform() === "ios") return true;
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * Target for incoming audio's jitter buffer. Chrome's adaptive default often
+ * idles at 80+ ms; 30 ms was tried and was too tight for Wi-Fi, where it made
+ * NetEq constantly stretch and squeeze speech to keep up — a warbly,
+ * "phone line" voice. 60 ms still sits below the default.
+ */
+const AUDIO_JITTER_TARGET_MS = 60;
 
 /**
  * Opus parameters the default negotiation leaves loose: in-band FEC so a lost
@@ -197,20 +305,29 @@ function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T): T {
 }
 
 /**
- * Peer-to-peer voice, meshed.
+ * Voice: through the LiveKit media server when this instance has one, and
+ * peer-to-peer meshed otherwise.
  *
- * A Huddle voice room is a handful of friends, so everyone connects directly to
- * everyone else and the hub only carries the handshake. Who calls whom is
- * decided by comparing connection ids, which keeps both sides from offering at
- * the same time.
+ * In the mesh everyone connects directly to everyone else and the hub only
+ * carries the handshake. Who calls whom is decided by comparing connection
+ * ids, which keeps both sides from offering at the same time.
+ *
+ * With LiveKit, two seats that both announced `sfu` meet only there; the mesh
+ * still reaches everyone else — the music bot, an older client, or a seat
+ * whose LiveKit connection failed — so a mixed room never splits in two.
  */
 export function useVoice({
   connectionId,
   rooms,
   send,
   enableClips = true,
+  roomBitrates,
 }: UseVoiceOptions) {
   const [channelId, setChannelId] = useState<string | null>(null);
+  const roomBitrate = clampVoiceBitrate(channelId ? roomBitrates?.[channelId] : undefined);
+  /** For peers set up inside callbacks, which would otherwise see a stale value. */
+  const roomBitrateRef = useRef(roomBitrate);
+  roomBitrateRef.current = roomBitrate;
   const [muted, setMuted] = useState(false);
   /**
    * Stage rooms only: this tab's hand is up, asking for the floor. Purely a
@@ -331,7 +448,58 @@ export function useVoice({
   const [remoteStreams, setRemoteStreams] = useState<
     Array<{ connectionId: string; stream: MediaStream }>
   >([]);
+  /** Media from the LiveKit room, before it is checked against the roster. */
+  const [sfuStreams, setSfuStreams] = useState<SfuRemoteStream[]>([]);
+  /** This seat is in the LiveKit room (or joining it). */
+  const [sfuMode, setSfuMode] = useState(false);
+  const sfuModeRef = useRef(false);
+  const sfuRef = useRef<SfuVoice | null>(null);
+  /**
+   * Everything remote, mesh and LiveKit together. A LiveKit identity is only
+   * believed when the roster has that connection under the same user: the
+   * token route fixes the user half, so nobody can appear as someone else.
+   */
+  const roster = channelId ? rooms[channelId] : undefined;
+  const allRemoteStreams = useMemo((): RemoteVoiceStream[] => {
+    const trusted = sfuStreams.filter((entry) =>
+      (roster || []).some(
+        (person) =>
+          person.connectionId === entry.connectionId &&
+          (person.id === entry.userId || (person.recorder === true && entry.userId === "recorder")),
+      ),
+    );
+    return [
+      ...remoteStreams,
+      ...trusted.map(({ connectionId: id, stream, kind }) => ({ connectionId: id, stream, kind })),
+    ];
+  }, [remoteStreams, sfuStreams, roster]);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [screenShareAudio, setScreenShareAudioState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("huddle:screenshare-audio") !== "false";
+  });
+  const [screenAudioMuted, setScreenAudioMuted] = useState(false);
+  const [hasScreenAudio, setHasScreenAudio] = useState(false);
+
+  const setScreenShareAudio = useCallback((enabled: boolean) => {
+    setScreenShareAudioState(enabled);
+    try {
+      localStorage.setItem("huddle:screenshare-audio", String(enabled));
+    } catch {}
+  }, []);
+
+  const toggleScreenAudio = useCallback(() => {
+    const stream = screenStreamRef.current;
+    if (!stream) return;
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) return;
+    const nextEnabled = !audioTracks[0].enabled;
+    audioTracks.forEach((track) => {
+      track.enabled = nextEnabled;
+    });
+    setScreenAudioMuted(!nextEnabled);
+  }, []);
+
   const [cameraOn, setCameraOn] = useState(false);
   /** Your own video, so you can see what everyone else is seeing. */
   const [localVideos, setLocalVideos] = useState<
@@ -339,12 +507,16 @@ export function useVoice({
   >([]);
   const [screenQuality, setScreenQuality] =
     useState<ScreenShareQuality>("1080p30");
+  const screenQualityRef = useRef(screenQuality);
+  screenQualityRef.current = screenQuality;
   const [micSettings, setMicSettingsState] = useState<MicSettings>(() =>
     readMicSettings(),
   );
   const [error, setError] = useState("");
   /** Per-peer RTCPeerConnection state, so tiles can say "connecting". */
   const [peerStates, setPeerStates] = useState<Record<string, string>>({});
+  /** Connections actually receiving us, which is what the uplink pays for. */
+  const listenerCount = Object.values(peerStates).filter((state) => state === "connected").length;
 
   /**
    * The input chain. `localStreamRef` below holds its *processed* output, which
@@ -361,9 +533,10 @@ export function useVoice({
   const micGateRef = useRef(true);
   /**
    * A copy of the raw microphone that goes on the wire instead of the processed
-   * track while Huddle is in the background. Phones (and some Windows setups)
-   * stop rendering Web Audio for a hidden app, and the processed track is made
-   * by Web Audio, so without this switching apps silently muted you.
+   * track while its Web Audio graph is not running — which a phone may do to a
+   * hidden app, and without this, switching apps would silently mute you. It
+   * is strictly a stand-in: the raw capture has no auto-gain or gate, so the
+   * room hears you noticeably quieter on it.
    */
   const backgroundMicRef = useRef<MediaStreamTrack | null>(null);
   /** Every track that mute, deafen and push-to-talk must switch together. */
@@ -466,7 +639,28 @@ export function useVoice({
     const on = !forcedMute && (pushToTalk ? pttHeld : !muted);
     micGateRef.current = on;
     micTracks().forEach((track) => (track.enabled = on));
-  }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks]);
+    void sfuRef.current?.setMicMuted(!on);
+  }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks, sfuMode]);
+
+  // Re-spend the uplink whenever the room or what we send changes: see
+  // voiceBitrate. Encoder bitrate changes apply live, without renegotiating.
+  const sendingVideo = cameraOn || screenSharing;
+  useEffect(() => {
+    if (!channelId) return;
+    const voice = voiceBitrate(listenerCount, sendingVideo, roomBitrate);
+    const screen = new Set(screenStreamRef.current?.getAudioTracks() || []);
+    for (const peer of peersRef.current.values()) {
+      for (const sender of peer.getSenders()) {
+        if (sender.track?.kind !== "audio") continue;
+        const bitrate = screen.has(sender.track) ? screenAudioBitrate(listenerCount) : voice;
+        void tuneAudioSender(sender, bitrate);
+      }
+    }
+    // Through the media server the voice is uploaded once, whoever listens,
+    // so it keeps the channel's full ceiling.
+    const sfuMic = sfuRef.current?.micSender();
+    if (sfuMic) void tuneAudioSender(sfuMic, roomBitrate);
+  }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode]);
 
   /**
    * Follow the server's view of this seat's microphone.
@@ -617,17 +811,18 @@ export function useVoice({
     if (!enableClips) return;
     const mix = clipMixRef.current;
     if (!mix) return;
-    for (const { connectionId: id, stream } of remoteStreams) {
-      if (mix.sources.has(id) || !stream.getAudioTracks().length) continue;
+    for (const { connectionId: id, stream, kind } of allRemoteStreams) {
+      const key = kind ? `${id}:${kind}` : id;
+      if (mix.sources.has(key) || !stream.getAudioTracks().length) continue;
       try {
         const source = mix.context.createMediaStreamSource(stream);
         source.connect(mix.destination);
-        mix.sources.set(id, source);
+        mix.sources.set(key, source);
       } catch {
         // Skip a stream the context will not take.
       }
     }
-  }, [enableClips, remoteStreams]);
+  }, [enableClips, allRemoteStreams]);
 
   /** Hands back the buffered clip as a file, or null when there is nothing. */
   const takeClip = useCallback(async (): Promise<Blob | null> => {
@@ -878,10 +1073,18 @@ export function useVoice({
    * room would hear a dropout every time someone nudged a slider.
    */
   const setMicSettings = useCallback((next: Partial<MicSettings>) => {
+    const before = readMicSettings();
     const merged = writeMicSettings(next);
     setMicSettingsState(merged);
     micChainRef.current?.update(next);
+    // Echo cancellation lives inside the capture itself, and browsers will not
+    // reliably retune that on a running track, so it takes a fresh one. That
+    // is the same swap as changing microphone: a blip, not a renegotiation.
+    if (merged.echoCancellation !== before.echoCancellation && micChainRef.current) {
+      void switchMicrophoneRef.current();
+    }
   }, []);
+  const switchMicrophoneRef = useRef<() => Promise<void>>(async () => {});
 
   /**
    * Switches our camera/screen senders to one peer on or off to match what that
@@ -914,6 +1117,7 @@ export function useVoice({
       const next = { ...(hiddenVideoRef.current[remoteId] || NO_PAUSE), [which]: hidden };
       hiddenVideoRef.current = { ...hiddenVideoRef.current, [remoteId]: next };
       setHiddenVideoState(hiddenVideoRef.current);
+      sfuRef.current?.setHidden(remoteId, which, hidden);
       send({
         t: "signal",
         to: remoteId,
@@ -959,13 +1163,17 @@ export function useVoice({
         const track = own.kind === "audio" && backgroundMicRef.current ? backgroundMicRef.current : own;
         const sender = peer.addTrack(track, localStreamRef.current as MediaStream);
         if (track.kind === "audio") {
-          void tuneAudioSender(sender, VOICE_BITRATE);
+          void tuneAudioSender(sender, voiceBitrate(
+            peersRef.current.size,
+            Boolean(cameraStreamRef.current || screenStreamRef.current),
+            roomBitrateRef.current,
+          ));
         }
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {
         const sender = peer.addTrack(track, screenStreamRef.current as MediaStream);
         if (track.kind === "audio") {
-          void tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+          void tuneAudioSender(sender, screenAudioBitrate(peersRef.current.size));
         }
       }
       for (const track of cameraStreamRef.current?.getTracks() || []) {
@@ -1182,11 +1390,91 @@ export function useVoice({
     [closePeer, createPeer, send],
   );
 
+  /**
+   * Leaves LiveKit and carries on over the mesh. Telling the hub is what makes
+   * the LiveKit seats start calling this one directly.
+   */
+  const dropToMesh = useCallback((reason?: string) => {
+    const sfu = sfuRef.current;
+    sfuRef.current = null;
+    void sfu?.leave();
+    setSfuStreams([]);
+    if (!sfuModeRef.current) return;
+    sfuModeRef.current = false;
+    setSfuMode(false);
+    if (channelIdRef.current) {
+      send({ t: "voice-state", sfu: false });
+      if (reason) setError(reason);
+    }
+  }, [send]);
+
+  /** Joins the LiveKit room and puts everything this tab is sending into it. */
+  const connectSfu = useCallback(
+    async (grant: { url: string; token: string }) => {
+      void sfuRef.current?.leave();
+      const sfu = new SfuVoice({
+        onStreams: (streams) => {
+          if (sfuRef.current === sfu) setSfuStreams(streams);
+        },
+        onVoice: (remoteId, stream, receiver) => {
+          const tunable = receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined;
+          if (tunable && "jitterBufferTarget" in tunable) {
+            try { tunable.jitterBufferTarget = AUDIO_JITTER_TARGET_MS; } catch { /* unsupported */ }
+          }
+          watchLevel(remoteId, stream);
+        },
+        onLost: () => {
+          if (sfuRef.current === sfu) {
+            dropToMesh("Lost the voice server, so this call switched to direct connections.");
+          }
+        },
+        isHidden: (remoteId, kind) => hiddenVideoRef.current[remoteId]?.[kind] === true,
+      });
+      sfuRef.current = sfu;
+      try {
+        await sfu.connect(grant.url, grant.token, iceServersRef.current);
+      } catch {
+        if (sfuRef.current === sfu) {
+          dropToMesh("Could not reach the voice server, so this call uses direct connections.");
+        }
+        return;
+      }
+      if (sfuRef.current !== sfu) {
+        void sfu.leave();
+        return;
+      }
+      // A timed-out member may listen but not publish, so one refusal is not
+      // a reason to give up on the room.
+      const publish = (
+        track: MediaStreamTrack,
+        kind: SfuPublishKind,
+        options?: Parameters<SfuVoice["publish"]>[2],
+      ) =>
+        sfu.publish(track, kind, options).catch((publishError) => {
+          console.warn("Huddle voice: LiveKit would not take a track.", publishError);
+        });
+      const mic = backgroundMicRef.current ?? localStreamRef.current?.getAudioTracks()[0];
+      if (mic) {
+        await publish(mic, "mic", { bitrate: roomBitrateRef.current });
+        await sfu.setMicMuted(!micGateRef.current);
+      }
+      for (const track of screenStreamRef.current?.getTracks() || []) {
+        await (track.kind === "video"
+          ? publish(track, "screen", { screen: screenQualityRef.current })
+          : publish(track, "screen-audio", { bitrate: SFU_SCREEN_AUDIO_BITRATE }));
+      }
+      for (const track of cameraStreamRef.current?.getVideoTracks() || []) {
+        await publish(track, "camera");
+      }
+    },
+    [dropToMesh, watchLevel],
+  );
+
   /** Offer to everyone already in the room whose id sorts below ours. */
   useEffect(() => {
     if (!channelId || !connectionId) return;
     const others = (rooms[channelId] || [])
-      .filter((person) => person.connectionId !== connectionId);
+      .filter((person) => person.connectionId !== connectionId && meshWith(person, sfuMode));
 
     for (const person of others) {
       const remoteId = person.connectionId;
@@ -1209,7 +1497,7 @@ export function useVoice({
         closePeer(remoteId);
       }
     }
-  }, [rooms, channelId, connectionId, callPeer, closePeer]);
+  }, [rooms, channelId, connectionId, callPeer, closePeer, sfuMode]);
 
   // Replay anything that arrived a moment before we were ready to handle it.
   useEffect(() => {
@@ -1237,12 +1525,22 @@ export function useVoice({
   useEffect(() => {
     if (!channelId || !connectionId) return;
     if (announcedConnectionRef.current === connectionId) return;
-    if (!send({ t: "voice-join", channelId })) return;
+    if (!send({ t: "voice-join", channelId, sfu: sfuModeRef.current || undefined })) return;
     const wasAnnounced = announcedConnectionRef.current !== null;
     announcedConnectionRef.current = connectionId;
     // The first announcement is meshed by the roster effect; only a reconnect
     // needs the teardown + rebuild here.
     if (!wasAnnounced) return;
+
+    // The LiveKit identity names the old connection, which nobody can match
+    // any more, so rejoin under the new one.
+    if (sfuModeRef.current) {
+      void sfuGrant(channelId, connectionId).then((grant) => {
+        if (channelIdRef.current !== channelId || !sfuModeRef.current) return;
+        if (grant) void connectSfu(grant);
+        else dropToMesh("Could not rejoin the voice server, so this call uses direct connections.");
+      });
+    }
 
     for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
     peerSinceRef.current.clear();
@@ -1250,7 +1548,7 @@ export function useVoice({
 
     // Re-mesh with the same caller rule the roster effect uses.
     const others = (roomsRef.current[channelId] || []).filter(
-      (person) => person.connectionId !== connectionId,
+      (person) => person.connectionId !== connectionId && meshWith(person, sfuModeRef.current),
     );
     for (const person of others) {
       const remoteId = person.connectionId;
@@ -1261,7 +1559,7 @@ export function useVoice({
       }
       callPeer(remoteId);
     }
-  }, [channelId, connectionId, send, closePeer, callPeer]);
+  }, [channelId, connectionId, send, closePeer, callPeer, connectSfu, dropToMesh]);
 
   /**
    * Watchdog: a mesh call can lose a single pair — an offer that never landed,
@@ -1276,7 +1574,7 @@ export function useVoice({
     if (!channelId || !connectionId) return;
     const timer = window.setInterval(() => {
       const others = (roomsRef.current[channelId] || []).filter(
-        (person) => person.connectionId !== connectionId,
+        (person) => person.connectionId !== connectionId && meshWith(person, sfuModeRef.current),
       );
 
       for (const person of others) {
@@ -1368,9 +1666,12 @@ export function useVoice({
     const stream = screenStreamRef.current;
     if (!stream) return;
     const trackIds = new Set(stream.getTracks().map((track) => track.id));
+    void sfuRef.current?.unpublish(stream.getTracks());
     stream.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
     setScreenSharing(false);
+    setHasScreenAudio(false);
+    setScreenAudioMuted(false);
     playScreenShareStopSound();
     announceVideo();
     for (const [remoteId, peer] of peersRef.current) {
@@ -1389,6 +1690,7 @@ export function useVoice({
     const stream = cameraStreamRef.current;
     if (!stream) return;
     const trackIds = new Set(stream.getTracks().map((track) => track.id));
+    void sfuRef.current?.unpublish(stream.getTracks());
     stream.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
     setCameraOn(false);
@@ -1436,6 +1738,9 @@ export function useVoice({
         for (const track of stream.getTracks()) peer.addTrack(track, stream);
         await negotiatePeer(remoteId, peer);
       }
+      for (const track of stream.getVideoTracks()) {
+        await sfuRef.current?.publish(track, "camera").catch(() => undefined);
+      }
     } catch (cameraError) {
       if ((cameraError as DOMException)?.name !== "NotAllowedError") {
         setError("Your camera could not start. Another app may be using it.");
@@ -1470,6 +1775,7 @@ export function useVoice({
       const oldTrack = cameraStreamRef.current.getVideoTracks()[0];
       cameraStreamRef.current = pipeline.outputStream;
       if (newTrack && oldTrack) {
+        await sfuRef.current?.replace(oldTrack, newTrack);
         for (const peer of peersRef.current.values()) {
           for (const sender of peer.getSenders()) {
             if (sender.track && sender.track.kind === "video" && sender.track.id === oldTrack.id) {
@@ -1519,6 +1825,8 @@ export function useVoice({
       }
       track.enabled = micGateRef.current;
 
+      const sending = backgroundMicRef.current ?? localStreamRef.current.getAudioTracks()[0];
+      if (sending) await sfuRef.current?.replace(sending, track);
       for (const peer of peersRef.current.values()) {
         for (const sender of peer.getSenders()) {
           if (sender.track?.kind === "audio") {
@@ -1540,6 +1848,17 @@ export function useVoice({
       setError("That microphone could not be opened.");
     }
   }, [openMicChain]);
+  switchMicrophoneRef.current = switchMicrophone;
+
+  /**
+   * The capture device actually live in this call — which, after an unplug,
+   * may be the system default rather than the saved choice. Null out of a call.
+   */
+  const activeMicrophone = useCallback((): { deviceId: string; ended: boolean } | null => {
+    const track = micChainRef.current?.raw.getAudioTracks()[0];
+    if (!track) return null;
+    return { deviceId: track.getSettings().deviceId || "", ended: track.readyState === "ended" };
+  }, []);
 
   /**
    * Coming back from another app on a phone. While the browser sat in the
@@ -1556,6 +1875,7 @@ export function useVoice({
     // Points every peer's mic sender that currently carries `from` at `to`.
     const swapMic = (from: MediaStreamTrack, to: MediaStreamTrack) => {
       const swaps: Promise<void>[] = [];
+      if (sfuRef.current) swaps.push(sfuRef.current.replace(from, to));
       for (const peer of peersRef.current.values()) {
         for (const sender of peer.getSenders()) {
           if (sender.track === from) swaps.push(sender.replaceTrack(to).catch(() => undefined));
@@ -1563,9 +1883,9 @@ export function useVoice({
       }
       return Promise.all(swaps);
     };
-    // Leaving the app: send the raw microphone, which the OS keeps capturing
-    // (with the foreground service on Android), instead of the Web Audio track
-    // it is about to stop rendering. You lose RNNoise and the gate meanwhile.
+    // The processed track has stopped (or, on iOS, is about to): send the raw
+    // microphone, which the OS keeps capturing, instead. You lose auto-gain,
+    // RNNoise and the gate meanwhile.
     const toRawMic = () => {
       const chain = micChainRef.current;
       const processed = localStreamRef.current?.getAudioTracks()[0];
@@ -1596,8 +1916,22 @@ export function useVoice({
       // resume() settles asynchronously; look again once it has had a moment.
       window.setTimeout(toProcessedMic, 300);
     };
+    // Only iOS has to be pre-empted: WebKit interrupts a hidden page's audio
+    // and may not run this script again until it is back, so the swap has to
+    // happen on the way out. Everywhere else the processed track keeps flowing
+    // in the background (Android's foreground service keeps the whole page
+    // alive), and swapping anyway is what made you drop in volume the moment
+    // you switched apps. There, the raw mic only stands in for a graph that
+    // has actually stopped, which the chain announces.
+    const leaving = () => {
+      if (interruptsHiddenAudio()) toRawMic();
+    };
     const onHidden = () => {
-      if (document.visibilityState === "hidden") toRawMic();
+      if (document.visibilityState === "hidden") leaving();
+    };
+    const onMicState = () => {
+      if (micChainRef.current?.live) toProcessedMic();
+      else toRawMic();
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -1607,14 +1941,16 @@ export function useVoice({
       const raw = micChainRef.current?.raw.getAudioTracks()[0];
       if (raw && raw.readyState === "ended") void switchMicrophone();
     };
-    if (document.visibilityState === "hidden") toRawMic();
+    if (document.visibilityState === "hidden") leaving();
     document.addEventListener("visibilitychange", onHidden);
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("pagehide", toRawMic);
+    window.addEventListener("pagehide", leaving);
     window.addEventListener("pageshow", onVisible);
+    window.addEventListener(MIC_STATE_EVENT, onMicState);
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
-      window.removeEventListener("pagehide", toRawMic);
+      window.removeEventListener("pagehide", leaving);
+      window.removeEventListener(MIC_STATE_EVENT, onMicState);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pageshow", onVisible);
       window.removeEventListener("pointerdown", wakeAudio, { capture: true });
@@ -1622,38 +1958,84 @@ export function useVoice({
   }, [channelId, switchMicrophone]);
 
   const startScreenShare = useCallback(
-    async (quality: ScreenShareQuality = screenQuality) => {
+    async (quality: ScreenShareQuality = screenQuality, withAudio?: boolean) => {
       if (!channelIdRef.current) {
         setError("Join a voice channel before sharing your screen.");
         return;
       }
       stopScreenShare();
+      const shouldShareAudio = withAudio !== undefined ? withAudio : screenShareAudio;
       try {
         const profile = SCREEN_SHARE_CONSTRAINTS[quality];
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            width: { ideal: profile.width, max: profile.width },
-            height: { ideal: profile.height, max: profile.height },
-            frameRate: { ideal: profile.frameRate, max: profile.frameRate },
-          },
-          // Desktop/app audio rides along with the video. Echo cancellation
-          // and friends are for voices: on game or music audio they pump and
-          // smear, so they are off here.
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            // Keep hearing it yourself while it is shared.
-            suppressLocalAudioPlayback: false,
-          } as MediaTrackConstraints,
-          // Chromium hints: offer "Share system audio" for whole screens and
-          // pre-tick the audio box for tabs. Ignored where unsupported.
-          systemAudio: "include",
-          windowAudio: "system",
-        } as DisplayMediaStreamOptions);
+        let stream: MediaStream;
+        if (shouldShareAudio) {
+          try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: {
+                width: { ideal: profile.width, max: profile.width },
+                height: { ideal: profile.height, max: profile.height },
+                frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+              },
+              // Desktop/app audio rides along with the video. Echo cancellation
+              // and friends are for voices: on game or music audio they pump and
+              // smear, so they are off here.
+              audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                // Keep hearing it yourself while it is shared.
+                suppressLocalAudioPlayback: false,
+              } as MediaTrackConstraints,
+              // Chromium hints: offer "Share system audio" for whole screens and
+              // pre-tick the audio box for tabs. Ignored where unsupported.
+              systemAudio: "include",
+              windowAudio: "system",
+            } as DisplayMediaStreamOptions);
+          } catch (audioErr) {
+            if ((audioErr as DOMException)?.name === "NotAllowedError") {
+              throw audioErr;
+            }
+            try {
+              stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                  width: { ideal: profile.width, max: profile.width },
+                  height: { ideal: profile.height, max: profile.height },
+                  frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+                },
+                audio: true,
+              });
+            } catch (fallbackErr) {
+              if ((fallbackErr as DOMException)?.name === "NotAllowedError") {
+                throw fallbackErr;
+              }
+              stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                  width: { ideal: profile.width, max: profile.width },
+                  height: { ideal: profile.height, max: profile.height },
+                  frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+                },
+              });
+            }
+          }
+        } else {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              width: { ideal: profile.width, max: profile.width },
+              height: { ideal: profile.height, max: profile.height },
+              frameRate: { ideal: profile.frameRate, max: profile.frameRate },
+            },
+          });
+        }
+        // Tells the encoder what it is looking at: a film wants smooth motion,
+        // a desktop wants legible text. Applies to the mesh as well.
+        const video = stream.getVideoTracks()[0];
+        if (video) video.contentHint = isFilmQuality(quality) ? "motion" : "detail";
         screenStreamRef.current = stream;
         setScreenQuality(quality);
         setScreenSharing(true);
+        const audioTracks = stream.getAudioTracks();
+        setHasScreenAudio(audioTracks.length > 0);
+        setScreenAudioMuted(false);
         playScreenShareStartSound();
         // Publishes the stream id and puts it in your own view.
         announceVideo();
@@ -1664,10 +2046,19 @@ export function useVoice({
           for (const track of stream.getTracks()) {
             const sender = peer.addTrack(track, stream);
             if (track.kind === "audio") {
-              await tuneAudioSender(sender, SCREEN_AUDIO_BITRATE);
+              await tuneAudioSender(sender, screenAudioBitrate(peersRef.current.size));
             }
           }
           await negotiatePeer(remoteId, peer);
+        }
+        for (const track of stream.getTracks()) {
+          await sfuRef.current
+            ?.publish(
+              track,
+              track.kind === "video" ? "screen" : "screen-audio",
+              { screen: quality, bitrate: SFU_SCREEN_AUDIO_BITRATE },
+            )
+            .catch(() => undefined);
         }
       } catch (shareError) {
         if ((shareError as DOMException)?.name !== "NotAllowedError") {
@@ -1675,11 +2066,18 @@ export function useVoice({
         }
       }
     },
-    [announceVideo, negotiatePeer, screenQuality, stopScreenShare],
+    [announceVideo, negotiatePeer, screenQuality, screenShareAudio, stopScreenShare],
   );
 
   const leave = useCallback(() => {
     playRoomTone("leave");
+    // First, so the screen and camera below are not unpublished one by one.
+    const sfu = sfuRef.current;
+    sfuRef.current = null;
+    void sfu?.leave();
+    sfuModeRef.current = false;
+    setSfuMode(false);
+    setSfuStreams([]);
     stopScreenShare();
     stopCamera();
     for (const remoteId of [...peersRef.current.keys()]) closePeer(remoteId);
@@ -1722,6 +2120,13 @@ export function useVoice({
         // Joining is a real gesture, which is the only moment a phone will let
         // us start playing everyone else's audio.
         unlockAudio();
+        // LiveKit or mesh is decided before entering the room, so neither this
+        // tab nor anyone else starts meshing with a seat about to be in
+        // LiveKit. The identity carries the hub connection, so without one
+        // there would be nothing to match the media to.
+        const grant = connectionId ? await sfuGrant(nextChannelId, connectionId) : null;
+        sfuModeRef.current = grant !== null;
+        setSfuMode(grant !== null);
         micChainRef.current = chain;
         // Peers get the processed track; the raw capture stays inside the chain.
         localStreamRef.current = chain.stream;
@@ -1742,9 +2147,10 @@ export function useVoice({
         // Record which connection id we announced with. If the send fails (the
         // socket is briefly down) the ref stays unset, and the re-announce
         // effect below fires the join again once a connection id exists.
-        if (send({ t: "voice-join", channelId: nextChannelId })) {
+        if (send({ t: "voice-join", channelId: nextChannelId, sfu: grant ? true : undefined })) {
           announcedConnectionRef.current = connectionId;
         }
+        if (grant) void connectSfu(grant);
         // Tell the room about the opening mute, or it would list this seat as
         // "on stage" until the user touched a control.
         if (startMuted) send({ t: "voice-state", muted: true });
@@ -1755,7 +2161,7 @@ export function useVoice({
         );
       }
     },
-    [connectionId, leave, openMicChain, playRoomTone, rooms, send],
+    [connectionId, connectSfu, leave, openMicChain, playRoomTone, rooms, send],
   );
 
   /** Applied when someone server-mutes you: the microphone actually stops. */
@@ -1874,6 +2280,8 @@ export function useVoice({
   }, [channelId, muteKey, deafenKey, toggleMute, toggleDeafen]);
 
   useEffect(() => () => {
+    void sfuRef.current?.leave();
+    sfuRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1919,9 +2327,16 @@ export function useVoice({
     /** Stage rooms: move a seat on or off the stage. Moderator-only, rechecked by the hub. */
     setStageSpeaker,
     speaking,
-    remoteStreams,
+    remoteStreams: allRemoteStreams,
+    /** This seat's media goes through the LiveKit server rather than the mesh. */
+    sfuMode,
     peerStates,
     screenSharing,
+    screenShareAudio,
+    setScreenShareAudio,
+    hasScreenAudio,
+    screenAudioMuted,
+    toggleScreenAudio,
     screenQuality,
     setScreenQuality,
     startScreenShare,
@@ -1936,6 +2351,7 @@ export function useVoice({
     startCamera,
     stopCamera,
     switchMicrophone,
+    activeMicrophone,
     micSettings,
     setMicSettings,
     subscribeMicTelemetry,

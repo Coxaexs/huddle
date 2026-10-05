@@ -83,6 +83,164 @@ function InputMeter({
 }
 
 /**
+ * Record a few seconds and hear yourself the way the room does: through the
+ * whole input chain and Opus. The untouched capture is kept alongside it, and
+ * both can be saved, so a complaint like "we can hear you swallow" can be
+ * looked at rather than guessed at.
+ *
+ * It records from the preview chain when one is running; otherwise it opens
+ * its own for the length of the recording. In a call that is a second capture
+ * of the same microphone, with the same settings — the call itself is never
+ * touched.
+ */
+function MicRecordTest({
+  settings,
+  previewChain,
+  onTelemetry,
+}: {
+  settings: MicSettings;
+  previewChain: React.MutableRefObject<MicChain | null>;
+  onTelemetry?: (telemetry: MicTelemetry) => void;
+}) {
+  type Phase = "idle" | "recording" | "ready";
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{
+    processed: string;
+    raw: string;
+    ext: string;
+    settings: MicSettings;
+  } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Object URLs hold the recording in memory until revoked.
+  useEffect(() => () => {
+    if (result) {
+      URL.revokeObjectURL(result.processed);
+      URL.revokeObjectURL(result.raw);
+    }
+  }, [result]);
+  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    const element = audioRef.current;
+    registerMedia(element);
+    return () => unregisterMedia(element);
+  }, [result]);
+
+  if (!canRecordMicTest()) return null;
+
+  const start = async () => {
+    if (phase === "recording") {
+      abortRef.current?.abort();
+      return;
+    }
+    setError("");
+    setResult(null);
+    const abort = new AbortController();
+    abortRef.current = abort;
+    let own: MicChain | null = null;
+    try {
+      let chain = previewChain.current;
+      if (!chain) {
+        own = await openMicrophone();
+        chain = own;
+        if (onTelemetry) own.onTelemetry(onTelemetry);
+      }
+      if (abort.signal.aborted) return;
+      setElapsed(0);
+      setPhase("recording");
+      const recording = await recordMicTest(chain, {
+        seconds: TEST_SECONDS,
+        onProgress: setElapsed,
+        signal: abort.signal,
+      });
+      setResult({
+        processed: URL.createObjectURL(recording.processed),
+        raw: URL.createObjectURL(recording.raw),
+        ext: recordingExtension(recording.processed),
+        settings,
+      });
+      setPhase("ready");
+    } catch (recordError) {
+      setError(
+        recordError instanceof Error ? recordError.message : "The microphone could not be recorded.",
+      );
+      setPhase("idle");
+    } finally {
+      own?.stop();
+      if (abortRef.current === abort) abortRef.current = null;
+    }
+  };
+
+  const save = () => {
+    if (!result) return;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const files: Array<[string, string]> = [
+      [result.processed, `hoffle-mic-test-${stamp}-heard.${result.ext}`],
+      [result.raw, `hoffle-mic-test-${stamp}-raw.${result.ext}`],
+      [
+        URL.createObjectURL(
+          new Blob([JSON.stringify({ settings: result.settings, userAgent: navigator.userAgent }, null, 2)], {
+            type: "application/json",
+          }),
+        ),
+        `hoffle-mic-test-${stamp}-settings.json`,
+      ],
+    ];
+    files.forEach(([href, name], index) => {
+      // Spaced out: some browsers drop all but the first of several downloads
+      // started in the same instant.
+      window.setTimeout(() => {
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = name;
+        link.click();
+        if (index === files.length - 1) window.setTimeout(() => URL.revokeObjectURL(href), 1_000);
+      }, index * 400);
+    });
+  };
+
+  return (
+    <div className="mic-record-test">
+      <div className="mic-record-row">
+        <button
+          type="button"
+          className={`discord-btn ${phase === "recording" ? "danger-red" : "secondary-gray"}`}
+          onClick={() => void start()}
+        >
+          {phase === "recording"
+            ? `Stop (${Math.ceil(TEST_SECONDS - elapsed)}s)`
+            : phase === "ready"
+              ? "Record again"
+              : "Record a test"}
+        </button>
+        <small className="modal-hint">
+          {phase === "recording"
+            ? "Talk normally — and try a swallow, a sip or a cough too."
+            : `Records ${TEST_SECONDS} seconds and plays you back exactly as other people hear you.`}
+        </small>
+      </div>
+      {phase === "recording" && (
+        <div className="mic-record-progress">
+          <div style={{ width: `${(elapsed / TEST_SECONDS) * 100}%` }} />
+        </div>
+      )}
+      {result && (
+        <div className="mic-record-row">
+          <audio ref={audioRef} controls src={result.processed} autoPlay />
+          <button type="button" className="discord-btn secondary-gray" onClick={save} title="Saves what they hear, your raw microphone and your settings">
+            <Download size={14} /> Save
+          </button>
+        </div>
+      )}
+      {error && <small className="mic-record-error">{error}</small>}
+    </div>
+  );
+}
+
+/**
  * The Voice input controls: sensitivity, gain and suppression.
  *
  * Whenever you are in a call these read and steer the chain that is actually
@@ -110,7 +268,10 @@ function VoiceInput({
     return subscribe(setTelemetry);
   }, [inCall, subscribe]);
 
+  /** Bumped by every stop, so a microphone still opening knows it is too late. */
+  const testRunRef = useRef(0);
   const stopTest = useCallback(() => {
+    testRunRef.current += 1;
     testChainRef.current?.stop();
     testChainRef.current = null;
     setTesting(false);
@@ -138,6 +299,20 @@ function VoiceInput({
   // the meter goes on showing the old behaviour while you drag the slider.
   const change = (next: Partial<MicSettings>) => {
     onChange(next);
+    if (next.echoCancellation !== undefined && testChainRef.current) {
+      // Part of the capture itself, so the preview needs a fresh microphone
+      // too — the same thing the call does.
+      testChainRef.current.stop();
+      testChainRef.current = null;
+      const run = testRunRef.current;
+      openMicrophone().then((chain) => {
+        // The dialog may have closed, or the test stopped, while it opened.
+        if (run !== testRunRef.current) return chain.stop();
+        chain.onTelemetry(setTelemetry);
+        testChainRef.current = chain;
+      }, stopTest);
+      return;
+    }
     testChainRef.current?.update(next);
   };
 
@@ -164,6 +339,12 @@ function VoiceInput({
       </div>
 
       <InputMeter telemetry={telemetry} threshold={threshold} />
+
+      <MicRecordTest
+        settings={settings}
+        previewChain={testChainRef}
+        onTelemetry={inCall ? undefined : setTelemetry}
+      />
 
       <label className="appearance-switch">
         <span>
@@ -247,6 +428,37 @@ function VoiceInput({
         </>
       )}
 
+      <label className="appearance-switch">
+        <span>
+          <strong>Voice clarity</strong>
+          <small>
+            Cuts desk thumps, fan rumble and mic pops from under your voice,
+            without thinning the voice itself.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.clarity}
+          onChange={(event) => change({ clarity: event.target.checked })}
+        />
+      </label>
+
+      <label className="appearance-switch">
+        <span>
+          <strong>Echo cancellation</strong>
+          <small>
+            Keep this on with speakers. On headphones you can turn it off: there
+            is no echo to cancel, and your voice stays fuller when people talk
+            over each other.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.echoCancellation}
+          onChange={(event) => change({ echoCancellation: event.target.checked })}
+        />
+      </label>
+
       <label htmlFor="settings-suppression">Noise suppression</label>
       <select
         id="settings-suppression"
@@ -287,13 +499,22 @@ import { SocialPlatformIcon } from "./user-profile-card";
 import { apiFetch } from "../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
+  DEVICE_SAVED_EVENT,
   listDevices,
   primeDeviceLabels,
+  registerMedia,
   saveDevice,
   savedDevice,
   supportsOutputSelection,
+  unregisterMedia,
   type DeviceLists,
 } from "../lib/devices";
+import {
+  canRecordMicTest,
+  recordingExtension,
+  recordMicTest,
+  TEST_SECONDS,
+} from "../lib/mic-recording";
 import {
   GAIN_RANGE,
   openMicrophone,
@@ -362,6 +583,9 @@ interface SettingsDialogProps {
   deafenKey?: string;
   onMuteKey?: (combo: string) => void;
   onDeafenKey?: (combo: string) => void;
+  /** Screen share audio defaults. */
+  screenShareAudio?: boolean;
+  onScreenShareAudioChange?: (enabled: boolean) => void;
   /** The active server, for the roles tab. */
   server?: PublicServer | null;
   members?: Member[];
@@ -490,6 +714,8 @@ export function SettingsDialog({
   deafenKey = "Ctrl+Shift+KeyD",
   onMuteKey,
   onDeafenKey,
+  screenShareAudio = true,
+  onScreenShareAudioChange,
   server,
   members = [],
   canManageServer = false,
@@ -753,9 +979,18 @@ export function SettingsDialog({
     // Labels stay blank until the page has held a media permission once.
     void primeDeviceLabels().then(refresh);
     navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
+    // A switch accepted from the hot-plug prompt changes the saved choice
+    // under this open page.
+    const followSaved = () => {
+      setMicId(savedDevice("microphone"));
+      setSpeakerId(savedDevice("speaker"));
+      setCameraId(savedDevice("camera"));
+    };
+    window.addEventListener(DEVICE_SAVED_EVENT, followSaved);
     return () => {
       cancelled = true;
       navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
+      window.removeEventListener(DEVICE_SAVED_EVENT, followSaved);
     };
   }, [tab]);
 
@@ -2214,6 +2449,19 @@ export function SettingsDialog({
                     : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
                 </button>
               )}
+
+              <span className="field-label">Screen Share</span>
+              <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={screenShareAudio}
+                  onChange={(event) => onScreenShareAudioChange?.(event.target.checked)}
+                />
+                Share audio when sharing screen
+              </label>
+              <p className="modal-hint">
+                Captures system, tab, or application audio along with your screen share by default.
+              </p>
 
               <span className="field-label">Shortcuts</span>
               <p className="modal-hint">

@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ClientEvent,
-  CharacterPresentation,
-  CharacterReveal,
-  DiceRollEvent,
-  PlayerState,
-  RecordingState,
-  ServerEvent,
-  VoiceParticipant,
+import {
+  heard,
+  type ClientEvent,
+  type CharacterPresentation,
+  type CharacterReveal,
+  type DiceRollEvent,
+  type PlayerState,
+  type RecordingState,
+  type ServerEvent,
+  type VoiceParticipant,
 } from "@/lib/protocol";
 import { basePath } from "../lib/client";
 
@@ -184,7 +185,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               connectionId: payload.connectionId,
               online: new Set(payload.online),
               voice: payload.voice,
-              players: payload.players,
+              // Players as the room hears them (the DJ booth while it's live).
+              players: Object.fromEntries(
+                Object.entries(payload.players).map(([id, player]) => [id, heard(player)]),
+              ),
               recordings: payload.recordings || {},
               forcedMutes: new Set(payload.forcedMutes || []),
             });
@@ -206,7 +210,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               ...current,
               players: {
                 ...current.players,
-                [payload.state.channelId]: payload.state,
+                [payload.state.channelId]: heard(payload.state),
               },
             }));
             break;

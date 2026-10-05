@@ -1,8 +1,12 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { playerCommand, playerState, publishMessage } from "@/lib/hub-client";
+import {
+  playerCommand,
+  playerState as rawPlayerState,
+  publishMessage,
+} from "@/lib/hub-client";
 import { formatDuration, resolveTracks, trackLabel } from "@/lib/music";
 import { botFetch, botSession, fetchLyrics } from "@/lib/musicbot";
-import { playbackPosition, type PlayerState } from "@/lib/protocol";
+import { heard, liveTrack, playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { can, Permission } from "@/lib/permissions";
 import { findChannel } from "@/lib/servers";
@@ -123,6 +127,18 @@ async function botRoomAction(
     cookie,
     { method: "POST", body: JSON.stringify(action) },
   );
+}
+
+/** The room as it is heard: the DJ booth's track while it is on air. */
+async function playerState(channelId: string): Promise<PlayerState | null> {
+  return heard(await rawPlayerState(channelId));
+}
+
+/** While the DJ booth is on air, the booth owns play/pause/skip/seek. */
+async function refuseWhileLive(channelId: string): Promise<void> {
+  if (liveTrack(await rawPlayerState(channelId))) {
+    throw new Error("The DJ booth is on air. Use the booth (/dj) to control playback.");
+  }
 }
 
 export async function POST(request: Request) {
@@ -426,6 +442,7 @@ export async function POST(request: Request) {
       case "stop":
       case "shuffle":
       case "clear": {
+        if (name !== "shuffle" && name !== "clear") await refuseWhileLive(voiceChannelId!);
         const state = await playerCommand(voiceChannelId!, { name });
         const text =
           name === "stop"
@@ -458,6 +475,7 @@ export async function POST(request: Request) {
       }
 
       case "seek": {
+        await refuseWhileLive(voiceChannelId!);
         const seconds = parseSeek(value);
         if (seconds === null) {
           throw new Error("Use `/seek 1:30` or `/seek 90`.");

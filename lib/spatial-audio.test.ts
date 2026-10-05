@@ -213,7 +213,7 @@ it("keeps an important voice in front of the listener's face as they turn", () =
   playback.dispose();
 });
 
-it("gives headphone listeners HRTF, levelling and a shared room without head tracking", () => {
+it("gives headphone listeners HRTF and a shared room without head tracking, at unity level", () => {
   const env = environment();
   const convolvers: Array<{ buffer: unknown; connect: ReturnType<typeof vi.fn> }> = [];
   const compressors: unknown[] = [];
@@ -241,7 +241,9 @@ it("gives headphone listeners HRTF, levelling and a shared room without head tra
   playback.update([a, b], true);
   expect(env.hrtf).toHaveLength(2);
   expect(env.panners).toHaveLength(0);
-  expect(compressors).toHaveLength(2);
+  // No compressor: its make-up gain would make this path louder than the
+  // plain element the same voice falls back to.
+  expect(compressors).toHaveLength(0);
   // One reverb for the whole table, fed by every voice.
   expect(convolvers).toHaveLength(1);
   const send = env.gains.find((g) => g.gain.value === ROOM_SEND);

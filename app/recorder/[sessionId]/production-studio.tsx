@@ -407,20 +407,25 @@ export function ProductionStudio() {
       };
       audioRef.current = mix;
     }
-    for (const { connectionId, stream } of voice.remoteStreams) {
+    for (const { connectionId, stream, kind } of voice.remoteStreams) {
       if (!participants.some((person) => person.connectionId === connectionId)) {
         continue;
       }
-      if (mix.sources.has(connectionId) || !stream.getAudioTracks().length) {
+      // Through LiveKit a person's voice and screen audio are separate
+      // streams, so key by stream: by person, whichever came first would win.
+      const key = kind ? `${connectionId}:${kind}` : connectionId;
+      if (mix.sources.has(key) || !stream.getAudioTracks().length) {
         continue;
       }
       try {
         const source = mix.context.createMediaStreamSource(stream);
         source.connect(mix.destination);
-        mix.sources.set(connectionId, source);
+        mix.sources.set(key, source);
       } catch {
         // The host health monitor reports silent or missing tracks.
       }
+      // A stem is someone's voice, not the game they are sharing.
+      if (kind === "screen") continue;
       if (recorderRef.current?.state === "recording") {
         startStem(connectionId, stream);
       }
@@ -473,8 +478,8 @@ export function ProductionStudio() {
         recorder.start(2_000);
         recorderRef.current = recorder;
         setCaptureStatus("recording");
-        for (const { connectionId, stream: remote } of remoteStreamsRef.current) {
-          startStem(connectionId, remote);
+        for (const { connectionId, stream: remote, kind } of remoteStreamsRef.current) {
+          if (kind !== "screen") startStem(connectionId, remote);
         }
         return;
       }

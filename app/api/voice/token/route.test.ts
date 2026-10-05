@@ -11,6 +11,10 @@ vi.mock("@/lib/auth", () => ({
   unauthorized: () => Response.json({ error: "Unauthorized" }, { status: 401 }),
 }));
 
+vi.mock("@/lib/dms", () => ({
+  isDmMember: vi.fn().mockResolvedValue(false),
+}));
+
 vi.mock("@/lib/servers", () => ({
   findChannel: vi.fn().mockResolvedValue({ id: "v1", server_id: "s1" }),
   isServerMember: vi.fn().mockResolvedValue(true),
@@ -79,4 +83,21 @@ it("mints an authenticated LiveKit token when valid", async () => {
   expect(typeof data.token).toBe("string");
   expect(data.identity).toBe("u1");
   expect(data.room).toBe("v1");
+});
+
+it("binds the identity to the user and their hub connection", async () => {
+  vi.mocked(currentUser).mockResolvedValue({
+    id: "u1",
+    username: "alice",
+    display_name: "Alice",
+    avatar: "",
+    color: "#ffffff",
+    is_admin: 0,
+    created_at: "",
+    last_seen_at: "",
+  });
+  const ok = await GET(new Request("http://localhost/api/voice/token?channelId=v1&connectionId=3f2a-b9"));
+  expect(((await ok.json()) as { identity: string }).identity).toBe("u1|3f2a-b9");
+  const bad = await GET(new Request("http://localhost/api/voice/token?channelId=v1&connectionId=u2|x"));
+  expect(bad.status).toBe(400);
 });

@@ -9,6 +9,7 @@
  */
 import type { StoredMessage } from "../storage";
 import { snowflakeFor, snowflakesFor, buildSnowflake } from "./snowflake";
+import { clampVoiceBitrate } from "../voice-quality";
 import {
   ChannelType,
   MessageType,
@@ -41,6 +42,7 @@ export interface HoffleChannelRow {
   position?: number;
   category_id?: string | null;
   created_at?: string;
+  bitrate?: number | null;
 }
 
 export interface HoffleServerRow {
@@ -312,7 +314,7 @@ export async function serializeChannel(
   if (type === ChannelType.GuildVoice || type === ChannelType.GuildStageVoice) {
     return {
       ...base,
-      bitrate: 64000,
+      bitrate: clampVoiceBitrate(channel.bitrate),
       user_limit: 0,
       rtc_region: null,
       video_quality_mode: 1,
