@@ -19,6 +19,7 @@
   "build": {
     "appId": "online.deeppixel.huddle",
     "productName": "Hoffle",
+    "npmRebuild": false,
     "directories": {
       "output": "dist",
       "buildResources": "build"
