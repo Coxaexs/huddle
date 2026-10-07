@@ -809,6 +809,6 @@ export async function POST(request: Request) {
     const text =
       error instanceof Error ? error.message : "That music command failed.";
     await say(db, textChannelId, text);
-    return Response.json({ error: text }, { status: 502 });
+    return Response.json({ error: text }, { status: 400 });
   }
 }

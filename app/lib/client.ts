@@ -31,9 +31,10 @@ export async function apiFetch<T>(
   // While Hoffle restarts (a deploy), the reverse proxy answers 502, or a
   // bare 503, without the request ever reaching the app, so sending it again
   // cannot double a message. Not 504: that request may have arrived. Hoffle's
-  // own 503s carry an error and are final.
+  // own 502s and 503s carry an error and are final.
   while (
-    (response.status === 502 || (response.status === 503 && !data?.error)) &&
+    (response.status === 502 || response.status === 503) &&
+    !data?.error &&
     Date.now() < giveUpAt
   ) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
