@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -945,6 +945,28 @@ async function migrate(db: D1Database): Promise<void> {
   if (!memberColumns.has("timeout_until")) {
     await db.prepare("ALTER TABLE server_members ADD COLUMN timeout_until TEXT").run();
   }
+
+  // Feature and support requests submitted by users directly to Kiwi and Flo.
+  await db
+    .prepare(`CREATE TABLE IF NOT EXISTS user_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'feature',
+        details TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        response_note TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`)
+    .run();
+  await db
+    .prepare("CREATE INDEX IF NOT EXISTS user_requests_user_idx ON user_requests(user_id)")
+    .run();
+  await db
+    .prepare("CREATE INDEX IF NOT EXISTS user_requests_created_idx ON user_requests(created_at DESC)")
+    .run();
 
   const recordingColumns = await columnNames(db, "recording_sessions");
   const recordingMigrations: D1PreparedStatement[] = [];

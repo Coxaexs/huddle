@@ -6705,6 +6705,29 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   font-family: var(--font-ui, "EB Garamond", Georgia, serif);
 }
 
+/* Result value highlight on Nat 20 or Nat 1 */
+@keyframes diceCrit20Pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px #ffd700, 0 0 20px rgba(255, 215, 0, 0.8); }
+  50% { box-shadow: inset 0 0 0 3px #fff2a8, 0 0 35px rgba(255, 215, 0, 1); }
+}
+
+.dice-result-value.crit-20 {
+  background: rgba(35, 26, 7, 0.95) !important;
+  color: #fff9c4 !important;
+  animation: diceCrit20Pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes diceCrit1Pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px #ff2a2a, 0 0 16px rgba(255, 42, 42, 0.7); }
+  50% { box-shadow: inset 0 0 0 3px #ff6666, 0 0 26px rgba(255, 42, 42, 0.95); }
+}
+
+.dice-result-value.crit-1 {
+  background: rgba(30, 8, 8, 0.95) !important;
+  color: #ffb3b3 !important;
+  animation: diceCrit1Pulse 0.9s infinite ease-in-out;
+}
+
 .voice-stage-body {
   flex: 1;
   min-height: 0;

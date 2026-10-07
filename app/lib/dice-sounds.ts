@@ -478,8 +478,8 @@ export async function playDiceRollSound({
     channelOut = highEq;
   }
 
-  // Cap dice sound tier at 5: rolls of 5, 6, 10, etc. get the rich 5-dice sound tier
-  const tier = Math.min(Math.max(1, Math.floor(diceCount || 1)), 5);
+  // Cap dice sound tier at 10: rolls of 1 through 10 (and above) get unique choreography
+  const tier = Math.min(Math.max(1, Math.floor(diceCount || 1)), 10);
 
   interface Step {
     delay: number;
@@ -503,35 +503,35 @@ export async function playDiceRollSound({
   } else if (tier === 2) {
     // TIER 2: Two Dice — paired staggered drops, die-on-die mid-air clash, dual staggered settles
     steps = [
-      { delay: 0.0, volume: 0.92, pitch: 0.98, isSurface: true, isClatter: true }, // Die 1 drop
-      { delay: 0.034, volume: 0.88, pitch: 1.06, isSurface: true, isClatter: true }, // Die 2 drop
-      { delay: 0.115, volume: 0.78, pitch: 1.02, isSurface: false, isClatter: true }, // Die-on-die clash!
-      { delay: 0.165, volume: 0.62, pitch: 0.96, isSurface: true, isClatter: true }, // Die 1 rebound
-      { delay: 0.215, volume: 0.58, pitch: 1.05, isSurface: true, isClatter: true }, // Die 2 rebound
-      { delay: 0.345, volume: 0.52, pitch: 0.98, isSurface: false, isClatter: true }, // Secondary die-die clash
-      { delay: 0.51, volume: 0.35, pitch: 1.04, isSurface: false, isClatter: true }, // Roll tick
-      { delay: 0.565, volume: 0.32, pitch: 0.95, isSurface: false, isClatter: true }, // Roll tick
-      { delay: 0.69, volume: 0.46, pitch: 0.98, isSurface: true, isClatter: true }, // Die 1 settles
-      { delay: 0.775, volume: 0.43, pitch: 1.04, isSurface: true, isClatter: true }, // Die 2 settles
+      { delay: 0.0, volume: 0.92, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.034, volume: 0.88, pitch: 1.06, isSurface: true, isClatter: true },
+      { delay: 0.115, volume: 0.78, pitch: 1.02, isSurface: false, isClatter: true },
+      { delay: 0.165, volume: 0.62, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.215, volume: 0.58, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 0.345, volume: 0.52, pitch: 0.98, isSurface: false, isClatter: true },
+      { delay: 0.51, volume: 0.35, pitch: 1.04, isSurface: false, isClatter: true },
+      { delay: 0.565, volume: 0.32, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.69, volume: 0.46, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.775, volume: 0.43, pitch: 1.04, isSurface: true, isClatter: true },
     ];
   } else if (tier === 3) {
     // TIER 3: Three Dice — trio drop cascade, frequent die-on-die clashes, triplet settle
     steps = [
-      { delay: 0.0, volume: 0.90, pitch: 0.96, isSurface: true, isClatter: true }, // Die 1
-      { delay: 0.026, volume: 0.86, pitch: 1.03, isSurface: true, isClatter: true }, // Die 2
-      { delay: 0.052, volume: 0.82, pitch: 1.08, isSurface: true, isClatter: true }, // Die 3
-      { delay: 0.098, volume: 0.75, pitch: 1.0, isSurface: false, isClatter: true }, // Clash 1-2
-      { delay: 0.138, volume: 0.72, pitch: 1.05, isSurface: false, isClatter: true }, // Clash 2-3
-      { delay: 0.185, volume: 0.60, pitch: 0.95, isSurface: true, isClatter: true }, // Rebound A
-      { delay: 0.235, volume: 0.56, pitch: 1.02, isSurface: true, isClatter: true }, // Rebound B
-      { delay: 0.285, volume: 0.52, pitch: 0.98, isSurface: true, isClatter: true }, // Rebound C
-      { delay: 0.365, volume: 0.48, pitch: 1.04, isSurface: false, isClatter: true }, // Mid-tumble clash
-      { delay: 0.45, volume: 0.38, pitch: 0.97, isSurface: false, isClatter: true }, // Rolling chatter
-      { delay: 0.52, volume: 0.34, pitch: 1.06, isSurface: false, isClatter: true }, // Rolling chatter
-      { delay: 0.585, volume: 0.30, pitch: 0.94, isSurface: false, isClatter: true }, // Rolling chatter
-      { delay: 0.665, volume: 0.44, pitch: 0.97, isSurface: true, isClatter: true }, // Die 1 settles
-      { delay: 0.735, volume: 0.42, pitch: 1.03, isSurface: true, isClatter: true }, // Die 2 settles
-      { delay: 0.815, volume: 0.40, pitch: 1.07, isSurface: true, isClatter: true }, // Die 3 settles
+      { delay: 0.0, volume: 0.90, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.026, volume: 0.86, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.052, volume: 0.82, pitch: 1.08, isSurface: true, isClatter: true },
+      { delay: 0.098, volume: 0.75, pitch: 1.0, isSurface: false, isClatter: true },
+      { delay: 0.138, volume: 0.72, pitch: 1.05, isSurface: false, isClatter: true },
+      { delay: 0.185, volume: 0.60, pitch: 0.95, isSurface: true, isClatter: true },
+      { delay: 0.235, volume: 0.56, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.285, volume: 0.52, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.365, volume: 0.48, pitch: 1.04, isSurface: false, isClatter: true },
+      { delay: 0.45, volume: 0.38, pitch: 0.97, isSurface: false, isClatter: true },
+      { delay: 0.52, volume: 0.34, pitch: 1.06, isSurface: false, isClatter: true },
+      { delay: 0.585, volume: 0.30, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.665, volume: 0.44, pitch: 0.97, isSurface: true, isClatter: true },
+      { delay: 0.735, volume: 0.42, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.815, volume: 0.40, pitch: 1.07, isSurface: true, isClatter: true },
     ];
   } else if (tier === 4) {
     // TIER 4: Four Dice — flurry of drops, continuous ricochets, 4-stage settle cascade
@@ -540,7 +540,7 @@ export async function playDiceRollSound({
       { delay: 0.022, volume: 0.84, pitch: 1.01, isSurface: true, isClatter: true },
       { delay: 0.045, volume: 0.80, pitch: 1.06, isSurface: true, isClatter: true },
       { delay: 0.070, volume: 0.78, pitch: 0.98, isSurface: true, isClatter: true },
-      { delay: 0.105, volume: 0.74, pitch: 1.03, isSurface: false, isClatter: true }, // Cross-clash
+      { delay: 0.105, volume: 0.74, pitch: 1.03, isSurface: false, isClatter: true },
       { delay: 0.145, volume: 0.70, pitch: 0.96, isSurface: false, isClatter: true },
       { delay: 0.185, volume: 0.64, pitch: 1.05, isSurface: true, isClatter: true },
       { delay: 0.235, volume: 0.58, pitch: 0.98, isSurface: true, isClatter: true },
@@ -549,20 +549,20 @@ export async function playDiceRollSound({
       { delay: 0.42, volume: 0.44, pitch: 1.04, isSurface: false, isClatter: true },
       { delay: 0.485, volume: 0.38, pitch: 0.98, isSurface: false, isClatter: true },
       { delay: 0.55, volume: 0.34, pitch: 1.06, isSurface: false, isClatter: true },
-      { delay: 0.645, volume: 0.44, pitch: 0.95, isSurface: true, isClatter: true }, // Settle 1
-      { delay: 0.715, volume: 0.42, pitch: 1.01, isSurface: true, isClatter: true }, // Settle 2
-      { delay: 0.78, volume: 0.40, pitch: 1.05, isSurface: true, isClatter: true }, // Settle 3
-      { delay: 0.855, volume: 0.38, pitch: 0.98, isSurface: true, isClatter: true }, // Settle 4
+      { delay: 0.645, volume: 0.44, pitch: 0.95, isSurface: true, isClatter: true },
+      { delay: 0.715, volume: 0.42, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.78, volume: 0.40, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 0.855, volume: 0.38, pitch: 0.98, isSurface: true, isClatter: true },
     ];
-  } else {
-    // TIER 5 (5+ Dice / 10 Dice): Full Handful Shower — rich multi-dice cascade & settling rain
+  } else if (tier === 5) {
+    // TIER 5: Five Dice — 5-dice flurry, dense mid-tumble clashes, 5-stage settle cascade
     steps = [
       { delay: 0.0, volume: 0.86, pitch: 0.92, isSurface: true, isClatter: true },
       { delay: 0.018, volume: 0.84, pitch: 0.98, isSurface: true, isClatter: true },
       { delay: 0.038, volume: 0.82, pitch: 1.04, isSurface: true, isClatter: true },
       { delay: 0.058, volume: 0.80, pitch: 1.09, isSurface: true, isClatter: true },
       { delay: 0.082, volume: 0.76, pitch: 0.95, isSurface: true, isClatter: true },
-      { delay: 0.108, volume: 0.74, pitch: 1.02, isSurface: false, isClatter: true }, // Multi clash
+      { delay: 0.108, volume: 0.74, pitch: 1.02, isSurface: false, isClatter: true },
       { delay: 0.138, volume: 0.70, pitch: 1.07, isSurface: false, isClatter: true },
       { delay: 0.172, volume: 0.66, pitch: 0.96, isSurface: true, isClatter: true },
       { delay: 0.21, volume: 0.62, pitch: 1.03, isSurface: false, isClatter: true },
@@ -573,11 +573,161 @@ export async function playDiceRollSound({
       { delay: 0.485, volume: 0.42, pitch: 0.97, isSurface: false, isClatter: true },
       { delay: 0.545, volume: 0.38, pitch: 1.04, isSurface: false, isClatter: true },
       { delay: 0.605, volume: 0.34, pitch: 0.99, isSurface: false, isClatter: true },
-      { delay: 0.64, volume: 0.44, pitch: 0.94, isSurface: true, isClatter: true }, // Settle 1
-      { delay: 0.695, volume: 0.42, pitch: 0.99, isSurface: true, isClatter: true }, // Settle 2
-      { delay: 0.755, volume: 0.40, pitch: 1.04, isSurface: true, isClatter: true }, // Settle 3
-      { delay: 0.815, volume: 0.38, pitch: 1.08, isSurface: true, isClatter: true }, // Settle 4
-      { delay: 0.88, volume: 0.36, pitch: 0.96, isSurface: true, isClatter: true }, // Settle 5
+      { delay: 0.64, volume: 0.44, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 0.695, volume: 0.42, pitch: 0.99, isSurface: true, isClatter: true },
+      { delay: 0.755, volume: 0.40, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.815, volume: 0.38, pitch: 1.08, isSurface: true, isClatter: true },
+      { delay: 0.88, volume: 0.36, pitch: 0.96, isSurface: true, isClatter: true },
+    ];
+  } else if (tier === 6) {
+    // TIER 6: Six Dice — heavier spray, rolling tumble wash, 6 settles
+    steps = [
+      { delay: 0.0, volume: 0.85, pitch: 0.91, isSurface: true, isClatter: true },
+      { delay: 0.016, volume: 0.83, pitch: 0.97, isSurface: true, isClatter: true },
+      { delay: 0.033, volume: 0.81, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.051, volume: 0.79, pitch: 1.08, isSurface: true, isClatter: true },
+      { delay: 0.070, volume: 0.77, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 0.090, volume: 0.75, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.115, volume: 0.72, pitch: 1.05, isSurface: false, isClatter: true },
+      { delay: 0.145, volume: 0.68, pitch: 0.97, isSurface: false, isClatter: true },
+      { delay: 0.180, volume: 0.64, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.220, volume: 0.60, pitch: 0.96, isSurface: false, isClatter: true },
+      { delay: 0.265, volume: 0.56, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.315, volume: 0.52, pitch: 0.98, isSurface: false, isClatter: true },
+      { delay: 0.370, volume: 0.48, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.430, volume: 0.44, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.490, volume: 0.40, pitch: 1.03, isSurface: false, isClatter: true },
+      { delay: 0.550, volume: 0.36, pitch: 0.98, isSurface: false, isClatter: true },
+      { delay: 0.630, volume: 0.44, pitch: 0.93, isSurface: true, isClatter: true },
+      { delay: 0.680, volume: 0.42, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.735, volume: 0.40, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.790, volume: 0.38, pitch: 1.07, isSurface: true, isClatter: true },
+      { delay: 0.850, volume: 0.36, pitch: 0.95, isSurface: true, isClatter: true },
+      { delay: 0.910, volume: 0.34, pitch: 1.02, isSurface: true, isClatter: true },
+    ];
+  } else if (tier === 7) {
+    // TIER 7: Seven Dice — wide scatter pattern, continuous clatter, 7 settles
+    steps = [
+      { delay: 0.0, volume: 0.84, pitch: 0.90, isSurface: true, isClatter: true },
+      { delay: 0.014, volume: 0.82, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.029, volume: 0.80, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.045, volume: 0.78, pitch: 1.07, isSurface: true, isClatter: true },
+      { delay: 0.062, volume: 0.76, pitch: 0.93, isSurface: true, isClatter: true },
+      { delay: 0.080, volume: 0.74, pitch: 0.99, isSurface: true, isClatter: true },
+      { delay: 0.100, volume: 0.72, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.122, volume: 0.70, pitch: 1.06, isSurface: false, isClatter: true },
+      { delay: 0.150, volume: 0.66, pitch: 0.98, isSurface: false, isClatter: true },
+      { delay: 0.185, volume: 0.62, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.225, volume: 0.58, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.270, volume: 0.54, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.320, volume: 0.50, pitch: 0.97, isSurface: false, isClatter: true },
+      { delay: 0.375, volume: 0.46, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.435, volume: 0.42, pitch: 0.96, isSurface: false, isClatter: true },
+      { delay: 0.495, volume: 0.38, pitch: 1.02, isSurface: false, isClatter: true },
+      { delay: 0.555, volume: 0.34, pitch: 0.97, isSurface: false, isClatter: true },
+      { delay: 0.625, volume: 0.43, pitch: 0.92, isSurface: true, isClatter: true },
+      { delay: 0.670, volume: 0.41, pitch: 0.97, isSurface: true, isClatter: true },
+      { delay: 0.720, volume: 0.39, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.770, volume: 0.37, pitch: 1.06, isSurface: true, isClatter: true },
+      { delay: 0.825, volume: 0.35, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 0.880, volume: 0.33, pitch: 1.00, isSurface: true, isClatter: true },
+      { delay: 0.940, volume: 0.31, pitch: 1.05, isSurface: true, isClatter: true },
+    ];
+  } else if (tier === 8) {
+    // TIER 8: Eight Dice — dense tumble storm, cross-boundary collisions, 8 settles
+    steps = [
+      { delay: 0.0, volume: 0.83, pitch: 0.89, isSurface: true, isClatter: true },
+      { delay: 0.013, volume: 0.81, pitch: 0.95, isSurface: true, isClatter: true },
+      { delay: 0.026, volume: 0.79, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.040, volume: 0.77, pitch: 1.06, isSurface: true, isClatter: true },
+      { delay: 0.055, volume: 0.75, pitch: 0.92, isSurface: true, isClatter: true },
+      { delay: 0.071, volume: 0.73, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.089, volume: 0.71, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.108, volume: 0.69, pitch: 1.07, isSurface: true, isClatter: true },
+      { delay: 0.130, volume: 0.68, pitch: 1.04, isSurface: false, isClatter: true },
+      { delay: 0.158, volume: 0.65, pitch: 0.96, isSurface: false, isClatter: true },
+      { delay: 0.190, volume: 0.61, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.228, volume: 0.57, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.272, volume: 0.53, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.322, volume: 0.49, pitch: 0.97, isSurface: false, isClatter: true },
+      { delay: 0.375, volume: 0.45, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.432, volume: 0.41, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.490, volume: 0.37, pitch: 1.02, isSurface: false, isClatter: true },
+      { delay: 0.548, volume: 0.33, pitch: 0.96, isSurface: false, isClatter: true },
+      { delay: 0.620, volume: 0.42, pitch: 0.91, isSurface: true, isClatter: true },
+      { delay: 0.660, volume: 0.40, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.705, volume: 0.38, pitch: 1.00, isSurface: true, isClatter: true },
+      { delay: 0.750, volume: 0.36, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 0.800, volume: 0.34, pitch: 0.93, isSurface: true, isClatter: true },
+      { delay: 0.850, volume: 0.32, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.905, volume: 0.30, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.965, volume: 0.28, pitch: 1.07, isSurface: true, isClatter: true },
+    ];
+  } else if (tier === 9) {
+    // TIER 9: Nine Dice — torrential roll cascade, dense micro-chatter, 9 settles
+    steps = [
+      { delay: 0.0, volume: 0.82, pitch: 0.88, isSurface: true, isClatter: true },
+      { delay: 0.012, volume: 0.80, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 0.024, volume: 0.78, pitch: 1.00, isSurface: true, isClatter: true },
+      { delay: 0.037, volume: 0.76, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 0.051, volume: 0.74, pitch: 0.91, isSurface: true, isClatter: true },
+      { delay: 0.066, volume: 0.72, pitch: 0.97, isSurface: true, isClatter: true },
+      { delay: 0.082, volume: 0.70, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.099, volume: 0.68, pitch: 1.06, isSurface: true, isClatter: true },
+      { delay: 0.117, volume: 0.66, pitch: 0.93, isSurface: true, isClatter: true },
+      { delay: 0.138, volume: 0.65, pitch: 1.03, isSurface: false, isClatter: true },
+      { delay: 0.165, volume: 0.62, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.198, volume: 0.58, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.235, volume: 0.54, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.278, volume: 0.50, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.328, volume: 0.46, pitch: 0.96, isSurface: false, isClatter: true },
+      { delay: 0.380, volume: 0.42, pitch: 1.00, isSurface: true, isClatter: true },
+      { delay: 0.435, volume: 0.38, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.490, volume: 0.35, pitch: 1.01, isSurface: false, isClatter: true },
+      { delay: 0.545, volume: 0.32, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.640, volume: 0.41, pitch: 0.90, isSurface: true, isClatter: true },
+      { delay: 0.680, volume: 0.39, pitch: 0.95, isSurface: true, isClatter: true },
+      { delay: 0.720, volume: 0.37, pitch: 0.99, isSurface: true, isClatter: true },
+      { delay: 0.765, volume: 0.35, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.810, volume: 0.33, pitch: 0.92, isSurface: true, isClatter: true },
+      { delay: 0.858, volume: 0.31, pitch: 0.97, isSurface: true, isClatter: true },
+      { delay: 0.910, volume: 0.29, pitch: 1.02, isSurface: true, isClatter: true },
+      { delay: 0.965, volume: 0.27, pitch: 1.06, isSurface: true, isClatter: true },
+      { delay: 1.025, volume: 0.25, pitch: 0.95, isSurface: true, isClatter: true },
+    ];
+  } else {
+    // TIER 10 (10+ Dice): Grand Handful Roar — 10 distinct drops, massive continuous colliding wash & 10 settles
+    steps = [
+      { delay: 0.0, volume: 0.80, pitch: 0.87, isSurface: true, isClatter: true },
+      { delay: 0.010, volume: 0.78, pitch: 0.93, isSurface: true, isClatter: true },
+      { delay: 0.021, volume: 0.77, pitch: 0.99, isSurface: true, isClatter: true },
+      { delay: 0.033, volume: 0.75, pitch: 1.04, isSurface: true, isClatter: true },
+      { delay: 0.046, volume: 0.73, pitch: 0.90, isSurface: true, isClatter: true },
+      { delay: 0.060, volume: 0.71, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.075, volume: 0.69, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.091, volume: 0.67, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 0.108, volume: 0.65, pitch: 0.92, isSurface: true, isClatter: true },
+      { delay: 0.126, volume: 0.63, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.145, volume: 0.62, pitch: 1.02, isSurface: false, isClatter: true },
+      { delay: 0.170, volume: 0.59, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.200, volume: 0.56, pitch: 1.00, isSurface: true, isClatter: true },
+      { delay: 0.235, volume: 0.52, pitch: 0.93, isSurface: false, isClatter: true },
+      { delay: 0.275, volume: 0.48, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.320, volume: 0.44, pitch: 0.95, isSurface: false, isClatter: true },
+      { delay: 0.370, volume: 0.40, pitch: 0.99, isSurface: true, isClatter: true },
+      { delay: 0.425, volume: 0.36, pitch: 0.93, isSurface: false, isClatter: true },
+      { delay: 0.480, volume: 0.33, pitch: 1.00, isSurface: false, isClatter: true },
+      { delay: 0.535, volume: 0.30, pitch: 0.94, isSurface: false, isClatter: true },
+      { delay: 0.660, volume: 0.40, pitch: 0.89, isSurface: true, isClatter: true },
+      { delay: 0.700, volume: 0.38, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 0.740, volume: 0.36, pitch: 0.98, isSurface: true, isClatter: true },
+      { delay: 0.785, volume: 0.34, pitch: 1.03, isSurface: true, isClatter: true },
+      { delay: 0.830, volume: 0.32, pitch: 0.91, isSurface: true, isClatter: true },
+      { delay: 0.875, volume: 0.30, pitch: 0.96, isSurface: true, isClatter: true },
+      { delay: 0.925, volume: 0.28, pitch: 1.01, isSurface: true, isClatter: true },
+      { delay: 0.978, volume: 0.26, pitch: 1.05, isSurface: true, isClatter: true },
+      { delay: 1.035, volume: 0.24, pitch: 0.94, isSurface: true, isClatter: true },
+      { delay: 1.095, volume: 0.22, pitch: 0.99, isSurface: true, isClatter: true },
     ];
   }
 
@@ -622,4 +772,283 @@ export async function playDiceRollSound({
       }
     }
   }
+}
+
+/**
+ * A real-sounding glass shatter, rendered into a buffer:
+ * - the break: a hard broadband crack with a short low thump under it
+ * - the burst: dozens of fragments, each a tiny noise tick that rings as a few
+ *   inharmonic, fast-decaying partials (what makes small glass sound like glass)
+ * - the settle: sparse, quieter tinkles as shards land and skitter on the table
+ */
+function synthGlassShatter(ctx: AudioContext): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const length = Math.floor(rate * 2.2);
+  const buffer = ctx.createBuffer(2, length, rate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+
+  const add = (i: number, v: number, pan: number) => {
+    if (i < 0 || i >= length) return;
+    left[i] += v * (1 - pan);
+    right[i] += v * (1 + pan);
+  };
+
+  // The break: hard crack, filtered so it is bright but not hissy.
+  let lp = 0;
+  for (let i = 0; i < rate * 0.09; i++) {
+    const t = i / rate;
+    const white = Math.random() * 2 - 1;
+    lp += (white - lp) * 0.55;
+    const env = Math.exp(-t / 0.018);
+    const crack = (white - lp * 0.6) * env * 0.9;
+    const thump = Math.sin(2 * Math.PI * 95 * t) * Math.exp(-t / 0.03) * 0.5;
+    add(i, crack + thump, 0);
+  }
+
+  const fragment = (start: number, amp: number, pan: number) => {
+    const base = 2600 + Math.random() * 6200;
+    const partials = [1, 2.32 + Math.random() * 0.2, 3.9 + Math.random() * 0.5];
+    const decay = 0.025 + Math.random() * 0.09;
+    const len = Math.floor(rate * decay * 5);
+    const s0 = Math.floor(start * rate);
+    const phases = partials.map(() => Math.random() * Math.PI * 2);
+    for (let i = 0; i < len; i++) {
+      const t = i / rate;
+      let v = 0;
+      for (let k = 0; k < partials.length; k++) {
+        v += Math.sin(2 * Math.PI * base * partials[k] * t + phases[k]) * Math.exp(-t / (decay / (1 + k * 0.7))) / (k + 1);
+      }
+      // Tiny noise tick at the start of each fragment.
+      if (i < rate * 0.003) v += (Math.random() * 2 - 1) * 0.8 * (1 - i / (rate * 0.003));
+      add(s0 + i, v * amp, pan);
+    }
+  };
+
+  // The burst: dense at first, thinning out.
+  for (let n = 0; n < 70; n++) {
+    const t = 0.004 + -Math.log(1 - Math.random() * 0.995) * 0.09;
+    fragment(t, 0.32 * Math.exp(-t / 0.35) * (0.4 + Math.random() * 0.6), Math.random() * 1.6 - 0.8);
+  }
+  // The settle: shards landing and skittering.
+  for (let n = 0; n < 34; n++) {
+    const t = 0.25 + Math.random() * 1.35;
+    fragment(t, 0.13 * Math.exp(-(t - 0.25) / 0.7) * (0.3 + Math.random() * 0.7), Math.random() * 1.8 - 0.9);
+  }
+
+  // Normalise so it never clips.
+  let peak = 0;
+  for (let i = 0; i < length; i++) peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
+  const gain = peak > 0 ? 0.9 / peak : 1;
+  for (let i = 0; i < length; i++) {
+    left[i] *= gain;
+    right[i] *= gain;
+  }
+  return buffer;
+}
+
+/**
+ * Play material-specific critical fumble (Nat 1) disaster audio:
+ * - Glass: a real shatter (crack, fragment burst, shards settling)
+ * - Metal: heavy anvil-like screen-cracking slam and sub-bass shockwave
+ * - Wood: violent timber snap and hollow splinter crack
+ * - Plastic: thermal sizzling melt and gooey dripping bubbles
+ */
+export async function playCriticalFumbleSound({
+  material = "plastic",
+  theme = "default",
+}: {
+  material?: DiceMaterial;
+  theme?: string;
+} = {}): Promise<void> {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime + 0.01;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.92, now);
+  master.connect(ctx.destination);
+
+  if (material === "glass") {
+    // 1. Shattered glass: rendered sample by sample (see synthGlassShatter).
+    const src = ctx.createBufferSource();
+    src.buffer = synthGlassShatter(ctx);
+    src.connect(master);
+    src.start(now);
+  } else if (material === "metal") {
+    // 2. Heavy Metal Breaks the Screen: Sub-bass shockwave punch + anvil clang + jarring screen impact crunch
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(115, now);
+    sub.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+    subGain.gain.setValueAtTime(0.95, now);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    sub.connect(subGain).connect(master);
+    sub.start(now);
+    sub.stop(now + 0.46);
+
+    // Anvil metal clang overtones
+    [840, 1420, 2180].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, now);
+      g.gain.setValueAtTime(0.4 / (i + 1), now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+      osc.connect(g).connect(master);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    });
+
+    // Screen glass shattering crack
+    const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.28), ctx.sampleRate);
+    const cd = crackBuf.getChannelData(0);
+    for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (cd.length * 0.18));
+    const crackSrc = ctx.createBufferSource();
+    crackSrc.buffer = crackBuf;
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "bandpass";
+    crackFilter.frequency.setValueAtTime(2400, now);
+    crackFilter.Q.setValueAtTime(3.0, now);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(0.75, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    crackSrc.connect(crackFilter).connect(crackGain).connect(master);
+    crackSrc.start(now + 0.01);
+  } else if (material === "wood") {
+    // 3. Wood Snaps in Half: Sharp dry timber snap + splintering crack + hollow wood fragments
+    [0, 0.018].forEach((offset) => {
+      const t = now + offset;
+      const snapBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.16), ctx.sampleRate);
+      const sd = snapBuf.getChannelData(0);
+      for (let i = 0; i < sd.length; i++) sd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sd.length * 0.14));
+      const sSrc = ctx.createBufferSource();
+      sSrc.buffer = snapBuf;
+      const snapFilt = ctx.createBiquadFilter();
+      snapFilt.type = "bandpass";
+      snapFilt.frequency.setValueAtTime(1450, t);
+      snapFilt.Q.setValueAtTime(4.0, t);
+      const sGain = ctx.createGain();
+      sGain.gain.setValueAtTime(0.85, t);
+      sGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      sSrc.connect(snapFilt).connect(sGain).connect(master);
+      sSrc.start(t);
+    });
+
+    // Hollow wood body fracture resonance
+    const woodOsc = ctx.createOscillator();
+    const woodGain = ctx.createGain();
+    woodOsc.type = "triangle";
+    woodOsc.frequency.setValueAtTime(340, now);
+    woodOsc.frequency.exponentialRampToValueAtTime(120, now + 0.18);
+    woodGain.gain.setValueAtTime(0.7, now);
+    woodGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    woodOsc.connect(woodGain).connect(master);
+    woodOsc.start(now);
+    woodOsc.stop(now + 0.24);
+  } else {
+    // 4. Plastic Melts: Thermal sizzle & soft bubbling melting drip
+    const sizzleDur = 0.55;
+    const sBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * sizzleDur), ctx.sampleRate);
+    const sd = sBuf.getChannelData(0);
+    for (let i = 0; i < sd.length; i++) sd[i] = (Math.random() * 2 - 1) * 0.5;
+    const sSrc = ctx.createBufferSource();
+    sSrc.buffer = sBuf;
+    const sFilter = ctx.createBiquadFilter();
+    sFilter.type = "bandpass";
+    sFilter.frequency.setValueAtTime(2600, now);
+    sFilter.frequency.exponentialRampToValueAtTime(750, now + sizzleDur);
+    sFilter.Q.setValueAtTime(4.5, now);
+    const sGain = ctx.createGain();
+    sGain.gain.setValueAtTime(0.001, now);
+    sGain.gain.linearRampToValueAtTime(0.65, now + 0.05);
+    sGain.gain.exponentialRampToValueAtTime(0.0001, now + sizzleDur);
+    sSrc.connect(sFilter).connect(sGain).connect(master);
+    sSrc.start(now);
+
+    // Bubbling melting drips
+    [0.12, 0.26, 0.38].forEach((dripT, idx) => {
+      const t = now + dripT;
+      const dripOsc = ctx.createOscillator();
+      const dripG = ctx.createGain();
+      dripOsc.type = "sine";
+      dripOsc.frequency.setValueAtTime(480 - idx * 60, t);
+      dripOsc.frequency.exponentialRampToValueAtTime(180 - idx * 30, t + 0.12);
+      dripG.gain.setValueAtTime(0.32, t);
+      dripG.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      dripOsc.connect(dripG).connect(master);
+      dripOsc.start(t);
+      dripOsc.stop(t + 0.13);
+    });
+  }
+}
+
+/**
+ * Play celebratory critical hit (Nat 20) triumphant audio:
+ * Radiant celestial fanfare arpeggio, sparkling bell harmonics & warm victory chord.
+ */
+export async function playCriticalSuccessSound({
+  theme = "default",
+}: {
+  theme?: string;
+} = {}): Promise<void> {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime + 0.01;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.88, now);
+  master.connect(ctx.destination);
+
+  // Radiant triumphant harmonic arpeggio: C5, E5, G5, B5, D6, G6
+  const chordNotes = [
+    { freq: 523.25, time: 0.0 },   // C5
+    { freq: 659.25, time: 0.04 },  // E5
+    { freq: 783.99, time: 0.08 },  // G5
+    { freq: 987.77, time: 0.12 },  // B5
+    { freq: 1174.66, time: 0.16 }, // D6
+    { freq: 1567.98, time: 0.22 }, // G6
+  ];
+
+  chordNotes.forEach(({ freq, time }) => {
+    const t = now + time;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.24, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+
+    // Warm sparkling bell shimmer
+    const shimmer = ctx.createOscillator();
+    const sGain = ctx.createGain();
+    shimmer.type = "sine";
+    shimmer.frequency.setValueAtTime(freq * 2, t);
+    sGain.gain.setValueAtTime(0.08, t);
+    sGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+
+    osc.connect(g).connect(master);
+    shimmer.connect(sGain).connect(master);
+
+    osc.start(t);
+    osc.stop(t + 0.9);
+    shimmer.start(t);
+    shimmer.stop(t + 0.5);
+  });
+
+  // Deep warm victory foundation chord (C3 + G3)
+  [130.81, 196.0].forEach((freq) => {
+    const bass = ctx.createOscillator();
+    const bg = ctx.createGain();
+    bass.type = "sine";
+    bass.frequency.setValueAtTime(freq, now + 0.02);
+    bg.gain.setValueAtTime(0.001, now + 0.02);
+    bg.gain.linearRampToValueAtTime(0.25, now + 0.08);
+    bg.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+    bass.connect(bg).connect(master);
+    bass.start(now + 0.02);
+    bass.stop(now + 1.25);
+  });
 }
