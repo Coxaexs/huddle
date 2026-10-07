@@ -57,6 +57,23 @@ export async function publishMessageEvent(
     .catch(() => undefined);
 }
 
+/**
+ * Opens a socket that receives every non-DM message posted in one server, for
+ * the bot SSE stream. Null when there is no hub.
+ */
+export async function listenToServer(serverId: string): Promise<WebSocket | null> {
+  const stub = hub();
+  if (!stub) return null;
+  const response = await stub
+    .fetch(`${INTERNAL}/listen?serverId=${encodeURIComponent(serverId)}`, {
+      headers: { Upgrade: "websocket" },
+    })
+    .catch(() => null);
+  const socket = response?.webSocket ?? null;
+  socket?.accept();
+  return socket;
+}
+
 /** Persists the reconnect snapshot in the hub and broadcasts it to all tabs. */
 export async function publishRecordingState(
   channelId: string,
