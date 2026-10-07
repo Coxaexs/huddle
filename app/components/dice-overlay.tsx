@@ -3,14 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
-import { playDiceRollSound, stopDiceRollSound } from "../lib/dice-sounds";
+import {
+  playDiceRollSound,
+  stopDiceRollSound,
+  playCriticalFumbleSound,
+  playCriticalSuccessSound,
+} from "../lib/dice-sounds";
+import { runCritFx, type CritFxHandle } from "./dice-crit-fx";
 
 /** Flatten the server's authoritative die values in roll order. */
-function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number }> {
-  const out: Array<{ sides: number; value: number }> = [];
+function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number; kept: boolean }> {
+  const out: Array<{ sides: number; value: number; kept: boolean }> = [];
   for (const term of roll.dice) {
     for (const entry of term.rolls) {
-      out.push({ sides: term.sides, value: entry.value });
+      out.push({ sides: term.sides, value: entry.value, kept: entry.kept !== false });
     }
   }
   return out;
@@ -42,6 +48,7 @@ export function buildDiceBoxNotation(roll: DiceRollEvent): string {
  * Uses predetermined `@` notation so the physical tumble is mathematically guaranteed
  * to land on the server's authoritative value across all viewers.
  */
+
 export function DiceOverlay({
   roll,
   onDone,
@@ -70,12 +77,13 @@ export function DiceOverlay({
     let disposed = false;
     let dismissTimer: number | null = null;
     let failsafeTimer: number | null = null;
+    let critFx: CritFxHandle | null = null;
 
-    // Hard failsafe: unconditionally dismiss after 4.5s
+    // Hard failsafe: unconditionally dismiss after 7.0s if 3D hangs
     failsafeTimer = window.setTimeout(() => {
       if (disposed) return;
       onDoneRef.current();
-    }, 4500);
+    }, 7000);
 
     void (async () => {
       const host = hostRef.current;
@@ -228,7 +236,8 @@ export function DiceOverlay({
 
       if (!initOk) {
         if (failsafeTimer) clearTimeout(failsafeTimer);
-        setValues(flattenDice(roll));
+        const f = flattenDice(roll);
+        setValues(f);
         setTotal(`TOTAL ${roll.total}`);
         dismissTimer = window.setTimeout(() => {
           onDoneRef.current();
@@ -248,12 +257,30 @@ export function DiceOverlay({
 
       const faces = flattenDice(roll);
       setValues(faces);
-      const natural =
-        faces.some((f) => f.sides === 20 && f.value === 20)
-          ? "NAT 20 · "
-          : faces.some((f) => f.sides === 20 && f.value === 1)
-            ? "NAT 1 · "
-            : "";
+
+      // Kept natural 1s / 20s get the material's critical effect.
+      // Dropped dice (advantage / disadvantage) don't count.
+      const natIndexes = (value: number) =>
+        faces.flatMap((f, i) => (f.sides === 20 && f.value === value && f.kept ? [i] : []));
+      const nat20 = natIndexes(20);
+      const nat1 = natIndexes(1);
+
+      if (nat20.length || nat1.length) {
+        critFx = runCritFx(
+          box,
+          {
+            dice: [
+              ...nat1.map((index) => ({ index, kind: "nat1" as const })),
+              ...nat20.map((index) => ({ index, kind: "nat20" as const })),
+            ],
+            material: effectiveMaterial,
+            color: themeColor,
+          },
+          { onFumbleHit: () => void playCriticalFumbleSound({ material: effectiveMaterial, theme }) },
+        );
+        if (nat20.length) void playCriticalSuccessSound({ theme });
+      }
+
       const mode =
         roll.rollType === "advantage"
           ? "ADV · "
@@ -262,11 +289,12 @@ export function DiceOverlay({
             : roll.rollType === "critical-damage"
               ? "CRITICAL · "
               : "";
-      setTotal(`${natural}${mode}TOTAL ${roll.total}`);
+      setTotal(`${mode}TOTAL ${roll.total}`);
 
+      const dismissDelay = Math.max(1600, critFx?.durationMs ?? 0);
       dismissTimer = window.setTimeout(() => {
         onDoneRef.current();
-      }, 1600);
+      }, dismissDelay);
     })();
 
     return () => {
@@ -274,6 +302,7 @@ export function DiceOverlay({
       if (dismissTimer) clearTimeout(dismissTimer);
       if (failsafeTimer) clearTimeout(failsafeTimer);
       stopDiceRollSound();
+      critFx?.cancel();
       try {
         boxRef.current?.clearDice?.();
         boxRef.current?.renderer?.dispose?.();
@@ -290,7 +319,10 @@ export function DiceOverlay({
   if (!roll) return null;
 
   return (
-    <div className={`${className} dice-box-host`} aria-hidden="true">
+    <div
+      className={`${className} dice-box-host`}
+      aria-hidden="true"
+    >
       <div
         ref={hostRef}
         id={`huddle-dice-box-${roll.animationSeed}`}
@@ -306,7 +338,13 @@ export function DiceOverlay({
             {values.map((die, index) => (
               <span
                 key={index}
-                className={`dice-result-value sides-${die.sides}`}
+                className={`dice-result-value sides-${die.sides} ${
+                  die.sides === 20 && die.value === 20
+                    ? "crit-20"
+                    : die.sides === 20 && die.value === 1
+                      ? "crit-1"
+                      : ""
+                }`}
               >
                 {die.value}
               </span>

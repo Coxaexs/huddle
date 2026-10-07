@@ -11844,6 +11844,10 @@ export function ChatShell() {
           onShareThemeToChat={handleShareThemeToChat}
           onUser={setUser}
           onClose={() => setSettingsOpen(false)}
+          onOpenDm={(targetId) => {
+            setSettingsOpen(false);
+            void openDm(targetId);
+          }}
           onSignOut={signOut}
           onMicrophoneChange={() => void voice.switchMicrophone()}
           micSettings={voice.micSettings}

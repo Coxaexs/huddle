@@ -5,10 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
-  User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart, Dices
+  User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart, Dices,
+  MessageSquarePlus
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
+import { RequestsTab } from "./requests-tab";
 import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 import { PhonePushSettings } from "./phone-push-settings";
 import { disableWebPush, enableWebPush } from "../lib/web-push";
@@ -614,6 +616,8 @@ interface SettingsDialogProps {
   members?: Member[];
   /** Whether this user may manage the server (shows the Roles tab). */
   canManageServer?: boolean;
+  /** Callback to open a DM conversation directly with a target user. */
+  onOpenDm?: (userId: string) => void;
 }
 
 type Tab =
@@ -627,6 +631,7 @@ type Tab =
   | "custom_ui_css"
   | "accessibility"
   | "roles"
+  | "requests"
   | "licenses";
 
 type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
@@ -744,6 +749,7 @@ export function SettingsDialog({
   members = [],
   canManageServer = false,
   onShareThemeToChat,
+  onOpenDm,
 }: SettingsDialogProps) {
   const [capturingKey, setCapturingKey] = useState(false);
   // Kept locally so the dialog still works if it is rendered without a call.
@@ -1520,8 +1526,14 @@ export function SettingsDialog({
         ]
       : []),
     {
-      title: "ABOUT",
+      title: "COMMUNITY & SUPPORT",
       items: [
+        {
+          id: "requests" as Tab,
+          label: "Make a Request",
+          icon: MessageSquarePlus,
+          desc: "Feature requests & suggestions sent directly to kiwi & flo",
+        },
         { id: "licenses" as Tab, label: "Licenses & About", icon: Globe, desc: "Software licenses and legal notices" },
       ],
     },
@@ -1666,6 +1678,7 @@ export function SettingsDialog({
               {tab === "accessibility" && "Accessibility"}
               {tab === "invites" && "Invites"}
               {tab === "roles" && "Roles"}
+              {tab === "requests" && "Make a Request"}
               {tab === "licenses" && "Licenses & About"}
             </h2>
             <button
@@ -3508,9 +3521,9 @@ export function SettingsDialog({
               </div>
 
               <div>
-                <span className="field-label">Sound Physics & Multi-Dice Dynamics</span>
+                <span className="field-label">Sound Physics & Multi-Dice Voices</span>
                 <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
-                  Audio dynamically choreographs single-die bounces vs multi-dice tumble cascades (1, 2, 3, 4, and 5+ dice tiers).
+                  Acoustics dynamically choreograph 1 through 10 individual dice collisions, bounces, and cascading chorus impacts matched to material acoustics.
                 </small>
                 <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
                   <button
@@ -3523,9 +3536,9 @@ export function SettingsDialog({
                           : diceTheme;
                       setTestRoll({
                         expression: "1d20",
-                        dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],
+                        dice: [{ sides: 20, rolls: [{ value: 14, kept: true }], sign: 1 }],
                         modifier: 0,
-                        total: 20,
+                        total: 14,
                         roller: { id: "preview", displayName: "You" },
                         rollType: "normal",
                         animationSeed: String(Date.now()),
@@ -3613,7 +3626,7 @@ export function SettingsDialog({
                           ? activeThemeId
                           : diceTheme;
                       setTestRoll({
-                        expression: "6d6",
+                        expression: "10d6",
                         dice: [{
                           sides: 6,
                           rolls: [
@@ -3623,11 +3636,15 @@ export function SettingsDialog({
                             { value: 3, kept: true },
                             { value: 6, kept: true },
                             { value: 2, kept: true },
+                            { value: 5, kept: true },
+                            { value: 4, kept: true },
+                            { value: 6, kept: true },
+                            { value: 3, kept: true },
                           ],
                           sign: 1,
                         }],
                         modifier: 0,
-                        total: 26,
+                        total: 44,
                         roller: { id: "preview", displayName: "You" },
                         rollType: "normal",
                         animationSeed: String(Date.now()),
@@ -3638,7 +3655,68 @@ export function SettingsDialog({
                       });
                     }}
                   >
-                    🎲 Roll 6d6 (5+ Handful)
+                    🎲 Roll 10d6 (10-Dice Chorus)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <span className="field-label">Critical Rolls: Nat 1 Disasters & Nat 20 Triumphs</span>
+                <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
+                  Nat 1: glass shatters, metal breaks the screen, plastic melts, wood splits in half. Nat 20: glass throws prism light, metal slams down in sparks, plastic pops like a firework, wood grows into bloom. Pick a material above to test each one.
+                </small>
+                <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    style={{ borderColor: "rgba(255, 68, 68, 0.4)", color: "#ff8888" }}
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "1d20",
+                        dice: [{ sides: 20, rolls: [{ value: 1, kept: true }], sign: 1 }],
+                        modifier: 0,
+                        total: 1,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "normal",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    💥 Test Nat 1 (Critical Fumble)
+                  </button>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    style={{ borderColor: "rgba(255, 215, 0, 0.5)", color: "#ffd700" }}
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "1d20",
+                        dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],
+                        modifier: 0,
+                        total: 20,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "normal",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    ✨ Test Nat 20 (Critical Triumph)
                   </button>
                 </div>
               </div>
@@ -4099,6 +4177,13 @@ export function SettingsDialog({
           )}
 
           {tab === "licenses" && <LicensesTab />}
+          {tab === "requests" && (
+            <RequestsTab
+              user={user}
+              onOpenDm={onOpenDm}
+              onCloseSettings={onClose}
+            />
+          )}
 
           {error && <p className="auth-error">{error}</p>}
           {status && <p className="modal-status">{status}</p>}

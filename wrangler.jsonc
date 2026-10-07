@@ -42,7 +42,7 @@
     "MUSICWATCH_BASE_URL": "http://127.0.0.1:8722",
     "MUSIC_HELPER_BASE_URL": "http://127.0.0.1:8731",
     "DND_BASE_URL": "http://127.0.0.1:8000",
-    "MUSICWATCH_PUBLIC_URL": "https://deeppixel.online",
+    "MUSICWATCH_PUBLIC_URL": "https://chat.hoffle.online",
     "DND_PUBLIC_URL": "https://dnd.deeppixel.online",
     // The consent-gated D&D session recorder is disabled; set to "1" to
     // re-enable it without deleting any code or data.

@@ -125,27 +125,45 @@ describe("Dice Roll & Theme Features", () => {
     });
   });
 
-  it("exports dice sound engine methods safely without errors and handles 1-5 dice tiers and materials", async () => {
-    const { playDiceRollSound, stopDiceRollSound, preloadDiceSounds } = await import("../app/lib/dice-sounds");
+  it("exports dice sound engine methods safely without errors and handles 1-10 dice tiers and materials", async () => {
+    const {
+      playDiceRollSound,
+      stopDiceRollSound,
+      preloadDiceSounds,
+      playCriticalFumbleSound,
+      playCriticalSuccessSound,
+    } = await import("../app/lib/dice-sounds");
     expect(typeof playDiceRollSound).toBe("function");
     expect(typeof stopDiceRollSound).toBe("function");
     expect(typeof preloadDiceSounds).toBe("function");
+    expect(typeof playCriticalFumbleSound).toBe("function");
+    expect(typeof playCriticalSuccessSound).toBe("function");
 
     // In a node / jsdom environment without full audio output, calling these should not throw
     expect(() => stopDiceRollSound()).not.toThrow();
     expect(() => preloadDiceSounds()).not.toThrow();
 
-    // Verify all 5 tiers and capping over 5 dice (e.g. 10 dice)
-    await expect(playDiceRollSound({ theme: "default", diceCount: 1, material: "plastic" })).resolves.not.toThrow();
-    await expect(playDiceRollSound({ theme: "default", diceCount: 2, material: "metal" })).resolves.not.toThrow();
-    await expect(playDiceRollSound({ theme: "default", diceCount: 3, material: "wood" })).resolves.not.toThrow();
-    await expect(playDiceRollSound({ theme: "default", diceCount: 4, material: "glass" })).resolves.not.toThrow();
-    await expect(playDiceRollSound({ theme: "default", diceCount: 5, material: "metal" })).resolves.not.toThrow();
-    // 10 dice should cap at tier 5 gracefully
-    await expect(playDiceRollSound({ theme: "default", diceCount: 10, material: "wood" })).resolves.not.toThrow();
+    // Verify all 10 tiers (1 to 10 dice) and capping over 10 dice (e.g. 15 dice)
+    for (let count = 1; count <= 10; count++) {
+      const materials = ["plastic", "metal", "wood", "glass"] as const;
+      const mat = materials[count % materials.length];
+      await expect(playDiceRollSound({ theme: "default", diceCount: count, material: mat })).resolves.not.toThrow();
+    }
+    // >10 dice should cap at tier 10 gracefully
+    await expect(playDiceRollSound({ theme: "default", diceCount: 15, material: "wood" })).resolves.not.toThrow();
 
     // Vampire and Dark Academia themes
     await expect(playDiceRollSound({ theme: "vampire", diceCount: 2, material: "metal" })).resolves.not.toThrow();
     await expect(playDiceRollSound({ theme: "dark-academia", diceCount: 3, material: "wood" })).resolves.not.toThrow();
+
+    // Critical Fumble for each of the 4 materials (glass, metal, wood, plastic)
+    await expect(playCriticalFumbleSound({ material: "glass", theme: "default" })).resolves.not.toThrow();
+    await expect(playCriticalFumbleSound({ material: "metal", theme: "default" })).resolves.not.toThrow();
+    await expect(playCriticalFumbleSound({ material: "wood", theme: "dark-academia" })).resolves.not.toThrow();
+    await expect(playCriticalFumbleSound({ material: "plastic", theme: "default" })).resolves.not.toThrow();
+
+    // Critical Success (Nat 20) fanfare
+    await expect(playCriticalSuccessSound({ theme: "default" })).resolves.not.toThrow();
+    await expect(playCriticalSuccessSound({ theme: "vampire" })).resolves.not.toThrow();
   });
 });
