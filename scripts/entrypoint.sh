@@ -103,8 +103,13 @@ if ! grep -q '^LIVEKIT_API_SECRET=' "$SECRETS_FILE"; then
   } >> "$SECRETS_FILE"
   umask 022
 fi
-lk_key="${LIVEKIT_API_KEY:-$(sed -n 's/^LIVEKIT_API_KEY=//p' "$SECRETS_FILE" | tail -n 1)}"
-lk_secret="${LIVEKIT_API_SECRET:-$(sed -n 's/^LIVEKIT_API_SECRET=//p' "$SECRETS_FILE" | tail -n 1)}"
+# Same precedence as the runtime env below: environment, then .dev.vars, then
+# the generated pair.
+lk_setting() {
+  sed -n "s/^$1=//p" "$SECRETS_FILE" /app/.dev.vars 2>/dev/null | tail -n 1
+}
+lk_key="${LIVEKIT_API_KEY:-$(lk_setting LIVEKIT_API_KEY)}"
+lk_secret="${LIVEKIT_API_SECRET:-$(lk_setting LIVEKIT_API_SECRET)}"
 # Rewritten every start so it always matches the key Hoffle signs tokens with.
 umask 077
 cat > "$STATE_DIR/livekit.yaml" <<LKEOF
