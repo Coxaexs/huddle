@@ -204,7 +204,7 @@ export function ThemeShareCard({ theme, onApplyTheme }: ThemeShareCardProps) {
           >
             <div className="theme-preview-modal-header">
               <div className="flex items-center gap-2">
-                <Sparkles size={18} style={{ color: colors.lavender || "#a78bfa" }} />
+                <Sparkles size={18} style={{ color: colors.lavender || "var(--lavender)" }} />
                 <h3 className="font-bold text-base text-white">{theme.name}</h3>
                 <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-gray-300">
                   {theme.baseTheme}

@@ -7,6 +7,8 @@
  * - Call Connected / Call Ended
  */
 
+import { playThemedCue, themedLoop } from "./themed-cues";
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -34,6 +36,7 @@ function getAudioContext(): AudioContext | null {
 export function playMuteSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "mute")) return;
   try {
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -60,6 +63,7 @@ export function playMuteSound() {
 export function playUnmuteSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "unmute")) return;
   try {
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -86,6 +90,7 @@ export function playUnmuteSound() {
 export function playDeafenSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "deafen")) return;
   try {
     const now = ctx.currentTime;
     const osc1 = ctx.createOscillator();
@@ -121,6 +126,7 @@ export function playDeafenSound() {
 export function playUndeafenSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "undeafen")) return;
   try {
     const now = ctx.currentTime;
     const osc1 = ctx.createOscillator();
@@ -156,6 +162,7 @@ export function playUndeafenSound() {
 export function playScreenShareStartSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "shareStart")) return;
   try {
     const now = ctx.currentTime;
     [
@@ -183,6 +190,7 @@ export function playScreenShareStartSound() {
 export function playScreenShareStopSound() {
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "shareStop")) return;
   try {
     const now = ctx.currentTime;
     [
@@ -214,6 +222,16 @@ export function startCallingTone() {
   stopCallingTone();
   const ctx = getAudioContext();
   if (!ctx) return;
+
+  const themed = themedLoop("calling");
+  if (themed) {
+    const burst = () => {
+      ringGainNode = themed.burst(ctx);
+    };
+    burst();
+    ringInterval = window.setInterval(burst, themed.period);
+    return;
+  }
 
   const playOneBurst = () => {
     try {
@@ -274,6 +292,7 @@ export function playCallAnswerSound() {
   stopCallingTone();
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "callAnswer")) return;
   try {
     const now = ctx.currentTime;
     [
@@ -303,6 +322,7 @@ export function playCallEndSound() {
   stopIncomingCallTone();
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (playThemedCue(ctx, "callEnd")) return;
   try {
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -330,6 +350,16 @@ export function startIncomingCallTone() {
   stopIncomingCallTone();
   const ctx = getAudioContext();
   if (!ctx) return;
+
+  const themed = themedLoop("incoming");
+  if (themed) {
+    const burst = () => {
+      incomingRingGainNode = themed.burst(ctx);
+    };
+    burst();
+    incomingRingInterval = window.setInterval(burst, themed.period);
+    return;
+  }
 
   const playChimeBurst = () => {
     try {

@@ -15,6 +15,7 @@
 
 import { basePath } from "./client";
 import { microphoneConstraints, savedDevice } from "./devices";
+import { buildVoiceEffect, type VoiceEffect } from "./voice-effects";
 
 export type SuppressionMode = "off" | "browser" | "rnnoise" | "voice";
 
@@ -34,6 +35,8 @@ export interface MicSettings {
   echoCancellation: boolean;
   /** Trim the rumble and low-end boom a close-up mic adds (see the worklet). */
   clarity: boolean;
+  /** A character effect on your voice, applied after all cleanup (see voice-effects.ts). */
+  voiceEffect: VoiceEffect;
 }
 
 export interface MicTelemetry {
@@ -77,6 +80,7 @@ const KEYS = {
   gate: "huddle-mic-gate",
   echoCancellation: "huddle-mic-echo-cancellation",
   clarity: "huddle-mic-clarity",
+  voiceEffect: "huddle-voice-effect",
 };
 
 export const DEFAULT_SETTINGS: MicSettings = {
@@ -87,6 +91,7 @@ export const DEFAULT_SETTINGS: MicSettings = {
   gate: true,
   echoCancellation: true,
   clarity: true,
+  voiceEffect: "none",
 };
 
 export const GAIN_RANGE = { min: -12, max: 30 };
@@ -128,6 +133,7 @@ export function readMicSettings(): MicSettings {
     gate: store.getItem(KEYS.gate) !== "off",
     echoCancellation: store.getItem(KEYS.echoCancellation) !== "off",
     clarity: store.getItem(KEYS.clarity) !== "off",
+    voiceEffect: (["vampire", "gramophone"] as const).find((id) => id === store.getItem(KEYS.voiceEffect)) || "none",
   };
 }
 
@@ -152,6 +158,7 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
   store.setItem(KEYS.gate, merged.gate ? "on" : "off");
   store.setItem(KEYS.echoCancellation, merged.echoCancellation ? "on" : "off");
   store.setItem(KEYS.clarity, merged.clarity ? "on" : "off");
+  store.setItem(KEYS.voiceEffect, merged.voiceEffect);
   return merged;
 }
 
@@ -375,7 +382,11 @@ export async function openMicrophone(
       channelCount: 1,
     });
     source.connect(node);
-    node.connect(destination);
+    // The effect sits between the cleaned-up voice and the wire. Swapping it
+    // rewires these nodes only; `destination` (and so the track) stays put.
+    let effect = buildVoiceEffect(context, settings.voiceEffect);
+    node.connect(effect.input);
+    effect.output.connect(destination);
 
     let current = settings;
     const listeners = new Set<(telemetry: MicTelemetry) => void>();
@@ -439,6 +450,17 @@ export async function openMicrophone(
         const previous = current;
         current = { ...current, ...next };
         if (current.mode !== previous.mode) applyCapture(raw, current, true);
+        if (context && current.voiceEffect !== previous.voiceEffect) {
+          try {
+            node.disconnect();
+          } catch {
+            // Not connected.
+          }
+          effect.dispose();
+          effect = buildVoiceEffect(context, current.voiceEffect);
+          node.connect(effect.input);
+          effect.output.connect(destination);
+        }
       },
       onTelemetry(listener) {
         listeners.add(listener);
@@ -457,6 +479,7 @@ export async function openMicrophone(
         try {
           source.disconnect();
           node.disconnect();
+          effect.dispose();
         } catch {
           // Already torn down.
         }

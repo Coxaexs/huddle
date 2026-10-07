@@ -355,7 +355,7 @@ export function FriendsView({
                 <button
                   type="submit"
                   disabled={!addUsername.trim() || submitting}
-                  className="ml-3 px-4 py-1.5 rounded-lg text-xs font-bold bg-[#6b4feb] hover:bg-[#7b63e6] disabled:opacity-40 disabled:hover:bg-[#6b4feb] text-white transition-all shrink-0"
+                  className="ml-3 px-4 py-1.5 rounded-lg text-xs font-bold bg-[var(--accent-strong)] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 text-[var(--on-accent)] transition-all shrink-0"
                 >
                   {submitting ? "Sending…" : "Send Friend Request"}
                 </button>
@@ -636,7 +636,7 @@ export function FriendsView({
                 {data.friends.length === 0 && (
                   <button
                     onClick={() => setTab("add")}
-                    className="mt-4 px-4 py-2 rounded-xl bg-[#6b4feb] hover:bg-[#7b63e6] text-white text-xs font-bold transition-all"
+                    className="mt-4 px-4 py-2 rounded-xl bg-[var(--accent-strong)] hover:brightness-110 text-[var(--on-accent)] text-xs font-bold transition-all"
                   >
                     Add Your First Friend
                   </button>

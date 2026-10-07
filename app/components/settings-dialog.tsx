@@ -1,10 +1,11 @@
 "use client";
 
+import { VOICE_EFFECTS, type VoiceEffect } from "../lib/voice-effects";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
-  User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart
+  User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart, Dices
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
@@ -429,6 +430,27 @@ function VoiceInput({
         </>
       )}
 
+      <label className="appearance-switch voice-effect-row">
+        <span>
+          <strong>Voice effect</strong>
+          <small>
+            {VOICE_EFFECTS.find((effect) => effect.id === settings.voiceEffect)?.hint}
+            {settings.voiceEffect !== "none" && " · everyone in the call hears it"}
+          </small>
+        </span>
+        <select
+          className="voice-effect-select"
+          value={settings.voiceEffect}
+          onChange={(event) => change({ voiceEffect: event.target.value as VoiceEffect })}
+        >
+          {VOICE_EFFECTS.map((effect) => (
+            <option key={effect.id} value={effect.id}>
+              {effect.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <label className="appearance-switch">
         <span>
           <strong>Voice clarity</strong>
@@ -601,6 +623,7 @@ type Tab =
   | "password"
   | "invites"
   | "appearance"
+  | "dice"
   | "custom_ui_css"
   | "accessibility"
   | "roles"
@@ -803,6 +826,8 @@ export function SettingsDialog({
   const [blahaj, setBlahaj] = useState(false);
   const [diceTheme, setDiceTheme] = useState("default");
   const [diceColor, setDiceColor] = useState("#2563eb");
+  const [diceMaterial, setDiceMaterial] = useState<"auto" | "plastic" | "metal" | "wood" | "glass">("auto");
+  const [diceTexture, setDiceTexture] = useState("auto");
   const [testRoll, setTestRoll] = useState<DiceRollEvent | null>(null);
 
   // Theme Manager state
@@ -879,6 +904,7 @@ export function SettingsDialog({
     const savedBlahaj = window.localStorage.getItem("huddle-blahaj");
     const savedDiceTheme = window.localStorage.getItem("huddle_dice_theme");
     const savedDiceColor = window.localStorage.getItem("huddle_dice_color");
+    const savedDiceMaterial = window.localStorage.getItem("huddle_dice_material");
     if (savedAccent) setAccent(savedAccent);
     if (["compact", "cozy", "roomy"].includes(savedDensity)) setDensity(savedDensity);
     // The old glow was the default. Do not carry it forward: gradients are
@@ -895,10 +921,17 @@ export function SettingsDialog({
       setPrideTheme(savedPrideTheme as PrideTheme);
     }
     setBlahaj(savedBlahaj === "on");
-    if (savedDiceTheme && ["default", "pride", "trans", "nonbinary"].includes(savedDiceTheme)) {
+    if (savedDiceTheme && ["default", "pride", "trans", "nonbinary", "vampire", "dark-academia"].includes(savedDiceTheme)) {
       setDiceTheme(savedDiceTheme);
     }
     if (savedDiceColor) setDiceColor(savedDiceColor);
+    if (savedDiceMaterial && ["auto", "plastic", "metal", "wood", "glass"].includes(savedDiceMaterial)) {
+      setDiceMaterial(savedDiceMaterial as "auto" | "plastic" | "metal" | "wood" | "glass");
+    }
+    const savedDiceTexture = window.localStorage.getItem("huddle_dice_texture");
+    if (savedDiceTexture) {
+      setDiceTexture(savedDiceTexture);
+    }
   }, []);
 
   useEffect(() => {
@@ -921,7 +954,9 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle-pride-theme", prideTheme);
     window.localStorage.setItem("huddle-blahaj", blahaj ? "on" : "off");
     window.localStorage.setItem("huddle_dice_theme", diceTheme);
-  }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj, diceTheme, diceColor]);
+    window.localStorage.setItem("huddle_dice_material", diceMaterial);
+    window.localStorage.setItem("huddle_dice_texture", diceTexture);
+  }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj, diceTheme, diceColor, diceMaterial, diceTexture]);
 
   // Personal Client-Side UI CSS
   const [clientUiCss, setLocalClientUiCss] = useState<string>(() => getClientUiCss());
@@ -1463,6 +1498,7 @@ export function SettingsDialog({
       title: "APP SETTINGS",
       items: [
         { id: "appearance" as Tab, label: "Appearance", icon: Palette, desc: "Themes, colors, and community library" },
+        { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
         { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
         { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
         { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
@@ -1624,6 +1660,7 @@ export function SettingsDialog({
               {tab === "password" && "Account & Password"}
               {tab === "activities" && "Activities & Privacy"}
               {tab === "appearance" && "Appearance"}
+              {tab === "dice" && "3D Dice"}
               {tab === "custom_ui_css" && "Custom CSS"}
               {tab === "voice" && "Voice & Video"}
               {tab === "accessibility" && "Accessibility"}
@@ -3199,7 +3236,7 @@ export function SettingsDialog({
 
               <span className="field-label">Accent colour</span>
               <div className="accent-picker-row">
-                {["#9d8cf5", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"].map(
+                {["#9d8cf5", "#e0a56a", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"].map(
                   (option) => (
                     <button
                       type="button"
@@ -3237,85 +3274,6 @@ export function SettingsDialog({
                     {label}
                   </button>
                 ))}
-              </div>
-
-              <span className="field-label">3D Dice Style</span>
-              <div className="dice-theme-row">
-                {([
-                  ["default", "Solid Colour"],
-                  ["pride", "Pride 🏳️‍🌈"],
-                  ["trans", "Trans 🏳️‍⚧️"],
-                  ["nonbinary", "Nonbinary 💛"],
-                ] as const).map(([option, label]) => (
-                  <button
-                    type="button"
-                    key={option}
-                    className={`${option} ${diceTheme === option ? "active" : ""}`}
-                    onClick={() => setDiceTheme(option)}
-                  >
-                    <span className="dice-theme-swatch" aria-hidden="true" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {diceTheme === "default" && (
-                <>
-                  <span className="field-label">Dice Colour</span>
-                  <div className="accent-picker-row">
-                    {[
-                      "#2563eb", // Classic Blue
-                      "#0284c7", // Sky Blue
-                      "#6366f1", // Indigo
-                      "#7c3aed", // Violet
-                      "#db2777", // Pink
-                      "#e11d48", // Crimson Red
-                      "#059669", // Emerald Green
-                      "#d97706", // Amber Gold
-                      "#1e293b", // Slate Dark
-                    ].map((col) => (
-                      <button
-                        type="button"
-                        key={col}
-                        aria-label={`Use dice colour ${col}`}
-                        className={diceColor === col ? "active" : ""}
-                        style={{ background: col }}
-                        onClick={() => setDiceColor(col)}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      value={diceColor}
-                      aria-label="Custom dice colour"
-                      onChange={(event) => setDiceColor(event.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-
-              <div style={{ marginTop: "10px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
-                <button
-                  type="button"
-                  className="dice-test-btn"
-                  onClick={() => {
-                    setTestRoll({
-                      expression: "1d20",
-                      dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],
-                      modifier: 0,
-                      total: 20,
-                      roller: { id: "preview", displayName: "You" },
-                      rollType: "normal",
-                      animationSeed: String(Date.now()),
-                      theme: diceTheme,
-                      themeColor: diceColor,
-                    });
-                  }}
-                >
-                  🎲 Roll Test d20
-                </button>
-                <small style={{ color: "var(--muted, #888)", fontSize: "12px" }}>
-                  Preview your 3D dice landing on 20
-                </small>
               </div>
 
               <span className="field-label">Message spacing</span>
@@ -3419,6 +3377,276 @@ export function SettingsDialog({
 
               <PhonePushSettings />
             </>
+          )}
+
+          {tab === "dice" && (
+            <div className="space-y-6">
+              <div>
+                <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "4px" }}>3D Dice & Sound Physics</h3>
+                <p style={{ fontSize: "13px", color: "var(--muted)", margin: 0 }}>
+                  Customize your personal 3D polyhedral dice visual style, physical materials, tactile bump textures, and multi-dice collision audio.
+                </p>
+              </div>
+
+              <div>
+                <span className="field-label">3D Dice Style</span>
+                <div className="dice-theme-row">
+                  {([
+                    ["default", "Solid Colour"],
+                    ["vampire", "Vampire 🧛"],
+                    ["dark-academia", "Dark Academia 📜"],
+                    ["pride", "Pride 🏳️‍🌈"],
+                    ["trans", "Trans 🏳️‍⚧️"],
+                    ["nonbinary", "Nonbinary 💛"],
+                  ] as const).map(([option, label]) => (
+                    <button
+                      type="button"
+                      key={option}
+                      className={`${option} ${diceTheme === option ? "active" : ""}`}
+                      onClick={() => setDiceTheme(option)}
+                    >
+                      <span className="dice-theme-swatch" aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {diceTheme === "default" && (
+                  <>
+                    <span className="field-label" style={{ marginTop: "12px" }}>Dice Base Colour</span>
+                    <div className="accent-picker-row">
+                      {[
+                        "#2563eb", // Classic Blue
+                        "#0284c7", // Sky Blue
+                        "#6366f1", // Indigo
+                        "#7c3aed", // Violet
+                        "#db2777", // Pink
+                        "#e11d48", // Crimson Red
+                        "#059669", // Emerald Green
+                        "#d97706", // Amber Gold
+                        "#1e293b", // Slate Dark
+                      ].map((col) => (
+                        <button
+                          type="button"
+                          key={col}
+                          aria-label={`Use dice colour ${col}`}
+                          className={diceColor === col ? "active" : ""}
+                          style={{ background: col }}
+                          onClick={() => setDiceColor(col)}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={diceColor}
+                        aria-label="Custom dice colour"
+                        onChange={(event) => setDiceColor(event.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div>
+                <span className="field-label">Dice Material</span>
+                <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
+                  Controls 3D specular shine, physical reflectivity, and realistic collision acoustic timbre.
+                </small>
+                <div className="dice-material-row">
+                  {([
+                    ["auto", "Theme Default"],
+                    ["plastic", "Plastic / Resin 🎲"],
+                    ["metal", "Heavy Metal ⚔️"],
+                    ["wood", "Carved Wood 🪵"],
+                    ["glass", "Ruby Glass 💎"],
+                  ] as const).map(([option, label]) => (
+                    <button
+                      type="button"
+                      key={option}
+                      className={`${option} ${diceMaterial === option ? "active" : ""}`}
+                      onClick={() => setDiceMaterial(option)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="field-label">Dice Surface Texture</span>
+                <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
+                  Binds tactile bump maps and procedural surface details onto the 3D dice.
+                </small>
+                <div className="dice-texture-row">
+                  {([
+                    ["auto", "Theme Default"],
+                    ["none", "Smooth ✨"],
+                    ["marble", "Marble 🏛️"],
+                    ["wood", "Wood Grain 🪵"],
+                    ["metal", "Steel ⚙️"],
+                    ["skulls", "Skulls 💀"],
+                    ["dragon", "Dragon Scales 🐉"],
+                    ["fire", "Inferno 🔥"],
+                    ["ice", "Glacial ❄️"],
+                    ["water", "Water Ripple 🌊"],
+                    ["stars", "Starlight ⭐"],
+                    ["astral", "Astral Sea 🌌"],
+                    ["stainedglass", "Stained Glass 🪟"],
+                    ["glitter", "Glitter ✨"],
+                    ["paper", "Parchment 📜"],
+                    ["speckles", "Speckled 🪄"],
+                  ] as const).map(([option, label]) => (
+                    <button
+                      type="button"
+                      key={option}
+                      className={`${option} ${diceTexture === option ? "active" : ""}`}
+                      onClick={() => setDiceTexture(option)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="field-label">Sound Physics & Multi-Dice Dynamics</span>
+                <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
+                  Audio dynamically choreographs single-die bounces vs multi-dice tumble cascades (1, 2, 3, 4, and 5+ dice tiers).
+                </small>
+                <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "1d20",
+                        dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],
+                        modifier: 0,
+                        total: 20,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "normal",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    🎲 Roll 1d20 (Solo Die)
+                  </button>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "2d20",
+                        dice: [{
+                          sides: 20,
+                          rolls: [
+                            { value: 18, kept: true },
+                            { value: 12, kept: false },
+                          ],
+                          sign: 1,
+                        }],
+                        modifier: 0,
+                        total: 18,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "advantage",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    🎲 Roll 2d20 (Pair Clatter)
+                  </button>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "4d6",
+                        dice: [{
+                          sides: 6,
+                          rolls: [
+                            { value: 6, kept: true },
+                            { value: 5, kept: true },
+                            { value: 4, kept: true },
+                            { value: 6, kept: true },
+                          ],
+                          sign: 1,
+                        }],
+                        modifier: 0,
+                        total: 21,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "normal",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    🎲 Roll 4d6 (Cascade)
+                  </button>
+                  <button
+                    type="button"
+                    className="dice-test-btn"
+                    onClick={() => {
+                      const resolvedTheme =
+                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
+                          ? activeThemeId
+                          : diceTheme;
+                      setTestRoll({
+                        expression: "6d6",
+                        dice: [{
+                          sides: 6,
+                          rolls: [
+                            { value: 6, kept: true },
+                            { value: 5, kept: true },
+                            { value: 4, kept: true },
+                            { value: 3, kept: true },
+                            { value: 6, kept: true },
+                            { value: 2, kept: true },
+                          ],
+                          sign: 1,
+                        }],
+                        modifier: 0,
+                        total: 26,
+                        roller: { id: "preview", displayName: "You" },
+                        rollType: "normal",
+                        animationSeed: String(Date.now()),
+                        theme: resolvedTheme,
+                        themeColor: diceColor,
+                        material: diceMaterial !== "auto" ? diceMaterial : undefined,
+                        texture: diceTexture !== "auto" ? diceTexture : undefined,
+                      });
+                    }}
+                  >
+                    🎲 Roll 6d6 (5+ Handful)
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ padding: "12px 14px", borderRadius: "10px", background: "var(--panel-hover, rgba(255,255,255,0.04))", border: "1px solid var(--line, rgba(255,255,255,0.08))", fontSize: "12px", color: "var(--muted, #999)" }}>
+                💡 <strong>Channel Shortcuts:</strong> You can override your dice style anytime directly in chat rolls: <code>/roll 2d20 metal skulls</code>, <code>/roll 4d6 wood</code>, or <code>/roll 1d20 ruby glass</code>.
+              </div>
+            </div>
           )}
 
           {tab === "activities" && (

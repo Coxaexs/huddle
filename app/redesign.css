@@ -1,0 +1,818 @@
+/* Redesign layer (2026-10). Loaded after globals.css.
+   Every rule is scoped with :root:not([data-custom-theme-id^="msn"]) so the
+   MSN Messenger themes keep their own XP look; they only inherit the shared
+   token changes from globals.css. */
+
+/* Type ------------------------------------------------------------------- */
+:root:not([data-custom-theme-id^="msn"]) body,
+:root:not([data-custom-theme-id^="msn"]) .app-shell {
+  font-family: var(--font-ui);
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .channel-heading strong {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .space-header h1 {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .channel-heading > span {
+  font-size: 13px !important;
+  font-weight: 450 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: var(--muted-2, var(--muted)) !important;
+}
+
+/* Section labels: sentence case, readable size, no shouting. The legacy
+   theme blocks set these with long :not() chains, hence !important. */
+:root:not([data-custom-theme-id^="msn"]) :is(.member-panel-title, .section-label),
+:root:not([data-custom-theme-id^="msn"]) :is(.member-panel-title, .section-label) > span:first-child {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+  color: var(--faint, var(--muted));
+}
+
+:root:not([data-custom-theme-id^="msn"]) .message time,
+:root:not([data-custom-theme-id^="msn"]) .composer-hint-keys kbd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .message p {
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* Surfaces --------------------------------------------------------------- */
+:root:not([data-custom-theme-id^="msn"]) .rail {
+  background: var(--rail-bg, var(--paper));
+}
+
+:root:not([data-custom-theme-id^="msn"]) .space-mark,
+:root:not([data-custom-theme-id^="msn"]) .brand-mark {
+  border-radius: 14px;
+  transition: border-radius 0.22s ease, transform 0.16s ease, background-color 0.16s ease;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .space-mark:hover,
+:root:not([data-custom-theme-id^="msn"]) .space-mark.active-space {
+  border-radius: 11px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .channel.selected,
+:root:not([data-custom-theme-id^="msn"]) .voice-room.selected {
+  background: var(--lavender-soft);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--lavender);
+}
+
+/* Composer --------------------------------------------------------------- */
+:root:not([data-custom-theme-id^="msn"]) .composer {
+  background: var(--surface-2, var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .composer:focus-within {
+  border-color: color-mix(in srgb, var(--lavender) 45%, transparent);
+  box-shadow: var(--shadow-sm), var(--ring);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .composer textarea::placeholder {
+  color: var(--faint, var(--muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .composer .send-button,
+:root:not([data-custom-theme-id^="msn"]) .join-button {
+  background: var(--accent-strong, var(--lavender));
+  color: var(--on-accent, #fff);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .composer-hint {
+  margin: 7px 10px 0;
+  font-size: 11px;
+  color: var(--faint, var(--muted));
+}
+
+:root:not([data-custom-theme-id^="msn"]) .composer-hint-keys kbd {
+  background: var(--surface-2, var(--panel));
+  color: var(--muted-2, var(--muted));
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+}
+
+/* Member list ------------------------------------------------------------ */
+:root:not([data-custom-theme-id^="msn"]) .member-panel input[placeholder="Search members..."] {
+  background: var(--surface-2, var(--panel));
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .member-panel input[placeholder="Search members..."]::placeholder {
+  color: var(--faint, var(--muted));
+}
+
+/* Interaction states ----------------------------------------------------- */
+:root:not([data-custom-theme-id^="msn"]) :is(.send-button, .join-button, .attach-button, .intro-icon, .gif-button, .user-footer-btn, .channel, .voice-room) {
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease,
+    box-shadow 0.16s ease, transform 0.12s ease;
+}
+
+:root:not([data-custom-theme-id^="msn"]) :is(.send-button, .join-button, .attach-button, .intro-icon, .gif-button, .user-footer-btn, .space-mark):not(:disabled):active {
+  transform: translateY(1px) scale(0.97);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .app-shell :is(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Touch: the per-message "more" toggle is always visible, so keep it quiet. */
+:root:not([data-custom-theme-id^="msn"]) .message-actions-toggle {
+  border-color: transparent;
+  background: transparent;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-custom-theme-id^="msn"]) :is(.send-button, .join-button, .attach-button, .intro-icon, .gif-button, .user-footer-btn, .channel, .voice-room, .space-mark) {
+    transition: none;
+  }
+}
+
+/* The sidebar heading text is now sentence case in markup; MSN keeps caps. */
+:root[data-custom-theme-id^="msn"] .channel-nav .section-label > span:first-child {
+  text-transform: uppercase;
+}
+
+/* MSN themes: pin the helper tokens to the exact literals these rules used
+   before they were tokenized, so MSN renders as it did. */
+:root[data-custom-theme-id^="msn"] {
+  --rail-bg: #0f0d18;
+  --surface-2: #252040;
+  --muted-2: #7a7296;
+  --faint: #5a5275;
+  --accent-strong: #7c5cbf;
+  --accent-hi: #c4b5fd;
+  --on-accent: #ffffff;
+}
+
+/* Layout: one calm canvas, one floating sheet ------------------------------
+   Rail, sidebar and member list share the canvas colour with no dividers;
+   the conversation sits on a raised, rounded sheet. Desktop only. */
+@media (min-width: 769px) {
+  :root:not([data-custom-theme-id^="msn"]) .app-shell {
+    background: var(--panel) !important;
+  }
+
+  :root:not([data-custom-theme-id^="msn"]) :is(.rail, .sidebar, .member-panel) {
+    background: var(--panel) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Rail and channel list read as one column, split by a hairline. */
+  :root:not([data-custom-theme-id^="msn"]) .rail {
+    border-right: 1px solid var(--line) !important;
+  }
+
+  /* The sheet runs off the bottom edge: rounded top corners only. */
+  :root:not([data-custom-theme-id^="msn"]) .chat-panel {
+    margin: 10px 0 0;
+    height: calc(100% - 10px);
+    border-radius: 16px 16px 0 0;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    background: var(--chat-bg) !important;
+    box-shadow: var(--shadow-md);
+  }
+
+  :root:not([data-custom-theme-id^="msn"]) .app-shell:not(.has-members):not(.has-thread) .chat-panel {
+    margin-right: 10px;
+  }
+
+  :root:not([data-custom-theme-id^="msn"]) .chat-header {
+    border-bottom-color: transparent !important;
+    background: transparent !important;
+    padding-left: 26px;
+  }
+
+  :root:not([data-custom-theme-id^="msn"]) .member-panel {
+    padding: 22px 16px;
+  }
+}
+
+/* Header icons: present but quiet until you reach for them. */
+:root:not([data-custom-theme-id^="msn"]) .header-actions .icon-button:not(.active) {
+  color: var(--muted-2, var(--muted));
+  opacity: 0.85;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .header-actions .icon-button:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+/* Server banner: an inset rounded card instead of an edge-to-edge strip. */
+:root:not([data-custom-theme-id^="msn"]) .server-banner-header {
+  margin: 10px 10px 0;
+  width: auto !important;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* Events: a quiet row like the channels around it, not a boxed card. */
+:root:not([data-custom-theme-id^="msn"]) .events-chip:not(.is-open) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--muted-2, var(--muted));
+}
+
+:root:not([data-custom-theme-id^="msn"]) .events-chip:not(.is-open):hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent) !important;
+  color: var(--ink);
+}
+
+/* The Enter / Shift+Enter cheat sheet is noise after day one. Typing
+   indicators still show in the same slot. */
+:root:not([data-custom-theme-id^="msn"]) .composer-hint-keys {
+  display: none;
+}
+
+/* User footer: device chevrons appear on hover only. */
+:root:not([data-custom-theme-id^="msn"]) .user-footer-chevron {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  transition: opacity 0.16s ease, width 0.16s ease;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer:hover .user-footer-chevron,
+:root:not([data-custom-theme-id^="msn"]) .user-footer-chevron:focus-visible {
+  opacity: 1;
+  width: auto;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer {
+  border-top-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Member list: offline people recede into a compact list. */
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member .member-avatar {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px;
+  font-size: 11px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  min-height: 0;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .space-header {
+  border-bottom-color: transparent !important;
+}
+
+/* Server icons: neutral tiles; colour comes from the icon itself. */
+:root:not([data-custom-theme-id^="msn"]) .space-mark:not(:has(img)) {
+  background: color-mix(in srgb, var(--ink) 7%, transparent) !important;
+  color: var(--muted) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .space-mark.active-space:not(:has(img)) {
+  background: color-mix(in srgb, var(--lavender) 22%, transparent) !important;
+  color: var(--ink) !important;
+}
+
+/* Voice room rows: a single right-aligned status slot. */
+.voice-member-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-2, var(--muted));
+}
+
+.voice-member-status > * {
+  display: inline-flex;
+  margin: 0 !important;
+  color: inherit;
+}
+
+.voice-member-status .muted-pill.is-server {
+  color: var(--coral);
+}
+
+.voice-member-status .is-speaking-icon,
+.voice-member-status .speaking-bars {
+  color: var(--mint);
+}
+
+/* Voice bar + user footer: one card with matching buttons. */
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-bar {
+  margin: 0 8px;
+  padding: 10px 10px 8px;
+  background: var(--surface-2, var(--panel)) !important;
+  border: 1px solid var(--line) !important;
+  border-bottom: 0 !important;
+  border-radius: 14px 14px 0 0;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer {
+  width: auto;
+  margin: 0 8px 8px;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px;
+  background: var(--surface-2, var(--panel)) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-bar + .discord-user-footer {
+  border-top: 1px solid var(--line) !important;
+  border-radius: 0 0 14px 14px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) :is(.mini-voice-btn, .mini-voice-leave, .user-footer-btn) {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) :is(.mini-voice-btn, .user-footer-btn):hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent) !important;
+  color: var(--ink) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-btn.on {
+  background: color-mix(in srgb, var(--lavender) 18%, transparent) !important;
+  color: var(--lavender) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .user-footer-btn.off {
+  color: var(--coral) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-leave:hover {
+  background: color-mix(in srgb, var(--coral) 16%, transparent) !important;
+  color: var(--coral) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-status {
+  color: var(--mint);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .screen-share-quick-popover {
+  margin-top: 8px;
+}
+
+/* Bot command lines: a quiet caption, not a second header. */
+:root:not([data-custom-theme-id^="msn"]) .command-invocation {
+  font-size: 12px;
+  color: var(--faint, var(--muted));
+  gap: 5px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .command-invocation strong {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .command-invocation code {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: var(--muted) !important;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* Comfortable line length on wide screens. */
+:root:not([data-custom-theme-id^="msn"]) .message .message-body {
+  max-width: 780px;
+}
+
+/* Anchor the soundboard / screen-share popovers to the voice bar itself
+   (they were positioned against the whole sidebar and opened off-screen). */
+.mini-voice-bar {
+  position: relative;
+}
+
+/* Voice bar: room name on top, controls on their own evenly spaced row. */
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-bar-header {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-status {
+  white-space: nowrap;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-actions {
+  width: 100%;
+  justify-content: space-between;
+}
+
+/* Bot avatars carry a fixed purple from bot data; tint them with the theme
+   accent instead so every theme stays in its own palette. */
+:root:not([data-custom-theme-id^="msn"]) .avatar.bot-avatar {
+  background: var(--lavender-soft) !important;
+  color: var(--accent-hi) !important;
+}
+
+:root[data-custom-theme-id="msn"] :is(.bot-action, .join-outline) {
+  border-color: #dcd5f8;
+}
+
+/* DM calls: the people, large and centred, above the conversation -------- */
+.dm-call-stage {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0;
+  padding: 18px 20px 20px !important;
+  gap: 16px;
+  justify-content: flex-start !important;
+  background:
+    radial-gradient(70% 90% at 50% 0%, color-mix(in srgb, var(--lavender) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--paper) 80%, #000) !important;
+  border-bottom: 1px solid var(--line) !important;
+  box-shadow: none !important;
+}
+
+.dm-call-status {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dm-call-stage.is-connected .dm-call-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  vertical-align: 1px;
+}
+
+.dm-call-people {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+}
+
+.dm-call-person {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 50%;
+}
+
+.dm-call-person .avatar {
+  width: 96px !important;
+  height: 96px !important;
+  font-size: 34px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px transparent;
+  transition: box-shadow 0.15s ease;
+}
+
+.dm-call-person.is-speaking .avatar {
+  box-shadow: 0 0 0 3px var(--mint), 0 0 18px color-mix(in srgb, var(--mint) 45%, transparent);
+}
+
+.dm-call-person.is-ringing .avatar {
+  animation: dm-call-ring 1.6s ease-in-out infinite;
+  opacity: 0.75;
+}
+
+@keyframes dm-call-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lavender) 55%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--lavender) 0%, transparent); }
+}
+
+/* Names on hover, as in a big call: the faces carry it. */
+.dm-call-person-name {
+  position: absolute;
+  bottom: -8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.dm-call-person:hover .dm-call-person-name {
+  opacity: 1;
+  transform: none;
+}
+
+.dm-call-person-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--coral);
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--paper) 80%, #000);
+}
+
+.dm-call-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dm-call-group {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface-2, var(--panel));
+  border: 1px solid var(--line);
+}
+
+.dm-call-ctrl {
+  width: 44px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.dm-call-ctrl:hover {
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+.dm-call-ctrl:active {
+  transform: scale(0.95);
+}
+
+.dm-call-ctrl.off {
+  color: var(--coral);
+}
+
+.dm-call-ctrl.on {
+  background: color-mix(in srgb, var(--lavender) 22%, transparent);
+  color: var(--accent-hi, var(--lavender));
+}
+
+.dm-call-hangup {
+  width: 72px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 14px;
+  background: #da373c;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+.dm-call-hangup:hover {
+  background: #c22f34;
+}
+
+.dm-call-hangup:active {
+  transform: scale(0.96);
+}
+
+.dm-call-hangup svg {
+  transform: rotate(0deg);
+}
+
+@media (max-width: 768px) {
+  .dm-call-person .avatar {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .dm-call-ctrl {
+    width: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dm-call-person.is-ringing .avatar {
+    animation: none;
+  }
+}
+
+/* MSN: Messenger's own call pane — sky-blue glass, framed display pictures,
+   glossy XP buttons. */
+:root[data-custom-theme-id^="msn"] .dm-call-stage {
+  background: var(--msn-sky) !important;
+  border-bottom: 1px solid var(--msn-frame) !important;
+  font-family: var(--msn-font);
+  gap: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-status {
+  color: var(--msn-title);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person,
+:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
+  border-radius: 6px !important;
+}
+
+/* Display-picture frame. */
+:root[data-custom-theme-id^="msn"] .dm-call-person {
+  padding: 5px;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  box-shadow: 0 2px 6px rgba(15, 58, 130, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
+  width: 88px !important;
+  height: 88px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking {
+  border-color: #3fa82f;
+  box-shadow: 0 0 0 2px #8fdc7c, 0 2px 6px rgba(15, 58, 130, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking .avatar {
+  box-shadow: none;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person-name {
+  position: static;
+  margin-top: 5px;
+  padding: 0;
+  background: none;
+  color: var(--msn-title);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person-badge {
+  right: -6px;
+  bottom: 18px;
+  border-radius: 3px;
+  box-shadow: none;
+  border: 1px solid #8f1d1d;
+  background: linear-gradient(180deg, #f07a6e, #c9302c);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-group {
+  border-radius: 4px;
+  padding: 2px;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl {
+  width: 38px;
+  height: 32px;
+  border-radius: 3px;
+  color: var(--msn-title);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl:hover {
+  background: var(--msn-hover);
+  box-shadow: inset 0 0 0 1px var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl.on {
+  background: var(--msn-select);
+  color: var(--msn-title);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl.off {
+  color: #c9302c;
+}
+
+/* The classic red "End call" button, with its label. */
+:root[data-custom-theme-id^="msn"] .dm-call-hangup {
+  width: auto;
+  height: 32px;
+  padding: 0 14px 0 10px;
+  display: inline-flex;
+  gap: 6px;
+  border-radius: 3px;
+  border: 1px solid #8f1d1d;
+  background: linear-gradient(180deg, #f6a59c 0%, #e0574d 48%, #c9302c 52%, #d9453c 100%);
+  font-family: var(--msn-font);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-hangup::after {
+  content: "End call";
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-hangup svg {
+  width: 15px;
+  height: 15px;
+}
+
+.dm-call-join {
+  height: 44px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: #248046;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+.dm-call-join:hover {
+  background: #1a6334;
+}
+
+.dm-call-join:active {
+  transform: scale(0.97);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-join {
+  height: 32px;
+  border-radius: 3px;
+  border: 1px solid #2c7a1f;
+  background: linear-gradient(180deg, #a6e39a 0%, #5cbf4a 48%, #3fa82f 52%, #4fb83e 100%);
+  font-family: var(--msn-font);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}

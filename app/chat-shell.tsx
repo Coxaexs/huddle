@@ -72,8 +72,6 @@ import {
   BellOff,
   CheckCheck,
   Pin,
-  Sun,
-  Moon,
   Settings,
   Users,
   Menu,
@@ -105,11 +103,13 @@ import {
   AtSign,
   Send,
   PhoneOff,
+  Phone,
   VideoOff,
   Mic,
   ShieldAlert,
   MicOff,
   Headphones,
+  HeadphoneOff,
   AudioLines,
   Monitor,
   Maximize2,
@@ -4536,14 +4536,32 @@ export function ChatShell() {
       // 2. Roll the real dice locally; when they settle, submit the actual
       //    values so the server can total them and broadcast to everyone.
       try {
-        const diceTheme =
+        const activeTheme =
+          (typeof document !== "undefined" &&
+            document.documentElement.dataset.customThemeId) ||
+          "cozy";
+        let diceTheme =
           typeof window !== "undefined"
             ? window.localStorage.getItem("huddle_dice_theme") || "default"
             : "default";
+        if (diceTheme === "default") {
+          if (activeTheme === "vampire") diceTheme = "vampire";
+          else if (activeTheme === "dark-academia") diceTheme = "dark-academia";
+        }
         const diceColor =
           typeof window !== "undefined"
             ? window.localStorage.getItem("huddle_dice_color") || "#2563eb"
             : "#2563eb";
+        const rawMaterial =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("huddle_dice_material") || "auto"
+            : "auto";
+        const diceMaterial = rawMaterial !== "auto" ? rawMaterial : undefined;
+        const rawTexture =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("huddle_dice_texture") || "auto"
+            : "auto";
+        const diceTexture = rawTexture !== "auto" ? rawTexture : undefined;
 
         const data = await apiFetch<{
           text?: string;
@@ -4557,6 +4575,8 @@ export function ChatShell() {
             command: raw,
             theme: diceTheme,
             themeColor: diceColor,
+            material: diceMaterial,
+            texture: diceTexture,
             channelId: voice.channelId || undefined,
             textChannelId: activeChannelRef.current || undefined,
           }),
@@ -4985,7 +5005,15 @@ export function ChatShell() {
     status: "calling" | "connected";
     startTime: number;
     isVideo?: boolean;
+    /**
+     * Whether the other person has actually appeared in the voice room. An
+     * "accept" arrives before their join does, so "connected" alone must not
+     * be read as "they are here" — doing so hung the call up on accept.
+     */
+    seenOther?: boolean;
   } | null>(null);
+  /** Set while we are deliberately leaving, so the restore effect stays out. */
+  const dmCallEndingRef = useRef(false);
   const dmCallRef = useRef(dmCall);
   dmCallRef.current = dmCall;
   const callingTimeoutRef = useRef<number | null>(null);
@@ -5026,6 +5054,7 @@ export function ChatShell() {
         const dateStr = now.toLocaleDateString([], { month: "short", day: "numeric" });
         void sendText(`📞 Missed call from ${user.displayName} on ${dateStr} at ${timeStr}`);
       }
+      dmCallEndingRef.current = true;
       voice.leave();
       setDmCall(null);
     },
@@ -5172,25 +5201,97 @@ export function ChatShell() {
   }, []);
 
   useEffect(() => {
-    if (!dmCall) return;
-    if (dmCall.status === "calling") {
-      const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
-      if (otherInRoom) {
+    if (!voice.channelId) dmCallEndingRef.current = false;
+  }, [voice.channelId]);
+
+  // Coming back to a DM call (a reload, a rejoin, answering on another
+  // device's prompt) rebuilds its state from the room, so the call panel and
+  // timer are there whenever you are in the call.
+  useEffect(() => {
+    if (dmCall || dmCallEndingRef.current || !voice.channelId || !user) return;
+    if (!voiceParticipants.some((p) => p.id === user.id)) return;
+    const dm = dms.find((d) => d.channelId === voice.channelId);
+    if (!dm?.user || dm.group) return;
+    setDmCall({
+      channelId: voice.channelId,
+      otherUser: dm.user,
+      status: "connected",
+      startTime: Date.now(),
+      seenOther: voiceParticipants.some((p) => p.id === dm.user.id),
+    });
+  }, [dmCall, voice.channelId, voiceParticipants, dms, user]);
+
+  // Follows the other person in and out of the room.
+  const dmCallLeftTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const clearLeftTimer = () => {
+      if (dmCallLeftTimerRef.current) {
+        window.clearTimeout(dmCallLeftTimerRef.current);
+        dmCallLeftTimerRef.current = null;
+      }
+    };
+    if (!dmCall) {
+      clearLeftTimer();
+      return;
+    }
+    const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
+
+    if (otherInRoom) {
+      clearLeftTimer();
+      if (dmCall.status === "calling") {
         stopCallingTone();
         playCallAnswerSound();
-        if (callingTimeoutRef.current) {
-          window.clearTimeout(callingTimeoutRef.current);
-          callingTimeoutRef.current = null;
-        }
-        setDmCall((curr) => (curr ? { ...curr, status: "connected", startTime: Date.now() } : null));
       }
-    } else if (dmCall.status === "connected") {
-      const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
-      if (!otherInRoom && voiceParticipants.length <= 1) {
-        endDmCall(false);
+      if (callingTimeoutRef.current) {
+        window.clearTimeout(callingTimeoutRef.current);
+        callingTimeoutRef.current = null;
       }
+      if (dmCall.status === "calling" || !dmCall.seenOther) {
+        setDmCall((curr) =>
+          curr
+            ? {
+                ...curr,
+                status: "connected",
+                seenOther: true,
+                startTime: curr.status === "calling" ? Date.now() : curr.startTime,
+              }
+            : null,
+        );
+      }
+      return;
     }
+
+    if (dmCall.status !== "connected" || dmCallLeftTimerRef.current) return;
+    // They were here and left: wait out a reconnect blip before hanging up.
+    // They accepted but never arrived: give their join a fair chance first.
+    dmCallLeftTimerRef.current = window.setTimeout(
+      () => {
+        dmCallLeftTimerRef.current = null;
+        const current = dmCallRef.current;
+        if (current && current.channelId === dmCall.channelId) endDmCall(false);
+      },
+      dmCall.seenOther ? 4000 : 25000,
+    );
   }, [voiceParticipants, dmCall, endDmCall]);
+
+  /**
+   * What the DM call panel shows for the open conversation: whoever is in its
+   * voice room, plus the person being rung while a call is still dialling.
+   */
+  const dmCallView = useMemo(() => {
+    if (!activeChannelId || !activeDm?.user || activeDm.group) return null;
+    const people = voiceRooms[activeChannelId] || [];
+    const placing = dmCall?.channelId === activeChannelId ? dmCall : null;
+    const ringing =
+      placing?.status === "calling" && !people.some((p) => p.id === placing.otherUser.id)
+        ? placing.otherUser
+        : null;
+    if (!people.length && !placing) return null;
+    // Placing (or having just accepted) the call counts as in it, even in the
+    // moment before our own join lands.
+    const joined = voice.channelId === activeChannelId || Boolean(placing);
+    return { people, ringing, joined };
+  }, [activeChannelId, activeDm, voiceRooms, dmCall, voice.channelId]);
 
   // Peer screen sharing sound tracker
   const prevPeerScreenShares = useRef<Set<string>>(new Set());
@@ -6505,7 +6606,7 @@ export function ChatShell() {
         {isActive ? (
           <span
             className="rail-active-pill"
-            style={{ background: server.color || "#a78bfa" }}
+            style={{ background: server.color || "var(--lavender)" }}
           />
         ) : (
           hasUnread && <span className="rail-unread-pill" />
@@ -6513,7 +6614,7 @@ export function ChatShell() {
         <button
           className={`space-mark ${isActive ? "active-space" : ""}`}
           style={
-            isActive ? { background: server.color || "#a78bfa" } : undefined
+            isActive ? { background: server.color || "var(--lavender)" } : undefined
           }
           aria-label={server.name}
           title={server.name}
@@ -6601,7 +6702,7 @@ export function ChatShell() {
                 {folderServers.slice(0, 4).map((server) => (
                   <span
                     key={server.id}
-                    style={{ background: server.color || "#a78bfa" }}
+                    style={{ background: server.color || "var(--lavender)" }}
                   >
                     {server.iconUrl ? (
                       <img src={server.iconUrl} alt="" />
@@ -6679,7 +6780,7 @@ export function ChatShell() {
             <span className={`speaker-icon ${isConnectedVoice ? "text-emerald-400" : ""}`}>
               {channelKindIcon(channel.kind, 16)}
             </span>
-            <span className={isConnectedVoice ? "font-semibold text-[#c8bdf5]" : ""}>{channel.name}</span>
+            <span className={isConnectedVoice ? "font-semibold text-[var(--accent-hi)]" : ""}>{channel.name}</span>
             {isConnectedVoice ? (
               <span className="voice-active-pill">
                 {people.length > 0 ? `${people.length} active` : "connected"}
@@ -6749,7 +6850,7 @@ export function ChatShell() {
                         color={person.color}
                       />
                     </div>
-                    <span className={isSpeaking ? "font-medium text-[#ede9f6]" : ""}>
+                    <span className={isSpeaking ? "font-medium text-[var(--ink)]" : ""}>
                       {person.connectionId === hub.connectionId
                         ? "You"
                         : person.displayName}
@@ -6760,36 +6861,39 @@ export function ChatShell() {
                       joinedAt={person.joinedAt}
                       serverNow={hub.serverNow}
                     />
-                    {isSpeaking && (
-                      <Mic size={12} className="text-emerald-400 ml-auto animate-pulse" />
-                    )}
-                    {person.muted && !person.bot && !isSpeaking && (
-                      <span
-                        className="muted-pill ml-auto"
-                        title={person.serverMuted ? "Muted for everyone" : "Muted"}
-                      >
-                        <VolumeX size={14} />
-                      </span>
-                    )}
-                    {person.deafened && !person.bot && (
-                      <span className="deafened-pill ml-auto text-[#7d749a]" title="Deafened">
-                        <Headphones size={13} />
-                      </span>
-                    )}
-                    {person.bot && playing && (
-                      <span className="speaking-bars ml-auto" aria-label="Playing">
-                        <AudioLines size={14} />
-                      </span>
-                    )}
-                    {person.bot && person.deafened && (
-                      <span
-                        className="bot-deafened-pill ml-auto"
-                        title="The bot sends music but cannot hear the room"
-                        aria-label="Bot deafened"
-                      >
-                        <Volume2 size={12} />
-                      </span>
-                    )}
+                    {/* One right-aligned slot so icons line up whatever the name length. */}
+                    <span className="voice-member-status">
+                      {isSpeaking && (
+                        <Mic size={14} className="is-speaking-icon" aria-label="Speaking" />
+                      )}
+                      {person.muted && !person.bot && !isSpeaking && (
+                        <span
+                          className={`muted-pill ${person.serverMuted ? "is-server" : ""}`}
+                          title={person.serverMuted ? "Muted for everyone" : "Muted"}
+                        >
+                          <MicOff size={14} />
+                        </span>
+                      )}
+                      {person.deafened && !person.bot && (
+                        <span className="deafened-pill" title="Deafened">
+                          <HeadphoneOff size={14} />
+                        </span>
+                      )}
+                      {person.bot && playing && (
+                        <span className="speaking-bars" aria-label="Playing">
+                          <AudioLines size={14} />
+                        </span>
+                      )}
+                      {person.bot && person.deafened && (
+                        <span
+                          className="bot-deafened-pill"
+                          title="The bot sends music but cannot hear the room"
+                          aria-label="Bot deafened"
+                        >
+                          <HeadphoneOff size={14} />
+                        </span>
+                      )}
+                    </span>
                   </div>
                 );
               })}
@@ -7085,7 +7189,7 @@ export function ChatShell() {
               {isActive && (
                 <span
                   className="rail-active-pill"
-                  style={{ background: dm.user.color || "#a78bfa" }}
+                  style={{ background: dm.user.color || "var(--lavender)" }}
                 />
               )}
               <button
@@ -7491,14 +7595,14 @@ export function ChatShell() {
               <button
                 type="button"
                 onClick={() => setGlobalSearchOpen(true)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[#9d95bc] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[var(--muted)] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
                 title="Search all users (⌘K)"
               >
                 <span className="flex items-center gap-2">
-                  <Search size={14} className="text-[#a78bfa]" />
+                  <Search size={14} className="text-[var(--lavender)]" />
                   <span>Find conversation or user</span>
                 </span>
-                <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[#9d95bc]">
+                <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
                   ⌘K
                 </kbd>
               </button>
@@ -7514,10 +7618,10 @@ export function ChatShell() {
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${!activeChannelId && !stageChannelId
                   ? "bg-white/[0.12] text-white"
-                  : "text-[#9d95bc] hover:bg-white/[0.05] hover:text-white"
+                  : "text-[var(--muted)] hover:bg-white/[0.05] hover:text-white"
                   }`}
               >
-                <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[#a78bfa]" : "text-[#7c7599]"} />
+                <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[var(--lavender)]" : "text-[#7c7599]"} />
                 <span className="flex-1 text-left">Friends</span>
                 {pendingFriendCount > 0 && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[11px] leading-tight">
@@ -7627,7 +7731,7 @@ export function ChatShell() {
         ) : (
           <nav className="channel-nav" aria-label="Channels">
             <div className="section-label">
-              <span>CHANNELS</span>
+              <span>Channels</span>
               {canManageChannels && (
                 <span className="section-actions">
                   <button
@@ -7794,7 +7898,10 @@ export function ChatShell() {
                   <span className="mini-voice-name truncate">
                     {servers
                       .flatMap((s) => s.channels)
-                      .find((c) => c.id === voice.channelId)?.name || "Voice Connected"}
+                      .find((c) => c.id === voice.channelId)?.name ||
+                      (dmCall && dmCall.channelId === voice.channelId
+                        ? dmCall.otherUser.displayName
+                        : "Voice Connected")}
                   </span>
                   <span className="mini-voice-status">voice connected</span>
                 </div>
@@ -7810,13 +7917,14 @@ export function ChatShell() {
                 </button>
                 <button
                   type="button"
-                  className={`mini-voice-btn ${voice.screenSharing ? "on" : ""}`}
+                  className={`mini-voice-btn ${voice.screenSharing || sidebarShareSetupOpen ? "on" : ""}`}
+                  aria-expanded={!voice.screenSharing && sidebarShareSetupOpen}
                   onClick={() =>
                     voice.screenSharing
                       ? voice.stopScreenShare()
-                      : void voice.startScreenShare()
+                      : setSidebarShareSetupOpen((open) => !open)
                   }
-                  title={voice.screenSharing ? "Stop sharing screen" : "Share screen"}
+                  title={voice.screenSharing ? `Stop sharing · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
                 >
                   <Monitor size={14} />
                 </button>
@@ -7840,6 +7948,24 @@ export function ChatShell() {
                 </button>
               </div>
             </div>
+            {sidebarShareSetupOpen && !voice.screenSharing && (
+              <div className="soundboard-quick-popover screen-share-quick-popover">
+                <ScreenShareSetup
+                  className="screen-share-setup-inline"
+                  quality={voice.screenQuality}
+                  onQuality={voice.setScreenQuality}
+                  film={voice.screenFilm}
+                  onFilm={voice.setScreenFilm}
+                  audio={voice.screenShareAudio}
+                  onAudio={voice.setScreenShareAudio}
+                  onClose={() => setSidebarShareSetupOpen(false)}
+                  onStart={() => {
+                    setSidebarShareSetupOpen(false);
+                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio, voice.screenFilm);
+                  }}
+                />
+              </div>
+            )}
             {quickSoundboardOpen && (
               <div className="soundboard-quick-popover">
                 <SoundboardDrawer
@@ -8183,15 +8309,12 @@ export function ChatShell() {
                 >
                   <Pin size={18} />
                 </Icon>
-                <Icon
-                  label={`Switch to ${theme === "light" ? "cozy" : "light"} mode`}
-                  onClick={() => applyTheme(theme === "light" ? "cozy" : "light")}
-                >
-                  {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-                </Icon>
-                <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
-                  <Settings size={18} />
-                </Icon>
+                {/* Settings already lives in the user footer; MSN shows it as "Options". */}
+                {msnTheme && (
+                  <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
+                    <Settings size={18} />
+                  </Icon>
+                )}
                 <Icon
                   label="Toggle member list"
                   active={membersOpen}
@@ -8519,121 +8642,154 @@ export function ChatShell() {
                   </div>
                 )}
 
-                {inDmHome && dmCall && dmCall.channelId === activeChannelId && (
-                  <section className="dm-call-stage" aria-label="Direct Message Call">
-                    <div className="dm-call-participants">
-                      <div
-                        className={`dm-call-avatar-wrapper ${voice.speaking.has(hub.connectionId || "") ? "is-speaking" : ""
-                          }`}
-                      >
-                        <Avatar
-                          name={user.displayName}
-                          avatar={user.avatar}
-                          avatarUrl={user.avatarUrl}
-                          color={user.color}
-                          size={48}
-                        />
-                        <span className="dm-call-user-name">{user.displayName}</span>
-                      </div>
+                {inDmHome && activeChannelId && dmCallView && (
+                  <section
+                    className={`dm-call-stage ${dmCallView.ringing ? "is-calling" : "is-connected"}`}
+                    aria-label="Direct Message Call"
+                  >
+                    <span className="dm-call-status">
+                      {dmCallView.ringing
+                        ? `Calling ${dmCallView.ringing.displayName}…`
+                        : dmCallView.joined && dmCall?.channelId === activeChannelId
+                          ? `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, "0")}`
+                          : `${dmCallView.people.length} in the call`}
+                    </span>
 
-                      <div className="dm-call-status-center">
-                        <span className="dm-call-status-label">
-                          {dmCall.status === "calling" ? (
-                            <>
-                              <span className="dm-call-status-dot" style={{ background: "#a78bfa" }} />
-                              Calling...
-                            </>
-                          ) : (
-                            <>
-                              <span className="dm-call-status-dot" />
-                              In Call ({Math.floor(callDuration / 60)}:{String(callDuration % 60).padStart(2, "0")})
-                            </>
-                          )}
-                        </span>
-                      </div>
-
-                      <div
-                        className={`dm-call-avatar-wrapper ${dmCall.status === "calling" ? "is-calling is-ringing" : ""
-                          } ${voiceParticipants.some(
-                            (p) => p.id === dmCall.otherUser.id && voice.speaking.has(p.connectionId),
-                          )
-                            ? "is-speaking"
-                            : ""
-                          }`}
-                      >
-                        <Avatar
-                          name={dmCall.otherUser.displayName}
-                          avatar={dmCall.otherUser.avatar || "?"}
-                          avatarUrl={dmCall.otherUser.avatarUrl}
-                          color={dmCall.otherUser.color || "#a78bfa"}
-                          size={48}
-                        />
-                        <span className="dm-call-user-name">{dmCall.otherUser.displayName}</span>
-                      </div>
+                    {/* Everyone in the call, large and centred; a ring lights up
+                        whoever is speaking. Built from the room itself, so it is
+                        here whenever the call is, not only for whoever placed it. */}
+                    <div className="dm-call-people">
+                      {dmCallView.people.map((person) => {
+                        const isSelf = person.id === user.id;
+                        const speaking = voice.speaking.has(
+                          isSelf ? "self" : person.connectionId,
+                        );
+                        const muted = isSelf ? voice.muted : person.muted;
+                        return (
+                          <div
+                            key={person.connectionId}
+                            className={`dm-call-person ${speaking ? "is-speaking" : ""} ${muted ? "is-muted" : ""}`}
+                            title={person.displayName}
+                          >
+                            <Avatar
+                              name={person.displayName}
+                              avatar={person.avatar}
+                              avatarUrl={person.avatarUrl}
+                              color={person.color || "var(--lavender)"}
+                              size={96}
+                            />
+                            <span className="dm-call-person-name">{isSelf ? user.displayName : person.displayName}</span>
+                            {muted && (
+                              <span className="dm-call-person-badge" aria-label="Muted">
+                                <MicOff size={13} />
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {dmCallView.ringing && (
+                        <div className="dm-call-person is-ringing" title={dmCallView.ringing.displayName}>
+                          <Avatar
+                            name={dmCallView.ringing.displayName}
+                            avatar={dmCallView.ringing.avatar || "?"}
+                            avatarUrl={dmCallView.ringing.avatarUrl}
+                            color={dmCallView.ringing.color || "var(--lavender)"}
+                            size={96}
+                          />
+                          <span className="dm-call-person-name">{dmCallView.ringing.displayName}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="dm-call-controls">
-                      <button
-                        type="button"
-                        className={`vctrl-btn ${voice.muted ? "off" : ""}`}
-                        onClick={() => voice.toggleMute()}
-                        title={voice.muted ? "Unmute" : "Mute"}
-                      >
-                        {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-                      </button>
-                      <button
-                        type="button"
-                        className={`vctrl-btn ${voice.deafened ? "off" : ""}`}
-                        onClick={() => voice.toggleDeafen()}
-                        title={voice.deafened ? "Undeafen" : "Deafen"}
-                      >
-                        {voice.deafened ? <VolumeX size={16} /> : <Headphones size={16} />}
-                      </button>
-                      <button
-                        type="button"
-                        className={`vctrl-btn ${voice.screenSharing ? "active-screen" : ""}`}
-                        onClick={() => {
-                          if (voice.screenSharing) {
-                            voice.stopScreenShare();
-                          } else {
-                            void voice.startScreenShare();
-                          }
-                        }}
-                        title={voice.screenSharing ? "Stop sharing" : "Share screen"}
-                      >
-                        <Monitor size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className={`vctrl-btn ${voice.cameraOn ? "active-camera" : ""}`}
-                        onClick={() => {
-                          if (voice.cameraOn) {
-                            voice.stopCamera();
-                          } else {
-                            void voice.startCamera();
-                          }
-                        }}
-                        title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
-                      >
-                        {voice.cameraOn ? <Video size={16} /> : <VideoOff size={16} />}
-                      </button>
-                      <button
-                        type="button"
-                        className="vctrl-btn expand-btn"
-                        onClick={() => setStageChannelId(dmCall.channelId)}
-                        title="Open Call View"
-                      >
-                        <Maximize2 size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="vctrl-btn disconnect-btn"
-                        onClick={() => endDmCall(false)}
-                        title="End Call"
-                      >
-                        <PhoneOff size={16} />
-                      </button>
-                    </div>
+                    {dmCallView.joined ? (
+                      <div className="dm-call-controls">
+                        <div className="dm-call-group">
+                          <button
+                            type="button"
+                            className={`dm-call-ctrl ${voice.muted ? "off" : ""}`}
+                            onClick={() => voice.toggleMute()}
+                            title={voice.muted ? "Unmute" : "Mute"}
+                            aria-pressed={voice.muted}
+                          >
+                            {voice.muted ? <MicOff size={19} /> : <Mic size={19} />}
+                          </button>
+                          <button
+                            type="button"
+                            className={`dm-call-ctrl ${voice.deafened ? "off" : ""}`}
+                            onClick={() => voice.toggleDeafen()}
+                            title={voice.deafened ? "Undeafen" : "Deafen"}
+                            aria-pressed={voice.deafened}
+                          >
+                            {voice.deafened ? <HeadphoneOff size={19} /> : <Headphones size={19} />}
+                          </button>
+                        </div>
+                        <div className="dm-call-group">
+                          <button
+                            type="button"
+                            className={`dm-call-ctrl ${voice.cameraOn ? "on" : ""}`}
+                            onClick={() => (voice.cameraOn ? voice.stopCamera() : void voice.startCamera())}
+                            title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
+                            aria-pressed={voice.cameraOn}
+                          >
+                            {voice.cameraOn ? <Video size={19} /> : <VideoOff size={19} />}
+                          </button>
+                          <button
+                            type="button"
+                            className={`dm-call-ctrl ${voice.screenSharing ? "on" : ""}`}
+                            onClick={() => (voice.screenSharing ? voice.stopScreenShare() : void voice.startScreenShare())}
+                            title={voice.screenSharing ? "Stop sharing" : "Share screen"}
+                            aria-pressed={voice.screenSharing}
+                          >
+                            <Monitor size={19} />
+                          </button>
+                          <button
+                            type="button"
+                            className="dm-call-ctrl"
+                            onClick={() => setStageChannelId(activeChannelId)}
+                            title="Open full call view"
+                          >
+                            <Maximize2 size={19} />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="dm-call-hangup"
+                          onClick={() => endDmCall(false)}
+                          title={dmCallView.ringing ? "Cancel call" : "Leave call"}
+                        >
+                          <PhoneOff size={21} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="dm-call-controls">
+                        <button
+                          type="button"
+                          className="dm-call-join"
+                          onClick={() => {
+                            // Joining the call you are being rung for is answering it:
+                            // that also stops the ringtone and tells the caller.
+                            if (incomingDmCall?.channelId === activeChannelId) {
+                              acceptIncomingCall();
+                              return;
+                            }
+                            const other = activeDm?.user;
+                            if (other) {
+                              setDmCall({
+                                channelId: activeChannelId,
+                                otherUser: other,
+                                status: "connected",
+                                startTime: Date.now(),
+                                seenOther: dmCallView.people.some((p) => p.id === other.id),
+                              });
+                            }
+                            playCallAnswerSound();
+                            void voice.join(activeChannelId);
+                          }}
+                        >
+                          <Phone size={18} /> Join call
+                        </button>
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -8874,8 +9030,8 @@ export function ChatShell() {
                     }
 
                     // Collapse the avatar/name header when the same author sends a
-                    // burst of messages close together — but never for replies,
-                    // command answers or rich cards, which each need their own header.
+                    // burst of messages close together — but never for replies or
+                    // rich cards, which each need their own header.
                     const prev = index > 0 ? messages[index - 1] : undefined;
                     const sameAuthor =
                       !!prev &&
@@ -8893,7 +9049,10 @@ export function ChatShell() {
                       sameAuthor &&
                       closeInTime &&
                       !message.replyTo &&
-                      !message.commandText &&
+                      // A run of command answers from the same bot groups too;
+                      // each keeps its small "x used /cmd" line. MSN repeats
+                      // the "says:" header on every message, so it opts out.
+                      (!message.commandText || (Boolean(message.bot) && !msnTheme)) &&
                       (!message.kind || message.kind === "voice") &&
                       (!prev?.kind || prev.kind === "voice");
                     return (
@@ -10648,7 +10807,8 @@ export function ChatShell() {
           title="Drag to resize member list"
         />
 
-        {voice.channelId && (
+        {/* Outside MSN the sidebar voice bar already has these controls. */}
+        {msnTheme && voice.channelId && (
           <>
             <div
               className={`member-panel-title voice-panel-title ${collapsedGroups.voice ? "msn-collapsed" : ""}`}
@@ -10760,7 +10920,7 @@ export function ChatShell() {
               value={memberFilterQuery}
               onChange={(e) => setMemberFilterQuery(e.target.value)}
               placeholder="Search members..."
-              className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] text-xs text-white placeholder-white/40 rounded-lg px-2.5 py-1.5 outline-none transition-colors border border-white/5 focus:border-[#7b63e6]/50"
+              className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] text-xs text-white placeholder-white/40 rounded-lg px-2.5 py-1.5 outline-none transition-colors border border-white/5 focus:border-[var(--lavender)]/50"
             />
             {memberFilterQuery && (
               <button
@@ -10810,7 +10970,6 @@ export function ChatShell() {
                   </span>
                 )}
               </div>
-              <span>Away</span>
             </div>
           </div>
             ) : (
@@ -10937,13 +11096,13 @@ export function ChatShell() {
               })}
               {header(
                 "online",
-                msnTheme ? `Online (${looseOnline.length})` : `ONLINE — ${looseOnline.length}`,
+                msnTheme ? `Online (${looseOnline.length})` : `Online — ${looseOnline.length}`,
                 "online-title",
               )}
               {!(msnTheme && collapsedGroups.online) && rows(looseOnline.map((member) => row(member, false)))}
               {header(
                 "offline",
-                msnTheme ? `Not Online (${looseOffline.length})` : `OFFLINE — ${looseOffline.length}`,
+                msnTheme ? `Not Online (${looseOffline.length})` : `Offline — ${looseOffline.length}`,
                 "offline-title",
               )}
               {!(msnTheme && collapsedGroups.offline) && rows(looseOffline.map((member) => row(member, true)))}
@@ -12000,7 +12159,7 @@ export function ChatShell() {
           >
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[#ede9f6]">Markdown & Code Snippets</span>
+                <span className="text-sm font-bold text-[var(--ink)]">Markdown & Code Snippets</span>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-300">
                   Active
                 </span>
@@ -12020,21 +12179,21 @@ export function ChatShell() {
             </p>
 
             <div className="space-y-2">
-              <div className="text-[11px] font-bold text-[#9e83fc] uppercase tracking-wider">
+              <div className="text-[11px] font-bold text-[var(--lavender)] uppercase tracking-wider">
                 Code Blocks (C++, Python, JS, Bash):
               </div>
-              <div className="rounded-xl border border-[#28223e] bg-[#0f0d19] p-3 font-mono text-[11px] text-[#c4b5fd]">
+              <div className="rounded-xl border border-[#28223e] bg-[#0f0d19] p-3 font-mono text-[11px] text-[var(--accent-hi)]">
                 <div>```cpp</div>
-                <div className="text-[#a499c8] pl-2">#include &lt;iostream&gt;</div>
-                <div className="text-[#a499c8] pl-2">int main() &#123;</div>
+                <div className="text-[var(--muted)] pl-2">#include &lt;iostream&gt;</div>
+                <div className="text-[var(--muted)] pl-2">int main() &#123;</div>
                 <div className="text-emerald-400 pl-4">std::cout &lt;&lt; &quot;Hello from Hoffle!&quot; &lt;&lt; std::endl;</div>
-                <div className="text-[#a499c8] pl-4">return 0;</div>
-                <div className="text-[#a499c8] pl-2">&#125;</div>
+                <div className="text-[var(--muted)] pl-4">return 0;</div>
+                <div className="text-[var(--muted)] pl-2">&#125;</div>
                 <div>```</div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs text-[#a499c8]">
+            <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
               <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
                 <strong className="text-white">**bold**</strong> → <strong>bold</strong>
               </div>
@@ -12057,7 +12216,7 @@ export function ChatShell() {
                   setMarkdownModalOpen(false);
                   composerRef.current?.focus();
                 }}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#7c5cfc] hover:bg-[#6c48f8] text-white transition-colors cursor-pointer"
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[var(--accent-strong)] hover:brightness-110 text-[var(--on-accent)] transition-colors cursor-pointer"
               >
                 Insert C++ Code Template
               </button>

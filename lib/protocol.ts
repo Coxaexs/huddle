@@ -128,6 +128,8 @@ export interface DiceRollEvent {
   animationSeed: string;
   theme?: string;
   themeColor?: string;
+  material?: "plastic" | "metal" | "wood" | "glass";
+  texture?: string;
 }
 
 export interface CharacterPresentation {

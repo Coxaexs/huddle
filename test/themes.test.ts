@@ -17,9 +17,12 @@ describe("Theme System & Serialization", () => {
     expect(ids).toContain("light");
     expect(ids).toContain("cyberpunk");
     expect(ids).toContain("midnight");
-    expect(ids).toContain("forest");
+    expect(ids).toContain("vampire");
+    expect(ids).not.toContain("forest");
     expect(ids).toContain("sunset");
-    expect(ids).toContain("catppuccin");
+    expect(ids).toContain("dark-academia");
+    expect(ids).toContain("amber");
+    expect(ids).not.toContain("catppuccin");
   });
 
   it("exports and imports a theme without loss of parameters", () => {

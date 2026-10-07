@@ -109,7 +109,7 @@ export function GroupDmDialog({
         <div className="forward-dialog-header">
           <div className="flex items-center gap-2">
             <div className="forward-header-icon-wrap">
-              <Users size={18} className="text-[#a78bfa]" />
+              <Users size={18} className="text-[var(--lavender)]" />
             </div>
             <div>
               <h3 id="group-dm-dialog-title" className="forward-dialog-title">

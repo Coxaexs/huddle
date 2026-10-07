@@ -49,15 +49,15 @@ export function MiniMusicBar({
 
   return (
     <div
-      className={`mini-music-bar mx-2 mb-2 rounded-xl border border-[#2a243e] bg-[#1b172a] p-2.5 shadow-sm select-none ${className}`}
+      className={`mini-music-bar mx-2 mb-2 rounded-xl border border-[var(--line)] bg-[var(--surface-2,var(--panel))] p-2.5 shadow-sm select-none ${className}`}
       title={fullLabel}
     >
-      <div className="flex items-center justify-between text-[11px] font-semibold text-[#ede9f6] mb-1.5 gap-2">
+      <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--ink)] mb-1.5 gap-2">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
-          <Music2 className="h-3.5 w-3.5 text-[#7c5cfc] shrink-0 animate-pulse" />
+          <Music2 className="h-3.5 w-3.5 text-[var(--lavender)] shrink-0 animate-pulse" />
           <span className="truncate tracking-tight">{fullLabel}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 text-[#9d95bc]">
+        <div className="flex items-center gap-1.5 shrink-0 text-[var(--muted)]">
           {onToggle && controllable && (
             <button
               type="button"
@@ -91,14 +91,14 @@ export function MiniMusicBar({
 
       {/* Scrubbable progress bar */}
       <div
-        className={`h-1 w-full rounded-full bg-[#27213b] overflow-hidden ${
+        className={`h-1 w-full rounded-full bg-[var(--line)] overflow-hidden ${
           controllable && onSeek ? "cursor-pointer group hover:h-1.5 transition-all" : ""
         }`}
         onClick={handleSeek}
         title="Click to seek"
       >
         <div
-          className="h-full bg-gradient-to-r from-[#7c5cfc] to-[#9e83fc] rounded-full transition-all duration-150 ease-linear"
+          className="h-full bg-gradient-to-r from-[var(--accent-strong)] to-[var(--accent-hi)] rounded-full transition-all duration-150 ease-linear"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
