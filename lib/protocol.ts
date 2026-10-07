@@ -277,7 +277,15 @@ export function playbackPosition(state: PlayerState, now = Date.now()): number {
 
 export type ClientEvent =
   | { t: "subscribe"; channelId: string }
-  | { t: "voice-join"; channelId: string; sfu?: boolean }
+  | {
+      t: "voice-join";
+      channelId: string;
+      sfu?: boolean;
+      /** Resuming after a reconnect: the seat's previous clock and state. */
+      since?: number;
+      muted?: boolean;
+      deafened?: boolean;
+    }
   | { t: "voice-leave" }
   | {
       t: "voice-state";
@@ -346,6 +354,8 @@ export type ServerEvent =
   | {
       t: "ready";
       connectionId: string;
+      /** Hand back with ?resume=<connectionId>&ticket= to keep this id. */
+      resumeTicket?: string;
       serverNow: number;
       online: string[];
       voice: Record<string, VoiceParticipant[]>;

@@ -16,6 +16,7 @@ import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
+import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
 import {
   emptyPlayer,
   LIVE_OWNED_ACTIONS,
@@ -82,6 +83,8 @@ export class HuddleHub extends DurableObject {
   /** One public active/finalizing recording snapshot per voice channel. */
   private recordings = new Map<string, RecordingState>();
   private loaded: Promise<void> | null = null;
+  /** Signs resume tickets; kept in storage so it outlives a restart. */
+  private resumeKey = "";
   private readonly db: D1Database | null;
   /**
    * channelId -> kind and owning server, for voice rooms only.
@@ -124,6 +127,12 @@ export class HuddleHub extends DurableObject {
         for (const [channelId, state] of Object.entries(recordings || {})) {
           this.recordings.set(channelId, state);
         }
+        let resumeKey = await this.ctx.storage.get<string>("resumeKey");
+        if (!resumeKey) {
+          resumeKey = crypto.randomUUID() + crypto.randomUUID();
+          await this.ctx.storage.put("resumeKey", resumeKey);
+        }
+        this.resumeKey = resumeKey;
       })().catch((error) => {
         // A failed read must not poison the object for its whole lifetime:
         // drop the cached promise so the next request retries from scratch.
@@ -338,13 +347,22 @@ export class HuddleHub extends DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  private handleSocket(request: Request, url: URL): Response {
+  private async handleSocket(request: Request, url: URL): Promise<Response> {
     if (request.headers.get("upgrade") !== "websocket") {
       return new Response("Expected a WebSocket", { status: 426 });
     }
 
+    // A reconnect after a restart keeps its old id when its ticket checks out
+    // and nobody holds that id now, so its seat and LiveKit identity carry on.
+    const userId = url.searchParams.get("userId") || "";
+    const resumeId = url.searchParams.get("resume") || "";
+    const resumable =
+      Boolean(userId && resumeId) &&
+      !this.sockets().some((entry) => entry.attachment.connectionId === resumeId) &&
+      (await verifyResumeTicket(this.resumeKey, userId, resumeId, url.searchParams.get("ticket") || ""));
+
     const attachment: Attachment = {
-      connectionId: crypto.randomUUID(),
+      connectionId: resumable ? resumeId : crypto.randomUUID(),
       userId: url.searchParams.get("userId") || "",
       username: url.searchParams.get("username") || "",
       displayName: url.searchParams.get("displayName") || "",
@@ -376,6 +394,7 @@ export class HuddleHub extends DurableObject {
     const ready: ServerEvent = {
       t: "ready",
       connectionId: attachment.connectionId,
+      resumeTicket: await issueResumeTicket(this.resumeKey, attachment.userId, attachment.connectionId),
       serverNow: Date.now(),
       online: this.onlineUserIds(),
       voice: this.voiceRooms(),
@@ -503,7 +522,8 @@ export class HuddleHub extends DurableObject {
         // A re-announce of the same room (a reconnect on the same socket) keeps
         // the clock running; only a genuinely new seat starts it over.
         if (previous !== event.channelId || attachment.voiceJoinedAt == null) {
-          attachment.voiceJoinedAt = Date.now();
+          // A seat resumed after a restart keeps its clock.
+          attachment.voiceJoinedAt = resumedJoinedAt(event.since, Date.now()) ?? Date.now();
         }
         // A stage seat arrives in the audience. This is decided here, from the
         // database, rather than taken from the client: the client also mutes
@@ -520,9 +540,9 @@ export class HuddleHub extends DurableObject {
         attachment.muted = resolveSeatMute({
           kind: info.kind,
           speakAllowed: attachment.speakAllowed,
-          requestedMuted: false,
+          requestedMuted: event.muted === true,
         });
-        attachment.deafened = false;
+        attachment.deafened = event.deafened === true;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);

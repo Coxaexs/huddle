@@ -5,23 +5,41 @@ export const basePath = "/hangout";
 
 export const apiUrl = (path: string) => `${basePath}${path}`;
 
+/** How long a request keeps retrying while the server restarts behind the proxy. */
+const RESTART_RETRY_MS = 30_000;
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      ...(init?.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init?.headers,
-    },
-  });
+  const request = () =>
+    fetch(apiUrl(path), {
+      ...init,
+      headers: {
+        ...(init?.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init?.headers,
+      },
+    });
 
-  const data = (await response.json().catch(() => ({}))) as T & {
+  const giveUpAt = Date.now() + RESTART_RETRY_MS;
+  let response = await request();
+  let data = (await response.json().catch(() => ({}))) as T & {
     error?: string;
   };
+  // While Hoffle restarts (a deploy), the reverse proxy answers 502, or a
+  // bare 503, without the request ever reaching the app, so sending it again
+  // cannot double a message. Not 504: that request may have arrived. Hoffle's
+  // own 503s carry an error and are final.
+  while (
+    (response.status === 502 || (response.status === 503 && !data?.error)) &&
+    Date.now() < giveUpAt
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    response = await request();
+    data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  }
   if (!response.ok) {
     // A 413 from the reverse proxy is an HTML page, not our JSON, so it would
     // otherwise surface as a bare status code.

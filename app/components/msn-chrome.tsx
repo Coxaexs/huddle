@@ -1522,6 +1522,9 @@ interface ToastPerson extends Picture {
  * "Alice has just signed in." — the little window that slid up above the
  * taskbar. Watches the online set and pops one per contact who comes online.
  */
+/** Back within this long counts as the same session, not a fresh sign-in. */
+const SIGN_IN_GAP_MS = 60_000;
+
 export function MsnSignInToasts({
   online,
   people,
@@ -1538,22 +1541,35 @@ export function MsnSignInToasts({
   const [toasts, setToasts] = useState<Array<ToastPerson & { key: number }>>([]);
   const seen = useRef<Set<string> | null>(null);
   const settledAt = useRef(0);
+  /** When each person was last known to be online, kept across reconnects. */
+  const lastOnline = useRef(new Map<string, number>());
 
   useEffect(() => {
+    const now = Date.now();
     // The first snapshot after (re)connecting is everyone already online, not
     // people signing in; give presence a moment to settle before announcing.
     if (!connected) {
+      // Everyone online when the connection dropped was online until now, so
+      // their reconnecting after a server restart is not a sign-in.
+      for (const id of seen.current || []) lastOnline.current.set(id, now);
       seen.current = null;
       return;
     }
     if (!seen.current) {
       seen.current = new Set(online);
-      settledAt.current = Date.now() + 4000;
+      for (const id of online) lastOnline.current.set(id, now);
+      settledAt.current = now + 4000;
       return;
     }
-    const arrivals = [...online].filter((id) => !seen.current!.has(id) && id !== selfId);
+    const arrivals = [...online].filter(
+      (id) =>
+        !seen.current!.has(id) &&
+        id !== selfId &&
+        now - (lastOnline.current.get(id) ?? 0) > SIGN_IN_GAP_MS,
+    );
     seen.current = new Set(online);
-    if (!arrivals.length || Date.now() < settledAt.current) return;
+    for (const id of online) lastOnline.current.set(id, now);
+    if (!arrivals.length || now < settledAt.current) return;
     const found = arrivals
       .map((id) => people.find((p) => p.id === id))
       .filter((p): p is ToastPerson => Boolean(p));

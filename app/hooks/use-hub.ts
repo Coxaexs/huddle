@@ -13,10 +13,13 @@ import {
   type VoiceParticipant,
 } from "@/lib/protocol";
 import { basePath } from "../lib/client";
+import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
 
 export interface HubState {
   connected: boolean;
   connectionId: string | null;
+  /** Counts hub sessions; a resumed connection keeps its id but bumps this. */
+  session: number;
   online: Set<string>;
   voice: Record<string, VoiceParticipant[]>;
   players: Record<string, PlayerState>;
@@ -104,6 +107,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
   const [state, setState] = useState<HubState>({
     connected: false,
     connectionId: null,
+    session: 0,
     online: new Set(),
     voice: {},
     players: {},
@@ -115,6 +119,13 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
   const clockOffsetRef = useRef(0);
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+  /** The id and ticket to ask for back on the next connect. */
+  const resumeRef = useRef<{ connectionId: string; ticket: string } | null>(null);
+  /** Rosters as the hub last reported them, before any grace is applied. */
+  const freshVoiceRef = useRef<Record<string, VoiceParticipant[]>>({});
+  /** The roster from before a reconnect, and until when it still counts. */
+  const graceRef = useRef<{ voice: Record<string, VoiceParticipant[]>; until: number } | null>(null);
+  const shownVoiceRef = useRef<Record<string, VoiceParticipant[]>>({});
 
   const send = useCallback((event: ClientEvent) => {
     const socket = socketRef.current;
@@ -138,14 +149,19 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     let lastMessageAt = 0;
     let pingSentAt = 0;
     let probe: number | undefined;
+    let graceTimer: number | undefined;
 
     const connect = () => {
       if (disposed) return;
       window.clearTimeout(retry);
       window.clearTimeout(probe);
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const resume = resumeRef.current;
+      const query = resume
+        ? `?resume=${encodeURIComponent(resume.connectionId)}&ticket=${encodeURIComponent(resume.ticket)}`
+        : "";
       const socket = new WebSocket(
-        `${protocol}//${window.location.host}${basePath}/api/realtime`,
+        `${protocol}//${window.location.host}${basePath}/api/realtime${query}`,
       );
       socketRef.current = socket;
 
@@ -179,32 +195,56 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
         }
 
         switch (payload.t) {
-          case "ready":
-            setState({
+          case "ready": {
+            resumeRef.current = payload.resumeTicket
+              ? { connectionId: payload.connectionId, ticket: payload.resumeTicket }
+              : null;
+            freshVoiceRef.current = payload.voice;
+            // Coming back from a drop: cover the people not reconnected yet.
+            const previous = shownVoiceRef.current;
+            graceRef.current = Object.keys(previous).length
+              ? { voice: previous, until: Date.now() + ROSTER_GRACE_MS }
+              : null;
+            window.clearTimeout(graceTimer);
+            if (graceRef.current) {
+              graceTimer = window.setTimeout(() => {
+                graceRef.current = null;
+                setState((current) => ({ ...current, voice: freshVoiceRef.current }));
+              }, ROSTER_GRACE_MS);
+            }
+            setState((current) => ({
               connected: true,
               connectionId: payload.connectionId,
+              session: current.session + 1,
               online: new Set(payload.online),
-              voice: payload.voice,
+              voice: withRosterGrace(payload.voice, graceRef.current?.voice ?? null),
               // Players as the room hears them (the DJ booth while it's live).
               players: Object.fromEntries(
                 Object.entries(payload.players).map(([id, player]) => [id, heard(player)]),
               ),
               recordings: payload.recordings || {},
               forcedMutes: new Set(payload.forcedMutes || []),
-            });
+            }));
             break;
+          }
           case "presence":
             setState((current) => ({
               ...current,
               online: new Set(payload.online),
             }));
             break;
-          case "voice":
+          case "voice": {
+            freshVoiceRef.current = {
+              ...freshVoiceRef.current,
+              [payload.channelId]: payload.participants,
+            };
+            const grace = graceRef.current && Date.now() < graceRef.current.until ? graceRef.current.voice : null;
             setState((current) => ({
               ...current,
-              voice: { ...current.voice, [payload.channelId]: payload.participants },
+              voice: withRosterGrace(freshVoiceRef.current, grace),
             }));
             break;
+          }
           case "player":
             setState((current) => ({
               ...current,
@@ -369,8 +409,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
         setState((current) => ({ ...current, connected: false }));
         if (disposed) return;
         attempt += 1;
-        // Back off, but stay responsive for the usual case (a laptop lid).
-        retry = window.setTimeout(connect, Math.min(15_000, 500 * 2 ** attempt));
+        // Every second or so for the first half minute, which covers a server
+        // restart; then back off. Jitter keeps a room from arriving in lockstep.
+        const delay = attempt <= 30 ? 800 + Math.random() * 400 : Math.min(15_000, 1000 * 2 ** (attempt - 30));
+        retry = window.setTimeout(connect, delay);
       };
 
       socket.onclose = reconnect;
@@ -432,11 +474,13 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       window.removeEventListener("online", wake);
       window.clearTimeout(retry);
       window.clearTimeout(probe);
+      window.clearTimeout(graceTimer);
       window.clearInterval(heartbeat);
       socketRef.current?.close();
       socketRef.current = null;
     };
   }, [enabled, send]);
 
+  shownVoiceRef.current = state.voice;
   return { ...state, send, serverNow };
 }

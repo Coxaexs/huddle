@@ -215,10 +215,10 @@ if (process.platform === "linux") {
 function supportsLoopbackAudio() {
   // Linux loopback goes through PulseAudio / pipewire-pulse's monitor source.
   if (process.platform === "win32" || process.platform === "linux") return true;
-  if (process.platform !== "darwin") return false;
-  const electronMajor = Number(process.versions.electron.split(".")[0]);
-  const darwinMajor = Number(require("node:os").release().split(".")[0]);
-  return electronMajor >= 36 && darwinMajor >= 22; // Darwin 22 = macOS 13
+  // macOS: ScreenCaptureKit loopback (Electron 36+, macOS 13+) cuts all call
+  // audio in both directions while sharing, so screen shares go out silent
+  // there until that is fixed.
+  return false;
 }
 
 /** Grant the media + display-capture permissions a call app needs. */

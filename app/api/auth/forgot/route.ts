@@ -54,14 +54,17 @@ export async function POST(request: Request) {
     return new RateLimitError(Math.max(byIp.retryAfter, byTarget.retryAfter)).response();
   }
 
-  const user = await db
+  // An address can sit on several accounts. They all get a link, sent as one
+  // mail per address so its owner picks which account to reset.
+  const { results: users } = await db
     .prepare(
-      "SELECT id, username, email FROM users WHERE (username_lower = ? OR email = ?) AND email IS NOT NULL",
+      "SELECT id, username, email FROM users WHERE (username_lower = ? OR email = ?) AND email IS NOT NULL ORDER BY username_lower LIMIT 10",
     )
     .bind(identifier, identifier)
-    .first<{ id: string; username: string; email: string }>();
+    .all<{ id: string; username: string; email: string }>();
 
-  if (user) {
+  const linksByEmail = new Map<string, Array<{ username: string; link: string }>>();
+  for (const user of users) {
     const token = randomToken();
     const now = new Date();
     await db.batch([
@@ -78,16 +81,31 @@ export async function POST(request: Request) {
           new Date(now.getTime() + RESET_TTL_MINUTES * 60_000).toISOString(),
         ),
     ]);
+    const links = linksByEmail.get(user.email) ?? [];
+    links.push({ username: user.username, link: `${publicBase(request)}/?reset=${token}` });
+    linksByEmail.set(user.email, links);
+  }
 
-    const link = `${publicBase(request)}/?reset=${token}`;
+  for (const [email, links] of linksByEmail) {
+    const ignore = "If that wasn't you, ignore this mail; nothing changes.";
+    const text =
+      links.length === 1
+        ? `Hi @${links[0].username},\n\n` +
+          `Someone asked to reset the password for your Hoffle account. ` +
+          `Open this link within ${RESET_TTL_MINUTES} minutes to choose a new one:\n\n${links[0].link}\n\n${ignore}`
+        : `Hi,\n\n` +
+          `Someone asked to reset a Hoffle password for this address, which is used by ` +
+          `${links.length} accounts. Open the link for the account you want to reset ` +
+          `within ${RESET_TTL_MINUTES} minutes:\n\n` +
+          links.map(({ username, link }) => `@${username}\n${link}`).join("\n\n") +
+          `\n\nThe other accounts keep their passwords. ${ignore}`;
     await sendMail({
-      to: user.email,
-      subject: "Reset your Hoffle password",
-      text:
-        `Hi @${user.username},\n\n` +
-        `Someone asked to reset the password for your Hoffle account. ` +
-        `Open this link within ${RESET_TTL_MINUTES} minutes to choose a new one:\n\n${link}\n\n` +
-        `If that wasn't you, ignore this mail; your password stays the same.`,
+      to: email,
+      subject:
+        links.length === 1
+          ? `Reset your Hoffle password for @${links[0].username}`
+          : "Reset a Hoffle password",
+      text,
     });
   }
 

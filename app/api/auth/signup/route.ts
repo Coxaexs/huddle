@@ -9,6 +9,7 @@ import {
   validateUsername,
   type User,
 } from "@/lib/auth";
+import { emailCodeLimit, startEmailVerification } from "@/lib/email-verify";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { checkRateLimit, clientIp, RateLimitError } from "@/lib/rate-limit";
@@ -60,9 +61,14 @@ export async function POST(request: Request) {
   if (usernameError) return Response.json({ error: usernameError }, { status: 400 });
   const passwordError = validatePassword(password);
   if (passwordError) return Response.json({ error: passwordError }, { status: 400 });
-  const parsedEmail = normalizeEmail(body.email);
-  if ("error" in parsedEmail) return Response.json({ error: parsedEmail.error }, { status: 400 });
-  const email = parsedEmail.email;
+  // Email is optional. When given it is only mailed a code; it lands on the
+  // account once that code is typed back, so nobody can claim someone else's.
+  let email: string | null = null;
+  if ((body.email || "").trim()) {
+    const parsedEmail = normalizeEmail(body.email);
+    if ("error" in parsedEmail) return Response.json({ error: parsedEmail.error }, { status: 400 });
+    email = parsedEmail.email;
+  }
 
   const total = await db
     .prepare("SELECT COUNT(*) AS count FROM users")
@@ -135,13 +141,6 @@ export async function POST(request: Request) {
   if (taken) {
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
-  const emailTaken = await db
-    .prepare("SELECT id FROM users WHERE email = ?")
-    .bind(email)
-    .first();
-  if (emailTaken) {
-    return Response.json({ error: "Another account already uses that email." }, { status: 409 });
-  }
 
   const now = new Date().toISOString();
   const user: User = {
@@ -154,7 +153,7 @@ export async function POST(request: Request) {
     can_invite: isFirstUser ? 1 : 0,
     created_at: now,
     last_seen_at: now,
-    email,
+    email: null,
   };
 
   // Claim the invite in one conditional UPDATE, so simultaneous signups can't
@@ -188,7 +187,7 @@ export async function POST(request: Request) {
       user.username.toLowerCase(),
       user.display_name,
       passwordHash,
-      email,
+      null,
       user.avatar,
       user.color,
       user.is_admin,
@@ -202,7 +201,7 @@ export async function POST(request: Request) {
     if (!isFirstUser) {
       await db.prepare("UPDATE invites SET uses = uses - 1 WHERE code = ?").bind(inviteCode).run();
     }
-    return Response.json({ error: "That username or email is already in use." }, { status: 409 });
+    return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 
   // New accounts start with no servers unless the invite picked one.
@@ -221,9 +220,17 @@ export async function POST(request: Request) {
     }
   }
 
+  // Over the mail limit the account still exists; the address can be added
+  // later from the email prompt.
+  let pendingEmail: string | null = null;
+  if (email && !(await emailCodeLimit(db, request, user.id, email))) {
+    await startEmailVerification(db, user, email);
+    pendingEmail = email;
+  }
+
   const token = await createSession(db, user.id);
   return Response.json(
-    { user: publicUser(user), defaultTheme },
+    { user: publicUser(user), defaultTheme, pendingEmail },
     { status: 201, headers: { "Set-Cookie": sessionCookie(request, token) } },
   );
 }

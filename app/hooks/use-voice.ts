@@ -128,6 +128,8 @@ async function gatherRelay(
 
 interface UseVoiceOptions {
   connectionId: string | null;
+  /** Bumps on every hub session, including one that resumed the same id. */
+  session?: number;
   /** Every live voice room, keyed by channel id, as the hub sees them. */
   rooms: Record<string, VoiceParticipant[]>;
   send: (event: ClientEvent) => boolean;
@@ -331,6 +333,7 @@ function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T): T {
  */
 export function useVoice({
   connectionId,
+  session = 0,
   rooms,
   send,
   enableClips = true,
@@ -342,6 +345,8 @@ export function useVoice({
   const roomBitrateRef = useRef(roomBitrate);
   roomBitrateRef.current = roomBitrate;
   const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  mutedRef.current = muted;
   /**
    * Stage rooms only: this tab's hand is up, asking for the floor. Purely a
    * signal to the hosts — it never changes whether the mic is live, which stays
@@ -447,6 +452,8 @@ export function useVoice({
       "Ctrl+Shift+KeyD",
   );
   const [deafened, setDeafened] = useState(false);
+  const deafenedRef = useRef(false);
+  deafenedRef.current = deafened;
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
   // Use the server's echoed state so failed sends/reconnects cannot leave a stale toggle.
@@ -661,6 +668,8 @@ export function useVoice({
    * everyone else.
    */
   const announcedConnectionRef = useRef<string | null>(null);
+  /** The hub session that announcement went out on. */
+  const announcedSessionRef = useRef(0);
   /** When each peer connection was (re)built, so the watchdog can spot stalls. */
   const peerSinceRef = useRef(new Map<string, number>());
   /** Latest roster, readable from the watchdog without re-subscribing. */
@@ -1570,10 +1579,35 @@ export function useVoice({
    */
   useEffect(() => {
     if (!channelId || !connectionId) return;
-    if (announcedConnectionRef.current === connectionId) return;
-    if (!send({ t: "voice-join", channelId, sfu: sfuModeRef.current || undefined })) return;
+    const sameId = announcedConnectionRef.current === connectionId;
+    if (sameId && announcedSessionRef.current === session) return;
     const wasAnnounced = announcedConnectionRef.current !== null;
+    // Carry the seat's clock and state over, so a server restart does not
+    // reset the call timer or unmute anyone. The hub ignores these on a
+    // genuinely new seat's first join.
+    const mine = wasAnnounced
+      ? (roomsRef.current[channelId] || []).find(
+          (person) => person.connectionId === announcedConnectionRef.current,
+        )
+      : undefined;
+    const joined = send({
+      t: "voice-join",
+      channelId,
+      sfu: sfuModeRef.current || undefined,
+      since: mine?.joinedAt,
+      muted: wasAnnounced ? mutedRef.current : undefined,
+      deafened: wasAnnounced ? deafenedRef.current : undefined,
+    });
+    if (!joined) return;
     announcedConnectionRef.current = connectionId;
+    announcedSessionRef.current = session;
+    if (sameId) {
+      // Resumed after a restart: same seat, same LiveKit identity, same peer
+      // ids. Only the hub forgot us, so tell it what we are sharing again and
+      // leave every media connection alone.
+      announceVideoRef.current();
+      return;
+    }
     // The first announcement is meshed by the roster effect; only a reconnect
     // needs the teardown + rebuild here.
     if (!wasAnnounced) return;
@@ -1605,7 +1639,7 @@ export function useVoice({
       }
       callPeer(remoteId);
     }
-  }, [channelId, connectionId, send, closePeer, callPeer, connectSfu, dropToMesh]);
+  }, [channelId, connectionId, session, send, closePeer, callPeer, connectSfu, dropToMesh]);
 
   /**
    * Watchdog: a mesh call can lose a single pair — an offer that never landed,
@@ -1687,6 +1721,7 @@ export function useVoice({
   negotiateRef.current = negotiatePeer;
 
   /** Publishes which of your streams is the camera and which is the screen. */
+  const announceVideoRef = useRef<() => void>(() => {});
   const announceVideo = useCallback(() => {
     send({
       t: "voice-state",
@@ -1707,6 +1742,7 @@ export function useVoice({
       }>,
     );
   }, [send]);
+  announceVideoRef.current = announceVideo;
 
   const stopScreenShare = useCallback(() => {
     const stream = screenStreamRef.current;
@@ -2031,6 +2067,9 @@ export function useVoice({
                 autoGainControl: false,
                 // Keep hearing it yourself while it is shared.
                 suppressLocalAudioPlayback: false,
+                // Leave this page's own playback (everyone's voices) out of
+                // system audio, or the room hears itself. Chromium only.
+                restrictOwnAudio: true,
               } as MediaTrackConstraints,
               // Chromium hints: offer "Share system audio" for whole screens and
               // pre-tick the audio box for tabs. Ignored where unsupported.

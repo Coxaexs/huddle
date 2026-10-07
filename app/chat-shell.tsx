@@ -2856,6 +2856,7 @@ export function ChatShell() {
   }, [servers]);
   const voice = useVoice({
     connectionId: hub.connectionId,
+    session: hub.session,
     rooms: hub.voice,
     send: hub.send,
     roomBitrates,

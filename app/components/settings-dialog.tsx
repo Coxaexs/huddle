@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
-  User, ShieldCheck, LogOut, Search, Music, ChevronLeft
+  User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
+import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 import { PhonePushSettings } from "./phone-push-settings";
 import { disableWebPush, enableWebPush } from "../lib/web-push";
 import { Avatar } from "./avatar";
@@ -757,6 +758,8 @@ export function SettingsDialog({
   const [usernamePassword, setUsernamePassword] = useState("");
   const [newEmail, setNewEmail] = useState(user.email || "");
   const [emailPassword, setEmailPassword] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const canCreateInvites = Boolean(user.isAdmin || user.canInvite);
   const [permissionUsers, setPermissionUsers] = useState<
@@ -1288,17 +1291,40 @@ export function SettingsDialog({
     }
   }
 
+  useEffect(() => {
+    apiFetch<{ pending: string | null }>("/api/settings/email")
+      .then((data) => setPendingEmail(data.pending))
+      .catch(() => {});
+  }, []);
+
   async function saveEmail() {
     setError("");
     try {
-      const data = await apiFetch<{ user: PublicUser }>("/api/settings/email", {
+      const data = await apiFetch<{ pending: string }>("/api/settings/email", {
         method: "POST",
         body: JSON.stringify({ email: newEmail.trim(), password: emailPassword }),
       });
       setEmailPassword("");
+      setEmailCode("");
+      setPendingEmail(data.pending);
+      setStatus(`We mailed a code to ${data.pending}. Enter it below to finish.`);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not send the code.");
+    }
+  }
+
+  async function verifyEmail() {
+    setError("");
+    try {
+      const data = await apiFetch<{ user: PublicUser }>("/api/settings/email/verify", {
+        method: "POST",
+        body: JSON.stringify({ code: emailCode }),
+      });
+      setEmailCode("");
+      setPendingEmail(null);
       setNewEmail(data.user.email || "");
       onUser(data.user);
-      setStatus("Email saved. Password reset links will go there.");
+      setStatus("Email verified. Password reset links will go there.");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save your email.");
     }
@@ -1546,6 +1572,31 @@ export function SettingsDialog({
               );
             })}
           </nav>
+
+          {KOFI_URL && (
+            <a
+              href={KOFI_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-nav-btn text-[#a5b4fc] hover:text-white"
+              title="Support Hoffle on Ko-fi"
+            >
+              <Coffee size={16} className="shrink-0" />
+              <span className="truncate">Support on Ko-fi</span>
+            </a>
+          )}
+          {GITHUB_SPONSORS_URL && (
+            <a
+              href={GITHUB_SPONSORS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-nav-btn text-[#f472b6] hover:text-white"
+              title="Sponsor Hoffle on GitHub"
+            >
+              <Heart size={16} className="shrink-0" />
+              <span className="truncate">GitHub Sponsors</span>
+            </a>
+          )}
 
           <button
             type="button"
@@ -2576,8 +2627,31 @@ export function SettingsDialog({
                     !emailPassword
                   }
                 >
-                  {user.email ? "Change email" : "Add email"}
+                  {user.email ? "Send code to change email" : "Send code to add email"}
                 </button>
+                {pendingEmail && (
+                  <>
+                    <label htmlFor="settings-email-code">Code sent to {pendingEmail}</label>
+                    <input
+                      id="settings-email-code"
+                      value={emailCode}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="123456"
+                      onChange={(event) =>
+                        setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={verifyEmail}
+                      disabled={emailCode.length !== 6}
+                    >
+                      Verify email
+                    </button>
+                  </>
+                )}
               </section>
 
               <section className="profile-studio-section">

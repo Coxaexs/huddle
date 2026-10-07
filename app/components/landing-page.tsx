@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { Coffee, Heart } from "lucide-react";
 import { CopyButton, DownloadButton, ThemeShowcase, type ShowcaseTheme } from "./landing-client";
-import { APP_URL, GithubMark, RELEASES, REPO, SITE, SiteShell, SUPPORT_URL } from "./site-chrome";
+import { APP_URL, GithubMark, RELEASES, REPO, SITE, SiteShell, KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 
 /**
  * hoffle.online — the public landing page.
@@ -559,8 +560,15 @@ export function LandingPage() {
               <a href={REPO} className={secondaryButton}>
                 <GithubMark className="h-4 w-4" /> Hoffle on GitHub
               </a>
-              {SUPPORT_URL && (
-                <a href={SUPPORT_URL} className={secondaryButton}>Support the project</a>
+              {KOFI_URL && (
+                <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
+                  <Coffee className="h-4 w-4" /> Support on Ko-fi
+                </a>
+              )}
+              {GITHUB_SPONSORS_URL && (
+                <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
+                  <Heart className="h-4 w-4 text-[#ea4aaa]" /> GitHub Sponsors
+                </a>
               )}
             </div>
           </div>

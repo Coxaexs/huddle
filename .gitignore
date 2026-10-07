@@ -11,6 +11,7 @@ appledouble-quarantine/
 
 # Local wrangler state: the live D1 database and R2 uploads
 state/
+state.*/
 
 # Secrets
 .dev.vars
