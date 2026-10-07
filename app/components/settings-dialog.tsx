@@ -755,6 +755,8 @@ export function SettingsDialog({
   const [next, setNext] = useState("");
   const [newUsername, setNewUsername] = useState(user.username);
   const [usernamePassword, setUsernamePassword] = useState("");
+  const [newEmail, setNewEmail] = useState(user.email || "");
+  const [emailPassword, setEmailPassword] = useState("");
   const [invites, setInvites] = useState<Invite[]>([]);
   const canCreateInvites = Boolean(user.isAdmin || user.canInvite);
   const [permissionUsers, setPermissionUsers] = useState<
@@ -1286,6 +1288,22 @@ export function SettingsDialog({
     }
   }
 
+  async function saveEmail() {
+    setError("");
+    try {
+      const data = await apiFetch<{ user: PublicUser }>("/api/settings/email", {
+        method: "POST",
+        body: JSON.stringify({ email: newEmail.trim(), password: emailPassword }),
+      });
+      setEmailPassword("");
+      setNewEmail(data.user.email || "");
+      onUser(data.user);
+      setStatus("Email saved. Password reset links will go there.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not save your email.");
+    }
+  }
+
   async function savePassword() {
     setError("");
     try {
@@ -1411,7 +1429,7 @@ export function SettingsDialog({
       title: "USER SETTINGS",
       items: [
         { id: "profile" as Tab, label: "Profile", icon: User, desc: "Avatar, banner, bio, pride badges, and custom CSS" },
-        { id: "password" as Tab, label: "Account & Password", icon: ShieldCheck, desc: "Username, password and account security" },
+        { id: "password" as Tab, label: "Account & Password", icon: ShieldCheck, desc: "Username, email, password and account security" },
         { id: "activities" as Tab, label: "Activities & Privacy", icon: Activity, desc: "Status sharing, games and Spotify" },
       ],
     },
@@ -2515,6 +2533,50 @@ export function SettingsDialog({
                   disabled={!newUsername.trim() || newUsername.trim() === user.username || !usernamePassword}
                 >
                   Change username
+                </button>
+              </section>
+
+              <section className="profile-studio-section">
+                <h3 className="profile-studio-section-title">Email</h3>
+                {!user.email && (
+                  <p className="auth-error">
+                    You have no email yet. Add one so you can reset your password if you forget it.
+                  </p>
+                )}
+                <label htmlFor="settings-email">Email</label>
+                <input
+                  id="settings-email"
+                  type="email"
+                  value={newEmail}
+                  autoComplete="email"
+                  maxLength={254}
+                  placeholder="you@example.com"
+                  onChange={(event) => setNewEmail(event.target.value)}
+                />
+                <p className="modal-hint">Only used for password reset links. Nobody else sees it.</p>
+                {newEmail.trim().toLowerCase() !== (user.email || "") && (
+                  <>
+                    <label htmlFor="settings-email-password">Password to confirm</label>
+                    <input
+                      id="settings-email-password"
+                      type="password"
+                      value={emailPassword}
+                      autoComplete="current-password"
+                      onChange={(event) => setEmailPassword(event.target.value)}
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={saveEmail}
+                  disabled={
+                    !newEmail.trim() ||
+                    newEmail.trim().toLowerCase() === (user.email || "") ||
+                    !emailPassword
+                  }
+                >
+                  {user.email ? "Change email" : "Add email"}
                 </button>
               </section>
 

@@ -2,6 +2,7 @@ import {
   AVATAR_COLORS,
   createSession,
   hashPassword,
+  normalizeEmail,
   publicUser,
   sessionCookie,
   validatePassword,
@@ -24,6 +25,7 @@ const SIGNUP_RATE_LIMIT = { limit: 5, windowSeconds: 600 } as const;
 interface SignupBody {
   username?: string;
   password?: string;
+  email?: string;
   displayName?: string;
   invite?: string;
 }
@@ -58,6 +60,9 @@ export async function POST(request: Request) {
   if (usernameError) return Response.json({ error: usernameError }, { status: 400 });
   const passwordError = validatePassword(password);
   if (passwordError) return Response.json({ error: passwordError }, { status: 400 });
+  const parsedEmail = normalizeEmail(body.email);
+  if ("error" in parsedEmail) return Response.json({ error: parsedEmail.error }, { status: 400 });
+  const email = parsedEmail.email;
 
   const total = await db
     .prepare("SELECT COUNT(*) AS count FROM users")
@@ -130,6 +135,13 @@ export async function POST(request: Request) {
   if (taken) {
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
+  const emailTaken = await db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .bind(email)
+    .first();
+  if (emailTaken) {
+    return Response.json({ error: "Another account already uses that email." }, { status: 409 });
+  }
 
   const now = new Date().toISOString();
   const user: User = {
@@ -142,6 +154,7 @@ export async function POST(request: Request) {
     can_invite: isFirstUser ? 1 : 0,
     created_at: now,
     last_seen_at: now,
+    email,
   };
 
   // Claim the invite in one conditional UPDATE, so simultaneous signups can't
@@ -166,8 +179,8 @@ export async function POST(request: Request) {
   const inserted = await db
     .prepare(
       `INSERT OR IGNORE INTO users
-         (id, username, username_lower, display_name, password_hash, avatar, color, is_admin, can_invite, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       user.id,
@@ -175,6 +188,7 @@ export async function POST(request: Request) {
       user.username.toLowerCase(),
       user.display_name,
       passwordHash,
+      email,
       user.avatar,
       user.color,
       user.is_admin,
@@ -184,11 +198,11 @@ export async function POST(request: Request) {
     )
     .run();
   if (!inserted.meta.changes) {
-    // Someone took the username between the check above and this insert.
+    // Someone took the username (or email) between the check above and this insert.
     if (!isFirstUser) {
       await db.prepare("UPDATE invites SET uses = uses - 1 WHERE code = ?").bind(inviteCode).run();
     }
-    return Response.json({ error: "That username is taken." }, { status: 409 });
+    return Response.json({ error: "That username or email is already in use." }, { status: 409 });
   }
 
   // New accounts start with no servers unless the invite picked one.

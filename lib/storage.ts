@@ -42,6 +42,12 @@ export interface HuddleBindings {
   LIVEKIT_API_KEY?: string;
   /** LiveKit API Secret for minting room tokens */
   LIVEKIT_API_SECRET?: string;
+  /** Public origin for links in mail, e.g. "https://chat.hoffle.online". */
+  PUBLIC_URL?: string;
+  /** Resend API key for password-reset mail; without it links are only logged. */
+  RESEND_API_KEY?: string;
+  /** Sender for outgoing mail, e.g. "Hoffle <noreply@hoffle.online>". */
+  MAIL_FROM?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

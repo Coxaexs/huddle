@@ -804,10 +804,29 @@ async function migrate(db: D1Database): Promise<void> {
     ["avatar_frame", "ALTER TABLE users ADD COLUMN avatar_frame TEXT NOT NULL DEFAULT 'none'"],
     ["quick_reactions", "ALTER TABLE users ADD COLUMN quick_reactions TEXT NOT NULL DEFAULT '[]'"],
     ["hidden_emojis", "ALTER TABLE users ADD COLUMN hidden_emojis TEXT NOT NULL DEFAULT '[]'"],
+    // Optional recovery address (lower-cased), used for password resets.
+    ["email", "ALTER TABLE users ADD COLUMN email TEXT"],
+    // Set once someone clicks "Skip for now" on the add-an-email prompt.
+    ["email_prompt_skipped", "ALTER TABLE users ADD COLUMN email_prompt_skipped INTEGER NOT NULL DEFAULT 0"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
   if (userMigrations.length) await db.batch(userMigrations);
+  await db.batch([
+    db.prepare(
+      "CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL",
+    ),
+    // One-time password reset links; only the SHA-256 of the token is kept.
+    db.prepare(`CREATE TABLE IF NOT EXISTS password_resets (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS password_resets_user_idx ON password_resets(user_id)",
+    ),
+  ]);
 
   await db
     .prepare(`CREATE TABLE IF NOT EXISTS custom_themes (

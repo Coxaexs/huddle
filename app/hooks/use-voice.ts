@@ -137,41 +137,54 @@ interface UseVoiceOptions {
   roomBitrates?: Record<string, number>;
 }
 
-export type ScreenShareQuality = "720p30" | "900p24" | "900p30" | "1080p24" | "1080p30" | "1080p60";
+/** Screen share heights on offer, lowest first. */
+export const SCREEN_RESOLUTIONS = [480, 720, 900, 1080] as const;
+/** Screen share frame rates on offer, lowest first. */
+export const SCREEN_FRAMERATES = [15, 24, 30, 60] as const;
+export type ScreenResolution = (typeof SCREEN_RESOLUTIONS)[number];
+export type ScreenFramerate = (typeof SCREEN_FRAMERATES)[number];
+/** Resolution and frame rate together, e.g. "1080p30". */
+export type ScreenShareQuality = `${ScreenResolution}p${ScreenFramerate}`;
 
-/** Every offered quality, lowest first: the order pickers show and cycle through. */
-export const SCREEN_SHARE_QUALITIES: ScreenShareQuality[] = [
-  "720p30", "900p24", "900p30", "1080p24", "1080p30", "1080p60",
-];
+/** Every combination, lowest first. */
+export const SCREEN_SHARE_QUALITIES: ScreenShareQuality[] = SCREEN_RESOLUTIONS.flatMap((height) =>
+  SCREEN_FRAMERATES.map((fps) => `${height}p${fps}` as ScreenShareQuality),
+);
+
+export function screenQualityParts(quality: ScreenShareQuality): {
+  height: ScreenResolution;
+  fps: ScreenFramerate;
+} {
+  const [height, fps] = quality.split("p").map(Number);
+  return { height: height as ScreenResolution, fps: fps as ScreenFramerate };
+}
+
+export function makeScreenQuality(height: ScreenResolution, fps: ScreenFramerate): ScreenShareQuality {
+  return `${height}p${fps}`;
+}
+
+function isScreenQuality(value: unknown): value is ScreenShareQuality {
+  return SCREEN_SHARE_QUALITIES.includes(value as ScreenShareQuality);
+}
 
 /** "900p 24FPS" — for the live badge. */
 export function screenQualityLabel(quality: ScreenShareQuality): string {
-  const [height, fps] = quality.split("p");
+  const { height, fps } = screenQualityParts(quality);
   return `${height}p ${fps}FPS`;
 }
 
-/** The quality after this one, wrapping round. */
+/** The next resolution up at the same frame rate, wrapping round. */
 export function nextScreenQuality(quality: ScreenShareQuality): ScreenShareQuality {
-  const index = SCREEN_SHARE_QUALITIES.indexOf(quality);
-  return SCREEN_SHARE_QUALITIES[(index + 1) % SCREEN_SHARE_QUALITIES.length];
+  const { height, fps } = screenQualityParts(quality);
+  const index = SCREEN_RESOLUTIONS.indexOf(height);
+  return makeScreenQuality(SCREEN_RESOLUTIONS[(index + 1) % SCREEN_RESOLUTIONS.length], fps);
 }
 
-/** 24 fps is the film setting: smooth motion matters more than crisp text. */
-export function isFilmQuality(quality: ScreenShareQuality): boolean {
-  return quality.endsWith("p24");
+/** Capture size for a quality: 16:9 at its height. */
+function screenConstraints(quality: ScreenShareQuality) {
+  const { height, fps } = screenQualityParts(quality);
+  return { width: Math.round((height * 16) / 9), height, frameRate: fps };
 }
-
-const SCREEN_SHARE_CONSTRAINTS: Record<
-  ScreenShareQuality,
-  { width: number; height: number; frameRate: number }
-> = {
-  "720p30": { width: 1280, height: 720, frameRate: 30 },
-  "900p24": { width: 1600, height: 900, frameRate: 24 },
-  "900p30": { width: 1600, height: 900, frameRate: 30 },
-  "1080p24": { width: 1920, height: 1080, frameRate: 24 },
-  "1080p30": { width: 1920, height: 1080, frameRate: 30 },
-  "1080p60": { width: 1920, height: 1080, frameRate: 60 },
-};
 
 /**
  * Voice bitrate for a mesh of `listeners` other connections, under the
@@ -505,10 +518,43 @@ export function useVoice({
   const [localVideos, setLocalVideos] = useState<
     Array<{ kind: "camera" | "screen"; stream: MediaStream }>
   >([]);
-  const [screenQuality, setScreenQuality] =
-    useState<ScreenShareQuality>("1080p30");
+  const [screenQuality, setScreenQualityState] = useState<ScreenShareQuality>(() => {
+    if (typeof window === "undefined") return "1080p30";
+    try {
+      const saved = localStorage.getItem("huddle:screenshare-quality");
+      return isScreenQuality(saved) ? saved : "1080p30";
+    } catch {
+      return "1080p30";
+    }
+  });
+  const setScreenQuality = useCallback((quality: ScreenShareQuality) => {
+    setScreenQualityState(quality);
+    try {
+      localStorage.setItem("huddle:screenshare-quality", quality);
+    } catch {}
+  }, []);
   const screenQualityRef = useRef(screenQuality);
   screenQualityRef.current = screenQuality;
+  /**
+   * Film mode: smooth motion over crisp text. The encoder drops resolution
+   * before frames, and slow viewers get a softer picture rather than a choppy one.
+   */
+  const [screenFilm, setScreenFilmState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("huddle:screenshare-film") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setScreenFilm = useCallback((enabled: boolean) => {
+    setScreenFilmState(enabled);
+    try {
+      localStorage.setItem("huddle:screenshare-film", String(enabled));
+    } catch {}
+  }, []);
+  const screenFilmRef = useRef(screenFilm);
+  screenFilmRef.current = screenFilm;
   const [micSettings, setMicSettingsState] = useState<MicSettings>(() =>
     readMicSettings(),
   );
@@ -1460,7 +1506,7 @@ export function useVoice({
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {
         await (track.kind === "video"
-          ? publish(track, "screen", { screen: screenQualityRef.current })
+          ? publish(track, "screen", { screen: screenQualityRef.current, film: screenFilmRef.current })
           : publish(track, "screen-audio", { bitrate: SFU_SCREEN_AUDIO_BITRATE }));
       }
       for (const track of cameraStreamRef.current?.getVideoTracks() || []) {
@@ -1958,7 +2004,7 @@ export function useVoice({
   }, [channelId, switchMicrophone]);
 
   const startScreenShare = useCallback(
-    async (quality: ScreenShareQuality = screenQuality, withAudio?: boolean) => {
+    async (quality: ScreenShareQuality = screenQuality, withAudio?: boolean, film: boolean = screenFilm) => {
       if (!channelIdRef.current) {
         setError("Join a voice channel before sharing your screen.");
         return;
@@ -1966,7 +2012,7 @@ export function useVoice({
       stopScreenShare();
       const shouldShareAudio = withAudio !== undefined ? withAudio : screenShareAudio;
       try {
-        const profile = SCREEN_SHARE_CONSTRAINTS[quality];
+        const profile = screenConstraints(quality);
         let stream: MediaStream;
         if (shouldShareAudio) {
           try {
@@ -2029,9 +2075,10 @@ export function useVoice({
         // Tells the encoder what it is looking at: a film wants smooth motion,
         // a desktop wants legible text. Applies to the mesh as well.
         const video = stream.getVideoTracks()[0];
-        if (video) video.contentHint = isFilmQuality(quality) ? "motion" : "detail";
+        if (video) video.contentHint = film ? "motion" : "detail";
         screenStreamRef.current = stream;
         setScreenQuality(quality);
+        setScreenFilm(film);
         setScreenSharing(true);
         const audioTracks = stream.getAudioTracks();
         setHasScreenAudio(audioTracks.length > 0);
@@ -2056,7 +2103,7 @@ export function useVoice({
             ?.publish(
               track,
               track.kind === "video" ? "screen" : "screen-audio",
-              { screen: quality, bitrate: SFU_SCREEN_AUDIO_BITRATE },
+              { screen: quality, film, bitrate: SFU_SCREEN_AUDIO_BITRATE },
             )
             .catch(() => undefined);
         }
@@ -2066,7 +2113,7 @@ export function useVoice({
         }
       }
     },
-    [announceVideo, negotiatePeer, screenQuality, screenShareAudio, stopScreenShare],
+    [announceVideo, negotiatePeer, screenFilm, screenQuality, screenShareAudio, setScreenFilm, setScreenQuality, stopScreenShare],
   );
 
   const leave = useCallback(() => {
@@ -2339,6 +2386,8 @@ export function useVoice({
     toggleScreenAudio,
     screenQuality,
     setScreenQuality,
+    screenFilm,
+    setScreenFilm,
     startScreenShare,
     stopScreenShare,
     cameraOn,

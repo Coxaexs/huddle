@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import type { PublicUser } from "@/lib/users";
@@ -13,25 +13,65 @@ interface AuthGateProps {
 }
 
 export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
-  const [mode, setMode] = useState<"signin" | "signup">(
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot" | "reset">(
     bootstrap ? "signup" : "signin",
   );
+  const [resetToken, setResetToken] = useState("");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [notice, setNotice] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // A password reset mail links back here with ?reset=<token>.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get("reset");
+    if (!token) return;
+    setResetToken(token);
+    setMode("reset");
+    url.searchParams.delete("reset");
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  function switchMode(next: typeof mode) {
+    setMode(next);
+    setError("");
+    setNotice("");
+    setPassword("");
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setBusy(true);
     try {
+      if (mode === "forgot") {
+        await apiFetch("/api/auth/forgot", {
+          method: "POST",
+          body: JSON.stringify({ identifier: username }),
+        });
+        setNotice(
+          "If that account has an email, a reset link is on its way. It works for one hour.",
+        );
+        return;
+      }
+      if (mode === "reset") {
+        const data = await apiFetch<{ user: PublicUser }>("/api/auth/reset", {
+          method: "POST",
+          body: JSON.stringify({ token: resetToken, password }),
+        });
+        onSignedIn(data.user);
+        return;
+      }
       const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const body =
         mode === "signup"
-          ? { username, password, displayName, invite }
+          ? { username, password, email, displayName, invite }
           : { username, password };
       const data = await apiFetch<{
         user: PublicUser;
@@ -58,30 +98,44 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           {bootstrap ? "SET UP YOUR HOFFLE" : "WELCOME BACK"}
         </p>
         <h2>
-          {mode === "signup"
+          {mode === "forgot"
+            ? "Forgot your password?"
+            : mode === "reset"
+              ? "Choose a new password"
+              : mode === "signup"
             ? bootstrap
               ? "Claim this Hoffle"
               : "Join with an invite"
             : "Sign in"}
         </h2>
         <p>
-          {mode === "signup"
+          {mode === "forgot"
+            ? "Enter your username or email and we'll mail you a reset link."
+            : mode === "reset"
+              ? "This signs you out everywhere else."
+              : mode === "signup"
             ? bootstrap
               ? "The first account owns this Hoffle and can invite everyone else."
               : "Ask a friend already inside for an invite code."
             : "Your name and messages stay on your own server."}
         </p>
 
-        <label htmlFor="huddle-username">Username</label>
-        <input
-          id="huddle-username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          maxLength={24}
-          autoFocus
-          autoComplete="username"
-          placeholder="yourname"
-        />
+        {mode !== "reset" && (
+          <>
+            <label htmlFor="huddle-username">
+              {mode === "forgot" ? "Username or email" : "Username"}
+            </label>
+            <input
+              id="huddle-username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              maxLength={mode === "forgot" ? 254 : 24}
+              autoFocus
+              autoComplete={mode === "forgot" ? "email" : "username"}
+              placeholder={mode === "forgot" ? "yourname or you@example.com" : "yourname"}
+            />
+          </>
+        )}
 
         {mode === "signup" && (
           <>
@@ -93,20 +147,37 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               maxLength={40}
               placeholder="What friends should see"
             />
+            <label htmlFor="huddle-email">Email</label>
+            <input
+              id="huddle-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              maxLength={254}
+              autoComplete="email"
+              placeholder="For password resets only"
+            />
           </>
         )}
 
-        <label htmlFor="huddle-password">Password</label>
-        <input
-          id="huddle-password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete={
-            mode === "signup" ? "new-password" : "current-password"
-          }
-          placeholder={mode === "signup" ? "At least 8 characters" : "••••••••"}
-        />
+        {mode !== "forgot" && (
+          <>
+            <label htmlFor="huddle-password">
+              {mode === "reset" ? "New password" : "Password"}
+            </label>
+            <input
+              id="huddle-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoFocus={mode === "reset"}
+              autoComplete={
+                mode === "signin" ? "current-password" : "new-password"
+              }
+              placeholder={mode === "signin" ? "••••••••" : "At least 8 characters"}
+            />
+          </>
+        )}
 
         {mode === "signup" && (
           <>
@@ -124,23 +195,55 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
         )}
 
         {error && <p className="auth-error">{error}</p>}
+        {notice && <p className="modal-hint">{notice}</p>}
 
-        <button type="submit" disabled={busy || !username || !password}>
+        <button
+          type="submit"
+          disabled={
+            busy ||
+            (mode === "forgot"
+              ? !username
+              : mode === "reset"
+                ? !password
+                : !username || !password || (mode === "signup" && !email))
+          }
+        >
           {busy
             ? "One moment…"
-            : mode === "signup"
-              ? "Create my account"
-              : "Enter the Huddle"}
+            : mode === "forgot"
+              ? "Send reset link"
+              : mode === "reset"
+                ? "Save and sign in"
+                : mode === "signup"
+                  ? "Create my account"
+                  : "Enter the Huddle"}
         </button>
 
-        {!bootstrap && (
+        {mode === "signin" && (
           <button
             type="button"
             className="auth-switch"
-            onClick={() => {
-              setMode(mode === "signup" ? "signin" : "signup");
-              setError("");
-            }}
+            onClick={() => switchMode("forgot")}
+          >
+            I forgot my password
+          </button>
+        )}
+
+        {(mode === "forgot" || mode === "reset") && (
+          <button
+            type="button"
+            className="auth-switch"
+            onClick={() => switchMode("signin")}
+          >
+            Back to sign in
+          </button>
+        )}
+
+        {!bootstrap && (mode === "signin" || mode === "signup") && (
+          <button
+            type="button"
+            className="auth-switch"
+            onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
           >
             {mode === "signup"
               ? "I already have an account"

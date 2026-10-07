@@ -52,14 +52,16 @@ export interface User {
   custom_theme?: string | null;
   quick_reactions?: string | null;
   hidden_emojis?: string | null;
+  email?: string | null;
+  email_prompt_skipped?: number;
 }
 
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity",
   "social_links", "avatar_frame", "color", "is_admin", "can_invite", "status",
-  "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "created_at",
-  "last_seen_at",
+  "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
+  "email_prompt_skipped", "created_at", "last_seen_at",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
@@ -127,6 +129,8 @@ export function publicUser(user: User): PublicUser {
     canInvite: Boolean(user.is_admin || user.can_invite),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
+    email: user.email || null,
+    emailPromptSkipped: Boolean(user.email_prompt_skipped),
   };
 }
 
@@ -238,7 +242,7 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function sha256(value: string): Promise<string> {
+export async function sha256(value: string): Promise<string> {
   return toHex(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
   );
@@ -385,6 +389,35 @@ export function validatePassword(password: string): string | null {
   if (password.length < 8) return "Passwords need at least 8 characters.";
   if (password.length > 200) return "That password is too long.";
   return null;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Lower-cases and validates an email; returns it, or an error message. */
+export function normalizeEmail(raw: unknown): { email: string } | { error: string } {
+  const email = (typeof raw === "string" ? raw : "").trim().toLowerCase();
+  if (!email) return { error: "Enter your email address." };
+  if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
+    return { error: "That does not look like an email address." };
+  }
+  return { email };
+}
+
+/** Random URL-safe token (hex), e.g. for password reset links. */
+export function randomToken(): string {
+  return toHex(crypto.getRandomValues(new Uint8Array(32)).buffer);
+}
+
+/** Signs a user out everywhere except the session `keepToken` belongs to. */
+export async function destroyOtherSessions(
+  db: D1Database,
+  userId: string,
+  keepToken: string | null,
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
+    .bind(userId, keepToken ? await sha256(keepToken) : "")
+    .run();
 }
 
 /** Invite codes are short, unambiguous and case-insensitive. */

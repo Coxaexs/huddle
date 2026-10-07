@@ -12,6 +12,8 @@ import {
 import {
   DEEPPIXEL_URL,
   DEFAULT_TIERS,
+  RICHUP_URL,
+  richupRoomUrl,
   type ActivityStroke,
   type InitiativeEntry,
   type RoomActivity,
@@ -37,6 +39,7 @@ import {
   Undo2,
   Gamepad2,
   Maximize2,
+  Landmark,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 
@@ -98,6 +101,12 @@ const ACTIVITY_CHOICES: Array<{
     icon: <Gamepad2 size={20} />,
     name: "DeepPixel",
     description: "Multiplayer property board game with bots",
+  },
+  {
+    kind: "richup",
+    icon: <Landmark size={20} />,
+    name: "Richup",
+    description: "Play Richup.io together in one shared room",
   },
 ];
 
@@ -769,6 +778,7 @@ export function RoomActivities({
   const gameFrameRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [guess, setGuess] = useState("");
+  const [richupDraft, setRichupDraft] = useState("");
 
   useEffect(() => {
     if (activity) onOpen(true);
@@ -886,13 +896,27 @@ export function RoomActivities({
     void action({ action: "update", state: nextState });
   }
 
-  // DeepPixel stays mounted while collapsed so players don't drop out of the game
-  if (!open && activity?.kind !== "deeppixel") return null;
+  // Embedded games stay mounted while collapsed so players don't drop out
+  const isGame = activity?.kind === "deeppixel" || activity?.kind === "richup";
+  if (!open && !isGame) return null;
 
   const deepPixelSrc =
     activity?.kind === "deeppixel"
       ? deepPixelUrl(String(activity.state.gameId || ""), userName, userId)
       : "";
+  const richupRoom = activity?.kind === "richup" ? String(activity.state.roomUrl || "") : "";
+  const gameSrc =
+    activity?.kind === "richup" ? richupRoom || RICHUP_URL : deepPixelSrc;
+
+  function shareRichupRoom() {
+    const roomUrl = richupRoomUrl(richupDraft);
+    if (!roomUrl) {
+      setError("Paste a Richup room link, like richup.io/room/qv62k");
+      return;
+    }
+    setRichupDraft("");
+    optimistic({ roomUrl });
+  }
 
   return (
     <section
@@ -916,7 +940,7 @@ export function RoomActivities({
           </div>
         </div>
         <div>
-          {activity?.kind === "deeppixel" && (
+          {isGame && (
             <button
               type="button"
               onClick={() => void gameFrameRef.current?.requestFullscreen?.()}
@@ -926,13 +950,9 @@ export function RoomActivities({
               <Maximize2 size={15} />
             </button>
           )}
-          {(activity?.kind === "watch" || activity?.kind === "deeppixel") && (
+          {(activity?.kind === "watch" || isGame) && (
             <a
-              href={
-                activity.kind === "deeppixel"
-                  ? deepPixelSrc
-                  : String(activity.state.url || "")
-              }
+              href={isGame ? gameSrc : String(activity?.state.url || "")}
               target="_blank"
               rel="noreferrer"
             >
@@ -978,11 +998,36 @@ export function RoomActivities({
             allow="autoplay; fullscreen; clipboard-write"
           />
         </div>
-      ) : activity.kind === "deeppixel" ? (
+      ) : isGame ? (
         <div className="watch-embed deeppixel-embed" ref={gameFrameRef}>
+          {activity.kind === "richup" && (
+            <form
+              className="richup-room-bar"
+              onSubmit={(event) => {
+                event.preventDefault();
+                shareRichupRoom();
+              }}
+            >
+              <span>
+                {richupRoom
+                  ? `Room ${richupRoom.split("/").pop()} is shared with everyone here`
+                  : "Create a room below, then paste its invite link so everyone joins it"}
+              </span>
+              <input
+                value={richupDraft}
+                onChange={(event) => setRichupDraft(event.target.value)}
+                placeholder={richupRoom ? "Switch to another room link…" : "richup.io/room/…"}
+                maxLength={120}
+              />
+              <button type="submit" disabled={!richupDraft.trim()}>
+                {richupRoom ? "Switch" : "Share"}
+              </button>
+            </form>
+          )}
           <iframe
-            src={deepPixelSrc}
-            title="DeepPixel"
+            key={gameSrc}
+            src={gameSrc}
+            title={activityTitle(activity.kind)}
             allow="autoplay; fullscreen; clipboard-write; screen-wake-lock"
             allowFullScreen
           />

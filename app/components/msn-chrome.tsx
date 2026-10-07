@@ -19,7 +19,7 @@ import { GAME_INFO, GAME_KINDS, SOLO_GAMES, type GameKind } from "@/lib/games";
 import type { PersonalEmoticon } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../hooks/use-msn-extras";
 import { MSN_PICTURES, type MsnPicture } from "../lib/msn-pictures";
-import { playWinkScene } from "../lib/msn-winks";
+import { playWinkScene, preloadWinkPlayer, winkThumbUrl } from "../lib/msn-winks";
 import {
   SOUND_EVENTS,
   playSound,
@@ -240,7 +240,7 @@ export function MsnWhatsNew({
       {open &&
         (feed.length ? (
           <ul>
-            {feed.slice(0, 6).map((entry) => (
+            {feed.map((entry) => (
               <li key={entry.id}>
                 <button type="button" onClick={() => onOpen(entry.userId)}>
                   <WhatsNewLine entry={entry} />
@@ -287,38 +287,69 @@ export function playNudge() {
   playSound("nudge");
 }
 
-type WinkMotion = "pop" | "fly" | "shake" | "sway" | "float";
-type WinkParticles = "rise" | "fall" | "burst";
-
 /**
- * Winks: Messenger 7's full-window animations. Ours are drawn with emoji and
- * CSS (see .msn-wink-* in globals.css), sent as a message payload like a
- * nudge, and replayable from the line they leave in the conversation.
+ * Winks: Messenger's full-window Flash animations, the originals, played by
+ * Ruffle (app/lib/msn-winks.ts). Sent as a message payload like a nudge and
+ * replayable from the line they leave in the conversation. The emoji stands in
+ * for the wink in plain text (notifications, other clients).
  */
-export const MSN_WINKS: ReadonlyArray<{
-  id: string;
-  name: string;
-  emoji: string;
-  particle: string;
-  motion: WinkMotion;
-  particles: WinkParticles;
-}> = [
-  { id: "kiss", name: "Kiss", emoji: "💋", particle: "💕", motion: "fly", particles: "rise" },
-  { id: "hearts", name: "Hearts", emoji: "❤️", particle: "💖", motion: "pop", particles: "rise" },
-  { id: "laugh", name: "LOL", emoji: "🤣", particle: "😂", motion: "shake", particles: "burst" },
-  { id: "cake", name: "Birthday", emoji: "🎂", particle: "🎉", motion: "pop", particles: "burst" },
-  { id: "storm", name: "Thunderstorm", emoji: "⛈️", particle: "💧", motion: "float", particles: "fall" },
-  { id: "dance", name: "Dance", emoji: "🕺", particle: "🎵", motion: "sway", particles: "rise" },
-  { id: "fireworks", name: "Fireworks", emoji: "🎆", particle: "✨", motion: "pop", particles: "burst" },
-  { id: "knock", name: "Knock Knock", emoji: "🚪", particle: "👊", motion: "shake", particles: "burst" },
-  { id: "guitar", name: "Guitar Smash", emoji: "🎸", particle: "💥", motion: "shake", particles: "burst" },
-  { id: "flowers", name: "Flowers", emoji: "💐", particle: "🌸", motion: "sway", particles: "fall" },
-  { id: "ghost", name: "Boo!", emoji: "👻", particle: "🦇", motion: "float", particles: "rise" },
-  { id: "sleepy", name: "Sleepy", emoji: "😴", particle: "💤", motion: "sway", particles: "rise" },
+export const MSN_WINKS: ReadonlyArray<{ id: string; name: string; emoji: string }> = [
+  { id: "kiss", name: "Kiss", emoji: "💋" },
+  { id: "heart", name: "Heart", emoji: "💗" },
+  { id: "laugh", name: "Laughing Face", emoji: "😆" },
+  { id: "laughing-girl", name: "Laughing Girl", emoji: "🤣" },
+  { id: "guitar-smash", name: "Guitar Smash", emoji: "🎸" },
+  { id: "frog", name: "Frog", emoji: "🐸" },
+  { id: "bow", name: "Bow", emoji: "🙇" },
+  { id: "knock", name: "Knock", emoji: "✊" },
+  { id: "dancing-pig", name: "Dancing Pig", emoji: "🐷" },
+  { id: "love-letter", name: "Love Letter", emoji: "💌" },
+  { id: "birthday", name: "Birthday Cake", emoji: "🎂" },
+  { id: "water-balloon", name: "Water Balloon", emoji: "💦" },
+  { id: "fartguy", name: "Fart Guy", emoji: "💨" },
+  { id: "ufo", name: "UFO", emoji: "🛸" },
+  { id: "sleepy", name: "Sleepy Guard", emoji: "💂" },
+  { id: "yawning-moon", name: "Yawning Moon", emoji: "🌙" },
+  { id: "waiting", name: "Waiting", emoji: "⏳" },
+  { id: "busy", name: "Busy", emoji: "📞" },
+  { id: "cry", name: "Crying Dog", emoji: "😭" },
+  { id: "punch", name: "Punch", emoji: "🥊" },
+  { id: "dart", name: "Bullseye", emoji: "🎯" },
+  { id: "bouncy-ball", name: "Bouncy Smiley", emoji: "🙂" },
+  { id: "silly-face", name: "Silly Face", emoji: "🤪" },
+  { id: "eyeball", name: "Eyeball", emoji: "👁️" },
+  { id: "lightbulb", name: "Bright Idea", emoji: "💡" },
+  { id: "imissyou", name: "I Miss You", emoji: "🥺" },
+  { id: "heartkey", name: "Key to My Heart", emoji: "🗝️" },
+  { id: "lipstick-girl", name: "Lipstick", emoji: "💄" },
+  { id: "rich", name: "Gold Coins", emoji: "💰" },
+  { id: "drink", name: "Cheers", emoji: "🍻" },
+  { id: "sunflower", name: "Sunflower", emoji: "🌻" },
+  { id: "stars", name: "Shooting Stars", emoji: "✨" },
+  { id: "notes", name: "Music Notes", emoji: "🎵" },
+  { id: "dance", name: "Dancing Bunny", emoji: "🐰" },
+  { id: "dancer", name: "Dancer", emoji: "🕺" },
+  { id: "snowboarder-girl", name: "Snowboarder", emoji: "🏂" },
+  { id: "taxi", name: "Rocket Taxi", emoji: "🚀" },
+  { id: "hello", name: "Hello!", emoji: "👋" },
+  { id: "byebye", name: "Bye Bye", emoji: "🪂" },
 ];
 
+/** Ids from before the winks were the real ones, so old messages still replay. */
+const OLD_WINK_IDS: Record<string, string> = {
+  hearts: "heart",
+  cake: "birthday",
+  storm: "water-balloon",
+  fireworks: "stars",
+  guitar: "guitar-smash",
+  flowers: "sunflower",
+  ghost: "ufo",
+};
+
 export function findWink(id: unknown) {
-  return typeof id === "string" ? MSN_WINKS.find((w) => w.id === id) ?? null : null;
+  if (typeof id !== "string") return null;
+  const real = OLD_WINK_IDS[id] ?? id;
+  return MSN_WINKS.find((w) => w.id === real) ?? null;
 }
 
 /**
@@ -820,6 +851,8 @@ function WinksMenu({
   onMore: () => void;
   onClose: () => void;
 }) {
+  // Fetch the Flash player while they choose, so the wink starts right away.
+  useEffect(() => preloadWinkPlayer(), []);
   return (
     <div className="msn-popover msn-winks" role="dialog" aria-label="Winks">
       <div className="msn-popover-title">
@@ -833,11 +866,9 @@ function WinksMenu({
             type="button"
             className="msn-wink-tile"
             onClick={() => onSend(wink.id)}
-            onMouseEnter={(event) => event.currentTarget.classList.add("previewing")}
-            onMouseLeave={(event) => event.currentTarget.classList.remove("previewing")}
             title={`Send the ${wink.name} wink`}
           >
-            <span className={`msn-wink-thumb motion-${wink.motion}`}>{wink.emoji}</span>
+            <img className="msn-wink-thumb" src={winkThumbUrl(wink.id)} alt="" width={40} height={40} loading="lazy" />
             <span>{wink.name}</span>
           </button>
         ))}
