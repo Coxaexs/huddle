@@ -433,6 +433,20 @@ export async function POST(request: Request) {
   if (!content && !attachmentKey && !hasPayloadForward) {
     return Response.json({ error: "A message cannot be empty." }, { status: 400 });
   }
+  // A server mute covers text-to-speech: no /tts message, so nobody's browser
+  // spends anything reading one aloud.
+  if (body.payload && typeof body.payload === "object" && "tts" in (body.payload as Record<string, unknown>)) {
+    const serverMuted = await db
+      .prepare("SELECT 1 FROM server_mutes WHERE target_id = ?")
+      .bind(user.id)
+      .first();
+    if (serverMuted) {
+      return Response.json(
+        { error: "A moderator muted you, so /tts is off too." },
+        { status: 403 },
+      );
+    }
+  }
 
   // Resolve the channel, falling back to the home server's #general.
   let channelId = body.channelId?.slice(0, 64) || null;

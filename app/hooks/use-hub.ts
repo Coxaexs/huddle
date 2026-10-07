@@ -50,6 +50,8 @@ interface HubHandlers {
     added: boolean,
   ) => void;
   onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
+  /** An administrator force-stopped /tts and /say in this channel. */
+  onTtsStop?: (channelId: string, by: string) => void;
   onTyping?: (channelId: string, userId: string, displayName: string) => void;
   onPoll?: (channelId: string, pollId: string, counts: number[]) => void;
   onBattlemap?: (
@@ -342,6 +344,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.userId,
               payload.added,
             );
+            break;
+          case "tts-stop":
+            handlersRef.current.onTtsStop?.(payload.channelId, payload.by);
             break;
           case "soundboard":
             handlersRef.current.onSoundboard?.(

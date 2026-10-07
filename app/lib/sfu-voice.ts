@@ -24,7 +24,8 @@ import {
  * from the hub, exactly as it does for the mesh.
  */
 
-export type SfuStreamKind = "voice" | "camera" | "screen";
+/** "tts": text-to-speech said into the call (/say), separate from the mic. */
+export type SfuStreamKind = "voice" | "camera" | "screen" | "tts";
 
 export interface SfuRemoteStream {
   /** The hub connection id this media belongs to, as the identity claims it. */
@@ -35,7 +36,10 @@ export interface SfuRemoteStream {
   stream: MediaStream;
 }
 
-export type SfuPublishKind = "mic" | "camera" | "screen" | "screen-audio";
+export type SfuPublishKind = "mic" | "camera" | "screen" | "screen-audio" | "tts";
+
+/** Track name that marks a published track as text-to-speech. */
+const TTS_TRACK_NAME = "tts";
 
 /** The token route's identity: `<userId>|<connectionId>`, user half server-set. */
 export function parseSfuIdentity(identity: string): { userId: string; connectionId: string } | null {
@@ -44,7 +48,7 @@ export function parseSfuIdentity(identity: string): { userId: string; connection
   return { userId: identity.slice(0, bar), connectionId: identity.slice(bar + 1) };
 }
 
-function kindOf(source: Track.Source): SfuStreamKind | null {
+function kindOf(source: Track.Source, trackName = ""): SfuStreamKind | null {
   switch (source) {
     case Track.Source.Microphone:
       return "voice";
@@ -54,7 +58,7 @@ function kindOf(source: Track.Source): SfuStreamKind | null {
     case Track.Source.ScreenShareAudio:
       return "screen";
     default:
-      return null;
+      return trackName === TTS_TRACK_NAME ? "tts" : null;
   }
 }
 
@@ -92,7 +96,7 @@ export interface SfuHandlers {
   /** The full set of remote streams, whenever it changes. */
   onStreams: (streams: SfuRemoteStream[]) => void;
   /** A remote microphone arrived: for the speaking meter and jitter tuning. */
-  onVoice: (connectionId: string, stream: MediaStream, receiver: RTCRtpReceiver | undefined) => void;
+  onVoice: (connectionId: string, stream: MediaStream, receiver: RTCRtpReceiver | undefined, kind: "voice" | "tts") => void;
   /** The connection is gone for good — not a reconnect, not our own leave. */
   onLost: () => void;
   /** Whether this tab asked not to receive someone's camera or screen. */
@@ -158,6 +162,14 @@ export class SfuVoice {
         red: true,
         audioPreset: { maxBitrate: options.bitrate ?? 64_000, priority: "high" },
         stopMicTrackOnMute: false,
+      };
+    } else if (kind === "tts") {
+      publish = {
+        source: Track.Source.Unknown,
+        name: TTS_TRACK_NAME,
+        dtx: false,
+        red: true,
+        audioPreset: { maxBitrate: 48_000 },
       };
     } else if (kind === "screen-audio") {
       publish = {
@@ -229,7 +241,7 @@ export class SfuVoice {
       if (parseSfuIdentity(participant.identity)?.connectionId !== connectionId) continue;
       for (const publication of participant.trackPublications.values()) {
         // A hidden screen share is silenced too, as it is in the mesh.
-        if (kindOf(publication.source) !== kind) continue;
+        if (kindOf(publication.source, publication.trackName) !== kind) continue;
         publication.setEnabled(!hidden);
       }
     }
@@ -252,10 +264,10 @@ export class SfuVoice {
   }
 
   private added(track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) {
-    const kind = kindOf(publication.source);
+    const kind = kindOf(publication.source, publication.trackName);
     const who = parseSfuIdentity(participant.identity);
     if (!kind || !who) return;
-    if (kind !== "voice" && this.handlers.isHidden(who.connectionId, kind)) {
+    if ((kind === "camera" || kind === "screen") && this.handlers.isHidden(who.connectionId, kind)) {
       publication.setEnabled(false);
     }
     const key = this.key(participant.identity, kind);
@@ -263,12 +275,12 @@ export class SfuVoice {
     if (!list.includes(track.mediaStreamTrack)) list.push(track.mediaStreamTrack);
     this.tracks.set(key, list);
     const stream = this.rebuild(key, who, kind);
-    if (kind === "voice" && stream) this.handlers.onVoice(who.connectionId, stream, track.receiver);
+    if ((kind === "voice" || kind === "tts") && stream) this.handlers.onVoice(who.connectionId, stream, track.receiver, kind);
     this.emit();
   }
 
   private removed(track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) {
-    const kind = kindOf(publication.source);
+    const kind = kindOf(publication.source, publication.trackName);
     const who = parseSfuIdentity(participant.identity);
     if (!kind || !who) return;
     const key = this.key(participant.identity, kind);

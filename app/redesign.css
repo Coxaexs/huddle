@@ -460,6 +460,52 @@
   justify-content: space-between;
 }
 
+/* Voice bar: dot sits on the "voice connected" line; buttons read as buttons. */
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-info {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-status .mini-voice-dot {
+  width: 7px;
+  height: 7px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) :is(.mini-voice-btn, .mini-voice-leave) {
+  border: 1px solid var(--line) !important;
+  background: color-mix(in srgb, var(--ink) 4%, transparent) !important;
+  color: var(--ink) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-btn:hover {
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--ink) 10%, transparent) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-btn.on {
+  border-color: color-mix(in srgb, var(--lavender) 55%, transparent) !important;
+  background: color-mix(in srgb, var(--lavender) 18%, transparent) !important;
+  color: var(--lavender) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-leave {
+  border-color: color-mix(in srgb, var(--coral) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--coral) 10%, transparent) !important;
+  color: var(--coral) !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .mini-voice-leave:hover {
+  background: color-mix(in srgb, var(--coral) 20%, transparent) !important;
+}
+
 /* Bot avatars carry a fixed purple from bot data; tint them with the theme
    accent instead so every theme stays in its own palette. */
 :root:not([data-custom-theme-id^="msn"]) .avatar.bot-avatar {
