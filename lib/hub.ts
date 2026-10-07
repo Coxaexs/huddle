@@ -150,6 +150,9 @@ export class HuddleHub extends DurableObject {
     if (url.pathname === "/socket") {
       return this.handleSocket(request, url);
     }
+    if (url.pathname === "/listen") {
+      return this.handleListener(request, url);
+    }
     if (url.pathname === "/broadcast" && request.method === "POST") {
       const body = (await request.json()) as {
         channelId: string;
@@ -166,6 +169,10 @@ export class HuddleHub extends DurableObject {
         },
         { audience: body.audience },
       );
+      // DMs carry an audience and never reach server-scoped bot listeners.
+      if (!body.audience?.length) {
+        await this.notifyListeners(body.channelId, body.message);
+      }
       return Response.json({ ok: true });
     }
     if (url.pathname === "/event" && request.method === "POST") {
@@ -381,6 +388,38 @@ export class HuddleHub extends DurableObject {
     this.markSeen(attachment);
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * A bot event stream's tap on message traffic for one server. It carries no
+   * attachment, so presence, voice and webSocketMessage all skip it.
+   */
+  private handleListener(request: Request, url: URL): Response {
+    if (request.headers.get("upgrade") !== "websocket") {
+      return new Response("Expected a WebSocket", { status: 426 });
+    }
+    const serverId = url.searchParams.get("serverId") || "";
+    if (!serverId) return new Response("Bad request", { status: 400 });
+
+    const pair = new WebSocketPair();
+    const [client, socket] = Object.values(pair);
+    this.ctx.acceptWebSocket(socket, [`listen:${serverId}`]);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async notifyListeners(channelId: string, message: unknown): Promise<void> {
+    const { serverId } = await this.channelInfo(channelId);
+    if (!serverId) return;
+    const listeners = this.ctx.getWebSockets(`listen:${serverId}`);
+    if (!listeners.length) return;
+    const payload = JSON.stringify({ t: "message", channelId, message });
+    for (const socket of listeners) {
+      try {
+        socket.send(payload);
+      } catch {
+        // Closing already.
+      }
+    }
   }
 
   // ------------------------------------------------------------- websockets

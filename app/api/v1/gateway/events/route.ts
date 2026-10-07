@@ -1,6 +1,6 @@
 import { authenticateBot } from "@/lib/bot-auth";
-import { ensureSchema } from "@/lib/schema";
-import { bindings, type StoredMessage } from "@/lib/storage";
+import type { PublicMessage } from "@/app/api/messages/route";
+import { listenToServer } from "@/lib/hub-client";
 
 export const dynamic = "force-dynamic";
 
@@ -23,19 +23,27 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const db = bindings().DB;
-  if (!db) {
-    return Response.json({ error: "Database not connected" }, { status: 503 });
+  // A bot only ever sees its own server; without one there is nothing to send.
+  const serverId = bot.serverId;
+  if (!serverId) {
+    return Response.json({ error: "Bot is not in a server" }, { status: 403 });
   }
-  await ensureSchema(db);
-
-  let lastCheckedTime = new Date().toISOString();
+  const socket = await listenToServer(serverId);
+  if (!socket) {
+    return Response.json({ error: "Realtime hub unavailable" }, { status: 503 });
+  }
 
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
+      const send = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          // The client went away.
+        }
+      };
 
-      // Send initial READY event
       const readyPayload = JSON.stringify({
         t: "READY",
         d: {
@@ -46,66 +54,59 @@ export async function GET(request: Request) {
             avatar: bot.avatar,
             bot: true,
           },
-          guilds: bot.serverId ? [{ id: bot.serverId }] : [],
+          guilds: [{ id: serverId }],
         },
       });
-      controller.enqueue(encoder.encode(`event: READY\ndata: ${readyPayload}\n\n`));
+      send(`event: READY\ndata: ${readyPayload}\n\n`);
 
-      // Poll interval for messages and events (2.5s)
-      const interval = setInterval(async () => {
+      // Messages arrive pushed from the hub, already scoped to this server.
+      socket.addEventListener("message", (event) => {
+        let data: { t?: string; channelId?: string; message?: PublicMessage };
         try {
-          const rows = await db
-            .prepare(
-              `SELECT id, channel_id, user_id, author, avatar, color, content,
-                      attachment_key, is_bot, created_at, link, action_label,
-                      audio_url, kind, payload, reply_to
-               FROM messages
-               WHERE created_at > ? AND deleted_at IS NULL
-               ORDER BY created_at ASC LIMIT 25`
-            )
-            .bind(lastCheckedTime)
-            .all<StoredMessage>();
-
-          const messages = rows.results || [];
-          for (const m of messages) {
-            lastCheckedTime = m.created_at;
-            const eventPayload = JSON.stringify({
-              t: "MESSAGE_CREATE",
-              d: {
-                id: m.id,
-                channel_id: m.channel_id,
-                content: m.content,
-                author: {
-                  id: m.user_id || "bot",
-                  username: m.author,
-                  avatar: m.avatar,
-                  bot: Boolean(m.is_bot),
-                },
-                timestamp: m.created_at,
-                link: m.link,
-                kind: m.kind,
-              },
-            });
-            controller.enqueue(
-              encoder.encode(`event: MESSAGE_CREATE\ndata: ${eventPayload}\n\n`)
-            );
-          }
-
-          // Heartbeat comment
-          controller.enqueue(encoder.encode(`: ping\n\n`));
+          data = JSON.parse(String(event.data));
         } catch {
-          // Keep stream alive on transient error
+          return;
         }
-      }, 2500);
+        const m = data.message;
+        if (data.t !== "message" || !m) return;
+        const eventPayload = JSON.stringify({
+          t: "MESSAGE_CREATE",
+          d: {
+            id: m.id,
+            channel_id: m.channelId || data.channelId,
+            content: m.text,
+            author: {
+              id: m.userId || "bot",
+              username: m.author,
+              avatar: m.avatar,
+              bot: Boolean(m.bot),
+            },
+            timestamp: m.createdAt,
+            link: m.link,
+            kind: m.kind,
+          },
+        });
+        send(`event: MESSAGE_CREATE\ndata: ${eventPayload}\n\n`);
+      });
 
-      request.signal.addEventListener("abort", () => {
-        clearInterval(interval);
+      // Keeps proxies from closing an idle stream; no database work involved.
+      const heartbeat = setInterval(() => send(`: ping\n\n`), 25_000);
+
+      const close = () => {
+        clearInterval(heartbeat);
+        try {
+          socket.close();
+        } catch {
+          // ignore
+        }
         try {
           controller.close();
         } catch {
           // ignore
         }
-      });
+      };
+      socket.addEventListener("close", close);
+      request.signal.addEventListener("abort", close);
     },
   });
 
