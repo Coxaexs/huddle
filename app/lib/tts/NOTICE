@@ -1,0 +1,10 @@
+Huddle text-to-speech uses these models and code, all under the Apache License 2.0:
+
+- EMA Lightning (Turkish) by canberkkkkkk — https://huggingface.co/canberkkkkkk/ema-lightning
+  ONNX export, normalizer-tr WebAssembly build and reference web engine by ozcancelik —
+  https://huggingface.co/ozcancelik/ema-lightning-onnx (app/lib/tts/worker/turkish.ts is a port of its web/tts.js)
+  normalizer-tr by Erdem Tuna — https://github.com/erdemtuna/normalizer-tr
+- Paradee-8M (English) by sahilmahendrakar — https://huggingface.co/sahilmahendrakar/Paradee-8M-v1.0
+  (app/lib/tts/worker/english.ts includes web/misaki.js from https://github.com/sahilmahendrakar/paradee)
+- Kokoro text frontend (kokoro.js/src/phonemize.js) by hexgrad — https://github.com/hexgrad/kokoro
+- onnxruntime-web (MIT) by Microsoft; phonemizer (Apache-2.0, eSpeak NG GPL-3.0) by xenova.

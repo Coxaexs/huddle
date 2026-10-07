@@ -38,3 +38,6 @@ __pycache__/
 # Android release signing key: never commit.
 *.jks
 *.keystore
+
+# Built by scripts/build-tts-worker.mjs (npm run build runs it first).
+public/assets/tts/

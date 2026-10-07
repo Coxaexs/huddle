@@ -457,6 +457,13 @@ export type ServerEvent =
       serverNow: number;
     }
   | {
+      /** An administrator force-stopped /tts and /say in this channel. */
+      t: "tts-stop";
+      channelId: string;
+      by: string;
+      serverNow: number;
+    }
+  | {
       t: "soundboard";
       channelId: string;
       url: string;

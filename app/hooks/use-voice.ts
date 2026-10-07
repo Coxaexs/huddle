@@ -222,6 +222,14 @@ export function screenAudioBitrate(listeners: number): number {
 const SFU_SCREEN_AUDIO_BITRATE = 192_000;
 
 /** One remote person's stream. `kind` is set where the sender's stream id cannot be matched (LiveKit). */
+/** /say limits: up to 200 characters at a time, queued back to back. */
+export const SAY_MAX_CHARS = 200;
+const SAY_MAX_SECONDS = 25;
+/** Most speech that may be waiting to play, so nobody can queue minutes of it. */
+const SAY_MAX_BACKLOG_SECONDS = 30;
+/** Breath between queued /says. */
+const SAY_GAP_SECONDS = 0.3;
+
 export interface RemoteVoiceStream {
   connectionId: string;
   stream: MediaStream;
@@ -1075,7 +1083,7 @@ export function useVoice({
         analyser.getByteTimeDomainData(buffer);
         let peak = 0;
         for (const sample of buffer) peak = Math.max(peak, Math.abs(sample - 128));
-        if (peak > 8) loud.add(id);
+        if (peak > 8) loud.add(id.replace(/:tts$/, ""));
       }
       // Your own tile reads the input chain instead of a second analyser: it
       // already decided whether this is speech, and it decided on the audio
@@ -1085,6 +1093,8 @@ export function useVoice({
       const own = micTelemetryRef.current;
       const sending = localStreamRef.current?.getAudioTracks()[0]?.enabled;
       if (sending && own && own.gateOpen && own.outputDb > -50) loud.add("self");
+      const say = ttsOutRef.current;
+      if (say && say.context.currentTime < say.endsAt) loud.add("self");
       setSpeaking((current) => {
         if (
           current.size === loud.size &&
@@ -1463,6 +1473,84 @@ export function useVoice({
     }
   }, [send]);
 
+  /**
+   * Text-to-speech said into the call (/say). It goes out as its own track,
+   * not through the mic, so it works without a microphone and while muted.
+   * You hear it too, a little quieter, the way you would hear yourself talk.
+   */
+  const ttsOutRef = useRef<{
+    context: AudioContext;
+    destination: MediaStreamAudioDestinationNode;
+    publishedTo: SfuVoice | null;
+    endsAt: number;
+    playing: Set<AudioBufferSourceNode>;
+  } | null>(null);
+  const forcedMuteRef = useRef(false);
+  forcedMuteRef.current = forcedMute;
+  /** Cuts off whatever /say is still playing. */
+  const stopSpeaking = useCallback(() => {
+    const out = ttsOutRef.current;
+    if (!out) return;
+    for (const source of out.playing) {
+      try { source.stop(); } catch { /* already ended */ }
+    }
+    out.playing.clear();
+    out.endsAt = out.context.currentTime;
+  }, []);
+  // A moderator's server mute silences /say as well, mid-sentence included.
+  // Listeners also drop a server-muted seat's /say track on their side.
+  useEffect(() => {
+    if (forcedMute) stopSpeaking();
+  }, [forcedMute, stopSpeaking]);
+  const speakIntoCall = useCallback(
+    async (audio: Float32Array, sampleRate: number): Promise<"sent" | "no-call" | "no-server" | "server-muted" | "busy" | "too-long"> => {
+      if (!channelIdRef.current) return "no-call";
+      if (forcedMuteRef.current) return "server-muted";
+      if (audio.length / sampleRate > SAY_MAX_SECONDS) return "too-long";
+      const queued = ttsOutRef.current;
+      // /says queue back to back, up to a cap, so nobody can talk over a room for minutes.
+      if (queued && queued.endsAt - queued.context.currentTime > SAY_MAX_BACKLOG_SECONDS) return "busy";
+      const sfu = sfuRef.current;
+      // The mesh would need every peer connection renegotiated for one more
+      // track; /say waits for the voice server instead.
+      if (!sfuModeRef.current || !sfu) return "no-server";
+      let out = ttsOutRef.current;
+      if (!out) {
+        const context = new AudioContext();
+        out = { context, destination: context.createMediaStreamDestination(), publishedTo: null, endsAt: 0, playing: new Set() };
+        ttsOutRef.current = out;
+      }
+      await out.context.resume().catch(() => undefined);
+      if (out.publishedTo !== sfu) {
+        await sfu.publish(out.destination.stream.getAudioTracks()[0], "tts");
+        out.publishedTo = sfu;
+      }
+      const buffer = out.context.createBuffer(1, audio.length, sampleRate);
+      buffer.copyToChannel(new Float32Array(audio), 0);
+      const source = out.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(out.destination);
+      const monitor = out.context.createGain();
+      monitor.gain.value = 0.6;
+      source.connect(monitor).connect(out.context.destination);
+      const startAt = Math.max(
+        out.context.currentTime + 0.05,
+        out.endsAt > out.context.currentTime ? out.endsAt + SAY_GAP_SECONDS : 0,
+      );
+      const playing = out.playing;
+      playing.add(source);
+      source.onended = () => playing.delete(source);
+      source.start(startAt);
+      out.endsAt = startAt + buffer.duration;
+      return "sent";
+    },
+    [],
+  );
+  useEffect(() => () => {
+    void ttsOutRef.current?.context.close().catch(() => undefined);
+    ttsOutRef.current = null;
+  }, []);
+
   /** Joins the LiveKit room and puts everything this tab is sending into it. */
   const connectSfu = useCallback(
     async (grant: { url: string; token: string }) => {
@@ -1471,7 +1559,12 @@ export function useVoice({
         onStreams: (streams) => {
           if (sfuRef.current === sfu) setSfuStreams(streams);
         },
-        onVoice: (remoteId, stream, receiver) => {
+        onVoice: (remoteId, stream, receiver, kind) => {
+          // /say speech lights its speaker's tile too, so everyone can see who it is.
+          if (kind === "tts") {
+            watchLevel(`${remoteId}:tts`, stream);
+            return;
+          }
           const tunable = receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined;
           if (tunable && "jitterBufferTarget" in tunable) {
             try { tunable.jitterBufferTarget = AUDIO_JITTER_TARGET_MS; } catch { /* unsupported */ }
@@ -2467,5 +2560,14 @@ export function useVoice({
     setPttKey,
     pttPress,
     pttRelease,
+    /** /say: speaks synthesized audio into the call as this seat. */
+    speakIntoCall,
+    /** Cuts off this seat's /say mid-sentence (an admin's /ttsstop). */
+    stopSpeaking,
+    /** Whether another /say fits in the queue (checked before spending CPU on it). */
+    canSpeak: () => {
+      const out = ttsOutRef.current;
+      return !out || out.endsAt - out.context.currentTime <= SAY_MAX_BACKLOG_SECONDS;
+    },
   };
 }

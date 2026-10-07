@@ -7,7 +7,7 @@ import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../li
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 
 export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor }: {
-  streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" }>;
+  streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
   enabled: boolean;
@@ -58,10 +58,12 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         ? kind === "screen"
         : stream.id === person?.screenStreamId || stream.getVideoTracks().length > 0;
       const voice = person && !person.bot && !person.recorder && !isScreen;
-      const seat = voice ? seats.get(connectionId) : undefined;
+      const seat = voice || (kind === "tts" && person) ? seats.get(connectionId) : undefined;
 
       let volume = pref.volume;
       let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted);
+      // /say speech is typed, so a muted mic does not silence it; a server mute does.
+      if (kind === "tts") muted = deafened || pref.muted || Boolean(person?.serverMuted);
 
       if (isScreen) {
         const streamPref = streamPreferenceFor ? streamPreferenceFor(stream.id, person?.id) : null;
@@ -77,7 +79,7 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         important: Boolean(voice && person?.important && !person?.muted && !person?.serverMuted),
         volume,
         muted,
-        pan: voice ? seat?.pan ?? null : null,
+        pan: seat ? seat.pan ?? null : null,
         seat: seat ? { x: seat.x, y: seat.y, z: seat.z } : null,
       };
     }), enabled);

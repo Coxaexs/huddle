@@ -233,6 +233,30 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Invite the conversation to a game",
     group: "Huddle",
   },
+  {
+    name: "tts",
+    args: "[tr|en] <message>",
+    description: "Send a message read aloud to everyone in the channel (asks the language unless you start with tr or en; /tts off to stop hearing them)",
+    group: "Huddle",
+  },
+  {
+    name: "say",
+    args: "[tr|en] <text>",
+    description: "Say something (up to 200 characters) in your voice channel with text-to-speech; picks Turkish or English itself, or asks",
+    group: "Huddle",
+    voice: true,
+  },
+  {
+    name: "ttsvoice",
+    args: "[tempo 0.6-1.3] [pitch 0.75-1.15] | reset",
+    description: "How your /tts and /say sound: slower tempo, deeper pitch (e.g. /ttsvoice tempo 0.85 pitch 0.9)",
+    group: "Huddle",
+  },
+  {
+    name: "ttsstop",
+    description: "Admins: stop every /tts and /say playing right now, for everyone",
+    group: "Huddle",
+  },
   { name: "flip", description: "Flip a coin", group: "Huddle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
   {

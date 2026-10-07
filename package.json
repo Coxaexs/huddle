@@ -6,6 +6,7 @@
   "author": "coxaexs <coxaexs@gmail.com>",
   "scripts": {
     "dev": "vinext dev --port 3001",
+    "prebuild": "node scripts/build-tts-worker.mjs",
     "build": "vinext build",
     "start": "vinext start",
     "test": "vitest run",
@@ -28,8 +29,10 @@
     "lucide-react": "^1.27.0",
     "marked": "^16.4.2",
     "node": "22.23.1",
+    "onnxruntime-web": "^1.30.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
+    "phonemizer": "^1.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "three": "^0.180.0",

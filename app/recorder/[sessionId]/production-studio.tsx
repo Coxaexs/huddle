@@ -424,8 +424,8 @@ export function ProductionStudio() {
       } catch {
         // The host health monitor reports silent or missing tracks.
       }
-      // A stem is someone's voice, not the game they are sharing.
-      if (kind === "screen") continue;
+      // A stem is someone's voice, not the game they are sharing or /say speech.
+      if (kind === "screen" || kind === "tts") continue;
       if (recorderRef.current?.state === "recording") {
         startStem(connectionId, stream);
       }

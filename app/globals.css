@@ -9098,6 +9098,40 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   border-radius: 8px;
 }
 
+/* /tts: the message being read aloud, so everyone sees who is talking. */
+.message.tts-speaking {
+  background: color-mix(in srgb, var(--lavender) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--lavender);
+  border-radius: 8px;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.tts-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  letter-spacing: .05em;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 8px;
+  font-weight: 900;
+  color: var(--lavender);
+  background: color-mix(in srgb, var(--lavender) 14%, transparent);
+}
+
+.tts-tag.speaking svg {
+  animation: ttsTagPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes ttsTagPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tts-tag.speaking svg { animation: none; }
+}
+
 .mention {
   background: color-mix(in srgb, var(--lavender) 22%, transparent);
   color: var(--lavender);
@@ -16621,7 +16655,8 @@ html[data-motion="reduced"] .blahaj-boop {
   width: 4px;
   height: 24px;
   border-radius: 0 4px 4px 0;
-  background: var(--lavender, var(--lavender));
+  /* The theme accent, not the server or person colour: it follows the theme. */
+  background: var(--lavender);
   transition: height 0.15s ease, background 0.15s ease;
   pointer-events: none;
   z-index: 10;

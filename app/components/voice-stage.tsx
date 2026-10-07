@@ -88,7 +88,7 @@ interface VoiceApi extends TableControls {
   setVideoHidden: (connectionId: string, which: "camera" | "screen", hidden: boolean) => void;
   speaking: Set<string>;
   /** `kind` is set for LiveKit streams, whose ids are not the sender's. */
-  remoteStreams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" }>;
+  remoteStreams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   peerStates: Record<string, string>;
   screenSharing: boolean;
   screenShareAudio?: boolean;
