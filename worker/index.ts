@@ -164,6 +164,10 @@ async function handleRequest(
         "color",
         isRecorder ? "#e14d4d" : isMusicBot ? "#a99af5" : user!.color,
       );
+      for (const name of ["resume", "ticket"]) {
+        const value = url.searchParams.get(name);
+        if (value) target.searchParams.set(name, value.slice(0, 200));
+      }
       if (isMusicBot || isRecorder) target.searchParams.set("bot", "1");
       if (isRecorder) target.searchParams.set("recorder", "1");
       if (!isMusicBot && !isRecorder && user!.status === "invisible") {

@@ -147,7 +147,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               maxLength={40}
               placeholder="What friends should see"
             />
-            <label htmlFor="huddle-email">Email</label>
+            <label htmlFor="huddle-email">Email (optional)</label>
             <input
               id="huddle-email"
               type="email"
@@ -155,7 +155,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               onChange={(event) => setEmail(event.target.value)}
               maxLength={254}
               autoComplete="email"
-              placeholder="For password resets only"
+              placeholder="For password resets; we mail a code to confirm"
             />
           </>
         )}
@@ -205,7 +205,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               ? !username
               : mode === "reset"
                 ? !password
-                : !username || !password || (mode === "signup" && !email))
+                : !username || !password)
           }
         >
           {busy

@@ -1,23 +1,39 @@
 import {
   currentUser,
   normalizeEmail,
-  publicUser,
   unauthorized,
   verifyPassword,
 } from "@/lib/auth";
+import { emailCodeLimit, pendingEmail, startEmailVerification } from "@/lib/email-verify";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
+
+/** The address waiting for its code, if any. */
+export async function GET(request: Request) {
+  const db = bindings().DB;
+  if (!db) {
+    return Response.json({ error: "Message storage is not connected." }, { status: 503 });
+  }
+  await ensureSchema(db);
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  return Response.json({ pending: await pendingEmail(db, user.id) });
+}
+
 /**
- * Adds or changes the account's email. The current password is required, since
- * whoever controls the email can reset the password.
+ * Starts adding or changing the account's email. The current password is
+ * required, since whoever controls the email can reset the password, and the
+ * address is only saved once the code mailed to it comes back (see ./verify).
  */
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) {
     return Response.json({ error: "Message storage is not connected." }, { status: 503 });
   }
+  await ensureSchema(db);
   const user = await currentUser(request);
   if (!user) return unauthorized();
 
@@ -33,20 +49,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Your password is not right." }, { status: 403 });
   }
 
-  const taken = await db
-    .prepare("SELECT id FROM users WHERE email = ? AND id != ?")
-    .bind(parsed.email, user.id)
-    .first();
-  if (taken) {
-    return Response.json({ error: "Another account already uses that email." }, { status: 409 });
-  }
+  const limited = await emailCodeLimit(db, request, user.id, parsed.email);
+  if (limited) return limited;
 
-  await db
-    .prepare("UPDATE users SET email = ? WHERE id = ?")
-    .bind(parsed.email, user.id)
-    .run();
-  // Any reset link already mailed went to the old address.
-  await db.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id).run();
-
-  return Response.json({ user: publicUser({ ...user, email: parsed.email }) });
+  await startEmailVerification(db, user, parsed.email);
+  return Response.json({ pending: parsed.email });
 }

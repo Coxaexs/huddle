@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Scale, ExternalLink, ShieldCheck, Search, ChevronDown, ChevronUp, Code2, Heart } from "lucide-react";
+import { Scale, ExternalLink, ShieldCheck, Search, ChevronDown, ChevronUp, Code2, Heart, Coffee } from "lucide-react";
+import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 
 interface ThirdPartyPackage {
   name: string;
@@ -195,6 +196,26 @@ export function LicensesTab() {
             >
               <Code2 size={14} /> Source Code <ExternalLink size={12} className="opacity-70" />
             </a>
+            {KOFI_URL && (
+              <a
+                href={KOFI_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#5865f2] hover:bg-[#4752c4] px-3 py-1.5 text-xs font-medium text-white transition-colors"
+              >
+                <Coffee size={14} /> Ko-fi <ExternalLink size={12} className="opacity-70" />
+              </a>
+            )}
+            {GITHUB_SPONSORS_URL && (
+              <a
+                href={GITHUB_SPONSORS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2b2d31] hover:bg-[#35373c] border border-[#ea4aaa]/40 text-[#ea4aaa] hover:text-[#f472b6] px-3 py-1.5 text-xs font-medium transition-colors"
+              >
+                <Heart size={14} /> Sponsors <ExternalLink size={12} className="opacity-70" />
+              </a>
+            )}
           </div>
         </div>
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Coffee, Heart } from "lucide-react";
 
 /**
  * The frame shared by hoffle.online's pages (the landing page and /docs):
@@ -10,8 +11,9 @@ export const REPO = "https://github.com/Coxaexs/huddle";
 export const RELEASES = `${REPO}/releases/latest`;
 export const APP_URL = "https://chat.hoffle.online";
 
-/** Paste a Ko-fi / Buy Me a Coffee / GitHub Sponsors link to show the coffee links. */
-export const SUPPORT_URL = "";
+export const KOFI_URL = "https://ko-fi.com/abdullahturk";
+export const GITHUB_SPONSORS_URL = "https://github.com/sponsors/Coxaexs";
+export const SUPPORT_URL = KOFI_URL;
 
 export function GithubMark({ className = "" }: { className?: string }) {
   return (
@@ -83,6 +85,30 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <a href={REPO} className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)" aria-label="Hoffle on GitHub">
               <GithubMark className="h-5 w-5" />
             </a>
+            {KOFI_URL && (
+              <a
+                href={KOFI_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)"
+                aria-label="Support Hoffle on Ko-fi"
+                title="Support Hoffle on Ko-fi"
+              >
+                <Coffee className="h-5 w-5" />
+              </a>
+            )}
+            {GITHUB_SPONSORS_URL && (
+              <a
+                href={GITHUB_SPONSORS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)"
+                aria-label="Sponsor Hoffle on GitHub"
+                title="Sponsor Hoffle on GitHub"
+              >
+                <Heart className="h-5 w-5" />
+              </a>
+            )}
             <a href={APP_URL} className="inline-flex h-10 items-center rounded-lg bg-(--violet) px-4 text-sm font-semibold text-white hover:bg-(--ink)">
               Open Hoffle
             </a>
@@ -113,7 +139,8 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <a href="/docs/self-hosting" className="hover:text-(--ink)">Self-hosting guide</a>
             <a href="/#faq" className="hover:text-(--ink)">FAQ</a>
             <a href={REPO} className="hover:text-(--ink)">GitHub</a>
-            {SUPPORT_URL && <a href={SUPPORT_URL} className="hover:text-(--ink)">Support</a>}
+            {KOFI_URL && <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Ko-fi</a>}
+            {GITHUB_SPONSORS_URL && <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Sponsors</a>}
           </nav>
         </div>
       </footer>

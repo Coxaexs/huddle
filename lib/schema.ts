@@ -813,8 +813,10 @@ async function migrate(db: D1Database): Promise<void> {
   }
   if (userMigrations.length) await db.batch(userMigrations);
   await db.batch([
+    // One person may run several accounts on the same address, so not UNIQUE.
+    db.prepare("DROP INDEX IF EXISTS users_email_idx"),
     db.prepare(
-      "CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS users_email_lookup_idx ON users(email) WHERE email IS NOT NULL",
     ),
     // One-time password reset links; only the SHA-256 of the token is kept.
     db.prepare(`CREATE TABLE IF NOT EXISTS password_resets (
@@ -826,6 +828,15 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS password_resets_user_idx ON password_resets(user_id)",
     ),
+    // An address waiting for its owner to type back the mailed code.
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_verifications (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      )`),
   ]);
 
   await db
