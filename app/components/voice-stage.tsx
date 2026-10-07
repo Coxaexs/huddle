@@ -50,10 +50,10 @@ import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import {
   nextScreenQuality,
-  SCREEN_SHARE_QUALITIES,
   screenQualityLabel,
   type ScreenShareQuality,
 } from "../hooks/use-voice";
+import { ScreenShareSetup } from "./screen-share-setup";
 import { apiFetch } from "../lib/client";
 import { TableAudioMenu, type TableControls } from "./table-audio-menu";
 import { Avatar } from "./avatar";
@@ -98,7 +98,9 @@ interface VoiceApi extends TableControls {
   toggleScreenAudio?: () => void;
   screenQuality: ScreenShareQuality;
   setScreenQuality: (quality: ScreenShareQuality) => void;
-  startScreenShare: (quality?: ScreenShareQuality, withAudio?: boolean) => void | Promise<void>;
+  startScreenShare: (quality?: ScreenShareQuality, withAudio?: boolean, film?: boolean) => void | Promise<void>;
+  screenFilm?: boolean;
+  setScreenFilm?: (film: boolean) => void;
   stopScreenShare: () => void;
   cameraOn: boolean;
   cameraBackground?: BackgroundMode;
@@ -639,7 +641,9 @@ export function VoiceStage({
   return (
     <div
       className={`voice-stage${activityTakeover ? " activity-takeover" : ""}${
-        activityTakeover && activity?.kind === "deeppixel" ? " takeover-dark" : ""
+        activityTakeover && (activity?.kind === "deeppixel" || activity?.kind === "richup")
+          ? " takeover-dark"
+          : ""
       }${
         activityTakeover && peopleOpen ? " show-people" : ""
       }`}
@@ -1556,74 +1560,20 @@ export function VoiceStage({
 
             {/* Screen share setup popover when starting to share */}
             {screenSharePopoverOpen && !voice.screenSharing && (
-              <div
-                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-3.5 rounded-2xl bg-[var(--panel)] border border-[var(--line)] shadow-2xl flex flex-col gap-3 min-w-[280px]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--ink)]">
-                    <Monitor size={14} className="text-[var(--lavender)]" />
-                    <span>Share Screen</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="text-[var(--muted)] hover:text-[var(--ink)] p-1 rounded-md transition-colors cursor-pointer"
-                    onClick={() => setScreenSharePopoverOpen(false)}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-
-                {/* Resolution & FPS presets */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">Quality</span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {SCREEN_SHARE_QUALITIES.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                          voice.screenQuality === q
-                            ? "bg-[var(--lavender)] text-white shadow-sm"
-                            : "bg-[var(--line)]/50 text-[var(--ink)] hover:bg-[var(--line)]"
-                        }`}
-                        onClick={() => voice.setScreenQuality(q)}
-                      >
-                        {q.replace("p", "p · ")}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Share audio checkbox (persists to localStorage) */}
-                <div className="p-2.5 rounded-xl bg-[var(--line)]/30 border border-[var(--line)] flex flex-col gap-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[var(--ink)] select-none">
-                    <input
-                      type="checkbox"
-                      checked={voice.screenShareAudio ?? true}
-                      onChange={(e) => voice.setScreenShareAudio?.(e.target.checked)}
-                      className="accent-[var(--lavender)] rounded"
-                    />
-                    <span>Share stream audio</span>
-                  </label>
-                  <p className="text-[10px] text-[var(--muted)] leading-tight pl-5">
-                    Captures tab, game, or system sound so viewers can hear it
-                  </p>
-                </div>
-
-                {/* Start Sharing button */}
-                <button
-                  type="button"
-                  className="w-full py-2 px-3 rounded-xl bg-[var(--lavender)] text-white text-xs font-bold hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                  onClick={() => {
-                    setScreenSharePopoverOpen(false);
-                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio ?? true);
-                  }}
-                >
-                  <Monitor size={14} />
-                  <span>Start Sharing</span>
-                </button>
-              </div>
+              <ScreenShareSetup
+                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 min-w-[300px]"
+                quality={voice.screenQuality}
+                onQuality={voice.setScreenQuality}
+                film={voice.screenFilm ?? false}
+                onFilm={(film) => voice.setScreenFilm?.(film)}
+                audio={voice.screenShareAudio ?? true}
+                onAudio={(audio) => voice.setScreenShareAudio?.(audio)}
+                onClose={() => setScreenSharePopoverOpen(false)}
+                onStart={() => {
+                  setScreenSharePopoverOpen(false);
+                  void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio ?? true, voice.screenFilm ?? false);
+                }}
+              />
             )}
           </div>
 

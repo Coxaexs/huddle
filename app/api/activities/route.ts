@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import {
   DEFAULT_TIERS,
   isActivityKind,
+  richupRoomUrl,
   type ActivityStroke,
   type RoomActivity,
   type RoomActivityKind,
@@ -223,6 +224,9 @@ function cleanState(
         ? gameId
         : crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase(),
     };
+  }
+  if (kind === "richup") {
+    return { roomUrl: richupRoomUrl(String(input.roomUrl || "")) };
   }
   if (kind === "initiative") {
     const round = Math.max(0, Math.min(9999, Number(input.round) || 1));

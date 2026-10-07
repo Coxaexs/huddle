@@ -60,6 +60,9 @@ export interface PublicUser {
   customTheme?: string | null;
   quickReactions?: string[];
   hiddenEmojis?: string[];
+  /** Only on the signed-in user's own account. */
+  email?: string | null;
+  emailPromptSkipped?: boolean;
 }
 
 export interface Member {

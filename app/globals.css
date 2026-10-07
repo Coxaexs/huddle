@@ -6482,7 +6482,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 }
 
 .voice-feature .screen-share-controls.compact {
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
   margin-top: 6px;
   display: grid;
@@ -7728,7 +7728,8 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 }
 
 /* DeepPixel is a full board game: give it the whole stage and a matching backdrop */
-.room-activity.kind-deeppixel {
+.room-activity.kind-deeppixel,
+.room-activity.kind-richup {
   flex: 1 1 100%;
   max-height: none;
   min-height: min(620px, 78vh);
@@ -7741,6 +7742,65 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .deeppixel-embed:fullscreen {
   padding: 0;
+}
+
+/* Richup: the shared room link sits above the game */
+.room-activity.kind-richup .deeppixel-embed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-activity.kind-richup .deeppixel-embed iframe {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.richup-room-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 244, 225, 0.05);
+  color: #cfc8bb;
+  font-size: 12.5px;
+}
+
+.richup-room-bar span {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.richup-room-bar input {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 244, 225, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #faf6ee;
+  font: inherit;
+}
+
+.richup-room-bar button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #8f7aea;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.richup-room-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .deeppixel-embed:fullscreen iframe {
@@ -23048,7 +23108,7 @@ a.link-preview-author:hover {
   background: #0e0d0c;
 }
 
-.voice-stage.activity-takeover.takeover-dark .room-activity.kind-deeppixel {
+.voice-stage.activity-takeover.takeover-dark .room-activity:is(.kind-deeppixel, .kind-richup) {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
@@ -24218,90 +24278,7 @@ a.link-preview-author:hover {
   border-color: #4c7cc8 !important;
 }
 
-/* ---- Winks: the full-window animation (every theme) ---- */
-.msn-wink-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9000;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  cursor: pointer;
-  background: radial-gradient(circle, rgba(255, 255, 255, .18), transparent 65%);
-  animation: msn-wink-fade 3.6s ease forwards;
-}
-@keyframes msn-wink-fade {
-  0% { opacity: 0; }
-  8%, 85% { opacity: 1; }
-  100% { opacity: 0; }
-}
-.msn-wink-hero {
-  font-size: min(34vmin, 260px);
-  line-height: 1;
-  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, .3));
-  animation: msn-wink-pop 3.6s cubic-bezier(.2, 1.4, .4, 1) both;
-}
-.msn-wink-hero.motion-fly { animation-name: msn-wink-fly; }
-.msn-wink-hero.motion-shake { animation-name: msn-wink-pop, msn-wink-shake; animation-duration: 3.6s, .18s; animation-iteration-count: 1, 14; }
-.msn-wink-hero.motion-sway { animation-name: msn-wink-pop, msn-wink-sway; animation-duration: 3.6s, .9s; animation-iteration-count: 1, 4; animation-timing-function: cubic-bezier(.2, 1.4, .4, 1), ease-in-out; }
-.msn-wink-hero.motion-float { animation-name: msn-wink-float; animation-timing-function: ease-in-out; }
-@keyframes msn-wink-pop {
-  0% { transform: scale(0) rotate(-20deg); }
-  18% { transform: scale(1.15) rotate(4deg); }
-  28%, 80% { transform: scale(1) rotate(0); }
-  100% { transform: scale(.6); opacity: 0; }
-}
-@keyframes msn-wink-fly {
-  0% { transform: translate(-70vw, 20vh) scale(.4) rotate(-30deg); }
-  30% { transform: translate(0, 0) scale(1.2) rotate(8deg); }
-  40%, 80% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(0, -10vh) scale(.5); opacity: 0; }
-}
-@keyframes msn-wink-shake {
-  0%, 100% { translate: 0 0; }
-  25% { translate: -10px 3px; }
-  75% { translate: 10px -3px; }
-}
-@keyframes msn-wink-sway {
-  0%, 100% { rotate: -10deg; }
-  50% { rotate: 10deg; }
-}
-@keyframes msn-wink-float {
-  0% { transform: translateY(40vh) scale(.6); opacity: 0; }
-  25% { transform: translateY(-4vh) scale(1.05); opacity: 1; }
-  50% { transform: translateY(2vh) scale(1); }
-  75% { transform: translateY(-3vh) scale(1); }
-  100% { transform: translateY(-40vh) scale(.8); opacity: 0; }
-}
-.msn-wink-bit {
-  position: absolute;
-  left: var(--x);
-  font-size: var(--size);
-  opacity: 0;
-  animation: msn-wink-rise 2.6s ease-out var(--delay) forwards;
-}
-.particles-rise .msn-wink-bit { bottom: -3rem; }
-.particles-fall .msn-wink-bit { top: -3rem; animation-name: msn-wink-fall; animation-timing-function: ease-in; }
-.particles-burst .msn-wink-bit { left: 50%; top: 50%; animation-name: msn-wink-burst; }
-@keyframes msn-wink-rise {
-  0% { opacity: 0; transform: translateY(0) rotate(0); }
-  15% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-90vh) rotate(25deg); }
-}
-@keyframes msn-wink-fall {
-  0% { opacity: 0; transform: translateY(0); }
-  15% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(95vh) rotate(-20deg); }
-}
-@keyframes msn-wink-burst {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(.3); }
-  15% { opacity: 1; }
-  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .msn-wink-hero { animation: msn-wink-fade 3.6s ease both !important; }
-  .msn-wink-bit { display: none; }
-}
+/* ---- Winks: the line a wink leaves in the conversation ---- */
 .wink-line-emoji {
   font-size: 15px;
 }
@@ -24334,6 +24311,9 @@ a.link-preview-author:hover {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 4px;
+  max-height: min(296px, 45vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: #fff;
   border: 1px solid #7f9db9;
@@ -24357,16 +24337,9 @@ a.link-preview-author:hover {
   outline: none;
 }
 .msn-wink-thumb {
-  font-size: 30px;
-  line-height: 1.1;
-}
-.msn-wink-tile.previewing .msn-wink-thumb.motion-shake { animation: msn-wink-shake .18s infinite; }
-.msn-wink-tile.previewing .msn-wink-thumb.motion-sway,
-.msn-wink-tile.previewing .msn-wink-thumb.motion-float { animation: msn-wink-sway .9s ease-in-out infinite; }
-.msn-wink-tile.previewing .msn-wink-thumb.motion-pop,
-.msn-wink-tile.previewing .msn-wink-thumb.motion-fly { animation: msn-wink-thumb-pop .6s ease-in-out infinite alternate; }
-@keyframes msn-wink-thumb-pop {
-  to { transform: scale(1.2); }
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 .msn-emoticon-grid {
   display: grid;
@@ -25434,6 +25407,22 @@ a.link-preview-author:hover {
   margin: 4px 10px 2px;
 }
 
+/* ---- Contact groups: about ten rows while the voice card is open, then
+   scroll. With it closed (or no call) the lists get the room it was using. ---- */
+.msn-contact-scroll {
+  max-height: max(232px, calc(100dvh - 360px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.member-panel.voice-panel-open .msn-contact-scroll {
+  max-height: 232px;
+}
+@media (max-width: 768px) {
+  .member-panel.voice-panel-open .msn-contact-scroll {
+    max-height: 352px;
+  }
+}
+
 /* ---- What's New ---- */
 .msn-whatsnew {
   margin: 10px 8px 4px;
@@ -25475,6 +25464,10 @@ a.link-preview-author:hover {
   margin: 0;
   padding: 4px 0;
   list-style: none;
+  /* About four entries tall; the rest scroll. */
+  max-height: 15em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .msn-whatsnew li button {
   display: block;
@@ -25776,55 +25769,33 @@ a.link-preview-author:hover {
   border-color: #4c7cc8 !important;
 }
 
-/* ---- Winks: the stage the scenes play on (app/lib/msn-winks.ts) ---- */
+/* ---- Winks: the Flash stage over the conversation (app/lib/msn-winks.ts) ---- */
 .wk-overlay {
   position: fixed;
   z-index: 9000;
   overflow: hidden;
-  pointer-events: auto;
+  display: grid;
+  place-items: center;
+}
+.wk-player {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+.wk-shield {
+  position: absolute;
+  inset: 0;
   cursor: pointer;
-  border-radius: 3px;
 }
-.wk-piece {
-  position: absolute;
-  line-height: 1;
-  white-space: nowrap;
-  user-select: none;
-  will-change: transform, opacity;
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .28));
+.wk-still {
+  width: min(40%, 160px);
+  image-rendering: auto;
+  animation: wk-still-fade 2.5s ease both;
 }
-.wk-shape {
-  filter: none;
-}
-.wk-flash {
-  position: absolute;
-  pointer-events: none;
-}
-.wk-word {
-  position: absolute;
-  font-family: "Comic Sans MS", "Comic Neue", "Chalkboard SE", "Trebuchet MS", sans-serif;
-  font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
-  -webkit-text-stroke: 1px rgba(0, 0, 0, .25);
-  text-shadow: 2px 3px 0 rgba(0, 0, 0, .25);
-  will-change: transform, opacity;
-}
-.wk-script {
-  font-family: "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive;
-  font-weight: 700;
-  -webkit-text-stroke: 0;
-}
-.wk-rainbow {
-  color: transparent !important;
-  background: linear-gradient(90deg, #ff4d6d, #ffb21f, #ffe14d, #3ddc84, #3ea6ff, #a45cff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-stroke: 0;
-  text-shadow: none;
-}
-.wk-door {
-  filter: none;
+@keyframes wk-still-fade {
+  0%, 100% { opacity: 0; }
+  15%, 80% { opacity: 1; }
 }
 
 /* ---- Sounds dialog ---- */
@@ -26439,4 +26410,64 @@ a.link-preview-author:hover {
     right: 16px;
     bottom: calc(16px + env(safe-area-inset-bottom));
   }
+}
+
+/* ---- Screen share setup, inline in the sidebar's voice card ---- */
+.voice-feature .screen-share-setup-inline {
+  margin-top: 8px;
+  padding: 10px;
+  gap: 8px;
+  text-align: left;
+  box-shadow: none;
+}
+.voice-feature .screen-share-setup-inline .screen-setup-chip {
+  padding: 5px 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup :is(.screen-setup-chip, .screen-setup-close) {
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+  font-weight: 400 !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-chip.selected {
+  background: var(--msn-select) !important;
+  border-color: var(--msn-menu-hi-edge) !important;
+  font-weight: 700 !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-close {
+  background: none !important;
+  border: 0 !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-options {
+  background: transparent !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-start {
+  color: #fff !important;
+  background: linear-gradient(180deg, #7fd36b, #2e9a2a) !important;
+  border: 1px solid #1f7a1c !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45) !important;
+}
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-start span {
+  color: #fff !important;
+}
+:root[data-custom-theme-id="msn-dark"] .member-panel .screen-share-setup .screen-setup-chip {
+  color: #e6eefc !important;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%) !important;
+  border-color: #4c7cc8 !important;
+}
+:root[data-custom-theme-id="msn-dark"] .member-panel .screen-share-setup .screen-setup-chip.selected {
+  background: linear-gradient(180deg, #4d7fd0 0%, #2d5aa6 100%) !important;
+  border-color: #9cc0ff !important;
 }

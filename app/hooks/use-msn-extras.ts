@@ -122,6 +122,18 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+/** Keeps only the newest copy of each identical status/name entry. */
+function dedupeFeed(feed: WhatsNewEntry[]) {
+  const seen = new Set<string>();
+  return feed.filter((e) => {
+    if (e.kind === "picture") return true;
+    const key = `${e.userId}:${e.kind}:${e.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /**
  * Messenger 2009's "What's New": your contacts' new statuses, display
  * pictures and names. Compares what we see now with the snapshot from last
@@ -135,7 +147,7 @@ export function useWhatsNew(
   const [feed, setFeed] = useState<WhatsNewEntry[]>([]);
 
   useEffect(() => {
-    if (enabled) setFeed(readJson<WhatsNewEntry[]>(FEED_KEY, []));
+    if (enabled) setFeed(dedupeFeed(readJson<WhatsNewEntry[]>(FEED_KEY, [])));
   }, [enabled]);
 
   useEffect(() => {
@@ -145,12 +157,15 @@ export function useWhatsNew(
     const now = Date.now();
     for (const person of people) {
       if (person.id === selfId) continue;
+      const before = snapshot[person.id];
+      // A slim copy of someone (e.g. from the DM list) may leave the status or
+      // picture out entirely. That's "unknown", not "cleared": keep what we had,
+      // or the full copy arriving a moment later would read as a change.
       const current: Snapshot = {
         name: person.displayName,
-        status: person.customStatus || "",
-        picture: person.avatarUrl || "",
+        status: person.customStatus === undefined ? (before?.status ?? "") : person.customStatus || "",
+        picture: person.avatarUrl === undefined ? (before?.picture ?? "") : person.avatarUrl || "",
       };
-      const before = snapshot[person.id];
       snapshot[person.id] = current;
       // First sighting: remember them, but that isn't news.
       if (!before) continue;
@@ -165,7 +180,15 @@ export function useWhatsNew(
     writeJson(SNAPSHOT_KEY, snapshot);
     if (!fresh.length) return;
     setFeed((old) => {
-      const next = [...fresh, ...old].slice(0, FEED_LIMIT);
+      // Never repeat news: drop anything matching that person's latest entry
+      // of the same kind (a status flipping back and forth still shows once).
+      const novel = fresh.filter((item) => {
+        if (item.kind === "picture") return true;
+        const last = old.find((e) => e.userId === item.userId && e.kind === item.kind);
+        return !last || last.text !== item.text;
+      });
+      if (!novel.length) return old;
+      const next = [...novel, ...old].slice(0, FEED_LIMIT);
       writeJson(FEED_KEY, next);
       return next;
     });

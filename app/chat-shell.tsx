@@ -132,6 +132,7 @@ import {
   playScreenShareStopSound,
 } from "./lib/audio-cues";
 import { AuthGate } from "./components/auth-gate";
+import { EmailPrompt } from "./components/email-prompt";
 import { Avatar } from "./components/avatar";
 import {
   BotMenu,
@@ -210,11 +211,10 @@ import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
 import {
   nextScreenQuality,
-  SCREEN_SHARE_QUALITIES,
   screenQualityLabel,
   useVoice,
-  type ScreenShareQuality,
 } from "./hooks/use-voice";
+import { ScreenShareSetup } from "./components/screen-share-setup";
 import { apiFetch, apiUrl } from "./lib/client";
 import { registerMedia, unlockAudio, unregisterMedia } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
@@ -1256,6 +1256,8 @@ export function ChatShell() {
   const msnTheme = useMsnTheme();
   /** Contact-list groups folded shut by their arrow (MSN theme). */
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean | undefined>>({});
+  /** The sidebar's "how to share" picker, open between "Share screen" and the browser's own picker. */
+  const [sidebarShareSetupOpen, setSidebarShareSetupOpen] = useState(false);
   /** Like Messenger, you can't nudge again straight away. */
   const [nudgeCooling, setNudgeCooling] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -10633,7 +10635,11 @@ export function ChatShell() {
         </aside>
       )}
 
-      <aside className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"}`}>
+      <aside
+        className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"} ${
+          voice.channelId && !collapsedGroups.voice ? "voice-panel-open" : ""
+        }`}
+      >
         {/* Resize handle for members panel (Desktop) */}
         <div
           className="member-resize-handle"
@@ -10643,9 +10649,23 @@ export function ChatShell() {
 
         {voice.channelId && (
           <>
-            <div className="member-panel-title">
+            <div
+              className={`member-panel-title voice-panel-title ${collapsedGroups.voice ? "msn-collapsed" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={!collapsedGroups.voice}
+              onClick={() => setCollapsedGroups((g) => ({ ...g, voice: !g.voice }))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setCollapsedGroups((g) => ({ ...g, voice: !g.voice }));
+                }
+              }}
+            >
               <span>IN VOICE — {voiceParticipants.length}</span>
             </div>
+            {!collapsedGroups.voice && (
+            <>
             <div className="voice-feature">
               <div className="voice-feature-avatars">
                 {voiceParticipants.slice(0, 5).map((person) => (
@@ -10680,29 +10700,16 @@ export function ChatShell() {
                 </button>
               </div>
               <div className="screen-share-controls compact">
-                <select
-                  aria-label="Screen share quality"
-                  value={voice.screenQuality}
-                  disabled={voice.screenSharing}
-                  onChange={(event) =>
-                    voice.setScreenQuality(
-                      event.target.value as ScreenShareQuality,
-                    )
-                  }
-                >
-                  {SCREEN_SHARE_QUALITIES.map((quality) => (
-                    <option key={quality} value={quality}>{quality}</option>
-                  ))}
-                </select>
                 <button
-                  className={voice.screenSharing ? "sharing" : ""}
+                  className={voice.screenSharing ? "sharing" : sidebarShareSetupOpen ? "active" : ""}
+                  aria-expanded={!voice.screenSharing && sidebarShareSetupOpen}
                   onClick={() =>
                     voice.screenSharing
                       ? voice.stopScreenShare()
-                      : void voice.startScreenShare()
+                      : setSidebarShareSetupOpen((open) => !open)
                   }
                 >
-                  {voice.screenSharing ? "Stop" : "Share screen"}
+                  {voice.screenSharing ? `Stop · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
                 </button>
                 <button
                   className={voice.cameraOn ? "sharing" : ""}
@@ -10713,6 +10720,22 @@ export function ChatShell() {
                   {voice.cameraOn ? "Camera off" : "Camera"}
                 </button>
               </div>
+              {sidebarShareSetupOpen && !voice.screenSharing && (
+                <ScreenShareSetup
+                  className="screen-share-setup-inline"
+                  quality={voice.screenQuality}
+                  onQuality={voice.setScreenQuality}
+                  film={voice.screenFilm}
+                  onFilm={voice.setScreenFilm}
+                  audio={voice.screenShareAudio}
+                  onAudio={voice.setScreenShareAudio}
+                  onClose={() => setSidebarShareSetupOpen(false)}
+                  onStart={() => {
+                    setSidebarShareSetupOpen(false);
+                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio, voice.screenFilm);
+                  }}
+                />
+              )}
             </div>
 
             {stageChannelId !== voice.channelId && voice.channelId && (
@@ -10723,6 +10746,8 @@ export function ChatShell() {
               >
                 Open call view
               </button>
+            )}
+            </>
             )}
           </>
         )}
@@ -10876,6 +10901,9 @@ export function ChatShell() {
               {tools}
             </div>
           );
+          // MSN groups stop growing at about ten contacts and scroll instead.
+          const rows = (nodes: ReactNode) =>
+            msnTheme ? <div className="msn-contact-scroll">{nodes}</div> : nodes;
           return (
             <>
               {groups.map((group) => {
@@ -10896,12 +10924,13 @@ export function ChatShell() {
                         </button>
                       </span>,
                     )}
-                    {!collapsedGroups[`group:${group.id}`] && (
-                      <>
-                        {inGroupOnline.map((member) => row(member, false))}
-                        {inGroupOffline.map((member) => row(member, true))}
-                      </>
-                    )}
+                    {!collapsedGroups[`group:${group.id}`] &&
+                      rows(
+                        <>
+                          {inGroupOnline.map((member) => row(member, false))}
+                          {inGroupOffline.map((member) => row(member, true))}
+                        </>,
+                      )}
                   </div>
                 );
               })}
@@ -10910,13 +10939,13 @@ export function ChatShell() {
                 msnTheme ? `Online (${looseOnline.length})` : `ONLINE — ${looseOnline.length}`,
                 "online-title",
               )}
-              {!(msnTheme && collapsedGroups.online) && looseOnline.map((member) => row(member, false))}
+              {!(msnTheme && collapsedGroups.online) && rows(looseOnline.map((member) => row(member, false)))}
               {header(
                 "offline",
                 msnTheme ? `Not Online (${looseOffline.length})` : `OFFLINE — ${looseOffline.length}`,
                 "offline-title",
               )}
-              {!(msnTheme && collapsedGroups.offline) && looseOffline.map((member) => row(member, true))}
+              {!(msnTheme && collapsedGroups.offline) && rows(looseOffline.map((member) => row(member, true)))}
               {msnTheme && (
                 <button type="button" className="msn-add-group" onClick={() => createContactGroup()}>
                   + Create a group
@@ -11644,6 +11673,8 @@ export function ChatShell() {
           onClose={() => setProfileMember(null)}
         />
       )}
+
+      {!user.email && !user.emailPromptSkipped && <EmailPrompt onUser={setUser} />}
 
       {settingsOpen && (
         <SettingsDialog

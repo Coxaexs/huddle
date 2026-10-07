@@ -5,10 +5,23 @@ export type RoomActivityKind =
   | "drawguess"
   | "timer"
   | "initiative"
-  | "deeppixel";
+  | "deeppixel"
+  | "richup";
 
 /** Where the DeepPixel board game is served; each room gets its own game code there. */
 export const DEEPPIXEL_URL = "https://deeppixel.online/monogame/";
+
+/** Richup.io lobby; rooms are created there, so the activity just shares a room link. */
+export const RICHUP_URL = "https://richup.io/";
+
+/** Turns a pasted Richup link or bare room code into a room URL, or "" if it isn't one. */
+export function richupRoomUrl(raw: string): string {
+  const value = raw.trim();
+  const match =
+    value.match(/^(?:https?:\/\/)?(?:www\.)?richup\.io\/room\/([A-Za-z0-9_-]{3,32})\/?(?:[?#].*)?$/i) ||
+    value.match(/^([A-Za-z0-9_-]{3,32})$/);
+  return match ? `${RICHUP_URL}room/${match[1]}` : "";
+}
 
 export interface InitiativeEntry {
   id: string;
@@ -53,6 +66,7 @@ export const ACTIVITY_KINDS: RoomActivityKind[] = [
   "timer",
   "initiative",
   "deeppixel",
+  "richup",
 ];
 
 export function isActivityKind(value: unknown): value is RoomActivityKind {

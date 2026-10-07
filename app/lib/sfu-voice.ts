@@ -58,24 +58,35 @@ function kindOf(source: Track.Source): SfuStreamKind | null {
   }
 }
 
+/** Upload ceiling at 30 fps for each screen share height. */
+const SCREEN_BITRATE_30FPS: Record<number, number> = {
+  480: 1_000_000,
+  720: 2_000_000,
+  900: 3_000_000,
+  1080: 4_000_000,
+};
+/** Fewer frames need fewer bits, though not proportionally fewer. */
+const SCREEN_FPS_FACTOR: Record<number, number> = { 15: 0.6, 24: 0.85, 30: 1, 60: 1.5 };
+
 /**
  * Upload ceilings for a screen share. The sender pays for the top layer plus a
  * small one; the server hands the small one to anyone whose link cannot take
  * the full picture, so one slow viewer no longer drags the sharer down.
  */
-export const SCREEN_ENCODINGS: Record<
-  ScreenShareQuality,
-  { maxBitrate: number; maxFramerate: number; low: VideoPreset }
-> = {
-  "720p30": { maxBitrate: 2_000_000, maxFramerate: 30, low: new VideoPreset(640, 360, 400_000, 15) },
-  // The film settings keep 24 fps on the small layer too: a slow viewer gets
-  // a softer picture, not a choppy one.
-  "900p24": { maxBitrate: 2_500_000, maxFramerate: 24, low: new VideoPreset(960, 540, 700_000, 24) },
-  "900p30": { maxBitrate: 3_000_000, maxFramerate: 30, low: new VideoPreset(960, 540, 700_000, 15) },
-  "1080p24": { maxBitrate: 3_500_000, maxFramerate: 24, low: new VideoPreset(1280, 720, 1_000_000, 24) },
-  "1080p30": { maxBitrate: 4_000_000, maxFramerate: 30, low: new VideoPreset(1280, 720, 1_000_000, 15) },
-  "1080p60": { maxBitrate: 6_000_000, maxFramerate: 60, low: new VideoPreset(1280, 720, 1_200_000, 30) },
-};
+export function screenEncoding(quality: ScreenShareQuality, film: boolean) {
+  const [height, fps] = quality.split("p").map(Number);
+  const maxBitrate = Math.round(SCREEN_BITRATE_30FPS[height] * SCREEN_FPS_FACTOR[fps]);
+  const [lowWidth, lowHeight, lowBitrate] =
+    height >= 1080 ? [1280, 720, 1_000_000] : height >= 900 ? [960, 540, 700_000] : height >= 720 ? [640, 360, 400_000] : [640, 360, 300_000];
+  // Film keeps the frame rate on the small layer too: a slow viewer gets a
+  // softer picture, not a choppy one. A desktop can drop frames there instead.
+  const lowFps = film ? fps : Math.min(fps, fps >= 60 ? 30 : 15);
+  return {
+    maxBitrate,
+    maxFramerate: fps,
+    low: new VideoPreset(lowWidth, lowHeight, Math.min(lowBitrate, maxBitrate), lowFps),
+  };
+}
 
 export interface SfuHandlers {
   /** The full set of remote streams, whenever it changes. */
@@ -134,7 +145,7 @@ export class SfuVoice {
   async publish(
     track: MediaStreamTrack,
     kind: SfuPublishKind,
-    options: { bitrate?: number; screen?: keyof typeof SCREEN_ENCODINGS } = {},
+    options: { bitrate?: number; screen?: ScreenShareQuality; film?: boolean } = {},
   ): Promise<void> {
     const enabled = track.enabled;
     let publish: TrackPublishOptions;
@@ -156,7 +167,7 @@ export class SfuVoice {
         audioPreset: { maxBitrate: options.bitrate ?? 128_000 },
       };
     } else if (kind === "screen") {
-      const profile = SCREEN_ENCODINGS[options.screen ?? "1080p30"];
+      const profile = screenEncoding(options.screen ?? "1080p30", options.film ?? false);
       publish = {
         source: Track.Source.ScreenShare,
         screenShareEncoding: { maxBitrate: profile.maxBitrate, maxFramerate: profile.maxFramerate },
@@ -164,7 +175,7 @@ export class SfuVoice {
         simulcast: true,
         // A film has to stay smooth, so it gives up resolution first; a desktop
         // has to stay legible, so it gives up frames first.
-        degradationPreference: profile.maxFramerate === 24 ? "maintain-framerate" : "maintain-resolution",
+        degradationPreference: options.film ? "maintain-framerate" : "maintain-resolution",
       };
     } else {
       publish = { source: Track.Source.Camera, simulcast: true };
