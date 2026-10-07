@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
+import { playDiceRollSound, stopDiceRollSound } from "../lib/dice-sounds";
 
 /** Flatten the server's authoritative die values in roll order. */
 function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number }> {
@@ -21,8 +22,10 @@ export function buildDiceBoxNotation(roll: DiceRollEvent): string {
   const results: number[] = [];
 
   for (const term of roll.dice) {
-    const validSides = [4, 6, 8, 10, 12, 20, 100];
-    const sides = validSides.includes(term.sides) ? term.sides : 20;
+    // Shapes dice-box-threejs can draw (d2 is its two-faced coin die). Other
+    // sizes borrow the next die up so the forced face still exists on it.
+    const validSides = [2, 4, 6, 8, 10, 12, 20, 100];
+    const sides = validSides.find((n) => n >= term.sides) ?? 100;
     terms.push(`${term.rolls.length}d${sides}`);
     for (const r of term.rolls) {
       results.push(r.value);
@@ -55,6 +58,7 @@ export function DiceOverlay({
 
   const [values, setValues] = useState<Array<{ sides: number; value: number }>>([]);
   const [total, setTotal] = useState<string>("");
+  const [currentTheme, setCurrentTheme] = useState<string>("default");
 
   useEffect(() => {
     setValues([]);
@@ -82,42 +86,113 @@ export function DiceOverlay({
       if (disposed) return;
       const DiceBox = (mod as { default: any }).default;
 
-      // Theme configuration
-      const theme = roll.theme || "default";
+      // Theme configuration:
+      // If roll has an explicit theme, use it.
+      // If default or unset, automatically inherit active theme if on vampire or dark academia.
+      const activeCustomTheme =
+        typeof document !== "undefined"
+          ? document.documentElement.dataset.customThemeId
+          : undefined;
+
+      let theme = roll.theme || "default";
+      if (theme === "default") {
+        if (activeCustomTheme === "vampire") theme = "vampire";
+        else if (activeCustomTheme === "dark-academia") theme = "dark-academia";
+      }
+      if (theme === "darkacademia") theme = "dark-academia";
+      setCurrentTheme(theme);
+
+      // Texture resolution: roll.texture > localStorage > theme default
+      const savedTexture =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("huddle_dice_texture")
+          : null;
+
+      const effectiveTexture: string =
+        roll.texture ||
+        (savedTexture && savedTexture !== "auto" ? savedTexture : "") ||
+        (theme === "vampire" ? "skulls" : theme === "dark-academia" ? "wood" : "none");
+
+      // Material resolution: roll.material > localStorage > texture/theme default
+      const savedMaterial =
+        typeof window !== "undefined"
+          ? (window.localStorage.getItem("huddle_dice_material") as "plastic" | "metal" | "wood" | "glass" | null)
+          : null;
+
+      const defaultMaterialForTexture: "plastic" | "metal" | "wood" | "glass" =
+        effectiveTexture === "metal"
+          ? "metal"
+          : effectiveTexture === "wood"
+            ? "wood"
+            : effectiveTexture === "marble" || effectiveTexture === "stainedglass" || effectiveTexture === "ice"
+              ? "glass"
+              : theme === "vampire"
+                ? "metal"
+                : theme === "dark-academia"
+                  ? "wood"
+                  : "plastic";
+
+      const effectiveMaterial: "plastic" | "metal" | "wood" | "glass" =
+        roll.material ||
+        (savedMaterial && (savedMaterial as string) !== "auto" ? savedMaterial : null) ||
+        defaultMaterialForTexture;
+
       const themeColor = roll.themeColor || "#2563eb";
 
       let customColorset: any = null;
-      if (theme === "pride") {
+      let themeSurface = "green-felt";
+
+      if (theme === "vampire") {
+        customColorset = {
+          name: "vampire",
+          foreground: "#f3e7e7",
+          background: ["#140508", "#2c070d", "#5c0816", "#8a0e1e", "#c8102e"],
+          outline: "#1a0206",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
+        };
+        themeSurface = "stainless";
+      } else if (theme === "dark-academia") {
+        customColorset = {
+          name: "dark-academia",
+          foreground: "#f5ecd5",
+          background: ["#131a14", "#231810", "#3a2a1c", "#4d3826", "#c9a45c"],
+          outline: "#0e130f",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
+        };
+        themeSurface = "mahogany";
+      } else if (theme === "pride") {
         customColorset = {
           name: "pride",
           foreground: "#ffffff",
           background: ["#E40303", "#FF8C00", "#FFED00", "#008026", "#24408E", "#732982"],
-          texture: "none",
-          material: "plastic",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
         };
       } else if (theme === "trans") {
         customColorset = {
           name: "trans",
           foreground: "#ffffff",
           background: ["#5BCEFA", "#F5A9B8", "#FFFFFF", "#F5A9B8", "#5BCEFA"],
-          texture: "none",
-          material: "plastic",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
         };
       } else if (theme === "nonbinary") {
         customColorset = {
           name: "nonbinary",
           foreground: "#ffffff",
           background: ["#FFF433", "#FFFFFF", "#9B59D0", "#2C2C2C"],
-          texture: "none",
-          material: "plastic",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
         };
       } else {
         customColorset = {
           name: `custom-${themeColor}`,
           foreground: "#ffffff",
           background: themeColor,
-          texture: "none",
-          material: "plastic",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
         };
       }
 
@@ -125,8 +200,10 @@ export function DiceOverlay({
         assetPath: `${basePath}/assets/dice-box-threejs/`,
         sounds: false,
         shadows: true,
-        theme_surface: "green-felt",
+        theme_surface: themeSurface,
         theme_customColorset: customColorset,
+        theme_texture: effectiveTexture,
+        theme_material: effectiveMaterial,
         baseScale: 100,
         strength: 1.2,
       });
@@ -140,6 +217,14 @@ export function DiceOverlay({
         console.warn("DiceBox initialization failed:", err);
       }
       if (disposed) return;
+
+      // Realistic dice audio playback with tier-specific multi-dice choreography and material
+      const totalDiceCount = roll.dice.reduce((sum, d) => sum + d.rolls.length, 0);
+      void playDiceRollSound({
+        theme,
+        diceCount: totalDiceCount,
+        material: effectiveMaterial,
+      });
 
       if (!initOk) {
         if (failsafeTimer) clearTimeout(failsafeTimer);
@@ -188,6 +273,7 @@ export function DiceOverlay({
       disposed = true;
       if (dismissTimer) clearTimeout(dismissTimer);
       if (failsafeTimer) clearTimeout(failsafeTimer);
+      stopDiceRollSound();
       try {
         boxRef.current?.clearDice?.();
         boxRef.current?.renderer?.dispose?.();
@@ -212,7 +298,7 @@ export function DiceOverlay({
       />
       {values.length > 0 && (
         <div
-          className="dice-result-overlay"
+          className={`dice-result-overlay dice-theme-${currentTheme}`}
           onClick={() => onDoneRef.current()}
           title="Click to dismiss"
         >

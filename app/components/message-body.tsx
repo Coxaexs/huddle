@@ -355,7 +355,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   return (
     <pre className="code-block group relative">
       <div className="code-block-header flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-white/[0.06] text-[10px] font-mono select-none">
-        <span className="code-lang text-[#9e83fc] font-semibold uppercase tracking-wider">
+        <span className="code-lang text-[var(--lavender)] font-semibold uppercase tracking-wider">
           {language || "code"}
         </span>
         <button

@@ -899,7 +899,7 @@ export function VoiceStage({
                       </span>
                       {seatTime(p, "table-seat-time")}
                       {isSpeaking && (
-                        <span className="text-[10px] text-[#a78bfa] font-bold">speaking</span>
+                        <span className="text-[10px] text-[var(--lavender)] font-bold">speaking</span>
                       )}
                     </div>
                   </div>

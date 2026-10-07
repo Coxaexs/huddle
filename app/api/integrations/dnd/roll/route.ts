@@ -74,6 +74,8 @@ function resolveRoll(
   actualRolls?: number[][],
   theme?: string,
   themeColor?: string,
+  material?: "plastic" | "metal" | "wood" | "glass",
+  texture?: string,
 ): ResolvedRoll | { error: string } {
   const advantage = /\b(adv|advantage)\b/i.test(input);
   const disadvantage = /\b(dis|disadvantage)\b/i.test(input);
@@ -195,6 +197,8 @@ function resolveRoll(
     animationSeed: randomSeed(),
     theme: theme || undefined,
     themeColor: themeColor || undefined,
+    material: material || undefined,
+    texture: texture || undefined,
   };
 
   const mode = advantage
@@ -220,6 +224,8 @@ export async function POST(request: Request) {
     preview?: boolean;
     theme?: string;
     themeColor?: string;
+    material?: "plastic" | "metal" | "wood" | "glass";
+    texture?: string;
   };
   const rawInput = (body.command || "").replace(/^\/roll\s*/i, "").trim();
   if (!rawInput) {
@@ -229,7 +235,39 @@ export async function POST(request: Request) {
     );
   }
 
-  const allowedThemes = ["default", "pride", "trans", "nonbinary"];
+  const allowedThemes = [
+    "default",
+    "pride",
+    "trans",
+    "nonbinary",
+    "vampire",
+    "dark-academia",
+    "darkacademia",
+  ];
+  const allowedMaterials = ["plastic", "metal", "wood", "glass"] as const;
+  const allowedTextures = [
+    "none",
+    "cloudy",
+    "fire",
+    "marble",
+    "water",
+    "ice",
+    "paper",
+    "speckles",
+    "glitter",
+    "stars",
+    "stainedglass",
+    "wood",
+    "metal",
+    "skulls",
+    "dragon",
+    "lizard",
+    "bird",
+    "astral",
+    "tiger",
+    "leopard",
+    "cheetah",
+  ] as const;
   const COLOR_NAMES: Record<string, string> = {
     blue: "#2563eb",
     skyblue: "#0284c7",
@@ -251,6 +289,8 @@ export async function POST(request: Request) {
 
   let parsedTheme: string | undefined;
   let parsedThemeColor: string | undefined;
+  let parsedMaterial: "plastic" | "metal" | "wood" | "glass" | undefined;
+  let parsedTexture: string | undefined;
   let input = rawInput;
 
   // Extract explicit hex color: #2563eb
@@ -260,12 +300,15 @@ export async function POST(request: Request) {
     input = input.replace(hexMatch[0], " ").trim();
   }
 
-  // Extract a named theme or colour (`/roll 2d20 red`), but only when colour
+  // Extract a named theme, colour, material or texture (`/roll 2d20 red metal skulls`), but only when style
   // words are the only extras; otherwise they are part of a label, as in
   // `/roll d20+14 Adult Red Dragon Bite attack`.
   const tokens = input.split(/\s+/);
   const isStyleWord = (token: string) =>
-    allowedThemes.includes(token.toLowerCase()) || Boolean(COLOR_NAMES[token.toLowerCase()]);
+    allowedThemes.includes(token.toLowerCase()) ||
+    allowedMaterials.includes(token.toLowerCase() as (typeof allowedMaterials)[number]) ||
+    allowedTextures.includes(token.toLowerCase() as (typeof allowedTextures)[number]) ||
+    Boolean(COLOR_NAMES[token.toLowerCase()]);
   const extras = tokens.filter(
     (token) =>
       !/^[+-]?[\dd+\-khl]*$/i.test(token) &&
@@ -276,7 +319,11 @@ export async function POST(request: Request) {
   for (const token of tokens) {
     const lower = token.toLowerCase();
     if (styleOnly && allowedThemes.includes(lower)) {
-      parsedTheme = lower;
+      parsedTheme = lower === "darkacademia" ? "dark-academia" : lower;
+    } else if (styleOnly && allowedMaterials.includes(lower as (typeof allowedMaterials)[number])) {
+      parsedMaterial = lower as (typeof allowedMaterials)[number];
+    } else if (styleOnly && allowedTextures.includes(lower as (typeof allowedTextures)[number])) {
+      parsedTexture = lower;
     } else if (styleOnly && COLOR_NAMES[lower]) {
       parsedThemeColor = COLOR_NAMES[lower];
     } else {
@@ -286,13 +333,24 @@ export async function POST(request: Request) {
   input = remainingTokens.join(" ").trim();
   if (!input) input = rawInput; // Fallback if user only typed theme name
 
-  const theme =
+  const rawTheme =
     parsedTheme ||
-    (body.theme && allowedThemes.includes(body.theme) ? body.theme : "default");
+    (body.theme && allowedThemes.includes(body.theme.toLowerCase()) ? body.theme.toLowerCase() : "default");
+  const theme = rawTheme === "darkacademia" ? "dark-academia" : rawTheme;
   const themeColor =
     parsedThemeColor ||
     (typeof body.themeColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.themeColor)
       ? body.themeColor
+      : undefined);
+  const material =
+    parsedMaterial ||
+    (body.material && allowedMaterials.includes(body.material as (typeof allowedMaterials)[number])
+      ? (body.material as (typeof allowedMaterials)[number])
+      : undefined);
+  const texture =
+    parsedTexture ||
+    (typeof body.texture === "string" && allowedTextures.includes(body.texture.toLowerCase() as any)
+      ? body.texture.toLowerCase()
       : undefined);
 
   const result = resolveRoll(
@@ -301,6 +359,8 @@ export async function POST(request: Request) {
     body.actualRolls,
     theme,
     themeColor,
+    material,
+    texture,
   );
   if ("error" in result) {
     return Response.json({ error: result.error }, { status: 400 });

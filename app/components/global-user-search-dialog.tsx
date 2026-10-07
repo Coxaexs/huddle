@@ -198,7 +198,7 @@ export function GlobalUserSearchDialog({
       <div className="bg-[#1a1628] border border-white/[0.08] shadow-2xl rounded-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[75vh]">
         {/* Search header */}
         <div className="flex items-center px-4 py-3.5 border-b border-white/[0.08] gap-3 bg-[#16131f]/60">
-          <Search size={20} className="text-[#a78bfa] shrink-0" />
+          <Search size={20} className="text-[var(--lavender)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -208,7 +208,7 @@ export function GlobalUserSearchDialog({
             className="flex-1 bg-transparent border-none text-[#e8e3f5] text-base placeholder-[#7c7599] focus:outline-none"
           />
           {loading ? (
-            <Loader2 size={18} className="animate-spin text-[#a78bfa] shrink-0" />
+            <Loader2 size={18} className="animate-spin text-[var(--lavender)] shrink-0" />
           ) : query ? (
             <button
               onClick={() => setQuery("")}
@@ -261,7 +261,7 @@ export function GlobalUserSearchDialog({
                             ) : (
                               <div
                                 className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white"
-                                style={{ background: s.color || "#a78bfa" }}
+                                style={{ background: s.color || "var(--lavender)" }}
                               >
                                 {s.icon || initials}
                               </div>
@@ -332,7 +332,7 @@ export function GlobalUserSearchDialog({
                             ) : (
                               <div
                                 className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white"
-                                style={{ background: s.color || "#a78bfa" }}
+                                style={{ background: s.color || "var(--lavender)" }}
                               >
                                 {s.icon || initials}
                               </div>
@@ -409,7 +409,7 @@ export function GlobalUserSearchDialog({
                                 @{u.username}
                               </span>
                               {u.isSelf && (
-                                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-white/[0.08] text-[#a78bfa]">
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-white/[0.08] text-[var(--lavender)]">
                                   You
                                 </span>
                               )}
@@ -446,7 +446,7 @@ export function GlobalUserSearchDialog({
                                 <button
                                   onClick={() => handleSendFriendRequest(u)}
                                   disabled={isBusy}
-                                  className="px-3 py-1.5 rounded-lg bg-[#a78bfa]/20 hover:bg-[#a78bfa]/30 text-[#c4b5fd] text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                  className="px-3 py-1.5 rounded-lg bg-[var(--lavender)]/20 hover:bg-[var(--lavender)]/30 text-[var(--accent-hi)] text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
                                   title="Add Friend"
                                 >
                                   <UserPlus size={14} />

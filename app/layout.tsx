@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
+import "./redesign.css";
+import "./theme-flavors.css";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {

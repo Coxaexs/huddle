@@ -1,0 +1,547 @@
+/* Per-theme flavour for built-in themes whose look goes beyond colour tokens.
+   Keyed on data-custom-theme-id, which lib/themes.ts sets when applying. */
+
+/* Amber ------------------------------------------------------------------ */
+:root[data-custom-theme-id="amber"] {
+  --rail-bg: #0e0d0c;
+  --surface-2: #26231f;
+  --muted-2: #8b8479;
+  --faint: #6e685f;
+  --accent-strong: #e0a56a;
+  --accent-hi: #f0c597;
+  --on-accent: #1e140a;
+  --shadow-sm: 0 1px 2px rgba(10, 6, 2, .4), 0 1px 3px rgba(10, 6, 2, .28);
+  --shadow-md: 0 8px 22px rgba(10, 6, 2, .45), 0 2px 6px rgba(10, 6, 2, .3);
+  --shadow-lg: 0 24px 56px rgba(10, 6, 2, .58), 0 4px 14px rgba(10, 6, 2, .4);
+}
+
+:root[data-custom-theme-id="amber"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Dark Academia: an old college library ---------------------------------
+   Green leather shelves around a page of aged paper, gilt hairlines,
+   everything set in Garamond. */
+:root[data-custom-theme-id="dark-academia"] {
+  --rail-bg: #0b0f0c;
+  --surface-2: #2a2219;
+  --muted-2: #95866b;
+  --faint: #7a6c56;
+  --accent-strong: #c9a45c;
+  --accent-hi: #e0c48b;
+  --on-accent: #1a1209;
+  --gilt: rgba(201, 164, 92, 0.38);
+  --font-ui: "EB Garamond", Georgia, serif;
+  --font-display: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+  --ring: 0 0 0 2px rgba(201, 164, 92, 0.45);
+  --shadow-sm: 0 1px 2px rgba(6, 4, 2, .5), 0 1px 3px rgba(6, 4, 2, .3);
+  --shadow-md: 0 10px 26px rgba(6, 4, 2, .55), 0 2px 6px rgba(6, 4, 2, .35);
+  --shadow-lg: 0 24px 56px rgba(6, 4, 2, .62), 0 4px 14px rgba(6, 4, 2, .42);
+}
+
+/* Garamond's small x-height reads tiny at UI sizes; size-adjust matches it
+   to the sans the layout was tuned for. */
+:root[data-custom-theme-id="dark-academia"] body,
+:root[data-custom-theme-id="dark-academia"] .app-shell {
+  font-family: var(--font-ui) !important;
+  font-size-adjust: 0.53;
+}
+
+/* Leather: faint vertical grain on the shelves around the page. */
+:root[data-custom-theme-id="dark-academia"] :is(.rail, .sidebar, .member-panel) {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #141c15 0%, #111712 100%) !important;
+}
+
+/* The page: aged paper with a candle-warm top and darkened edges. */
+:root[data-custom-theme-id="dark-academia"] .chat-panel {
+  background:
+    radial-gradient(70% 45% at 50% 0%, rgba(214, 170, 100, 0.08), transparent 70%),
+    radial-gradient(140% 100% at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.35) 100%),
+    var(--chat-bg) !important;
+  border-color: var(--gilt) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Title page: italic Cormorant over a gilt double rule. */
+:root[data-custom-theme-id="dark-academia"] .chat-header {
+  border-bottom: 3px double var(--gilt) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-display) !important;
+  font-weight: 600 !important;
+  font-style: italic;
+  letter-spacing: 0 !important;
+  color: #f1e3c2;
+}
+
+:root[data-custom-theme-id="dark-academia"] .channel-heading strong {
+  font-size: 28px !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .space-header h1 {
+  font-size: 26px !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .channel-heading > span {
+  font-style: italic;
+}
+
+/* Running heads in small caps, gilt. */
+:root[data-custom-theme-id="dark-academia"] :is(.member-panel-title, .section-label) > span:first-child,
+:root[data-custom-theme-id="dark-academia"] .member-panel-title {
+  font-variant: small-caps;
+  letter-spacing: 0.1em !important;
+  font-size: 14px !important;
+  color: #b8975a !important;
+}
+
+/* Body copy: book-sized text with an open line height. */
+:root[data-custom-theme-id="dark-academia"] .message p,
+:root[data-custom-theme-id="dark-academia"] .message .message-body {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #e6d9bc;
+}
+
+:root[data-custom-theme-id="dark-academia"] .message .message-meta strong {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Bookmark ribbon for the open channel. */
+:root[data-custom-theme-id="dark-academia"] .channel.selected,
+:root[data-custom-theme-id="dark-academia"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(155, 48, 48, 0.28), rgba(155, 48, 48, 0.06)) !important;
+  box-shadow: inset 3px 0 0 #9b3030 !important;
+  font-style: italic;
+}
+
+:root[data-custom-theme-id="dark-academia"] .composer {
+  background: rgba(20, 16, 11, 0.85) !important;
+  border: 1px solid var(--gilt) !important;
+  box-shadow: inset 0 0 0 3px rgba(20, 16, 11, 0.85), inset 0 0 0 4px rgba(201, 164, 92, 0.16), var(--shadow-sm) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .server-banner-header {
+  filter: sepia(0.45) saturate(0.8) contrast(1.05);
+  border: 1px solid var(--gilt);
+}
+
+:root[data-custom-theme-id="dark-academia"] ::selection {
+  background: rgba(155, 48, 48, 0.6);
+  color: #f1e3c2;
+}
+
+/* Vampire: gothic midnight ------------------------------------------------ */
+:root[data-custom-theme-id="vampire"] {
+  --rail-bg: #070405;
+  --surface-2: #1d0e12;
+  --muted-2: #8f7176;
+  --faint: #6d5357;
+  --accent-strong: #c8102e;
+  --accent-hi: #ff5a6e;
+  --on-accent: #ffffff;
+  --blood: #c8102e;
+  --font-display: "Pirata One", "UnifrakturMaguntia", Georgia, serif;
+  --ring: 0 0 0 2px rgba(200, 16, 46, 0.6);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, .7), 0 0 0 1px rgba(200, 16, 46, .08);
+}
+
+:root[data-custom-theme-id="vampire"] :is(.rail, .sidebar, .member-panel) {
+  background: linear-gradient(180deg, #0c0708 0%, #0e080a 70%, #1a080d 100%) !important;
+}
+
+/* Black velvet page lit from below by a red glow. */
+:root[data-custom-theme-id="vampire"] .chat-panel {
+  background:
+    radial-gradient(90% 40% at 50% 110%, rgba(200, 16, 46, 0.16), transparent 70%),
+    radial-gradient(60% 30% at 0% 0%, rgba(120, 8, 24, 0.12), transparent 70%),
+    var(--chat-bg) !important;
+  border-color: rgba(200, 16, 46, 0.22) !important;
+}
+
+:root[data-custom-theme-id="vampire"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em !important;
+  color: #f3e7e7 !important;
+  text-shadow: 0 0 18px rgba(200, 16, 46, 0.45);
+}
+
+:root[data-custom-theme-id="vampire"] .channel-heading strong {
+  font-size: 30px !important;
+}
+
+:root[data-custom-theme-id="vampire"] .space-header h1 {
+  font-size: 27px !important;
+}
+
+:root[data-custom-theme-id="vampire"] :is(.member-panel-title, .section-label) > span:first-child,
+:root[data-custom-theme-id="vampire"] .member-panel-title {
+  color: #a3283c !important;
+  letter-spacing: 0.08em !important;
+}
+
+:root[data-custom-theme-id="vampire"] .channel.selected,
+:root[data-custom-theme-id="vampire"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(200, 16, 46, 0.3), rgba(200, 16, 46, 0.05)) !important;
+  box-shadow: inset 2px 0 0 var(--blood) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="vampire"] .composer {
+  background: rgba(18, 8, 11, 0.9) !important;
+  border-color: rgba(200, 16, 46, 0.28) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .composer:focus-within {
+  border-color: var(--blood) !important;
+  box-shadow: 0 0 22px rgba(200, 16, 46, 0.25) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px var(--blood), 0 0 14px rgba(200, 16, 46, 0.5) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .server-banner-header {
+  filter: saturate(0.6) contrast(1.1) brightness(0.85);
+}
+
+:root[data-custom-theme-id="vampire"] ::selection {
+  background: var(--blood);
+  color: #fff;
+}
+
+:root[data-custom-theme-id="vampire"] ::-webkit-scrollbar-thumb {
+  background: #4a0d18;
+  border-radius: 999px;
+}
+
+/* Sunset: dusk sky at the top, warm horizon at the bottom ---------------- */
+:root[data-custom-theme-id="sunset"] {
+  --rail-bg: #140f26;
+  --surface-2: #2e2245;
+  --muted-2: #a88ea0;
+  --faint: #846d85;
+  --accent-strong: #ffa25e;
+  --accent-hi: #ffc796;
+  --on-accent: #2a1206;
+  --ring: 0 0 0 3px rgba(255, 162, 94, 0.32);
+}
+
+:root[data-custom-theme-id="sunset"] .rail {
+  background: linear-gradient(180deg, #120d22 0%, #1d1430 55%, #2c1830 100%) !important;
+}
+
+:root[data-custom-theme-id="sunset"] .sidebar {
+  background: linear-gradient(180deg, #1d1634 0%, #231a3a 60%, #2d1d3a 100%) !important;
+}
+
+:root[data-custom-theme-id="sunset"] .chat-panel {
+  background:
+    radial-gradient(120% 60% at 50% 115%, rgba(255, 140, 80, 0.2) 0%, rgba(255, 94, 98, 0.08) 40%, transparent 70%),
+    linear-gradient(180deg, #221a3b 0%, #271c3d 55%, #33203c 100%) !important;
+}
+
+:root[data-custom-theme-id="sunset"] .channel.selected,
+:root[data-custom-theme-id="sunset"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(255, 162, 94, 0.22), rgba(255, 94, 98, 0.08)) !important;
+  box-shadow: inset 2px 0 0 #ffa25e;
+}
+
+:root[data-custom-theme-id="sunset"] .composer {
+  background: rgba(46, 34, 69, 0.82) !important;
+  border-color: rgba(255, 170, 120, 0.18) !important;
+}
+
+/* Cyberpunk: Night City terminal ---------------------------------------- */
+:root[data-custom-theme-id="cyberpunk"] {
+  --rail-bg: #050508;
+  --surface-2: #14141e;
+  --muted-2: #7a8499;
+  --faint: #5c6478;
+  --accent-strong: #fcee0a;
+  --accent-hi: #fcee0a;
+  --on-accent: #07070b;
+  --cp-cyan: #00f0ff;
+  --cp-red: #ff2a6d;
+  --font-ui: "Rajdhani", "Geist", sans-serif;
+  --font-display: "Rajdhani", sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --ring: 0 0 0 2px #00f0ff;
+  --ui-corners: 2px;
+}
+
+:root[data-custom-theme-id="cyberpunk"] body,
+:root[data-custom-theme-id="cyberpunk"] .app-shell {
+  font-family: var(--font-ui) !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* CRT scanlines over everything, very faint. */
+:root[data-custom-theme-id="cyberpunk"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .rail {
+  border-right: 1px solid rgba(0, 240, 255, 0.25) !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-mark,
+:root[data-custom-theme-id="cyberpunk"] .brand-mark {
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px #fcee0a, 0 0 14px rgba(252, 238, 10, 0.5) !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel-heading strong,
+:root[data-custom-theme-id="cyberpunk"] .space-header h1 {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em !important;
+  color: #fcee0a !important;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.75), 1px 0 rgba(0, 240, 255, 0.75);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-header h1 {
+  font-size: 22px !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel-heading > span,
+:root[data-custom-theme-id="cyberpunk"] .member-panel-title,
+:root[data-custom-theme-id="cyberpunk"] .section-label > span:first-child {
+  font-family: var(--font-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: #00f0ff !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel,
+:root[data-custom-theme-id="cyberpunk"] .voice-room {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel.selected,
+:root[data-custom-theme-id="cyberpunk"] .voice-room.selected {
+  background: #fcee0a !important;
+  color: #07070b !important;
+  box-shadow: none !important;
+  clip-path: polygon(0 0, 100% 0, 100% 60%, calc(100% - 10px) 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel.selected :is(svg, span) {
+  color: #07070b !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .composer {
+  border-radius: 0 !important;
+  background: #0c0c14 !important;
+  border: 1px solid rgba(0, 240, 255, 0.45) !important;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.08) !important;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .composer:focus-within {
+  border-color: #fcee0a !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] :is(.send-button, .join-button) {
+  border-radius: 0 !important;
+  background: #fcee0a !important;
+  color: #07070b !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .message time {
+  color: #00f0ff;
+  opacity: 0.75;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .avatar {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] ::selection {
+  background: #ff2a6d;
+  color: #07070b;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .chat-panel {
+  border-radius: 0 !important;
+  border-color: rgba(0, 240, 255, 0.22) !important;
+}
+
+/* Voice rooms ------------------------------------------------------------- */
+
+/* Dark Academia: a reading room of framed portraits lit by candles. */
+:root[data-custom-theme-id="dark-academia"] :is(.voice-stage, .voice-stage-body) {
+  background:
+    radial-gradient(60% 50% at 50% 40%, rgba(214, 170, 100, 0.07), transparent 70%),
+    radial-gradient(140% 110% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.45) 100%),
+    #141a14 !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-tile {
+  background:
+    radial-gradient(80% 70% at 50% 35%, rgba(234, 214, 170, 0.1), transparent 75%),
+    #221b13 !important;
+  border: 3px double rgba(201, 164, 92, 0.55) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 6px #1a140e, inset 0 0 40px rgba(0, 0, 0, 0.45), var(--shadow-md) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-avatar {
+  box-shadow: 0 0 0 2px #1a140e, 0 0 0 3px rgba(201, 164, 92, 0.7) !important;
+  filter: sepia(0.25) contrast(1.03);
+}
+
+/* Speaking: the candle flares rather than a green ring. */
+:root[data-custom-theme-id="dark-academia"] .stage-tile.is-speaking {
+  border-color: #e0c48b !important;
+  box-shadow: inset 0 0 0 6px #1a140e, inset 0 0 50px rgba(224, 180, 100, 0.18), 0 0 26px rgba(224, 180, 100, 0.35) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-tile figcaption,
+:root[data-custom-theme-id="dark-academia"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-display) !important;
+  font-style: italic;
+  font-size: 17px;
+  color: #ead9b3 !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] :is(.voice-stage-bottom-bar, .voice-stage-bar) {
+  background: linear-gradient(180deg, #161d16, #10150f) !important;
+  border-top: 3px double rgba(201, 164, 92, 0.35) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .vctrl-btn {
+  background: radial-gradient(circle at 35% 30%, #3a2e1d, #241c12) !important;
+  border: 1px solid rgba(201, 164, 92, 0.4) !important;
+  color: #e0c48b !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .vctrl-btn:hover {
+  border-color: #e0c48b !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .voice-active-contour {
+  background: rgba(34, 27, 19, 0.9) !important;
+  border: 1px solid rgba(201, 164, 92, 0.4) !important;
+  box-shadow: inset 0 0 0 3px rgba(20, 16, 11, 0.9), inset 0 0 0 4px rgba(201, 164, 92, 0.15) !important;
+  border-radius: 6px !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .voice-member-status :is(.is-speaking-icon, .speaking-bars),
+:root[data-custom-theme-id="dark-academia"] .voice-member.is-speaking .ring-2 {
+  color: #e0c48b !important;
+  --tw-ring-color: rgba(224, 196, 139, 0.8) !important;
+}
+
+/* Vampire: a crypt of gothic arches; speakers pulse blood red. */
+:root[data-custom-theme-id="vampire"] :is(.voice-stage, .voice-stage-body) {
+  background:
+    radial-gradient(70% 45% at 50% 105%, rgba(200, 16, 46, 0.18), transparent 70%),
+    radial-gradient(140% 110% at 50% 50%, transparent 50%, rgba(0, 0, 0, 0.6) 100%),
+    #0b0608 !important;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile {
+  background: linear-gradient(180deg, #170a0e 0%, #0e0709 100%) !important;
+  border: 1px solid rgba(200, 16, 46, 0.35) !important;
+  border-radius: 50% 50% 8px 8px / 26% 26% 8px 8px !important;
+  box-shadow: inset 0 0 0 4px #0b0608, inset 0 0 0 5px rgba(200, 16, 46, 0.18), inset 0 -30px 60px rgba(120, 8, 24, 0.18) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-avatar {
+  box-shadow: 0 0 0 2px #0b0608, 0 0 0 3px rgba(200, 16, 46, 0.7) !important;
+  filter: saturate(0.75) contrast(1.08);
+}
+
+@keyframes vampire-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 4px #0b0608, inset 0 0 0 5px rgba(200, 16, 46, 0.5), 0 0 18px rgba(200, 16, 46, 0.35); }
+  50% { box-shadow: inset 0 0 0 4px #0b0608, inset 0 0 0 5px rgba(255, 60, 80, 0.8), 0 0 34px rgba(200, 16, 46, 0.6); }
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile.is-speaking {
+  border-color: #ff3b54 !important;
+  animation: vampire-pulse 1.4s ease-in-out infinite;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile figcaption,
+:root[data-custom-theme-id="vampire"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-display) !important;
+  font-size: 19px;
+  letter-spacing: 0.03em;
+  color: #f3e7e7 !important;
+  text-shadow: 0 0 10px rgba(200, 16, 46, 0.5);
+}
+
+:root[data-custom-theme-id="vampire"] :is(.voice-stage-bottom-bar, .voice-stage-bar) {
+  background: linear-gradient(180deg, #0f0709, #080405) !important;
+  border-top: 1px solid rgba(200, 16, 46, 0.3) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .vctrl-btn {
+  background: #160a0d !important;
+  border: 1px solid rgba(200, 16, 46, 0.3) !important;
+  color: #e9cfd2 !important;
+}
+
+:root[data-custom-theme-id="vampire"] .vctrl-btn:hover {
+  border-color: #c8102e !important;
+  box-shadow: 0 0 14px rgba(200, 16, 46, 0.35) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .voice-active-contour {
+  background: rgba(22, 10, 13, 0.92) !important;
+  border: 1px solid rgba(200, 16, 46, 0.35) !important;
+  box-shadow: 0 0 18px rgba(200, 16, 46, 0.12) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .voice-member-status :is(.is-speaking-icon, .speaking-bars),
+:root[data-custom-theme-id="vampire"] .voice-member.is-speaking .ring-2 {
+  color: #ff3b54 !important;
+  --tw-ring-color: rgba(255, 59, 84, 0.85) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="vampire"] .stage-tile.is-speaking {
+    animation: none;
+  }
+}
+
+/* Timers stay legible: the display faces are for names only. */
+:root:is([data-custom-theme-id="vampire"], [data-custom-theme-id="dark-academia"]) .stage-tile figcaption .tile-voice-time {
+  font-family: var(--font-mono) !important;
+  font-style: normal;
+  font-size: 12px;
+  text-shadow: none;
+}

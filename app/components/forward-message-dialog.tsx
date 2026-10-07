@@ -169,7 +169,7 @@ export function ForwardMessageDialog({
         <div className="forward-dialog-header">
           <div className="flex items-center gap-2">
             <div className="forward-header-icon-wrap">
-              <Forward size={18} className="text-[#a78bfa]" />
+              <Forward size={18} className="text-[var(--lavender)]" />
             </div>
             <div>
               <h3 id="forward-dialog-title" className="forward-dialog-title">
@@ -261,7 +261,7 @@ export function ForwardMessageDialog({
                       />
                     ) : (
                       <div className="forward-channel-icon-wrap">
-                        <Hash size={14} className="text-[#a78bfa]" />
+                        <Hash size={14} className="text-[var(--lavender)]" />
                       </div>
                     )}
                     <div className="flex flex-col text-left min-w-0 flex-1">
