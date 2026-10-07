@@ -109,6 +109,12 @@ npm test           # unit tests
 npm run build && npm run serve   # production build on :8730
 ```
 
+On a server that is already running (`npm run serve` or a systemd unit around
+it), deploy with `npm run deploy` instead of building in place. It builds in a
+separate copy and swaps the finished build in, so the running server reloads
+once instead of crashing mid-build; `scripts/deploy.sh --rollback` puts the
+previous build back.
+
 ### Checks
 
 `npm run verify` runs both of the checks CI enforces, and is what to run before

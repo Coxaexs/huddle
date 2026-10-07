@@ -15,7 +15,8 @@
     "verify": "npm run typecheck && npm test",
     "admin": "node scripts/admin.mjs",
     "check:turn": "node scripts/check-turn.mjs",
-    "serve": "wrangler dev --config dist/server/wrangler.json --env-file .dev.vars --ip 127.0.0.1 --port 8730 --persist-to state"
+    "serve": "wrangler dev --config dist/server/wrangler.json --env-file .dev.vars --ip 127.0.0.1 --port 8730 --persist-to state",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
