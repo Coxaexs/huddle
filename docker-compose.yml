@@ -7,7 +7,6 @@
 # .env.example to .env, edit it, and run `docker compose up -d` again.
 #
 # Optional extras, enabled with profiles (see docs/self-hosting.md):
-#   --profile livekit   LiveKit media server for larger voice rooms
 #   --profile turn      coturn relay for friends behind strict NATs
 #   --profile musicbot  the full Music + Watch bot (dashboard, DJ booth,
 #                       lyrics, Watch Together, optional Discord)
@@ -120,11 +119,10 @@ services:
     depends_on:
       - hoffle
 
-  # LiveKit SFU. Voice works peer-to-peer without it; add it for big rooms.
-  # Copy livekit.yaml.example to livekit.yaml, set its key, and set LIVEKIT_*
-  # in .env before enabling.
+  # LiveKit SFU, always on. Hoffle generates its key into state/livekit.yaml on
+  # start. Browsers use it once LIVEKIT_URL is set in .env; until then voice
+  # stays peer-to-peer.
   livekit:
-    profiles: [livekit]
     image: livekit/livekit-server:latest
     container_name: hoffle-livekit
     restart: unless-stopped
@@ -134,7 +132,10 @@ services:
       - "7881:7881"       # WebRTC over TCP
       - "7882:7882/udp"   # WebRTC over UDP
     volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - ./state/livekit.yaml:/etc/livekit.yaml:ro
+    depends_on:
+      hoffle:
+        condition: service_healthy
 
   # STUN/TURN relay for people whose network blocks peer-to-peer voice.
   # Change the password in deploy/coturn/turnserver.conf before enabling, and

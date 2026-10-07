@@ -37,6 +37,8 @@ ENV NODE_ENV=production
 ENV PORT=8730
 ENV HOST=0.0.0.0
 ENV PERSIST_DIR=/app/state
+# Headroom so wrangler dev (Miniflare) does not stall in GC under load
+ENV NODE_OPTIONS=--max-old-space-size=2048
 
 # Persistent storage for SQLite (D1), uploads (R2) and generated secrets
 RUN mkdir -p /app/state
@@ -44,7 +46,7 @@ VOLUME ["/app/state"]
 
 EXPOSE 8730
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
   CMD curl -fsS http://127.0.0.1:8730/api/health > /dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/entrypoint.sh"]

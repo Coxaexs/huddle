@@ -216,7 +216,7 @@ git pull
 docker compose up -d --build
 ```
 
-If you use extras, pass the same `--profile` flags as when you started them, for example `docker compose --profile livekit --profile musicbot up -d --build`. Otherwise those containers keep running their old version.
+If you use extras, pass the same `--profile` flags as when you started them, for example `docker compose --profile musicbot up -d --build`. Otherwise those containers keep running their old version.
 
 Your messages, accounts and uploads live in the `state/` folder and are kept across updates. Take a [backup](#backups) before big updates, just in case.
 
@@ -394,49 +394,30 @@ Peer-to-peer voice gets heavy past about 6 to 8 people with video, because every
 
 Your server's **upload** speed becomes the limit: roughly 4 Mbps per viewer of a 1080p30 share and 2 Mbps per viewer at 720p. A home connection with 40 Mbps upload handles about ten 1080p viewers.
 
-1. Make a key and secret:
+LiveKit starts with `docker compose up -d`, and Hoffle generates its key pair on first start (in `state/secrets.env`, mirrored into `state/livekit.yaml`). To switch browsers over to it:
 
-   ```bash
-   openssl rand -hex 32
-   ```
-
-2. Copy the example config and put the secret in it:
-
-   ```bash
-   cp livekit.yaml.example livekit.yaml
-   ```
-
-   Open `livekit.yaml` and replace `replace-with-the-output-of-openssl-rand-hex-32` with the secret, so the line reads `hoffle: 3f9c...`. `livekit.yaml` is git-ignored, so the secret never ends up in a commit.
-
-   Do this **before** starting the profile. If `livekit.yaml` does not exist, Docker creates an empty folder with that name and LiveKit will not start; delete the folder (`sudo rm -rf livekit.yaml`) and copy the file again.
-3. LiveKit needs its own HTTPS address. Point a subdomain such as `livekit.example.com` at your server, and proxy it to port 7880 (in Caddy: `livekit.example.com { reverse_proxy localhost:7880 }`).
-4. Forward ports `7881` (TCP) and `7882` (UDP) to the Hoffle machine.
-5. Add to `.env`:
+1. LiveKit needs its own HTTPS address. Point a subdomain such as `livekit.example.com` at your server, and proxy it to port 7880 (in Caddy: `livekit.example.com { reverse_proxy localhost:7880 }`).
+2. Forward ports `7881` (TCP) and `7882` (UDP) to the Hoffle machine.
+3. Add to `.env`, then run `docker compose up -d`:
 
    ```
    LIVEKIT_URL=wss://livekit.example.com
-   LIVEKIT_API_KEY=hoffle
-   LIVEKIT_API_SECRET=<that secret>
    ```
 
-6. Start it:
+   To use your own key pair instead of the generated one, also set `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`.
 
-   ```bash
-   docker compose --profile livekit up -d
-   ```
+4. Check it: `docker compose logs livekit` should show it starting without errors, and `https://livekit.example.com` should answer `OK` in the browser.
 
-7. Check it: `docker compose --profile livekit logs livekit` should show it starting without errors, and `https://livekit.example.com` should answer `OK` in the browser.
+Until `LIVEKIT_URL` is set, voice stays peer-to-peer. If LiveKit is unreachable, Hoffle falls back to peer-to-peer on its own, so a mistake here never takes voice down.
 
-If LiveKit is unreachable, Hoffle falls back to peer-to-peer on its own, so a mistake here never takes voice down.
-
-LiveKit looks up your public IP once, when it starts. If your ISP gives you a new address, voice through LiveKit stops working until you restart it: `docker compose --profile livekit restart livekit`.
+LiveKit looks up your public IP once, when it starts. If your ISP gives you a new address, voice through LiveKit stops working until you restart it: `docker compose restart livekit`.
 
 ## Optional extras
 
 Extras are grouped in *profiles*, so they only start when you ask for them. You can combine profiles:
 
 ```bash
-docker compose --profile turn --profile livekit up -d
+docker compose --profile turn up -d
 ```
 
 When you run `stop`, `down` or `logs` for an extra, pass the same `--profile` flags too.
