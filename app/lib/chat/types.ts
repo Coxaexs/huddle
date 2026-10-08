@@ -177,3 +177,14 @@ export type ReactionList = Array<{
     color: string;
   }>;
 }>;
+
+/** The shell's text prompt dialog (see CustomDialog). */
+export type ShowCustomPrompt = (options: {
+  title: string;
+  message?: string;
+  defaultValue?: string;
+  placeholder?: string;
+  confirmText?: string;
+  maxLength?: number;
+  onConfirm: (val?: string) => void;
+}) => void;
