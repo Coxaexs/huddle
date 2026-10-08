@@ -191,18 +191,11 @@ import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
 import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
+import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import {
-  detectLanguage,
   clampTtsVoice,
-  getTtsVoice,
-  setTtsPlaybackEnabled,
-  setTtsVoice,
   stopTtsPlayback,
-  TTS_PITCH_RANGE,
-  TTS_TEMPO_RANGE,
-  speakableText,
   speakMessage,
-  synthesize,
   ttsPlaybackEnabled,
   type TtsLanguage,
 } from "./lib/tts/client";
@@ -229,7 +222,6 @@ import {
 import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
 import {
-  SAY_MAX_CHARS,
   nextScreenQuality,
   screenQualityLabel,
   useVoice,
@@ -4239,42 +4231,15 @@ export function ChatShell() {
       return;
     }
 
-    if (name === "tts" || name === "say") {
-      await runSpeechCommand(name, value);
-      return;
-    }
-
-    if (name === "ttsvoice") {
-      const current = getTtsVoice();
-      if (/^reset$/i.test(value)) {
-        setTtsVoice({ tempo: 1, pitch: 1 });
-        setNotice("Your /tts and /say voice is back to normal.");
-        return;
-      }
-      const tempo = /tempo\s+([\d.]+)/i.exec(value);
-      const pitch = /pitch\s+([\d.]+)/i.exec(value);
-      if (!tempo && !pitch) {
-        setNotice(
-          `Your voice: tempo ${current.tempo}, pitch ${current.pitch}. Change it with /ttsvoice tempo ${TTS_TEMPO_RANGE[0]}-${TTS_TEMPO_RANGE[1]} pitch ${TTS_PITCH_RANGE[0]}-${TTS_PITCH_RANGE[1]} (lower = slower / deeper), or /ttsvoice reset.`,
-        );
-        return;
-      }
-      const next = clampTtsVoice({
-        tempo: tempo ? Number(tempo[1]) : current.tempo,
-        pitch: pitch ? Number(pitch[1]) : current.pitch,
+    if (SPEECH_COMMANDS.has(name)) {
+      await runSpeechCommand(name as SpeechCommand, value, {
+        activeChannelId,
+        voiceChannelId: voice.channelId,
+        serverMuted: Boolean(user && hub.forcedMutes.has(user.id)),
+        voice,
+        notify: setNotice,
+        askLanguage: askTtsLanguage,
       });
-      setTtsVoice(next);
-      setNotice(`Your /tts and /say voice: tempo ${next.tempo}, pitch ${next.pitch}.`);
-      return;
-    }
-
-    if (name === "ttsstop") {
-      const channelIds = [activeChannelId, voice.channelId].filter((id): id is string => Boolean(id));
-      try {
-        await apiFetch("/api/tts/stop", { method: "POST", body: JSON.stringify({ channelIds }) });
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : "Could not stop text-to-speech.");
-      }
       return;
     }
 
@@ -4292,96 +4257,20 @@ export function ChatShell() {
     setNotice(`I don't know /${bare}. Type / to see what I do know.`);
   }
 
-  /**
-   * The language to speak `text` in: a leading "tr"/"en" picks it; for /say,
-   * clear text picks itself; otherwise the sender is asked. Null when the
-   * question is dismissed.
-   */
-  function ttsLanguageFor(text: string, detect: boolean): Promise<{ lang: TtsLanguage; text: string } | null> {
-    const forced = /^(tr|en)\s+([\s\S]+)$/i.exec(text);
-    if (forced) {
-      return Promise.resolve({ lang: forced[1].toLowerCase() as TtsLanguage, text: forced[2].trim() });
-    }
-    const detected = detect ? detectLanguage(text) : null;
-    if (detected) return Promise.resolve({ lang: detected, text });
+  /** Asks which language to read `text` in; null when the question is closed. */
+  function askTtsLanguage(text: string): Promise<TtsLanguage | null> {
     return new Promise((resolve) => {
       showCustomConfirm({
         title: "Which language?",
         message: `Read “${text.length > 80 ? `${text.slice(0, 80)}…` : text}” in Turkish or English?`,
         confirmText: "Türkçe",
         cancelText: "English",
-        onConfirm: () => resolve({ lang: "tr", text }),
-        onCancel: () => resolve({ lang: "en", text }),
+        onConfirm: () => resolve("tr"),
+        onCancel: () => resolve("en"),
       });
       // Closing the dialog without choosing sends nothing.
       dialogDismissRef.current = () => resolve(null);
     });
-  }
-
-  /** /tts <message> posts a message read aloud in the channel; /say <text> speaks it into your call. */
-  async function runSpeechCommand(name: "tts" | "say", value: string) {
-    if (name === "tts" && /^(on|off)$/i.test(value)) {
-      const on = value.toLowerCase() === "on";
-      setTtsPlaybackEnabled(on);
-      setNotice(on ? "/tts messages will be read aloud here." : "/tts messages will no longer be read aloud here.");
-      return;
-    }
-    if (!value) {
-      setNotice(name === "tts" ? "Type a message after /tts, e.g. /tts hello everyone" : "Type what to say after /say, e.g. /say on my way");
-      return;
-    }
-    if (user && hub.forcedMutes.has(user.id)) {
-      setNotice(`A moderator muted you, so /${name} is off too.`);
-      return;
-    }
-    if (name === "say" && !voice.channelId) {
-      setNotice("Join a voice channel first, then /say speaks for you there.");
-      return;
-    }
-    if (name === "say") {
-      const words = value.replace(/^(tr|en)\s+/i, "");
-      if (words.length > SAY_MAX_CHARS) {
-        setNotice(`/say is limited to ${SAY_MAX_CHARS} characters (that was ${words.length}).`);
-        return;
-      }
-      if (voice.forcedMute) {
-        setNotice("A moderator muted you, so /say is off too.");
-        return;
-      }
-      if (!voice.canSpeak()) {
-        setNotice("Too much /say is already queued; wait for some of it to play.");
-        return;
-      }
-    }
-    const choice = await ttsLanguageFor(value, name === "say");
-    if (!choice) return;
-
-    if (name === "tts") {
-      if (!activeChannelId) return;
-      await apiFetch("/api/messages", {
-        method: "POST",
-        body: JSON.stringify({
-          channelId: activeChannelId,
-          content: choice.text,
-          payload: { tts: { lang: choice.lang, voice: getTtsVoice() } },
-        }),
-      });
-      return;
-    }
-
-    const clean = speakableText(choice.text);
-    if (!clean) return;
-    try {
-      const speech = await synthesize(clean, choice.lang, getTtsVoice());
-      const result = await voice.speakIntoCall(speech.audio, speech.sampleRate);
-      if (result === "no-call") setNotice("Join a voice channel first, then /say speaks for you there.");
-      if (result === "no-server") setNotice("/say needs the voice server, and this call is using direct connections right now.");
-      if (result === "server-muted") setNotice("A moderator muted you, so /say is off too.");
-      if (result === "busy") setNotice("Too much /say is already queued; wait for some of it to play.");
-      if (result === "too-long") setNotice(`/say is limited to ${SAY_MAX_CHARS} characters.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? `Text-to-speech failed: ${error.message}` : "Text-to-speech failed.");
-    }
   }
 
   /** Runs a bot-registered command; false when no connected bot owns it. */
