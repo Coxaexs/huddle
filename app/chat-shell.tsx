@@ -190,6 +190,7 @@ import { pickImageFile, showNotification, playSound } from "./lib/chat/browser";
 import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
 import { Icon } from "./components/chat/icon-button";
+import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import {
   detectLanguage,
   clampTtsVoice,
@@ -209,7 +210,7 @@ import { UserFooter } from "./components/user-footer";
 import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
-import { VoiceStage, SoundboardDrawer, hasLiveVideo } from "./components/voice-stage";
+import { VoiceStage, hasLiveVideo } from "./components/voice-stage";
 import { FloatingScreenPreview } from "./components/floating-screen-preview";
 import {
   replaceEmojiShortcodes,
@@ -7580,99 +7581,23 @@ export function ChatShell() {
 
         {/* Mini voice bar - seamless top extension of discord-user-footer */}
         {voice.channelId && (
-          <div className="mini-voice-bar">
-            <div className="mini-voice-bar-header">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <div
-                  className="mini-voice-info min-w-0 cursor-pointer"
-                  onClick={() => setStageChannelId(voice.channelId)}
-                  title="Open voice channel"
-                >
-                  <span className="mini-voice-name truncate">
-                    {servers
-                      .flatMap((s) => s.channels)
-                      .find((c) => c.id === voice.channelId)?.name ||
-                      (dmCall && dmCall.channelId === voice.channelId
-                        ? dmCall.otherUser.displayName
-                        : "Voice Connected")}
-                  </span>
-                  <span className="mini-voice-status">
-                    <span className="mini-voice-dot animate-pulse" aria-hidden="true" />
-                    voice connected
-                  </span>
-                </div>
-              </div>
-              <div className="mini-voice-actions flex items-center gap-1 flex-shrink-0">
-                <button
-                  type="button"
-                  className={`mini-voice-btn ${quickSoundboardOpen ? "on" : ""}`}
-                  onClick={() => setQuickSoundboardOpen((o) => !o)}
-                  title={quickSoundboardOpen ? "Close soundboard" : "Soundboard"}
-                >
-                  <Volume2 size={14} />
-                </button>
-                <button
-                  type="button"
-                  className={`mini-voice-btn ${voice.screenSharing || sidebarShareSetupOpen ? "on" : ""}`}
-                  aria-expanded={!voice.screenSharing && sidebarShareSetupOpen}
-                  onClick={() =>
-                    voice.screenSharing
-                      ? voice.stopScreenShare()
-                      : setSidebarShareSetupOpen((open) => !open)
-                  }
-                  title={voice.screenSharing ? `Stop sharing · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
-                >
-                  <Monitor size={14} />
-                </button>
-                <button
-                  type="button"
-                  className={`mini-voice-btn ${voice.cameraOn ? "on" : ""}`}
-                  onClick={() =>
-                    voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
-                  }
-                  title={voice.cameraOn ? "Turn camera off" : "Camera"}
-                >
-                  {voice.cameraOn ? <VideoOff size={14} /> : <Video size={14} />}
-                </button>
-                <button
-                  type="button"
-                  className="mini-voice-leave"
-                  onClick={() => voice.leave()}
-                  title="Disconnect"
-                >
-                  <PhoneOff size={14} />
-                </button>
-              </div>
-            </div>
-            {sidebarShareSetupOpen && !voice.screenSharing && (
-              <div className="soundboard-quick-popover screen-share-quick-popover">
-                <ScreenShareSetup
-                  className="screen-share-setup-inline"
-                  quality={voice.screenQuality}
-                  onQuality={voice.setScreenQuality}
-                  film={voice.screenFilm}
-                  onFilm={voice.setScreenFilm}
-                  audio={voice.screenShareAudio}
-                  onAudio={voice.setScreenShareAudio}
-                  onClose={() => setSidebarShareSetupOpen(false)}
-                  onStart={() => {
-                    setSidebarShareSetupOpen(false);
-                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio, voice.screenFilm);
-                  }}
-                />
-              </div>
-            )}
-            {quickSoundboardOpen && (
-              <div className="soundboard-quick-popover">
-                <SoundboardDrawer
-                  serverId={servers.find((s) => s.channels.some((c) => c.id === voice.channelId))?.id || null}
-                  channelId={voice.channelId}
-                  canManage={false}
-                  onClose={() => setQuickSoundboardOpen(false)}
-                />
-              </div>
-            )}
-          </div>
+          <MiniVoiceBar
+            voice={voice}
+            roomName={
+              servers.flatMap((s) => s.channels).find((c) => c.id === voice.channelId)?.name ||
+              (dmCall && dmCall.channelId === voice.channelId
+                ? dmCall.otherUser.displayName
+                : "Voice Connected")
+            }
+            soundboardServerId={
+              servers.find((s) => s.channels.some((c) => c.id === voice.channelId))?.id || null
+            }
+            quickSoundboardOpen={quickSoundboardOpen}
+            setQuickSoundboardOpen={setQuickSoundboardOpen}
+            sidebarShareSetupOpen={sidebarShareSetupOpen}
+            setSidebarShareSetupOpen={setSidebarShareSetupOpen}
+            setStageChannelId={setStageChannelId}
+          />
         )}
 
         {user && (
