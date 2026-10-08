@@ -152,9 +152,19 @@ describe("/ttsvoice", () => {
   it("saves tempo and pitch, clamped to their ranges", async () => {
     const { ctx } = context();
     await runSpeechCommand("ttsvoice", "tempo 0.1 pitch 0.9", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 0.6, pitch: 0.9 });
+    expect(getTtsVoice()).toEqual({ tempo: 0.6, pitch: 0.9, effect: "none" });
     await runSpeechCommand("ttsvoice", "reset", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1 });
+    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1, effect: "none" });
+  });
+
+  it("turns the robot voice on and off, keeping tempo and pitch", async () => {
+    const { ctx, notices } = context();
+    await runSpeechCommand("ttsvoice", "tempo 0.9", ctx);
+    await runSpeechCommand("ttsvoice", "robot", ctx);
+    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "robot" });
+    expect(notices.at(-1)).toMatch(/robot/);
+    await runSpeechCommand("ttsvoice", "effect none", ctx);
+    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "none" });
   });
 });
 

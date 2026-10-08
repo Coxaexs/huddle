@@ -248,8 +248,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "ttsvoice",
-    args: "[tempo 0.6-1.3] [pitch 0.75-1.15] | reset",
-    description: "How your /tts and /say sound: slower tempo, deeper pitch (e.g. /ttsvoice tempo 0.85 pitch 0.9)",
+    args: "[tempo 0.6-1.3] [pitch 0.75-1.15] [robot] | reset",
+    description: "How your /tts and /say sound: slower tempo, deeper pitch, a robot voice (e.g. /ttsvoice tempo 0.85 robot)",
     group: "Huddle",
   },
   {
