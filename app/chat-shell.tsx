@@ -183,13 +183,14 @@ import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
 import type { Message, DmSummary, MentionEntry, MentionOption } from "./lib/chat/types";
 import { DM_HOME, DEFAULT_QUICK_REACTIONS, QUICK_VOTES } from "./lib/chat/constants";
 import { commandArgsHint, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
-import { applyReaction, reactionTooltip } from "./lib/chat/reactions";
+import { applyReaction } from "./lib/chat/reactions";
 import { pickImageFile, showNotification, playSound } from "./lib/chat/browser";
 import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
 import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import { RailFolder, RailQuickDms, RailServer } from "./components/chat/rail";
+import { MessageReactions } from "./components/chat/message-reactions";
 import { StatusMenu } from "./components/chat/status-menu";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import { runLookupCommand } from "./lib/chat/commands/lookup";
@@ -8557,53 +8558,15 @@ export function ChatShell() {
                           )}
 
                           {message.reactions && message.reactions.length > 0 && (
-                            <div className="reactions">
-                              {message.reactions.map((reaction) => (
-                                <button
-                                  type="button"
-                                  key={reaction.emoji}
-                                  className={`reaction outline-reaction-pill ${reaction.mine ? "mine" : ""} ${reactionViewer?.messageId === message.id && reactionViewer.emoji === reaction.emoji ? "viewer-open" : ""}`}
-                                  onClick={() =>
-                                    void toggleReaction(message.id, reaction.emoji)
-                                  }
-                                  onContextMenu={(e) =>
-                                    handleOpenReactionViewer(
-                                      e,
-                                      message.id,
-                                      reaction.emoji,
-                                    )
-                                  }
-                                  title={reactionTooltip(reaction)}
-                                >
-                                  {emojiMap[reaction.emoji.replace(/^:|:$/g, "")] ? (
-                                    <img
-                                      className="custom-emoji"
-                                      src={emojiMap[reaction.emoji.replace(/^:|:$/g, "")]}
-                                      alt={reaction.emoji}
-                                    />
-                                  ) : (
-                                    <OutlineEmoji emoji={reaction.emoji} />
-                                  )}
-                                  <b>{reaction.count}</b>
-                                </button>
-                              ))}
-                              <button
-                                type="button"
-                                className={`reaction add-reaction-btn ${reactionPicker?.messageId === message.id ? "mine" : ""}`}
-                                title="Add reaction · Shift-click to add to quick reactions"
-                                onClick={(e) => {
-                                  if (e.shiftKey) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleOpenReactionPicker(e, message.id, "addToQuickReactions");
-                                    return;
-                                  }
-                                  handleOpenReactionPicker(e, message.id, "react");
-                                }}
-                              >
-                                <SmilePlus size={14} />
-                              </button>
-                            </div>
+                            <MessageReactions
+                              reactions={message.reactions}
+                              emojiMap={emojiMap}
+                              viewerEmoji={reactionViewer?.messageId === message.id ? reactionViewer.emoji : null}
+                              pickerOpen={reactionPicker?.messageId === message.id}
+                              onToggle={(emoji) => void toggleReaction(message.id, emoji)}
+                              onOpenViewer={(e, emoji) => handleOpenReactionViewer(e, message.id, emoji)}
+                              onOpenPicker={(e, mode) => handleOpenReactionPicker(e, message.id, mode)}
+                            />
                           )}
 
                           {quickVoteId === message.id && (
