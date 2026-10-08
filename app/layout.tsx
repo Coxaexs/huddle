@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import "./redesign.css";
 import "./theme-flavors.css";
+import "./refresh.css";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {

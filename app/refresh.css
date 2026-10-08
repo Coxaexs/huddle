@@ -1,0 +1,124 @@
+/*
+ * Layout refresh: the message list, the sidebar and the voice view. Shapes
+ * and spacing only; every colour still comes from the theme. MSN themes keep
+ * their own layout. Removing this file (and its import in layout.tsx)
+ * restores the previous design.
+ */
+
+/* ---------- Message list ---------- */
+
+/* A date line where the day changes ("Today", "Yesterday", "Monday, 6 October"). */
+:root:not([data-custom-theme-id^="msn"]) .messages [data-day] {
+  position: relative;
+  margin-top: 40px !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .messages [data-day]::before {
+  content: attr(data-day);
+  position: absolute;
+  top: -32px;
+  left: 10px;
+  right: 10px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background:
+    linear-gradient(var(--line), var(--line)) left center / calc(50% - 96px) 1px no-repeat,
+    linear-gradient(var(--line), var(--line)) right center / calc(50% - 96px) 1px no-repeat;
+  pointer-events: none;
+}
+
+/* Hovering a message tints it; the outline made every row look like a card. */
+:root:not([data-custom-theme-id^="msn"]) .message:hover {
+  box-shadow: none;
+}
+
+/* Finished lyrics list the whole song: keep the card to a few lines and scroll. */
+.lyrics-now-lines {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* ---------- Sidebar ---------- */
+
+/* The unread pill sits on the sidebar's edge, not floating beside the channel. */
+:root:not([data-custom-theme-id^="msn"]) .channel-nav .unread-pill {
+  left: -11px;
+  width: 4px;
+  height: 8px;
+  background: var(--ink);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .channel.has-unread > span:not([class]) {
+  font-weight: 700;
+}
+
+/* Smaller footer buttons leave your name room to be read. */
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer .user-footer-btn {
+  width: 28px;
+  min-width: 28px;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer .user-footer-controls {
+  gap: 0;
+}
+
+/* ---------- Voice view ---------- */
+
+/* Name labels are a pill in the corner, as on video, for every kind of tile. */
+:root:not([data-custom-theme-id^="msn"]) .stage-tile figcaption {
+  left: 10px;
+  right: auto;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  text-shadow: none;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .avatar-tile figcaption {
+  justify-content: flex-start;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--line);
+}
+
+/* The controls float as one dock instead of a full-width strip. */
+:root:not([data-custom-theme-id^="msn"]) .voice-stage-bottom-bar {
+  background: transparent !important;
+  border-top: 0 !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .voice-ctrls-centered {
+  width: auto;
+  max-width: calc(100% - 24px);
+  margin: 0 auto 14px;
+  padding: 8px 10px;
+  gap: 6px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+/* Leaving the call is the one red button, so it is never pressed by mistake for another. */
+/* Themes restyle every control button, so this one insists. */
+:root:not([data-custom-theme-id^="msn"]) .voice-ctrls-centered .vctrl-btn.danger {
+  width: 56px;
+  background: #d93a3a !important;
+  border-color: #d93a3a !important;
+  color: #fff !important;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .voice-ctrls-centered .vctrl-btn.danger:hover {
+  background: #c22f2f !important;
+  border-color: #c22f2f !important;
+}
