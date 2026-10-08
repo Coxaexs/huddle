@@ -669,3 +669,195 @@
 :root[data-custom-theme-id="dark-academia"] .user-menu input[type="range"] {
   accent-color: #c9a45c;
 }
+
+/* Matrix: phosphor green on black, digital rain behind the glass ----------
+   The rain is a canvas (components/matrix-rain.tsx) under the app; panels are
+   slightly transparent so it shows through, never strongly enough to fight
+   the text. */
+:root[data-custom-theme-id="matrix"] {
+  --rail-bg: rgba(0, 6, 2, 0.9);
+  --surface-2: #03140a;
+  --muted-2: #4f9466;
+  --faint: #3b7350;
+  --accent-strong: #00ff66;
+  --accent-hi: #7dffae;
+  --on-accent: #001a09;
+  --font-ui: "Geist Mono", ui-monospace, monospace;
+  --font-display: "Share Tech Mono", ui-monospace, monospace;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --ring: 0 0 0 2px rgba(0, 255, 102, 0.6);
+  --matrix-glow: 0 0 8px rgba(0, 255, 102, 0.55);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 255, 102, 0.06);
+  color-scheme: dark;
+}
+
+:root[data-custom-theme-id="matrix"] body {
+  background: #000400 !important;
+}
+
+:root[data-custom-theme-id="matrix"] .matrix-rain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  opacity: 0.28;
+}
+
+:root[data-custom-theme-id="matrix"] .app-shell {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  font-family: var(--font-ui) !important;
+  font-size-adjust: 0.5;
+}
+
+:root[data-custom-theme-id="matrix"] :is(.rail, .sidebar, .member-panel) {
+  background: rgba(0, 8, 3, 0.88) !important;
+  border-color: rgba(0, 255, 102, 0.16) !important;
+}
+
+:root[data-custom-theme-id="matrix"] .chat-panel {
+  background: rgba(0, 10, 4, 0.78) !important;
+  border-color: rgba(0, 255, 102, 0.2) !important;
+  backdrop-filter: blur(1.5px);
+}
+
+:root[data-custom-theme-id="matrix"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.04em !important;
+  color: #b9ffd0 !important;
+  text-shadow: var(--matrix-glow);
+}
+
+:root[data-custom-theme-id="matrix"] .channel-heading strong::after {
+  content: "_";
+  margin-left: 2px;
+  color: #00ff66;
+  animation: matrix-caret 1.1s steps(1) infinite;
+}
+
+@keyframes matrix-caret {
+  50% { opacity: 0; }
+}
+
+:root[data-custom-theme-id="matrix"] :is(.channel-heading > span, .member-panel-title, .section-label > span:first-child) {
+  font-family: var(--font-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.14em !important;
+  color: #3fd477 !important;
+}
+
+/* The selected channel reads like a terminal's reverse-video line. */
+:root[data-custom-theme-id="matrix"] :is(.channel, .voice-room) {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="matrix"] :is(.channel.selected, .voice-room.selected) {
+  background: rgba(0, 255, 102, 0.14) !important;
+  box-shadow: inset 2px 0 0 #00ff66 !important;
+  color: #d8ffe4 !important;
+  text-shadow: var(--matrix-glow);
+}
+
+:root[data-custom-theme-id="matrix"] :is(.space-mark, .brand-mark) {
+  border-radius: 4px !important;
+  font-family: var(--font-display) !important;
+}
+
+:root[data-custom-theme-id="matrix"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px #00ff66, 0 0 16px rgba(0, 255, 102, 0.45) !important;
+}
+
+:root[data-custom-theme-id="matrix"] .composer {
+  background: rgba(0, 12, 5, 0.92) !important;
+  border: 1px solid rgba(0, 255, 102, 0.3) !important;
+  border-radius: 4px !important;
+}
+
+:root[data-custom-theme-id="matrix"] .composer:focus-within {
+  border-color: #00ff66 !important;
+  box-shadow: 0 0 18px rgba(0, 255, 102, 0.18) !important;
+}
+
+:root[data-custom-theme-id="matrix"] :is(textarea, input) {
+  caret-color: #00ff66;
+}
+
+/* Text on a green fill is always black, so a button can never go green-on-green. */
+:root[data-custom-theme-id="matrix"] :is(.send-button, .join-button, .primary-button, .bot-action.primary) {
+  background: #00ff66 !important;
+  color: #001a09 !important;
+}
+
+:root[data-custom-theme-id="matrix"] .message time {
+  color: #3fa865;
+}
+
+:root[data-custom-theme-id="matrix"] .message strong {
+  text-shadow: 0 0 6px rgba(0, 255, 102, 0.35);
+}
+
+:root[data-custom-theme-id="matrix"] a {
+  color: #7dffae;
+}
+
+:root[data-custom-theme-id="matrix"] .avatar {
+  border-radius: 4px !important;
+  filter: saturate(0.4) sepia(0.2) hue-rotate(70deg);
+}
+
+:root[data-custom-theme-id="matrix"] ::selection {
+  background: #00ff66;
+  color: #001a09;
+}
+
+:root[data-custom-theme-id="matrix"] ::-webkit-scrollbar-thumb {
+  background: #0d5a2a;
+  border-radius: 2px;
+}
+
+:root[data-custom-theme-id="matrix"] .user-menu {
+  background: rgba(0, 10, 4, 0.96);
+  border-color: rgba(0, 255, 102, 0.35);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 255, 102, 0.12);
+  font-family: var(--font-ui);
+}
+
+:root[data-custom-theme-id="matrix"] .bot-menu .user-menu-head {
+  background: rgba(0, 10, 4, 0.96);
+}
+
+:root[data-custom-theme-id="matrix"] .user-menu-head strong {
+  font-family: var(--font-display);
+  color: #b9ffd0;
+  text-shadow: var(--matrix-glow);
+}
+
+:root[data-custom-theme-id="matrix"] .user-menu button:hover {
+  background: rgba(0, 255, 102, 0.14);
+}
+
+/* Voice: a dark operator's console; speakers light up in phosphor. */
+:root[data-custom-theme-id="matrix"] :is(.voice-stage, .voice-stage-body) {
+  background: rgba(0, 8, 3, 0.85) !important;
+}
+
+:root[data-custom-theme-id="matrix"] .stage-tile {
+  background: rgba(0, 16, 6, 0.9) !important;
+  border: 1px solid rgba(0, 255, 102, 0.25) !important;
+  border-radius: 4px !important;
+}
+
+:root[data-custom-theme-id="matrix"] .stage-tile.is-speaking {
+  border-color: #00ff66 !important;
+  box-shadow: 0 0 0 1px #00ff66, 0 0 22px rgba(0, 255, 102, 0.35) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="matrix"] .channel-heading strong::after {
+    animation: none;
+  }
+}

@@ -220,7 +220,31 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff2a6d",
       mint: "#05ffa1",
     },
-    // Styling lives in redesign.css under [data-custom-theme-id="cyberpunk"].
+    // Styling lives in theme-flavors.css under [data-custom-theme-id="cyberpunk"].
+  },
+  {
+    id: "matrix",
+    name: "Matrix",
+    description: "Phosphor green on black, monospace type, and digital rain behind the glass.",
+    baseTheme: "cozy",
+    isBuiltin: true,
+    corners: 3,
+    backdrop: "plain",
+    colors: {
+      ink: "#c8ffd8",
+      muted: "#5fae7a",
+      line: "rgba(0, 255, 102, 0.14)",
+      paper: "#000400",
+      panel: "#010a04",
+      chatBg: "#000c05",
+      lavender: "#00ff66",
+      lavenderSoft: "rgba(0, 255, 102, 0.1)",
+      lavenderMuted: "#00a844",
+      coral: "#ff4f4f",
+      mint: "#00ff66",
+    },
+    // Styling lives in theme-flavors.css under [data-custom-theme-id="matrix"];
+    // the digital rain is components/matrix-rain.tsx.
   },
   {
     id: "midnight",
