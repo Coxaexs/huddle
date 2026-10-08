@@ -16,6 +16,7 @@ describe("Theme System & Serialization", () => {
     expect(ids).toContain("legacy");
     expect(ids).toContain("light");
     expect(ids).toContain("cyberpunk");
+    expect(ids).toContain("matrix");
     expect(ids).toContain("midnight");
     expect(ids).toContain("vampire");
     expect(ids).not.toContain("forest");
