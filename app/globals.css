@@ -11294,6 +11294,12 @@ html[data-motion="reduced"] .typing-dots i {
   width: 32px !important;
   height: 32px !important;
   border-radius: 50%;
+  /* A letter avatar is a <span>: without this it is inline, ignores its size
+     and collapses to an oval around the letter. */
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-weight: 700;
 }
 
 .user-footer-presence-dot {

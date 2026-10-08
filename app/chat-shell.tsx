@@ -6424,7 +6424,7 @@ export function ChatShell() {
               setMobileNav(false);
             }}
           >
-            CC
+            h
             {dmUnreadTotal > 0 && !inDmHome && (
               <span className="rail-badge">{dmUnreadTotal}</span>
             )}
