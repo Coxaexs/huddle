@@ -4,7 +4,8 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": { "enabled": true },
+  // Off: wrangler dev would keep a trace of every request in state/ (~600 MB a day).
+  "observability": { "enabled": false },
   "assets": {
     "directory": "./dist/client",
     // Bound so the worker can serve /hangout/assets/* itself: the built asset
