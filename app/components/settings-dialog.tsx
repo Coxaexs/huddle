@@ -6,10 +6,11 @@ import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
   User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart, Dices,
-  MessageSquarePlus
+  MessageSquarePlus, AudioLines
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { LicensesTab } from "./licenses-tab";
+import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
 import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 import { PhonePushSettings } from "./phone-push-settings";
@@ -624,6 +625,7 @@ type Tab =
   | "profile"
   | "activities"
   | "voice"
+  | "tts"
   | "password"
   | "invites"
   | "appearance"
@@ -1507,6 +1509,7 @@ export function SettingsDialog({
         { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
         { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
         { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
+        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, and hearing /tts messages" },
         { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
       ],
     },
@@ -1675,6 +1678,7 @@ export function SettingsDialog({
               {tab === "dice" && "3D Dice"}
               {tab === "custom_ui_css" && "Custom CSS"}
               {tab === "voice" && "Voice & Video"}
+              {tab === "tts" && "Text-to-speech"}
               {tab === "accessibility" && "Accessibility"}
               {tab === "invites" && "Invites"}
               {tab === "roles" && "Roles"}
@@ -2395,6 +2399,8 @@ export function SettingsDialog({
               </div>
             </div>
           )}
+
+          {tab === "tts" && <TtsSettings />}
 
           {tab === "voice" && (
             <>
