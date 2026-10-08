@@ -116,7 +116,6 @@ import {
   Timer,
   CalendarDays,
   LogOut,
-  Folder,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -190,6 +189,7 @@ import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
 import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
+import { RailFolder, RailQuickDms, RailServer } from "./components/chat/rail";
 import { StatusMenu } from "./components/chat/status-menu";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import { runLookupCommand } from "./lib/chat/commands/lookup";
@@ -5953,149 +5953,42 @@ export function ChatShell() {
 
   /** One server icon on the rail (loose, or inside an open folder). */
   function renderRailServer(server: PublicServer) {
-    const isActive = server.id === activeServerId;
-    const initials =
-      server.name
-        .split(/\s+/)
-        .map((w) => w[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "SV";
-    const hasUnread =
-      !isActive && server.channels.some((c) => unread[c.id]?.unread);
-    const mentionTotal = server.channels.reduce(
-      (sum, c) => sum + (unread[c.id]?.mentions || 0),
-      0,
-    );
-    const occupiedRooms = server.channels.filter(
-      (c) => channelKindInfo(c.kind).appearsAsVoice && (voiceRooms[c.id]?.length || 0) > 0,
-    );
-    const voiceActive = occupiedRooms.length > 0;
-    const voiceTitle = occupiedRooms
-      .map(
-        (c) =>
-          `🔊 ${c.name}: ${voiceRooms[c.id].map((p) => p.displayName).join(", ")}`,
-      )
-      .join("\n");
     return (
-      <div
+      <RailServer
         key={server.id}
-        className={`rail-item ${dragServerId === server.id ? "dragging" : ""} ${serverDropHint?.id === server.id ? `drop-${serverDropHint.mode}` : ""
-        }`}
-        {...serverDragProps(server)}
-      >
-        {isActive ? (
-          <span className="rail-active-pill" />
-        ) : (
-          hasUnread && <span className="rail-unread-pill" />
-        )}
-        <button
-          className={`space-mark ${isActive ? "active-space" : ""}`}
-          style={
-            isActive ? { background: server.color || "var(--lavender)" } : undefined
-          }
-          aria-label={server.name}
-          title={server.name}
-          onClick={() => {
-            setActiveServerId(server.id);
-            setStageChannelId(null);
-            setMobileNav(false);
-          }}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            setRailMenu({ server, x: event.clientX, y: event.clientY });
-          }}
-        >
-          {server.iconUrl ? (
-            <img
-              src={server.iconUrl}
-              alt={server.name}
-              style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: "14px",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            server.icon || initials
-          )}
-          {mentionTotal > 0 && (
-            <span className="rail-badge">{mentionTotal}</span>
-          )}
-          {voiceActive && (
-            <span className="rail-voice-badge" title={voiceTitle}>
-              <Volume2 size={11} />
-            </span>
-          )}
-        </button>
-      </div>
+        server={server}
+        isActive={server.id === activeServerId}
+        unread={unread}
+        voiceRooms={voiceRooms}
+        dragging={dragServerId === server.id}
+        dropMode={serverDropHint?.id === server.id ? serverDropHint.mode : null}
+        dragProps={serverDragProps(server)}
+        onOpen={() => {
+          setActiveServerId(server.id);
+          setStageChannelId(null);
+          setMobileNav(false);
+        }}
+        onMenu={(x, y) => setRailMenu({ server, x, y })}
+      />
     );
   }
 
   /** A folder on the rail: a mini grid when closed, its servers when open. */
   function renderRailFolder(folder: ServerFolder, folderServers: PublicServer[]) {
-    const open = openFolders.has(folder.id);
-    const containsActive = folderServers.some((server) => server.id === activeServerId);
-    const hasUnread = folderServers.some(
-      (server) => server.id !== activeServerId && server.channels.some((c) => unread[c.id]?.unread),
-    );
-    const mentionTotal = folderServers.reduce(
-      (sum, server) =>
-        sum + server.channels.reduce((n, c) => n + (unread[c.id]?.mentions || 0), 0),
-      0,
-    );
-    const label = folder.name || folderServers.map((server) => server.name).join(", ");
     return (
-      <div
+      <RailFolder
         key={`folder-${folder.id}`}
-        className={`rail-folder ${open ? "is-open" : ""}`}
-        style={{ ["--folder-color" as string]: folder.color }}
-      >
-        <div
-          className={`rail-item ${serverDropHint?.id === folder.id ? "drop-merge" : ""}`}
-          {...folderDropProps(folder)}
-        >
-          {!open && containsActive ? (
-            <span className="rail-active-pill" />
-          ) : (
-            !open && hasUnread && <span className="rail-unread-pill" />
-          )}
-          <button
-            type="button"
-            className="rail-folder-mark"
-            aria-label={`${label} folder, ${open ? "open" : "closed"}`}
-            aria-expanded={open}
-            title={label}
-            onClick={() => toggleFolderOpen(folder.id)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setFolderMenu({ folder, x: event.clientX, y: event.clientY });
-            }}
-          >
-            {open ? (
-              <Folder size={20} fill="currentColor" />
-            ) : (
-              <span className="rail-folder-grid">
-                {folderServers.slice(0, 4).map((server) => (
-                  <span
-                    key={server.id}
-                    style={{ background: server.color || "var(--lavender)" }}
-                  >
-                    {server.iconUrl ? (
-                      <img src={server.iconUrl} alt="" />
-                    ) : (
-                      server.icon || server.name.slice(0, 1).toUpperCase()
-                    )}
-                  </span>
-                ))}
-              </span>
-            )}
-            {!open && mentionTotal > 0 && <span className="rail-badge">{mentionTotal}</span>}
-          </button>
-        </div>
-        {open && folderServers.map((server) => renderRailServer(server))}
-      </div>
+        folder={folder}
+        folderServers={folderServers}
+        open={openFolders.has(folder.id)}
+        activeServerId={activeServerId}
+        unread={unread}
+        dropMerge={serverDropHint?.id === folder.id}
+        dropProps={folderDropProps(folder)}
+        onToggle={() => toggleFolderOpen(folder.id)}
+        onMenu={(x, y) => setFolderMenu({ folder, x, y })}
+        renderServer={renderRailServer}
+      />
     );
   }
 
@@ -6558,47 +6451,20 @@ export function ChatShell() {
         <div className="rail-divider" />
 
         {/* Quick DMs directly on rail from Figma design */}
-        {visibleDms.slice(0, 4).map((dm) => {
-          const isActive = inDmHome && activeChannelId === dm.channelId;
-          const count = unread[dm.channelId]?.count || 0;
-          const presence = presenceOf(dm.user);
-          return (
-            <div key={dm.channelId} className="rail-item">
-              {isActive && (
-                <span className="rail-active-pill" />
-              )}
-              <button
-                className={`rail-dm ${isActive ? "active-space" : ""}`}
-                title={`${dm.user.displayName}${count > 0 ? ` · ${count} new` : ""}`}
-                aria-label={`${dm.user.displayName}, ${count} unread`}
-                onClick={() => {
-                  setActiveServerId(DM_HOME);
-                  setActiveChannelId(dm.channelId);
-                  setStageChannelId(null);
-                  setMobileNav(false);
-                }}
-              >
-                <div className="relative flex-shrink-0">
-                  <Avatar
-                    className="rail-dm-avatar"
-                    avatar={dm.user.avatar}
-                    avatarUrl={dm.user.avatarUrl}
-                    color={dm.user.color}
-                  />
-                  {!dm.group && (
-                    <span
-                      className={`rail-dm-online-dot is-${presence === "invisible" ? "offline" : presence}`}
-                    />
-                  )}
-                  {voiceRooms[dm.channelId]?.length > 0 && (
-                    <span className="dm-call-active-indicator" title="Active voice call" />
-                  )}
-                </div>
-                {count > 0 && <span className="rail-badge">{count}</span>}
-              </button>
-            </div>
-          );
-        })}
+        <RailQuickDms
+          dms={visibleDms}
+          inDmHome={inDmHome}
+          activeChannelId={activeChannelId}
+          unread={unread}
+          voiceRooms={voiceRooms}
+          presenceOf={presenceOf}
+          onOpen={(channelId) => {
+            setActiveServerId(DM_HOME);
+            setActiveChannelId(channelId);
+            setStageChannelId(null);
+            setMobileNav(false);
+          }}
+        />
         <div className="rail-spacer" />
 
         {statusOpen && (
