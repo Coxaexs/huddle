@@ -59,7 +59,8 @@ export function TtsSettings() {
     <div className="tts-settings">
       <p className="modal-hint">
         Speech is made on your device: Turkish with EMA Lightning, English with
-        Paradee. The first use downloads the voice once. These are the same
+        Paradee (or KittenTTS for the male voice). The first use downloads the
+        voice once. These are the same
         settings as <code>/tts on|off</code> and <code>/ttsvoice</code>.
       </p>
 
@@ -77,6 +78,17 @@ export function TtsSettings() {
 
       <h3 className="tts-settings-heading">Your voice</h3>
       <p className="modal-hint">Used for your own /tts messages (everyone hears it the same way) and /say in voice.</p>
+
+      <label htmlFor="tts-speaker">English voice</label>
+      <select
+        id="tts-speaker"
+        value={voice.speaker ?? "default"}
+        onChange={(event) => update({ speaker: event.target.value === "male" ? "male" : "default" })}
+      >
+        <option value="default">Female</option>
+        <option value="male">Male</option>
+      </select>
+      <p className="modal-hint">Turkish has one voice for now.</p>
 
       <label htmlFor="tts-tempo">
         Tempo <span className="tts-settings-value">{voice.tempo.toFixed(2)}× · {describeTempo(voice.tempo)}</span>

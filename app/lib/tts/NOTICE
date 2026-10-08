@@ -6,5 +6,7 @@ Huddle text-to-speech uses these models and code, all under the Apache License 2
   normalizer-tr by Erdem Tuna — https://github.com/erdemtuna/normalizer-tr
 - Paradee-8M (English) by sahilmahendrakar — https://huggingface.co/sahilmahendrakar/Paradee-8M-v1.0
   (app/lib/tts/worker/english.ts includes web/misaki.js from https://github.com/sahilmahendrakar/paradee)
+- KittenTTS nano 0.8 int8 (English male voice "Bruno", Apache-2.0) by KittenML — https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8
+  (app/lib/tts/worker/kitten.ts follows https://github.com/KittenML/KittenTTS onnx_model.py)
 - Kokoro text frontend (kokoro.js/src/phonemize.js) by hexgrad — https://github.com/hexgrad/kokoro
 - onnxruntime-web (MIT) by Microsoft; phonemizer (Apache-2.0, eSpeak NG GPL-3.0) by xenova.
