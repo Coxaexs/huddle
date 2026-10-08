@@ -122,3 +122,81 @@
   background: #c22f2f !important;
   border-color: #c22f2f !important;
 }
+
+/* ---------- Corner roundness (Settings → Appearance) ----------
+ * --ui-corners is the slider (4–28 px, 16 by default). Every surface takes a
+ * share of it, so at 16 the app looks as it always has and the slider moves
+ * everything together. The :not(#_) only lifts these over the base rules; a
+ * theme's own deliberate shapes (marked !important) still win.
+ */
+:root {
+  --r-panel: var(--ui-corners, 16px);
+  --r-card: calc(var(--ui-corners, 16px) * 0.875);
+  --r-row: calc(var(--ui-corners, 16px) * 0.75);
+  --r-control: calc(var(--ui-corners, 16px) * 0.625);
+  --r-small: calc(var(--ui-corners, 16px) * 0.375);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) :is(
+  .chat-panel, .composer, .stage-tile, .now-playing, .brand-mark, .space-mark
+) {
+  border-radius: var(--r-panel);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered {
+  border-radius: calc(var(--r-panel) + 4px);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) :is(
+  .message, .dnd-card, .game-card, .lyrics-now, .server-banner-header,
+  .discord-user-footer, .dnd-roll-total-box, .vctrl-btn, .theme-share-card
+) {
+  border-radius: var(--r-card);
+}
+
+/* The voice bar and the footer under it are one card. */
+:root:not([data-custom-theme-id^="msn"]):not(#_) .mini-voice-bar {
+  border-radius: var(--r-card) var(--r-card) 0 0;
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) .mini-voice-bar + .discord-user-footer {
+  border-radius: 0 0 var(--r-card) var(--r-card);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) :is(
+  .channel, .voice-room, .voice-room-wrapper, .mini-music-bar, .send-button,
+  .dnd-card-portrait, .user-footer-dropdown-menu
+) {
+  border-radius: var(--r-row);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) :is(
+  .message-image, .rota-map, .ai-card, .icon-button, .attach-button, .gif-button,
+  .events-chip, .message-actions, .bot-action, .dnd-fold, .user-footer-btn,
+  .user-footer-profile, button.primary
+) {
+  border-radius: var(--r-control);
+}
+
+:root:not([data-custom-theme-id^="msn"]):not(#_) :is(
+  .link-preview, .link-preview-player, .link-preview-thumb, .composer-emoji-btn,
+  .lyrics-now-line, .user-footer-dropdown-menu .menu-item, .reaction
+) {
+  border-radius: var(--r-small);
+}
+
+/* Footer device menus open over the footer's full width; anchored to the
+   small mic button they ran off the left edge of the screen. */
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer {
+  position: relative;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer .control-btn-group {
+  position: static;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-user-footer .user-footer-dropdown-menu {
+  left: 0;
+  right: 0;
+  width: auto;
+}

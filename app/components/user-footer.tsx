@@ -7,6 +7,15 @@ import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
 import { StyledText } from "./message-body";
 import { stripTextStyle } from "@/lib/text-style";
+import {
+  DEVICE_SAVED_EVENT,
+  listDevices,
+  primeDeviceLabels,
+  saveDevice,
+  savedDevice,
+  supportsOutputSelection,
+  type DeviceLists,
+} from "../lib/devices";
 
 interface UserFooterProps {
   user: PublicUser;
@@ -19,12 +28,8 @@ interface UserFooterProps {
   onOpenStatusMenu: (e: React.MouseEvent) => void;
   onOpenSettings: () => void;
   onOpenProfileSettings?: () => void;
-  microphones?: Array<{ deviceId: string; label: string }>;
-  speakers?: Array<{ deviceId: string; label: string }>;
-  selectedMicId?: string;
-  selectedSpeakerId?: string;
-  onSelectMic?: (id: string) => void;
-  onSelectSpeaker?: (id: string) => void;
+  /** After a new microphone is chosen, so a call in progress switches to it. */
+  onMicrophoneChange?: () => void;
 }
 
 export function UserFooter({
@@ -38,15 +43,61 @@ export function UserFooter({
   onOpenStatusMenu,
   onOpenSettings,
   onOpenProfileSettings,
-  microphones = [],
-  speakers = [],
-  selectedMicId,
-  selectedSpeakerId,
-  onSelectMic,
-  onSelectSpeaker,
+  onMicrophoneChange,
 }: UserFooterProps) {
   const [micMenuOpen, setMicMenuOpen] = useState(false);
   const [deafenMenuOpen, setDeafenMenuOpen] = useState(false);
+  const [devices, setDevices] = useState<DeviceLists>({ microphones: [], speakers: [], cameras: [] });
+  const [selectedMicId, setSelectedMicId] = useState("");
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
+  const menuOpen = micMenuOpen || deafenMenuOpen;
+
+  // The device lists are read when a menu opens (and kept fresh while it is
+  // open), the same lists and saved choices as Settings → Voice.
+  useEffect(() => {
+    if (!menuOpen) return;
+    setSelectedMicId(savedDevice("microphone"));
+    setSelectedSpeakerId(savedDevice("speaker"));
+    let cancelled = false;
+    const refresh = () =>
+      listDevices()
+        .then((lists) => {
+          if (cancelled) return lists;
+          setDevices(lists);
+          return lists;
+        })
+        .catch(() => null);
+    void refresh().then((lists) => {
+      // Names stay blank until the page has held a microphone permission once.
+      if (!cancelled && lists?.microphones.some((device) => !device.label || /^Microphone \d+$/.test(device.label))) {
+        void primeDeviceLabels().then(refresh);
+      }
+    });
+    const followSaved = () => {
+      setSelectedMicId(savedDevice("microphone"));
+      setSelectedSpeakerId(savedDevice("speaker"));
+    };
+    navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
+    window.addEventListener(DEVICE_SAVED_EVENT, followSaved);
+    return () => {
+      cancelled = true;
+      navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
+      window.removeEventListener(DEVICE_SAVED_EVENT, followSaved);
+    };
+  }, [menuOpen]);
+
+  const chooseMic = (deviceId: string) => {
+    saveDevice("microphone", deviceId);
+    setSelectedMicId(deviceId);
+    setMicMenuOpen(false);
+    onMicrophoneChange?.();
+  };
+
+  const chooseSpeaker = (deviceId: string) => {
+    saveDevice("speaker", deviceId);
+    setSelectedSpeakerId(deviceId);
+    setDeafenMenuOpen(false);
+  };
 
   const micMenuRef = useRef<HTMLDivElement>(null);
   const deafenMenuRef = useRef<HTMLDivElement>(null);
@@ -110,7 +161,11 @@ export function UserFooter({
           <button
             type="button"
             className="user-footer-chevron"
-            onClick={() => setMicMenuOpen((o) => !o)}
+            onClick={() => {
+              setDeafenMenuOpen(false);
+              setMicMenuOpen((o) => !o);
+            }}
+            aria-expanded={micMenuOpen}
             aria-label="Input options"
             title="Input options"
           >
@@ -120,24 +175,17 @@ export function UserFooter({
           {micMenuOpen && (
             <div className="user-footer-dropdown-menu">
               <div className="menu-header">INPUT DEVICE</div>
-              {microphones.length > 0 ? (
-                microphones.map((mic) => (
-                  <button
-                    key={mic.deviceId}
-                    type="button"
-                    className={`menu-item ${mic.deviceId === selectedMicId ? "active" : ""}`}
-                    onClick={() => {
-                      onSelectMic?.(mic.deviceId);
-                      setMicMenuOpen(false);
-                    }}
-                  >
-                    {mic.deviceId === selectedMicId && <Check size={14} className="mr-1 inline" />}
-                    {mic.label || `Microphone (${mic.deviceId.slice(0, 5)})`}
-                  </button>
-                ))
-              ) : (
-                <div className="menu-item disabled">Default Microphone</div>
-              )}
+              {[{ deviceId: "", label: "System default" }, ...devices.microphones.filter((mic) => mic.deviceId !== "default")].map((mic) => (
+                <button
+                  key={mic.deviceId || "default"}
+                  type="button"
+                  className={`menu-item ${mic.deviceId === selectedMicId ? "active" : ""}`}
+                  onClick={() => chooseMic(mic.deviceId)}
+                >
+                  {mic.deviceId === selectedMicId && <Check size={14} className="mr-1 inline" />}
+                  {mic.label}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -156,7 +204,11 @@ export function UserFooter({
           <button
             type="button"
             className="user-footer-chevron"
-            onClick={() => setDeafenMenuOpen((o) => !o)}
+            onClick={() => {
+              setMicMenuOpen(false);
+              setDeafenMenuOpen((o) => !o);
+            }}
+            aria-expanded={deafenMenuOpen}
             aria-label="Output options"
             title="Output options"
           >
@@ -166,23 +218,20 @@ export function UserFooter({
           {deafenMenuOpen && (
             <div className="user-footer-dropdown-menu">
               <div className="menu-header">OUTPUT DEVICE</div>
-              {speakers.length > 0 ? (
-                speakers.map((spk) => (
+              {supportsOutputSelection() ? (
+                [{ deviceId: "", label: "System default" }, ...devices.speakers.filter((spk) => spk.deviceId !== "default")].map((spk) => (
                   <button
-                    key={spk.deviceId}
+                    key={spk.deviceId || "default"}
                     type="button"
                     className={`menu-item ${spk.deviceId === selectedSpeakerId ? "active" : ""}`}
-                    onClick={() => {
-                      onSelectSpeaker?.(spk.deviceId);
-                      setDeafenMenuOpen(false);
-                    }}
+                    onClick={() => chooseSpeaker(spk.deviceId)}
                   >
                     {spk.deviceId === selectedSpeakerId && <Check size={14} className="mr-1 inline" />}
-                    {spk.label || `Speaker (${spk.deviceId.slice(0, 5)})`}
+                    {spk.label}
                   </button>
                 ))
               ) : (
-                <div className="menu-item disabled">Default Output</div>
+                <div className="menu-item disabled">This browser plays through the system output</div>
               )}
             </div>
           )}
