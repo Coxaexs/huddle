@@ -192,6 +192,11 @@ import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import { StatusMenu } from "./components/chat/status-menu";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
+import { runLookupCommand } from "./lib/chat/commands/lookup";
+import { runMusicCommand } from "./lib/chat/commands/music";
+import { runWatchCommand } from "./lib/chat/commands/watch";
+import { runRecordCommand } from "./lib/chat/commands/record";
+import { runRollCommand } from "./lib/chat/commands/roll";
 import {
   clampTtsVoice,
   stopTtsPlayback,
@@ -237,7 +242,6 @@ import {
   DND_LINK_COMMANDS,
   LOOKUP_COMMANDS,
   MUSIC_COMMANDS,
-  VOICE_REQUIRED_MUSIC_COMMANDS,
   matchCommands,
   findCommand,
   type SlashCommand,
@@ -3890,105 +3894,26 @@ export function ChatShell() {
     }
 
     if (name === "record") {
-      if (!features.recordSessions) {
-        setNotice("Session recording is disabled on this Huddle.");
-        return;
-      }
-      if (!voice.channelId) {
-        setNotice("Join the voice room you want to record first.");
-        return;
-      }
-      const [subcommand = "status", ...rest] = value.split(/\s+/);
-      const recording = hub.recordings[voice.channelId] || null;
-      if (subcommand === "setup") {
-        window.dispatchEvent(new CustomEvent("huddle-recording-setup"));
-        setStageChannelId(voice.channelId);
-        return;
-      }
-      if (subcommand === "status") {
-        setNotice(
-          recording
-            ? `${recording.title}: ${recording.status.replace("-", " ")} · ${recording.consents.filter((entry) => entry.decision === "accepted").length}/${recording.consents.length} consented.`
-            : "No recording is active in this room.",
-        );
-        return;
-      }
-      if (!recording) {
-        setNotice("No recording is active. Use /record setup first.");
-        return;
-      }
-      const action =
-        subcommand === "start" ||
-          subcommand === "pause" ||
-          subcommand === "resume" ||
-          subcommand === "stop"
-          ? subcommand
-          : subcommand === "marker"
-            ? "marker"
-            : subcommand === "scene"
-              ? "scene"
-              : null;
-      if (!action) {
-        setNotice(
-          "Use /record setup, start, pause, resume, marker <name>, scene <scene>, stop, or status.",
-        );
-        return;
-      }
-      try {
-        await apiFetch("/api/recordings", {
-          method: "POST",
-          body: JSON.stringify({
-            action,
-            sessionId: recording.id,
-            ...(action === "marker"
-              ? { name: rest.join(" ") || "Marker", kind: "chapter" }
-              : {}),
-            ...(action === "scene" ? { scene: rest[0] } : {}),
-          }),
-        });
-      } catch (error) {
-        setNotice(
-          error instanceof Error ? error.message : "Recording command failed.",
-        );
-      }
+      await runRecordCommand(value, {
+        enabled: features.recordSessions,
+        voiceChannelId: voice.channelId,
+        recordings: hub.recordings,
+        notify: setNotice,
+        openStage: setStageChannelId,
+      });
       return;
     }
 
     if (MUSIC_COMMANDS.has(name)) {
-      const requiresPresence = VOICE_REQUIRED_MUSIC_COMMANDS.has(name);
-      if (requiresPresence && !voice.channelId) {
-        setNotice(
-          `Join a voice channel first to use /${name}. Room info, settings, stats and Wrapped work from anywhere.`,
-        );
-        return;
-      }
-      const targetVoiceChannelId =
-        voice.channelId ||
-        voiceChannels.find((channel) => hub.players[channel.id]?.track)?.id ||
-        voiceChannels[0]?.id;
-      if (!targetVoiceChannelId) {
-        setNotice("This server does not have a voice room yet.");
-        return;
-      }
-      // Keep the permanent media element unlocked when a playback command is
-      // submitted from a user gesture.
-      if (requiresPresence) player.prime();
-      try {
-        await apiFetch("/api/music/command", {
-          method: "POST",
-          body: JSON.stringify({
-            command: `/${name} ${value}`.trim(),
-            voiceChannelId: targetVoiceChannelId,
-            textChannelId: activeChannelId,
-            commandText: raw.trim().slice(0, 200),
-            commandBy: user?.displayName,
-          }),
-        });
-      } catch (error) {
-        setNotice(
-          error instanceof Error ? error.message : "That music command failed.",
-        );
-      }
+      await runMusicCommand(name, value, raw, {
+        voiceChannelId: voice.channelId,
+        voiceChannels,
+        players: hub.players,
+        activeChannelId,
+        userName: user?.displayName,
+        primePlayer: () => player.prime(),
+        notify: setNotice,
+      });
       return;
     }
 
@@ -4027,58 +3952,15 @@ export function ChatShell() {
     }
 
     if (name === "watch" || name === "reels") {
-      if (!voice.channelId) {
-        await postBotMessage(
-          "Join a Huddle voice room first so everyone there gets the same activity.",
-        );
-        return;
-      }
-      await postBotMessage(
-        name === "reels"
-          ? "Creating a synchronized ReelsTogether room…"
-          : "Creating a synchronized Watch Together room…",
-      );
-      try {
-        const data = await apiFetch<{ url: string }>(
-          "/api/integrations/musicwatch",
-          {
-            method: "POST",
-            body: JSON.stringify({ mode: name, name: `${channelTitle} · Huddle` }),
-          },
-        );
-        if (name === "watch") {
-          const opened = await apiFetch<{ activity: RoomActivity }>(
-            "/api/activities",
-            {
-              method: "POST",
-              body: JSON.stringify({
-                channelId: voice.channelId,
-                action: "open",
-                kind: "watch",
-                state: {
-                  url: data.url,
-                  title: `${channelTitle} Watch Party`,
-                },
-              }),
-            },
-          );
-          setRoomActivity(opened.activity);
-          setStageChannelId(voice.channelId);
-        }
-        await postBotMessage(
-          name === "reels"
-            ? "Your shared reels room is ready. Everyone who opens this link joins the same synchronized feed."
-            : "Watch Together is now live inside your Huddle voice room. The link still works outside Huddle too.",
-          {
-            link: data.url,
-            actionLabel: name === "reels" ? "Open reels room" : "Open watch room",
-          },
-        );
-      } catch {
-        await postBotMessage(
-          "I couldn’t reach the Music + Watch server. Start it on your server and set MUSICWATCH_BASE_URL in Huddle.",
-        );
-      }
+      await runWatchCommand(name, {
+        voiceChannelId: voice.channelId,
+        channelTitle,
+        postBotMessage,
+        onActivity: (activity, channelId) => {
+          setRoomActivity(activity);
+          setStageChannelId(channelId);
+        },
+      });
       return;
     }
 
@@ -4093,111 +3975,20 @@ export function ChatShell() {
     }
 
     if (name === "roll") {
-      // Two-phase flow: the roller's 3D dice animation IS the source of truth.
-      // 1. Ask the server to parse the command and return the dice structure.
-      // 2. Roll the real dice locally; when they settle, submit the actual
-      //    values so the server can total them and broadcast to everyone.
-      try {
-        const activeTheme =
-          (typeof document !== "undefined" &&
-            document.documentElement.dataset.customThemeId) ||
-          "cozy";
-        let diceTheme =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("huddle_dice_theme") || "default"
-            : "default";
-        if (diceTheme === "default") {
-          if (activeTheme === "vampire") diceTheme = "vampire";
-          else if (activeTheme === "dark-academia") diceTheme = "dark-academia";
-        }
-        const diceColor =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("huddle_dice_color") || "#2563eb"
-            : "#2563eb";
-        const rawMaterial =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("huddle_dice_material") || "auto"
-            : "auto";
-        const diceMaterial = rawMaterial !== "auto" ? rawMaterial : undefined;
-        const rawTexture =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("huddle_dice_texture") || "auto"
-            : "auto";
-        const diceTexture = rawTexture !== "auto" ? rawTexture : undefined;
-
-        const data = await apiFetch<{
-          text?: string;
-          kind?: string;
-          payload?: Message["payload"];
-          roll?: DiceRollEvent;
-          error?: string;
-        }>("/api/integrations/dnd/roll", {
-          method: "POST",
-          body: JSON.stringify({
-            command: raw,
-            theme: diceTheme,
-            themeColor: diceColor,
-            material: diceMaterial,
-            texture: diceTexture,
-            channelId: voice.channelId || undefined,
-            textChannelId: activeChannelRef.current || undefined,
-          }),
-        });
-        if (data.error) {
-          await postBotMessage(data.error, {
-            author: "D&D Bot",
-            avatar: "⚔",
-          });
-          return;
-        }
-        if (data.roll) {
-          lastDiceRollSeedRef.current = data.roll.animationSeed;
-          setDiceRoll(data.roll);
-        }
-        await postBotMessage(data.text || "The roll succeeded.", {
-          author: "D&D Bot",
-          avatar: "⚔",
-          kind: data.kind,
-          payload: data.payload,
-        });
-      } catch (error) {
-        await postBotMessage(
-          error instanceof Error ? error.message : "The roll failed.",
-          { author: "D&D Bot", avatar: "⚔" },
-        );
-      }
+      await runRollCommand(raw, {
+        voiceChannelId: voice.channelId,
+        textChannelId: activeChannelRef.current,
+        postBotMessage,
+        onRoll: (roll) => {
+          lastDiceRollSeedRef.current = roll.animationSeed;
+          setDiceRoll(roll);
+        },
+      });
       return;
     }
 
     if (LOOKUP_COMMANDS.has(name)) {
-      if (!value) {
-        setNotice(`Try \`/${name} ${name === "spell" ? "fireball" : "goblin"}\`.`);
-        return;
-      }
-      try {
-        const data = await apiFetch<{
-          text: string;
-          link?: string;
-          kind?: string;
-          payload?: Message["payload"];
-        }>(
-          "/api/integrations/dnd/lookup",
-          { method: "POST", body: JSON.stringify({ kind: name, query: value }) },
-        );
-        await postBotMessage(data.text, {
-          author: "D&D Bot",
-          avatar: "⚔",
-          link: data.link,
-          actionLabel: data.link ? "Open on 5e.tools" : undefined,
-          kind: data.kind,
-          payload: data.payload,
-        });
-      } catch (error) {
-        await postBotMessage(
-          error instanceof Error ? error.message : "That lookup failed.",
-          { author: "D&D Bot", avatar: "⚔" },
-        );
-      }
+      await runLookupCommand(name, value, { postBotMessage, notify: setNotice });
       return;
     }
 
