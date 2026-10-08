@@ -91,3 +91,31 @@ export function withArticle(label: string): string {
   const lower = label.toLowerCase();
   return `${/^[aeiou]/.test(lower) ? "an" : "a"} ${lower}`;
 }
+
+/**
+ * The date line above `message` when it is the first of its day: "Today",
+ * "Yesterday", or the date ("Monday, 6 October", with the year if not this
+ * one). Null when it is on the same day as `prev`, or has no time.
+ */
+export function dayDividerLabel(
+  message: Pick<Message, "createdAt">,
+  prev: Pick<Message, "createdAt"> | undefined,
+  now = new Date(),
+): string | null {
+  if (!message.createdAt) return null;
+  const day = new Date(message.createdAt);
+  if (Number.isNaN(day.getTime())) return null;
+  if (prev?.createdAt && new Date(prev.createdAt).toDateString() === day.toDateString()) return null;
+  // The very first message loaded only gets a line when it is not from today.
+  if (!prev && day.toDateString() === now.toDateString()) return null;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (day.toDateString() === now.toDateString()) return "Today";
+  if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return day.toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(day.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}

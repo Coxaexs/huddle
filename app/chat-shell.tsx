@@ -175,7 +175,7 @@ import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
 import type { Message, DmSummary, MentionEntry, MentionOption } from "./lib/chat/types";
 import { DM_HOME, DEFAULT_QUICK_REACTIONS, QUICK_VOTES } from "./lib/chat/constants";
-import { commandArgsHint, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
+import { commandArgsHint, dayDividerLabel, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
 import { applyReaction } from "./lib/chat/reactions";
 import { pickImageFile, showNotification, playSound } from "./lib/chat/browser";
 import { extractInviteCodes } from "./lib/chat/invites";
@@ -7879,6 +7879,7 @@ export function ChatShell() {
                   </div>
 
                   {messages.map((message, index) => {
+                    const dayLabel = dayDividerLabel(message, messages[index - 1]) ?? undefined;
                     if (message.kind?.startsWith("system-")) {
                       const pinnedId =
                         message.kind === "system-pin" &&
@@ -7901,6 +7902,7 @@ export function ChatShell() {
                         <div
                           key={message.id}
                           id={`msg-${message.id}`}
+                          data-day={dayLabel}
                           className={`system-message system-message--${message.kind.slice(7)}`}
                         >
                           <span className="system-message-icon" aria-hidden="true">
@@ -8042,6 +8044,7 @@ export function ChatShell() {
                         7 * 60 * 1000
                         : true;
                     const continuation =
+                      !dayLabel &&
                       sameAuthor &&
                       closeInTime &&
                       !message.replyTo &&
@@ -8054,6 +8057,7 @@ export function ChatShell() {
                     return (
                       <article
                         id={`msg-${message.id}`}
+                        data-day={dayLabel}
                         className={`message ${continuation ? "continuation" : ""} ${message.pinned ? "is-pinned" : ""
                           } ${openActionsId === message.id ? "actions-open" : ""} ${reactionPicker?.messageId === message.id
                             ? "actions-open reaction-picker-active"
