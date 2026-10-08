@@ -16,7 +16,7 @@
 :root {
   --ink: #e8e3f5;
   --muted: #9d95bc;
-  --muted-2: #7a7296;
+  --muted-2: #8f89a7;
   --faint: #5a5275;
   --line: rgba(255, 255, 255, 0.07);
   --paper: #16131f;
@@ -47,8 +47,8 @@
   --ink: #1d1b18;
   --text: #2b2824;
   --muted: #6a645b;
-  --muted-2: #7b746a;
-  --faint: #978f84;
+  --muted-2: #6a645b;
+  --faint: #706a62;
   --line: #e6e0d6;
   --paper: #fbf9f6;
   --panel: #f3efe9;
@@ -3653,7 +3653,7 @@ button {
 }
 
 .member div span {
-  color: #9b979e;
+  color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 2px;
@@ -3750,7 +3750,7 @@ button {
   color-scheme: dark;
   --ink: #e8e3f5;
   --muted: #9d95bc;
-  --muted-2: #7a7296;
+  --muted-2: #8f89a7;
   --faint: #5a5275;
   --line: rgba(255, 255, 255, 0.07);
   --paper: #16131f;
@@ -3978,7 +3978,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) {
 
 [data-theme=cozy] .user-footer-status,
 :root:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) .user-footer-status {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 [data-theme=cozy] .user-footer-btn,
@@ -4442,7 +4442,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 }
 
 [data-theme=light] .message-meta time {
-  color: #747f8d;
+  color: #5f6874;
 }
 
 [data-theme=light] .message.is-pinned {
@@ -21983,7 +21983,8 @@ a.link-preview-author:hover {
 :root[data-custom-theme-id^="msn"] .offline-member,
 :root[data-custom-theme-id^="msn"] .offline-member * {
   opacity: 1 !important;
-  color: #808080 !important;
+  /* Messenger's offline grey, darkened just enough to read (was #808080, 2.8:1). */
+  color: #4d535e !important;
 }
 :root[data-custom-theme-id^="msn"] .member > div:last-child > :first-child {
   flex-shrink: 0;
@@ -22874,6 +22875,11 @@ a.link-preview-author:hover {
 :root[data-custom-theme-id="msn-dark"] .tiny-avatar {
   border-color: #3b5f99;
   box-shadow: 0 0 0 2px #0c172d, 0 0 0 3px #2b4a80;
+}
+
+/* The status beside a contact's name: the light theme's grey was dim here. */
+:root[data-custom-theme-id="msn-dark"] .member > div:last-child > span:last-child {
+  color: #9fb4d9 !important;
 }
 
 /* Conversation window */
@@ -26578,7 +26584,7 @@ a.link-preview-author:hover {
 }
 .rota-lang button[aria-pressed="true"] {
   color: #fff;
-  background: #3b82f6;
+  background: #2563eb;
 }
 .rota-legend {
   margin: 0;

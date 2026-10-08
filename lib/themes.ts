@@ -282,7 +282,7 @@ export const BUILTIN_THEMES: Theme[] = [
     backdrop: "plain",
     colors: {
       ink: "#f3e7e7",
-      muted: "#a98c91",
+      muted: "#bca6ab",
       line: "rgba(200, 30, 60, 0.14)",
       paper: "#0a0607",
       panel: "#0e080a",
@@ -459,6 +459,21 @@ export function getActiveThemeId(): string {
   return window.localStorage.getItem(STORAGE_ACTIVE_THEME) || window.localStorage.getItem("huddle-theme") || "cozy";
 }
 
+/** White or near-black, whichever has more contrast on a #rrggbb colour; null for anything else. */
+export function readableOn(hex: string): string | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const channel = (i: number) => {
+    const v = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const lum = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  const DARK_LUM = 0.0065; // #15121f
+  const onWhite = 1.05 / (lum + 0.05);
+  const onDark = (lum + 0.05) / (DARK_LUM + 0.05);
+  return onWhite >= onDark ? "#ffffff" : "#15121f";
+}
+
 /**
  * Applies a theme to document.documentElement and injects its custom CSS.
  */
@@ -484,6 +499,10 @@ export function applyThemeToDocument(theme: Theme): void {
   if (colors.lavender) {
     root.style.setProperty("--lavender", colors.lavender);
     window.localStorage.setItem("huddle-accent", colors.lavender);
+    // Text on accent-filled controls: whichever of white or near-black reads
+    // better on this accent (white on Vampire red, dark on Cozy's lavender).
+    const onAccent = readableOn(colors.lavender);
+    if (onAccent) root.style.setProperty("--on-accent", onAccent);
   }
   if (colors.lavenderSoft) root.style.setProperty("--lavender-soft", colors.lavenderSoft);
   if (colors.lavenderMuted) root.style.setProperty("--lavender-muted", colors.lavenderMuted);

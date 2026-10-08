@@ -154,7 +154,7 @@
 :root[data-custom-theme-id="vampire"] {
   --rail-bg: #070405;
   --surface-2: #1d0e12;
-  --muted-2: #8f7176;
+  --muted-2: #a98a90;
   --faint: #6d5357;
   --accent-strong: #c8102e;
   --accent-hi: #ff5a6e;
@@ -196,7 +196,7 @@
 
 :root[data-custom-theme-id="vampire"] :is(.member-panel-title, .section-label) > span:first-child,
 :root[data-custom-theme-id="vampire"] .member-panel-title {
-  color: #a3283c !important;
+  color: #e0566b !important;
   letter-spacing: 0.08em !important;
 }
 
@@ -860,4 +860,38 @@
   :root[data-custom-theme-id="matrix"] .channel-heading strong::after {
     animation: none;
   }
+}
+
+/* Vampire's accent red is too dark to read as text on black (2.9:1); text
+   uses its brighter red instead. Fills keep the deep one. */
+:root[data-custom-theme-id="vampire"] :is(.brand-mark, .gif-button, .eyebrow, .reply-arrow) {
+  color: var(--accent-hi) !important;
+}
+
+/* MSN (light): labels and statuses on the light blue panels, darkened to read. */
+:root[data-custom-theme-id="msn"] :is(.section-label, .category-toggle),
+:root[data-custom-theme-id="msn"] :is(.section-label, .category-toggle) span {
+  color: #34507f !important;
+}
+
+:root[data-custom-theme-id="msn"] .member > div:last-child > span:last-child {
+  color: #4d535e !important;
+}
+
+/* The selected channel's label keeps the white of its row. */
+:root[data-custom-theme-id="vampire"] .channel.selected span {
+  color: #fff !important;
+}
+
+/* Light: the accent used as small text, a shade darker to read on cream. */
+[data-theme=light] .eyebrow {
+  color: #9f5720;
+}
+
+[data-theme=light] .channel.selected span {
+  color: #8a4718;
+}
+
+:root[data-custom-theme-id="msn"] .space-header .icon-button {
+  color: #34507f;
 }
