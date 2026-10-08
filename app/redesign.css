@@ -44,7 +44,8 @@
   font-weight: 600 !important;
   letter-spacing: 0.01em !important;
   text-transform: none !important;
-  color: var(--faint, var(--muted));
+  /* Muted, not faint: faint text was ~2.4:1 against the panels. */
+  color: var(--muted);
 }
 
 :root:not([data-custom-theme-id^="msn"]) .message time,
@@ -409,7 +410,7 @@
 /* Bot command lines: a quiet caption, not a second header. */
 :root:not([data-custom-theme-id^="msn"]) .command-invocation {
   font-size: 12px;
-  color: var(--faint, var(--muted));
+  color: var(--muted);
   gap: 5px;
 }
 
@@ -861,4 +862,23 @@
   font-size: 12px;
   font-weight: 700;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Member list legibility: offline people recede through their avatar, not by
+   fading the whole row. A 55% row opacity on top of a muted name put offline
+   names at ~2.7:1 (and role-coloured ones at ~1.5:1) in every theme. Names
+   now use the theme's muted text at full strength, which reads as secondary
+   but stays legible; the avatar fades and goes grey instead. */
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member {
+  opacity: 1;
+  filter: none;
+}
+
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member .member-avatar {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .member.offline-member strong {
+  color: var(--muted) !important;
 }
