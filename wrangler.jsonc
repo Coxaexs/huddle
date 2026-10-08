@@ -4,7 +4,7 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
-  // Off: wrangler dev would keep a trace of every request in state/ (~600 MB a day).
+  // Local tracing is switched off by X_LOCAL_OBSERVABILITY=false (deploy/huddle-service).
   "observability": { "enabled": false },
   "assets": {
     "directory": "./dist/client",
