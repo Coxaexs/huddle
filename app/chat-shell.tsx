@@ -30,7 +30,6 @@ import {
   MsnDisplayPictures,
   MsnFormatToolbar,
   MsnSignInToasts,
-  MSN_EXTRA_STATUSES,
   messageFontStyle,
   MsnFileTransfer,
   MsnPicturePicker,
@@ -191,6 +190,7 @@ import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
 import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
+import { StatusMenu } from "./components/chat/status-menu";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import {
   clampTtsVoice,
@@ -6811,192 +6811,23 @@ export function ChatShell() {
         <div className="rail-spacer" />
 
         {statusOpen && (
-          <div className="status-menu" role="menu">
-            {(Object.keys(PRESENCE) as PresenceStatus[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={myStatus === key ? "active" : ""}
-                onClick={() => {
-                  autoIdleRef.current = false;
-                  void savePresence({ status: key });
-                  setStatusOpen(false);
-                }}
-              >
-                <span
-                  className="status-dot"
-                  style={{ background: PRESENCE[key].color }}
-                />
-                {PRESENCE[key].label}
-              </button>
-            ))}
-            {msnTheme &&
-              MSN_EXTRA_STATUSES.map((extra) => (
-                <button
-                  key={extra.label}
-                  type="button"
-                  className={myStatus === extra.status && myCustomStatus === extra.text ? "active" : ""}
-                  onClick={() => {
-                    autoIdleRef.current = false;
-                    void savePresence({ status: extra.status, customStatus: extra.text });
-                    setStatusOpen(false);
-                  }}
-                >
-                  <span
-                    className="status-dot"
-                    style={{ background: PRESENCE[extra.status].color }}
-                  />
-                  {extra.label}
-                </button>
-              ))}
-            {msnTheme && (
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={shareListening}
-                className={shareListening ? "active" : ""}
-                onClick={() => {
-                  const next = !shareListening;
-                  setShareListening(next);
-                  try {
-                    window.localStorage.setItem("huddle-msn-listening", next ? "1" : "0");
-                  } catch {
-                    // Storage blocked: applies until reload.
-                  }
-                  setStatusOpen(false);
-                }}
-              >
-                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
-                  {shareListening ? "✓" : "♫"}
-                </span>
-                Show what I&apos;m listening to
-              </button>
-            )}
-            {msnTheme && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusOpen(false);
-                  setSoundsOpen(true);
-                }}
-              >
-                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
-                  🔔
-                </span>
-                Sounds…
-              </button>
-            )}
-            {msnTheme && (
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={Boolean(autoReply)}
-                className={autoReply ? "active" : ""}
-                onClick={() => {
-                  setStatusOpen(false);
-                  showCustomPrompt({
-                    title: "Auto-reply when away",
-                    message:
-                      "While you're Away or Busy, the first person to message you in each DM gets this reply. Leave it empty to turn it off.",
-                    defaultValue: autoReply ?? "I'm away from my computer right now. I'll get back to you soon!",
-                    confirmText: "Save",
-                    maxLength: 200,
-                    onConfirm: (text) => {
-                      if (text === undefined) return;
-                      const clean = text.trim() || null;
-                      setAutoReply(clean);
-                      try {
-                        if (clean) window.localStorage.setItem("huddle-msn-autoreply", clean);
-                        else window.localStorage.removeItem("huddle-msn-autoreply");
-                      } catch {
-                        // Storage blocked: applies until reload.
-                      }
-                    },
-                  });
-                }}
-              >
-                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
-                  {autoReply ? "✓" : "💬"}
-                </span>
-                Auto-reply when away…
-              </button>
-            )}
-            {msnTheme && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusOpen(false);
-                  setPictureOpen(true);
-                }}
-              >
-                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
-                  🖼
-                </span>
-                Change display picture…
-              </button>
-            )}
-            {msnTheme && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusOpen(false);
-                  setTodayOpen(true);
-                }}
-              >
-                <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
-                  ☀
-                </span>
-                Open MSN Today
-              </button>
-            )}
-            <div className="status-menu-divider" />
-            <button
-              type="button"
-              onClick={() => {
-                setStatusOpen(false);
-                showCustomPrompt({
-                  title: "Set Custom Status",
-                  message: "What's on your mind?",
-                  defaultValue: myCustomStatus || "",
-                  placeholder: "e.g. In a meeting / Coding...",
-                  confirmText: "Save Status",
-                  onConfirm: (text) => {
-                    if (text === undefined) return;
-                    void savePresence({ customStatus: text });
-                  },
-                });
-              }}
-            >
-              <span className="status-dot" style={{ background: "transparent" }}>
-                <Pencil size={13} />
-              </span>
-              {myCustomStatus ? "Edit status" : "Set a status"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setStatusOpen(false);
-                setSettingsOpen(true);
-              }}
-            >
-              <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
-                <User size={14} />
-              </span>
-              Edit Profile
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setStatusOpen(false);
-                setSettingsOpen(true);
-              }}
-            >
-              <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
-                <Settings size={14} />
-              </span>
-              Settings
-            </button>
-          </div>
+          <StatusMenu
+            myStatus={myStatus}
+            myCustomStatus={myCustomStatus}
+            savePresence={savePresence}
+            autoIdleRef={autoIdleRef}
+            setStatusOpen={setStatusOpen}
+            msnTheme={msnTheme}
+            shareListening={shareListening}
+            setShareListening={setShareListening}
+            autoReply={autoReply}
+            setAutoReply={setAutoReply}
+            showCustomPrompt={showCustomPrompt}
+            setSoundsOpen={setSoundsOpen}
+            setPictureOpen={setPictureOpen}
+            setTodayOpen={setTodayOpen}
+            setSettingsOpen={setSettingsOpen}
+          />
         )}
         {/* 
         <Avatar
