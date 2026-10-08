@@ -51,7 +51,7 @@ import { MsnToday, shouldShowMsnToday } from "./components/msn-today";
 import { useMsnContacts, usePersonalEmoticons, useWhatsNew } from "./hooks/use-msn-extras";
 import { applyPersonalEmoticons } from "@/lib/msn-contacts";
 import { msnPictureFile, type MsnPicture } from "./lib/msn-pictures";
-import { GAME_INFO, isGameKind, type GameKind, type GameState } from "@/lib/games";
+import { GAME_INFO, isGameKind, type GameKind } from "@/lib/games";
 import { applyMessageFont, readMessageFont, saveMessageFont, stripTextStyle, type MessageFont } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
@@ -65,7 +65,7 @@ import {
 } from "@/lib/permissions";
 import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { findTagQuery, mentionMatchScore, nameToHandle } from "@/lib/mention-handles";
+import { findTagQuery, nameToHandle } from "@/lib/mention-handles";
 import {
   Search,
   Bell,
@@ -88,7 +88,6 @@ import {
   MessageSquare,
   Smile,
   SmilePlus,
-  Paperclip,
   ArrowUp,
   PhoneCall,
   Video,
@@ -119,7 +118,6 @@ import {
   CalendarDays,
   LogOut,
   Folder,
-  FolderPlus,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -138,11 +136,9 @@ import {
   BotMenu,
   type BotMenuAction,
 } from "./components/bot-menu";
-import { DndCard, type DndCardProps } from "./components/dnd-card";
+import { DndCard } from "./components/dnd-card";
 import {
   BotEmbeds,
-  type BotComponentRow,
-  type BotEmbedData,
 } from "./components/bot-embeds";
 import { DiceOverlay } from "./components/dice-overlay";
 import { GifPicker } from "./components/gif-picker";
@@ -186,6 +182,14 @@ import { OutlineEmoji } from "./components/outline-emoji";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
+import type { Message, DmSummary, MentionEntry, MentionOption } from "./lib/chat/types";
+import { DM_HOME, DEFAULT_QUICK_REACTIONS, QUICK_VOTES } from "./lib/chat/constants";
+import { commandArgsHint, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
+import { applyReaction, reactionTooltip } from "./lib/chat/reactions";
+import { pickImageFile, showNotification, playSound } from "./lib/chat/browser";
+import { extractInviteCodes } from "./lib/chat/invites";
+import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
+import { Icon } from "./components/chat/icon-button";
 import {
   detectLanguage,
   clampTtsVoice,
@@ -207,7 +211,6 @@ import { EmojiPicker } from "./components/emoji-picker";
 import { SlashMenu } from "./components/slash-menu";
 import { VoiceStage, SoundboardDrawer, hasLiveVideo } from "./components/voice-stage";
 import { FloatingScreenPreview } from "./components/floating-screen-preview";
-import { playPresetSound } from "@/lib/soundboard-presets";
 import {
   replaceEmojiShortcodes,
   parseQuickReaction,
@@ -224,16 +227,17 @@ import {
 } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
 import { usePlayer } from "./hooks/use-player";
-import { SAY_MAX_CHARS,
+import {
+  SAY_MAX_CHARS,
   nextScreenQuality,
   screenQualityLabel,
   useVoice,
 } from "./hooks/use-voice";
 import { ScreenShareSetup } from "./components/screen-share-setup";
 import { apiFetch, apiUrl } from "./lib/client";
-import { registerMedia, unlockAudio, unregisterMedia } from "./lib/devices";
+import { unlockAudio } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
-import { enableWebPush, registerServiceWorker, showPageNotification } from "./lib/web-push";
+import { enableWebPush, registerServiceWorker } from "./lib/web-push";
 import {
   COMMAND_ALIASES,
   DISCORD_ONLY_COMMANDS,
@@ -259,7 +263,7 @@ import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
-import { ForwardedMessageCard, type ForwardedFromData } from "./components/forwarded-message-card";
+import { ForwardedMessageCard } from "./components/forwarded-message-card";
 import { ThemeShareCard } from "./components/theme-share-card";
 import { AiAnswerCard } from "./components/ai-answer-card";
 import { ImageGallery } from "./components/image-gallery";
@@ -272,497 +276,6 @@ import {
   importThemeCode,
   exportThemeCode,
 } from "@/lib/themes";
-
-interface Message {
-  id: string | number;
-  channelId?: string | null;
-  userId?: string | null;
-  author: string;
-  avatar: string;
-  color: string;
-  time: string;
-  /** ISO timestamp, used to group bursts of messages from the same author. */
-  createdAt?: string;
-  text: string;
-  bot?: boolean;
-  /** On a bot reply to a slash command: what was run, and by whom. */
-  commandText?: string;
-  commandBy?: string;
-  image?: string;
-  images?: string[];
-  file?: { url: string; name: string; type: "pdf" };
-  link?: string;
-  actionLabel?: string;
-  audio?: string;
-  kind?: string;
-  pinned?: boolean;
-  editedAt?: string;
-  replyTo?: string;
-  replyPreview?: { author: string; text: string } | null;
-  reactions?: Array<{
-    emoji: string;
-    count: number;
-    mine: boolean;
-    /** Who reacted, for hover tooltips. */
-    users?: Array<{
-      id: string;
-      username: string;
-      displayName: string;
-      avatar: string;
-      avatarUrl?: string | null;
-      color: string;
-    }>;
-  }>;
-  mentions?: string[];
-  threadId?: string;
-  threadCount?: number;
-  payload?: {
-    /** Voice messages: length and a precomputed waveform (0–100 bars). */
-    voice?: { durationMs?: number; waveform?: number[] };
-    /** Theme share cards */
-    themeShare?: Theme;
-    /** A Messenger-style nudge: shakes the recipient's window. */
-    nudge?: boolean;
-    /** /tts: read aloud, in this language, to whoever has the channel open. */
-    tts?: { lang: TtsLanguage; voice?: { tempo?: number; pitch?: number } };
-    /** A Messenger wink: a full-window animation (MSN_WINKS id). */
-    wink?: string;
-    /** A conversation game (lib/games.ts), played inside this message. */
-    game?: GameState;
-    /** Sent automatically while its author was away (MSN auto-message). */
-    autoReply?: boolean;
-    /** Poll cards. */
-    pollId?: string;
-    /** /ask answers: the web results the answer cites. */
-    sources?: Array<{ title: string; url: string }>;
-    question?: string;
-    options?: string[];
-    multi?: boolean;
-    voiceChannelId?: string;
-    trackId?: string;
-    label?: string;
-    track?: { title: string; artist?: string | null; duration?: number | null; pageUrl?: string | null } | string;
-    artist?: string;
-    lines?: Array<{ at: number; line: string; active: boolean }>;
-    type?: string;
-    name?: string;
-    subtitle?: string;
-    description?: string;
-    facts?: Array<{ label: string; value: string }>;
-    total?: number;
-    expression?: string;
-    details?: string[];
-    /** D&D lookup cards and roll cards; see components/dnd-card.tsx. */
-    source?: string;
-    page?: number;
-    otherVersions?: string[];
-    tags?: string[];
-    abilities?: DndCardProps["abilities"];
-    sections?: DndCardProps["sections"];
-    image?: string;
-    lookupKind?: string;
-    suggestions?: string[];
-    dice?: DndCardProps["dice"];
-    modifier?: number;
-    mode?: string;
-    roller?: string;
-    /** Discord-style bot replies: embeds and button rows. */
-    embeds?: BotEmbedData[];
-    components?: BotComponentRow[];
-    autoplay?: boolean;
-    automix?: boolean;
-    automix_blend_seconds?: number;
-    crossfade_seconds?: number;
-    audio_filter?: string | null;
-    artist_diversity?: boolean;
-    vibe_match?: boolean;
-    wrapped?: boolean;
-    plays?: number;
-    unique?: number;
-    hours?: number;
-    topSongs?: Array<[string, number]>;
-    topRequesters?: Array<[string, number]>;
-    topArtist?: string | null;
-    topGenre?: string | null;
-    peakHour?: string | null;
-    streakDays?: number;
-    personality?: string | null;
-    currentTrack?: any;
-    queue?: any;
-    totalTracks?: number;
-    history?: any;
-    query?: string;
-    forwardedFrom?: ForwardedFromData;
-  };
-}
-
-interface DmSummary {
-  channelId: string;
-  user: Member;
-  lastMessage: string | null;
-  lastAt: string | null;
-  /** Closed from the list; Cmd+K or a new message brings it back. */
-  hidden?: boolean;
-  /** Group DMs: `user` then stands for the group (id = channel id). */
-  group?: {
-    name: string;
-    ownerId: string | null;
-    members: Member[];
-  };
-}
-
-/**
- * The argument hint the slash menu shows for a bot command: subcommands as
- * `<join|add|next>`, options as `<required> [optional]`.
- */
-function commandArgsHint(options: unknown): string | undefined {
-  if (!Array.isArray(options) || !options.length) return undefined;
-  const list = options as Array<{ name: string; type?: number; required?: boolean }>;
-  const subs = list.filter((option) => option.type === 1 || option.type === 2);
-  if (subs.length) return `<${subs.map((option) => option.name).join("|")}>`;
-  return list
-    .map((option) => (option.required ? `<${option.name}>` : `[${option.name}]`))
-    .join(" ");
-}
-
-/** Effective notification level: the channel's own, else its server's, else "all". */
-function notifyLevel(
-  prefs: Record<string, string>,
-  channelId: string,
-  serverId: string | undefined,
-): string {
-  return prefs[channelId] || (serverId && prefs[`server:${serverId}`]) || "all";
-}
-
-/** The rail slot for direct messages, standing in for a server id. */
-const DM_HOME = "@me";
-
-/** Default one-tap reactions shown on message hover. */
-const DEFAULT_QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
-
-/** One row of the mentions inbox (see /api/mentions). */
-interface MentionEntry {
-  message: Message;
-  channelName: string;
-  channelKind: string;
-  serverId: string | null;
-  serverName: string | null;
-  read: boolean;
-}
-
-/** Options for the one-tap "quick vote" on a message. */
-const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];
-
-/** An autocomplete option: a member or role after @, a channel after #. */
-type MentionOption =
-  | { kind: "user"; member: Member }
-  | { kind: "role"; role: PublicRole }
-  | { kind: "channel"; channel: PublicChannel }
-  | { kind: "broadcast"; name: "everyone" | "here" };
-
-/** Items matching `query` on any of their names, best matches first. */
-function rankMentionMatches<T>(
-  items: T[],
-  query: string,
-  names: (item: T) => Array<string | null | undefined>,
-  tieBreak: (a: T, b: T) => number,
-): T[] {
-  return items
-    .map((item) => ({ item, score: mentionMatchScore(query, names(item)) }))
-    .filter((entry): entry is { item: T; score: number } => entry.score !== null)
-    .sort((a, b) => a.score - b.score || tieBreak(a.item, b.item))
-    .map((entry) => entry.item);
-}
-
-function formatClientTime(createdAt?: string, fallbackTime?: string): string {
-  if (!createdAt) return fallbackTime || "";
-  try {
-    const d = new Date(createdAt);
-    if (isNaN(d.getTime())) return fallbackTime || "";
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return fallbackTime || "";
-  }
-}
-
-function formatClientDateTime(createdAt?: string): string {
-  if (!createdAt) return "";
-  try {
-    const d = new Date(createdAt);
-    if (isNaN(d.getTime())) return "";
-    return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return "";
-  }
-}
-
-/** Messenger's status-bar line: "Last message received at 7:06 PM on 9/26/2026." */
-function msnLastReceived(list: Message[], selfId: string | undefined): string {
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const message = list[i];
-    if (message.userId === selfId || !message.createdAt) continue;
-    const at = new Date(message.createdAt);
-    if (Number.isNaN(at.getTime())) continue;
-    return `Last message received at ${at.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    })} on ${at.toLocaleDateString()}.`;
-  }
-  return "No messages received yet.";
-}
-
-function Icon({
-  children,
-  label,
-  onClick,
-  active,
-  badge,
-}: {
-  children: ReactNode;
-  label: string;
-  onClick?: () => void;
-  active?: boolean;
-  /** A small count in the corner, hidden when zero. */
-  badge?: number;
-}) {
-  return (
-    <button
-      type="button"
-      className={`icon-button ${active ? "active" : ""}`}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-    >
-      {children}
-      {badge ? <span className="icon-badge">{badge > 99 ? "99+" : badge}</span> : null}
-    </button>
-  );
-}
-
-/** Opens a one-shot file dialog and resolves with the chosen image. */
-function pickImageFile(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = () => resolve(input.files?.[0] || null);
-    // A cancelled dialog fires nothing in some browsers; resolve on focus back.
-    window.addEventListener(
-      "focus",
-      () => window.setTimeout(() => resolve(input.files?.[0] || null), 400),
-      { once: true },
-    );
-    input.click();
-  });
-}
-
-/** Fires a desktop/web notification, unless the user turned them off. Only
- *  fires when the tab is not the focused/visible one — if you're looking at
- *  the app, the unread badge already tells you. Supports desktop native bridge. */
-function showNotification(rawTitle: string, rawBody: string, tag?: string): void {
-  const title = stripTextStyle(rawTitle);
-  const body = stripTextStyle(rawBody);
-  try {
-    if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
-    // Don't pop a notification while the user is actively focused on the app; the
-    // in-app unread badge is the cue there.
-    if (typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus()) return;
-
-    // Desktop shell (Electron) native notification
-    const win = typeof window !== "undefined" ? (window as unknown as { huddle?: { notify?: (t: string, b: string) => void } }) : null;
-    if (win?.huddle?.notify) {
-      win.huddle.notify(title, body);
-      return;
-    }
-
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") return;
-    void showPageNotification(title, body, tag).catch(() => undefined);
-  } catch {
-    // Notifications are best-effort.
-  }
-}
-
-/** Plays a soundboard clip locally (everyone in the room hears their own copy). */
-function playSound(url: string, volume = 0.7): void {
-  try {
-    const savedVol = typeof localStorage !== "undefined" ? parseFloat(localStorage.getItem("huddle_soundboard_volume") || "0.7") : 0.7;
-    const effVol = isNaN(savedVol) ? volume : Math.max(0, Math.min(1, savedVol));
-    if (url.startsWith("preset:")) {
-      playPresetSound(url.slice(7), effVol);
-      return;
-    }
-    const audio = new Audio(url);
-    audio.volume = effVol;
-    void audio.play().catch(() => undefined);
-  } catch {
-    // Non-fatal: a blocked autoplay just means no sound this time.
-  }
-}
-
-type ReactionList = Array<{
-  emoji: string;
-  count: number;
-  mine: boolean;
-  users?: Array<{
-    id: string;
-    username: string;
-    displayName: string;
-    avatar: string;
-    avatarUrl?: string | null;
-    color: string;
-  }>;
-}>;
-
-/** Folds a single reaction toggle into a message's aggregated reaction list.
- *  Idempotent: if `me` is already (or no longer) in the users list, the count
- *  is not changed again. This keeps the optimistic update + socket echo from
- *  double-counting the same person. */
-function applyReaction(
-  reactions: ReactionList | undefined,
-  emoji: string,
-  isMine: boolean,
-  added: boolean,
-  me?: { id: string; username: string; displayName: string; avatar: string; avatarUrl?: string | null; color: string },
-): ReactionList {
-  const list = (reactions || []).map((r) => ({ ...r, users: r.users ? [...r.users] : [] }));
-  const entry = list.find((r) => r.emoji === emoji);
-  const alreadyThere = Boolean(me && entry?.users?.some((u) => u.id === me.id));
-  if (added) {
-    if (entry) {
-      if (!alreadyThere) entry.count += 1;
-      if (isMine) entry.mine = true;
-      if (me && !alreadyThere) {
-        entry.users = [...(entry.users || []), me];
-      }
-    } else {
-      list.push({ emoji, count: 1, mine: isMine, users: me ? [me] : [] });
-    }
-  } else if (entry) {
-    if (alreadyThere) {
-      entry.count -= 1;
-      if (isMine) entry.mine = false;
-      if (me) entry.users = (entry.users || []).filter((u) => u.id !== me.id);
-    }
-    if (entry.count <= 0) return list.filter((r) => r.emoji !== emoji);
-  }
-  return list;
-}
-
-/**
- * Audio-taper curve: makes the whole 0–100 slider feel evenly useful. Above
- * 100% it boosts linearly, so 200% is twice as loud as the original (+6 dB).
- */
-function volumeGain(percent: number): number {
-  const normalized = Math.max(0, Math.min(2, percent / 100));
-  return normalized <= 1 ? normalized * normalized : normalized;
-}
-
-/** Hover text for a reaction pill: who reacted with this emoji. */
-function reactionTooltip(reaction: ReactionList[number]): string {
-  const names = (reaction.users || []).map((u) => u.displayName);
-  if (!names.length) return `${reaction.count} reaction${reaction.count === 1 ? "" : "s"}`;
-  const list = names.join(", ");
-  return `${list} reacted with ${reaction.emoji}`;
-}
-
-/** Extracts server invite codes from text that contain hangout invite links or codes. */
-export function extractInviteCodes(text: string): string[] {
-  if (!text) return [];
-  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})\b/gi;
-  const codes: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = inviteRegex.exec(text)) !== null) {
-    const code = match[1]?.toUpperCase();
-    if (code && !codes.includes(code)) {
-      codes.push(code);
-    }
-  }
-  return codes;
-}
-
-/**
- * Creation-UI copy per channel kind.
- *
- * Presentation only, so it lives here rather than in `lib/channel-kinds.ts`,
- * which owns behaviour. A kind missing from this map still works — the prompt
- * falls back to plain "text" wording — so adding a kind server-side never
- * breaks this screen.
- */
-const CHANNEL_KIND_COPY: Record<
-  string,
-  { title: string; message: string; placeholder: string }
-> = {
-  text: {
-    title: "Create Text Channel",
-    message: "Enter name for the new text channel:",
-    placeholder: "general",
-  },
-  announcement: {
-    title: "Create Announcement Channel",
-    message: "Create a read-only feed that only moderators can post in:",
-    placeholder: "announcements",
-  },
-  forum: {
-    title: "Create Forum",
-    message: "Create a board where each post starts its own thread:",
-    placeholder: "help",
-  },
-  voice: {
-    title: "Create Voice Room",
-    message: "Enter name for the new voice room:",
-    placeholder: "Voice Lounge",
-  },
-  stage: {
-    title: "Create Stage",
-    message: "Create a voice room with an audience, where speaking is a permission:",
-    placeholder: "Friday Standup",
-  },
-};
-
-/** "an announcement", "a forum". */
-function withArticle(label: string): string {
-  const lower = label.toLowerCase();
-  return `${/^[aeiou]/.test(lower) ? "an" : "a"} ${lower}`;
-}
-
-/** Human label for a kind, for menus and badges. */
-function channelKindLabel(kind: ChannelKind): string {
-  switch (kind) {
-    case "announcement":
-      return "Announcement";
-    case "forum":
-      return "Forum";
-    case "voice":
-      return "Voice room";
-    case "stage":
-      return "Stage";
-    case "text":
-    default:
-      return "Text channel";
-  }
-}
-
-/**
- * Icon for a kind, chosen to match what the channel actually does: a forum is a
- * board of posts, a stage has an audience, an announcement is a broadcast.
- */
-function channelKindIcon(kind: ChannelKind, size = 14, className?: string) {
-  switch (kind) {
-    case "announcement":
-      return <Radio size={size} className={className} aria-hidden="true" />;
-    case "forum":
-      return <MessageSquare size={size} className={className} aria-hidden="true" />;
-    case "voice":
-      return <Volume2 size={size} className={className} aria-hidden="true" />;
-    case "stage":
-      return <Users size={size} className={className} aria-hidden="true" />;
-    case "text":
-    default:
-      return <Hash size={size} className={className} aria-hidden="true" />;
-  }
-}
-
 
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
