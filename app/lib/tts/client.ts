@@ -68,12 +68,16 @@ export function speakableText(text: string): string {
  * model speaks a little faster and the audio is played back a little slower,
  * which lowers the pitch while the tempo lands where it was asked to.
  */
+/** "robot": ring-modulated, a machine voice that suits the Matrix theme. */
+export type TtsEffect = "none" | "robot";
+
 export interface TtsVoice {
   tempo: number;
   pitch: number;
+  effect?: TtsEffect;
 }
 
-export const DEFAULT_TTS_VOICE: TtsVoice = { tempo: 1, pitch: 1 };
+export const DEFAULT_TTS_VOICE: TtsVoice = { tempo: 1, pitch: 1, effect: "none" };
 export const TTS_TEMPO_RANGE = [0.6, 1.3] as const;
 export const TTS_PITCH_RANGE = [0.75, 1.15] as const;
 
@@ -82,7 +86,36 @@ export function clampTtsVoice(voice: unknown): TtsVoice {
   const v = (voice ?? {}) as Partial<Record<keyof TtsVoice, unknown>>;
   const clamp = (value: unknown, [lo, hi]: readonly [number, number]) =>
     typeof value === "number" && Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : 1;
-  return { tempo: clamp(v.tempo, TTS_TEMPO_RANGE), pitch: clamp(v.pitch, TTS_PITCH_RANGE) };
+  return {
+    tempo: clamp(v.tempo, TTS_TEMPO_RANGE),
+    pitch: clamp(v.pitch, TTS_PITCH_RANGE),
+    effect: v.effect === "robot" ? "robot" : "none",
+  };
+}
+
+/**
+ * Applies a voice effect to synthesized audio. "robot" is ring modulation: the
+ * voice multiplied by a 50 Hz tone (with a little dry signal kept so words stay
+ * clear), then normalised so it is as loud as the original.
+ */
+export function applyTtsEffect(audio: Float32Array, sampleRate: number, effect: TtsEffect | undefined): Float32Array {
+  if (effect !== "robot") return audio;
+  const out = new Float32Array(audio.length);
+  const step = (2 * Math.PI * 50) / sampleRate;
+  let peakIn = 0;
+  let peakOut = 0;
+  for (let i = 0; i < audio.length; i++) {
+    const x = audio[i];
+    const y = 0.8 * x * Math.sin(i * step) + 0.2 * x;
+    out[i] = y;
+    peakIn = Math.max(peakIn, Math.abs(x));
+    peakOut = Math.max(peakOut, Math.abs(y));
+  }
+  if (peakOut > 0) {
+    const gain = peakIn / peakOut;
+    for (let i = 0; i < out.length; i++) out[i] *= gain;
+  }
+  return out;
 }
 
 const VOICE_KEY = "huddle_tts_voice";
@@ -105,12 +138,15 @@ export function setTtsVoice(voice: TtsVoice) {
 }
 
 export function synthesize(text: string, lang: TtsLanguage, voice: TtsVoice = DEFAULT_TTS_VOICE): Promise<TtsAudio> {
-  const { tempo, pitch } = clampTtsVoice(voice);
+  const { tempo, pitch, effect } = clampTtsVoice(voice);
   const id = nextId++;
   return new Promise<TtsAudio>((resolve, reject) => {
     pending.set(id, { resolve, reject });
     getWorker().postMessage({ type: "speak", id, text, lang, speed: tempo / pitch });
-  }).then(({ audio, sampleRate }) => ({ audio, sampleRate: Math.round(sampleRate * pitch) }));
+  }).then(({ audio, sampleRate }) => ({
+    audio: applyTtsEffect(audio, sampleRate, effect),
+    sampleRate: Math.round(sampleRate * pitch),
+  }));
 }
 
 // ---------- hearing /tts messages ----------
