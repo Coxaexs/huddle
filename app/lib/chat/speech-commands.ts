@@ -6,6 +6,7 @@
 import { apiFetch } from "../client";
 import {
   clampTtsVoice,
+  DEFAULT_TTS_VOICE,
   detectLanguage,
   getTtsVoice,
   setTtsPlaybackEnabled,
@@ -123,21 +124,22 @@ export async function runSpeechCommand(name: SpeechCommand, value: string, ctx: 
   }
 }
 
-/** /ttsvoice [tempo n] [pitch n] [robot | effect robot|none] | reset */
+/** /ttsvoice [tempo n] [pitch n] [robot | effect robot|none] [male|female] | reset */
 function runVoiceSettings(value: string, ctx: SpeechContext) {
   const current = getTtsVoice();
-  const describe = (v: TtsVoice) => `tempo ${v.tempo}, pitch ${v.pitch}${v.effect === "robot" ? ", robot" : ""}`;
+  const describe = (v: TtsVoice) => `${v.speaker === "male" ? "male" : "female"} English voice, tempo ${v.tempo}, pitch ${v.pitch}${v.effect === "robot" ? ", robot" : ""}`;
   if (/^reset$/i.test(value)) {
-    setTtsVoice({ tempo: 1, pitch: 1, effect: "none" });
+    setTtsVoice(DEFAULT_TTS_VOICE);
     ctx.notify("Your /tts and /say voice is back to normal.");
     return;
   }
   const tempo = /tempo\s+([\d.]+)/i.exec(value);
   const pitch = /pitch\s+([\d.]+)/i.exec(value);
   const effect = /\b(?:effect\s+)?(robot|none|normal)\b/i.exec(value);
-  if (!tempo && !pitch && !effect) {
+  const speaker = /\b(male|female)\b/i.exec(value);
+  if (!tempo && !pitch && !effect && !speaker) {
     ctx.notify(
-      `Your voice: ${describe(current)}. Change it with /ttsvoice tempo ${TTS_TEMPO_RANGE[0]}-${TTS_TEMPO_RANGE[1]} pitch ${TTS_PITCH_RANGE[0]}-${TTS_PITCH_RANGE[1]} (lower = slower / deeper), /ttsvoice robot, or /ttsvoice reset.`,
+      `Your voice: ${describe(current)}. Change it with /ttsvoice tempo ${TTS_TEMPO_RANGE[0]}-${TTS_TEMPO_RANGE[1]} pitch ${TTS_PITCH_RANGE[0]}-${TTS_PITCH_RANGE[1]} (lower = slower / deeper), /ttsvoice robot, /ttsvoice male|female, or /ttsvoice reset.`,
     );
     return;
   }
@@ -145,6 +147,7 @@ function runVoiceSettings(value: string, ctx: SpeechContext) {
     tempo: tempo ? Number(tempo[1]) : current.tempo,
     pitch: pitch ? Number(pitch[1]) : current.pitch,
     effect: effect ? (effect[1].toLowerCase() === "robot" ? "robot" : "none") : current.effect,
+    speaker: speaker ? (speaker[1].toLowerCase() === "male" ? "male" : "default") : current.speaker,
   });
   setTtsVoice(next);
   ctx.notify(`Your /tts and /say voice: ${describe(next)}.`);

@@ -115,7 +115,7 @@ const PUNCTUATION_PATTERN = new RegExp(
   "g",
 );
 
-async function kokoroPhonemes(text: string): Promise<string> {
+export async function kokoroPhonemes(text: string): Promise<string> {
   const sections = split(normalizeText(text), PUNCTUATION_PATTERN);
   const ps = (
     await Promise.all(
