@@ -12,6 +12,7 @@ import {
 import { createReadStream } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
 
@@ -24,6 +25,10 @@ const chromiumExecutable = process.env.CHROMIUM_EXECUTABLE;
 const ffmpegExecutable = process.env.FFMPEG_EXECUTABLE || "ffmpeg";
 const transcriptionExecutable = process.env.TRANSCRIPTION_EXECUTABLE || "";
 const port = Math.max(1, Math.min(65535, Number(process.env.RECORDER_PORT) || 8742));
+const stemThreads = Math.max(1, Number(process.env.RECORDER_STEM_THREADS) || 1);
+const stemPriority = Number.isInteger(Number(process.env.RECORDER_STEM_PRIORITY))
+  ? Number(process.env.RECORDER_STEM_PRIORITY)
+  : (os.constants?.priority?.PRIORITY_LOW ?? 19);
 const sessions = new Map();
 
 if (token.length < 24) {
@@ -156,6 +161,8 @@ async function runAudioFfmpeg(input, outputPart) {
         "-hide_banner",
         "-loglevel",
         "warning",
+        "-threads",
+        String(stemThreads),
         "-y",
         "-i",
         input,
@@ -170,6 +177,13 @@ async function runAudioFfmpeg(input, outputPart) {
       ],
       { stdio: ["ignore", "ignore", "pipe"] },
     );
+    if (child.pid) {
+      try {
+        os.setPriority(child.pid, stemPriority);
+      } catch {
+        // Priority adjustment is platform-dependent and best-effort.
+      }
+    }
     let diagnostics = "";
     child.stderr.on("data", (chunk) => {
       diagnostics = `${diagnostics}${chunk}`.slice(-12_000);
@@ -524,6 +538,7 @@ class CaptureSession {
             bytes: (await stat(audio)).size,
             checksum: await checksum(audio),
           });
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
       }
       if (transcriptionExecutable) {

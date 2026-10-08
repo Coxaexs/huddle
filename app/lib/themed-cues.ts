@@ -144,6 +144,65 @@ const note = (name: string): number => {
   return 440 * Math.pow(2, (table[match[1]] + (Number(match[2]) - 4) * 12) / 12);
 };
 
+/** Cyber blip/pulse: fast exponential frequency envelope with resonant bandpass overtone. */
+function cyberTone(
+  ctx: AudioContext,
+  out: AudioNode,
+  start: number,
+  fromFreq: number,
+  toFreq: number,
+  dur: number,
+  peak = 0.2,
+  type: OscillatorType = "sawtooth",
+  q = 3.5,
+): void {
+  const osc = ctx.createOscillator();
+  const filter = ctx.createBiquadFilter();
+  osc.type = type;
+  osc.frequency.setValueAtTime(fromFreq, start);
+  osc.frequency.exponentialRampToValueAtTime(toFreq, start + dur);
+
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(Math.min(fromFreq, toFreq) * 1.4, start);
+  filter.frequency.exponentialRampToValueAtTime(Math.max(fromFreq, toFreq) * 1.4, start + dur);
+  filter.Q.value = q;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(peak, start + 0.003);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+  osc.connect(filter).connect(gain).connect(out);
+  osc.start(start);
+  osc.stop(start + dur + 0.02);
+}
+
+/** Digital glitch noise burst (data packet transmission / optic burst). */
+function glitch(
+  ctx: AudioContext,
+  out: AudioNode,
+  start: number,
+  dur: number,
+  freq = 3800,
+  peak = 0.15,
+): void {
+  const source = ctx.createBufferSource();
+  source.buffer = noise(ctx);
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(freq, start);
+  filter.Q.value = 5.0;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(peak, start + 0.002);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+  source.connect(filter).connect(gain).connect(out);
+  source.start(start);
+  source.stop(start + dur + 0.02);
+}
+
 /* Vampire: a crypt, an organ loft, a bell tower --------------------------- */
 
 const vampire: SoundSet = {
@@ -286,14 +345,230 @@ const darkAcademia: SoundSet = {
   },
 };
 
+/* Matrix: Digital rain telemetry, green phosphor CRT, neural jack-in ------ */
+
+const matrix: SoundSet = {
+  cues: {
+    // Optic shutter close: downward sweep + sub-bass carrier gate
+    mute: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.04, 4500, 0.22);
+      cyberTone(ctx, out, now, 2400, 320, 0.09, 0.3, "sawtooth", 4);
+      tone(ctx, out, { freq: 110, to: 45, start: now + 0.02, dur: 0.12, type: "sine", peak: 0.35, attack: 0.002 });
+    },
+    // Neural jack-in: double ascending cyber blip with green scanline shimmer
+    unmute: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.02, 5200, 0.18);
+      cyberTone(ctx, out, now, 960, 2200, 0.045, 0.25, "sawtooth", 3);
+      cyberTone(ctx, out, now + 0.045, 1400, 3200, 0.065, 0.3, "sine", 2.5);
+      tone(ctx, out, { freq: 659.25, start: now + 0.08, dur: 0.18, type: "sine", peak: 0.15, attack: 0.002 });
+    },
+    // Neural disconnect: carrier drop + bitcrush glitch
+    deafen: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.06, 2800, 0.25);
+      cyberTone(ctx, out, now, 880, 110, 0.22, 0.35, "sawtooth", 2);
+      tone(ctx, out, { freq: 75, to: 35, start: now + 0.06, dur: 0.25, type: "sine", peak: 0.4, attack: 0.002 });
+    },
+    // Neural uplink sync: dual-tone frequency handshake
+    undeafen: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.03, 4200, 0.2);
+      tone(ctx, out, { freq: 440, start: now, dur: 0.08, type: "sine", peak: 0.2, attack: 0.002 });
+      tone(ctx, out, { freq: 880, start: now + 0.06, dur: 0.1, type: "sine", peak: 0.25, attack: 0.002 });
+      cyberTone(ctx, out, now + 0.12, 1760, 2640, 0.1, 0.28, "sine", 3);
+    },
+    // Matrix cyber video uplink: 4 ascending high-tech telemetry packets
+    shareStart: (ctx, out, now) => {
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+        cyberTone(ctx, out, now + i * 0.045, f, f * 1.5, 0.04, 0.2, "sawtooth", 4);
+      });
+    },
+    // Feed terminated: 4 descending telemetry packets
+    shareStop: (ctx, out, now) => {
+      [1046.5, 783.99, 659.25, 523.25].forEach((f, i) => {
+        cyberTone(ctx, out, now + i * 0.045, f * 1.5, f, 0.04, 0.2, "sawtooth", 4);
+      });
+    },
+    // Matrix Operator line connection ("You're in.")
+    callAnswer: (ctx, out, now) => {
+      tone(ctx, out, { freq: 941, start: now, dur: 0.09, type: "sine", peak: 0.2 });
+      tone(ctx, out, { freq: 1336, start: now, dur: 0.09, type: "sine", peak: 0.2 });
+      tone(ctx, out, { freq: 1209, start: now + 0.11, dur: 0.12, type: "sine", peak: 0.25 });
+      tone(ctx, out, { freq: 697, start: now + 0.11, dur: 0.12, type: "sine", peak: 0.25 });
+      glitch(ctx, out, now + 0.24, 0.04, 3800, 0.18);
+      tone(ctx, out, { freq: 880, start: now + 0.26, dur: 0.35, type: "sine", peak: 0.3, attack: 0.005 });
+    },
+    callEnd: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.08, 1800, 0.25);
+      cyberTone(ctx, out, now, 880, 80, 0.18, 0.32, "sawtooth", 2);
+    },
+  },
+  loops: {
+    // Green phosphor carrier pulse
+    calling: {
+      period: 2800,
+      burst: (ctx, out, now) => {
+        cyberTone(ctx, out, now, 440, 880, 0.08, 0.22, "sine", 3);
+        glitch(ctx, out, now + 0.09, 0.03, 4000, 0.12);
+      },
+    },
+    // Iconic Operator green telephone warble
+    incoming: {
+      period: 3200,
+      burst: (ctx, out, now) => {
+        for (let burst = 0; burst < 2; burst++) {
+          const bStart = now + burst * 0.45;
+          tone(ctx, out, { freq: 440, start: bStart, dur: 0.32, type: "sine", peak: 0.22 });
+          tone(ctx, out, { freq: 480, start: bStart, dur: 0.32, type: "sine", peak: 0.22 });
+          glitch(ctx, out, bStart + 0.1, 0.12, 3200, 0.08);
+        }
+      },
+    },
+  },
+};
+
+/* Cyberpunk: Overdriven neon, electro-distortion, industrial sub-bass ------ */
+
+const cyberpunk: SoundSet = {
+  cues: {
+    mute: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.06, 2400, 0.3);
+      cyberTone(ctx, out, now, 1800, 160, 0.11, 0.38, "sawtooth", 3);
+      tone(ctx, out, { freq: 95, to: 30, start: now + 0.03, dur: 0.18, type: "square", peak: 0.3, attack: 0.002 });
+    },
+    unmute: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.03, 4800, 0.22);
+      cyberTone(ctx, out, now, 320, 1600, 0.06, 0.3, "sawtooth", 4);
+      cyberTone(ctx, out, now + 0.05, 1200, 3800, 0.08, 0.35, "square", 3);
+      tone(ctx, out, { freq: 880, start: now + 0.09, dur: 0.22, type: "sawtooth", peak: 0.2, attack: 0.003 });
+    },
+    deafen: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.08, 1900, 0.35);
+      cyberTone(ctx, out, now, 1200, 60, 0.25, 0.4, "sawtooth", 2);
+    },
+    undeafen: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.04, 3800, 0.25);
+      cyberTone(ctx, out, now, 220, 880, 0.09, 0.3, "sawtooth", 3);
+      cyberTone(ctx, out, now + 0.08, 880, 2600, 0.12, 0.35, "square", 3);
+    },
+    shareStart: (ctx, out, now) => {
+      [330, 440, 660, 880, 1320].forEach((f, i) => {
+        cyberTone(ctx, out, now + i * 0.038, f, f * 1.6, 0.035, 0.22, "sawtooth", 3);
+      });
+    },
+    shareStop: (ctx, out, now) => {
+      [1320, 880, 660, 440, 330].forEach((f, i) => {
+        cyberTone(ctx, out, now + i * 0.038, f * 1.6, f, 0.035, 0.22, "sawtooth", 3);
+      });
+    },
+    callAnswer: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.05, 3000, 0.25);
+      cyberTone(ctx, out, now + 0.02, 440, 880, 0.1, 0.35, "square", 2.5);
+      cyberTone(ctx, out, now + 0.12, 880, 1760, 0.18, 0.35, "sawtooth", 3);
+      tone(ctx, out, { freq: 110, start: now + 0.15, dur: 0.35, type: "sine", peak: 0.45, attack: 0.005 });
+    },
+    callEnd: (ctx, out, now) => {
+      glitch(ctx, out, now, 0.1, 1400, 0.35);
+      cyberTone(ctx, out, now, 980, 50, 0.22, 0.4, "sawtooth", 2);
+    },
+  },
+  loops: {
+    calling: matrix.loops.calling,
+    incoming: matrix.loops.incoming,
+  },
+};
+
+/* MSN / Retro 2000s: Windows hardware connect/disconnect, Ta-Da, MSN ring */
+
+const msnRetro: SoundSet = {
+  cues: {
+    mute: (ctx, out, now) => {
+      rustle(ctx, out, { start: now, dur: 0.008, from: 2200, to: 800, peak: 0.18 });
+      tone(ctx, out, { freq: 659.25, start: now, dur: 0.11, type: "triangle", peak: 0.38, attack: 0.002 });
+      tone(ctx, out, { freq: 1318.5, start: now, dur: 0.07, type: "sine", peak: 0.15, attack: 0.002 });
+      tone(ctx, out, { freq: 554.37, start: now + 0.10, dur: 0.38, type: "triangle", peak: 0.42, attack: 0.002 });
+      tone(ctx, out, { freq: 1108.74, start: now + 0.10, dur: 0.25, type: "sine", peak: 0.18, attack: 0.002 });
+    },
+    unmute: (ctx, out, now) => {
+      rustle(ctx, out, { start: now, dur: 0.008, from: 2600, to: 1200, peak: 0.2 });
+      tone(ctx, out, { freq: 554.37, start: now, dur: 0.10, type: "triangle", peak: 0.38, attack: 0.002 });
+      tone(ctx, out, { freq: 1108.74, start: now, dur: 0.07, type: "sine", peak: 0.16, attack: 0.002 });
+      tone(ctx, out, { freq: 659.25, start: now + 0.09, dur: 0.40, type: "triangle", peak: 0.45, attack: 0.002 });
+      tone(ctx, out, { freq: 1318.5, start: now + 0.09, dur: 0.26, type: "sine", peak: 0.20, attack: 0.002 });
+    },
+    deafen: (ctx, out, now) => {
+      tone(ctx, out, { freq: 440, start: now, dur: 0.12, type: "sine", peak: 0.35, attack: 0.003 });
+      tone(ctx, out, { freq: 261.63, start: now + 0.11, dur: 0.35, type: "sine", peak: 0.4, attack: 0.003 });
+    },
+    undeafen: (ctx, out, now) => {
+      tone(ctx, out, { freq: 261.63, start: now, dur: 0.11, type: "sine", peak: 0.35, attack: 0.003 });
+      tone(ctx, out, { freq: 523.25, start: now + 0.10, dur: 0.35, type: "sine", peak: 0.4, attack: 0.003 });
+    },
+    shareStart: (ctx, out, now) => {
+      tone(ctx, out, { freq: 523.25, start: now, dur: 0.08, type: "sine", peak: 0.3 });
+      tone(ctx, out, { freq: 659.25, start: now + 0.08, dur: 0.08, type: "sine", peak: 0.35 });
+      tone(ctx, out, { freq: 783.99, start: now + 0.16, dur: 0.25, type: "sine", peak: 0.4 });
+    },
+    shareStop: (ctx, out, now) => {
+      tone(ctx, out, { freq: 783.99, start: now, dur: 0.08, type: "sine", peak: 0.35 });
+      tone(ctx, out, { freq: 659.25, start: now + 0.08, dur: 0.08, type: "sine", peak: 0.3 });
+      tone(ctx, out, { freq: 523.25, start: now + 0.16, dur: 0.25, type: "sine", peak: 0.3 });
+    },
+    callAnswer: (ctx, out, now) => {
+      [392.0, 523.25, 659.25].forEach((f, i) => {
+        tone(ctx, out, { freq: f, start: now + i * 0.08, dur: 0.09, type: "triangle", peak: 0.35 });
+      });
+      [261.63, 392.0, 523.25, 659.25, 783.99].forEach((f) => {
+        tone(ctx, out, { freq: f, start: now + 0.26, dur: 0.75, type: "sawtooth", peak: 0.18 });
+      });
+    },
+    callEnd: (ctx, out, now) => {
+      tone(ctx, out, { freq: 659.25, start: now, dur: 0.1, type: "triangle", peak: 0.35 });
+      tone(ctx, out, { freq: 554.37, start: now + 0.1, dur: 0.3, type: "triangle", peak: 0.4 });
+    },
+  },
+  loops: {
+    calling: {
+      period: 3000,
+      burst: (ctx, out, now) => {
+        tone(ctx, out, { freq: 440, start: now, dur: 0.8, type: "sine", peak: 0.18 });
+        tone(ctx, out, { freq: 480, start: now, dur: 0.8, type: "sine", peak: 0.18 });
+      },
+    },
+    incoming: {
+      period: 3200,
+      burst: (ctx, out, now) => {
+        for (let b = 0; b < 2; b++) {
+          const t = now + b * 0.45;
+          tone(ctx, out, { freq: 853, start: t, dur: 0.35, type: "sine", peak: 0.2 });
+          tone(ctx, out, { freq: 960, start: t, dur: 0.35, type: "sine", peak: 0.2 });
+        }
+      },
+    },
+  },
+};
+
 const SETS: Record<string, SoundSet> = {
   vampire,
   "dark-academia": darkAcademia,
+  matrix,
+  cyberpunk,
+  msn: msnRetro,
+  "msn-dark": msnRetro,
+  legacy: msnRetro,
 };
 
 function activeSet(): SoundSet | null {
   if (typeof document === "undefined") return null;
-  return SETS[document.documentElement.dataset.customThemeId || ""] || null;
+  const customId = document.documentElement.dataset.customThemeId || "";
+  if (SETS[customId]) return SETS[customId];
+  if (document.documentElement.dataset.theme === "legacy") return msnRetro;
+  try {
+    if (typeof window !== "undefined" && window.localStorage.getItem("huddle_retro_sounds") === "1") {
+      return msnRetro;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /** Plays the themed version of a cue. Returns false when the theme has none. */

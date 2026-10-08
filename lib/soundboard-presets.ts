@@ -18,6 +18,9 @@ export const SOUNDBOARD_PRESETS: SoundPreset[] = [
   { id: "quack", name: "Quack", emoji: "🦆", category: "reactions", description: "Bouncy rubber duck squeak" },
   { id: "gg", name: "GG Fanfare", emoji: "🎉", category: "reactions", description: "8-bit victory level-up arpeggio" },
   { id: "ding", name: "Bell Ding", emoji: "🛎️", category: "effects", description: "Crystal-clear elevator notification bell" },
+  { id: "win_error", name: "Windows Error", emoji: "🛑", category: "memes", description: "Iconic Windows Critical Stop error chord" },
+  { id: "win_tada", name: "Windows Ta-Da", emoji: "🎺", category: "reactions", description: "Classic Windows 2000 victory fanfare" },
+  { id: "msn_nudge", name: "MSN Nudge", emoji: "📳", category: "reactions", description: "MSN Messenger window shake and rattle" },
   { id: "applause", name: "Applause", emoji: "👏", category: "reactions", description: "Enthusiastic audience clapping" },
   { id: "crickets", name: "Crickets", emoji: "🦗", category: "memes", description: "Awkward silence cricket chirps" },
 ];
@@ -295,6 +298,144 @@ export function playPresetSound(presetId: string, volume = 0.7): void {
         osc.start(t + start);
         osc.stop(t + start + 0.13);
       });
+      break;
+    }
+
+    case "win_error": {
+      // Sub-bass impact thud
+      const thudOsc = ctx.createOscillator();
+      const thudGain = ctx.createGain();
+      thudOsc.type = "sine";
+      thudOsc.frequency.setValueAtTime(125, t);
+      thudOsc.frequency.exponentialRampToValueAtTime(45, t + 0.22);
+      thudGain.gain.setValueAtTime(0.7, t);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      thudOsc.connect(thudGain);
+      thudGain.connect(master);
+      thudOsc.start(t);
+      thudOsc.stop(t + 0.23);
+
+      // Discordant diminished orchestral chord
+      const chordFreqs = [130.81, 185.0, 220.0, 261.63, 311.13];
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(880, t);
+      filter.Q.setValueAtTime(2.8, t);
+      filter.connect(master);
+
+      chordFreqs.forEach((freq) => {
+        const saw = ctx.createOscillator();
+        const sawGain = ctx.createGain();
+        saw.type = "sawtooth";
+        saw.frequency.setValueAtTime(freq, t);
+        sawGain.gain.setValueAtTime(0.001, t);
+        sawGain.gain.linearRampToValueAtTime(0.24, t + 0.004);
+        sawGain.gain.exponentialRampToValueAtTime(0.015, t + 0.28);
+        sawGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.58);
+        saw.connect(sawGain);
+        sawGain.connect(filter);
+        saw.start(t);
+        saw.stop(t + 0.6);
+      });
+      break;
+    }
+
+    case "win_tada": {
+      // Fanfare: G4 -> C5 -> E5 -> triumphant C-major chord
+      const steps = [
+        { freq: 392.0, at: t, dur: 0.08 },
+        { freq: 523.25, at: t + 0.08, dur: 0.08 },
+        { freq: 659.25, at: t + 0.16, dur: 0.11 },
+      ];
+      steps.forEach(({ freq, at, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, at);
+        gain.gain.setValueAtTime(0.001, at);
+        gain.gain.linearRampToValueAtTime(0.35, at + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(at);
+        osc.stop(at + dur + 0.02);
+      });
+
+      const chordStart = t + 0.26;
+      const chordFreqs = [261.63, 392.0, 523.25, 659.25, 783.99];
+      const brassFilter = ctx.createBiquadFilter();
+      brassFilter.type = "lowpass";
+      brassFilter.frequency.setValueAtTime(1400, chordStart);
+      brassFilter.Q.setValueAtTime(2.0, chordStart);
+      brassFilter.connect(master);
+
+      chordFreqs.forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, chordStart);
+        gain.gain.setValueAtTime(0.001, chordStart);
+        gain.gain.linearRampToValueAtTime(0.18, chordStart + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, chordStart + 0.85);
+        osc.connect(gain);
+        gain.connect(brassFilter);
+        osc.start(chordStart);
+        osc.stop(chordStart + 0.86);
+      });
+      break;
+    }
+
+    case "msn_nudge": {
+      // Sub-bass desk impact
+      const thud = ctx.createOscillator();
+      const thudGain = ctx.createGain();
+      thud.type = "sine";
+      thud.frequency.setValueAtTime(92, t);
+      thud.frequency.exponentialRampToValueAtTime(38, t + 0.22);
+      thudGain.gain.setValueAtTime(0.65, t);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      thud.connect(thudGain);
+      thudGain.connect(master);
+      thud.start(t);
+      thud.stop(t + 0.23);
+
+      // Shaking flutter 18Hz
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const bpf = ctx.createBiquadFilter();
+      const flutterGain = ctx.createGain();
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+
+      osc1.type = "triangle";
+      osc1.frequency.setValueAtTime(130, t);
+      osc2.type = "square";
+      osc2.frequency.setValueAtTime(260, t);
+      bpf.type = "bandpass";
+      bpf.frequency.setValueAtTime(220, t);
+      bpf.Q.setValueAtTime(2.2, t);
+
+      lfo.frequency.setValueAtTime(19, t);
+      lfoGain.gain.setValueAtTime(0.25, t);
+
+      flutterGain.gain.setValueAtTime(0.001, t);
+      flutterGain.gain.linearRampToValueAtTime(0.45, t + 0.015);
+      flutterGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.52);
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(flutterGain.gain);
+
+      osc1.connect(bpf);
+      osc2.connect(bpf);
+      bpf.connect(flutterGain);
+      flutterGain.connect(master);
+
+      osc1.start(t);
+      osc2.start(t);
+      lfo.start(t);
+      osc1.stop(t + 0.52);
+      osc2.stop(t + 0.52);
+      lfo.stop(t + 0.52);
       break;
     }
   }

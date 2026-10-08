@@ -9,6 +9,7 @@ import {
   mayPostInKind,
   normalizeChannelName,
   textChannelKindsSql,
+  voiceChannelKindsSql,
 } from "@/lib/channel-kinds";
 
 describe("channel kind registry", () => {
@@ -118,6 +119,16 @@ describe("textChannelKindsSql", () => {
     // Voice rooms cannot take messages, so they must not be accepted here.
     expect(sql).not.toContain("'voice'");
     expect(sql).not.toContain("'stage'");
+  });
+});
+
+describe("voiceChannelKindsSql", () => {
+  it("lists voice rooms and stages, so moderation reaches both", () => {
+    const sql = voiceChannelKindsSql();
+    expect(sql).toContain("'voice'");
+    expect(sql).toContain("'stage'");
+    expect(sql).not.toContain("'text'");
+    expect(sql).not.toContain("'dm'");
   });
 });
 

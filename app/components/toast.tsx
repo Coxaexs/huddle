@@ -3,20 +3,44 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 
+import { isRetroSoundThemeEnabled, playRetroSound } from "../lib/msn-sounds";
+
 export interface ToastMessage {
   id: string;
   text: string;
-  type?: "info" | "success" | "warning";
+  type?: "info" | "success" | "warning" | "error";
 }
 
 let toastListeners: Array<(toast: ToastMessage) => void> = [];
 
-export function showToast(text: string, type: "info" | "success" | "warning" = "info") {
+export function showToast(text: string, type: "info" | "success" | "warning" | "error" = "info") {
   const toast: ToastMessage = {
     id: Math.random().toString(36).substring(2, 9),
     text,
     type,
   };
+
+  try {
+    if (typeof window !== "undefined") {
+      const root = document.documentElement;
+      const isMsn =
+        root.dataset.theme === "legacy" ||
+        root.dataset.customThemeId === "msn" ||
+        root.dataset.customThemeId === "msn-dark";
+      const isRetro = isRetroSoundThemeEnabled();
+
+      if (isMsn || isRetro) {
+        if (type === "warning" || type === "error") {
+          playRetroSound("error");
+        } else if (type === "success") {
+          playRetroSound("ding");
+        }
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+
   toastListeners.forEach((listener) => listener(toast));
 }
 
@@ -46,7 +70,7 @@ export function ToastContainer() {
           <span className="toast-icon">
             {toast.type === "success" ? (
               <CheckCircle2 size={18} />
-            ) : toast.type === "warning" ? (
+            ) : toast.type === "warning" || toast.type === "error" ? (
               <AlertCircle size={18} />
             ) : (
               <Info size={18} />

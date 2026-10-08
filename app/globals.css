@@ -6714,6 +6714,58 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   font-family: var(--font-ui, "EB Garamond", Georgia, serif);
 }
 
+/* Matrix Dice Overlay Results */
+:root[data-custom-theme-id="matrix"] .dice-result-value,
+.dice-result-overlay.dice-theme-matrix .dice-result-value {
+  background: rgba(2, 11, 5, 0.94);
+  box-shadow: inset 0 0 0 2px #00ff66, 0 0 16px rgba(0, 255, 102, 0.5);
+  color: #00ff66;
+  font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
+  text-shadow: 0 0 8px rgba(0, 255, 102, 0.7);
+}
+
+:root[data-custom-theme-id="matrix"] .dice-result-value.sides-20,
+.dice-result-overlay.dice-theme-matrix .dice-result-value.sides-20 {
+  box-shadow: inset 0 0 0 2px #55ff99, 0 0 24px rgba(0, 255, 102, 0.85);
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(85, 255, 153, 0.9);
+}
+
+:root[data-custom-theme-id="matrix"] .dice-result-total,
+.dice-result-overlay.dice-theme-matrix .dice-result-total {
+  background: rgba(2, 11, 5, 0.96);
+  box-shadow: inset 0 0 0 2px #00ff66, 0 0 24px rgba(0, 255, 102, 0.6);
+  color: #00ff66;
+  font-family: ui-monospace, SFMono-Regular, "Courier New", monospace;
+  text-shadow: 0 0 10px rgba(0, 255, 102, 0.65);
+}
+
+/* Cyberpunk Dice Overlay Results */
+:root[data-custom-theme-id="cyberpunk"] .dice-result-value,
+.dice-result-overlay.dice-theme-cyberpunk .dice-result-value {
+  background: rgba(5, 8, 20, 0.95);
+  box-shadow: inset 0 0 0 2px #00f0ff, 0 0 18px rgba(0, 240, 255, 0.6);
+  color: #00f0ff;
+  font-family: var(--font-display, ui-sans-serif, system-ui);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.75);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .dice-result-value.sides-20,
+.dice-result-overlay.dice-theme-cyberpunk .dice-result-value.sides-20 {
+  box-shadow: inset 0 0 0 2px #ffe600, 0 0 24px rgba(255, 230, 0, 0.85);
+  color: #ffe600;
+  text-shadow: 0 0 14px rgba(255, 230, 0, 0.9);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .dice-result-total,
+.dice-result-overlay.dice-theme-cyberpunk .dice-result-total {
+  background: rgba(10, 4, 24, 0.96);
+  box-shadow: inset 0 0 0 2px #ff003c, 0 0 24px rgba(255, 0, 60, 0.65);
+  color: #ffe600;
+  font-family: var(--font-display, ui-sans-serif, system-ui);
+  text-shadow: 0 0 10px rgba(255, 0, 60, 0.8);
+}
+
 /* Result value highlight on Nat 20 or Nat 1 */
 @keyframes diceCrit20Pulse {
   0%, 100% { box-shadow: inset 0 0 0 2px #ffd700, 0 0 20px rgba(255, 215, 0, 0.8); }
@@ -14959,6 +15011,16 @@ html[data-motion="reduced"] .typing-dots i {
 
 .dice-theme-row button.nonbinary .dice-theme-swatch {
   background: linear-gradient(90deg, #fff430 0 25%, #fff 25% 50%, #9c59d1 50% 75%, #2d2d2d 75%);
+}
+
+.dice-theme-row button.matrix .dice-theme-swatch {
+  background: linear-gradient(90deg, #020b05 0%, #083c18 50%, #00ff66 100%);
+  box-shadow: 0 0 6px rgba(0, 255, 102, 0.45);
+}
+
+.dice-theme-row button.cyberpunk .dice-theme-swatch {
+  background: linear-gradient(90deg, #ff003c 0%, #7a0c6d 35%, #00f0ff 70%, #fcee0a 100%);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
 }
 
 .dice-theme-row button.vampire .dice-theme-swatch {
@@ -26115,6 +26177,39 @@ a.link-preview-author:hover {
 }
 :root[data-custom-theme-id="msn-dark"] .msn-sound-row strong {
   color: #7fb8ff;
+}
+
+.msn-sound-volume-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f0f4fa;
+  border: 1px solid #c2d3ea;
+  border-radius: 4px;
+}
+.msn-sound-volume-row label {
+  font-size: 11.5px;
+  color: #0f3a82;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.msn-sound-volume-row input[type="range"] {
+  flex: 1;
+  accent-color: #0f3a82;
+  cursor: pointer;
+}
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row {
+  background: #0f1c34;
+  border-color: #2a416a;
+}
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row label {
+  color: #7fb8ff;
+}
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row input[type="range"] {
+  accent-color: #4f8fea;
 }
 
 /* ---- Game invitation bar, win banner, your-turn glow ---- */

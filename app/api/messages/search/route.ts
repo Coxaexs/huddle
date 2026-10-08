@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { isDmMember } from "@/lib/dms";
+import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import {
@@ -67,6 +68,16 @@ export async function GET(request: Request) {
   // Both paths below share these predicates, so `has:image` cannot mean one
   // thing when FTS answers and another when the LIKE fallback does.
   const filters = buildMessageFilters(query);
+  // The hoffle.online guestbook is only for its moderators, and search is not
+  // otherwise limited to the servers you are in.
+  const inGuestbook = await db
+    .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+    .bind(GUESTBOOK_SERVER_ID, user.id)
+    .first();
+  if (!inGuestbook) {
+    filters.clauses.push("(m.channel_id IS NULL OR m.channel_id != ?)");
+    filters.params.push(GUESTBOOK_CHANNEL_ID);
+  }
   const filterSql = filters.clauses.length
     ? ` AND ${filters.clauses.join(" AND ")}`
     : "";

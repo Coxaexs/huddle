@@ -40,6 +40,8 @@ describe("Dice Roll & Theme Features", () => {
       "vampire",
       "dark-academia",
       "darkacademia",
+      "matrix",
+      "cyberpunk",
     ];
     const COLOR_NAMES: Record<string, string> = {
       blue: "#2563eb",
@@ -108,6 +110,22 @@ describe("Dice Roll & Theme Features", () => {
       parsedTexture: "skulls",
     });
 
+    expect(parseCommand("/roll 1d20 matrix glass")).toEqual({
+      input: "1d20",
+      parsedTheme: "matrix",
+      parsedThemeColor: undefined,
+      parsedMaterial: "glass",
+      parsedTexture: undefined,
+    });
+
+    expect(parseCommand("/roll 3d6 cyberpunk metal")).toEqual({
+      input: "3d6",
+      parsedTheme: "cyberpunk",
+      parsedThemeColor: undefined,
+      parsedMaterial: "metal",
+      parsedTexture: undefined,
+    });
+
     expect(parseCommand("/roll 2d20 marble")).toEqual({
       input: "2d20",
       parsedTheme: undefined,
@@ -152,18 +170,24 @@ describe("Dice Roll & Theme Features", () => {
     // >10 dice should cap at tier 10 gracefully
     await expect(playDiceRollSound({ theme: "default", diceCount: 15, material: "wood" })).resolves.not.toThrow();
 
-    // Vampire and Dark Academia themes
+    // Vampire, Dark Academia, Matrix, and Cyberpunk themes
     await expect(playDiceRollSound({ theme: "vampire", diceCount: 2, material: "metal" })).resolves.not.toThrow();
     await expect(playDiceRollSound({ theme: "dark-academia", diceCount: 3, material: "wood" })).resolves.not.toThrow();
+    await expect(playDiceRollSound({ theme: "matrix", diceCount: 2, material: "glass" })).resolves.not.toThrow();
+    await expect(playDiceRollSound({ theme: "cyberpunk", diceCount: 4, material: "metal" })).resolves.not.toThrow();
 
-    // Critical Fumble for each of the 4 materials (glass, metal, wood, plastic)
+    // Critical Fumble for each of the 4 materials and special themes
     await expect(playCriticalFumbleSound({ material: "glass", theme: "default" })).resolves.not.toThrow();
     await expect(playCriticalFumbleSound({ material: "metal", theme: "default" })).resolves.not.toThrow();
     await expect(playCriticalFumbleSound({ material: "wood", theme: "dark-academia" })).resolves.not.toThrow();
     await expect(playCriticalFumbleSound({ material: "plastic", theme: "default" })).resolves.not.toThrow();
+    await expect(playCriticalFumbleSound({ material: "glass", theme: "matrix" })).resolves.not.toThrow();
+    await expect(playCriticalFumbleSound({ material: "metal", theme: "cyberpunk" })).resolves.not.toThrow();
 
     // Critical Success (Nat 20) fanfare
     await expect(playCriticalSuccessSound({ theme: "default" })).resolves.not.toThrow();
     await expect(playCriticalSuccessSound({ theme: "vampire" })).resolves.not.toThrow();
+    await expect(playCriticalSuccessSound({ theme: "matrix" })).resolves.not.toThrow();
+    await expect(playCriticalSuccessSound({ theme: "cyberpunk" })).resolves.not.toThrow();
   });
 });

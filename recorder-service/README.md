@@ -40,7 +40,10 @@ then renames it only after success. Startup scans unfinished sessions and tries
 to recover their chunks.
 
 When separate tracks are enabled, each accepted participant gets an independent
-paused/resumed Opus stream and finalized AAC `.m4a`. Finalization also writes
+paused/resumed Opus stream and finalized AAC `.m4a`. To prevent stem generation from
+consuming all host CPU, audio transcoding runs at low process priority (`PRIORITY_LOW` / nice 19)
+and is constrained to single-threaded encoding by default. You can adjust this via
+`RECORDER_STEM_THREADS` and `RECORDER_STEM_PRIORITY`. Finalization also writes
 `chapters.txt`, `highlights.json`, `thumbnail.jpg`, the editable event/dice
 manifest, and optional `subtitles.vtt`.
 

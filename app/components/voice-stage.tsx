@@ -51,6 +51,7 @@ import type { RoomActivity } from "@/lib/activities";
 import {
   nextScreenQuality,
   screenQualityLabel,
+  videoAllowedFrom,
   type ScreenShareQuality,
 } from "../hooks/use-voice";
 import { ScreenShareSetup } from "./screen-share-setup";
@@ -354,6 +355,8 @@ export function VoiceStage({
   const self = participants.find((person) => person.connectionId === connectionId) || null;
   /** True when this tab is in the audience and could therefore ask for the floor. */
   const amAudience = Boolean(self && !isOnStage(self));
+  /** A stage audience seat cannot show video: receivers drop it (videoAllowedFrom). */
+  const videoLocked = Boolean(stageMode && self && !videoAllowedFrom(self));
 
   /** Live seat time for one person, when the shell handed us the hub's clock. */
   function seatTime(person: VoiceParticipant, className: string) {
@@ -1246,7 +1249,14 @@ export function VoiceStage({
               onClick={() =>
                 voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
               }
-              title={voice.cameraOn ? "Turn camera off" : "Turn camera on"}
+              disabled={videoLocked && !voice.cameraOn}
+              title={
+                voice.cameraOn
+                  ? "Turn camera off"
+                  : videoLocked
+                    ? "Only people on stage can turn on a camera"
+                    : "Turn camera on"
+              }
             >
               {voice.cameraOn ? <VideoOff size={18} /> : <Video size={18} />}
             </button>
@@ -1541,7 +1551,14 @@ export function VoiceStage({
                   setScreenSharePopoverOpen((o) => !o);
                 }
               }}
-              title={voice.screenSharing ? "Stop sharing screen" : "Share screen"}
+              disabled={videoLocked && !voice.screenSharing}
+              title={
+                voice.screenSharing
+                  ? "Stop sharing screen"
+                  : videoLocked
+                    ? "Only people on stage can share their screen"
+                    : "Share screen"
+              }
             >
               <Monitor size={18} />
             </button>

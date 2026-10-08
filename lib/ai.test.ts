@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  askAi,
+  askClaude,
   askGemini,
   buildUserTurn,
   modelList,
@@ -97,5 +99,73 @@ describe("askGemini", () => {
   it("parses the model list", () => {
     expect(modelList(" models/a , b ")).toEqual(["a", "b"]);
     expect(modelList("")).toHaveLength(2);
+  });
+});
+
+describe("askClaude", () => {
+  const claude = (body: object, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const message = (text: string, stop_reason = "end_turn") => ({
+    id: "msg_1",
+    type: "message",
+    role: "assistant",
+    model: "claude-haiku-5-5",
+    content: text ? [{ type: "text", text }] : [],
+    stop_reason,
+    usage: { input_tokens: 1, output_tokens: 1 },
+  });
+
+  it("sends history as user/assistant turns and returns the text", async () => {
+    let sent: { model: string; messages: Array<{ role: string; content: string }> } | null = null;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return claude(message("hello"));
+    }) as unknown as typeof fetch;
+    const answer = await askClaude({
+      apiKey: "k",
+      history: [
+        { role: "user", text: "a" },
+        { role: "model", text: "b" },
+      ],
+      question: "c",
+      fetchImpl,
+    });
+    expect(answer).toEqual({ text: "hello", model: "claude-haiku-5-5" });
+    expect(sent!.model).toBe("claude-haiku-5-5");
+    expect(sent!.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+  });
+
+  it("turns a refusal into a final error", async () => {
+    const fetchImpl = (async () => claude(message("", "refusal"))) as unknown as typeof fetch;
+    await expect(
+      askClaude({ apiKey: "k", history: [], question: "q", fetchImpl }),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe("askAi", () => {
+  it("falls back to Gemini when Claude fails", async () => {
+    const fetchImpl = (async (url: string) =>
+      String(url).includes("anthropic")
+        ? new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "credit balance too low" } }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "free" }] } }] }))) as unknown as typeof fetch;
+    const answer = await askAi({ anthropicKey: "a", geminiKey: "g", geminiModels: "m1" }, [], "q", fetchImpl);
+    expect(answer).toEqual({ text: "free", model: "m1" });
+  });
+
+  it("does not ask Gemini after a Claude refusal", async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(String(url));
+      return new Response(
+        JSON.stringify({ id: "m", type: "message", role: "assistant", model: "x", content: [], stop_reason: "refusal", usage: { input_tokens: 1, output_tokens: 1 } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    await expect(askAi({ anthropicKey: "a", geminiKey: "g" }, [], "q", fetchImpl)).rejects.toMatchObject({ status: 422 });
+    expect(seen.every((url) => url.includes("anthropic"))).toBe(true);
   });
 });

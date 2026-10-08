@@ -44,6 +44,7 @@ import {
   playWink,
   useMsnTheme,
 } from "./components/msn-chrome";
+import { isRetroSoundThemeEnabled, playSound as playMsnSound } from "./lib/msn-sounds";
 import { TextStyleMenu } from "./components/text-style-menu";
 import { GameCard, GamesPicker } from "./components/game-card";
 import { MsnToday, shouldShowMsnToday } from "./components/msn-today";
@@ -160,6 +161,7 @@ import {
   type ServerFolder,
 } from "@/lib/server-folders";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
+import { practiceRoll, TUTORIAL_PENDING_KEY, TutorialPill, WelcomeTutorial } from "./components/welcome-tutorial";
 import { ToastContainer, showToast } from "./components/toast";
 import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
 import { PollCard } from "./components/poll-card";
@@ -904,7 +906,7 @@ export function ChatShell() {
   /** MSN's Sounds dialog; which sound (if any) plays is chosen there (app/lib/msn-sounds.ts). */
   const [soundsOpen, setSoundsOpen] = useState(false);
   const msnSoundsRef = useRef(false);
-  msnSoundsRef.current = msnTheme;
+  msnSoundsRef.current = msnTheme || isRetroSoundThemeEnabled();
   const msnThemeRef = useRef(msnTheme);
   msnThemeRef.current = msnTheme;
   const [slashIndex, setSlashIndex] = useState(0);
@@ -2832,6 +2834,25 @@ export function ChatShell() {
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** The welcome tutorial: which page, and whether it is folded away while a "Try it" runs. */
+  const [tutorial, setTutorial] = useState<{ page: number; folded: boolean } | null>(null);
+  // Right after signing up (the sign-in screen leaves a note), the tutorial opens by itself.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      if (window.localStorage.getItem(TUTORIAL_PENDING_KEY)) setTutorial({ page: 0, folded: false });
+    } catch {
+      // Storage blocked: it won't open by itself, but Settings → Tutorial still works.
+    }
+  }, [user?.id]);
+  const closeTutorial = useCallback(() => {
+    setTutorial(null);
+    try {
+      window.localStorage.removeItem(TUTORIAL_PENDING_KEY);
+    } catch {
+      // Nothing to clear.
+    }
+  }, []);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
 
@@ -4778,7 +4799,13 @@ export function ChatShell() {
           ? applyMessageFont(applyPersonalEmoticons(processedText, personalEmoticons.emoticons), messageFont)
           : processedText;
       await sendText(styled, keys);
+      if (msnSoundsRef.current) {
+        playMsnSound("send");
+      }
     } catch (error) {
+      if (msnSoundsRef.current) {
+        playMsnSound("error");
+      }
       // Put the message back so a dropped connection or a rate limit does not
       // eat what someone typed — unless they have already started a new one.
       setDraft((current) => (current ? current : text));
@@ -10750,6 +10777,10 @@ export function ChatShell() {
             setSettingsOpen(false);
             void openDm(targetId);
           }}
+          onOpenTutorial={() => {
+            setSettingsOpen(false);
+            setTutorial({ page: 0, folded: false });
+          }}
           onSignOut={signOut}
           onMicrophoneChange={() => void voice.switchMicrophone()}
           micSettings={voice.micSettings}
@@ -10922,6 +10953,36 @@ export function ChatShell() {
           }
         }}
       />
+
+      {tutorial && !tutorial.folded && (
+        <WelcomeTutorial
+          page={tutorial.page}
+          onPage={(page) => setTutorial({ page, folded: false })}
+          onClose={closeTutorial}
+          onTry={() => setTutorial((current) => current && { ...current, folded: true })}
+          actions={{
+            activeThemeId: getActiveThemeId(),
+            onTheme: (next) => applyTheme(next),
+            openSwitcher: () => setQuickSwitcherOpen(true),
+            joinVoice: voiceChannels[0]
+              ? { name: voiceChannels[0].name, run: () => openVoiceChannel(voiceChannels[0]) }
+              : null,
+            openFormat: () => setFormatOpen(true),
+            openPoll: () => setPollDialogOpen(true),
+            rollDice: () => setDiceRoll(practiceRoll({ id: user.id, displayName: user.displayName })),
+            openGames: () => setGamesOpen(true),
+            openProfile: () => setSettingsOpen(true),
+            openShortcuts: () => setShortcutsOpen(true),
+          }}
+        />
+      )}
+      {tutorial?.folded && (
+        <TutorialPill
+          page={tutorial.page}
+          onResume={() => setTutorial((current) => current && { ...current, folded: false })}
+          onClose={closeTutorial}
+        />
+      )}
 
       <KeyboardShortcutsDialog
         open={shortcutsOpen}

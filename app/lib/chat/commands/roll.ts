@@ -32,6 +32,8 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
     if (diceTheme === "default") {
       if (activeTheme === "vampire") diceTheme = "vampire";
       else if (activeTheme === "dark-academia") diceTheme = "dark-academia";
+      else if (activeTheme === "matrix") diceTheme = "matrix";
+      else if (activeTheme === "cyberpunk") diceTheme = "cyberpunk";
     }
     const diceColor =
       typeof window !== "undefined"

@@ -142,6 +142,8 @@ Each user can paste an [ntfy](https://ntfy.sh) topic URL under **Settings → Ap
 | `KLIPY_API_KEY`         | Enables GIF search in the message box ([klipy.com](https://klipy.com)). Without it, pasting or uploading GIFs still works. |
 | `GEMINI_API_KEY`        | Enables `/ask` ([free key](https://aistudio.google.com/apikey)). Answers use Flash-Lite, search DuckDuckGo when a question needs current info, and allow 3 questions a minute and 60 an hour per user. |
 | `GEMINI_MODEL`          | Models `/ask` tries in order, comma separated. Default `gemini-3.1-flash-lite,gemini-3.5-flash-lite`. |
+| `ANTHROPIC_API_KEY`     | Answers `/ask` with Claude instead (paid, [platform.claude.com](https://platform.claude.com)). If `GEMINI_API_KEY` is set too, Gemini answers whenever Claude fails or runs out of credit. |
+| `ANTHROPIC_MODEL`       | Claude model for `/ask`. Default `claude-haiku-5-5`. |
 | `AI_DAILY_LIMIT`        | `/ask` answers per day for the whole server, default 200, which keeps a free key under its quota. |
 | `LASTFM_API_KEY`, `LASTFM_SECRET` | Last.fm "now playing" integration. |
 | `MUSICWATCH_PASSWORD`   | Password for the external music dashboard. |

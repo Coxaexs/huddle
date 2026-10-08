@@ -185,8 +185,11 @@ function synthProceduralDiceHit(
   volume = 0.4,
   theme: string = "default",
 ): void {
+  const isMatrix = theme === "matrix";
+  const isCyberpunk = theme === "cyberpunk";
+
   // Transient click: high-Q bandpass filtered noise
-  const noiseLen = 0.04;
+  const noiseLen = isMatrix ? 0.025 : 0.04;
   const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * noiseLen), ctx.sampleRate);
   const data = noiseBuf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
@@ -198,10 +201,18 @@ function synthProceduralDiceHit(
   const bandpass = ctx.createBiquadFilter();
   bandpass.type = "bandpass";
   bandpass.frequency.setValueAtTime(
-    theme === "vampire" ? 1800 : theme === "dark-academia" ? 2400 : 3200,
+    isMatrix
+      ? 3800
+      : isCyberpunk
+        ? 1400
+        : theme === "vampire"
+          ? 1800
+          : theme === "dark-academia"
+            ? 2400
+            : 3200,
     time,
   );
-  bandpass.Q.setValueAtTime(theme === "vampire" ? 4 : 5, time);
+  bandpass.Q.setValueAtTime(isMatrix ? 6 : isCyberpunk ? 3 : theme === "vampire" ? 4 : 5, time);
 
   const noiseGain = ctx.createGain();
   noiseGain.gain.setValueAtTime(volume * 0.7, time);
@@ -210,19 +221,30 @@ function synthProceduralDiceHit(
   noiseSrc.connect(bandpass).connect(noiseGain).connect(dest);
   noiseSrc.start(time);
 
-  // Resonant acrylic/wood body chime (decaying sine)
+  // Resonant body chime
   const osc = ctx.createOscillator();
   const oscGain = ctx.createGain();
-  osc.type = theme === "dark-academia" ? "triangle" : "sine";
+  osc.type =
+    isMatrix
+      ? "sawtooth"
+      : isCyberpunk
+        ? "sawtooth"
+        : theme === "dark-academia"
+          ? "triangle"
+          : "sine";
   const baseFreq =
-    theme === "vampire"
-      ? 620 + Math.random() * 120
-      : theme === "dark-academia"
-        ? 450 + Math.random() * 100
-        : 850 + Math.random() * 200;
+    isMatrix
+      ? 1400 + Math.random() * 300
+      : isCyberpunk
+        ? 240 + Math.random() * 80
+        : theme === "vampire"
+          ? 620 + Math.random() * 120
+          : theme === "dark-academia"
+            ? 450 + Math.random() * 100
+            : 850 + Math.random() * 200;
 
   osc.frequency.setValueAtTime(baseFreq, time);
-  osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.7, time + 0.08);
+  osc.frequency.exponentialRampToValueAtTime(baseFreq * (isMatrix ? 0.5 : 0.7), time + 0.08);
 
   oscGain.gain.setValueAtTime(volume * 0.5, time);
   oscGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.08);
@@ -235,7 +257,16 @@ function synthProceduralDiceHit(
   const thudOsc = ctx.createOscillator();
   const thudGain = ctx.createGain();
   thudOsc.type = "sine";
-  const thudFreq = theme === "vampire" ? 65 : theme === "dark-academia" ? 110 : 140;
+  const thudFreq =
+    isCyberpunk
+      ? 55
+      : theme === "vampire"
+        ? 65
+        : theme === "dark-academia"
+          ? 110
+          : isMatrix
+            ? 95
+            : 140;
   thudOsc.frequency.setValueAtTime(thudFreq, time);
   thudOsc.frequency.exponentialRampToValueAtTime(thudFreq * 0.5, time + 0.09);
 
@@ -325,6 +356,82 @@ function addVampireAtmosphere(ctx: AudioContext, masterOut: AudioNode, startTime
 }
 
 /**
+ * Matrix Theme Atmosphere:
+ * - Subtle digital scanline / data-stream chirps on roll start
+ * - Rapid phosphor flicker / sub carrier hum
+ */
+function addMatrixAtmosphere(ctx: AudioContext, masterOut: AudioNode, startTime: number): void {
+  // Cascading micro data blips (green code falling)
+  const blipFreqs = [1850, 2400, 3100];
+  blipFreqs.forEach((freq, i) => {
+    const t = startTime + i * 0.045;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.8, t + 0.035);
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    osc.connect(g).connect(masterOut);
+    osc.start(t);
+    osc.stop(t + 0.04);
+  });
+
+  // Soft digital carrier hum
+  const humOsc = ctx.createOscillator();
+  const humGain = ctx.createGain();
+  humOsc.type = "triangle";
+  humOsc.frequency.setValueAtTime(120, startTime);
+  humGain.gain.setValueAtTime(0.0001, startTime);
+  humGain.gain.linearRampToValueAtTime(0.04, startTime + 0.05);
+  humGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.4);
+  humOsc.connect(humGain).connect(masterOut);
+  humOsc.start(startTime);
+  humOsc.stop(startTime + 0.42);
+}
+
+/**
+ * Cyberpunk Theme Atmosphere:
+ * - Overdriven sub-bass servo thud on release
+ * - 60Hz neon transformer buzz / electric crackle
+ */
+function addCyberpunkAtmosphere(ctx: AudioContext, masterOut: AudioNode, startTime: number): void {
+  // Industrial sub power-surge punch
+  const sub = ctx.createOscillator();
+  const subGain = ctx.createGain();
+  sub.type = "sine";
+  sub.frequency.setValueAtTime(55, startTime);
+  sub.frequency.exponentialRampToValueAtTime(28, startTime + 0.35);
+  subGain.gain.setValueAtTime(0.0001, startTime);
+  subGain.gain.linearRampToValueAtTime(0.18, startTime + 0.02);
+  subGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.38);
+  sub.connect(subGain).connect(masterOut);
+  sub.start(startTime);
+  sub.stop(startTime + 0.4);
+
+  // Neon tube electrical arc sizzle
+  const arcDur = 0.22;
+  const arcBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * arcDur), ctx.sampleRate);
+  const data = arcBuf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    // 60Hz AM modulated noise
+    const am = Math.sin((i / ctx.sampleRate) * 2 * Math.PI * 60);
+    data[i] = (Math.random() * 2 - 1) * Math.abs(am) * 0.4;
+  }
+  const arcSrc = ctx.createBufferSource();
+  arcSrc.buffer = arcBuf;
+  const arcFilt = ctx.createBiquadFilter();
+  arcFilt.type = "highpass";
+  arcFilt.frequency.setValueAtTime(2200, startTime);
+  const arcGain = ctx.createGain();
+  arcGain.gain.setValueAtTime(0.07, startTime);
+  arcGain.gain.exponentialRampToValueAtTime(0.0001, startTime + arcDur);
+  arcSrc.connect(arcFilt).connect(arcGain).connect(masterOut);
+  arcSrc.start(startTime);
+  arcSrc.stop(startTime + arcDur + 0.02);
+}
+
+/**
  * Stop any currently playing dice audio sequence
  */
 export function stopDiceRollSound(): void {
@@ -369,17 +476,21 @@ export async function playDiceRollSound({
 
   const isVampire = theme === "vampire";
   const isDarkAcademia = theme === "dark-academia" || theme === "darkacademia";
+  const isMatrix = theme === "matrix";
+  const isCyberpunk = theme === "cyberpunk";
   const basePathStr = basePath || "";
 
   // Resolve acoustic material
   const effectiveMaterial: DiceMaterial =
     material && material !== "auto"
       ? material
-      : isVampire
+      : isVampire || isCyberpunk
         ? "metal"
         : isDarkAcademia
           ? "wood"
-          : "plastic";
+          : isMatrix
+            ? "glass"
+            : "plastic";
 
   // Master Gain for this roll
   const masterGain = ctx.createGain();
@@ -459,6 +570,26 @@ export async function playDiceRollSound({
 
     // Atmospheric vampire layer: bat flutter, cloak whoosh, cold draught & tomb drip
     addVampireAtmosphere(ctx, masterGain, now);
+  } else if (isMatrix) {
+    // Data rain CRT scanline filter
+    const matrixEq = ctx.createBiquadFilter();
+    matrixEq.type = "peaking";
+    matrixEq.frequency.setValueAtTime(2800, now);
+    matrixEq.gain.setValueAtTime(4.5, now);
+    matrixEq.Q.setValueAtTime(2.0, now);
+    matrixEq.connect(masterGain);
+    channelOut = matrixEq;
+    addMatrixAtmosphere(ctx, masterGain, now);
+  } else if (isCyberpunk) {
+    // Overdriven electro-metallic impact filter
+    const cyberEq = ctx.createBiquadFilter();
+    cyberEq.type = "peaking";
+    cyberEq.frequency.setValueAtTime(160, now);
+    cyberEq.gain.setValueAtTime(5.0, now);
+    cyberEq.Q.setValueAtTime(1.5, now);
+    cyberEq.connect(masterGain);
+    channelOut = cyberEq;
+    addCyberpunkAtmosphere(ctx, masterGain, now);
   } else if (isDarkAcademia || effectiveMaterial === "wood") {
     // Rich mahogany warmth filter
     const warmEq = ctx.createBiquadFilter();
@@ -869,6 +1000,54 @@ export async function playCriticalFumbleSound({
   master.gain.setValueAtTime(0.92, now);
   master.connect(ctx.destination);
 
+  if (theme === "matrix") {
+    // Digital matrix code glitch collapse: cascading bitcrushed pitches down into system error
+    [1600, 950, 420, 180].forEach((freq, i) => {
+      const t = now + i * 0.05;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.3, t + 0.08);
+      g.gain.setValueAtTime(0.35, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      osc.connect(g).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    });
+    return;
+  }
+
+  if (theme === "cyberpunk") {
+    // High-voltage neon short-circuit arc overload
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = "sawtooth";
+    sub.frequency.setValueAtTime(90, now);
+    sub.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+    sg.gain.setValueAtTime(0.8, now);
+    sg.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    sub.connect(sg).connect(master);
+    sub.start(now);
+    sub.stop(now + 0.36);
+
+    const arcBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.35), ctx.sampleRate);
+    const ad = arcBuf.getChannelData(0);
+    for (let i = 0; i < ad.length; i++) ad[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ad.length * 0.25));
+    const arcSrc = ctx.createBufferSource();
+    arcSrc.buffer = arcBuf;
+    const arcFilt = ctx.createBiquadFilter();
+    arcFilt.type = "bandpass";
+    arcFilt.frequency.setValueAtTime(1800, now);
+    arcFilt.Q.setValueAtTime(3.5, now);
+    const ag = ctx.createGain();
+    ag.gain.setValueAtTime(0.8, now);
+    ag.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    arcSrc.connect(arcFilt).connect(ag).connect(master);
+    arcSrc.start(now);
+    return;
+  }
+
   if (material === "glass") {
     // 1. Shattered glass: rendered sample by sample (see synthGlassShatter).
     const src = ctx.createBufferSource();
@@ -1000,6 +1179,50 @@ export async function playCriticalSuccessSound({
   const master = ctx.createGain();
   master.gain.setValueAtTime(0.88, now);
   master.connect(ctx.destination);
+
+  if (theme === "matrix") {
+    // "The One" digital awakening: green phosphor terminal chime arpeggio (E5, B5, E6, G#6, B6)
+    const matrixNotes = [
+      { freq: 659.25, time: 0.0 },
+      { freq: 987.77, time: 0.05 },
+      { freq: 1318.51, time: 0.1 },
+      { freq: 1661.22, time: 0.16 },
+      { freq: 1975.53, time: 0.24 },
+    ];
+    matrixNotes.forEach(({ freq, time }) => {
+      const t = now + time;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.28, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      osc.connect(g).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.72);
+    });
+    return;
+  }
+
+  if (theme === "cyberpunk") {
+    // Cyberpunk synthwave fanfare: punchy synth brass triad (D4, F#4, A4) with high neon sparkle
+    const cyberNotes = [293.66, 369.99, 440.0, 587.33, 880.0];
+    cyberNotes.forEach((freq, i) => {
+      const t = now + i * 0.035;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.22, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+      osc.connect(g).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.85);
+    });
+    return;
+  }
 
   // Radiant triumphant harmonic arpeggio: C5, E5, G5, B5, D6, G6
   const chordNotes = [

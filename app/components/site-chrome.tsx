@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Coffee, Heart } from "lucide-react";
+import { SiteThemeToggle } from "./landing-client";
 
 /**
  * The frame shared by hoffle.online's pages (the landing page and /docs):
@@ -36,11 +37,51 @@ function Wordmark({ className = "" }: { className?: string }) {
 const NAV = [
   { href: "/#features", label: "Features" },
   { href: "/#voice", label: "Voice" },
-  { href: "/#msn", label: "MSN Messenger theme" },
+  { href: "/#themes", label: "Themes" },
   { href: "/#compare", label: "Compared to Discord" },
   { href: "/#download", label: "Download" },
   { href: "/docs", label: "Docs" },
 ];
+
+const LIGHT_TOKENS = `
+  --paper: #ffffff;
+  --paper-2: #f4f3f8;
+  --card: #ffffff;
+  --ink: #17151f;
+  --ink-2: #45414f;
+  --muted: #6b6676;
+  --line: #e2e0e8;
+  --violet: #6a4ddb;
+  --coral: #6a4ddb;
+  --violet-fill: #6a4ddb;
+  --violet-fill-hover: #17151f;
+  --slab: #17151f;
+`;
+
+const DARK_TOKENS = `
+  --paper: #0f0d15;
+  --paper-2: #16131e;
+  --card: #1b1825;
+  --ink: #eeebf5;
+  --ink-2: #c3bdd0;
+  --muted: #958ea6;
+  --line: #2b2736;
+  --violet: #a993ff;
+  --coral: #a993ff;
+  --violet-fill: #6a4ddb;
+  --violet-fill-hover: #7d63ec;
+  --slab: #08070c;
+`;
+
+/** localStorage key for a light/dark choice that differs from the system's. */
+const SITE_THEME_KEY = "hoffle-site-theme";
+
+/**
+ * Runs before the page paints: picks light or dark from a saved choice, else
+ * from the system, and follows the system when it changes (unless the visitor
+ * chose otherwise). Lives on <html> as data-lp-theme.
+ */
+const THEME_SCRIPT = `(function(){var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function saved(){try{var s=localStorage.getItem("${SITE_THEME_KEY}");return s==="light"||s==="dark"?s:null}catch(e){return null}}function apply(){d.dataset.lpTheme=saved()||(m.matches?"dark":"light")}apply();m.addEventListener&&m.addEventListener("change",function(){if(!saved()){apply();window.dispatchEvent(new Event("lp-theme-change"))}})})();`;
 
 /**
  * Wraps a page in the site frame. The `lp-root` class also switches off the
@@ -51,18 +92,18 @@ export function SiteShell({ children }: { children: ReactNode }) {
     <div className="lp-root min-h-screen w-full overflow-x-clip bg-(--paper) text-(--ink) antialiased selection:bg-(--violet) selection:text-white">
       {/* React hoists these into <head>. */}
       <style>{`
-        .lp-root {
-          --paper: #ffffff;
-          --paper-2: #f4f3f8;
-          --card: #ffffff;
-          --ink: #17151f;
-          --ink-2: #45414f;
-          --muted: #6b6676;
-          --line: #e2e0e8;
-          --violet: #6a4ddb;
-          --coral: #6a4ddb;
+        .lp-root {${LIGHT_TOKENS}
           font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
+        html[data-lp-theme="dark"] .lp-root {${DARK_TOKENS}}
+        @media (prefers-color-scheme: dark) {
+          html:not([data-lp-theme]) .lp-root {${DARK_TOKENS}}
+        }
+        html[data-lp-theme="dark"] { color-scheme: dark; }
+        html[data-lp-theme="dark"] body { background: #0f0d15; }
+        html[data-lp-theme="light"] { color-scheme: light; }
+        html[data-lp-theme="light"] body { background: #ffffff; }
+        html[data-lp-theme="dark"] .lp-if-light, html:not([data-lp-theme="dark"]) .lp-if-dark { display: none; }
         .lp-display {
           letter-spacing: -0.015em;
         }
@@ -70,6 +111,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           outline: 3px solid var(--violet); outline-offset: 3px; border-radius: 8px;
         }
       `}</style>
+      <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 
       <header className="border-b border-(--line)">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -82,6 +124,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="flex items-center gap-1.5">
+            <SiteThemeToggle />
             <a href={REPO} className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)" aria-label="Hoffle on GitHub">
               <GithubMark className="h-5 w-5" />
             </a>
@@ -109,7 +152,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                 <Heart className="h-5 w-5" />
               </a>
             )}
-            <a href={APP_URL} className="inline-flex h-10 items-center rounded-lg bg-(--violet) px-4 text-sm font-semibold text-white hover:bg-(--ink)">
+            <a href={APP_URL} className="inline-flex h-10 items-center rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
               Open Hoffle
             </a>
           </div>

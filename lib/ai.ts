@@ -1,5 +1,7 @@
 /**
- * `/ask`: a small chat assistant backed by Gemini's free tier.
+ * `/ask`: a small chat assistant backed by Gemini's free tier, or by Claude
+ * when the server owner sets ANTHROPIC_API_KEY (Gemini then stays as the
+ * fallback, so running out of credit falls back to the free tier).
  *
  * Everything here is shaped by two budgets. Tokens: the model is a Flash-Lite
  * one, answers are capped, history is only the last few turns of the AI's own
@@ -8,6 +10,8 @@
  * HTML page instead (no key) and are only fetched when the question looks like
  * it needs something current.
  */
+
+import Anthropic from "@anthropic-ai/sdk";
 
 /** Per-user limits, plus one instance-wide cap that keeps a free key under its daily quota. */
 export const AI_LIMITS = {
@@ -20,6 +24,9 @@ export const AI_LIMITS = {
 /** Tried in order; the next one is used when a model is gone or out of quota. */
 export const DEFAULT_AI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"];
 
+/** Haiku: fast and cheap enough for short chat answers. */
+export const DEFAULT_CLAUDE_MODEL = "claude-haiku-5-5";
+
 export const AI_AUTHOR = "Huddle AI";
 export const AI_AVATAR = "✦";
 export const AI_COLOR = "#8b7cf6";
@@ -27,6 +34,8 @@ export const AI_KIND = "ai";
 
 const MAX_QUESTION = 1000;
 const MAX_OUTPUT_TOKENS = 600;
+/** Claude answers run without thinking, so this is all answer; the prompt keeps it short. */
+const CLAUDE_MAX_TOKENS = 1024;
 /** Earlier turns sent as context, counting both sides. */
 const HISTORY_TURNS = 6;
 const HISTORY_TURN_CHARS = 500;
@@ -262,6 +271,100 @@ export async function askGemini(options: {
     quota ? "The AI has used up its free quota for now. Try again later." : lastError,
     quota ? 429 : 502,
   );
+}
+
+/** One Claude call. Errors come back as AiError so the route treats both providers alike. */
+export async function askClaude(options: {
+  apiKey: string;
+  model?: string;
+  history: AiTurn[];
+  question: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ text: string; model: string }> {
+  const client = new Anthropic({
+    apiKey: options.apiKey,
+    timeout: 25000,
+    maxRetries: 1,
+    ...(options.fetchImpl ? { fetch: options.fetchImpl } : {}),
+  });
+  const model = options.model?.trim() || DEFAULT_CLAUDE_MODEL;
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model,
+      max_tokens: CLAUDE_MAX_TOKENS,
+      system: systemPrompt(),
+      // Short chat answers don't need reasoning; skipping it keeps replies fast.
+      thinking: { type: "disabled" },
+      output_config: { effort: "low" },
+      messages: [...options.history, { role: "user" as const, text: options.question }].map(
+        (turn): Anthropic.MessageParam => ({
+          role: turn.role === "model" ? "assistant" : "user",
+          content: turn.text,
+        }),
+      ),
+    });
+  } catch (error) {
+    if (error instanceof Anthropic.RateLimitError) {
+      throw new AiError("The AI is busy right now. Try again in a minute.", 429);
+    }
+    if (error instanceof Anthropic.APIConnectionTimeoutError) {
+      throw new AiError("The AI took too long to answer.");
+    }
+    if (error instanceof Anthropic.APIError) {
+      throw new AiError(error.message || `Claude returned ${error.status}.`);
+    }
+    throw error;
+  }
+  if (response.stop_reason === "refusal") {
+    throw new AiError("The AI would not answer that.", 422);
+  }
+  const text = response.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("")
+    .trim();
+  if (!text) throw new AiError("The AI returned an empty answer.");
+  return { text, model: response.model };
+}
+
+export interface AiKeys {
+  anthropicKey?: string;
+  anthropicModel?: string;
+  geminiKey?: string;
+  geminiModels?: string;
+}
+
+export function aiConfigured(keys: AiKeys): boolean {
+  return Boolean(keys.anthropicKey?.trim() || keys.geminiKey?.trim());
+}
+
+/**
+ * Claude first when it has a key, then Gemini. A refusal is final: asking a
+ * second model the same thing would just route around the first one's answer.
+ */
+export async function askAi(
+  keys: AiKeys,
+  history: AiTurn[],
+  question: string,
+  fetchImpl?: typeof fetch,
+): Promise<{ text: string; model: string }> {
+  const anthropicKey = keys.anthropicKey?.trim();
+  const geminiKey = keys.geminiKey?.trim();
+  if (anthropicKey) {
+    try {
+      return await askClaude({ apiKey: anthropicKey, model: keys.anthropicModel, history, question, fetchImpl });
+    } catch (error) {
+      if (!geminiKey || (error instanceof AiError && error.status === 422)) throw error;
+    }
+  }
+  if (!geminiKey) throw new AiError("/ask is not set up.", 503);
+  return askGemini({
+    apiKey: geminiKey,
+    models: modelList(keys.geminiModels),
+    history,
+    question,
+    fetchImpl,
+  });
 }
 
 export interface AiQuotaResult {

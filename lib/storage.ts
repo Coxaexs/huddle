@@ -27,6 +27,10 @@ export interface HuddleBindings {
   HUDDLE_PUSH_ALLOW_PRIVATE?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
+  /** Optional: answers /ask with Claude, falling back to Gemini when that is set too. */
+  ANTHROPIC_API_KEY?: string;
+  /** Claude model for /ask. Default claude-haiku-5-5. */
+  ANTHROPIC_MODEL?: string;
   /** Optional: enables /ask (Gemini free tier). */
   GEMINI_API_KEY?: string;
   /** Comma-separated Gemini models for /ask, tried in order. */
