@@ -38,11 +38,11 @@
     "react-dom": "^19.2.6",
     "three": "^0.180.0",
     "web-push": "^3.6.7",
-    "wrangler": "4.92.0"
+    "wrangler": "4.148.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.17.0",
-    "@cloudflare/workers-types": "^4.20260702.1",
+    "@cloudflare/vite-plugin": "1.63.0",
+    "@cloudflare/workers-types": "5.20261007.1",
     "@tailwindcss/vite": "^4.2.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
@@ -61,5 +61,8 @@
     "vinext": "0.0.50",
     "vite": "^8.0.13",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
   }
 }
