@@ -6987,6 +6987,7 @@ export function ChatShell() {
             onOpenStatusMenu={() => setStatusOpen((o) => !o)}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenProfileSettings={() => setSettingsOpen(true)}
+            onMicrophoneChange={() => void voice.switchMicrophone()}
           />
         )}
 
