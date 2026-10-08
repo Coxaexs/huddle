@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractInviteCodes } from "../app/chat-shell";
+import { extractInviteCodes } from "../app/lib/chat/invites";
 import { addServerMember } from "./servers";
 
 vi.mock("cloudflare:workers", () => ({
