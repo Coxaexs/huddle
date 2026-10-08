@@ -265,18 +265,10 @@
   display: none;
 }
 
-/* User footer: device chevrons appear on hover only. */
+/* User footer: the device chevrons stay put (they used to slide in on hover,
+   which shifted the whole footer). */
 :root:not([data-custom-theme-id^="msn"]) .user-footer-chevron {
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
-  transition: opacity 0.16s ease, width 0.16s ease;
-}
-
-:root:not([data-custom-theme-id^="msn"]) .discord-user-footer:hover .user-footer-chevron,
-:root:not([data-custom-theme-id^="msn"]) .user-footer-chevron:focus-visible {
-  opacity: 1;
-  width: auto;
+  width: 12px;
 }
 
 :root:not([data-custom-theme-id^="msn"]) .discord-user-footer {

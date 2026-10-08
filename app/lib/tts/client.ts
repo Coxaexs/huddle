@@ -2,7 +2,7 @@
 
 /**
  * Text-to-speech, entirely in the browser: Turkish with EMA Lightning,
- * English with Paradee-8M (or KittenTTS's Bruno for the male voice). The models run in a worker
+ * English with Paradee-8M (or Piper's hfc_male for the male voice). The models run in a worker
  * (public/assets/tts/tts-worker.js, built from ./worker) and download once
  * per browser; nothing is sent anywhere to be spoken.
  */
@@ -26,7 +26,7 @@ const pending = new Map<number, { resolve: (audio: TtsAudio) => void; reject: (e
 
 function getWorker(): Worker {
   if (worker) return worker;
-  worker = new Worker(`${basePath}/assets/tts/tts-worker.js?v=4`, { type: "module" });
+  worker = new Worker(`${basePath}/assets/tts/tts-worker.js?v=5`, { type: "module" });
   worker.onmessage = (event: MessageEvent) => {
     const data = event.data as
       | { type: "audio"; id: number; audio: Float32Array; sampleRate: number }
@@ -71,7 +71,7 @@ export function speakableText(text: string): string {
 /** "robot": ring-modulated, a machine voice that suits the Matrix theme. */
 export type TtsEffect = "none" | "robot";
 
-/** "male": English in a male voice (KittenTTS Bruno). Turkish has one voice. */
+/** "male": English in a male voice (Piper hfc_male). Turkish has one voice. */
 export type TtsSpeaker = "default" | "male";
 
 export interface TtsVoice {
