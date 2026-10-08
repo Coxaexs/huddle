@@ -26,6 +26,8 @@ describe("TTS voice effects", () => {
   it("only accepts known effects from a payload", () => {
     expect(clampTtsVoice({ effect: "robot" }).effect).toBe("robot");
     expect(clampTtsVoice({ effect: "<script>" }).effect).toBe("none");
-    expect(clampTtsVoice(null)).toEqual({ tempo: 1, pitch: 1, effect: "none" });
+    expect(clampTtsVoice({ speaker: "male" }).speaker).toBe("male");
+    expect(clampTtsVoice({ speaker: "bass" }).speaker).toBe("default");
+    expect(clampTtsVoice(null)).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default" });
   });
 });
