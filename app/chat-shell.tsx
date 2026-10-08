@@ -166,14 +166,7 @@ import { PollCard } from "./components/poll-card";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
-import {
-  MusicSettingsCard,
-  MusicStatsCard,
-  MusicQueueCard,
-  MusicHistoryCard,
-  MusicSearchCard,
-  type MusicSettings,
-} from "./components/music-cards";
+import type { MusicSettings } from "./components/music-cards";
 import { NowPlaying } from "./components/now-playing";
 import { MiniMusicBar } from "./components/mini-music-bar";
 import { OutlineEmoji } from "./components/outline-emoji";
@@ -191,6 +184,7 @@ import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import { RailFolder, RailQuickDms, RailServer } from "./components/chat/rail";
 import { MessageReactions } from "./components/chat/message-reactions";
+import { MessageEditor, MUSIC_CARD_KINDS, MusicPayloadCard } from "./components/chat/message-parts";
 import { StatusMenu } from "./components/chat/status-menu";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import { runLookupCommand } from "./lib/chat/commands/lookup";
@@ -8237,68 +8231,10 @@ export function ChatShell() {
                               {...message.payload}
                               onCommand={(command) => void runCommand(command)}
                             />
-                          ) : message.kind === "music-settings" && message.payload ? (
-                            <MusicSettingsCard
-                              settings={message.payload}
-                              disabled={!message.payload.voiceChannelId}
-                              onCommand={(command) =>
-                                runMusicUiCommand(
-                                  command,
-                                  message.payload?.voiceChannelId,
-                                )
-                              }
-                            />
-                          ) : message.kind === "music-stats" && message.payload ? (
-                            <MusicStatsCard
-                              wrapped={message.payload.wrapped}
-                              label={message.payload.label}
-                              plays={message.payload.plays}
-                              unique={message.payload.unique}
-                              hours={message.payload.hours}
-                              topSongs={message.payload.topSongs}
-                              topRequesters={message.payload.topRequesters}
-                              topArtist={message.payload.topArtist}
-                              topGenre={message.payload.topGenre}
-                              peakHour={message.payload.peakHour}
-                              streakDays={message.payload.streakDays}
-                              personality={message.payload.personality}
-                              disabled={!message.payload.voiceChannelId}
-                              onCommand={(command) =>
-                                runMusicUiCommand(
-                                  command,
-                                  message.payload?.voiceChannelId,
-                                )
-                              }
-                            />
-                          ) : message.kind === "music-queue" && message.payload ? (
-                            <MusicQueueCard
-                              currentTrack={message.payload.currentTrack}
-                              queue={message.payload.queue}
-                              totalTracks={message.payload.totalTracks}
-                              disabled={!message.payload.voiceChannelId}
-                              onCommand={(command) =>
-                                runMusicUiCommand(
-                                  command,
-                                  message.payload?.voiceChannelId,
-                                )
-                              }
-                            />
-                          ) : message.kind === "music-history" && message.payload ? (
-                            <MusicHistoryCard
-                              history={message.payload.history}
-                              disabled={!message.payload.voiceChannelId}
-                              onCommand={(command) =>
-                                runMusicUiCommand(
-                                  command,
-                                  message.payload?.voiceChannelId,
-                                )
-                              }
-                            />
-                          ) : message.kind === "music-search" && message.payload ? (
-                            <MusicSearchCard
-                              query={message.payload.query}
-                              track={typeof message.payload.track === "object" ? message.payload.track : undefined}
-                              disabled={!message.payload.voiceChannelId}
+                          ) : MUSIC_CARD_KINDS.has(message.kind || "") && message.payload ? (
+                            <MusicPayloadCard
+                              kind={message.kind || ""}
+                              payload={message.payload}
                               onCommand={(command) =>
                                 runMusicUiCommand(
                                   command,
@@ -8328,23 +8264,12 @@ export function ChatShell() {
                               liveCounts={pollCounts[message.payload.pollId]}
                             />
                           ) : editingId === message.id ? (
-                            <div className="message-edit">
-                              <textarea
-                                value={editDraft}
-                                autoFocus
-                                onChange={(event) => setEditDraft(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Escape") setEditingId(null);
-                                  if (event.key === "Enter" && !event.shiftKey) {
-                                    event.preventDefault();
-                                    void saveEdit(message);
-                                  }
-                                }}
-                              />
-                              <div className="message-edit-hint">
-                                Enter to save · Esc to cancel
-                              </div>
-                            </div>
+                            <MessageEditor
+                              value={editDraft}
+                              onChange={setEditDraft}
+                              onCancel={() => setEditingId(null)}
+                              onSave={() => void saveEdit(message)}
+                            />
                           ) : message.payload?.forwardedFrom ? (
                             <ForwardedMessageCard
                               data={message.payload.forwardedFrom}
