@@ -15,6 +15,7 @@ import {
   TTS_PITCH_RANGE,
   TTS_TEMPO_RANGE,
   type TtsLanguage,
+  type TtsVoice,
 } from "../tts/client";
 import { SAY_MAX_CHARS, type useVoice } from "../../hooks/use-voice";
 
@@ -122,28 +123,31 @@ export async function runSpeechCommand(name: SpeechCommand, value: string, ctx: 
   }
 }
 
-/** /ttsvoice [tempo n] [pitch n] | reset */
+/** /ttsvoice [tempo n] [pitch n] [robot | effect robot|none] | reset */
 function runVoiceSettings(value: string, ctx: SpeechContext) {
   const current = getTtsVoice();
+  const describe = (v: TtsVoice) => `tempo ${v.tempo}, pitch ${v.pitch}${v.effect === "robot" ? ", robot" : ""}`;
   if (/^reset$/i.test(value)) {
-    setTtsVoice({ tempo: 1, pitch: 1 });
+    setTtsVoice({ tempo: 1, pitch: 1, effect: "none" });
     ctx.notify("Your /tts and /say voice is back to normal.");
     return;
   }
   const tempo = /tempo\s+([\d.]+)/i.exec(value);
   const pitch = /pitch\s+([\d.]+)/i.exec(value);
-  if (!tempo && !pitch) {
+  const effect = /\b(?:effect\s+)?(robot|none|normal)\b/i.exec(value);
+  if (!tempo && !pitch && !effect) {
     ctx.notify(
-      `Your voice: tempo ${current.tempo}, pitch ${current.pitch}. Change it with /ttsvoice tempo ${TTS_TEMPO_RANGE[0]}-${TTS_TEMPO_RANGE[1]} pitch ${TTS_PITCH_RANGE[0]}-${TTS_PITCH_RANGE[1]} (lower = slower / deeper), or /ttsvoice reset.`,
+      `Your voice: ${describe(current)}. Change it with /ttsvoice tempo ${TTS_TEMPO_RANGE[0]}-${TTS_TEMPO_RANGE[1]} pitch ${TTS_PITCH_RANGE[0]}-${TTS_PITCH_RANGE[1]} (lower = slower / deeper), /ttsvoice robot, or /ttsvoice reset.`,
     );
     return;
   }
   const next = clampTtsVoice({
     tempo: tempo ? Number(tempo[1]) : current.tempo,
     pitch: pitch ? Number(pitch[1]) : current.pitch,
+    effect: effect ? (effect[1].toLowerCase() === "robot" ? "robot" : "none") : current.effect,
   });
   setTtsVoice(next);
-  ctx.notify(`Your /tts and /say voice: tempo ${next.tempo}, pitch ${next.pitch}.`);
+  ctx.notify(`Your /tts and /say voice: ${describe(next)}.`);
 }
 
 /** /ttsstop: an admin cuts off /tts here and /say in their voice room. */
