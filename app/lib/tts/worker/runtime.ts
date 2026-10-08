@@ -46,6 +46,18 @@ export async function cachedBytes(url: string): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
+/** Drops cached downloads whose URL contains `match` (a model no longer used). */
+export async function forgetCached(match: string): Promise<void> {
+  try {
+    const cache = await caches.open(CACHE);
+    for (const request of await cache.keys()) {
+      if (request.url.includes(match)) await cache.delete(request);
+    }
+  } catch {
+    // No Cache Storage: nothing was kept.
+  }
+}
+
 export function session(bytes: ArrayBuffer) {
   return ort.InferenceSession.create(new Uint8Array(bytes), {
     executionProviders: ["wasm"],
