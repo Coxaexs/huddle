@@ -5,9 +5,9 @@
  * In:  { type: "init", basePath } then { type: "speak", id, text, lang, speed?, speaker? }
  * Out: { type: "audio", id, audio: Float32Array, sampleRate } | { type: "error", id, message }
  */
-import { configureRuntime } from "./runtime";
+import { configureRuntime, forgetCached } from "./runtime";
 import { EnglishVoice, ENGLISH_RATE } from "./english";
-import { MaleEnglishVoice, KITTEN_RATE } from "./kitten";
+import { MaleEnglishVoice } from "./piper";
 import { TurkishVoice, TURKISH_RATE } from "./turkish";
 
 type Request =
@@ -38,8 +38,9 @@ async function speak(id: number, text: string, lang: "tr" | "en", speed = 1, spe
       sampleRate = TURKISH_RATE;
     } else if (male) {
       maleEnglish ??= MaleEnglishVoice.load();
-      audio = await (await maleEnglish).synthesize(text, { speed });
-      sampleRate = KITTEN_RATE;
+      const voice = await maleEnglish;
+      audio = await voice.synthesize(text, { speed });
+      sampleRate = voice.sampleRate;
     } else {
       english ??= EnglishVoice.load();
       audio = await (await english).synthesize(text, { speed });
@@ -59,6 +60,8 @@ scope.onmessage = (event) => {
   const message = event.data;
   if (message.type === "init") {
     configureRuntime(message.basePath);
+    // The first male voice (KittenTTS, 25 MB) is no longer used.
+    void forgetCached("KittenML/");
     return;
   }
   if (message.type === "speak") {

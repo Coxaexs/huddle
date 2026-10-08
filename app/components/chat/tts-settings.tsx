@@ -59,7 +59,7 @@ export function TtsSettings() {
     <div className="tts-settings">
       <p className="modal-hint">
         Speech is made on your device: Turkish with EMA Lightning, English with
-        Paradee (or KittenTTS for the male voice). The first use downloads the
+        Paradee (or Piper for the male voice). The first use downloads the
         voice once. These are the same
         settings as <code>/tts on|off</code> and <code>/ttsvoice</code>.
       </p>
