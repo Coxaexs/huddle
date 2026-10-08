@@ -26710,3 +26710,79 @@ a.link-preview-author:hover {
   background: linear-gradient(180deg, #4d7fd0 0%, #2d5aa6 100%) !important;
   border-color: #9cc0ff !important;
 }
+
+/* Settings → Text-to-speech */
+.tts-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+
+.tts-settings-heading {
+  margin: 18px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tts-settings-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tts-settings-value {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tts-settings input[type="range"] {
+  width: 100%;
+  accent-color: var(--lavender);
+}
+
+.tts-settings-preview {
+  display: flex;
+  gap: 8px;
+}
+
+.tts-settings-preview input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tts-settings-preview button.primary {
+  margin-top: 0;
+  height: auto;
+  align-self: stretch;
+}
+
+.tts-settings-error {
+  color: var(--coral);
+}
+
+.tts-settings-reset {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tts-settings-reset:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+@media (max-width: 560px) {
+  .tts-settings-preview {
+    flex-wrap: wrap;
+  }
+}
