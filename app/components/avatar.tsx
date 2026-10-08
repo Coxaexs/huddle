@@ -51,7 +51,7 @@ export function Avatar({
 
   return (
     <span
-      className={`${baseClass} ${avatarUrl ? "has-picture" : ""}`.trim()}
+      className={`avatar-base ${baseClass} ${avatarUrl ? "has-picture" : ""}`.trim()}
       style={{
         background: avatarUrl ? undefined : color,
         ...sizeStyle,
