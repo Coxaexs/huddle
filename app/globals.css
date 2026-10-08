@@ -938,7 +938,7 @@ html[data-motion="reduced"] *::after {
 
 .music-play-track-btn:hover:not(:disabled) {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   transform: scale(1.04);
 }
 
@@ -1130,7 +1130,7 @@ html[data-motion="reduced"] *::after {
 }
 
 .appearance-choice-row button.active {
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
   border-color: var(--lavender);
 }
@@ -1326,7 +1326,7 @@ html[data-motion="reduced"] *::after {
 }
 
 .pdf-workspace-actions>.primary {
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: transparent;
   background: var(--lavender);
 }
@@ -1847,7 +1847,7 @@ button {
 
 .username-mark {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 15px;
   place-items: center;
   width: 48px;
@@ -1896,7 +1896,7 @@ button {
 
 .username-card button {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
   border: 0;
   border-radius: 12px;
@@ -3441,7 +3441,7 @@ button {
 
 .send-button {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 18px;
 }
 
@@ -3999,7 +3999,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) {
 
 [data-theme=cozy] .join-button,
 :root:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) .join-button {
-  color: #ffffff;
+  color: var(--on-accent, #fff);
   background: var(--accent-strong);
   border-radius: 12px;
 }
@@ -4324,7 +4324,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 [data-theme=light] .active-space {
   background: var(--lavender);
   border-color: var(--lavender);
-  color: #ffffff;
+  color: var(--on-accent, #fff);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--lavender) 30%, transparent);
 }
 
@@ -4506,12 +4506,12 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 [data-theme=light] .attach-button:hover {
   background: var(--lavender);
-  color: #ffffff;
+  color: var(--on-accent, #fff);
 }
 
 [data-theme=light] .send-button {
   background: var(--lavender);
-  color: #ffffff;
+  color: var(--on-accent, #fff);
 }
 
 [data-theme=light] .composer-emoji-btn,
@@ -4577,7 +4577,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 }
 
 [data-theme=light] .join-button {
-  color: #ffffff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
 }
 
@@ -5158,7 +5158,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .now-playing-art.placeholder {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   place-items: center;
   font-size: 22px;
   display: grid;
@@ -5425,7 +5425,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .modal-body .primary {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
   border: 0;
   border-radius: 10px;
@@ -6178,7 +6178,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .drop-overlay div {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 12px;
   padding: 12px 18px;
   font-weight: 700;
@@ -6318,7 +6318,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
   .message.actions-open .message-actions-toggle {
     background: var(--lavender);
-    color: #fff;
+    color: var(--on-accent, #fff);
     border-color: var(--lavender);
   }
 
@@ -6784,7 +6784,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   padding: 11px 22px;
   border: 0;
   border-radius: 12px;
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
   font-size: 14px;
   font-weight: 800;
@@ -7601,7 +7601,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .stage-btn.on {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--lavender) 45%, transparent);
 }
 
@@ -7896,7 +7896,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   border: 0;
   border-radius: 8px;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -8000,7 +8000,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 .synced-timer button {
   padding: 0 13px;
   min-height: 38px;
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
   border: 0;
   border-radius: 9px;
@@ -8600,7 +8600,7 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-weight: 600;
   cursor: pointer;
 }
@@ -9461,7 +9461,7 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
 
 .soundboard-preview-btn:hover {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--lavender);
 }
 
@@ -9542,7 +9542,7 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   font-weight: 800;
   letter-spacing: .03em;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 6px;
   padding: 1px 4px;
   z-index: 3;
@@ -9773,7 +9773,7 @@ button.mention:hover {
   border-radius: 12px;
   border: 0;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-weight: 600;
   cursor: pointer;
 }
@@ -10827,7 +10827,7 @@ html[data-motion="reduced"] .typing-dots i {
 
 .battlemap-tools button.on {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--lavender);
 }
 
@@ -11233,7 +11233,7 @@ html[data-motion="reduced"] .typing-dots i {
 
 .custom-dialog-btn.primary {
   background: var(--lavender);
-  color: #ffffff;
+  color: var(--on-accent, #fff);
 }
 
 .custom-dialog-btn.primary:hover {
@@ -11294,6 +11294,12 @@ html[data-motion="reduced"] .typing-dots i {
   width: 32px !important;
   height: 32px !important;
   border-radius: 50%;
+  /* A letter avatar is a <span>: without this it is inline, ignores its size
+     and collapses to an oval around the letter. */
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-weight: 700;
 }
 
 .user-footer-presence-dot {
@@ -11494,7 +11500,7 @@ html[data-motion="reduced"] .typing-dots i {
   gap: 5px;
   flex-shrink: 0;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border: none;
   border-radius: 9px;
   padding: 7px 12px;
@@ -11716,7 +11722,7 @@ html[data-motion="reduced"] .typing-dots i {
    another neutral control. */
 .stage-hand-btn.is-up {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
 }
 
 .tile-hand {
@@ -15486,7 +15492,7 @@ html[data-motion="reduced"] .blahaj-boop {
 .portal-btn.primary {
   background: var(--lavender);
   border-color: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
 }
 
 .portal-btn.primary:hover {
@@ -16256,7 +16262,7 @@ html[data-motion="reduced"] .blahaj-boop {
 .table-done {
   border-radius: 10px;
   background: var(--lavender);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 13px;
   font-weight: 650;
   padding: 10px 24px;
@@ -16277,7 +16283,7 @@ html[data-motion="reduced"] .blahaj-boop {
 
 .stage-btn.important-control.on {
   background: var(--lavender);
-  color: white;
+  color: var(--on-accent, #fff);
 }
 
 .voice-important-banner {
@@ -17289,7 +17295,7 @@ html[data-motion="reduced"] .blahaj-boop {
 
 .vctrl-btn-mini.highlight {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--lavender);
   box-shadow: 0 0 8px color-mix(in srgb, var(--lavender) 40%, transparent);
 }
@@ -17475,7 +17481,7 @@ html[data-motion="reduced"] .blahaj-boop {
 [data-theme=cozy] .composer .send-button,
 :root:not([data-theme]) .composer .send-button {
   background: var(--accent-strong);
-  color: #ffffff;
+  color: var(--on-accent, #fff);
   border-radius: 12px;
   width: 32px;
   height: 32px;
@@ -18577,7 +18583,7 @@ html[data-motion="reduced"] .blahaj-boop {
 .forward-btn-submit {
   background: var(--lavender);
   border: 0;
-  color: #ffffff;
+  color: var(--on-accent, #fff);
   font-size: 13px;
   font-weight: 600;
   padding: 7px 16px;
@@ -19891,7 +19897,7 @@ input:checked + .toggle-slider:before {
   font-weight: 600;
   border-radius: 8px;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border: none;
   cursor: pointer;
 }
@@ -20004,7 +20010,7 @@ input:checked + .toggle-slider:before {
 
 :where(.settings-content-scroll) :where(button.primary) {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
   border: 0;
   border-radius: 10px;
@@ -20386,7 +20392,7 @@ input:checked + .toggle-slider:before {
   border: 0;
   border-radius: 50%;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
 }
 
@@ -20572,7 +20578,7 @@ a.link-preview-author:hover {
 
 .events-primary {
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
 }
 
 .events-primary:disabled {
@@ -21261,7 +21267,7 @@ a.link-preview-author:hover {
   border: 0;
   border-radius: 8px;
   background: var(--lavender);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
 }
 .ai-chat-input button:disabled { opacity: 0.45; cursor: default; }
@@ -23484,7 +23490,7 @@ a.link-preview-author:hover {
 }
 
 .jump-latest.has-unseen {
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
   border-color: transparent;
 }
@@ -24849,7 +24855,7 @@ a.link-preview-author:hover {
   cursor: pointer;
 }
 .game-actions button.primary {
-  color: #fff;
+  color: var(--on-accent, #fff);
   background: var(--lavender);
 }
 .game-error {
