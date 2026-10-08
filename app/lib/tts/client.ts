@@ -2,7 +2,7 @@
 
 /**
  * Text-to-speech, entirely in the browser: Turkish with EMA Lightning,
- * English with Paradee-8M. The models run in a worker
+ * English with Paradee-8M (or KittenTTS's Bruno for the male voice). The models run in a worker
  * (public/assets/tts/tts-worker.js, built from ./worker) and download once
  * per browser; nothing is sent anywhere to be spoken.
  */
@@ -26,7 +26,7 @@ const pending = new Map<number, { resolve: (audio: TtsAudio) => void; reject: (e
 
 function getWorker(): Worker {
   if (worker) return worker;
-  worker = new Worker(`${basePath}/assets/tts/tts-worker.js?v=3`, { type: "module" });
+  worker = new Worker(`${basePath}/assets/tts/tts-worker.js?v=4`, { type: "module" });
   worker.onmessage = (event: MessageEvent) => {
     const data = event.data as
       | { type: "audio"; id: number; audio: Float32Array; sampleRate: number }
@@ -71,13 +71,17 @@ export function speakableText(text: string): string {
 /** "robot": ring-modulated, a machine voice that suits the Matrix theme. */
 export type TtsEffect = "none" | "robot";
 
+/** "male": English in a male voice (KittenTTS Bruno). Turkish has one voice. */
+export type TtsSpeaker = "default" | "male";
+
 export interface TtsVoice {
   tempo: number;
   pitch: number;
   effect?: TtsEffect;
+  speaker?: TtsSpeaker;
 }
 
-export const DEFAULT_TTS_VOICE: TtsVoice = { tempo: 1, pitch: 1, effect: "none" };
+export const DEFAULT_TTS_VOICE: TtsVoice = { tempo: 1, pitch: 1, effect: "none", speaker: "default" };
 export const TTS_TEMPO_RANGE = [0.6, 1.3] as const;
 export const TTS_PITCH_RANGE = [0.75, 1.15] as const;
 
@@ -90,6 +94,7 @@ export function clampTtsVoice(voice: unknown): TtsVoice {
     tempo: clamp(v.tempo, TTS_TEMPO_RANGE),
     pitch: clamp(v.pitch, TTS_PITCH_RANGE),
     effect: v.effect === "robot" ? "robot" : "none",
+    speaker: v.speaker === "male" ? "male" : "default",
   };
 }
 
@@ -138,11 +143,11 @@ export function setTtsVoice(voice: TtsVoice) {
 }
 
 export function synthesize(text: string, lang: TtsLanguage, voice: TtsVoice = DEFAULT_TTS_VOICE): Promise<TtsAudio> {
-  const { tempo, pitch, effect } = clampTtsVoice(voice);
+  const { tempo, pitch, effect, speaker } = clampTtsVoice(voice);
   const id = nextId++;
   return new Promise<TtsAudio>((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    getWorker().postMessage({ type: "speak", id, text, lang, speed: tempo / pitch });
+    getWorker().postMessage({ type: "speak", id, text, lang, speed: tempo / pitch, speaker });
   }).then(({ audio, sampleRate }) => ({
     audio: applyTtsEffect(audio, sampleRate, effect),
     sampleRate: Math.round(sampleRate * pitch),
