@@ -1,0 +1,11 @@
+[Unit]
+Description=Probe Huddle's local port every minute
+
+[Timer]
+# First check shortly after boot, then once a minute while the service runs.
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

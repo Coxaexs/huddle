@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart Huddle once a night to release workerd memory
+After=huddle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart huddle.service
