@@ -14,7 +14,7 @@ describe("TtsSettings", () => {
     fireEvent.change(screen.getByLabelText(/Tempo/), { target: { value: "0.8" } });
     fireEvent.change(screen.getByLabelText(/Pitch/), { target: { value: "0.9" } });
     fireEvent.change(screen.getByLabelText("Effect"), { target: { value: "robot" } });
-    expect(getTtsVoice()).toEqual({ tempo: 0.8, pitch: 0.9, effect: "robot" });
+    expect(getTtsVoice()).toEqual({ tempo: 0.8, pitch: 0.9, effect: "robot", speaker: "default" });
     expect(screen.getByText(/0.80× · slower/)).toBeTruthy();
     expect(screen.getByText(/0.90× · deeper/)).toBeTruthy();
   });
@@ -33,7 +33,7 @@ describe("TtsSettings", () => {
     render(<TtsSettings />);
     fireEvent.change(screen.getByLabelText("Effect"), { target: { value: "robot" } });
     fireEvent.click(screen.getByText("Reset to the normal voice"));
-    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1, effect: "none" });
+    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default" });
   });
 
   it("switches the preview sentence with the language", () => {
