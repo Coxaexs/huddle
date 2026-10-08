@@ -106,6 +106,8 @@ export function DiceOverlay({
       if (theme === "default") {
         if (activeCustomTheme === "vampire") theme = "vampire";
         else if (activeCustomTheme === "dark-academia") theme = "dark-academia";
+        else if (activeCustomTheme === "matrix") theme = "matrix";
+        else if (activeCustomTheme === "cyberpunk") theme = "cyberpunk";
       }
       if (theme === "darkacademia") theme = "dark-academia";
       setCurrentTheme(theme);
@@ -119,7 +121,7 @@ export function DiceOverlay({
       const effectiveTexture: string =
         roll.texture ||
         (savedTexture && savedTexture !== "auto" ? savedTexture : "") ||
-        (theme === "vampire" ? "skulls" : theme === "dark-academia" ? "wood" : "none");
+        (theme === "vampire" ? "skulls" : theme === "dark-academia" ? "wood" : theme === "cyberpunk" ? "metal" : "none");
 
       // Material resolution: roll.material > localStorage > texture/theme default
       const savedMaterial =
@@ -134,11 +136,13 @@ export function DiceOverlay({
             ? "wood"
             : effectiveTexture === "marble" || effectiveTexture === "stainedglass" || effectiveTexture === "ice"
               ? "glass"
-              : theme === "vampire"
+              : theme === "vampire" || theme === "cyberpunk"
                 ? "metal"
-                : theme === "dark-academia"
-                  ? "wood"
-                  : "plastic";
+                : theme === "matrix"
+                  ? "glass"
+                  : theme === "dark-academia"
+                    ? "wood"
+                    : "plastic";
 
       const effectiveMaterial: "plastic" | "metal" | "wood" | "glass" =
         roll.material ||
@@ -156,6 +160,26 @@ export function DiceOverlay({
           foreground: "#f3e7e7",
           background: ["#140508", "#2c070d", "#5c0816", "#8a0e1e", "#c8102e"],
           outline: "#1a0206",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
+        };
+        themeSurface = "stainless";
+      } else if (theme === "matrix") {
+        customColorset = {
+          name: "matrix",
+          foreground: "#00ff66",
+          background: ["#020b05", "#041a0b", "#083c18", "#0d6027", "#128537"],
+          outline: "#00ff66",
+          texture: effectiveTexture,
+          material: effectiveMaterial,
+        };
+        themeSurface = "green-felt";
+      } else if (theme === "cyberpunk") {
+        customColorset = {
+          name: "cyberpunk",
+          foreground: "#00f0ff",
+          background: ["#050814", "#1b0933", "#7a0c6d", "#fcee0a", "#ff003c"],
+          outline: "#ffe600",
           texture: effectiveTexture,
           material: effectiveMaterial,
         };

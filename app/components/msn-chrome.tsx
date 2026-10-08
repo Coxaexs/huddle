@@ -27,6 +27,8 @@ import {
   previewSound,
   setSoundChoice,
   soundChoice,
+  getMsnVolume,
+  setMsnVolume,
   type SoundEvent,
   type SoundPreset,
 } from "../lib/msn-sounds";
@@ -571,11 +573,13 @@ export function MsnHoverCard({
   );
 }
 
-/** Messenger's Sounds settings: one sound per event, with a ▶ to hear it. */
+/** Messenger's Sounds settings: one sound per event, with a ▶ to hear it and master volume. */
 export function MsnSoundsDialog({ onClose }: { onClose: () => void }) {
   const [choices, setChoices] = useState<Record<SoundEvent, SoundPreset>>(
     () => Object.fromEntries(SOUND_EVENTS.map((e) => [e.id, soundChoice(e.id)])) as Record<SoundEvent, SoundPreset>,
   );
+  const [volume, setVolume] = useState(() => getMsnVolume());
+
   const preview = (event: SoundEvent, choice: SoundPreset) => {
     if (event === "wink") {
       if (choice !== "none") playWinkScene("kiss");
@@ -583,6 +587,23 @@ export function MsnSoundsDialog({ onClose }: { onClose: () => void }) {
     }
     previewSound(event, choice);
   };
+
+  const handleResetDefaults = () => {
+    SOUND_EVENTS.forEach((e) => {
+      const def: SoundPreset = e.id === "error" ? "win_error" : "classic";
+      setSoundChoice(e.id, def);
+    });
+    setChoices(
+      Object.fromEntries(SOUND_EVENTS.map((e) => [e.id, e.id === "error" ? "win_error" : "classic"])) as Record<
+        SoundEvent,
+        SoundPreset
+      >,
+    );
+    setVolume(0.7);
+    setMsnVolume(0.7);
+    previewSound("message", "classic");
+  };
+
   return (
     <div className="msn-today-backdrop" onClick={onClose}>
       <div
@@ -631,7 +652,35 @@ export function MsnSoundsDialog({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
+
+        <div className="msn-sound-volume-row">
+          <label htmlFor="msn-volume-slider">
+            Volume: {Math.round(volume * 100)}%
+          </label>
+          <input
+            id="msn-volume-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={volume}
+            aria-label="Sounds volume"
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setVolume(v);
+              setMsnVolume(v);
+            }}
+          />
+        </div>
+
         <div className="msn-dialog-buttons">
+          <button
+            type="button"
+            onClick={handleResetDefaults}
+            title="Reset sounds and volume to factory defaults"
+          >
+            Reset
+          </button>
           <span />
           <button type="button" className="msn-default-button" onClick={onClose}>
             OK

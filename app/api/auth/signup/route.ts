@@ -19,9 +19,11 @@ export const dynamic = "force-dynamic";
 /**
  * Signup is the one endpoint where an unauthenticated caller makes us spend CPU
  * on a password hash *and* consumes a scarce resource (an invite use), so it is
- * throttled harder than login.
+ * throttled harder than login. Still loose enough for a group signing up from
+ * one place (a house, a school, a venue's Wi-Fi) with a shared event code:
+ * every attempt needs a valid invite anyway.
  */
-const SIGNUP_RATE_LIMIT = { limit: 5, windowSeconds: 600 } as const;
+const SIGNUP_RATE_LIMIT = { limit: 20, windowSeconds: 600 } as const;
 
 interface SignupBody {
   username?: string;

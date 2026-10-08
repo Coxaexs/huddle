@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Coffee, Heart } from "lucide-react";
-import { CopyButton, DownloadButton, ThemeShowcase, type ShowcaseTheme } from "./landing-client";
+import { CopyButton, DownloadButton } from "./landing-client";
+import { LiveChannel, MatrixRain, ThemeTour, type JoinLinks } from "./landing-demo";
 import { APP_URL, GithubMark, RELEASES, REPO, SITE, SiteShell, KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 
 /**
@@ -11,42 +12,27 @@ import { APP_URL, GithubMark, RELEASES, REPO, SITE, SiteShell, KOFI_URL, GITHUB_
  * of a throwaway demo instance with made-up people, never of real chats.
  *
  * This is a server component on purpose: all the copy is in the first HTML
- * response, which is what search engines and link previews read. Only the
- * theme tabs, the download button and the copy button hydrate.
+ * response, which is what search engines and link previews read. The live
+ * #say-hi channel, the theme tour, the download button and the copy button
+ * hydrate.
  */
 
 const SELF_HOST_GUIDE = "/docs/self-hosting";
 
-const THEMES: ShowcaseTheme[] = [
-  {
-    id: "cozy",
-    label: "Cozy",
-    swatch: ["#16131f", "#2e2750", "#a78bfa"],
-    image: "/shots/hoffle-cozy-theme",
-    alt: "Hoffle's Cozy dark theme: a friend group's text channel with reactions, three friends in the Lounge voice channel and everyone online in the member list",
-  },
-  {
-    id: "msn",
-    label: "MSN Messenger",
-    swatch: ["#e3edf9", "#1c5ec6", "#3fa82f"],
-    image: "/shots/hoffle-msn-messenger-theme",
-    alt: "Hoffle's MSN Messenger theme: messages shown as “Jonas says:”, display pictures, a Winks and Nudge toolbar and an Online (6) contact list",
-  },
-  {
-    id: "light",
-    label: "Light",
-    swatch: ["#f2f3f5", "#ffffff", "#6b4feb"],
-    image: "/shots/hoffle-light-theme",
-    alt: "Hoffle's Light theme showing the same channel on a white background",
-  },
-  {
-    id: "classic",
-    label: "Classic",
-    swatch: ["#1e1f22", "#313338", "#5865f2"],
-    image: "/shots/hoffle-classic-theme",
-    alt: "Hoffle's Classic charcoal theme showing the same channel",
-  },
+/** Real screenshots of a throwaway demo instance, listed for search engines. */
+const SCREENSHOTS = [
+  "/shots/hoffle-cozy-theme",
+  "/shots/hoffle-msn-messenger-theme",
+  "/shots/hoffle-light-theme",
+  "/shots/hoffle-classic-theme",
 ];
+
+const JOIN_LINKS: JoinLinks = {
+  kofi: KOFI_URL,
+  sponsors: GITHUB_SPONSORS_URL,
+  selfHost: SELF_HOST_GUIDE,
+  email: "info@hoffle.online",
+};
 
 const MUSIC_BOT_REPO = "https://github.com/Coxaexs/musicwatchtogether";
 
@@ -100,7 +86,7 @@ const FEATURES: { title: string; items: ReactNode[] }[] = [
   {
     title: "Themes",
     items: [
-      "Cozy, Light, Classic and MSN Messenger, plus themes you write in CSS and share.",
+      "Twelve built in: Cozy, Light, Legacy, Amber, Midnight, Sunset, Dark Academia, Vampire, Cyberpunk, Matrix, and MSN Messenger in light and dark. Plus themes you write in CSS and share.",
       "Profile banners, pride badges and a nickname per server.",
     ],
   },
@@ -149,7 +135,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "How do I get in?",
-    a: "chat.hoffle.online is invite-only for now, so you need an invite code from someone who's on it. Or run your own: the first account on a new server becomes the owner and can invite everyone else.",
+    a: "chat.hoffle.online is invite-only for now. Ask someone who's on it for an invite code, support Hoffle with $5 on Ko-fi or GitHub Sponsors and you'll get one by email, or email info@hoffle.online and ask for one. Or run your own: the first account on a new server becomes the owner and can invite everyone else.",
   },
   {
     q: "Do my friends have to install anything?",
@@ -201,7 +187,7 @@ const jsonLd = {
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       downloadUrl: RELEASES,
       installUrl: APP_URL,
-      screenshot: THEMES.map((theme) => `${SITE}${theme.image}-1280.webp`),
+      screenshot: SCREENSHOTS.map((image) => `${SITE}${image}-1280.webp`),
       image: `${SITE}/og.png`,
       sameAs: [REPO],
     },
@@ -216,6 +202,275 @@ const jsonLd = {
     },
   ],
 };
+
+/* ─── Theme tour ───────────────────────────────────────────────────────── */
+
+const tourTitle = "lp-display text-3xl font-bold leading-tight sm:text-[44px]";
+
+function TourCopy({ title, titleClass, intro, points, tone }: { title: ReactNode; titleClass: string; intro: string; points: string[]; tone: string }) {
+  return (
+    <div className={tone}>
+      <h2 className={titleClass}>{title}</h2>
+      <p className="mt-5 max-w-md text-[17px] leading-relaxed opacity-90">{intro}</p>
+      <ul className="mt-5 max-w-md list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed opacity-90">
+        {points.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A real screenshot in a window drawn for its theme, with a sign-in toast, like the MSN slide. */
+function ThemeShot({
+  image,
+  alt,
+  frame,
+  titleBar,
+  title,
+  controls,
+  toast,
+}: {
+  image: string;
+  alt: string;
+  frame: string;
+  titleBar: string;
+  title: ReactNode;
+  controls: ReactNode;
+  toast: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <figure className={`overflow-hidden ${frame}`}>
+        <div className={`flex h-8 items-center gap-2 px-3 text-[13px] ${titleBar}`}>
+          <span className="truncate">{title}</span>
+          <span className="ml-auto flex items-center gap-[5px]" aria-hidden>{controls}</span>
+        </div>
+        <img
+          src={`${image}-1280.webp`}
+          srcSet={`${image}-1280.webp 1280w, ${image}-2560.webp 2560w`}
+          sizes="(min-width: 1024px) 660px, 100vw"
+          width={1280}
+          height={800}
+          loading="lazy"
+          decoding="async"
+          alt={alt}
+          className="block h-auto w-full"
+        />
+      </figure>
+      <div aria-hidden className="absolute -bottom-10 right-3 w-60 sm:-right-4">{toast}</div>
+    </div>
+  );
+}
+
+const TOUR_SLIDES = [
+  {
+    id: "msn",
+    label: "MSN Messenger",
+    background: "linear-gradient(180deg,#1f5fcf 0%,#4a8fe8 45%,#a9d0f5 78%,#d9ecfb 100%)",
+    content: (
+      <>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-[46%] left-1/2 h-[66%] w-[160%] -translate-x-1/2 rounded-[50%]"
+          style={{ background: "radial-gradient(ellipse at 50% 20%,#8fd35a 0%,#5aa82e 45%,#3b7f1c 100%)" }}
+        />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
+          <div className="text-white">
+            <h2 className="lp-display text-3xl font-bold leading-tight [text-shadow:0_1px_0_rgba(0,40,120,.35)] sm:text-[44px]">
+              The MSN Messenger theme
+            </h2>
+            <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/90">
+              A full second interface for Hoffle, modelled on Windows Live Messenger. It changes the layout and
+              behaviour, not only the colours: messages read “Mira says:”, friends signing in show a toast, and a
+              nudge shakes the other person's window.
+            </p>
+            <ul className="mt-5 max-w-md list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-white/90">
+              <li>A contact list with your own groups, and a quiet list</li>
+              <li>Display pictures, personal emoticons, winks and handwriting</li>
+              <li>Statuses like Be Right Back and Out to Lunch</li>
+              <li>A sound for each event, picked in its Sounds settings</li>
+              <li>MSN Today: who's around, unread conversations and what's playing</li>
+            </ul>
+            <ul className="lp-msn mt-6 flex flex-wrap gap-2 text-sm" aria-label="Emoticons that turn into pictures when you send them">
+              {[
+                [":)", "🙂"],
+                [";)", "😉"],
+                ["(Y)", "👍"],
+                ["<3", "❤️"],
+                [":$", "😳"],
+              ].map(([typed, shown]) => (
+                <li key={typed} className="rounded border border-white/40 bg-white/15 px-2.5 py-1 font-semibold backdrop-blur-sm">
+                  <code className="font-mono">{typed}</code> <span aria-hidden>→</span> {shown}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* An XP-style window around the real screenshot. */}
+          <div className="relative">
+            <figure className="lp-msn overflow-hidden rounded-t-[9px] rounded-b-[3px] border border-[#0831d9] bg-[#ece9d8] shadow-[0_30px_60px_-20px_rgba(0,30,90,.6)]">
+              <div
+                className="flex h-8 items-center gap-2 px-2.5 text-[13px] font-bold text-white [text-shadow:1px_1px_0_#0a1e6e]"
+                style={{ background: "linear-gradient(180deg,#3d95ff 0%,#0a5fe8 12%,#0654d8 55%,#0a4fc8 88%,#0843b0 100%)" }}
+              >
+                <Buddy className="h-5 w-5" />
+                <span className="truncate">general - Conversation</span>
+                <span className="ml-auto flex gap-[3px]" aria-hidden>
+                  <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#2a74f0] text-[11px] leading-none">_</span>
+                  <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#2a74f0] text-[11px] leading-none">□</span>
+                  <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#e0441c] text-[12px] leading-none">×</span>
+                </span>
+              </div>
+              <img
+                src="/shots/hoffle-msn-messenger-theme-1280.webp"
+                srcSet="/shots/hoffle-msn-messenger-theme-1280.webp 1280w, /shots/hoffle-msn-messenger-theme-2560.webp 2560w"
+                sizes="(min-width: 1024px) 660px, 100vw"
+                width={1280}
+                height={800}
+                loading="lazy"
+                decoding="async"
+                alt="A Hoffle channel in the MSN Messenger theme, with “says:” before each message and a Winks, Voice Clip, Handwriting, Backgrounds and Nudge toolbar"
+                className="block h-auto w-full"
+              />
+              <figcaption className="sr-only">Hoffle with the MSN Messenger theme turned on.</figcaption>
+            </figure>
+            {/* The sign-in toast. */}
+            <div
+              aria-hidden
+              className="lp-msn absolute -bottom-10 right-3 flex w-56 items-center gap-2.5 rounded-[3px] border border-[#7f9db9] p-3 text-[13px] shadow-lg sm:-right-4"
+              style={{ background: "linear-gradient(180deg,#ffffff 0%,#dce9fb 100%)" }}
+            >
+              <Buddy className="h-9 w-9 shrink-0" />
+              <p className="leading-snug text-[#1a1a1a]">
+                <b>Kai</b> has just signed in.
+              </p>
+            </div>
+          </div>
+        </div>
+      </>
+    ),
+  },
+  {
+    id: "vampire",
+    label: "Vampire",
+    background: "radial-gradient(120% 70% at 50% 115%, #6a0f20 0%, #2a070e 45%, #0a0607 100%)",
+    content: (
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
+        <TourCopy
+          tone="text-[#f3e7e7]"
+          titleClass={`${tourTitle} font-normal [font-family:'Pirata_One',Georgia,serif] [text-shadow:0_0_24px_rgba(200,16,46,.6)] sm:text-[60px]`}
+          title="Vampire"
+          intro="Gothic midnight: blood red on black velvet. Channel names and server titles are set in blackletter and glow faintly red."
+          points={[
+            "Blackletter headings with a red glow",
+            "Velvet gradients down the sidebars and member list",
+            "The message box glows red while you type",
+            "Red text selection, and a matching scrollbar",
+          ]}
+        />
+        <ThemeShot
+          image="/shots/hoffle-vampire-theme"
+          alt="Hoffle's Vampire theme: the Tuesday Crew server in blackletter with a red glow, a friend group's channel and six people online"
+          frame="rounded-lg border border-[#c8102e]/50 bg-[#0a0607] shadow-[0_30px_70px_-20px_rgba(200,16,46,.55)]"
+          titleBar="border-b border-[#c8102e]/30 bg-[linear-gradient(180deg,#2a070e,#140609)] text-[#f3e7e7] [font-family:'Pirata_One',Georgia,serif] text-[16px] tracking-[.02em]"
+          title="general · Tuesday Crew"
+          controls={["#5e1421", "#5e1421", "#c8102e"].map((color, i) => (
+            <span key={i} className="h-3 w-3 rounded-full" style={{ background: color }} />
+          ))}
+          toast={
+            <div className="flex items-center gap-3 rounded-lg border border-[#c8102e]/50 bg-[#140a0d] p-3 text-[13px] text-[#f3e7e7] shadow-[0_10px_30px_rgba(0,0,0,.6),0_0_20px_rgba(200,16,46,.25)]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#b9a6f7] font-bold text-[#15121f]">L</span>
+              <p className="leading-snug"><b>Lou</b> has risen.</p>
+            </div>
+          }
+        />
+      </div>
+    ),
+  },
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk",
+    background:
+      "repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px), linear-gradient(160deg, #07070b 0%, #0c0c16 55%, #1a1a05 100%)",
+    content: (
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
+        <TourCopy
+          tone="text-[#eafcff] [font-family:Rajdhani,sans-serif] font-medium"
+          titleClass={`${tourTitle} uppercase tracking-[.06em] text-[#fcee0a] [text-shadow:-2px_0_rgba(255,42,109,.8),2px_0_rgba(0,240,255,.8)] sm:text-[56px]`}
+          title="Cyberpunk"
+          intro="A neon street terminal: acid yellow and cyan on black, hard clipped corners, and faint CRT scanlines over everything."
+          points={[
+            "Headings with a red and cyan chromatic split",
+            "Clipped corners on server icons, channels and the message box",
+            "Monospace cyan labels and timestamps",
+            "Faint CRT scanlines across the whole app",
+          ]}
+        />
+        <ThemeShot
+          image="/shots/hoffle-cyberpunk-theme"
+          alt="Hoffle's Cyberpunk theme: acid yellow on black, the selected channel as a clipped yellow tab and cyan labels"
+          frame="border border-[#00f0ff]/50 bg-[#07070b] shadow-[0_0_40px_rgba(0,240,255,.15)] [clip-path:polygon(0_0,calc(100%-16px)_0,100%_16px,100%_100%,0_100%)]"
+          titleBar="bg-[#fcee0a] font-bold uppercase tracking-[.08em] text-[#07070b] [font-family:Rajdhani,sans-serif]"
+          title="#general // Tuesday Crew"
+          controls={["▁", "▢", "✕"].map((glyph) => (
+            <span key={glyph} className="mr-3 font-mono text-[12px]">{glyph}</span>
+          ))}
+          toast={
+            <div className="flex items-center gap-3 border border-[#00f0ff]/60 bg-[#0c0c13] p-3 text-[13px] text-[#eafcff] shadow-[0_0_24px_rgba(0,240,255,.2)] [clip-path:polygon(0_0,calc(100%-12px)_0,100%_12px,100%_100%,0_100%)] [font-family:Rajdhani,sans-serif]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[2px] bg-[#7fd6c2] font-bold text-[#07070b]">K</span>
+              <p className="font-mono text-[12px] uppercase leading-snug tracking-[.08em] text-[#00f0ff]">
+                <b className="text-[#fcee0a]">Kai</b> jacked in
+              </p>
+            </div>
+          }
+        />
+      </div>
+    ),
+  },
+  {
+    id: "matrix",
+    label: "Matrix",
+    background: "radial-gradient(90% 70% at 50% 0%, #022b10 0%, #000c04 55%, #000400 100%)",
+    content: (
+      <>
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60">
+          <MatrixRain />
+        </div>
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
+          <TourCopy
+            tone="text-[#c8ffd8] [font-family:'Geist_Mono',ui-monospace,monospace]"
+            titleClass={`${tourTitle} font-normal [font-family:'Share_Tech_Mono',ui-monospace,monospace] text-[#b9ffd0] [text-shadow:0_0_14px_rgba(0,255,102,.6)] sm:text-[56px]`}
+            title={<>Matrix<span className="animate-pulse text-[#00ff66]">_</span></>}
+            intro="Phosphor green on black, monospace type, and digital rain falling behind slightly see-through panels."
+            points={[
+              "Digital rain behind the glass, or one still frame if you've asked for reduced motion",
+              "A blinking cursor after the channel name",
+              "The selected channel reads like a terminal's highlighted line",
+              "Monospace everywhere",
+            ]}
+          />
+          <ThemeShot
+            image="/shots/hoffle-matrix-theme"
+            alt="Hoffle's Matrix theme: phosphor green monospace text over digital rain"
+            frame="rounded border border-[#00ff66]/35 bg-[#000400] shadow-[0_0_50px_rgba(0,255,102,.15)]"
+            titleBar="border-b border-[#00ff66]/25 bg-[#010a04] text-[#7dffae] [font-family:'Share_Tech_Mono',ui-monospace,monospace]"
+            title="~/tuesday-crew/general"
+            controls={[0, 1, 2].map((i) => (
+              <span key={i} className="h-2.5 w-2.5 rounded-full border border-[#00ff66]/60" />
+            ))}
+            toast={
+              <div className="rounded border border-[#00ff66]/40 bg-[#000c05] p-3 text-[13px] text-[#c8ffd8] shadow-[0_0_24px_rgba(0,255,102,.2)] [font-family:'Share_Tech_Mono',ui-monospace,monospace]">
+                <p className="leading-snug">Wake up, <b className="text-[#00ff66]">Mira</b>…</p>
+                <p className="mt-0.5 text-[#5fae7a]">Sam has joined the Lounge.</p>
+              </div>
+            }
+          />
+        </div>
+      </>
+    ),
+  },
+];
 
 /* ─── Bits ─────────────────────────────────────────────────────────────── */
 
@@ -233,7 +488,7 @@ function Buddy({ className = "" }: { className?: string }) {
 
 const button =
   "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-[15px] font-semibold transition";
-const primaryButton = `${button} bg-(--violet) text-white hover:bg-(--ink)`;
+const primaryButton = `${button} bg-(--violet-fill) text-white hover:bg-(--violet-fill-hover)`;
 const secondaryButton = `${button} border border-(--line) bg-(--card) text-(--ink) hover:border-(--ink)`;
 const sectionTitle = "lp-display text-3xl font-bold leading-tight sm:text-4xl";
 const link = "font-semibold text-(--violet) underline decoration-dotted underline-offset-2";
@@ -271,7 +526,7 @@ export function LandingPage() {
               </div>
             </div>
             <div className="mt-12 sm:mt-14">
-              <ThemeShowcase themes={THEMES} />
+              <LiveChannel links={JOIN_LINKS} />
             </div>
           </div>
         </section>
@@ -321,92 +576,8 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ── MSN ──────────────────────────────────────────────────── */}
-        <section
-          id="msn"
-          aria-labelledby="msn-title"
-          className="relative scroll-mt-4 overflow-hidden px-4 pb-28 pt-20 sm:px-6 sm:pt-24"
-          style={{ background: "linear-gradient(180deg,#1f5fcf 0%,#4a8fe8 45%,#a9d0f5 78%,#d9ecfb 100%)" }}
-        >
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -bottom-[46%] left-1/2 h-[66%] w-[160%] -translate-x-1/2 rounded-[50%]"
-            style={{ background: "radial-gradient(ellipse at 50% 20%,#8fd35a 0%,#5aa82e 45%,#3b7f1c 100%)" }}
-          />
-          <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
-            <div className="text-white">
-              <h2 id="msn-title" className="lp-display text-3xl font-bold leading-tight [text-shadow:0_1px_0_rgba(0,40,120,.35)] sm:text-[44px]">
-                The MSN Messenger theme
-              </h2>
-              <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/90">
-                A full second interface for Hoffle, modelled on Windows Live Messenger. It changes the layout and
-                behaviour, not only the colours: messages read “Mira says:”, friends signing in show a toast, and a
-                nudge shakes the other person's window.
-              </p>
-              <ul className="mt-5 max-w-md list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-white/90">
-                <li>A contact list with your own groups, and a quiet list</li>
-                <li>Display pictures, personal emoticons, winks and handwriting</li>
-                <li>Statuses like Be Right Back and Out to Lunch</li>
-                <li>A sound for each event, picked in its Sounds settings</li>
-                <li>MSN Today: who's around, unread conversations and what's playing</li>
-              </ul>
-              <ul className="lp-msn mt-6 flex flex-wrap gap-2 text-sm" aria-label="Emoticons that turn into pictures when you send them">
-                {[
-                  [":)", "🙂"],
-                  [";)", "😉"],
-                  ["(Y)", "👍"],
-                  ["<3", "❤️"],
-                  [":$", "😳"],
-                ].map(([typed, shown]) => (
-                  <li key={typed} className="rounded border border-white/40 bg-white/15 px-2.5 py-1 font-semibold backdrop-blur-sm">
-                    <code className="font-mono">{typed}</code> <span aria-hidden>→</span> {shown}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* An XP-style window around the real screenshot. */}
-            <div className="relative">
-              <figure className="lp-msn overflow-hidden rounded-t-[9px] rounded-b-[3px] border border-[#0831d9] bg-[#ece9d8] shadow-[0_30px_60px_-20px_rgba(0,30,90,.6)]">
-                <div
-                  className="flex h-8 items-center gap-2 px-2.5 text-[13px] font-bold text-white [text-shadow:1px_1px_0_#0a1e6e]"
-                  style={{ background: "linear-gradient(180deg,#3d95ff 0%,#0a5fe8 12%,#0654d8 55%,#0a4fc8 88%,#0843b0 100%)" }}
-                >
-                  <Buddy className="h-5 w-5" />
-                  <span className="truncate">general - Conversation</span>
-                  <span className="ml-auto flex gap-[3px]" aria-hidden>
-                    <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#2a74f0] text-[11px] leading-none">_</span>
-                    <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#2a74f0] text-[11px] leading-none">□</span>
-                    <span className="grid h-[21px] w-[21px] place-items-center rounded-[3px] border border-white/80 bg-[#e0441c] text-[12px] leading-none">×</span>
-                  </span>
-                </div>
-                <img
-                  src="/shots/hoffle-msn-messenger-theme-1280.webp"
-                  srcSet="/shots/hoffle-msn-messenger-theme-1280.webp 1280w, /shots/hoffle-msn-messenger-theme-2560.webp 2560w"
-                  sizes="(min-width: 1024px) 660px, 100vw"
-                  width={1280}
-                  height={800}
-                  loading="lazy"
-                  decoding="async"
-                  alt="A Hoffle channel in the MSN Messenger theme, with “says:” before each message and a Winks, Voice Clip, Handwriting, Backgrounds and Nudge toolbar"
-                  className="block h-auto w-full"
-                />
-                <figcaption className="sr-only">Hoffle with the MSN Messenger theme turned on.</figcaption>
-              </figure>
-              {/* The sign-in toast. */}
-              <div
-                aria-hidden
-                className="lp-msn absolute -bottom-10 right-3 flex w-56 items-center gap-2.5 rounded-[3px] border border-[#7f9db9] p-3 text-[13px] shadow-lg sm:-right-4"
-                style={{ background: "linear-gradient(180deg,#ffffff 0%,#dce9fb 100%)" }}
-              >
-                <Buddy className="h-9 w-9 shrink-0" />
-                <p className="leading-snug text-[#1a1a1a]">
-                  <b>Kai</b> has just signed in.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* ── Theme tour ───────────────────────────────────────────── */}
+        <ThemeTour slides={TOUR_SLIDES} />
 
         {/* ── Compared to Discord ──────────────────────────────────── */}
         <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
@@ -478,7 +649,7 @@ export function LandingPage() {
               </p>
             </div>
             <div className="mx-auto w-full max-w-[300px]">
-              <div className="rounded-[44px] border-[10px] border-(--ink) bg-(--ink) shadow-[0_30px_60px_-35px_rgba(20,15,40,.5)]">
+              <div className="rounded-[44px] border-[10px] border-(--slab) bg-(--slab) shadow-[0_30px_60px_-35px_rgba(20,15,40,.5)]">
                 <img
                   src="/shots/hoffle-phone-780.webp"
                   width={390}
@@ -494,7 +665,7 @@ export function LandingPage() {
         </section>
 
         {/* ── Self-host ────────────────────────────────────────────── */}
-        <section id="self-host" className="scroll-mt-4 bg-(--ink) px-4 py-20 text-white sm:px-6 sm:py-24">
+        <section id="self-host" className="scroll-mt-4 bg-(--slab) px-4 py-20 text-white sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
             <div>
               <h2 className={sectionTitle}>Run your own</h2>

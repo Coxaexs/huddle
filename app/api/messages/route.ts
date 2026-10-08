@@ -3,6 +3,7 @@ import { enforceAutomod } from "@/lib/automod";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
 import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
 import { isBlockedBetween } from "@/lib/friends";
+import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
@@ -169,6 +170,13 @@ export async function GET(request: Request) {
   if (channelId) {
     const audience = await channelAudience(db, channelId);
     if (audience && !audience.includes(user.id)) return unauthorized();
+    if (channelId === GUESTBOOK_CHANNEL_ID) {
+      const member = await db
+        .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+        .bind(GUESTBOOK_SERVER_ID, user.id)
+        .first();
+      if (!member) return unauthorized();
+    }
   }
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
@@ -494,6 +502,16 @@ export async function POST(request: Request) {
       }
       const timedOut = await blockIfTimedOut(db, channelId, user.id);
       if (timedOut) return timedOut;
+
+      // The hoffle.online guestbook takes visitors through /api/guestbook;
+      // through here, only its moderators may post.
+      if (channel.server_id === GUESTBOOK_SERVER_ID) {
+        const member = await db
+          .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+          .bind(GUESTBOOK_SERVER_ID, user.id)
+          .first();
+        if (!member) return unauthorized();
+      }
 
       // An announcement channel is a read-only feed for everyone without
       // MANAGE_MESSAGES, which is what separates it from a text channel.

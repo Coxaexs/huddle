@@ -6,9 +6,10 @@ import {
   Sun, Moon, Mic, Volume2, Activity, Sparkles, Fish, Check,
   Palette, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Eye, X, Upload, Layers,
   User, ShieldCheck, LogOut, Search, Music, ChevronLeft, Coffee, Heart, Dices,
-  MessageSquarePlus, AudioLines
+  MessageSquarePlus, AudioLines, GraduationCap
 } from "lucide-react";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+import { INVITE_USE_CHOICES } from "@/lib/invite-limits";
 import { LicensesTab } from "./licenses-tab";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
@@ -43,6 +44,11 @@ import {
   applyClientUiCss,
   CLIENT_UI_CSS_PRESETS,
 } from "@/lib/themes";
+import {
+  isRetroSoundThemeEnabled,
+  setRetroSoundThemeEnabled,
+  playRetroSound,
+} from "../lib/msn-sounds";
 
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
@@ -619,6 +625,8 @@ interface SettingsDialogProps {
   canManageServer?: boolean;
   /** Callback to open a DM conversation directly with a target user. */
   onOpenDm?: (userId: string) => void;
+  /** Opens the welcome tutorial (Settings → Tutorial). */
+  onOpenTutorial?: () => void;
 }
 
 type Tab =
@@ -634,6 +642,7 @@ type Tab =
   | "accessibility"
   | "roles"
   | "requests"
+  | "tutorial"
   | "licenses";
 
 type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
@@ -752,6 +761,7 @@ export function SettingsDialog({
   canManageServer = false,
   onShareThemeToChat,
   onOpenDm,
+  onOpenTutorial,
 }: SettingsDialogProps) {
   const [capturingKey, setCapturingKey] = useState(false);
   // Kept locally so the dialog still works if it is rendered without a call.
@@ -888,6 +898,7 @@ export function SettingsDialog({
       typeof window === "undefined" ||
       window.localStorage.getItem("huddle-notify") !== "off",
   );
+  const [retroSounds, setRetroSounds] = useState(() => isRetroSoundThemeEnabled());
   const [activityShare, setActivityShare] = useState(true);
   const [spotifyShare, setSpotifyShare] = useState(true);
   const [appShare, setAppShare] = useState(true);
@@ -1430,6 +1441,8 @@ export function SettingsDialog({
 
   const [inviteTheme, setInviteTheme] = useState("");
   const [inviteServer, setInviteServer] = useState("");
+  /** How many accounts one code may create; 0 is no limit. */
+  const [inviteUses, setInviteUses] = useState(1);
   const [inviteServers, setInviteServers] = useState<PublicServer[]>([]);
   useEffect(() => {
     if (tab !== "invites") return;
@@ -1444,7 +1457,7 @@ export function SettingsDialog({
       const data = await apiFetch<{ invite: Invite }>("/api/invites", {
         method: "POST",
         body: JSON.stringify({
-          maxUses: 1,
+          maxUses: inviteUses,
           defaultTheme: inviteTheme || undefined,
           defaultServerId: inviteServer || undefined,
         }),
@@ -1537,6 +1550,7 @@ export function SettingsDialog({
           icon: MessageSquarePlus,
           desc: "Feature requests & suggestions sent directly to kiwi & flo",
         },
+        { id: "tutorial" as Tab, label: "Tutorial", icon: GraduationCap, desc: "Replay the welcome tour and theme picker any time" },
         { id: "licenses" as Tab, label: "Licenses & About", icon: Globe, desc: "Software licenses and legal notices" },
       ],
     },
@@ -1684,6 +1698,7 @@ export function SettingsDialog({
               {tab === "roles" && "Roles"}
               {tab === "requests" && "Make a Request"}
               {tab === "licenses" && "Licenses & About"}
+              {tab === "tutorial" && "Tutorial"}
             </h2>
             <button
               type="button"
@@ -2776,6 +2791,19 @@ export function SettingsDialog({
                     ))}
                   </select>
                 </label>
+                <label>
+                  Uses
+                  <select
+                    value={inviteUses}
+                    onChange={(event) => setInviteUses(Number(event.target.value))}
+                  >
+                    {INVITE_USE_CHOICES.map((uses) => (
+                      <option key={uses} value={uses}>
+                        {uses === 0 ? "No limit" : uses === 1 ? "1 person" : `${uses} people`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <button type="button" className="primary" onClick={createInvite}>
                 Create an invite code
@@ -3394,6 +3422,25 @@ export function SettingsDialog({
                 />
               </label>
 
+              <label className="appearance-switch">
+                <span>
+                  <strong>Retro 2000s sound effects</strong>
+                  <small>Classic MSN Messenger chimes, nudges, and Windows Error / Ta-Da sounds across Huddle</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={retroSounds}
+                  onChange={(event) => {
+                    const on = event.target.checked;
+                    setRetroSounds(on);
+                    setRetroSoundThemeEnabled(on);
+                    if (on) {
+                      playRetroSound("message");
+                    }
+                  }}
+                />
+              </label>
+
               <PhonePushSettings />
             </>
           )}
@@ -3412,6 +3459,8 @@ export function SettingsDialog({
                 <div className="dice-theme-row">
                   {([
                     ["default", "Solid Colour"],
+                    ["matrix", "Matrix 📟"],
+                    ["cyberpunk", "Cyberpunk ⚡"],
                     ["vampire", "Vampire 🧛"],
                     ["dark-academia", "Dark Academia 📜"],
                     ["pride", "Pride 🏳️‍🌈"],
@@ -4080,7 +4129,7 @@ export function SettingsDialog({
                             className={`text-indigo-400 hover:text-indigo-300 ${alwaysUnderlineLinks ? "underline" : "hover:underline"}`}
                             onClick={(e) => e.preventDefault()}
                           >
-                            https://huddle.app/accessibility
+                            https://hoffle.online/accessibility
                           </a>
                         </span>
                         <button
@@ -4183,6 +4232,18 @@ export function SettingsDialog({
           )}
 
           {tab === "licenses" && <LicensesTab />}
+          {tab === "tutorial" && (
+            <div className="space-y-4">
+              <p className="text-sm leading-relaxed text-gray-300">
+                The tutorial walks you through picking a theme, getting around, voice and screen sharing, chat and game
+                night, with buttons that try each thing for real. It opened when you signed up, and you can open it again
+                from here any time.
+              </p>
+              <button type="button" className="discord-btn primary-indigo" onClick={() => onOpenTutorial?.()}>
+                Open the tutorial
+              </button>
+            </div>
+          )}
           {tab === "requests" && (
             <RequestsTab
               user={user}

@@ -244,6 +244,36 @@ function meshWith(person: VoiceParticipant, sfu: boolean): boolean {
   return !sfu || person.bot === true || person.sfu !== true;
 }
 
+/**
+ * Most other people a seat that lost LiveKit may mesh with. Past this, falling
+ * back would have it upload one copy of its voice — and of a screen share —
+ * per person, which nobody's uplink survives in a big room, and every LiveKit
+ * seat would open a direct connection to it too. It keeps retrying LiveKit
+ * instead.
+ */
+export const MESH_FALLBACK_MAX_PEERS = 8;
+/** How long a seat waits between attempts to get back into LiveKit. */
+const SFU_RETRY_MS = 5_000;
+
+/**
+ * Whether this room is too big for `self` to fall back to the mesh: more than
+ * MESH_FALLBACK_MAX_PEERS other people, and the room is already on LiveKit (a
+ * room with no LiveKit seats is a mesh anyway, so there is nothing to protect).
+ */
+export function meshFallbackBlocked(people: VoiceParticipant[], self: string | null): boolean {
+  const others = people.filter((person) => person.connectionId !== self && !person.bot);
+  return others.length > MESH_FALLBACK_MAX_PEERS && others.some((person) => person.sfu === true);
+}
+
+/**
+ * Whether to show `person`'s camera or screen share. A stage audience seat has
+ * no floor, so its video is dropped here, on every receiver: hiding the button
+ * from the audience alone would not stop a modified client from publishing.
+ */
+export function videoAllowedFrom(person: VoiceParticipant | undefined): boolean {
+  return person?.speakAllowed !== false;
+}
+
 /** LiveKit's address and a token for one room, or null when this instance has none. */
 async function sfuGrant(
   channelId: string,
@@ -482,6 +512,10 @@ export function useVoice({
   const [sfuMode, setSfuMode] = useState(false);
   const sfuModeRef = useRef(false);
   const sfuRef = useRef<SfuVoice | null>(null);
+  /** Pending retry of a lost LiveKit connection in a room too big to mesh. */
+  const sfuRetryTimerRef = useRef<number | undefined>(undefined);
+  /** Set once connectSfu exists; dropToMesh is declared before it. */
+  const retrySfuRef = useRef<() => void>(() => undefined);
   /**
    * Everything remote, mesh and LiveKit together. A LiveKit identity is only
    * believed when the roster has that connection under the same user: the
@@ -489,15 +523,22 @@ export function useVoice({
    */
   const roster = channelId ? rooms[channelId] : undefined;
   const allRemoteStreams = useMemo((): RemoteVoiceStream[] => {
-    const trusted = sfuStreams.filter((entry) =>
-      (roster || []).some(
-        (person) =>
-          person.connectionId === entry.connectionId &&
-          (person.id === entry.userId || (person.recorder === true && entry.userId === "recorder")),
-      ),
+    const trusted = sfuStreams.filter((entry) => {
+      const person = (roster || []).find(
+        (seat) =>
+          seat.connectionId === entry.connectionId &&
+          (seat.id === entry.userId || (seat.recorder === true && entry.userId === "recorder")),
+      );
+      if (!person) return false;
+      return (entry.kind !== "camera" && entry.kind !== "screen") || videoAllowedFrom(person);
+    });
+    const meshed = remoteStreams.filter(
+      (entry) =>
+        entry.stream.getVideoTracks().length === 0 ||
+        videoAllowedFrom((roster || []).find((seat) => seat.connectionId === entry.connectionId)),
     );
     return [
-      ...remoteStreams,
+      ...meshed,
       ...trusted.map(({ connectionId: id, stream, kind }) => ({ connectionId: id, stream, kind })),
     ];
   }, [remoteStreams, sfuStreams, roster]);
@@ -1457,7 +1498,8 @@ export function useVoice({
 
   /**
    * Leaves LiveKit and carries on over the mesh. Telling the hub is what makes
-   * the LiveKit seats start calling this one directly.
+   * the LiveKit seats start calling this one directly. In a big room it stays
+   * on LiveKit and retries instead (see MESH_FALLBACK_MAX_PEERS).
    */
   const dropToMesh = useCallback((reason?: string) => {
     const sfu = sfuRef.current;
@@ -1465,13 +1507,22 @@ export function useVoice({
     void sfu?.leave();
     setSfuStreams([]);
     if (!sfuModeRef.current) return;
+    const room = channelIdRef.current;
+    if (room && meshFallbackBlocked(roomsRef.current[room] || [], connectionId)) {
+      // Too many people to call directly: stay a LiveKit seat, so nobody starts
+      // meshing with this one, and try the server again shortly.
+      window.clearTimeout(sfuRetryTimerRef.current);
+      sfuRetryTimerRef.current = window.setTimeout(() => retrySfuRef.current(), SFU_RETRY_MS);
+      setError("Lost the voice server. Reconnecting…");
+      return;
+    }
     sfuModeRef.current = false;
     setSfuMode(false);
     if (channelIdRef.current) {
       send({ t: "voice-state", sfu: false });
       if (reason) setError(reason);
     }
-  }, [send]);
+  }, [connectionId, send]);
 
   /**
    * Text-to-speech said into the call (/say). It goes out as its own track,
@@ -1617,6 +1668,23 @@ export function useVoice({
     },
     [dropToMesh, watchLevel],
   );
+
+  // One more go at LiveKit for a seat that lost it in a room too big to mesh.
+  // A refusal goes back through dropToMesh, which schedules the next attempt,
+  // or meshes after all if the room has shrunk meanwhile.
+  retrySfuRef.current = () => {
+    const room = channelIdRef.current;
+    if (!room || !connectionId || !sfuModeRef.current || sfuRef.current) return;
+    void sfuGrant(room, connectionId).then((grant) => {
+      if (channelIdRef.current !== room || !sfuModeRef.current || sfuRef.current) return;
+      if (grant) {
+        setError("");
+        void connectSfu(grant);
+      } else {
+        dropToMesh("Could not reach the voice server, so this call uses direct connections.");
+      }
+    });
+  };
 
   /** Offer to everyone already in the room whose id sorts below ours. */
   useEffect(() => {
@@ -2248,12 +2316,23 @@ export function useVoice({
     [announceVideo, negotiatePeer, screenFilm, screenQuality, screenShareAudio, setScreenFilm, setScreenQuality, stopScreenShare],
   );
 
+  // Sent back to a stage audience: everyone else already drops this seat's
+  // video (videoAllowedFrom), so stop sending it rather than stream to nobody.
+  useEffect(() => {
+    if (!channelId || (!screenSharing && !cameraOn)) return;
+    const mine = (rooms[channelId] || []).find((person) => person.connectionId === connectionId);
+    if (!mine || videoAllowedFrom(mine)) return;
+    if (screenSharing) stopScreenShare();
+    if (cameraOn) stopCamera();
+  }, [rooms, channelId, connectionId, screenSharing, cameraOn, stopScreenShare, stopCamera]);
+
   const leave = useCallback(() => {
     playRoomTone("leave");
     // First, so the screen and camera below are not unpublished one by one.
     const sfu = sfuRef.current;
     sfuRef.current = null;
     void sfu?.leave();
+    window.clearTimeout(sfuRetryTimerRef.current);
     sfuModeRef.current = false;
     setSfuMode(false);
     setSfuStreams([]);
@@ -2304,8 +2383,12 @@ export function useVoice({
         // LiveKit. The identity carries the hub connection, so without one
         // there would be nothing to match the media to.
         const grant = connectionId ? await sfuGrant(nextChannelId, connectionId) : null;
-        sfuModeRef.current = grant !== null;
-        setSfuMode(grant !== null);
+        // No LiveKit right now, but the room is too big to mesh into: take a
+        // LiveKit seat anyway and keep trying, rather than have everyone call us.
+        const awaitSfu =
+          grant === null && meshFallbackBlocked(rooms[nextChannelId] || [], connectionId);
+        sfuModeRef.current = grant !== null || awaitSfu;
+        setSfuMode(grant !== null || awaitSfu);
         micChainRef.current = chain;
         // Peers get the processed track; the raw capture stays inside the chain.
         localStreamRef.current = chain.stream;
@@ -2326,10 +2409,15 @@ export function useVoice({
         // Record which connection id we announced with. If the send fails (the
         // socket is briefly down) the ref stays unset, and the re-announce
         // effect below fires the join again once a connection id exists.
-        if (send({ t: "voice-join", channelId: nextChannelId, sfu: grant ? true : undefined })) {
+        if (send({ t: "voice-join", channelId: nextChannelId, sfu: grant || awaitSfu ? true : undefined })) {
           announcedConnectionRef.current = connectionId;
         }
         if (grant) void connectSfu(grant);
+        else if (awaitSfu) {
+          setError("Could not reach the voice server. Retrying…");
+          window.clearTimeout(sfuRetryTimerRef.current);
+          sfuRetryTimerRef.current = window.setTimeout(() => retrySfuRef.current(), SFU_RETRY_MS);
+        }
         // Tell the room about the opening mute, or it would list this seat as
         // "on stage" until the user touched a control.
         if (startMuted) send({ t: "voice-state", muted: true });

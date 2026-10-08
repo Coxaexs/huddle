@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { voiceChannelKindsSql } from "@/lib/channel-kinds";
 import { evictFromVoice, publishStructureChange } from "@/lib/hub-client";
 import { can, canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -7,6 +8,15 @@ import { bindings } from "@/lib/storage";
 import { MAX_TIMEOUT_MINUTES } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
+
+/** Drops a user from every voice room and stage in one server. */
+async function evictFromServerVoice(db: D1Database, serverId: string, userId: string): Promise<void> {
+  const rooms = await db
+    .prepare(`SELECT id FROM channels WHERE server_id = ? AND kind IN (${voiceChannelKindsSql()})`)
+    .bind(serverId)
+    .all<{ id: string }>();
+  await evictFromVoice(userId, (rooms.results || []).map((room) => room.id));
+}
 
 /**
  * Ban or unban a member from a server. Gated by MANAGE_SERVER.
@@ -93,14 +103,8 @@ export async function POST(
       targetName: target?.display_name || "Unknown member",
       detail: until ? `until ${until}` : undefined,
     });
-    if (until) {
-      // Stop them speaking right away: out of this server's voice rooms.
-      const rooms = await db
-        .prepare("SELECT id FROM channels WHERE server_id = ? AND kind = 'voice'")
-        .bind(serverId)
-        .all<{ id: string }>();
-      await evictFromVoice(targetId, (rooms.results || []).map((room) => room.id));
-    }
+    // Stop them speaking right away: out of this server's voice rooms.
+    if (until) await evictFromServerVoice(db, serverId, targetId);
     await publishStructureChange();
     return Response.json({ ok: true, timeoutUntil: until });
   }
@@ -136,6 +140,9 @@ export async function POST(
     }
   }
   await db.batch(statements);
+  // Someone kicked or banned mid-call would otherwise stay in the room, heard
+  // by everyone, until they chose to leave.
+  if (body.action !== "unban") await evictFromServerVoice(db, serverId, targetId);
 
   await recordAudit(db, {
     serverId,

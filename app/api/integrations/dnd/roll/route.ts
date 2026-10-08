@@ -31,7 +31,7 @@ interface ParsedTerm {
   keep?: "kh1" | "kl1";
 }
 
-interface ResolvedRoll {
+export interface ResolvedRoll {
   roll: DiceRollEvent;
   details: string[];
   expression: string;
@@ -68,7 +68,7 @@ function parseToken(token: string): ParsedTerm | null {
  * the roller's 3D dice animation), those authoritative values are used and the
  * server never re-rolls. Otherwise the server rolls its own fair values.
  */
-function resolveRoll(
+export function resolveRoll(
   input: string,
   user: { id: string; display_name: string },
   actualRolls?: number[][],
@@ -243,6 +243,8 @@ export async function POST(request: Request) {
     "vampire",
     "dark-academia",
     "darkacademia",
+    "matrix",
+    "cyberpunk",
   ];
   const allowedMaterials = ["plastic", "metal", "wood", "glass"] as const;
   const allowedTextures = [

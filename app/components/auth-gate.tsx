@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import type { PublicUser } from "@/lib/users";
+import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
 
 interface AuthGateProps {
   /** True when nobody has signed up yet: the first account skips the invite. */
@@ -80,6 +81,14 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
         method: "POST",
         body: JSON.stringify(body),
       });
+      if (mode === "signup") {
+        // A brand-new account gets the welcome tutorial once it is in.
+        try {
+          window.localStorage.setItem(TUTORIAL_PENDING_KEY, "1");
+        } catch {
+          // Storage blocked: the tutorial is still in Settings.
+        }
+      }
       onSignedIn(data.user, data.defaultTheme || null);
     } catch (failure) {
       setError(

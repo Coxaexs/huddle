@@ -5,11 +5,11 @@ import {
   AI_KIND,
   AI_LIMITS,
   AiError,
-  askGemini,
+  aiConfigured,
+  askAi,
   checkAiQuota,
   buildUserTurn,
   cleanQuestion,
-  modelList,
   stripWebPrefix,
   trimHistory,
   wantsWeb,
@@ -72,10 +72,20 @@ async function insertMessage(db: D1Database, stored: StoredMessage): Promise<voi
     .run();
 }
 
+function aiKeys() {
+  const env = bindings();
+  return {
+    anthropicKey: env.ANTHROPIC_API_KEY,
+    anthropicModel: env.ANTHROPIC_MODEL,
+    geminiKey: env.GEMINI_API_KEY,
+    geminiModels: env.GEMINI_MODEL,
+  };
+}
+
 /** Tells the composer whether /ask is set up, and the limits it runs under. */
 export async function GET(): Promise<Response> {
   return Response.json({
-    enabled: Boolean(bindings().GEMINI_API_KEY?.trim()),
+    enabled: aiConfigured(aiKeys()),
     perMinute: AI_LIMITS.perMinute,
     perHour: AI_LIMITS.perHour,
   });
@@ -89,10 +99,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
-  const apiKey = env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
+  const keys = aiKeys();
+  if (!aiConfigured(keys)) {
     return Response.json(
-      { error: "/ask is not set up: the server owner needs to set GEMINI_API_KEY." },
+      { error: "/ask is not set up: the server owner needs to set GEMINI_API_KEY or ANTHROPIC_API_KEY." },
       { status: 503 },
     );
   }
@@ -227,12 +237,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let answer: { text: string; model: string };
   try {
-    answer = await askGemini({
-      apiKey,
-      models: modelList(env.GEMINI_MODEL),
-      history,
-      question: buildUserTurn(question, results),
-    });
+    answer = await askAi(keys, history, buildUserTurn(question, results));
   } catch (error) {
     // A question that got no answer doesn't count against anyone.
     await quota.refund?.().catch(() => undefined);

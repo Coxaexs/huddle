@@ -6,6 +6,7 @@ import {
   unauthorized,
 } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { clampInviteUses } from "@/lib/invite-limits";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { BUILTIN_THEMES } from "@/lib/themes";
@@ -104,9 +105,7 @@ export async function POST(request: Request) {
     /** Account invites only: server the new member joins on signup. */
     defaultServerId?: string;
   };
-  const maxUses = Number.isFinite(body.maxUses)
-    ? Math.max(0, Math.min(100, Math.trunc(body.maxUses as number)))
-    : 1;
+  const maxUses = clampInviteUses(body.maxUses);
 
   const serverId = body.serverId?.slice(0, 64) || null;
 

@@ -143,6 +143,13 @@ export function textChannelKindsSql(): string {
     .join(", ");
 }
 
+/** SQL fragment listing the kinds that hold a voice call (voice and stage), for `kind IN (…)`. */
+export function voiceChannelKindsSql(): string {
+  return CHANNEL_KINDS.filter((kind) => KINDS[kind].voice)
+    .map((kind) => `'${kind}'`)
+    .join(", ");
+}
+
 /**
  * Whether this kind's posting restriction lets `mayModerate` post.
  *
