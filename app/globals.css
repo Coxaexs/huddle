@@ -26920,6 +26920,9 @@ a.link-preview-author:hover {
 .lyrics-now-sync span {
   min-width: 52px;
   text-align: center;
+}
+
+
 /* A roll the server made itself (see /api/integrations/dnd/roll). */
 .dnd-verified {
   display: inline-block;
