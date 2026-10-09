@@ -76,6 +76,6 @@ export async function POST(request: Request) {
   ]);
 
   await publishEventsChanged();
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ id }, { status: 201 });
 }

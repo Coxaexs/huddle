@@ -79,7 +79,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     .run();
 
   await publishEventsChanged();
-  await publishStructureChange();
+  await publishStructureChange(event.server_id);
   return Response.json({ ok: true });
 }
 
@@ -101,6 +101,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     db.prepare("DELETE FROM event_rsvps WHERE event_id = ?").bind(id),
     db.prepare("DELETE FROM server_events WHERE id = ?").bind(id),
   ]);
-  await publishStructureChange();
+  await publishStructureChange(event.server_id);
   return Response.json({ ok: true });
 }

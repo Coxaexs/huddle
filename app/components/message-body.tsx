@@ -13,6 +13,16 @@ const MAX_PREVIEWS = 3;
 
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
 
+/**
+ * Outside images load through our proxy, so posting an image link cannot
+ * collect the IP address of everyone who reads the channel. Our own uploads
+ * load directly.
+ */
+export function proxiedImage(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return url;
+  return `/hangout/api/unfurl/image?url=${encodeURIComponent(url)}`;
+}
+
 export function isImageUrl(value: string): boolean {
   const url = value.trim();
   // Custom stickers are served from our own uploads under a relative path.
@@ -446,9 +456,9 @@ export function MessageBody({
     return (
       <img
         className="message-image message-gif"
-        src={trimmed}
+        src={proxiedImage(trimmed)}
         alt=""
-        onClick={() => onImage?.(trimmed)}
+        onClick={() => onImage?.(proxiedImage(trimmed))}
       />
     );
   }
@@ -538,9 +548,9 @@ export function MessageBody({
         <img
           key={url}
           className="message-image message-gif"
-          src={url}
+          src={proxiedImage(url)}
           alt=""
-          onClick={() => onImage?.(url)}
+          onClick={() => onImage?.(proxiedImage(url))}
         />
       ))}
       {links.slice(0, MAX_PREVIEWS).map((url) => (

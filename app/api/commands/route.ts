@@ -1,3 +1,4 @@
+import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { listCommandsForServer, runBotCommand } from "@/lib/discord/interactions";
 import { ensureSchema } from "@/lib/schema";
@@ -147,6 +148,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const channelId = url.searchParams.get("channelId");
   const channel = channelId ? await findChannel(db, channelId) : null;
+  if (channelId) {
+    const access = await channelAccess(db, channelId, user);
+    if (!access.ok) return Response.json({ commands: [] });
+  }
 
   const commands = await listCommandsForServer(db, channel?.server_id ?? null);
   return Response.json({ commands });
@@ -174,6 +179,9 @@ export async function POST(request: Request) {
   if (!channel) {
     return Response.json({ error: "Channel not found" }, { status: 404 });
   }
+  // Only people in the channel's server (or DM) can drive its bots.
+  const access = await channelAccess(db, body.channelId, user);
+  if (!access.ok) return access.response;
 
   const available = await listCommandsForServer(db, channel.server_id);
   const command = available.find(

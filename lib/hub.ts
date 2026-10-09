@@ -16,6 +16,9 @@ import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
+import { deliverDueReminders, nextReminderAlarm } from "./reminders";
+import { isBlockedBetween } from "./friends";
+import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
 import {
   emptyPlayer,
@@ -48,6 +51,8 @@ interface Attachment {
   important?: boolean;
   /** Stage rooms: this seat is asking for the floor. */
   handRaised?: boolean;
+  /** When the hand went up (hub clock), so hosts can take hands in order. */
+  handRaisedAt?: number | null;
   /**
    * Stage rooms: this seat may be heard. Absent means "not yet decided", which
    * for a stage is the same as no: the floor is granted, never assumed.
@@ -96,6 +101,21 @@ export class HuddleHub extends DurableObject {
    * without bound.
    */
   private readonly channelCache = new Map<string, { kind: string; serverId: string }>();
+  /**
+   * userId -> the servers they belong to, so server traffic only reaches its
+   * members. Filled lazily for connected people and dropped on every structure
+   * change (joins, kicks, bans), which is when it can go stale.
+   */
+  private readonly memberships = new Map<string, Set<string>>();
+  /** DM channelId -> its participants, cleared alongside memberships. */
+  private readonly dmAudiences = new Map<string, Set<string>>();
+  /** userId -> when they last rang someone, to stop push-notification spam. */
+  private readonly lastRing = new Map<string, number>();
+  /**
+   * Channel broadcasts wait on an audience lookup, so they are chained: a
+   * roster snapshot must never overtake the one sent before it.
+   */
+  private outbox: Promise<void> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -153,6 +173,13 @@ export class HuddleHub extends DurableObject {
   // ---------------------------------------------------------------- routing
 
   async fetch(request: Request): Promise<Response> {
+    const response = await this.route(request);
+    // Broadcasts queued while handling (rosters, players) leave before we answer.
+    await this.outbox;
+    return response;
+  }
+
+  private async route(request: Request): Promise<Response> {
     await this.load();
     const url = new URL(request.url);
 
@@ -169,7 +196,8 @@ export class HuddleHub extends DurableObject {
         /** User ids allowed to see it; absent means everyone (DMs use this). */
         audience?: string[] | null;
       };
-      this.broadcast(
+      await this.broadcastTo(
+        body.channelId,
         {
           t: "message",
           channelId: body.channelId,
@@ -190,7 +218,8 @@ export class HuddleHub extends DurableObject {
         event: Record<string, unknown>;
         audience?: string[] | null;
       };
-      this.broadcast(
+      await this.broadcastTo(
+        body.channelId,
         {
           ...(body.event as object),
           channelId: body.channelId,
@@ -212,7 +241,7 @@ export class HuddleHub extends DurableObject {
         "recordings",
         Object.fromEntries(this.recordings.entries()),
       );
-      this.broadcast({
+      await this.broadcastTo(body.channelId, {
         t: "recording-state",
         channelId: body.channelId,
         state: body.state,
@@ -316,8 +345,24 @@ export class HuddleHub extends DurableObject {
       this.broadcastPresence();
       return Response.json({ ok: true });
     }
+    if (url.pathname === "/member" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { userId?: string };
+      if (body.userId) {
+        this.broadcast({ t: "member", userId: body.userId, serverNow: Date.now() });
+      }
+      return Response.json({ ok: true });
+    }
     if (url.pathname === "/structure" && request.method === "POST") {
-      this.broadcast({ t: "structure", serverNow: Date.now() });
+      const body = (await request.json().catch(() => ({}))) as { serverId?: string | null };
+      // Memberships, DM rosters and channel kinds may all have changed.
+      this.memberships.clear();
+      this.dmAudiences.clear();
+      this.channelCache.clear();
+      this.broadcast({
+        t: "structure",
+        ...(body.serverId ? { serverId: body.serverId } : {}),
+        serverNow: Date.now(),
+      });
       return Response.json({ ok: true });
     }
     if (url.pathname === "/state") {
@@ -397,10 +442,11 @@ export class HuddleHub extends DurableObject {
       resumeTicket: await issueResumeTicket(this.resumeKey, attachment.userId, attachment.connectionId),
       serverNow: Date.now(),
       online: this.onlineUserIds(),
-      voice: this.voiceRooms(),
-      players: Object.fromEntries(this.players.entries()),
+      // Only rooms, players and recordings in places this person can see.
+      voice: await this.visibleRecord(attachment, this.voiceRooms()),
+      players: await this.visibleRecord(attachment, Object.fromEntries(this.players.entries())),
       forcedMutes: [...this.forcedMutes],
-      recordings: Object.fromEntries(this.recordings.entries()),
+      recordings: await this.visibleRecord(attachment, Object.fromEntries(this.recordings.entries())),
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
@@ -444,6 +490,12 @@ export class HuddleHub extends DurableObject {
   // ------------------------------------------------------------- websockets
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer) {
+    await this.handleClientEvent(socket, raw);
+    // Let any broadcasts this event queued go out before the handler settles.
+    await this.outbox;
+  }
+
+  private async handleClientEvent(socket: WebSocket, raw: string | ArrayBuffer) {
     await this.load();
     if (typeof raw !== "string") return;
 
@@ -469,7 +521,9 @@ export class HuddleHub extends DurableObject {
 
       case "typing":
         // Fire-and-forget: everyone else in the channel sees it for a moment.
-        this.broadcast(
+        if (typeof event.channelId !== "string" || !event.channelId) return;
+        await this.broadcastTo(
+          event.channelId,
           {
             t: "typing",
             channelId: event.channelId,
@@ -483,6 +537,22 @@ export class HuddleHub extends DurableObject {
 
       case "voice-join": {
         const previous = attachment.voiceChannelId;
+        if (typeof event.channelId !== "string" || !(await this.mayJoinVoice(attachment, event.channelId))) {
+          // Not a member (or banned): refuse the seat, and tell the tab so it
+          // tears its own call down instead of waiting for peers.
+          try {
+            socket.send(
+              JSON.stringify({
+                t: "voice-evicted",
+                channelId: event.channelId,
+                serverNow: Date.now(),
+              } satisfies ServerEvent),
+            );
+          } catch {
+            // Going away.
+          }
+          return;
+        }
 
         // One person occupies one seat: a second tab joining takes over, and
         // the others are dropped so nobody appears in the room twice.
@@ -589,6 +659,7 @@ export class HuddleHub extends DurableObject {
           attachment.deafened = event.deafened;
         }
         if (typeof event.handRaised === "boolean") {
+          if (event.handRaised && !attachment.handRaised) attachment.handRaisedAt = Date.now();
           attachment.handRaised = event.handRaised;
           // A hand raised while unmuted makes no sense: being heard is what the
           // hand was asking for, so taking the floor lowers it.
@@ -642,9 +713,19 @@ export class HuddleHub extends DurableObject {
       }
 
       case "signal": {
-        // Straight relay between two tabs in the same voice room.
-        const target = this.socketFor(event.to);
-        target?.send(
+        // Straight relay between two tabs in the same voice room. Anything
+        // else is refused: a signal is a WebRTC offer, and a client answers an
+        // offer by attaching its microphone, so relaying across rooms would let
+        // anyone listen in on any call.
+        const target = this.seatFor(event.to);
+        if (
+          !target ||
+          !attachment.voiceChannelId ||
+          target.attachment.voiceChannelId !== attachment.voiceChannelId
+        ) {
+          return;
+        }
+        target.socket.send(
           JSON.stringify({
             t: "signal",
             from: attachment.connectionId,
@@ -656,6 +737,44 @@ export class HuddleHub extends DurableObject {
       }
 
       case "dm-call": {
+        // A call only goes between the people in that DM, and never to (or
+        // from) someone who blocked the other.
+        if (typeof event.channelId !== "string" || typeof event.targetUserId !== "string") return;
+        const people = await this.dmAudience(event.channelId);
+        if (!people.has(attachment.userId) || !people.has(event.targetUserId)) return;
+        if (
+          event.action === "call" &&
+          this.db &&
+          (await isBlockedBetween(this.db, attachment.userId, event.targetUserId).catch(() => true))
+        ) {
+          return;
+        }
+        // Answering (or declining) on one device stops the ring on the others.
+        if (event.action === "accept" || event.action === "decline") {
+          for (const entry of this.sockets()) {
+            if (
+              entry.attachment.userId !== attachment.userId ||
+              entry.attachment.connectionId === attachment.connectionId
+            ) {
+              continue;
+            }
+            try {
+              entry.socket.send(
+                JSON.stringify({
+                  t: "dm-call",
+                  channelId: event.channelId,
+                  fromUserId: event.targetUserId,
+                  fromDisplayName: "",
+                  fromAvatar: "",
+                  action: "cancel",
+                  serverNow: Date.now(),
+                } satisfies ServerEvent),
+              );
+            } catch {
+              // Going away.
+            }
+          }
+        }
         let reached = false;
         for (const entry of this.sockets()) {
           const other = entry.attachment;
@@ -681,7 +800,10 @@ export class HuddleHub extends DurableObject {
           }
         }
         // Nobody has the app open: ring their phone instead.
-        if (!reached && event.action === "call" && this.db) {
+        const lastRing = this.lastRing.get(attachment.userId) ?? 0;
+        if (!reached && event.action === "call" && this.db && Date.now() - lastRing > 10_000) {
+          if (this.lastRing.size > 1000) this.lastRing.clear();
+          this.lastRing.set(attachment.userId, Date.now());
           this.ctx.waitUntil(
             sendPushNotifications(this.db, [event.targetUserId], {
               title: `${attachment.displayName} is calling`,
@@ -695,6 +817,8 @@ export class HuddleHub extends DurableObject {
       }
 
       case "player": {
+        // Only someone sitting in that room (or the bot) drives its player.
+        if (!attachment.bot && attachment.voiceChannelId !== event.channelId) return;
         // While the DJ booth is on air, play/pause/skip belong to the booth.
         if (
           liveTrack(this.players.get(event.channelId)) &&
@@ -799,6 +923,128 @@ export class HuddleHub extends DurableObject {
     return info;
   }
 
+  /** Loads server memberships for any connected person not yet cached. */
+  private async ensureMemberships(userIds: Iterable<string>): Promise<void> {
+    if (!this.db) return;
+    const missing = [...new Set(userIds)].filter(
+      (id) => id && !id.startsWith("bot:") && !this.memberships.has(id),
+    );
+    for (let i = 0; i < missing.length; i += 90) {
+      const chunk = missing.slice(i, i + 90);
+      const rows = await this.db
+        .prepare(
+          `SELECT user_id, server_id FROM server_members WHERE user_id IN (${chunk.map(() => "?").join(",")})`,
+        )
+        .bind(...chunk)
+        .all<{ user_id: string; server_id: string }>()
+        .catch(() => null);
+      // A failed read leaves them uncached, which reads as "no access" now
+      // and is retried on the next event.
+      if (!rows) return;
+      for (const id of chunk) this.memberships.set(id, new Set());
+      for (const row of rows.results || []) this.memberships.get(row.user_id)?.add(row.server_id);
+    }
+  }
+
+  /** A DM's participants (cached until the next structure change). */
+  private async dmAudience(channelId: string): Promise<Set<string>> {
+    const cached = this.dmAudiences.get(channelId);
+    if (cached) return cached;
+    const people = new Set<string>();
+    if (!this.db) return people;
+    const rows = await this.db
+      .prepare("SELECT user_id FROM dm_members WHERE channel_id = ?")
+      .bind(channelId)
+      .all<{ user_id: string }>()
+      .catch(() => null);
+    if (!rows) return people;
+    for (const row of rows.results || []) people.add(row.user_id);
+    if (this.dmAudiences.size >= CHANNEL_CACHE_LIMIT) this.dmAudiences.clear();
+    this.dmAudiences.set(channelId, people);
+    return people;
+  }
+
+  /**
+   * Who may see a channel's live traffic: its server's members, or a DM's
+   * participants. The server-side bots (music publisher, recorder) see all.
+   * An unknown channel id is treated as the home server, which is where
+   * legacy name-addressed bot messages land.
+   */
+  private async channelAudience(channelId: string): Promise<(attachment: Attachment) => boolean> {
+    // Without a database there is no membership to consult (a bare dev
+    // instance, or tests): everything is one shared space, as it always was.
+    if (!this.db) return () => true;
+    const info = await this.channelInfo(channelId);
+    if (info.serverId === DM_SERVER_ID) {
+      const people = await this.dmAudience(channelId);
+      return (attachment) => attachment.bot || people.has(attachment.userId);
+    }
+    const serverId = info.serverId || DEFAULT_SERVER_ID;
+    await this.ensureMemberships(this.sockets().map((entry) => entry.attachment.userId));
+    return (attachment) =>
+      attachment.bot || Boolean(this.memberships.get(attachment.userId)?.has(serverId));
+  }
+
+  /** Whether this seat may sit in a voice room: member (or DM participant), not banned. */
+  private async mayJoinVoice(attachment: Attachment, channelId: string): Promise<boolean> {
+    if (attachment.bot || !this.db) return true;
+    const info = await this.channelInfo(channelId);
+    if (!info.serverId) return false;
+    if (info.serverId === DM_SERVER_ID) {
+      return (await this.dmAudience(channelId)).has(attachment.userId);
+    }
+    await this.ensureMemberships([attachment.userId]);
+    if (!this.memberships.get(attachment.userId)?.has(info.serverId)) return false;
+    if (!this.db) return true;
+    const banned = await this.db
+      .prepare("SELECT 1 FROM bans WHERE server_id = ? AND user_id = ?")
+      .bind(info.serverId, attachment.userId)
+      .first()
+      .catch(() => null);
+    return !banned;
+  }
+
+  /** Sends an event about one channel to everyone allowed to see that channel. */
+  private async broadcastTo(
+    channelId: string,
+    event: ServerEvent,
+    options?: { skipConnectionId?: string; audience?: string[] | null },
+  ): Promise<void> {
+    const send = async () => {
+      if (options?.audience?.length) {
+        this.broadcast(event, options);
+        return;
+      }
+      const allowed = await this.channelAudience(channelId);
+      const payload = JSON.stringify(event);
+      for (const { socket, attachment } of this.sockets()) {
+        if (options?.skipConnectionId && attachment.connectionId === options.skipConnectionId) continue;
+        if (!allowed(attachment)) continue;
+        try {
+          socket.send(payload);
+        } catch {
+          // A socket that fails here is already going away.
+        }
+      }
+    };
+    const next = this.outbox.then(send, send);
+    this.outbox = next.catch(() => undefined);
+    return next;
+  }
+
+  /** The subset of a channel-keyed record this seat may see. */
+  private async visibleRecord<T>(
+    attachment: Attachment,
+    record: Record<string, T>,
+  ): Promise<Record<string, T>> {
+    const out: Record<string, T> = {};
+    for (const [channelId, value] of Object.entries(record)) {
+      const allowed = await this.channelAudience(channelId);
+      if (allowed(attachment)) out[channelId] = value;
+    }
+    return out;
+  }
+
   /** Whether this member holds SPEAK in that server. */
   private async seatMaySpeak(serverId: string, userId: string): Promise<boolean> {
     if (!this.db || !serverId) return false;
@@ -864,6 +1110,12 @@ export class HuddleHub extends DurableObject {
           sfu: attachment.sfu || undefined,
           bot: attachment.bot || undefined,
           recorder: attachment.recorder || undefined,
+          // Stage state. Without these, clients cannot tell the stage from the
+          // audience (they fell back to "unmuted means on stage"), hosts never
+          // saw raised hands, and the audience video lock never engaged.
+          speakAllowed: attachment.speakAllowed,
+          handRaised: attachment.handRaised || undefined,
+          handRaisedAt: attachment.handRaised ? attachment.handRaisedAt ?? undefined : undefined,
         };
       });
     return participants;
@@ -920,7 +1172,7 @@ export class HuddleHub extends DurableObject {
   }
 
   private broadcastVoice(channelId: string): void {
-    this.broadcast({
+    void this.broadcastTo(channelId, {
       t: "voice",
       channelId,
       participants: this.participantsIn(channelId),
@@ -929,7 +1181,7 @@ export class HuddleHub extends DurableObject {
   }
 
   private broadcastPlayer(state: PlayerState): void {
-    this.broadcast({ t: "player", state, serverNow: Date.now() });
+    void this.broadcastTo(state.channelId, { t: "player", state, serverNow: Date.now() });
   }
 
   // ----------------------------------------------------------------- player
@@ -1196,9 +1448,25 @@ export class HuddleHub extends DurableObject {
         tag: notice.tag,
       }).catch(() => undefined);
     }
-    if (notices.length) this.broadcast({ t: "structure", serverNow: Date.now() });
-    const next = await nextEventAlarm(this.db).catch(() => null);
-    if (next !== null) await this.armAlarm(Math.max(next, Date.now() + 1000));
+    // Reminders (/remind) ride the same alarm. Each lands in the person's
+    // Notes; open tabs get it live. (Event notices used to broadcast a global
+    // "structure" reload here, for nothing any client needed.)
+    const reminders = await deliverDueReminders(this.db).catch(() => []);
+    for (const reminder of reminders) {
+      this.broadcast(
+        {
+          t: "message",
+          channelId: reminder.channelId,
+          message: reminder.message,
+          serverNow: Date.now(),
+        },
+        { audience: [reminder.userId] },
+      );
+    }
+    const nextEvent = await nextEventAlarm(this.db).catch(() => null);
+    const nextReminder = await nextReminderAlarm(this.db).catch(() => null);
+    const candidates = [nextEvent, nextReminder].filter((at): at is number => at !== null);
+    if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
   }
 
   async alarm(): Promise<void> {

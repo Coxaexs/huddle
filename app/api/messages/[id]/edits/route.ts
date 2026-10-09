@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { channelAudience } from "@/lib/dms";
+import { messageAccess } from "@/lib/access";
 import { messageHistory } from "@/lib/message-edits";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -27,11 +27,9 @@ export async function GET(
   if (!message) {
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
-  // Same rule as reading the channel: DMs only for their participants.
-  if (message.channel_id) {
-    const audience = await channelAudience(db, message.channel_id);
-    if (audience && !audience.includes(user.id)) return unauthorized();
-  }
+  // Same rule as reading the channel.
+  const access = await messageAccess(db, id, user);
+  if (!access.ok) return access.response;
 
   return Response.json({
     versions: await messageHistory(db, id),

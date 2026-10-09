@@ -117,7 +117,12 @@ client.on(Events.MessageCreate, async (message) => {
     huddleChannel = discordToHuddleMap.get(message.channelId);
   } else if (discordToHuddleMap.has(message.channel.name)) {
     huddleChannel = discordToHuddleMap.get(message.channel.name);
-  } else if (discordToHuddleMap.size === 0) {
+  } else if (
+    discordToHuddleMap.size === 0 &&
+    message.channel.name?.toLowerCase() === HUDDLE_DEFAULT_CHANNEL.toLowerCase()
+  ) {
+    // No map: bridge only the same-named channel, not every channel in every
+    // guild the bot can see.
     huddleChannel = HUDDLE_DEFAULT_CHANNEL;
   }
 
@@ -156,7 +161,8 @@ client.on(Events.MessageCreate, async (message) => {
 // ---------------------------------------------------------------------------
 
 async function listenToHoffleGateway() {
-  const eventsUrl = `${HUDDLE_URL}${HUDDLE_BASE_PATH}/api/v1/gateway/events?token=${encodeURIComponent(HUDDLE_BOT_TOKEN)}`;
+  // The token travels in the Authorization header only: a URL ends up in logs.
+  const eventsUrl = `${HUDDLE_URL}${HUDDLE_BASE_PATH}/api/v1/gateway/events`;
   console.log(`[discord-bridge] Connecting to Hoffle event gateway at ${eventsUrl}...`);
 
   try {
@@ -224,8 +230,8 @@ async function handleHoffleMessage(msg) {
   let targetDiscord = null;
   if (huddleToDiscordMap.has(channelId)) {
     targetDiscord = huddleToDiscordMap.get(channelId);
-  } else if (huddleToDiscordMap.size === 0) {
-    // If no explicit map, find general or default
+  } else if (huddleToDiscordMap.size === 0 && channelId === HUDDLE_DEFAULT_CHANNEL) {
+    // No map: only the default channel crosses over, never every channel.
     targetDiscord = HUDDLE_DEFAULT_CHANNEL;
   }
 
@@ -254,10 +260,17 @@ async function handleHoffleMessage(msg) {
   const text = msg.content || msg.text || "";
   if (!text.trim()) return;
 
+  // Discord caps a message at 2000 characters; long ones go out in parts.
+  // Mentions are never parsed: an "@everyone" typed in Hoffle must not ping a
+  // whole Discord server (Hoffle's own permission for that does not apply here).
   const formatted = `**${authorName}**: ${text}`;
-  await discordChannel.send({ content: formatted }).catch((err) => {
-    console.error("[discord-bridge] Failed to send message to Discord channel:", err.message);
-  });
+  for (let start = 0; start < formatted.length; start += 2000) {
+    await discordChannel
+      .send({ content: formatted.slice(start, start + 2000), allowedMentions: { parse: [] } })
+      .catch((err) => {
+        console.error("[discord-bridge] Failed to send message to Discord channel:", err.message);
+      });
+  }
 }
 
 // ---------------------------------------------------------------------------

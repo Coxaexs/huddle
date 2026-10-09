@@ -1,3 +1,5 @@
+import { currentUser, unauthorized } from "@/lib/auth";
+import { limitUser } from "@/lib/rate-limit";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +76,16 @@ function stateSummary(state: Record<string, any>): string {
   }.`;
 }
 
+/** The Discord music bot is shared by everyone; nobody gets to hammer it. */
+const MUSIC_COMMAND_LIMIT = { action: "musicwatch-command", limit: 10, windowSeconds: 30 };
+
 export async function POST(request: Request) {
+  // This route logs into the music dashboard with the admin password, so it
+  // must never answer someone who is not signed in.
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  const limited = await limitUser(bindings().DB, MUSIC_COMMAND_LIMIT, user.id);
+  if (limited) return limited;
   const body = (await request.json().catch(() => ({}))) as { command?: string };
   const [rawName, ...parts] = (body.command?.trim().slice(0, 1000) || "").split(
     /\s+/,

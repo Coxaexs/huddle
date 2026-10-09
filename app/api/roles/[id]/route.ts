@@ -1,7 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
-import { can, Permission, ALL_PERMISSIONS } from "@/lib/permissions";
+import { ALL_PERMISSIONS, roleAuthority, roleRefusal } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -52,9 +52,9 @@ export async function PATCH(
   if (!role) {
     return Response.json({ error: "That role is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, role.server_id, Permission.MANAGE_SERVER))) {
-    return forbidden();
-  }
+  const authority = await roleAuthority(db, user.id, role.server_id);
+  const refusedRole = roleRefusal(authority, { position: role.position });
+  if (refusedRole) return Response.json({ error: refusedRole }, { status: 403 });
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
@@ -72,6 +72,11 @@ export async function PATCH(
       : Number(body.permissions) & ALL_PERMISSIONS;
   const position =
     body.position === undefined ? role.position : Number(body.position);
+  const refused = roleRefusal(authority, {
+    position,
+    permissions: body.permissions === undefined ? undefined : permissions,
+  });
+  if (refused) return Response.json({ error: refused }, { status: 403 });
 
   await db
     .prepare(
@@ -86,7 +91,7 @@ export async function PATCH(
     action: "role.update",
     targetName: name,
   });
-  await publishStructureChange();
+  await publishStructureChange(role.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }
 
@@ -111,9 +116,10 @@ export async function DELETE(
   if (!role) {
     return Response.json({ error: "That role is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, role.server_id, Permission.MANAGE_SERVER))) {
-    return forbidden();
-  }
+  const refused = roleRefusal(await roleAuthority(db, user.id, role.server_id), {
+    position: role.position,
+  });
+  if (refused) return Response.json({ error: refused }, { status: 403 });
 
   await db.batch([
     db.prepare("DELETE FROM member_roles WHERE role_id = ?").bind(id),
@@ -126,6 +132,6 @@ export async function DELETE(
     action: "role.delete",
     targetName: role.name,
   });
-  await publishStructureChange();
+  await publishStructureChange(role.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }

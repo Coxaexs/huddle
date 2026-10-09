@@ -66,7 +66,7 @@ export async function PATCH(
     action: "server.update",
     targetName: body.name?.trim().slice(0, 50) || server.name,
   });
-  await publishStructureChange();
+  await publishStructureChange(id);
   return Response.json({ servers: await listServers(db, user.id) });
 }
 
@@ -120,6 +120,6 @@ export async function DELETE(
   }
   await db.batch(statements);
 
-  await publishStructureChange();
+  await publishStructureChange(id);
   return Response.json({ servers: await listServers(db, user.id) });
 }

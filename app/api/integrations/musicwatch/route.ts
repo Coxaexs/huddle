@@ -1,3 +1,4 @@
+import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export async function GET() {
 
 /** Creates a synchronized Watch Together / ReelsTogether room. */
 export async function POST(request: Request) {
+  if (!(await currentUser(request))) return unauthorized();
   const body = (await request.json().catch(() => ({}))) as {
     mode?: string;
     name?: string;

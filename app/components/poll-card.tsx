@@ -11,6 +11,8 @@ interface PollCardProps {
   multi?: boolean;
   /** Live tallies pushed over the socket; falls back to a fetch on mount. */
   liveCounts?: number[];
+  /** Who voted for what, pushed with the tallies (public polls only). */
+  liveVoters?: Array<Array<{ id: string; name: string }>>;
 }
 
 /** An inline poll: click a bar to vote, click it again to take the vote back. */
@@ -20,6 +22,7 @@ export function PollCard({
   options,
   multi,
   liveCounts,
+  liveVoters,
 }: PollCardProps) {
   const [counts, setCounts] = useState<number[]>(() =>
     new Array(options.length).fill(0),
@@ -49,25 +52,28 @@ export function PollCard({
     loadPollDetails();
   }, [pollId]);
 
-  // Someone else voted: the socket carries the new tallies.
+  // Someone voted: the socket carries the new tallies (and, for a public
+  // poll, the voter lists), so there is nothing to re-fetch. Re-fetching here
+  // turned every vote into one request per open card.
   useEffect(() => {
-    if (liveCounts) {
-      setCounts(liveCounts);
-      loadPollDetails();
-    }
+    if (liveCounts) setCounts(liveCounts);
   }, [liveCounts]);
+  useEffect(() => {
+    if (liveVoters) setVoters(liveVoters);
+  }, [liveVoters]);
 
   async function vote(choice: number) {
     if (busy) return;
     setBusy(true);
     try {
-      const data = await apiFetch<{ counts: number[]; mine: number[] }>(
-        "/api/polls/vote",
-        { method: "POST", body: JSON.stringify({ pollId, choice }) },
-      );
+      const data = await apiFetch<{
+        counts: number[];
+        mine: number[];
+        voters?: Array<Array<{ id: string; name: string }>>;
+      }>("/api/polls/vote", { method: "POST", body: JSON.stringify({ pollId, choice }) });
       setCounts(data.counts || []);
       setMine(data.mine || []);
-      loadPollDetails();
+      if (data.voters) setVoters(data.voters);
     } catch {
       // A failed vote just leaves the previous tallies in place.
     } finally {

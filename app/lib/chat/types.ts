@@ -76,6 +76,8 @@ export interface Message {
     multi?: boolean;
     voiceChannelId?: string;
     trackId?: string;
+    /** Lyrics found by song name only (lyricsnow). */
+    loose?: boolean;
     label?: string;
     track?: { title: string; artist?: string | null; duration?: number | null; pageUrl?: string | null } | string;
     artist?: string;

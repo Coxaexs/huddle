@@ -210,7 +210,7 @@ export async function POST(request: Request) {
       typeof body?.diceTheme === "string" && (GUESTBOOK_DICE_THEMES as readonly string[]).includes(body.diceTheme)
         ? body.diceTheme
         : "default";
-    const resolved = resolveRoll(command[1].trim(), { id: "guest", display_name: name.value }, undefined, diceTheme);
+    const resolved = resolveRoll(command[1].trim(), { id: "guest", display_name: name.value }, diceTheme);
     if ("error" in resolved) return refuse(resolved.error.replace(/`/g, ""), "text");
     roll = resolved;
   }

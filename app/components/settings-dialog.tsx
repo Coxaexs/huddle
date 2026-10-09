@@ -527,6 +527,7 @@ import {
   type SpotifyActivity,
 } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
+import { activitySharingEnabled, setActivitySharing } from "../hooks/use-activity-detector";
 import { SocialPlatformIcon } from "./user-profile-card";
 import { apiFetch } from "../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
@@ -899,17 +900,11 @@ export function SettingsDialog({
       window.localStorage.getItem("huddle-notify") !== "off",
   );
   const [retroSounds, setRetroSounds] = useState(() => isRetroSoundThemeEnabled());
-  const [activityShare, setActivityShare] = useState(true);
-  const [spotifyShare, setSpotifyShare] = useState(true);
-  const [appShare, setAppShare] = useState(true);
+  const [spotifyShare, setSpotifyShare] = useState(() =>
+    typeof window === "undefined" ? true : activitySharingEnabled(),
+  );
   const [spotifyUserInput, setSpotifyUserInput] = useState("");
   const [trackSearchInput, setTrackSearchInput] = useState("");
-  const [currentAppId, setCurrentAppId] = useState("spotify");
-  const [detectedApps, setDetectedApps] = useState([
-    { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify" },
-    { id: "vscode", name: "Visual Studio Code", type: "coding", details: "Editing Hoffle codebase" },
-    { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode" },
-  ]);
   const pictureRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -973,6 +968,7 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle-pride-theme", prideTheme);
     window.localStorage.setItem("huddle-blahaj", blahaj ? "on" : "off");
     window.localStorage.setItem("huddle_dice_theme", diceTheme);
+    window.localStorage.setItem("huddle_dice_color", diceColor);
     window.localStorage.setItem("huddle_dice_material", diceMaterial);
     window.localStorage.setItem("huddle_dice_texture", diceTexture);
   }, [accent, corners, density, backdrop, motion, cute, prideTheme, blahaj, diceTheme, diceColor, diceMaterial, diceTexture]);
@@ -1381,6 +1377,35 @@ export function SettingsDialog({
       setStatus("Email verified. Password reset links will go there.");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Could not save your email.");
+    }
+  }
+
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteMessagesToo, setDeleteMessagesToo] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  async function deleteAccount() {
+    if (
+      !window.confirm(
+        deleteMessagesToo
+          ? "Delete your account and all your messages? This cannot be undone."
+          : "Delete your account? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setError("");
+    setDeletingAccount(true);
+    try {
+      await apiFetch("/api/settings/account", {
+        method: "DELETE",
+        body: JSON.stringify({ password: deletePassword, deleteMessages: deleteMessagesToo }),
+      });
+      onSignOut();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not delete the account.");
+    } finally {
+      setDeletingAccount(false);
+      setDeletePassword("");
     }
   }
 
@@ -2753,6 +2778,42 @@ export function SettingsDialog({
                   Change password
                 </button>
               </section>
+              {!user.isAdmin && (
+                <section className="profile-studio-section danger-zone">
+                  <h3 className="profile-studio-section-title">Delete account</h3>
+                  <p className="modal-hint">
+                    This signs you out everywhere and removes your profile, friends and settings.
+                    Your messages stay in their conversations as &ldquo;Deleted user&rdquo; unless
+                    you remove them too. It cannot be undone.
+                  </p>
+                  <label htmlFor="settings-delete-password">Password</label>
+                  <input
+                    id="settings-delete-password"
+                    type="password"
+                    value={deletePassword}
+                    autoComplete="current-password"
+                    onChange={(event) => setDeletePassword(event.target.value)}
+                  />
+                  <label className="appearance-switch">
+                    <span>
+                      <strong>Also delete my messages and files</strong>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={deleteMessagesToo}
+                      onChange={(event) => setDeleteMessagesToo(event.target.checked)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={!deletePassword || deletingAccount}
+                    onClick={() => void deleteAccount()}
+                  >
+                    {deletingAccount ? "Deleting…" : "Delete my account"}
+                  </button>
+                </section>
+              )}
             </div>
           )}
 
@@ -3786,25 +3847,18 @@ export function SettingsDialog({
             <div className="space-y-4">
               <label className="appearance-switch">
                 <span>
-                  <strong>Display current activity as a status message</strong>
-                  <small>Hoffle will automatically update your profile status when you play a game or listen to Spotify</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={activityShare}
-                  onChange={(e) => setActivityShare(e.target.checked)}
-                />
-              </label>
-
-              <label className="appearance-switch">
-                <span>
                   <strong>Share Spotify / Music Listening</strong>
                   <small>Show live Spotify song titles, artists, and album art on your profile card automatically</small>
                 </span>
                 <input
                   type="checkbox"
                   checked={spotifyShare}
-                  onChange={(e) => setSpotifyShare(e.target.checked)}
+                  onChange={(e) => {
+                    setSpotifyShare(e.target.checked);
+                    setActivitySharing(e.target.checked);
+                    // Turning it off takes the song off your profile now.
+                    if (!e.target.checked) void saveSpotifyActivity(null).catch(() => undefined);
+                  }}
                 />
               </label>
 
@@ -3904,71 +3958,6 @@ export function SettingsDialog({
                 </div>
               )}
 
-              <label className="appearance-switch">
-                <span>
-                  <strong>Share Desktop Games & App Activity</strong>
-                  <small>Display detected active desktop apps, games, or coding sessions</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={appShare}
-                  onChange={(e) => setAppShare(e.target.checked)}
-                />
-              </label>
-
-              <div className="border-t border-white/10 pt-4 mt-4">
-                <h4 className="text-xs font-bold text-gray-300 uppercase mb-3">
-                  DETECTED APPLICATIONS & CURRENT ACTIVITY
-                </h4>
-                
-                <div className="space-y-2">
-                  {detectedApps.map((app) => (
-                    <div
-                      key={app.id}
-                      className="bg-black/30 p-3 rounded-lg border border-white/10 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-white">{app.name}</span>
-                          {currentAppId === app.id && (
-                            <span className="text-[10px] bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-0.5 rounded-full font-bold">
-                              ACTIVE NOW
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">{app.details}</p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="discord-btn secondary-gray text-xs py-1 px-2.5"
-                          onClick={() => {
-                            const newName = window.prompt("Correct / Edit Activity Name:", app.name);
-                            if (newName && newName.trim()) {
-                              setDetectedApps((prev) =>
-                                prev.map((a) => (a.id === app.id ? { ...a, name: newName.trim() } : a))
-                              );
-                            }
-                          }}
-                        >
-                          Edit / Correct
-                        </button>
-
-                        {currentAppId !== app.id && (
-                          <button
-                            type="button"
-                            className="discord-btn primary-indigo text-xs py-1 px-2.5"
-                            onClick={() => setCurrentAppId(app.id)}
-                          >
-                            Set Active
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
 

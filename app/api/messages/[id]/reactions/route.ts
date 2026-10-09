@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { messageAccess } from "@/lib/access";
 import { channelAudience } from "@/lib/dms";
 import { dispatchReaction } from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
@@ -41,6 +42,8 @@ export async function POST(
   if (!message) {
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
+  const access = await messageAccess(db, id, user);
+  if (!access.ok) return access.response;
   const timedOut = await blockIfTimedOut(db, message.channel_id, user.id);
   if (timedOut) return timedOut;
 

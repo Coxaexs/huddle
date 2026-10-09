@@ -130,10 +130,34 @@ export async function moveVoiceUser(
 }
 
 /** Tells every open tab that servers or channels changed and to reload them. */
-export async function publishStructureChange(): Promise<void> {
+export async function publishStructureChange(serverId?: string): Promise<void> {
   const stub = hub();
   if (!stub) return;
-  await stub.fetch(`${INTERNAL}/structure`, { method: "POST" }).catch(() => undefined);
+  await stub
+    .fetch(`${INTERNAL}/structure`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // With a server id, only clients in (or just removed from) that server
+      // reload; without one, everyone does.
+      body: JSON.stringify({ serverId: serverId || null }),
+    })
+    .catch(() => undefined);
+}
+
+/**
+ * One person's profile or presence changed. Clients that show this person
+ * refresh just that, instead of every client reloading the whole structure.
+ */
+export async function publishMemberUpdate(userId: string): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/member`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+    .catch(() => undefined);
 }
 
 /** Asks the hub to (re)schedule event reminders after an event changed. */

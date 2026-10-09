@@ -72,6 +72,8 @@ import {
   BellOff,
   CheckCheck,
   Pin,
+  Bookmark,
+  BookmarkCheck,
   Settings,
   Users,
   Menu,
@@ -233,7 +235,7 @@ import { ScreenShareSetup } from "./components/screen-share-setup";
 import { apiFetch, apiUrl } from "./lib/client";
 import { unlockAudio } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
-import { enableWebPush, registerServiceWorker } from "./lib/web-push";
+import { disableWebPush, enableWebPush, registerServiceWorker } from "./lib/web-push";
 import {
   COMMAND_ALIASES,
   DISCORD_ONLY_COMMANDS,
@@ -271,6 +273,36 @@ import {
   importThemeCode,
   exportThemeCode,
 } from "@/lib/themes";
+
+/**
+ * Combines two message lists (any overlap), newest version of each message
+ * winning, in reading order.
+ */
+const DRAFTS_KEY = "huddle-drafts";
+
+/** One entry of the saved-messages panel (see /api/saved). */
+interface SavedEntry {
+  messageId: string;
+  savedAt: string;
+  channelId: string;
+  serverId: string | null;
+  channelName: string | null;
+  serverName: string | null;
+  author: string;
+  avatar: string;
+  color: string;
+  text: string;
+  createdAt: string;
+}
+
+function mergeMessages(first: Message[], second: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  for (const message of first) byId.set(String(message.id), message);
+  for (const message of second) byId.set(String(message.id), message);
+  return [...byId.values()].sort((a, b) =>
+    String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+  );
+}
 
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -346,6 +378,8 @@ export function ChatShell() {
     }
   });
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   /** Raw unread counts; `unread` below is this with notification levels applied. */
   const [rawUnread, setUnread] = useState<
     Record<string, { unread: boolean; count: number; mentions: number }>
@@ -353,6 +387,10 @@ export function ChatShell() {
   const [pins, setPins] = useState<Message[]>([]);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
+  /** Saved messages: the panel, its contents, and which ids are saved. */
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedList, setSavedList] = useState<SavedEntry[] | null>(null);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [mentionsTab, setMentionsTab] = useState<"all" | "unread">("all");
   const [mentionInbox, setMentionInbox] = useState<MentionEntry[] | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -365,7 +403,35 @@ export function ChatShell() {
   blockedUserIdsRef.current = blockedUserIds;
   const [expandedBlockedMessages, setExpandedBlockedMessages] = useState<Set<string>>(new Set());
 
-  const channelDraftsRef = useRef<Record<string, string>>({});
+  /** Unsent text per channel, kept on this device across reloads. */
+  const channelDraftsRef = useRef<Record<string, string>>(
+    (() => {
+      if (typeof window === "undefined") return {};
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(DRAFTS_KEY) || "{}") as unknown;
+        return saved && typeof saved === "object" ? (saved as Record<string, string>) : {};
+      } catch {
+        return {};
+      }
+    })(),
+  );
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const saveDraftsSoon = useCallback(() => {
+    if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      const kept = Object.fromEntries(
+        Object.entries(channelDraftsRef.current)
+          .filter(([, text]) => text.trim())
+          .slice(-50)
+          .map(([channelId, text]) => [channelId, text.slice(0, 4000)]),
+      );
+      try {
+        window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(kept));
+      } catch {
+        // Storage full or blocked: drafts just will not survive a reload.
+      }
+    }, 400);
+  }, []);
   const prevChannelForDraftRef = useRef<string | null>(null);
   const [draft, setDraftState] = useState("");
   const draftRef = useRef("");
@@ -378,6 +444,7 @@ export function ChatShell() {
       const channelId = activeChannelRef.current;
       if (channelId) {
         channelDraftsRef.current[channelId] = next;
+        saveDraftsSoon();
       }
       return next;
     });
@@ -946,6 +1013,9 @@ export function ChatShell() {
   const lastTypingSentRef = useRef(0);
   /** Live vote tallies pushed over the socket, keyed by poll id. */
   const [pollCounts, setPollCounts] = useState<Record<string, number[]>>({});
+  const [pollVoters, setPollVoters] = useState<
+    Record<string, Array<Array<{ id: string; name: string }>>>
+  >({});
   const [emojis, setEmojis] = useState<
     Array<{ id: string; serverId: string; name: string; url: string }>
   >([]);
@@ -964,6 +1034,9 @@ export function ChatShell() {
   }, [servers]);
   const channelServerRef = useRef(channelServer);
   channelServerRef.current = channelServer;
+  /** Channel ids of DMs and group DMs this person is in. */
+  const dmChannelIdsRef = useRef<Set<string>>(new Set());
+  dmChannelIdsRef.current = useMemo(() => new Set(dms.map((dm) => dm.channelId)), [dms]);
   // Applied at display time, so counts loaded on startup respect muted
   // channels and servers the same way live messages do.
   const unread = useMemo(() => {
@@ -1609,6 +1682,7 @@ export function ChatShell() {
     void loadPrefs().catch(() => undefined);
     void loadUnread().catch(() => undefined);
     void loadEmojis().catch(() => undefined);
+    void loadSaved();
     void loadChannelPrefs().catch(() => undefined);
   }, [
     user,
@@ -1642,32 +1716,34 @@ export function ChatShell() {
       }
       if (code) {
         const inviteCode = code.toUpperCase();
-        void apiFetch<{
-          serverId: string;
-          servers: PublicServer[];
-          alreadyMember?: boolean;
-        }>("/api/servers/membership", {
-          method: "POST",
-          body: JSON.stringify({ action: "join", code: inviteCode }),
-        })
-          .then((data) => {
-            setServers(data.servers);
-            setActiveServerId(data.serverId);
-            setNotice(
-              data.alreadyMember
-                ? "You are already a member of this server."
-                : "Joined server via invite link!",
-            );
-            const cleanPath = window.location.pathname.startsWith("/hangout")
-              ? "/"
-              : window.location.pathname;
-            window.history.replaceState({}, document.title, cleanPath);
+        // Take the code out of the address bar either way.
+        const cleanPath = window.location.pathname.startsWith("/hangout")
+          ? "/"
+          : window.location.pathname;
+        window.history.replaceState({}, document.title, cleanPath);
+        // A link must not be able to drop someone into a server on its own:
+        // show what it is and ask first.
+        void apiFetch<ResolvedInvite>(`/api/invites/resolve?code=${encodeURIComponent(inviteCode)}`)
+          .then((invite) => {
+            if (!invite.valid || !invite.server) {
+              setNotice(invite.error || "That invite link is invalid or has expired.");
+              return;
+            }
+            if (invite.isMember) {
+              setActiveServerId(invite.server.id);
+              return;
+            }
+            showCustomConfirm({
+              title: `Join ${invite.server.name}?`,
+              message: invite.inviter
+                ? `${invite.inviter.displayName} invited you. ${invite.server.memberCount} members.`
+                : `${invite.server.memberCount} members.`,
+              confirmText: "Join server",
+              cancelText: "Not now",
+              onConfirm: () => void joinServerDirect(inviteCode),
+            });
           })
-          .catch((err) => {
-            setNotice(
-              err instanceof Error ? err.message : "Invalid or expired invite link.",
-            );
-          });
+          .catch(() => setNotice("That invite link is invalid or has expired."));
       }
     } catch {
       // ignore
@@ -2058,11 +2134,15 @@ export function ChatShell() {
   const handleIncomingMessage = useCallback(
     (channelId: string, message: unknown) => {
       const incoming = message as Message;
+      // The hub only sends people what they can see, so a channel this tab
+      // does not know yet is a brand-new DM (or a server just joined).
+      const isDm =
+        dmChannelIdsRef.current.has(channelId) || !channelServerRef.current.get(channelId);
       // Nudges shake the window when they land in the open conversation or
       // any DM, unless the sender is blocked.
       if (
         incoming.payload?.nudge &&
-        (channelId === activeChannelRef.current || !channelServerRef.current.get(channelId)) &&
+        (channelId === activeChannelRef.current || isDm) &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
       ) {
         playNudge();
@@ -2090,7 +2170,7 @@ export function ChatShell() {
       // Winks play under the same rules.
       if (
         incoming.payload?.wink &&
-        (channelId === activeChannelRef.current || !channelServerRef.current.get(channelId)) &&
+        (channelId === activeChannelRef.current || isDm) &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
       ) {
         playWink(incoming.payload.wink);
@@ -2107,7 +2187,7 @@ export function ChatShell() {
         !incoming.payload?.wink &&
         (channelId !== activeChannelRef.current || !document.hasFocus()) &&
         (channelId === activeChannelRef.current ||
-          !channelServerRef.current.get(channelId) ||
+          isDm ||
           Boolean(incoming.mentions?.includes(user.id))) &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
         notifyLevel(channelPrefsRef.current, channelId, channelServerRef.current.get(channelId)) !== "nothing"
@@ -2124,7 +2204,8 @@ export function ChatShell() {
         incoming.userId !== user.id &&
         !incoming.bot &&
         !incoming.payload?.autoReply &&
-        !channelServerRef.current.get(channelId) &&
+        // Away replies answer direct messages only, never a server channel.
+        dmChannelIdsRef.current.has(channelId) &&
         !autoReplyRef.current.replied.has(channelId) &&
         !blockedUserIdsRef.current.has(incoming.userId)
       ) {
@@ -2147,7 +2228,7 @@ export function ChatShell() {
         !document.hasFocus() &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
         (channelId === activeChannelRef.current ||
-          !channelServerRef.current.get(channelId) ||
+          isDm ||
           Boolean(incoming.mentions?.includes(user.id)))
       ) {
         flashTitle(`${stripTextStyle(incoming.author)} says…`);
@@ -2156,7 +2237,11 @@ export function ChatShell() {
         const serverId = channelServerRef.current.get(channelId);
         // A DM you are not looking at still deserves to bubble up the list.
         // Server channels don't touch the DM list, so skip the refetch.
-        if (!serverId) void loadDms().catch(() => undefined);
+        if (!serverId) {
+          void loadDms().catch(() => undefined);
+          // Not a DM we know either: a server we just joined. Fetch it.
+          if (!dmChannelIdsRef.current.has(channelId)) void loadServers().catch(() => undefined);
+        }
         const mentioned = Boolean(user && incoming.mentions?.includes(user.id));
         // Your own messages (echoed back) never count as unread.
         if (user && incoming.userId === user.id) return;
@@ -2204,11 +2289,22 @@ export function ChatShell() {
         }
         return;
       }
-      setMessages((current) =>
-        current.some((existing) => existing.id === incoming.id)
-          ? current
-          : [...current, incoming],
-      );
+      if (detachedRef.current) {
+        // Viewing old history: count it, append nothing (there is a gap).
+        setUnseenCount((count) => count + 1);
+        return;
+      }
+      setMessages((current) => {
+        if (current.some((existing) => existing.id === incoming.id)) return current;
+        const next = [...current, incoming];
+        // A busy channel left open for hours would otherwise grow without
+        // bound; drop the oldest while the reader is at the bottom.
+        if (next.length > 600 && nearBottomRef.current) {
+          setHasOlder(true);
+          return next.slice(-400);
+        }
+        return next;
+      });
     },
     [loadDms, user],
   );
@@ -2244,20 +2340,69 @@ export function ChatShell() {
    * reload for each event on every open tab. Coalesce them into one reload.
    */
   const structureReloadRef = useRef<number | null>(null);
-  const reloadStructureSoon = useCallback(() => {
+  /** Pending reload scope: server ids, or "*" for a change not tied to one. */
+  const structureScopeRef = useRef<Set<string>>(new Set());
+  const myServerIdsRef = useRef<Set<string>>(new Set());
+  const reloadStructureSoon = useCallback((serverId?: string) => {
+    // A change in a server you are not in is none of this tab's business.
+    if (serverId && !myServerIdsRef.current.has(serverId)) return;
+    structureScopeRef.current.add(serverId || "*");
     if (structureReloadRef.current) return;
+    // Spread out: with a hundred people online, a shared 400 ms timer turned
+    // every change into a hundred simultaneous reloads.
     structureReloadRef.current = window.setTimeout(() => {
       structureReloadRef.current = null;
+      const scope = structureScopeRef.current;
+      structureScopeRef.current = new Set();
+      const everything = scope.has("*");
+      const active = activeServerRef.current;
       void loadServers().catch(() => undefined);
-      void loadMembers().catch(() => undefined);
+      if (everything || (active && scope.has(active))) {
+        void loadMembers().catch(() => undefined);
+        setEventsRefresh((n) => n + 1);
+      }
       void loadEmojis().catch(() => undefined);
-      // Group DMs you were added to (or renamed) arrive as structure changes.
-      void loadDms().catch(() => undefined);
-      setEventsRefresh((n) => n + 1);
-    }, 400);
+      // Group DMs you were added to (or renamed) arrive as unscoped changes.
+      if (everything) void loadDms().catch(() => undefined);
+    }, 300 + Math.random() * 1200);
     // loadEmojis/loadServers/loadMembers are stable useCallbacks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Someone's profile or presence changed: refresh only lists showing them. */
+  const memberReloadRef = useRef<number | null>(null);
+  const memberReloadDmsRef = useRef(false);
+  const shownPeopleRef = useRef<{ members: Set<string>; dmPartners: Set<string> }>({
+    members: new Set(),
+    dmPartners: new Set(),
+  });
+  const reloadMemberSoon = useCallback((userId: string) => {
+    const shown = shownPeopleRef.current;
+    const inMembers = shown.members.has(userId);
+    const inDms = shown.dmPartners.has(userId);
+    if (!inMembers && !inDms) return;
+    if (inDms) memberReloadDmsRef.current = true;
+    if (memberReloadRef.current) return;
+    memberReloadRef.current = window.setTimeout(() => {
+      memberReloadRef.current = null;
+      void loadMembers().catch(() => undefined);
+      if (memberReloadDmsRef.current) {
+        memberReloadDmsRef.current = false;
+        void loadDms().catch(() => undefined);
+      }
+    }, 500 + Math.random() * 1500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  myServerIdsRef.current = useMemo(() => new Set(servers.map((server) => server.id)), [servers]);
+  shownPeopleRef.current = useMemo(
+    () => ({
+      members: new Set(members.map((member) => member.id)),
+      dmPartners: new Set(
+        dms.flatMap((dm) => (dm.group ? dm.group.members.map((member) => member.id) : [dm.user.id])),
+      ),
+    }),
+    [members, dms],
+  );
 
   /** Server-muted user ids, for callbacks made before `hub` exists. */
   const forcedMutesRef = useRef<Set<string>>(new Set());
@@ -2265,6 +2410,10 @@ export function ChatShell() {
     onMessage: handleIncomingMessage,
     onSignal: (from, data) => voiceSignalRef.current(from, data),
     onStructureChange: reloadStructureSoon,
+    onMember: (userId) => {
+      if (user && userId === user.id) return;
+      reloadMemberSoon(userId);
+    },
     onMessageDeleted: (channelId, id) => {
       if (channelId !== activeChannelRef.current) return;
       setMessages((current) => current.filter((message) => message.id !== id));
@@ -2350,9 +2499,10 @@ export function ChatShell() {
         },
       }));
     },
-    onPoll: (channelId, pollId, counts) => {
+    onPoll: (channelId, pollId, counts, voterLists) => {
       if (channelId !== activeChannelRef.current) return;
       setPollCounts((current) => ({ ...current, [pollId]: counts }));
+      if (voterLists) setPollVoters((current) => ({ ...current, [pollId]: voterLists }));
     },
     onBattlemap: (channelId, payload) => {
       onBattlemapSocket(channelId, payload);
@@ -2455,6 +2605,17 @@ export function ChatShell() {
   useEffect(() => {
     if (signedInId) void registerNativePush();
   }, [signedInId]);
+  // The soundboard works in your current room unless it is switched off there
+  // or you are sitting in a stage's audience.
+  const currentRoom = voice.channelId
+    ? servers.flatMap((server) => server.channels).find((channel) => channel.id === voice.channelId)
+    : undefined;
+  const mySeat = voice.channelId
+    ? (hub.voice[voice.channelId] || []).find((seat) => seat.connectionId === hub.connectionId)
+    : undefined;
+  const voiceSoundboardAllowed =
+    currentRoom?.soundboard !== false &&
+    !(currentRoom?.kind === "stage" && mySeat?.speakAllowed !== true);
   const voiceChannelName = voice.channelId
     ? voiceChannels.find((channel) => channel.id === voice.channelId)?.name ||
       dms.find((dm) => dm.channelId === voice.channelId)?.user.displayName ||
@@ -2817,6 +2978,7 @@ export function ChatShell() {
       [gamesOpen, ".games-picker, .composer-games-btn", () => setGamesOpen(false)],
       [mentionsOpen, '.mentions-panel, [aria-label="Mentions"]', () => setMentionsOpen(false)],
       [pinsOpen, '.pins-panel:not(.mentions-panel), [aria-label="Pinned messages"]', () => setPinsOpen(false)],
+      [savedOpen, '.saved-panel, [aria-label="Saved messages"]', () => setSavedOpen(false)],
     ];
     const open = popovers.filter(([isOpen]) => isOpen);
     if (!open.length) return;
@@ -2882,13 +3044,55 @@ export function ChatShell() {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setGlobalSearchOpen((o) => !o);
+        // Ctrl+K jumps anywhere; Ctrl+Shift+K finds people.
+        if (e.shiftKey) setGlobalSearchOpen((o) => !o);
+        else setQuickSwitcherOpen((o) => !o);
       } else if (
         ((e.ctrlKey || e.metaKey) && e.key === "/") ||
         (e.key === "?" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName))
       ) {
         e.preventDefault();
         setShortcutsOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Ctrl+Shift+S / Ctrl+Shift+V toggle screen share and camera while in voice,
+  // and Alt+↑/↓ steps through the channels (or DMs) in the sidebar.
+  const voiceHotkeysRef = useRef({ voice, navTargets: [] as string[] });
+  voiceHotkeysRef.current = {
+    voice,
+    navTargets: inDmHome
+      ? visibleDms.map((dm) => dm.channelId)
+      : [...channelLayout.uncategorised, ...channelLayout.grouped.flatMap((group) => group.channels)]
+          .filter((channel) => channelKindInfo(channel.kind).text)
+          .map((channel) => channel.id),
+  };
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const { voice: current, navTargets } = voiceHotkeysRef.current;
+      if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        if (!navTargets.length) return;
+        event.preventDefault();
+        const index = navTargets.indexOf(activeChannelRef.current || "");
+        const step = event.key === "ArrowUp" ? -1 : 1;
+        const next = navTargets[(index + step + navTargets.length) % navTargets.length];
+        setStageChannelId(null);
+        setActiveChannelId(next);
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || !current.channelId) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        if (current.screenSharing) current.stopScreenShare();
+        else void current.startScreenShare();
+      } else if (key === "v") {
+        event.preventDefault();
+        if (current.cameraOn) current.stopCamera();
+        else void current.startCamera();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -3110,6 +3314,34 @@ export function ChatShell() {
 
   // --------------------------------------------------------------- data
 
+  /** Older history exists above what is loaded. */
+  const [hasOlder, setHasOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  /**
+   * Viewing a window around a jumped-to message rather than the live tail.
+   * Live messages are not appended while detached (there would be a gap);
+   * "Jump to present" reloads the tail.
+   */
+  const [detached, setDetached] = useState(false);
+  const detachedRef = useRef(false);
+  detachedRef.current = detached;
+  /** A message to scroll to once its channel has loaded. */
+  const pendingJumpRef = useRef<{ channelId: string; messageId: string } | null>(null);
+  /** Set just before older messages are prepended, to keep the view still. */
+  const prependAnchorRef = useRef<{ height: number; top: number } | null>(null);
+
+  const loadChannelPage = useCallback(
+    async (channelId: string, around?: string) => {
+      const query = around
+        ? `&around=${encodeURIComponent(around)}`
+        : "";
+      return apiFetch<{ messages: Message[]; hasMore?: boolean; hasNewer?: boolean }>(
+        `/api/messages?channelId=${encodeURIComponent(channelId)}${query}`,
+      );
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!user || !activeChannelId) {
       setMessages([]);
@@ -3119,14 +3351,17 @@ export function ChatShell() {
     let cancelled = false;
     setMessages([]);
     setMessagesLoadedFor(null);
-    apiFetch<{ messages: Message[] }>(
-      `/api/messages?channelId=${encodeURIComponent(activeChannelId)}`,
-    )
+    setHasOlder(false);
+    setDetached(false);
+    const jump =
+      pendingJumpRef.current?.channelId === activeChannelId ? pendingJumpRef.current.messageId : undefined;
+    loadChannelPage(activeChannelId, jump)
       .then((data) => {
-        if (!cancelled) {
-          setMessages(data.messages);
-          setMessagesLoadedFor(activeChannelId);
-        }
+        if (cancelled) return;
+        setMessages(data.messages);
+        setHasOlder(Boolean(data.hasMore));
+        setDetached(Boolean(jump && data.hasNewer));
+        setMessagesLoadedFor(activeChannelId);
       })
       .catch(() => undefined);
     void refreshPins(activeChannelId);
@@ -3135,10 +3370,74 @@ export function ChatShell() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeChannelId, hub.connected]);
+  }, [user, activeChannelId]);
+
+  // After a reconnect, catch up on what was missed without blanking the list
+  // or losing the scroll position: merge the latest page into what is shown.
+  const lastSessionRef = useRef(hub.session);
+  useEffect(() => {
+    if (hub.session === lastSessionRef.current) return;
+    lastSessionRef.current = hub.session;
+    const channelId = activeChannelRef.current;
+    if (!channelId || detachedRef.current) return;
+    hub.send({ t: "subscribe", channelId });
+    loadChannelPage(channelId)
+      .then((data) => {
+        if (activeChannelRef.current !== channelId) return;
+        setMessages((current) => mergeMessages(current, data.messages));
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub.session]);
+
+  /** Loads the page above the oldest shown message. */
+  const loadOlder = useCallback(async () => {
+    const channelId = activeChannelRef.current;
+    const el = messagesScrollRef.current;
+    if (!channelId || loadingOlderRef.current || !hasOlder || !el) return;
+    const oldest = messagesRef.current[0];
+    if (!oldest) return;
+    loadingOlderRef.current = true;
+    try {
+      const data = await apiFetch<{ messages: Message[]; hasMore?: boolean }>(
+        `/api/messages?channelId=${encodeURIComponent(channelId)}&before=${encodeURIComponent(String(oldest.id))}`,
+      );
+      if (activeChannelRef.current !== channelId) return;
+      prependAnchorRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      setMessages((current) => mergeMessages(data.messages, current));
+      setHasOlder(Boolean(data.hasMore));
+    } catch {
+      // Try again on the next scroll.
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [hasOlder]);
+
+  // Scroll to a jumped-to message once it is on screen, and flash it.
+  useEffect(() => {
+    const jump = pendingJumpRef.current;
+    if (!jump || jump.channelId !== activeChannelId || messagesLoadedFor !== activeChannelId) return;
+    const element = document.getElementById(`msg-${jump.messageId}`);
+    if (!element) return;
+    pendingJumpRef.current = null;
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("jump-flash");
+      window.setTimeout(() => element.classList.remove("jump-flash"), 2000);
+    });
+  }, [activeChannelId, messagesLoadedFor, messages]);
 
   useLayoutEffect(() => {
     if (!activeChannelId || messagesLoadedFor !== activeChannelId) return;
+    const anchor = prependAnchorRef.current;
+    if (anchor) {
+      // Older history went in above: keep the same messages under the eye.
+      prependAnchorRef.current = null;
+      const el = messagesScrollRef.current;
+      if (el) el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
+      return;
+    }
+    if (pendingJumpRef.current?.channelId === activeChannelId) return;
     const initial = initialChannelScrollRef.current;
     if (initial?.channelId === activeChannelId) {
       initialChannelScrollRef.current = null;
@@ -3184,14 +3483,33 @@ export function ChatShell() {
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distance < 120;
-    nearBottomRef.current = near;
-    if (near) setUnseenCount(0);
-    setShowJumpLatest(distance > Math.max(300, el.clientHeight * 0.6));
+    nearBottomRef.current = near && !detachedRef.current;
+    if (near && !detachedRef.current) setUnseenCount(0);
+    setShowJumpLatest(detachedRef.current || distance > Math.max(300, el.clientHeight * 0.6));
+    if (el.scrollTop < 400) void loadOlderRef.current();
   }, []);
+  const loadOlderRef = useRef(loadOlder);
+  loadOlderRef.current = loadOlder;
 
   const jumpToLatest = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
+    if (detachedRef.current) {
+      // Viewing old history: fetch the present instead of scrolling to the
+      // end of an old window.
+      const channelId = activeChannelRef.current;
+      if (!channelId) return;
+      void loadChannelPage(channelId).then((data) => {
+        if (activeChannelRef.current !== channelId) return;
+        setDetached(false);
+        setHasOlder(Boolean(data.hasMore));
+        nearBottomRef.current = true;
+        setUnseenCount(0);
+        setMessages(data.messages);
+        window.requestAnimationFrame(() => messageEndRef.current?.scrollIntoView({ behavior: "auto" }));
+      });
+      return;
+    }
     nearBottomRef.current = true;
     setUnseenCount(0);
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -3200,7 +3518,7 @@ export function ChatShell() {
       el.scrollTop = el.scrollHeight - el.clientHeight * 2;
     }
     el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
-  }, []);
+  }, [loadChannelPage]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("huddle-theme");
@@ -3586,6 +3904,37 @@ export function ChatShell() {
     });
   }
 
+  /** Loads the saved list (and which ids are saved). */
+  async function loadSaved() {
+    const data = await apiFetch<{ saved: SavedEntry[] }>("/api/saved").catch(() => null);
+    if (!data) return;
+    setSavedList(data.saved);
+    setSavedIds(new Set(data.saved.map((entry) => entry.messageId)));
+  }
+
+  async function toggleSaved(messageId: string) {
+    const saved = savedIds.has(messageId);
+    setSavedIds((current) => {
+      const next = new Set(current);
+      if (saved) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+    try {
+      await apiFetch(
+        saved ? `/api/saved?messageId=${encodeURIComponent(messageId)}` : "/api/saved",
+        saved
+          ? { method: "DELETE" }
+          : { method: "POST", body: JSON.stringify({ messageId }) },
+      );
+      if (saved) setSavedList((list) => list?.filter((entry) => entry.messageId !== messageId) ?? list);
+      else showToast("Saved. Find it under the bookmark at the top.", "success");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not save that.");
+      void loadSaved();
+    }
+  }
+
   async function deleteMessage(id: string | number) {
     try {
       await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
@@ -3906,6 +4255,51 @@ export function ChatShell() {
         setNotice("");
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "The AI did not answer.");
+      }
+      return;
+    }
+
+    if (name === "summarize" || name === "catchup" || name === "tldr") {
+      pendingCommandRef.current = null;
+      if (!activeChannelId) return;
+      setNotice("✦ Reading the channel…");
+      try {
+        const data = await apiFetch<{ summary: string; count: number }>("/api/ai/summarize", {
+          method: "POST",
+          body: JSON.stringify({ channelId: activeChannelId }),
+        });
+        setNotice("");
+        // Shown to you only; nothing is posted to the channel.
+        setDialogOptions({
+          type: "alert",
+          title: `Catch-up · last ${data.count} messages`,
+          message: data.summary,
+          confirmText: "Got it",
+        });
+        setDialogCallback(null);
+        setDialogCancel(null);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "The summary did not come back.");
+      }
+      return;
+    }
+
+    if (name === "remind") {
+      pendingCommandRef.current = null;
+      try {
+        const data = await apiFetch<{ dueAt: string }>("/api/reminders", {
+          method: "POST",
+          body: JSON.stringify({
+            spec: value,
+            channelId: activeChannelId,
+            timezoneOffset: new Date().getTimezoneOffset(),
+          }),
+        });
+        setNotice(`⏰ Reminder set for ${formatClientDateTime(data.dueAt)}.`);
+      } catch (error) {
+        setNotice(
+          error instanceof Error ? error.message : "Try: /remind 20m take the pizza out",
+        );
       }
       return;
     }
@@ -4273,7 +4667,19 @@ export function ChatShell() {
     await apiFetch(`/api/messages/${id}/reactions`, {
       method: "POST",
       body: JSON.stringify({ emoji }),
-    }).catch(() => undefined);
+    }).catch((error: Error) => {
+      // The reaction did not land (a timeout, say): show what is really there.
+      setNotice(error.message);
+      const channelId = activeChannelRef.current;
+      if (!channelId || detachedRef.current) return;
+      void loadChannelPage(channelId)
+        .then((data) => {
+          if (activeChannelRef.current === channelId) {
+            setMessages((current) => mergeMessages(current, data.messages));
+          }
+        })
+        .catch(() => undefined);
+    });
   }
 
   const threadBottomRef = useRef<HTMLDivElement | null>(null);
@@ -4385,7 +4791,15 @@ export function ChatShell() {
     await apiFetch(`/api/messages/${message.id}`, {
       method: "PATCH",
       body: JSON.stringify({ content }),
-    }).catch((error: Error) => setNotice(error.message));
+    }).catch((error: Error) => {
+      // Put the text back as it was: the edit did not happen.
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === message.id ? { ...m, text: message.text, editedAt: message.editedAt } : m,
+        ),
+      );
+      setNotice(error.message);
+    });
   }
 
   const [incomingDmCall, setIncomingDmCall] = useState<{
@@ -4415,6 +4829,7 @@ export function ChatShell() {
   const dmCallRef = useRef(dmCall);
   dmCallRef.current = dmCall;
   const callingTimeoutRef = useRef<number | null>(null);
+  const incomingRingTimeoutRef = useRef<number | null>(null);
   const [callDuration, setCallDuration] = useState(0);
 
   useEffect(() => {
@@ -4446,11 +4861,18 @@ export function ChatShell() {
           action: "cancel",
         });
       }
-      if (missed && activeChannelId && user) {
+      if (missed && currentCall && user) {
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
         const dateStr = now.toLocaleDateString([], { month: "short", day: "numeric" });
-        void sendText(`📞 Missed call from ${user.displayName} on ${dateStr} at ${timeStr}`);
+        // Into the call's own DM, not whichever channel happens to be open.
+        void apiFetch("/api/messages", {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: currentCall.channelId,
+            content: `📞 Missed call from ${user.displayName} on ${dateStr} at ${timeStr}`,
+          }),
+        }).catch(() => undefined);
       }
       dmCallEndingRef.current = true;
       voice.leave();
@@ -4549,7 +4971,17 @@ export function ChatShell() {
     }) => {
       if (payload.action === "call") {
         if (payload.fromUserId === user?.id) return;
+        if (blockedUserIdsRef.current.has(payload.fromUserId)) return;
         startIncomingCallTone();
+        // If the caller's tab dies without cancelling, stop ringing anyway.
+        if (incomingRingTimeoutRef.current) window.clearTimeout(incomingRingTimeoutRef.current);
+        incomingRingTimeoutRef.current = window.setTimeout(() => {
+          incomingRingTimeoutRef.current = null;
+          stopIncomingCallTone();
+          setIncomingDmCall((current) =>
+            current?.channelId === payload.channelId ? null : current,
+          );
+        }, 45_000);
         showNotification(
           `Incoming ${payload.isVideo ? "Video" : "Voice"} Call`,
           `${payload.fromDisplayName || "Someone"} is calling you...`,
@@ -4584,6 +5016,7 @@ export function ChatShell() {
         voice.leave();
         setNotice(`${payload.fromDisplayName} declined the call.`);
       } else if (payload.action === "cancel") {
+        if (incomingRingTimeoutRef.current) window.clearTimeout(incomingRingTimeoutRef.current);
         stopIncomingCallTone();
         setIncomingDmCall(null);
       }
@@ -4716,12 +5149,24 @@ export function ChatShell() {
     prevPeerScreenShares.current = currentScreenPeers;
   }, [voiceParticipants, voice.channelId, hub.connectionId]);
 
-  async function runSearch(query: string) {
+  const searchTimerRef = useRef<number | null>(null);
+  const searchSeqRef = useRef(0);
+  function runSearch(query: string) {
     setSearchQuery(query);
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    const seq = ++searchSeqRef.current;
     if (query.trim().length < 2 || !activeServerId || inDmHome) {
       setSearchResults([]);
       return;
     }
+    // Wait for a pause in typing, and ignore answers to older queries.
+    searchTimerRef.current = window.setTimeout(() => {
+      void searchNow(query, seq);
+    }, 250);
+  }
+
+  async function searchNow(query: string, seq: number) {
+    if (!activeServerId) return;
     const data = await apiFetch<{
       results: Array<{
         id: string;
@@ -4733,19 +5178,30 @@ export function ChatShell() {
     }>(
       `/api/messages/search?serverId=${encodeURIComponent(activeServerId)}&q=${encodeURIComponent(query)}`,
     ).catch(() => ({ results: [] }));
-    setSearchResults(data.results);
+    if (seq === searchSeqRef.current) setSearchResults(data.results);
   }
 
   function jumpToMessage(channelId: string, messageId: string) {
     setSearchOpen(false);
     setStageChannelId(null);
-    setActiveChannelId(channelId);
-    // Scroll to the message once it's rendered.
-    window.setTimeout(() => {
-      document
-        .getElementById(`msg-${messageId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 300);
+    pendingJumpRef.current = { channelId, messageId };
+    if (channelId !== activeChannelRef.current) {
+      // The channel load picks the jump up and fetches the window around it.
+      setActiveChannelId(channelId);
+      return;
+    }
+    if (messagesRef.current.some((message) => String(message.id) === messageId)) {
+      // Already loaded: the jump effect scrolls to it.
+      setMessages((current) => [...current]);
+      return;
+    }
+    // Further back than what is loaded: load the window around it.
+    void loadChannelPage(channelId, messageId).then((data) => {
+      if (activeChannelRef.current !== channelId) return;
+      setMessages(data.messages);
+      setHasOlder(Boolean(data.hasMore));
+      setDetached(Boolean(data.hasNewer));
+    });
   }
 
   async function sendMessage(event?: FormEvent) {
@@ -5068,7 +5524,7 @@ export function ChatShell() {
       }
       if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
         event.preventDefault();
-        pickCommand(slashIndex);
+        pickCommand(slashIndex, true);
         return;
       }
       if (event.key === "Escape") {
@@ -5101,15 +5557,19 @@ export function ChatShell() {
     }
   }
 
-  function pickCommand(index: number) {
+  function pickCommand(index: number, fromKeyboard = false) {
     const command = slashMatches[index];
     if (!command) return;
-    setDraft(command.args ? `/${command.name} ` : `/${command.name}`);
     composerRef.current?.focus();
-    if (!command.args) {
+    // Run straight away only when the full name was typed (or it was clicked):
+    // "/s" + Enter used to fire /skip or /stop for the whole room.
+    const typedFully = draft.trim().toLowerCase() === `/${command.name}`;
+    if (!command.args && (!fromKeyboard || typedFully)) {
       void runCommand(`/${command.name}`);
       setDraft("");
+      return;
     }
+    setDraft(command.args ? `/${command.name} ` : `/${command.name}`);
   }
 
   /** Shared by the paperclip, a drop, and a paste. Accepts several at once. */
@@ -5463,6 +5923,20 @@ export function ChatShell() {
     });
   }
 
+  async function toggleChannelSoundboard(channel: PublicChannel) {
+    const enable = channel.soundboard === false;
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(`/api/channels/${channel.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ soundboard: enable }),
+      });
+      setServers(data.servers);
+      setNotice(enable ? `Soundboard on in ${channel.name}.` : `Soundboard off in ${channel.name}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not change the soundboard.");
+    }
+  }
+
   async function deleteChannel(channel: PublicChannel) {
     showCustomConfirm({
       title: `Delete '${channel.name}'?`,
@@ -5490,8 +5964,10 @@ export function ChatShell() {
   }
 
   async function signOut() {
-    // Before logging out, while the request is still authenticated.
+    // Before logging out, while the request is still authenticated: this
+    // device must stop getting the account's notifications.
     await unregisterNativePush();
+    await disableWebPush().catch(() => undefined);
     await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     voice.leave();
     setUser(null);
@@ -6999,6 +7475,7 @@ export function ChatShell() {
             sidebarShareSetupOpen={sidebarShareSetupOpen}
             setSidebarShareSetupOpen={setSidebarShareSetupOpen}
             setStageChannelId={setStageChannelId}
+            soundboardAllowed={voiceSoundboardAllowed}
           />
         )}
 
@@ -7333,6 +7810,16 @@ export function ChatShell() {
                 >
                   <Pin size={18} />
                 </Icon>
+                <Icon
+                  label="Saved messages"
+                  active={savedOpen}
+                  onClick={() => {
+                    setSavedOpen((open) => !open);
+                    void loadSaved();
+                  }}
+                >
+                  <Bookmark size={18} />
+                </Icon>
                 {/* Settings already lives in the user footer; MSN shows it as "Options". */}
                 {msnTheme && (
                   <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
@@ -7375,6 +7862,7 @@ export function ChatShell() {
                 // A stage has an audience, so the view splits the room into
                 // audible and listening, and offers the listening half a hand.
                 stageMode={channelKindInfo(stageChannel.kind).kind === "stage"}
+                soundboardEnabled={stageChannel.soundboard !== false}
                 // Hosts host: moving seats on and off the stage is a moderation
                 // action, and the hub rechecks the same permission.
                 canManageStage={hasPermission(myPermissions, Permission.MUTE_MEMBERS)}
@@ -7539,6 +8027,67 @@ export function ChatShell() {
                   </div>
                 )}
 
+                {savedOpen && (
+                  <div className="pins-panel saved-panel">
+                    <div className="pins-head">
+                      <strong>Saved messages</strong>
+                      <button
+                        type="button"
+                        className="popup-close-x"
+                        onClick={() => setSavedOpen(false)}
+                        aria-label="Close saved messages"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    {!savedList ? (
+                      <p className="pins-empty">Loading…</p>
+                    ) : !savedList.length ? (
+                      <p className="pins-empty">
+                        Nothing saved yet. Hover a message and press the bookmark to keep it here.
+                      </p>
+                    ) : (
+                      savedList.map((entry) => (
+                        <div key={entry.messageId} className="search-result mention-entry saved-entry">
+                          <button
+                            type="button"
+                            className="saved-open"
+                            onClick={() => {
+                              setSavedOpen(false);
+                              setActiveServerId(entry.serverId || DM_HOME);
+                              jumpToMessage(entry.channelId, entry.messageId);
+                            }}
+                          >
+                            <span className="search-result-meta">
+                              {entry.serverName && entry.channelName ? (
+                                <>
+                                  {entry.serverName} · <span className="channel-hash">#</span>
+                                  {entry.channelName}
+                                </>
+                              ) : (
+                                "Direct message"
+                              )}
+                              {" · "}
+                              {formatClientDateTime(entry.createdAt)}
+                            </span>
+                            <span className="search-result-meta">
+                              <strong>{entry.author}</strong>
+                            </span>
+                            <span className="search-result-snippet">{entry.text}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="saved-remove"
+                            onClick={() => void toggleSaved(entry.messageId)}
+                            aria-label="Remove from saved"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
                 {mentionsOpen && (
                   <div className="pins-panel mentions-panel">
                     <div className="pins-head">
@@ -7629,14 +8178,8 @@ export function ChatShell() {
                           className="pin-item cursor-pointer hover:bg-white/5 p-2.5 rounded-lg transition-colors border border-transparent hover:border-white/10 my-1"
                           key={pin.id}
                           onClick={() => {
-                            const el = document.getElementById(`msg-${pin.id}`);
-                            if (el) {
-                              el.scrollIntoView({ behavior: "smooth", block: "center" });
-                              el.classList.add("jump-flash");
-                              setTimeout(() => {
-                                el.classList.remove("jump-flash");
-                              }, 2000);
-                            }
+                            // Works for pins older than what is loaded, too.
+                            if (activeChannelId) jumpToMessage(activeChannelId, String(pin.id));
                           }}
                           title="Click to jump to message"
                         >
@@ -7866,7 +8409,12 @@ export function ChatShell() {
                       Never give out your password or credit card number in an instant message conversation.
                     </p>
                   )}
-                  <div className="channel-intro">
+                  {hasOlder && (
+                    <button type="button" className="load-older" onClick={() => void loadOlder()}>
+                      Load earlier messages
+                    </button>
+                  )}
+                  {!hasOlder && <div className="channel-intro">
                     <div className="cozy-intro-pill">
                       <span className="cozy-intro-icon">
                         {inDmHome ? (
@@ -7904,7 +8452,7 @@ export function ChatShell() {
                           : "This is the start of the channel. Be excellent to each other."}
                       </p>
                     </div>
-                  </div>
+                  </div>}
 
                   {messages.map((message, index) => {
                     const dayLabel = dayDividerLabel(message, messages[index - 1]) ?? undefined;
@@ -8299,6 +8847,7 @@ export function ChatShell() {
                               options={message.payload.options || []}
                               multi={message.payload.multi}
                               liveCounts={pollCounts[message.payload.pollId]}
+                              liveVoters={pollVoters[message.payload.pollId]}
                             />
                           ) : editingId === message.id ? (
                             <MessageEditor
@@ -8678,6 +9227,16 @@ export function ChatShell() {
                             }}
                           >
                             <Reply size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}
+                            onClick={() => {
+                              void toggleSaved(String(message.id));
+                              setOpenActionsId(null);
+                            }}
+                          >
+                            {savedIds.has(String(message.id)) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
                           </button>
                           <button
                             type="button"
@@ -10627,6 +11186,19 @@ export function ChatShell() {
                     Voice Bitrate ({Math.round(clampVoiceBitrate(channelMenu.channel.bitrate) / 1000)} kbps)
                   </button>
                 )}
+                {channelKindInfo(channelMenu.channel.kind).voice && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const channel = channelMenu.channel;
+                      setChannelMenu(null);
+                      void toggleChannelSoundboard(channel);
+                    }}
+                  >
+                    {channelMenu.channel.soundboard === false ? "Turn soundboard on" : "Turn soundboard off"}
+                  </button>
+                )}
                 {convertibleKinds(channelMenu.channel.kind).map((kind) => (
                   <button
                     key={kind}
@@ -10836,8 +11408,10 @@ export function ChatShell() {
           onClose={() => setServerSettingsOpen(false)}
           onServerUpdated={() => void loadServers().catch(() => undefined)}
           onServerDeleted={() => {
-            void loadServers().catch(() => undefined);
-            setActiveServerId(servers[0]?.id || null);
+            const deleted = activeServer.id;
+            void loadServers()
+              .then((list) => setActiveServerId(list.find((server) => server.id !== deleted)?.id || DM_HOME))
+              .catch(() => undefined);
           }}
           onRequestPrompt={showCustomPrompt}
           onRequestConfirm={showCustomConfirm}
@@ -10936,9 +11510,15 @@ export function ChatShell() {
             if (target.serverId && target.serverId !== activeServerId) {
               setActiveServerId(target.serverId);
             }
-            if (channelKindInfo(target.kind).appearsAsVoice) {
-              setStageChannelId(target.id);
-              void voice.join(target.id);
+            // By the channel itself: the switcher calls a stage "text".
+            const found = servers
+              .flatMap((server) => server.channels)
+              .find((channel) => channel.id === target.id);
+            const voiceTarget =
+              found && channelKindInfo(found.kind).appearsAsVoice ? found : undefined;
+            if (voiceTarget) {
+              // The same path as clicking the room: timeout check, stage mute.
+              openVoiceChannel(voiceTarget);
             } else {
               setActiveChannelId(target.id);
               setStageChannelId(null);
@@ -11285,9 +11865,10 @@ export function ChatShell() {
             }}
           >
             {(() => {
-              const msg = messages.find(
-                (m) => m.id === reactionViewer.messageId,
-              );
+              const msg =
+                messages.find((m) => m.id === reactionViewer.messageId) ||
+                threadMessages.find((m) => m.id === reactionViewer.messageId) ||
+                (threadRoot?.id === reactionViewer.messageId ? threadRoot : undefined);
               const reaction = msg?.reactions?.find(
                 (r) => r.emoji === reactionViewer.emoji,
               );

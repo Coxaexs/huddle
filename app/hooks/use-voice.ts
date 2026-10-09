@@ -292,6 +292,9 @@ async function sfuGrant(
 /** How much of the room "Clip that!" keeps buffered. */
 const CLIP_SECONDS = 30;
 
+/** Signals held for a seat the roster has not shown yet; older ones are dropped. */
+const EARLY_SIGNAL_LIMIT = 50;
+
 async function tuneAudioSender(
   sender: RTCRtpSender,
   maxBitrate: number,
@@ -532,17 +535,19 @@ export function useVoice({
       if (!person) return false;
       return (entry.kind !== "camera" && entry.kind !== "screen") || videoAllowedFrom(person);
     });
-    const meshed = remoteStreams.filter(
-      (entry) =>
-        entry.stream.getVideoTracks().length === 0 ||
-        videoAllowedFrom((roster || []).find((seat) => seat.connectionId === entry.connectionId)),
-    );
+    const meshed = remoteStreams.filter((entry) => {
+      const person = (roster || []).find((seat) => seat.connectionId === entry.connectionId);
+      if (!person) return false;
+      return entry.stream.getVideoTracks().length === 0 || videoAllowedFrom(person);
+    });
     return [
       ...meshed,
       ...trusted.map(({ connectionId: id, stream, kind }) => ({ connectionId: id, stream, kind })),
     ];
   }, [remoteStreams, sfuStreams, roster]);
   const [screenSharing, setScreenSharing] = useState(false);
+  const clipRemoteStreamsRef = useRef(allRemoteStreams);
+  clipRemoteStreamsRef.current = allRemoteStreams;
   const [screenShareAudio, setScreenShareAudioState] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("huddle:screenshare-audio") !== "false";
@@ -726,6 +731,8 @@ export function useVoice({
   roomsRef.current = rooms;
   /** Lets the replay effect call the handler without depending on its identity. */
   const handleSignalRef = useRef<(from: string, raw: unknown) => void>(() => {});
+  /** Bumped by every join and leave; a join that is no longer the latest bails. */
+  const joinSeqRef = useRef(0);
   // "Clip that!": a rolling buffer of the last CLIP_SECONDS of the room.
   const clipRecorderRef = useRef<MediaRecorder | null>(null);
   const clipChunksRef = useRef<Array<{ at: number; data: Blob }>>([]);
@@ -861,6 +868,11 @@ export function useVoice({
           }
         };
         if (localStreamRef.current) attach("self", localStreamRef.current);
+        // Everyone already in the room, too: the effect below only adds
+        // streams that arrive later.
+        for (const { connectionId: id, stream, kind } of clipRemoteStreamsRef.current) {
+          attach(kind ? `${id}:${kind}` : id, stream);
+        }
 
         const tracks: MediaStreamTrack[] = [...destination.stream.getAudioTracks()];
         const screenVideo = screenStreamRef.current?.getVideoTracks()[0];
@@ -908,7 +920,7 @@ export function useVoice({
       void clipMixRef.current?.context.close().catch(() => undefined);
       clipMixRef.current = null;
     };
-  }, [channelId, enableClips]);
+  }, [channelId, enableClips, screenSharing]);
 
   // Remote people joining mid-call get folded into the clip mix.
   useEffect(() => {
@@ -1379,8 +1391,19 @@ export function useVoice({
       // Signalling can beat this tab's own join by a hair on a fast network.
       // Hold anything early and replay it once we are in the room, rather than
       // dropping it — a dropped offer means that pair never connects at all.
-      if (!channelIdRef.current) {
-        earlySignalsRef.current.push({ from, raw, at: Date.now() });
+      //
+      // Only a seat in this room may negotiate with us: answering an offer
+      // attaches the microphone, so an offer from anyone else would let them
+      // listen in. A seat the roster has not caught up with yet is held too and
+      // replayed once it appears (see the roster effect below).
+      const inRoom = (roomsRef.current[channelIdRef.current || ""] || []).some(
+        (person) => person.connectionId === from,
+      );
+      if (!channelIdRef.current || !inRoom) {
+        const held = earlySignalsRef.current;
+        held.push({ from, raw, at: Date.now() });
+        // Bounded, so a stream of junk signals cannot grow memory forever.
+        if (held.length > EARLY_SIGNAL_LIMIT) held.splice(0, held.length - EARLY_SIGNAL_LIMIT);
         return;
       }
       const data = raw as SignalPayload;
@@ -1672,6 +1695,25 @@ export function useVoice({
   // One more go at LiveKit for a seat that lost it in a room too big to mesh.
   // A refusal goes back through dropToMesh, which schedules the next attempt,
   // or meshes after all if the room has shrunk meanwhile.
+  // LiveKit only lets a seat publish when it may be heard (see the token
+  // route). Brought on stage, or a server mute lifted: fetch a token that
+  // allows it and reconnect, so the new speaker's microphone goes through.
+  const mayPublishRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const mine = channelId
+      ? (rooms[channelId] || []).find((person) => person.connectionId === connectionId)
+      : undefined;
+    const mayPublish = mine ? !mine.serverMuted && mine.speakAllowed !== false : null;
+    const before = mayPublishRef.current;
+    mayPublishRef.current = mayPublish;
+    if (before !== false || mayPublish !== true) return;
+    if (!channelId || !connectionId || !sfuModeRef.current) return;
+    const room = channelId;
+    void sfuGrant(room, connectionId).then((grant) => {
+      if (grant && channelIdRef.current === room && sfuModeRef.current) void connectSfu(grant);
+    });
+  }, [rooms, channelId, connectionId, connectSfu]);
+
   retrySfuRef.current = () => {
     const room = channelIdRef.current;
     if (!room || !connectionId || !sfuModeRef.current || sfuRef.current) return;
@@ -1718,10 +1760,15 @@ export function useVoice({
   // Replay anything that arrived a moment before we were ready to handle it.
   useEffect(() => {
     if (!channelId) return;
-    const pending = earlySignalsRef.current.splice(0);
-    const fresh = pending.filter((entry) => Date.now() - entry.at < 15_000);
-    for (const entry of fresh) void handleSignalRef.current(entry.from, entry.raw);
-  }, [channelId]);
+    const roster = new Set((rooms[channelId] || []).map((person) => person.connectionId));
+    const pending = earlySignalsRef.current;
+    const now = Date.now();
+    const ready = pending.filter((entry) => now - entry.at < 15_000 && roster.has(entry.from));
+    earlySignalsRef.current = pending.filter(
+      (entry) => now - entry.at < 15_000 && !roster.has(entry.from),
+    );
+    for (const entry of ready) void handleSignalRef.current(entry.from, entry.raw);
+  }, [channelId, rooms]);
 
   /**
    * Re-announce the voice join whenever the hub connection id changes.
@@ -2327,6 +2374,7 @@ export function useVoice({
   }, [rooms, channelId, connectionId, screenSharing, cameraOn, stopScreenShare, stopCamera]);
 
   const leave = useCallback(() => {
+    joinSeqRef.current += 1;
     playRoomTone("leave");
     // First, so the screen and camera below are not unpublished one by one.
     const sfu = sfuRef.current;
@@ -2372,9 +2420,16 @@ export function useVoice({
       // "leave" now (an explicit Disconnect button), so a click never drops you.
       if (channelIdRef.current === nextChannelId) return;
       if (channelIdRef.current) leave();
+      // Two quick joins race through the awaits below; only the latest may
+      // finish, and a superseded one must release the microphone it opened.
+      const attempt = ++joinSeqRef.current;
 
       try {
         const chain = await openMicChain();
+        if (attempt !== joinSeqRef.current) {
+          chain.stop();
+          return;
+        }
         // Joining is a real gesture, which is the only moment a phone will let
         // us start playing everyone else's audio.
         unlockAudio();
@@ -2383,6 +2438,10 @@ export function useVoice({
         // LiveKit. The identity carries the hub connection, so without one
         // there would be nothing to match the media to.
         const grant = connectionId ? await sfuGrant(nextChannelId, connectionId) : null;
+        if (attempt !== joinSeqRef.current) {
+          chain.stop();
+          return;
+        }
         // No LiveKit right now, but the room is too big to mesh into: take a
         // LiveKit seat anyway and keep trying, rather than have everyone call us.
         const awaitSfu =

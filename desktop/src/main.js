@@ -82,6 +82,15 @@ function resolveAppUrl() {
 
 let APP_URL = resolveAppUrl();
 
+/** Whether `url` belongs to the Hoffle server this window is pointed at. */
+function isAppUrl(url) {
+  try {
+    return new URL(url).origin === new URL(APP_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
@@ -203,6 +212,13 @@ function createWindow() {
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
+  // The window itself never leaves the Hoffle server: any other page loaded
+  // here would inherit the microphone, camera and screen permissions below.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:/.test(url)) shell.openExternal(url);
+  });
 }
 
 // Linux: capture through PipeWire and the xdg-desktop-portal, which is how
@@ -233,10 +249,15 @@ function configureSession() {
     "fullscreen",
     "pointerLock",
   ]);
-  ses.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(allowed.has(permission));
+  // Granted to the Hoffle server's own pages only, never to whatever else a
+  // frame or a stray navigation might load.
+  ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const origin = details?.requestingUrl || webContents?.getURL() || "";
+    callback(allowed.has(permission) && isAppUrl(origin));
   });
-  ses.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) =>
+    allowed.has(permission) && isAppUrl(requestingOrigin || ""),
+  );
 
   // Intercept getDisplayMedia() and show our own source picker.
   ses.setDisplayMediaRequestHandler(
@@ -479,6 +500,16 @@ if (!app.requestSingleInstanceLock()) {
     // whatever is chosen in Settings; this is just the starting point.
     let muteHotkey = "";
     const bindMuteHotkey = (accelerator) => {
+      // A global shortcut works system-wide, so the page may only bind combos
+      // with a modifier: never a bare key, nor plain Ctrl+C / Ctrl+V.
+      const value = String(accelerator || "");
+      const parts = value.split("+");
+      const modifiers = parts.filter((part) =>
+        /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i.test(part),
+      );
+      if (value && (modifiers.length < 1 || modifiers.length === parts.length)) return;
+      if (/^(CommandOrControl|CmdOrCtrl|Control|Ctrl|Command|Cmd)\+[CVXAZ]$/i.test(value)) return;
+      accelerator = value;
       if (accelerator === muteHotkey) return;
       if (muteHotkey) globalShortcut.unregister(muteHotkey);
       muteHotkey = "";
