@@ -995,7 +995,10 @@ export function RoomActivities({
           <iframe
             src={embeddedWatchUrl(String(activity.state.url || ""))}
             title="Watch Together"
-            allow="autoplay; fullscreen; clipboard-write"
+            allow="autoplay; fullscreen"
+            // The room is another site: let it run and play video, but not
+            // navigate this window or reach the clipboard.
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
           />
         </div>
       ) : isGame ? (

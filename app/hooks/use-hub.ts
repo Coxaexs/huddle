@@ -31,7 +31,9 @@ export interface HubState {
 interface HubHandlers {
   onMessage?: (channelId: string, message: unknown) => void;
   onSignal?: (from: string, data: unknown) => void;
-  onStructureChange?: () => void;
+  onStructureChange?: (serverId?: string) => void;
+  /** One person's profile or presence changed. */
+  onMember?: (userId: string) => void;
   onMessageDeleted?: (channelId: string, id: string) => void;
   onMessagePinned?: (channelId: string, id: string, pinned: boolean) => void;
   onMessageEdited?: (
@@ -53,7 +55,12 @@ interface HubHandlers {
   /** An administrator force-stopped /tts and /say in this channel. */
   onTtsStop?: (channelId: string, by: string) => void;
   onTyping?: (channelId: string, userId: string, displayName: string) => void;
-  onPoll?: (channelId: string, pollId: string, counts: number[]) => void;
+  onPoll?: (
+    channelId: string,
+    pollId: string,
+    counts: number[],
+    voterLists?: Array<Array<{ id: string; name: string }>>,
+  ) => void;
   onBattlemap?: (
     channelId: string,
     payload: {
@@ -315,7 +322,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             handlersRef.current.onSignal?.(payload.from, payload.data);
             break;
           case "structure":
-            handlersRef.current.onStructureChange?.();
+            handlersRef.current.onStructureChange?.(payload.serverId);
+            break;
+          case "member":
+            handlersRef.current.onMember?.(payload.userId);
             break;
           case "message-deleted":
             handlersRef.current.onMessageDeleted?.(payload.channelId, payload.id);
@@ -368,6 +378,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.channelId,
               payload.pollId,
               payload.counts,
+              (payload as { voterLists?: Array<Array<{ id: string; name: string }>> }).voterLists,
             );
             break;
           case "battlemap":
@@ -378,6 +389,8 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               tokens: payload.tokens,
               stroke: payload.stroke,
               strokes: payload.strokes,
+              // Without this, every fog edit cleared every player's fog.
+              fog: (payload as { fog?: unknown }).fog,
             });
             break;
           case "activity":

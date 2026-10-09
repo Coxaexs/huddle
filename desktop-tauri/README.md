@@ -30,3 +30,10 @@ npm run dev
 npm run build
 ```
 The output installers (.deb, .AppImage, .dmg, or .msi/.exe) will be generated in `src-tauri/target/release/bundle/`.
+
+## Known limitation
+
+The Tauri capability allowlist (`src-tauri/capabilities/`) only grants native
+APIs to `https://chat.hoffle.online`. Pointing the app at another Hoffle
+address loads the page, but tray, notifications and other native features
+stay off until that origin is added to the capability's `remote.urls`.

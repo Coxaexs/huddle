@@ -56,6 +56,8 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
       payload?: Message["payload"];
       roll?: DiceRollEvent;
       error?: string;
+      /** The server already wrote the (verified) card into the channel. */
+      posted?: boolean;
     }>("/api/integrations/dnd/roll", {
       method: "POST",
       body: JSON.stringify({
@@ -78,6 +80,7 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
     if (data.roll) {
       onRoll(data.roll);
     }
+    if (data.posted) return;
     await postBotMessage(data.text || "The roll succeeded.", {
       author: "D&D Bot",
       avatar: "⚔",

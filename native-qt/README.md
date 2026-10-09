@@ -1,5 +1,10 @@
 # Huddle Native Client (C++20 / Qt 6)
 
+> **Status: experimental prototype, not usable yet.** It talks to the bot API
+> with a bot token rather than signing in as a person, and voice is a stub
+> (it connects with a placeholder token). Use the web app, the Electron
+> desktop app (`desktop/`) or the mobile apps instead.
+
 High-performance, ultra-low-latency native desktop client for Huddle built with **C++20**, **Qt 6**, and designed for the **LiveKit C++ SDK**.
 
 ## Features

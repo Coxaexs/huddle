@@ -17,6 +17,8 @@ export interface ChannelRow {
   topic: string;
   slowmode?: number;
   bitrate?: number;
+  /** Voice rooms: 0 switches the soundboard off. */
+  soundboard?: number;
   position: number;
   category_id: string | null;
   created_at: string;
@@ -59,6 +61,8 @@ export interface PublicChannel {
   slowmode?: number;
   /** Voice channels: the most each speaker sends, in bits per second. */
   bitrate?: number;
+  /** Voice channels: false when moderators switched the soundboard off. */
+  soundboard?: boolean;
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -102,7 +106,10 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     topic: channel.topic || "",
     slowmode: (channel as { slowmode?: number }).slowmode || 0,
     ...(channelKindInfo(channel.kind).voice
-      ? { bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate) }
+      ? {
+          bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate),
+          soundboard: (channel as { soundboard?: number }).soundboard !== 0,
+        }
       : {}),
     position: channel.position,
     categoryId: channel.category_id || null,
@@ -205,7 +212,7 @@ export async function listServers(
           .all(),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, soundboard, position, category_id, created_at
            FROM channels WHERE server_id != ?1 AND ${filter}
           ORDER BY position ASC, created_at ASC`,
     ),

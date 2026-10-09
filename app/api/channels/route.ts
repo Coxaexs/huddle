@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     targetName: name,
     detail: kind,
   });
-  await publishStructureChange();
+  await publishStructureChange(body.serverId);
   return Response.json(
     { channelId: id, servers: await listServers(db, user.id) },
     { status: 201 },

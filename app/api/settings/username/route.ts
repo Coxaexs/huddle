@@ -5,7 +5,7 @@ import {
   validateUsername,
   verifyPassword,
 } from "@/lib/auth";
-import { publishStructureChange } from "@/lib/hub-client";
+import { publishMemberUpdate } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -75,6 +75,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 
-  await publishStructureChange();
+  await publishMemberUpdate(user.id);
   return Response.json({ user: publicUser({ ...user, username }) });
 }

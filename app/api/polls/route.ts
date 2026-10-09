@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
 import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
+import { canSeeServer, channelAccess } from "@/lib/access";
 import { channelAudience, isDmMember } from "@/lib/dms";
 import { publishMessage } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
@@ -62,12 +63,8 @@ export async function POST(request: Request) {
   if (channel.kind === "dm") {
     if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
   } else {
-    const banned = await db
-      .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
-      .bind(channel.server_id, user.id)
-      .first();
-    if (banned) {
-      return Response.json({ error: "You are banned from this server." }, { status: 403 });
+    if (!(await canSeeServer(db, channel.server_id, user))) {
+      return Response.json({ error: "You are not a member of this server." }, { status: 403 });
     }
     const timedOut = await blockIfTimedOut(db, channelId, user.id);
     if (timedOut) return timedOut;
@@ -179,10 +176,12 @@ export async function GET(request: Request) {
 
   const pollId = new URL(request.url).searchParams.get("pollId") || "";
   const poll = await db
-    .prepare("SELECT options, is_private FROM polls WHERE id = ?")
+    .prepare("SELECT options, is_private, channel_id FROM polls WHERE id = ?")
     .bind(pollId)
-    .first<{ options: string; is_private?: number }>();
+    .first<{ options: string; is_private?: number; channel_id: string }>();
   if (!poll) return Response.json({ error: "No such poll." }, { status: 404 });
+  const access = await channelAccess(db, poll.channel_id, user);
+  if (!access.ok) return access.response;
 
   const size = (JSON.parse(poll.options) as string[]).length;
   const isPrivate = Boolean(poll.is_private);

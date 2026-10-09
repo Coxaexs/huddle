@@ -522,7 +522,9 @@ export function applyThemeToDocument(theme: Theme): void {
     document.head.appendChild(styleEl);
   }
 
-  styleEl.textContent = theme.customCss || "";
+  // Shared themes are someone else's CSS: only the checked form is applied.
+  const checked = theme.customCss ? checkThemeCss(theme.customCss) : null;
+  styleEl.textContent = checked?.ok ? checked.css || "" : "";
 
   // Persist preferences
   window.localStorage.setItem("huddle-theme", theme.baseTheme);
@@ -646,6 +648,39 @@ export type ProfileCssCheck =
  * escape the profile card and restyle the whole app for whoever opens it.
  */
 export function checkProfileCss(raw: string): ProfileCssCheck {
+  const checked = checkSafeCss(raw);
+  if (!checked.ok || !checked.css) return checked;
+  // Fixed positioning escapes the card: a profile could cover the whole app
+  // with a fake sign-in screen for anyone who opens it.
+  if (/position\s*:\s*fixed/i.test(checked.css)) {
+    return { ok: false, error: "position: fixed is not allowed in profile CSS." };
+  }
+  return checked;
+}
+
+/** Longest theme CSS accepted, stored or applied. */
+export const THEME_CSS_LIMIT = 20_000;
+
+/**
+ * Theme CSS is shared (community themes, theme cards in chat) and applied to
+ * the whole app, so it gets the profile rules — no outside URLs, no imports,
+ * no HTML — plus one more: no selectors on what an input contains, the trick
+ * that leaks typed text one character at a time through background images.
+ */
+export function checkThemeCss(raw: string): ProfileCssCheck {
+  if (typeof raw !== "string") return { ok: false, error: "Theme CSS must be text." };
+  if (raw.length > THEME_CSS_LIMIT) return { ok: false, error: "That theme's CSS is too long." };
+  const checked = checkSafeCss(raw);
+  if (!checked.ok) {
+    return { ok: false, error: checked.error?.replace("profile CSS", "theme CSS") };
+  }
+  if (/\[\s*value\b/i.test(checked.css || "")) {
+    return { ok: false, error: "Theme CSS cannot select on input values." };
+  }
+  return checked;
+}
+
+function checkSafeCss(raw: string): ProfileCssCheck {
   if (typeof raw !== "string") return { ok: false, error: "Profile CSS must be text." };
 
   let out = "";

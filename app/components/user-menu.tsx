@@ -80,7 +80,7 @@ export function UserMenu({
   onLocalMute,
   onVolume,
   onServerMute,
-  canModerate = true,
+  canModerate = false,
   canManage = false,
   onKick,
   onRemoveFromGroup,

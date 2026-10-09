@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { limitUser } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import {
@@ -12,10 +13,14 @@ export const dynamic = "force-dynamic";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
+/** Unsigned (inline chat image) fetches a member may make per minute. */
+const INLINE_IMAGE_LIMIT = { action: "inline-image", limit: 240, windowSeconds: 60 };
+
 /**
- * Image proxy for link previews. Only serves URLs the preview route signed,
- * only raster images, and only from public hosts, so it can't be used as an
- * open proxy or to reach the home network.
+ * Image proxy, so viewers' IP addresses never reach the linked site. Serves
+ * URLs the preview route signed, or — for inline image links in chat — any
+ * URL a signed-in member asks for, rate limited. Either way only raster
+ * images, and only from public hosts, so it can't reach the home network.
  */
 export async function GET(request: Request) {
   const user = await currentUser(request);
@@ -27,9 +32,13 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const imageUrl = params.get("url")?.slice(0, 2000) || "";
   const signature = params.get("sig") || "";
-  const key = await imageProxyKey(db).catch(() => null);
-  if (!key || !imageUrl || !(await verifyImageSignature(key, imageUrl, signature))) {
-    return notFound();
+  if (!imageUrl) return notFound();
+  if (signature) {
+    const key = await imageProxyKey(db).catch(() => null);
+    if (!key || !(await verifyImageSignature(key, imageUrl, signature))) return notFound();
+  } else {
+    const limited = await limitUser(db, INLINE_IMAGE_LIMIT, user.id);
+    if (limited) return limited;
   }
 
   const upstream = await safeFetch(imageUrl, "image/avif,image/webp,image/*;q=0.8").catch(

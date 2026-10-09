@@ -49,6 +49,8 @@ export async function PATCH(
     bitrate?: number;
     /** Switch to another kind in the same family (text/announcement/forum, voice/stage). */
     kind?: string;
+    /** Voice rooms: turn the soundboard on or off. */
+    soundboard?: boolean;
   };
 
   let kind = channel.kind;
@@ -83,12 +85,17 @@ export async function PATCH(
       : "";
 
   await db
-    .prepare("UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, kind = ? WHERE id = ?")
+    .prepare(
+      "UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, soundboard = ?, kind = ? WHERE id = ?",
+    )
     .bind(
       name || channel.name,
       body.topic?.trim().slice(0, 120) ?? channel.topic,
       typeof body.slowmode === "number" ? Math.max(0, Math.min(300, body.slowmode)) : (channel as { slowmode?: number }).slowmode || 0,
       typeof body.bitrate === "number" ? clampVoiceBitrate(body.bitrate) : (channel as { bitrate?: number }).bitrate || 0,
+      typeof body.soundboard === "boolean"
+        ? (body.soundboard ? 1 : 0)
+        : (channel as { soundboard?: number }).soundboard ?? 1,
       kind,
       id,
     )
@@ -101,7 +108,7 @@ export async function PATCH(
     targetId: id,
     targetName: name || channel.name,
   });
-  await publishStructureChange();
+  await publishStructureChange(channel.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }
 
@@ -153,6 +160,6 @@ export async function DELETE(
     targetName: channel.name,
     detail: channel.kind,
   });
-  await publishStructureChange();
+  await publishStructureChange(channel.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }

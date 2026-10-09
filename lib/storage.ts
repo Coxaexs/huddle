@@ -94,4 +94,6 @@ export interface StoredMessage {
   /** On a bot answer to a slash command: the command run and who ran it. */
   command_text?: string | null;
   command_by?: string | null;
+  /** On a bot-styled post: the signed-in person who actually sent it. */
+  sender_id?: string | null;
 }
