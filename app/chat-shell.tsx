@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -225,6 +226,7 @@ import {
   type VoicePref,
 } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
+import { useLiveCaptions, type LiveCaptions } from "./hooks/use-live-captions";
 import { usePlayer } from "./hooks/use-player";
 import {
   nextScreenQuality,
@@ -278,6 +280,30 @@ import {
  * Combines two message lists (any overlap), newest version of each message
  * winning, in reading order.
  */
+/** "18:04", or "Tue 18:04" / "3 Oct 18:04" for older unread. */
+function unreadSinceLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const age = Date.now() - date.getTime();
+  if (date.toDateString() === new Date().toDateString()) return time;
+  if (age < 6 * 86_400_000) return `${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return `${date.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
+/** Puts the "New" line above the first unread message. */
+function withUnreadLine(show: boolean, id: string | number, node: ReactNode): ReactNode {
+  if (!show) return node;
+  return (
+    <Fragment key={id}>
+      <div className="unread-divider" role="separator" aria-label="New messages">
+        <span>New</span>
+      </div>
+      {node}
+    </Fragment>
+  );
+}
+
 const DRAFTS_KEY = "huddle-drafts";
 
 /** One entry of the saved-messages panel (see /api/saved). */
@@ -1396,6 +1422,16 @@ export function ChatShell() {
   const nearBottomRef = useRef(true);
   const [showJumpLatest, setShowJumpLatest] = useState(false);
   const [unseenCount, setUnseenCount] = useState(0);
+  /** Where the unread messages began when this channel was opened: draws the
+   *  "New" line and the "N new messages since…" bar until you catch up. */
+  const [unreadMarker, setUnreadMarker] = useState<{
+    channelId: string;
+    messageId: string;
+    count: number;
+    more: boolean;
+    since: string;
+  } | null>(null);
+  const [unreadBarVisible, setUnreadBarVisible] = useState(false);
   const lastSeenTailRef = useRef<string | number | null>(null);
   const unreadRef = useRef(rawUnread);
   unreadRef.current = rawUnread;
@@ -2406,6 +2442,7 @@ export function ChatShell() {
 
   /** Server-muted user ids, for callbacks made before `hub` exists. */
   const forcedMutesRef = useRef<Set<string>>(new Set());
+  const captionReceiveRef = useRef<LiveCaptions["receive"] | null>(null);
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
     onSignal: (from, data) => voiceSignalRef.current(from, data),
@@ -2490,6 +2527,7 @@ export function ChatShell() {
       if (channelId !== voiceChannelRef.current) return;
       playSound(url);
     },
+    onCaption: (event) => captionReceiveRef.current?.(event),
     onTyping: (channelId, userId, displayName) => {
       setTyping((current) => ({
         ...current,
@@ -2573,6 +2611,14 @@ export function ChatShell() {
     send: hub.send,
     roomBitrates,
   });
+  const captions = useLiveCaptions({
+    roomId: voice.channelId,
+    muted: voice.muted || voice.deafened || voice.forcedMute,
+    send: hub.send,
+    selfConnectionId: hub.connectionId,
+    onError: (message) => setNotice(message),
+  });
+  captionReceiveRef.current = captions.receive;
   voiceStopSpeakingRef.current = voice.stopSpeaking;
   forcedMutesRef.current = hub.forcedMutes;
   voiceSignalRef.current = voice.handleSignal;
@@ -3442,12 +3488,24 @@ export function ChatShell() {
     if (initial?.channelId === activeChannelId) {
       initialChannelScrollRef.current = null;
       if (initial.unreadCount > 0 && messages.length > 0) {
-        const firstUnreadIndex = Math.max(
-          0,
-          messages.length - initial.unreadCount,
-        );
+        // The count skips your own messages, so walk back past only others'.
+        let firstUnreadIndex = messages.length;
+        let others = 0;
+        while (firstUnreadIndex > 0 && others < initial.unreadCount) {
+          firstUnreadIndex -= 1;
+          if (!user || messages[firstUnreadIndex].userId !== user.id) others += 1;
+        }
+        const first = messages[firstUnreadIndex];
+        setUnreadMarker({
+          channelId: activeChannelId,
+          messageId: String(first.id),
+          count: initial.unreadCount,
+          more: others < initial.unreadCount,
+          since: first.createdAt || "",
+        });
+        setUnreadBarVisible(true);
         document
-          .getElementById(`msg-${messages[firstUnreadIndex].id}`)
+          .getElementById(`msg-${first.id}`)
           ?.scrollIntoView({ behavior: "auto", block: "center" });
         return;
       }
@@ -3476,6 +3534,8 @@ export function ChatShell() {
     nearBottomRef.current = true;
     setShowJumpLatest(false);
     setUnseenCount(0);
+    setUnreadMarker((current) => (current?.channelId === activeChannelId ? current : null));
+    setUnreadBarVisible(false);
   }, [activeChannelId]);
 
   const handleMessagesScroll = useCallback(() => {
@@ -3484,12 +3544,28 @@ export function ChatShell() {
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = distance < 120;
     nearBottomRef.current = near && !detachedRef.current;
-    if (near && !detachedRef.current) setUnseenCount(0);
+    if (near && !detachedRef.current) {
+      setUnseenCount(0);
+      setUnreadBarVisible(false);
+    }
     setShowJumpLatest(detachedRef.current || distance > Math.max(300, el.clientHeight * 0.6));
     if (el.scrollTop < 400) void loadOlderRef.current();
   }, []);
   const loadOlderRef = useRef(loadOlder);
   loadOlderRef.current = loadOlder;
+
+  function jumpToFirstUnread() {
+    const marker = unreadMarker;
+    if (!marker) return;
+    const element = document.getElementById(`msg-${marker.messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("jump-flash");
+      window.setTimeout(() => element.classList.remove("jump-flash"), 2000);
+    } else {
+      jumpToMessage(marker.channelId, marker.messageId);
+    }
+  }
 
   const jumpToLatest = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -4300,6 +4376,81 @@ export function ChatShell() {
         setNotice(
           error instanceof Error ? error.message : "Try: /remind 20m take the pizza out",
         );
+      }
+      return;
+    }
+
+    if (name === "recap") {
+      pendingCommandRef.current = null;
+      const weekly = /^weekly\b/i.test(value);
+      try {
+        const data = await apiFetch<{ posted?: boolean; weekly?: boolean; nextAt?: string }>("/api/recap", {
+          method: "POST",
+          body: JSON.stringify({ channelId: activeChannelId, action: weekly ? "weekly" : "now" }),
+        });
+        if (weekly) {
+          setNotice(
+            data.weekly
+              ? `📊 Weekly recap on: next one ${formatClientDateTime(data.nextAt || "")} in this channel. /recap weekly again turns it off.`
+              : "📊 Weekly recap turned off.",
+          );
+        } else if (!data.posted) {
+          setNotice("Nothing to recap: no messages here in the last week.");
+        }
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "The recap did not work.");
+      }
+      return;
+    }
+
+    if (name === "schedule") {
+      pendingCommandRef.current = null;
+      // Keep the message's own line breaks: everything after "/schedule ".
+      const spec = raw.trim().replace(/^\/?\S+[ \t]*/, "");
+      try {
+        if (!spec || /^(list|cancel)\b/i.test(spec)) {
+          const data = await apiFetch<{
+            scheduled: Array<{ id: string; channelName: string | null; text: string; dueAt: string }>;
+          }>("/api/scheduled");
+          const cancel = spec.match(/^cancel\s+(\d+)/i);
+          if (cancel) {
+            const item = data.scheduled[Number(cancel[1]) - 1];
+            if (!item) {
+              setNotice("There is no scheduled message with that number. /schedule lists them.");
+              return;
+            }
+            await apiFetch(`/api/scheduled?id=${encodeURIComponent(item.id)}`, { method: "DELETE" });
+            setNotice(`Cancelled: “${item.text.slice(0, 60)}”`);
+            return;
+          }
+          setDialogOptions({
+            type: "alert",
+            title: "Scheduled messages",
+            message: data.scheduled.length
+              ? data.scheduled
+                  .map(
+                    (item, index) =>
+                      `${index + 1}. ${formatClientDateTime(item.dueAt)} · #${item.channelName || "?"}\n   ${item.text.slice(0, 120)}`,
+                  )
+                  .join("\n\n") + "\n\nCancel one with /schedule cancel <number>."
+              : "Nothing scheduled. Try /schedule 20:00 Doors are open!",
+            confirmText: "OK",
+          });
+          setDialogCallback(null);
+          setDialogCancel(null);
+          return;
+        }
+        const data = await apiFetch<{ dueAt: string }>("/api/scheduled", {
+          method: "POST",
+          body: JSON.stringify({
+            spec,
+            channelId: activeChannelId,
+            timezoneOffset: new Date().getTimezoneOffset(),
+          }),
+        });
+        setNotice(`🕒 Scheduled for ${formatClientDateTime(data.dueAt)}. /schedule lists or cancels it.`);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Try: /schedule 20:00 Doors are open!");
       }
       return;
     }
@@ -7843,6 +7994,7 @@ export function ChatShell() {
                 connectionId={hub.connectionId}
                 serverNow={hub.serverNow}
                 voice={voice}
+                captions={voice.channelId === stageChannel.id ? captions : undefined}
                 joined={voice.channelId === stageChannel.id}
                 onJoin={() => void openVoiceChannel(stageChannel)}
                 onExit={() => setStageChannelId(null)}
@@ -8404,6 +8556,22 @@ export function ChatShell() {
                   className={`messages ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}
                   aria-live="polite"
                 >
+                  {unreadBarVisible && unreadMarker?.channelId === activeChannelId && (
+                    <div className="unread-bar" role="status">
+                      <button type="button" className="unread-bar-jump" onClick={jumpToFirstUnread}>
+                        {unreadMarker.count > 99 ? "99+" : unreadMarker.count}
+                        {unreadMarker.more ? "+" : ""} new message{unreadMarker.count === 1 ? "" : "s"}
+                        {unreadMarker.since ? ` since ${unreadSinceLabel(unreadMarker.since)}` : ""}
+                      </button>
+                      <button
+                        type="button"
+                        className="unread-bar-dismiss"
+                        onClick={() => setUnreadBarVisible(false)}
+                      >
+                        Mark as read
+                      </button>
+                    </div>
+                  )}
                   {msnTheme && (
                     <p className="msn-warning">
                       Never give out your password or credit card number in an instant message conversation.
@@ -8454,7 +8622,12 @@ export function ChatShell() {
                     </div>
                   </div>}
 
-                  {messages.map((message, index) => {
+                  {messages.map((message, index) => withUnreadLine(
+                    unreadMarker?.channelId === activeChannelId &&
+                      String(message.id) === unreadMarker.messageId &&
+                      index > 0,
+                    message.id,
+                    ((): ReactNode => {
                     const dayLabel = dayDividerLabel(message, messages[index - 1]) ?? undefined;
                     if (message.kind?.startsWith("system-")) {
                       const pinnedId =
@@ -9341,7 +9514,7 @@ export function ChatShell() {
                         </div>
                       </article>
                     );
-                  })}
+                  })()))}
                   <div ref={messageEndRef} />
                 </div>
 

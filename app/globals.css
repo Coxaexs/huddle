@@ -27014,3 +27014,294 @@ a.link-preview-author:hover {
   opacity: 0.5;
   cursor: default;
 }
+
+/* "12 new messages since 18:04": pinned to the top until you catch up. */
+.unread-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  margin: 0 0.75rem 0.25rem;
+  border-radius: 0 0 10px 10px;
+  background: var(--lavender);
+  color: var(--on-accent, #fff);
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+}
+.unread-bar button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.35rem 0.8rem;
+}
+.unread-bar-jump {
+  flex: 1;
+  text-align: left;
+}
+.unread-bar-dismiss {
+  opacity: 0.85;
+}
+.unread-bar button:hover {
+  text-decoration: underline;
+}
+
+/* The line above the first message you had not read. */
+.unread-divider {
+  display: flex;
+  align-items: center;
+  margin: 0.5rem 1rem;
+  border-top: 1px solid var(--rose, #f43f5e);
+  height: 0;
+}
+.unread-divider span {
+  margin-left: auto;
+  transform: translateY(-50%);
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--rose, #f43f5e);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Live captions over a voice room. */
+.live-captions {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(760px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.live-caption {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+}
+.live-caption strong {
+  color: #c4b5fd;
+  margin-right: 0.35em;
+}
+.live-caption.interim {
+  opacity: 0.85;
+}
+
+/* Stage Q&A */
+.vctrl-btn:has(.vctrl-badge) {
+  position: relative;
+}
+.vctrl-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--coral, #fb7185);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.qa-banner {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: min(820px, calc(100% - 32px));
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--coral, #fb7185) 8%);
+  border: 1px solid color-mix(in srgb, var(--coral, #fb7185) 45%, var(--line));
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+}
+.qa-banner svg {
+  flex: none;
+  align-self: center;
+  color: var(--coral, #fb7185);
+}
+.qa-banner-label {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--coral, #fb7185);
+}
+.qa-banner.beside-panel {
+  /* Keep clear of the open Q&A panel on the right. */
+  left: 16px;
+  transform: none;
+  max-width: calc(100% - 400px);
+}
+.qa-banner-text {
+  font-weight: 600;
+}
+.qa-banner-author {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.qa-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 84px;
+  z-index: 30;
+  width: min(360px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.qa-panel header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.qa-panel header span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.qa-panel header button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.qa-panel form {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.qa-panel input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--panel));
+  color: var(--ink);
+}
+.qa-panel form button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--lavender);
+  color: var(--on-accent, #fff);
+  font-weight: 600;
+  cursor: pointer;
+}
+.qa-panel form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.qa-error {
+  margin: 0 12px 6px;
+  color: var(--coral, #fb7185);
+  font-size: 0.75rem;
+}
+.qa-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0 8px 8px;
+  list-style: none;
+}
+.qa-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 6px;
+  border-radius: 10px;
+}
+.qa-item.pinned {
+  background: color-mix(in srgb, var(--coral, #fb7185) 12%, transparent);
+}
+.qa-item.answered {
+  opacity: 0.55;
+}
+.qa-vote {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 34px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.qa-vote.voted {
+  border-color: var(--lavender);
+  color: var(--lavender);
+}
+.qa-body {
+  flex: 1;
+  min-width: 0;
+}
+.qa-body p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.qa-body small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.qa-actions {
+  display: flex;
+  gap: 2px;
+}
+.qa-actions button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.qa-actions button:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+.qa-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
