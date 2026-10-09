@@ -694,7 +694,10 @@ export async function POST(request: Request) {
 
         if (name === "lyricsnow") {
           if (!lyrics.lines.length) {
-            const text = `No synced lyrics for ${lyrics.track || title}.`;
+            const sample = (lyrics.lyrics || "").split("\n").filter(Boolean).slice(0, 3).join(" / ");
+            const text = sample
+              ? `No synced lyrics for ${lyrics.track || title}, only plain ones${lyrics.artist ? ` (${lyrics.artist})` : ""}: ${sample}`
+              : `No synced lyrics for ${lyrics.track || title}.`;
             await say(db, textChannelId, text);
             return Response.json({ text });
           }
@@ -725,6 +728,7 @@ export async function POST(request: Request) {
               artist: lyrics.artist || state?.track?.artist || "",
               voiceChannelId,
               trackId: state?.track?.id,
+              loose: lyrics.loose || false,
               lines: lyrics.lines.map(([at, line]) => ({
                 at,
                 line,

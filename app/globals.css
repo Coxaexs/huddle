@@ -26887,3 +26887,37 @@ a.link-preview-author:hover {
     flex-wrap: wrap;
   }
 }
+
+.lyrics-now-loose {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgba(255, 190, 60, 0.14);
+  color: inherit;
+}
+
+.lyrics-now-sync {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.lyrics-now-sync button {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.lyrics-now-sync span {
+  min-width: 52px;
+  text-align: center;
+}
