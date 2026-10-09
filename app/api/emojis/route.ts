@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     .bind(id, serverId, name, body.key.slice(0, 240), user.id, new Date().toISOString())
     .run();
 
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json(
     { emoji: { id, serverId, name, url: emojiUrl(body.key) } },
     { status: 201 },
@@ -136,6 +136,6 @@ export async function DELETE(request: Request) {
 
   await db.prepare("DELETE FROM emojis WHERE id = ?").bind(id).run();
   await bindings().UPLOADS?.delete(emoji.key);
-  await publishStructureChange();
+  await publishStructureChange(emoji.server_id);
   return Response.json({ ok: true });
 }

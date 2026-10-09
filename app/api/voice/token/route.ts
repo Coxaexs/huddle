@@ -5,6 +5,8 @@ import { isDmMember } from "@/lib/dms";
 import { DM_SERVER_ID } from "@/lib/schema";
 import { AccessToken } from "livekit-server-sdk";
 import { timeoutInChannel } from "@/lib/timeouts";
+import { hubState } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +86,11 @@ export async function GET(request: Request) {
 
   // A timed-out member may listen but not speak or share.
   const timedOut = db && user ? await timeoutInChannel(db, channelId, user.id) : null;
+  // LiveKit itself refuses audio from anyone who may not be heard: a stage's
+  // audience and anyone server-muted. The hub and every receiver enforce this
+  // too; this makes a modified client unable to even send. Someone brought on
+  // stage (or unmuted) fetches a fresh token and reconnects.
+  const silenced = db && user ? await mayNotBeHeard(db, channelId, user.id, connectionId) : false;
 
   const base = user ? user.id : "recorder";
   const identity = connectionId ? `${base}|${connectionId}` : base;
@@ -98,7 +105,7 @@ export async function GET(request: Request) {
   at.addGrant({
     roomJoin: true,
     room: channelId,
-    canPublish: !timedOut,
+    canPublish: !timedOut && !silenced,
     canSubscribe: true,
     canPublishData: !timedOut,
   });
@@ -112,4 +119,28 @@ export async function GET(request: Request) {
     identity,
     room: channelId,
   });
+}
+
+/** True when this seat should not be able to send audio or video at all. */
+async function mayNotBeHeard(
+  db: D1Database,
+  channelId: string,
+  userId: string,
+  connectionId: string,
+): Promise<boolean> {
+  const muted = await db
+    .prepare("SELECT 1 FROM server_mutes WHERE target_id = ?")
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (muted) return true;
+  const channel = await findChannel(db, channelId);
+  if (channel?.kind !== "stage") return false;
+  // The hub's seat is the truth once it exists (a host may have brought this
+  // person up); before the join lands, the member's SPEAK permission decides,
+  // exactly as the hub will.
+  const state = await hubState();
+  const seat = state?.voice[channelId]?.find((person) => person.connectionId === connectionId);
+  if (seat && typeof seat.speakAllowed === "boolean") return !seat.speakAllowed;
+  return !(await can(db, userId, channel.server_id, Permission.SPEAK).catch(() => false));
 }

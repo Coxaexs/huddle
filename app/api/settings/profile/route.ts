@@ -4,7 +4,7 @@ import {
   publicUser,
   unauthorized,
 } from "@/lib/auth";
-import { publishStructureChange } from "@/lib/hub-client";
+import { publishMemberUpdate } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
 import { normalizeProfileImage } from "@/lib/profile-media";
 import { checkProfileCss } from "@/lib/themes";
@@ -208,7 +208,7 @@ export async function PATCH(request: Request) {
     .run();
 
   // Everyone's member list and every message avatar should update at once.
-  await publishStructureChange();
+  await publishMemberUpdate(user.id);
 
   return Response.json({
     user: publicUser({

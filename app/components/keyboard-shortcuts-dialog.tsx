@@ -26,6 +26,8 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
       icon: <Command size={18} />,
       shortcuts: [
         { keys: ["Ctrl", "K"], description: "Quick Channel / DM Switcher" },
+        { keys: ["Ctrl", "Shift", "K"], description: "Find People" },
+        { keys: ["Alt", "↑ / ↓"], description: "Previous / Next Channel" },
         { keys: ["Ctrl", "/"], description: "Open Keyboard Shortcuts" },
         { keys: ["ESC"], description: "Close Modal or Popover" },
       ],

@@ -33,6 +33,8 @@ export interface DndCardProps {
   label?: string;
   mode?: string;
   roller?: string;
+  /** Set only by the server that rolled; a posted lookalike never has it. */
+  verified?: boolean;
   /** Runs a slash command as the viewer: click-to-roll and suggestions. */
   onCommand?: (command: string) => void;
 }
@@ -218,6 +220,7 @@ function RollCard({
   label,
   mode,
   roller,
+  verified,
   onCommand,
 }: DndCardProps) {
   // A d20 whose kept face is 20 or 1 is what the table cares about.
@@ -239,6 +242,11 @@ function RollCard({
         <span className="dnd-card-kicker">
           {label || "Dice roll"}
           {roller ? ` · ${roller}` : ""}
+          {verified && (
+            <span className="dnd-verified" title="Rolled by the server: nobody chose these faces">
+              ✓ Verified
+            </span>
+          )}
         </span>
         <span className="dnd-roll-expression">
           {expression}

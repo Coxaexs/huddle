@@ -1,3 +1,4 @@
+import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
  *   - Text query     → iTunes Search API
  */
 export async function GET(request: Request) {
+  // Spends the instance's Last.fm key and proxies lookups: members only.
+  if (!(await currentUser(request))) return unauthorized();
   const url = new URL(request.url);
   const track = (url.searchParams.get("track") || url.searchParams.get("url") || "").trim();
   const username = url.searchParams.get("username")?.trim();

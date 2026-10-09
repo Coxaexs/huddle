@@ -52,7 +52,7 @@ export async function PATCH(
     .bind(body.name?.trim().slice(0, 40) || category.name, id)
     .run();
 
-  await publishStructureChange();
+  await publishStructureChange(category.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }
 
@@ -88,6 +88,6 @@ export async function DELETE(
     db.prepare("DELETE FROM categories WHERE id = ?").bind(id),
   ]);
 
-  await publishStructureChange();
+  await publishStructureChange(category.server_id);
   return Response.json({ servers: await listServers(db, user.id) });
 }

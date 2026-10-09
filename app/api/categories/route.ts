@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     .bind(id, serverId, name, (top?.max ?? -1) + 1, new Date().toISOString())
     .run();
 
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json(
     { categoryId: id, servers: await listServers(db, user.id) },
     { status: 201 },

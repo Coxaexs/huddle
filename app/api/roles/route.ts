@@ -1,7 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
-import { can, Permission, ALL_PERMISSIONS } from "@/lib/permissions";
+import { ALL_PERMISSIONS, roleAuthority, roleRefusal } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -35,9 +35,8 @@ export async function POST(request: Request) {
     permissions?: number;
   };
   const serverId = body.serverId || "";
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_SERVER))) {
-    return forbidden();
-  }
+  const authority = await roleAuthority(db, user.id, serverId);
+  if (!authority.canManage) return forbidden();
 
   const server = await db
     .prepare("SELECT id FROM servers WHERE id = ?")
@@ -52,11 +51,23 @@ export async function POST(request: Request) {
     ? (body.color as string)
     : "#99aab5";
   const permissions = (Number(body.permissions) || 0) & ALL_PERMISSIONS;
+  const refused = roleRefusal(authority, { permissions });
+  if (refused) return Response.json({ error: refused }, { status: 403 });
 
   const top = await db
     .prepare("SELECT MAX(position) AS max FROM roles WHERE server_id = ?")
     .bind(serverId)
     .first<{ max: number | null }>();
+  // Someone with a ceiling creates roles just under their own highest one
+  // (shifting the rest up), so they can still edit what they made.
+  let position = (top?.max ?? -1) + 1;
+  if (!authority.unlimited) {
+    position = Math.max(0, authority.top);
+    await db
+      .prepare("UPDATE roles SET position = position + 1 WHERE server_id = ? AND position >= ?")
+      .bind(serverId, position)
+      .run();
+  }
 
   await db
     .prepare(
@@ -69,7 +80,7 @@ export async function POST(request: Request) {
       name,
       color,
       permissions,
-      (top?.max ?? -1) + 1,
+      position,
       new Date().toISOString(),
     )
     .run();
@@ -80,6 +91,6 @@ export async function POST(request: Request) {
     action: "role.create",
     targetName: name,
   });
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ servers: await listServers(db, user.id) }, { status: 201 });
 }

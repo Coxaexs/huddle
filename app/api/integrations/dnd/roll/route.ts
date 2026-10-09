@@ -1,9 +1,16 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { publishMessageEvent } from "@/lib/hub-client";
+import { channelAccess } from "@/lib/access";
+import { channelKindInfo } from "@/lib/channel-kinds";
+import { channelAudience } from "@/lib/dms";
+import { publishMessage, publishMessageEvent } from "@/lib/hub-client";
+import { can, Permission } from "@/lib/permissions";
+import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
+import { blockIfTimedOut } from "@/lib/timeouts";
+import { publicMessage } from "@/app/api/messages/route";
 import { activeRecording, elapsedMs } from "@/lib/recording";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel, isServerMember } from "@/lib/servers";
-import { bindings } from "@/lib/storage";
+import { bindings, type StoredMessage } from "@/lib/storage";
 import type { DiceRollEvent } from "@/lib/protocol";
 
 export const dynamic = "force-dynamic";
@@ -64,14 +71,13 @@ function parseToken(token: string): ParsedTerm | null {
 }
 
 /**
- * Resolve a roll. When `actualRolls` is provided (array of per-die values from
- * the roller's 3D dice animation), those authoritative values are used and the
- * server never re-rolls. Otherwise the server rolls its own fair values.
+ * Resolve a roll. The server always rolls its own fair values; the 3D dice on
+ * every screen animate to these exact faces, so there is nothing for a client
+ * to supply (and no way to choose a natural 20).
  */
 export function resolveRoll(
   input: string,
   user: { id: string; display_name: string },
-  actualRolls?: number[][],
   theme?: string,
   themeColor?: string,
   material?: "plastic" | "metal" | "wood" | "glass",
@@ -110,7 +116,6 @@ export function resolveRoll(
   let modifier = 0;
   const details: string[] = [];
   const diceEvents: DiceRollEvent["dice"] = [];
-  let dieIndex = 0;
 
   for (const token of tokens) {
     const sign = token.startsWith("-") ? -1 : 1;
@@ -125,18 +130,7 @@ export function resolveRoll(
       // A critical hit rolls every damage die twice; modifiers are not doubled.
       else if (criticalDamage && !keep) count = Math.min(count * 2, 100);
 
-      // Use the roller's actual dice values when provided; else roll here.
-      let rolls: number[];
-      if (actualRolls) {
-        const provided = actualRolls[dieIndex] || [];
-        if (provided.length !== count) {
-          return { error: "The dice counts didn't match. Try again." };
-        }
-        rolls = provided;
-        dieIndex++;
-      } else {
-        rolls = Array.from({ length: count }, () => randomDie(sides));
-      }
+      const rolls = Array.from({ length: count }, () => randomDie(sides));
 
       const keepMode =
         keep || ((advantage || disadvantage) && sides === 20 && count === 2
@@ -218,8 +212,6 @@ export async function POST(request: Request) {
     command?: string;
     channelId?: string;
     textChannelId?: string;
-    /** The roller's actual die values from the 3D dice animation. */
-    actualRolls?: number[][];
     /** When true, return the parsed roll for the roller to animate, no broadcast. */
     preview?: boolean;
     theme?: string;
@@ -358,7 +350,6 @@ export async function POST(request: Request) {
   const result = resolveRoll(
     input,
     { id: user.id, display_name: user.display_name },
-    body.actualRolls,
     theme,
     themeColor,
     material,
@@ -442,21 +433,107 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({
-    text: `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`,
+  const text = `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`;
+  const payload = {
+    type: "roll",
+    name: "Dice result",
+    expression,
+    mode: mode.trim(),
+    label: label || undefined,
+    roller: user.display_name,
+    total,
+    modifier,
+    details,
+    dice: roll.dice,
+  };
+
+  // The card is written here, by the server that rolled, and marked verified.
+  // A browser can still post a lookalike through /api/messages, but it can
+  // never carry the mark: that route strips it.
+  if (db && textChannelId && !body.preview) {
+    const posted = await postVerifiedRoll(db, user, textChannelId, {
+      text,
+      payload: { ...payload, verified: true },
+      command: `/roll ${rawInput}`.slice(0, 200),
+    });
+    if (posted instanceof Response) return posted;
+    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, posted: true, message: posted });
+  }
+
+  return Response.json({ text, kind: "dnd", payload, roll });
+}
+
+/** Writes a server-rolled card into a channel the roller can post in. */
+async function postVerifiedRoll(
+  db: D1Database,
+  user: { id: string; display_name: string; is_admin?: number },
+  channelId: string,
+  card: { text: string; payload: Record<string, unknown>; command: string },
+): Promise<Response | ReturnType<typeof publicMessage>> {
+  const access = await channelAccess(db, channelId, user);
+  if (!access.ok) return access.response;
+  if (!access.channel.isDm && !channelKindInfo(access.channel.kind).text) {
+    return Response.json({ error: "Roll in a text channel." }, { status: 400 });
+  }
+  if (!access.channel.isDm) {
+    const timedOut = await blockIfTimedOut(db, channelId, user.id);
+    if (timedOut) return timedOut;
+    if (
+      channelKindInfo(access.channel.kind).moderatorOnlyPosting &&
+      !(await can(db, user.id, access.channel.serverId, Permission.MANAGE_MESSAGES))
+    ) {
+      return Response.json({ error: "Only moderators can post announcements here." }, { status: 403 });
+    }
+  }
+  const limited = await limitUser(db, WRITE_RATE_LIMITS.message, user.id);
+  if (limited) return limited;
+
+  const stored: StoredMessage = {
+    id: crypto.randomUUID(),
+    channel: access.channel.name,
+    channel_id: channelId,
+    user_id: null,
+    author: "D&D Bot",
+    avatar: "⚔",
+    color: "#b8a6ff",
+    content: card.text,
+    attachment_key: null,
+    is_bot: 1,
+    created_at: new Date().toISOString(),
     kind: "dnd",
-    payload: {
-      type: "roll",
-      name: "Dice result",
-      expression,
-      mode: mode.trim(),
-      label: label || undefined,
-      roller: user.display_name,
-      total,
-      modifier,
-      details,
-      dice: roll.dice,
-    },
-    roll,
-  });
+    payload: JSON.stringify(card.payload),
+    command_text: card.command,
+    command_by: user.display_name,
+    sender_id: user.id,
+  };
+  await db
+    .prepare(
+      `INSERT INTO messages
+       (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
+        is_bot, created_at, kind, payload, command_text, command_by, sender_id)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      stored.id,
+      stored.channel,
+      channelId,
+      stored.author,
+      stored.avatar,
+      stored.color,
+      stored.content,
+      stored.created_at,
+      stored.kind,
+      stored.payload,
+      stored.command_text,
+      stored.command_by,
+      stored.sender_id,
+    )
+    .run();
+  const message = publicMessage(stored);
+  await publishMessage(
+    channelId,
+    message,
+    access.channel.isDm ? await channelAudience(db, channelId) : null,
+  );
+  return message;
 }

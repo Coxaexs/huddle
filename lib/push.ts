@@ -1,6 +1,7 @@
 import webPush from "web-push";
 import { sendFcm } from "./fcm";
 import { bindings } from "./storage";
+import { resolvesPublic } from "./unfurl";
 
 export interface PushPayload {
   title: string;
@@ -100,12 +101,23 @@ export async function sendPushNotifications(
   );
 }
 
-/** Publishes to an ntfy topic using its header API. `token` may be empty. */
-export function sendNtfy(
+/**
+ * Publishes to an ntfy topic using its header API. `token` may be empty.
+ *
+ * The server makes this request, so the topic's host must still resolve to a
+ * public address at send time (a public name can point at 127.0.0.1), and
+ * redirects are never followed (a public URL can bounce to the LAN).
+ */
+export async function sendNtfy(
   endpoint: string,
   token: string,
   payload: PushPayload,
 ): Promise<Response> {
+  const allowPrivate =
+    (bindings() as { HUDDLE_PUSH_ALLOW_PRIVATE?: string }).HUDDLE_PUSH_ALLOW_PRIVATE === "1";
+  if (!allowPrivate && !(await resolvesPublic(new URL(endpoint).hostname.toLowerCase()))) {
+    throw new Error("that topic's address is not public");
+  }
   const headers: Record<string, string> = {
     // Header values must be Latin-1; RFC 2047 keeps emoji and accents intact.
     Title: `=?UTF-8?B?${base64(payload.title)}?=`,
@@ -114,7 +126,17 @@ export function sendNtfy(
   };
   if (payload.url && /^https?:\/\//.test(payload.url)) headers.Click = payload.url;
   if (token) headers.Authorization = `Bearer ${token}`;
-  return fetch(endpoint, { method: "POST", headers, body: payload.body });
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: payload.body,
+    redirect: "manual",
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error("the topic tried to redirect");
+  }
+  return response;
 }
 
 function base64(text: string): string {

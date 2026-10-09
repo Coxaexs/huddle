@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { checkThemeCss } from "@/lib/themes";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -136,6 +137,13 @@ export async function POST(request: Request) {
   const corners = Math.min(28, Math.max(4, Number(theme.corners) || 16));
   const backdrop = (theme.backdrop || "plain").slice(0, 30);
   const customCss = typeof theme.customCss === "string" ? theme.customCss : "";
+  // Published themes run in other people's apps: refuse unsafe CSS outright.
+  if (customCss) {
+    const checked = checkThemeCss(customCss);
+    if (!checked.ok) {
+      return Response.json({ error: checked.error || "That theme's CSS isn't allowed." }, { status: 400 });
+    }
+  }
   const isPublic = theme.isPublic !== false ? 1 : 0;
   const now = new Date().toISOString();
 

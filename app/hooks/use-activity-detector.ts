@@ -17,8 +17,26 @@ interface UseActivityDetectorOptions {
   onUpdateSpotify?: (activity: SpotifyActivity | null) => void;
 }
 
+const SHARE_KEY = "huddle-share-listening";
+
+/** Whether this device shares what you are listening to (Settings → Activities). */
+export function activitySharingEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(SHARE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setActivitySharing(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(SHARE_KEY, enabled ? "on" : "off");
+  } catch {
+    // Session only.
+  }
+}
+
 export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetectorOptions) {
-  const [activeAppId, setActiveAppId] = useState<string>("spotify");
   const [masterEnabled, setMasterEnabled] = useState(true);
   const [spotifyEnabled, setSpotifyEnabled] = useState(true);
   const [appsEnabled, setAppsEnabled] = useState(true);
@@ -27,11 +45,6 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     return window.localStorage.getItem("huddle-spotify-username") || "";
   });
 
-  const [detectedApps, setDetectedApps] = useState<ActivityApp[]>([
-    { id: "spotify", name: "Spotify", type: "music", details: "Listening to Spotify", enabled: true },
-    { id: "vscode", name: "Visual Studio Code", type: "coding", details: "Editing Huddle codebase", enabled: true },
-    { id: "minecraft", name: "Minecraft", type: "game", details: "Playing Survival Mode", enabled: true },
-  ]);
 
   // Use refs to avoid re-render loops — callbacks and user identity are stable
   const onUpdateRef = useRef(onUpdateSpotify);
@@ -58,6 +71,10 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
       const activityKey = spotifyAct
         ? `${spotifyAct.song}\u0000${spotifyAct.artist}\u0000${spotifyAct.isPlaying !== false}`
         : "";
+      // Nothing detected and nothing published by us yet: leave the profile
+      // alone. Clearing here wiped a song people had set by hand, on every
+      // page load, and told every client to reload.
+      if (!spotifyAct && lastActivityKeyRef.current === null) return;
       if (activityKey === lastActivityKeyRef.current) return;
       lastActivityKeyRef.current = activityKey;
       onUpdateRef.current?.(spotifyAct);
@@ -67,67 +84,49 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
           body: JSON.stringify({ spotifyActivity: spotifyAct }),
         });
       } catch {
-        // A later poll will retry if the published state changes again.
+        // Try again on the next poll.
+        lastActivityKeyRef.current = null;
       }
     };
 
     const checkSpotifyActivity = async () => {
-      // Prevent overlapping syncs
       if (isSyncingRef.current) return;
       isSyncingRef.current = true;
-
       try {
+        // Only a linked Last.fm account counts. This page's own media session
+        // is Hoffle's own players (the music bot, voice messages), which used
+        // to show up as "Listening to Spotify".
         const savedUsername =
           window.localStorage.getItem("huddle-spotify-username")?.trim() || "";
-
-        if (savedUsername) {
-          const response = await fetch(
-            `/hangout/api/integrations/spotify?username=${encodeURIComponent(savedUsername)}`,
-            { cache: "no-store" },
-          );
-          const latest = (await response.json()) as {
-            song?: string | null;
-            artist?: string;
-            albumArt?: string;
-            isPlaying?: boolean;
-            error?: string;
-          };
-          if (response.ok && !latest.error && latest.song && latest.isPlaying) {
-            await publishSpotify({
-              song: latest.song,
-              artist: latest.artist || "Spotify",
-              albumArt: latest.albumArt || "",
-              isPlaying: true,
-            });
-          } else if (response.ok && !latest.error) {
-            await publishSpotify(null);
-          }
-          return;
-        }
-
-        let song = "";
-        let artist = "";
-        let albumArt = "";
-
-        // Check navigator.mediaSession metadata (works for Spotify Web Player, YouTube Music, etc.)
-        if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
-          const meta = navigator.mediaSession.metadata;
-          if (meta.title && meta.title.trim()) {
-            song = meta.title.trim();
-            artist = meta.artist ? meta.artist.trim() : "Spotify";
-            albumArt = meta.artwork?.[0]?.src || "";
-          }
-        }
-
-        await publishSpotify(
-          song ? { song, artist, albumArt, isPlaying: true } : null,
+        if (!savedUsername || !activitySharingEnabled()) return;
+        const response = await fetch(
+          `/hangout/api/integrations/spotify?username=${encodeURIComponent(savedUsername)}`,
+          { cache: "no-store" },
         );
+        const latest = (await response.json()) as {
+          song?: string | null;
+          artist?: string;
+          albumArt?: string;
+          isPlaying?: boolean;
+          error?: string;
+        };
+        if (response.ok && !latest.error && latest.song && latest.isPlaying) {
+          await publishSpotify({
+            song: latest.song,
+            artist: latest.artist || "Spotify",
+            albumArt: latest.albumArt || "",
+            isPlaying: true,
+          });
+        } else if (response.ok) {
+          await publishSpotify(null);
+        }
+      } catch {
+        // Offline or the lookup failed: try again next time.
       } finally {
         isSyncingRef.current = false;
       }
     };
 
-    // Last.fm and local media metadata are refreshed on the same bounded loop.
     const interval = window.setInterval(checkSpotifyActivity, 10_000);
     void checkSpotifyActivity();
     return () => clearInterval(interval);
@@ -143,9 +142,5 @@ export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetect
     setAppsEnabled,
     spotifyUsername,
     saveSpotifyUsername,
-    detectedApps,
-    setDetectedApps,
-    activeAppId,
-    setActiveAppId,
   };
 }

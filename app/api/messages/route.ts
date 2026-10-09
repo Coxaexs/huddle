@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
+import { canSeeServer, channelAccess, messageAccess } from "@/lib/access";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
 import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
 import { isBlockedBetween } from "@/lib/friends";
@@ -165,60 +166,97 @@ export async function GET(request: Request) {
   const channelName = params.get("channel")?.slice(0, 64);
   const threadId = params.get("threadId")?.slice(0, 64);
 
-  // A DM is only readable by its two participants; every other channel is
-  // open to everyone in this Huddle.
-  if (channelId) {
-    const audience = await channelAudience(db, channelId);
-    if (audience && !audience.includes(user.id)) return unauthorized();
-    if (channelId === GUESTBOOK_CHANNEL_ID) {
-      const member = await db
-        .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
-        .bind(GUESTBOOK_SERVER_ID, user.id)
-        .first();
-      if (!member) return unauthorized();
-    }
+  // DMs are for their participants, server channels for that server's
+  // members (not banned). A thread is checked through its root message.
+  if (threadId) {
+    const access = await messageAccess(db, threadId, user, { includeDeleted: true });
+    if (!access.ok) return access.response;
+  } else if (channelId) {
+    const access = await channelAccess(db, channelId, user);
+    if (!access.ok) return access.response;
+  } else if (!(await canSeeServer(db, DEFAULT_SERVER_ID, user))) {
+    return unauthorized();
   }
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
                    reply_to, edited_at, attachments, thread_id, command_text, command_by`;
   const pinnedOnly = params.get("pinned") === "1";
+
+  // Paging: `before` loads the page older than a message, `around` loads a
+  // window centred on one (search results, mentions and pins jump there).
+  const beforeId = params.get("before")?.slice(0, 64) || null;
+  const aroundId = params.get("around")?.slice(0, 64) || null;
+  const anchorId = beforeId || aroundId;
+  let anchor: { created_at: string } | null = null;
+  if (anchorId && channelId && !threadId) {
+    anchor = await db
+      .prepare("SELECT created_at FROM messages WHERE id = ? AND channel_id = ?")
+      .bind(anchorId, channelId)
+      .first<{ created_at: string }>();
+    if (!anchor) return Response.json({ messages: [], hasMore: false });
+  }
+
+  const scope = threadId
+    ? { where: "thread_id = ? AND deleted_at IS NULL", bind: [threadId] as string[] }
+    : channelId
+      ? {
+          where: `channel_id = ? AND deleted_at IS NULL AND thread_id IS NULL ${pinnedOnly ? "AND pinned_at IS NOT NULL" : ""}`,
+          bind: [channelId] as string[],
+        }
+      : {
+          where: "channel = ? AND channel_id IS NULL AND deleted_at IS NULL",
+          bind: [channelName || "general"] as string[],
+        };
+
   // Take the *newest* page and flip it back into reading order. Selecting
   // ASC would return the oldest 200, so once a channel passed that many
   // messages every new one became invisible after a reload.
-  const result = threadId
-    ? await db
+  let rows: StoredMessage[];
+  let hasMore = false;
+  let hasNewer = false;
+  if (anchor && aroundId) {
+    const half = Math.floor(HISTORY_LIMIT / 2);
+    const [older, newer] = await Promise.all([
+      db
         .prepare(
-          `SELECT ${columns} FROM messages
-            WHERE thread_id = ? AND deleted_at IS NULL
-            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
+          `SELECT ${columns} FROM messages WHERE ${scope.where} AND created_at <= ?
+            ORDER BY created_at DESC LIMIT ${half + 1}`,
         )
-        .bind(threadId)
-        .all()
-    : channelId
-    ? await db
+        .bind(...scope.bind, anchor.created_at)
+        .all(),
+      db
         .prepare(
-          `SELECT ${columns} FROM messages
-            WHERE channel_id = ? AND deleted_at IS NULL AND thread_id IS NULL
-              ${pinnedOnly ? "AND pinned_at IS NOT NULL" : ""}
-            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
+          `SELECT ${columns} FROM messages WHERE ${scope.where} AND created_at > ?
+            ORDER BY created_at ASC LIMIT ${half + 1}`,
         )
-        .bind(channelId)
-        .all()
-    : await db
-        .prepare(
-          `SELECT ${columns} FROM messages
-            WHERE channel = ? AND channel_id IS NULL AND deleted_at IS NULL
-            ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
-        )
-        .bind(channelName || "general")
-        .all();
+        .bind(...scope.bind, anchor.created_at)
+        .all(),
+    ]);
+    const olderRows = (older.results || []) as unknown as StoredMessage[];
+    const newerRows = (newer.results || []) as unknown as StoredMessage[];
+    hasMore = olderRows.length > half;
+    hasNewer = newerRows.length > half;
+    rows = [...olderRows.slice(0, half).reverse(), ...newerRows.slice(0, half)];
+  } else {
+    const result = await db
+      .prepare(
+        `SELECT ${columns} FROM messages WHERE ${scope.where}
+          ${anchor ? "AND created_at < ?" : ""}
+          ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT + 1}`,
+      )
+      .bind(...scope.bind, ...(anchor ? [anchor.created_at] : []))
+      .all();
+    const page = (result.results || []) as unknown as StoredMessage[];
+    hasMore = page.length > HISTORY_LIMIT;
+    rows = page.slice(0, HISTORY_LIMIT).reverse();
+  }
 
-  const stored = ((result.results || []) as unknown as StoredMessage[]).reverse();
+  const stored = rows;
   const messages = stored.map(publicMessage);
   await decorateMessages(db, user.id, stored, messages);
 
-  return Response.json({ messages });
+  return Response.json({ messages, hasMore, hasNewer });
 }
 
 /**
@@ -351,7 +389,7 @@ async function decorateMessages(
       id: string;
       author: string;
       content: string;
-    }>(db, "SELECT id, author, content FROM messages WHERE id IN", missing);
+    }>(db, "SELECT id, author, content FROM messages WHERE deleted_at IS NULL AND id IN", missing);
     for (const row of rows) {
       fetched.set(row.id, { author: row.author, content: row.content });
     }
@@ -422,6 +460,8 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as PostBody;
   const content = body.content?.trim() || "";
+  const refused = refusedPost(body);
+  if (refused) return Response.json({ error: refused }, { status: 400 });
   // The first key stays in attachment_key; any extras go to the JSON column,
   // so existing rows and older clients keep rendering the same way.
   const allKeys = [
@@ -489,14 +529,10 @@ export async function POST(request: Request) {
       // A new message brings a closed conversation back into both lists.
       await reopenDmForAll(db, channelId);
     } else {
-      // Banned members cannot post in the server they were banned from.
-      const banned = await db
-        .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
-        .bind(channel.server_id, user.id)
-        .first();
-      if (banned) {
+      // Only members post, and banned members cannot post at all.
+      if (!(await canSeeServer(db, channel.server_id, user))) {
         return Response.json(
-          { error: "You are banned from this server." },
+          { error: "You are not a member of this server." },
           { status: 403 },
         );
       }
@@ -529,6 +565,7 @@ export async function POST(request: Request) {
     }
     channelName = channel.name;
   } else {
+    if (!(await canSeeServer(db, DEFAULT_SERVER_ID, user))) return unauthorized();
     const channel = await db
       .prepare(
         "SELECT id FROM channels WHERE server_id = ? AND kind = 'text' AND name = ?",
@@ -538,14 +575,49 @@ export async function POST(request: Request) {
     channelId = channel?.id || null;
   }
 
+  // A reply or thread reply must point into this same channel, so a stray id
+  // cannot pull another conversation's text into a preview.
+  let replyTo = body.replyTo?.slice(0, 64) || null;
+  if (replyTo && channelId) {
+    const parent = await db
+      .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+      .bind(replyTo, channelId)
+      .first();
+    if (!parent) replyTo = null;
+  }
+  const threadId = body.threadId?.slice(0, 64) || null;
+  if (threadId) {
+    const root = channelId
+      ? await db
+          .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND thread_id IS NULL")
+          .bind(threadId, channelId)
+          .first()
+      : null;
+    if (!root) {
+      return Response.json({ error: "That thread is gone." }, { status: 404 });
+    }
+  }
+  // A forwarded card is rebuilt from the original message, which the sender
+  // must be able to read; nothing about it is taken from the client.
+  let payload = body.payload;
+  if (hasPayloadForward) {
+    const forwarded = await forwardedCard(
+      db,
+      (body.payload as { forwardedFrom?: { id?: unknown } }).forwardedFrom?.id,
+      user,
+    );
+    if (!forwarded) {
+      return Response.json({ error: "That message can't be forwarded." }, { status: 403 });
+    }
+    payload = { ...(body.payload as Record<string, unknown>), forwardedFrom: forwarded };
+  }
+
   const stored: StoredMessage = {
     id: crypto.randomUUID(),
     channel: channelName,
     channel_id: channelId,
     user_id: body.asBot ? null : user.id,
-    author: body.asBot
-      ? body.botName?.trim().slice(0, 80) || "Huddle Bot"
-      : user.display_name,
+    author: body.asBot ? botName(body.botName) : user.display_name,
     avatar: body.asBot
       ? body.botAvatar?.trim().slice(0, 4) || "✦"
       : user.avatar,
@@ -560,17 +632,19 @@ export async function POST(request: Request) {
     attachment_key: attachmentKey,
     is_bot: body.asBot ? 1 : 0,
     created_at: new Date().toISOString(),
-    link: body.link?.trim().slice(0, 1000) || null,
+    link: safeLink(body.link),
     action_label: body.actionLabel?.trim().slice(0, 80) || null,
-    audio_url: body.audio?.trim().slice(0, 8000) || null,
+    audio_url: safeAudio(body.audio),
     kind: body.kind?.trim().slice(0, 32) || null,
-    payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
-    reply_to: body.replyTo?.slice(0, 64) || null,
+    payload: payload ? JSON.stringify(stripServerOnly(payload)).slice(0, 8000) : null,
+    reply_to: replyTo,
     attachments: extraKeys.length ? JSON.stringify(extraKeys) : null,
-    thread_id: body.threadId?.slice(0, 64) || null,
-    // Command attribution only makes sense on a bot answer.
+    thread_id: threadId,
+    // Command attribution only makes sense on a bot answer, and it always
+    // names the person who really sent it.
     command_text: body.asBot ? body.commandText?.trim().slice(0, 200) || null : null,
-    command_by: body.asBot ? body.commandBy?.trim().slice(0, 80) || null : null,
+    command_by: body.asBot ? user.display_name : null,
+    sender_id: user.id,
   };
 
   // Resolve @mentions before writing anything: automod needs the count, and a
@@ -581,10 +655,20 @@ export async function POST(request: Request) {
   if (handles.length && channelId) {
     const placeholders = handles.map(() => "?").join(",");
     const [userRows, roleRows] = await Promise.all([
-      db
-        .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
-        .bind(...handles)
-        .all(),
+      // Only people who can see this channel can be mentioned (and pushed).
+      serverId && !audience
+        ? db
+            .prepare(
+              `SELECT u.id FROM users u
+                 JOIN server_members m ON m.user_id = u.id AND m.server_id = ?
+                WHERE u.username_lower IN (${placeholders})`,
+            )
+            .bind(serverId, ...handles)
+            .all()
+        : db
+            .prepare(`SELECT id FROM users WHERE username_lower IN (${placeholders})`)
+            .bind(...handles)
+            .all(),
       // Role names can hold spaces, so they're matched by handle in JS
       // ("Game Master" is written @Game-Master).
       serverId
@@ -629,7 +713,7 @@ export async function POST(request: Request) {
         ...roleMemberIds,
         ...broadcastIds,
       ]),
-    ].filter((id) => id !== user.id);
+    ].filter((id) => id !== user.id && (!audience || audience.includes(id)));
   }
 
   // ---- Automod ------------------------------------------------------------
@@ -655,8 +739,8 @@ export async function POST(request: Request) {
       `INSERT INTO messages
        (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
         is_bot, created_at, link, action_label, audio_url, kind, payload, reply_to, attachments,
-        thread_id, command_text, command_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        thread_id, command_text, command_by, sender_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -680,6 +764,7 @@ export async function POST(request: Request) {
       stored.thread_id,
       stored.command_text,
       stored.command_by,
+      stored.sender_id,
     )
     .run();
 
@@ -744,4 +829,100 @@ export async function POST(request: Request) {
   }
 
   return Response.json({ message }, { status: 201 });
+}
+
+/** The names a signed-in member's browser may post bot answers under. */
+const BOT_NAMES = new Set(["Music + Watch", "D&D Bot", "Huddle Bot"]);
+
+function botName(raw: string | undefined): string {
+  const name = raw?.trim() || "";
+  return BOT_NAMES.has(name) ? name : "Huddle Bot";
+}
+
+/**
+ * Kinds the server creates itself (games, polls, AI answers, system notices)
+ * cannot be posted from a browser, or anyone could fake one.
+ */
+function refusedPost(body: PostBody): string | null {
+  const kind = body.kind?.trim() || "";
+  if (kind === "game" || kind === "poll" || kind === "ai" || kind.startsWith("system")) {
+    return "That kind of message can't be posted directly.";
+  }
+  return null;
+}
+
+/** Only web links and Hoffle's own pages make it onto a message button. */
+function safeLink(raw: string | undefined): string | null {
+  const value = raw?.trim().slice(0, 1000) || "";
+  if (!value) return null;
+  if (value.startsWith("/hangout/")) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Audio plays from our own uploads only. An outside URL would be fetched by
+ * every reader's browser, handing their IP address to whoever posted it.
+ */
+function safeAudio(raw: string | undefined): string | null {
+  const value = raw?.trim().slice(0, 1000) || "";
+  return /^\/hangout\/api\/uploads\/[^/?#]+$/.test(value) ? value : null;
+}
+
+/** Drops payload fields only the server may set (the verified-roll mark). */
+function stripServerOnly(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const copy = { ...(payload as Record<string, unknown>) };
+  delete copy.verified;
+  return copy;
+}
+
+/** A forwarded card built from the stored original, if `user` may read it. */
+async function forwardedCard(
+  db: D1Database,
+  rawId: unknown,
+  user: { id: string; is_admin?: number },
+): Promise<Record<string, unknown> | null> {
+  if (typeof rawId !== "string" || !rawId) return null;
+  const original = await db
+    .prepare(
+      `SELECT m.id, m.channel_id, m.user_id, m.author, m.avatar, m.color, m.content,
+              m.attachment_key, m.attachments, m.is_bot, m.created_at,
+              u.username, u.avatar_url
+         FROM messages m
+         LEFT JOIN users u ON u.id = m.user_id
+        WHERE m.id = ? AND m.deleted_at IS NULL`,
+    )
+    .bind(rawId.slice(0, 64))
+    .first<StoredMessage & { username: string | null; avatar_url: string | null }>();
+  if (!original?.channel_id) return null;
+  const access = await channelAccess(db, original.channel_id, user);
+  if (!access.ok) return null;
+  const server = access.channel.isDm
+    ? null
+    : await db
+        .prepare("SELECT name FROM servers WHERE id = ?")
+        .bind(access.channel.serverId)
+        .first<{ name: string }>();
+  const shown = publicMessage({ ...original, channel: "" });
+  return {
+    id: original.id,
+    author: original.author,
+    userId: original.user_id || null,
+    username: original.username || undefined,
+    avatar: original.avatar,
+    avatarUrl: original.avatar_url || null,
+    color: original.color,
+    text: original.content,
+    image: shown.image,
+    images: shown.images,
+    file: shown.file,
+    channelName: access.channel.isDm ? undefined : access.channel.name,
+    serverName: server?.name,
+    createdAt: original.created_at,
+  };
 }

@@ -228,6 +228,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Huddle",
   },
   {
+    name: "summarize",
+    description: "Catch up: a private AI summary of this channel's recent messages",
+    group: "Huddle",
+  },
+  {
+    name: "remind",
+    args: "<10m | 2h | 1d | 18:30> <what>",
+    description: "Remind yourself later; it arrives in your Notes even if you are offline",
+    group: "Huddle",
+  },
+  {
     name: "game",
     args: "<tictactoe | connect4 | rps | mines | rota>",
     description: "Invite the conversation to a game",

@@ -49,6 +49,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       .bind(id, user.id)
       .run();
   }
-  await publishStructureChange();
+  await publishStructureChange(event.server_id);
   return Response.json({ ok: true, status });
 }

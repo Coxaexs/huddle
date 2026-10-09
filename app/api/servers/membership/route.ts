@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       targetName: user.display_name,
       detail: `via invite ${code}`,
     });
-    await publishStructureChange();
+    await publishStructureChange(server.id);
     return Response.json({
       serverId: server.id,
       servers: await listServers(db, user.id),
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
       targetId: user.id,
       targetName: user.display_name,
     });
-    await publishStructureChange();
+    await publishStructureChange(serverId);
     return Response.json({ servers: await listServers(db, user.id) });
   }
 

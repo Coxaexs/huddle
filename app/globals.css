@@ -26887,3 +26887,95 @@ a.link-preview-author:hover {
     flex-wrap: wrap;
   }
 }
+
+/* A roll the server made itself (see /api/integrations/dnd/roll). */
+.dnd-verified {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--mint, #4ade80);
+  border: 1px solid color-mix(in srgb, var(--mint, #4ade80) 50%, transparent);
+  vertical-align: middle;
+}
+
+/* "Load earlier messages" at the top of a channel with more history. */
+.load-older {
+  display: block;
+  margin: 0.75rem auto;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.load-older:hover {
+  color: var(--ink);
+}
+
+/* Stage hosts: where a raised hand is in the queue. */
+.stage-queue-number {
+  margin: 0 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--coral, #f59e6e);
+}
+
+/* Multi-line dialog text (AI catch-up summaries keep their bullet lines). */
+.custom-dialog-body p {
+  white-space: pre-wrap;
+}
+
+/* Saved messages panel: each entry opens on click, with a remove cross. */
+.saved-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0;
+}
+.saved-entry .saved-open {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+.saved-entry .saved-remove {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  padding: 0.5rem;
+  cursor: pointer;
+}
+.saved-entry .saved-remove:hover {
+  color: var(--coral, #f59e6e);
+}
+
+/* Settings → Account: the delete-account section. */
+.danger-zone {
+  border: 1px solid color-mix(in srgb, var(--coral, #f59e6e) 45%, transparent);
+  border-radius: var(--ui-corners, 12px);
+  padding: 1rem;
+}
+.danger-zone button.danger {
+  background: var(--coral, #e5534b);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.danger-zone button.danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

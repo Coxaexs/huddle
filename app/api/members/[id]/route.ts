@@ -105,7 +105,7 @@ export async function POST(
     });
     // Stop them speaking right away: out of this server's voice rooms.
     if (until) await evictFromServerVoice(db, serverId, targetId);
-    await publishStructureChange();
+    await publishStructureChange(serverId);
     return Response.json({ ok: true, timeoutUntil: until });
   }
 
@@ -156,7 +156,7 @@ export async function POST(
     targetId,
     targetName: target?.display_name || "Unknown member",
   });
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ ok: true });
 }
 
@@ -240,6 +240,6 @@ export async function PATCH(
         : `cleared ${membership.nickname || ""}`.trim(),
     });
   }
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ ok: true, nickname });
 }

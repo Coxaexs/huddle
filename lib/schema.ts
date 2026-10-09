@@ -760,6 +760,9 @@ async function migrate(db: D1Database): Promise<void> {
     // kept as its own message.
     ["command_text", "ALTER TABLE messages ADD COLUMN command_text TEXT"],
     ["command_by", "ALTER TABLE messages ADD COLUMN command_by TEXT"],
+    // Who actually sent a bot-styled post (a /roll card, a music answer). The
+    // message shows the bot, but moderation and deletion need the person.
+    ["sender_id", "ALTER TABLE messages ADD COLUMN sender_id TEXT"],
   ] as const) {
     if (!messageColumns.has(column)) messageMigrations.push(db.prepare(ddl));
   }
@@ -768,6 +771,11 @@ async function migrate(db: D1Database): Promise<void> {
     .prepare(
       "CREATE INDEX IF NOT EXISTS messages_channel_id_time_idx ON messages(channel_id, created_at)",
     )
+    .run();
+  // Every channel load counts replies per thread root; without this it scans
+  // the whole messages table.
+  await db
+    .prepare("CREATE INDEX IF NOT EXISTS messages_thread_idx ON messages(thread_id, created_at)")
     .run();
 
   // Self-hosted push: "webpush" rows are browser/UnifiedPush subscriptions,
@@ -869,6 +877,10 @@ async function migrate(db: D1Database): Promise<void> {
   // Voice channels only; 0 means "the default" (see lib/voice-quality).
   if (!channelColumns.has("bitrate")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN bitrate INTEGER NOT NULL DEFAULT 0").run();
+  }
+  // Voice rooms: whether the soundboard plays here (moderators can switch it off).
+  if (!channelColumns.has("soundboard")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN soundboard INTEGER NOT NULL DEFAULT 1").run();
   }
 
   const pollColumns = await columnNames(db, "polls");
