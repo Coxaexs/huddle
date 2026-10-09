@@ -14,8 +14,10 @@ export function baseUrl(): URL {
   );
 }
 
-/** Logs into the dashboard and returns its session cookie. */
-export async function botSession(): Promise<string> {
+let session: { cookie: string; until: number } | null = null;
+let signingIn: Promise<string> | null = null;
+
+async function signIn(): Promise<string> {
   const password = bindings().MUSICWATCH_PASSWORD;
   if (!password) throw new Error("Music dashboard access is not configured.");
 
@@ -24,6 +26,9 @@ export async function botSession(): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
   });
+  if (response.status === 429) {
+    throw new Error("Music dashboard is rate-limiting logins; try again in a minute.");
+  }
   if (!response.ok) throw new Error("Music dashboard login failed.");
 
   const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
@@ -31,19 +36,44 @@ export async function botSession(): Promise<string> {
   return cookie;
 }
 
+/**
+ * The dashboard session cookie. The bot allows only a few logins every few
+ * minutes, so one session is reused (and shared by concurrent callers)
+ * instead of logging in for every command.
+ */
+export async function botSession(): Promise<string> {
+  if (session && session.until > Date.now()) return session.cookie;
+  signingIn ??= signIn()
+    .then((cookie) => {
+      session = { cookie, until: Date.now() + 6 * 3600_000 };
+      return cookie;
+    })
+    .finally(() => {
+      signingIn = null;
+    });
+  return signingIn;
+}
+
 export async function botFetch(
   path: string,
   cookie: string,
   init?: RequestInit,
 ): Promise<Record<string, any>> {
-  const response = await fetch(new URL(path, baseUrl()), {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      Cookie: cookie,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
+  const send = (cookieValue: string) =>
+    fetch(new URL(path, baseUrl()), {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        Cookie: cookieValue,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+    });
+  let response = await send(cookie);
+  if (response.status === 401 && session?.cookie === cookie) {
+    // The bot forgot the session (a restart, an expiry): sign in once more.
+    session = null;
+    response = await send(await botSession());
+  }
 
   const raw = await response.text();
   let data: Record<string, any> = {};
@@ -70,6 +100,8 @@ export interface Lyrics {
   lines: Array<[number, string]>;
   lyrics?: string | null;
   synced?: boolean;
+  /** Matched by song name only (the artist did not line up). */
+  loose?: boolean;
 }
 
 /** Lyrics for any track, not only whatever Discord is playing. */
@@ -89,6 +121,7 @@ export async function fetchLyrics(
     lines: (data.lines || []) as Array<[number, string]>,
     lyrics: (data.lyrics as string) || null,
     synced: Boolean(data.synced),
+    loose: Boolean(data.loose),
   };
 }
 

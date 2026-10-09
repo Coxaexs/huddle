@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Music2 } from "lucide-react";
 
 interface LyricsNowLine {
@@ -12,6 +13,10 @@ interface LyricsNowProps {
   lines?: LyricsNowLine[];
   positionMs?: number;
   live?: boolean;
+  /** Found by song name only: show some lines so the listener can confirm it. */
+  loose?: boolean;
+  /** Remembers the timing correction for this song. */
+  trackKey?: string;
 }
 
 function timestamp(seconds: number): string {
@@ -26,10 +31,34 @@ export function LyricsNow({
   lines = [],
   positionMs,
   live = false,
+  loose = false,
+  trackKey,
 }: LyricsNowProps) {
+  const storeKey = `lyricsOffset:${trackKey || `${artist || ""}|${track || ""}`}`;
+  // Seconds the lyrics run ahead (+) or behind (-); only this song's card has it.
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(storeKey));
+      setOffset(Number.isFinite(saved) ? saved : 0);
+    } catch {
+      /* private mode */
+    }
+  }, [storeKey]);
+  const nudge = (delta: number) => {
+    const next = delta === 0 ? 0 : Math.round((offset + delta) * 10) / 10;
+    setOffset(next);
+    try {
+      if (next) localStorage.setItem(storeKey, String(next));
+      else localStorage.removeItem(storeKey);
+    } catch {
+      /* private mode */
+    }
+  };
+
   let visible = lines;
   if (live && positionMs !== undefined && lines.length) {
-    const seconds = positionMs / 1000;
+    const seconds = positionMs / 1000 + offset;
     let currentIndex = 0;
     for (let index = 0; index < lines.length; index += 1) {
       if (lines[index].at <= seconds) currentIndex = index;
@@ -53,6 +82,12 @@ export function LyricsNow({
           )}
         </div>
       </header>
+      {loose && (
+        <p className="lyrics-now-loose">
+          Matched by song name only. Is this the right song?
+          {lines.slice(0, 2).map((item) => ` “${item.line}”`).join(" /")}
+        </p>
+      )}
       <div className="lyrics-now-lines">
         {visible.map((item, index) => (
           <div
@@ -64,6 +99,16 @@ export function LyricsNow({
           </div>
         ))}
       </div>
+      {live && lines.length > 0 && (
+        <div className="lyrics-now-sync" aria-label="Lyrics timing">
+          <button type="button" onClick={() => nudge(-1)} title="Show lyrics 1 second later">−1s</button>
+          <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : "in sync"}</span>
+          <button type="button" onClick={() => nudge(1)} title="Show lyrics 1 second earlier">+1s</button>
+          {offset !== 0 && (
+            <button type="button" onClick={() => nudge(0)} title="Reset timing">reset</button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

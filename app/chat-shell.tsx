@@ -8232,6 +8232,8 @@ export function ChatShell() {
                               track={typeof message.payload.track === "string" ? message.payload.track : message.payload.track?.title}
                               artist={message.payload.artist}
                               lines={message.payload.lines}
+                              loose={Boolean(message.payload.loose)}
+                              trackKey={message.payload.trackId ? String(message.payload.trackId) : undefined}
                               positionMs={
                                 message.payload.voiceChannelId === voice.channelId
                                   ? player.position
