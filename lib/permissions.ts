@@ -335,3 +335,71 @@ export async function can(
 ): Promise<boolean> {
   return hasPermission(await effectivePermissions(db, userId, serverId), flag);
 }
+
+/** What a member may do to roles in a server. */
+export interface RoleAuthority {
+  /** Server owner or global admin: no limits. */
+  unlimited: boolean;
+  /** May manage roles at all (MANAGE_ROLES or MANAGE_SERVER). */
+  canManage: boolean;
+  /** Their effective permissions; they can only hand out bits they hold. */
+  mask: number;
+  /** Position of their highest role (-1 with none); they act strictly below it. */
+  top: number;
+}
+
+export async function roleAuthority(
+  db: D1Database,
+  userId: string,
+  serverId: string,
+): Promise<RoleAuthority> {
+  const [user, server, roles] = await Promise.all([
+    db.prepare("SELECT is_admin FROM users WHERE id = ?").bind(userId).first<{ is_admin: number }>(),
+    db
+      .prepare("SELECT created_by FROM servers WHERE id = ?")
+      .bind(serverId)
+      .first<{ created_by: string | null }>(),
+    db
+      .prepare(
+        `SELECT r.permissions AS permissions, r.position AS position
+           FROM member_roles mr JOIN roles r ON r.id = mr.role_id
+          WHERE mr.server_id = ? AND mr.user_id = ?`,
+      )
+      .bind(serverId, userId)
+      .all<{ permissions: number; position: number }>(),
+  ]);
+  const unlimited = Boolean(user?.is_admin) || server?.created_by === userId;
+  let mask = 0;
+  let top = -1;
+  for (const role of roles.results || []) {
+    mask |= role.permissions;
+    top = Math.max(top, role.position);
+  }
+  if (unlimited || mask & Permission.ADMINISTRATOR) mask = ALL_PERMISSIONS;
+  return {
+    unlimited,
+    canManage:
+      unlimited || hasPermission(mask, Permission.MANAGE_ROLES) || hasPermission(mask, Permission.MANAGE_SERVER),
+    mask,
+    top,
+  };
+}
+
+/** Why `authority` may not touch a role at `position`, or null when it may. */
+export function roleRefusal(
+  authority: RoleAuthority,
+  change: { position?: number; permissions?: number },
+): string | null {
+  if (!authority.canManage) return "You do not have permission to manage roles.";
+  if (authority.unlimited) return null;
+  if (change.position !== undefined && change.position >= authority.top) {
+    return "You can only manage roles below your highest role.";
+  }
+  if (change.permissions !== undefined && (change.permissions & ~authority.mask) !== 0) {
+    return "You can only grant permissions you have yourself.";
+  }
+  if (change.permissions !== undefined && change.permissions & Permission.ADMINISTRATOR) {
+    return "Only the server owner can grant Administrator.";
+  }
+  return null;
+}

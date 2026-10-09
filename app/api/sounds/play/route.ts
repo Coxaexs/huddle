@@ -1,10 +1,16 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { publishMessageEvent } from "@/lib/hub-client";
+import { channelAccess } from "@/lib/access";
+import { hubState, publishMessageEvent } from "@/lib/hub-client";
+import { limitUser } from "@/lib/rate-limit";
+import { findChannel } from "@/lib/servers";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
 
 export const dynamic = "force-dynamic";
+
+/** Enough for a laugh track, not enough to drown a room out. */
+const SOUNDBOARD_RATE_LIMIT = { action: "soundboard", limit: 4, windowSeconds: 15 };
 
 /**
  * Broadcast a soundboard clip to a voice room. Everyone in the channel plays it
@@ -27,6 +33,26 @@ export async function POST(request: Request) {
   }
   const timedOut = await blockIfTimedOut(db, channelId, user.id);
   if (timedOut) return timedOut;
+
+  // You play into a room you are sitting in, of a server you belong to, and
+  // only if you could be heard there anyway: a stage's audience cannot blast
+  // sounds over the speakers. Moderators can switch a room's soundboard off.
+  const access = await channelAccess(db, channelId, user);
+  if (!access.ok) return access.response;
+  const room = await findChannel(db, channelId);
+  if (room && (room as { soundboard?: number }).soundboard === 0) {
+    return Response.json({ error: "The soundboard is off in this room." }, { status: 403 });
+  }
+  const state = await hubState();
+  const seat = state?.voice[channelId]?.find((person) => person.id === user.id);
+  if (state && !seat) {
+    return Response.json({ error: "Join the room to play sounds in it." }, { status: 403 });
+  }
+  if (seat && (seat.serverMuted || (room?.kind === "stage" && seat.speakAllowed !== true))) {
+    return Response.json({ error: "Only people on stage can use the soundboard." }, { status: 403 });
+  }
+  const limited = await limitUser(db, SOUNDBOARD_RATE_LIMIT, user.id);
+  if (limited) return limited;
 
   // Built-in soundboard presets (no DB record or file download needed)
   if (body.soundId.startsWith("preset:")) {

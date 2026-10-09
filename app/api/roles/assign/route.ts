@@ -1,6 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { publishStructureChange } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { roleAuthority, roleRefusal } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -29,19 +29,25 @@ export async function POST(request: Request) {
   if (!serverId || !userId || !roleId) {
     return Response.json({ error: "Missing fields." }, { status: 400 });
   }
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_SERVER))) {
-    return Response.json(
-      { error: "You do not have permission to do that." },
-      { status: 403 },
-    );
-  }
-
   const role = await db
-    .prepare("SELECT id FROM roles WHERE id = ? AND server_id = ?")
+    .prepare("SELECT id, position FROM roles WHERE id = ? AND server_id = ?")
     .bind(roleId, serverId)
-    .first();
+    .first<{ id: string; position: number }>();
   if (!role) {
     return Response.json({ error: "That role is gone." }, { status: 404 });
+  }
+  // Only roles below your own highest one, so nobody can hand themselves (or a
+  // friend) a role that outranks them.
+  const refused = roleRefusal(await roleAuthority(db, user.id, serverId), {
+    position: role.position,
+  });
+  if (refused) return Response.json({ error: refused }, { status: 403 });
+  const member = await db
+    .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+    .bind(serverId, userId)
+    .first();
+  if (!member) {
+    return Response.json({ error: "That person is not in this server." }, { status: 404 });
   }
 
   if (body.add === false) {
@@ -60,6 +66,6 @@ export async function POST(request: Request) {
       .run();
   }
 
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ ok: true });
 }

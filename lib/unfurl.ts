@@ -88,7 +88,7 @@ export function isSafePublicUrl(raw: string): URL | null {
 }
 
 /** Resolves a hostname over DNS-over-HTTPS and rejects private answers. */
-async function resolvesPublic(host: string): Promise<boolean> {
+export async function resolvesPublic(host: string): Promise<boolean> {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return !privateIpv4(host);
   const lookups = await Promise.all(
     (["A", "AAAA"] as const).map(async (type) => {

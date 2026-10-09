@@ -649,10 +649,15 @@ export function ServerSettingsDialog({
     });
   };
 
+  // Quick clicks on several permissions must stack: each toggle builds on the
+  // last one sent, not on the role as it was before the first answer came back.
+  const pendingPermsRef = useRef(new Map<string, number>());
   const toggleRolePermission = async (flag: PermissionFlag) => {
     if (!activeRole || !canManageServer) return;
-    const current = activeRole.permissions;
+    const current = pendingPermsRef.current.get(activeRole.id) ?? activeRole.permissions;
     const nextPerms = (current & flag) === flag ? current & ~flag : current | flag;
+    pendingPermsRef.current.set(activeRole.id, nextPerms);
+    setActiveRole({ ...activeRole, permissions: nextPerms });
     try {
       const res = await apiFetch<{ servers: PublicServer[] }>(
         `/api/roles/${activeRole.id}`,
@@ -661,6 +666,9 @@ export function ServerSettingsDialog({
           body: JSON.stringify({ permissions: nextPerms }),
         },
       );
+      // A later toggle is already on its way: its answer is the one to show.
+      if (pendingPermsRef.current.get(activeRole.id) !== nextPerms) return;
+      pendingPermsRef.current.delete(activeRole.id);
       const updatedServer = res.servers.find((s) => s.id === server.id);
       if (updatedServer) {
         setRoles(updatedServer.roles);
@@ -670,6 +678,8 @@ export function ServerSettingsDialog({
       }
       onServerUpdated();
     } catch (e) {
+      pendingPermsRef.current.delete(activeRole.id);
+      setActiveRole(activeRole);
       setNotice(e instanceof Error ? e.message : "Could not update permissions");
     }
   };

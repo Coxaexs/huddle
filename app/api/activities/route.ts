@@ -15,6 +15,20 @@ import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
+/** Hosts a watch-together room may be framed from. */
+function watchHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const runtime = bindings() as { MUSICWATCH_PUBLIC_URL?: string; MUSICWATCH_BASE_URL?: string };
+  for (const raw of [runtime.MUSICWATCH_PUBLIC_URL, runtime.MUSICWATCH_BASE_URL, "https://deeppixel.online"]) {
+    try {
+      if (raw?.trim()) hosts.add(new URL(raw.trim()).host);
+    } catch {
+      // Not a URL: skip it.
+    }
+  }
+  return hosts;
+}
+
 interface ActivityRow {
   channel_id: string;
   kind: RoomActivityKind;
@@ -172,7 +186,12 @@ function cleanState(
     let url = "";
     try {
       const parsed = new URL(rawUrl);
-      if (["http:", "https:"].includes(parsed.protocol)) url = parsed.toString();
+      // Only the Music + Watch server's own rooms: this URL is framed in
+      // everyone's voice view, so any other site would be a ready-made
+      // phishing page ("your session expired, sign in again").
+      if (["http:", "https:"].includes(parsed.protocol) && watchHosts().has(parsed.host)) {
+        url = parsed.toString();
+      }
     } catch {
       // Rejected below by the client as an empty room.
     }

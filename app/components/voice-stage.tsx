@@ -136,6 +136,8 @@ interface VoiceStageProps {
    * the floor.
    */
   stageMode?: boolean;
+  /** False when moderators switched this room's soundboard off. */
+  soundboardEnabled?: boolean;
   /** Viewer may move seats on and off the stage (MUTE_MEMBERS). */
   canManageStage?: boolean;
   userId: string;
@@ -288,6 +290,7 @@ export function VoiceStage({
   serverId,
   canManageSounds,
   stageMode = false,
+  soundboardEnabled = true,
   canManageStage = false,
   userId,
   userName,
@@ -349,14 +352,23 @@ export function VoiceStage({
    * Stage roster split. The rules live in `lib/stage.ts` so they can be tested
    * without a live call; this only supplies the participants.
    */
-  const { onStage, audience } = stageMode
+  const { onStage, audience: seated } = stageMode
     ? splitStageRoster(participants)
     : { onStage: [] as VoiceParticipant[], audience: [] as VoiceParticipant[] };
+  // Hosts take raised hands first come, first served.
+  const audience = [...seated].sort((a, b) => {
+    if (Boolean(a.handRaised) !== Boolean(b.handRaised)) return a.handRaised ? -1 : 1;
+    return (a.handRaisedAt ?? 0) - (b.handRaisedAt ?? 0);
+  });
+  const raisedHands = audience.filter((person) => person.handRaised).length;
   const self = participants.find((person) => person.connectionId === connectionId) || null;
   /** True when this tab is in the audience and could therefore ask for the floor. */
   const amAudience = Boolean(self && !isOnStage(self));
   /** A stage audience seat cannot show video: receivers drop it (videoAllowedFrom). */
   const videoLocked = Boolean(stageMode && self && !videoAllowedFrom(self));
+  // Off in this room, or you are in a stage's audience (the server refuses
+  // both anyway; this just keeps the button from teasing).
+  const soundboardAllowed = soundboardEnabled && !(stageMode && amAudience);
 
   /** Live seat time for one person, when the shell handed us the hub's clock. */
   function seatTime(person: VoiceParticipant, className: string) {
@@ -707,7 +719,10 @@ export function VoiceStage({
           </div>
 
           <div className="stage-roster-group">
-            <span className="stage-roster-label">Audience · {audience.length}</span>
+            <span className="stage-roster-label">
+              Audience · {audience.length}
+              {raisedHands > 0 && ` · ✋ ${raisedHands} waiting`}
+            </span>
             {/* A host gets one control per person; everyone else gets a plain
                 list, since a row of buttons they cannot use is noise. */}
             {canManageStage ? (
@@ -719,7 +734,12 @@ export function VoiceStage({
                     <span key={person.connectionId} className="stage-roster-person">
                       {name}
                       {person.handRaised && (
-                        <Hand size={12} aria-hidden="true" className="tile-hand" />
+                        <>
+                          <Hand size={12} aria-hidden="true" className="tile-hand" />
+                          <span className="stage-queue-number" title="Place in the queue">
+                            #{audience.indexOf(person) + 1}
+                          </span>
+                        </>
                       )}
                       <button
                         type="button"
@@ -873,17 +893,14 @@ export function VoiceStage({
               </div>
               {participants.map((p, i) => {
                 const isSpeaking = selfSpeaking(p);
-                const positions = [
-                  { top: "4%", left: "50%", transform: "translate(-50%, -50%)" },
-                  { bottom: "4%", left: "50%", transform: "translate(-50%, 50%)" },
-                  { left: "8%", top: "50%", transform: "translate(-50%, -50%)" },
-                  { right: "8%", top: "50%", transform: "translate(50%, -50%)" },
-                  { top: "18%", left: "20%", transform: "translate(-50%, -50%)" },
-                  { top: "18%", right: "20%", transform: "translate(50%, -50%)" },
-                  { bottom: "18%", left: "20%", transform: "translate(-50%, 50%)" },
-                  { bottom: "18%", right: "20%", transform: "translate(50%, 50%)" },
-                ];
-                const pos = positions[i % positions.length];
+                // Seats spread evenly round the table, however many there are
+                // (eight fixed spots stacked everyone after the eighth).
+                const angle = (i / Math.max(1, participants.length)) * Math.PI * 2 - Math.PI / 2;
+                const pos = {
+                  left: `${50 + Math.cos(angle) * 42}%`,
+                  top: `${50 + Math.sin(angle) * 42}%`,
+                  transform: "translate(-50%, -50%)",
+                };
                 return (
                   <div
                     key={p.connectionId}
@@ -1179,7 +1196,7 @@ export function VoiceStage({
         )}
       </div>
 
-      {soundboardOpen && (
+      {soundboardOpen && soundboardAllowed && (
         <SoundboardDrawer
           serverId={serverId}
           channelId={voice.channelId}
@@ -1626,17 +1643,19 @@ export function VoiceStage({
             </button>
             {moreMenuOpen && (
               <div className="vctrl-more-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-1.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] shadow-xl flex flex-col gap-1 min-w-[180px]">
-                <button
-                  type="button"
-                  className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
-                  onClick={() => {
-                    setSoundboardOpen((o) => !o);
-                    setMoreMenuOpen(false);
-                  }}
-                >
-                  <Volume2 size={15} className="text-[var(--lavender)]" />
-                  <span>{soundboardOpen ? "Close Soundboard" : "Soundboard"}</span>
-                </button>
+                {soundboardAllowed && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    onClick={() => {
+                      setSoundboardOpen((o) => !o);
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <Volume2 size={15} className="text-[var(--lavender)]" />
+                    <span>{soundboardOpen ? "Close Soundboard" : "Soundboard"}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
@@ -1750,6 +1769,7 @@ export function SoundboardDrawer({
   const [search, setSearch] = useState("");
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [personalUpload, setPersonalUpload] = useState(false);
   const [volume, setVolume] = useState<number>(() => {
     if (typeof localStorage === "undefined") return 0.7;
@@ -1810,6 +1830,7 @@ export function SoundboardDrawer({
   async function upload(file: File | undefined | null) {
     if (!file || !serverId) return;
     setUploading(true);
+    setUploadError("");
     try {
       const form = new FormData();
       form.append("file", file);
@@ -1827,8 +1848,9 @@ export function SoundboardDrawer({
         }),
       });
       load.current();
-    } catch {
-      // Upload failures are surfaced by the picker being empty.
+    } catch (error) {
+      // Say why (too big, wrong format) instead of failing silently.
+      setUploadError(error instanceof Error ? error.message : "That sound did not upload.");
     } finally {
       setUploading(false);
     }
@@ -1987,6 +2009,7 @@ export function SoundboardDrawer({
             {filteredSounds.length === 0 && sounds.length === 0 && (
               <p className="soundboard-empty">No custom sounds yet. Click upload to add audio clips!</p>
             )}
+            {uploadError && <p className="soundboard-empty" role="alert">{uploadError}</p>}
             {filteredSounds.length === 0 && sounds.length > 0 && (
               <p className="soundboard-empty">No server sounds match &ldquo;{search}&rdquo;</p>
             )}

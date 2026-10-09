@@ -32,7 +32,12 @@ export async function apiFetch<T>(
   // bare 503, without the request ever reaching the app, so sending it again
   // cannot double a message. Not 504: that request may have arrived. Hoffle's
   // own 502s and 503s carry an error and are final.
+  // Only reads are retried. A POST that reached the server before the proxy
+  // gave up would otherwise run twice (a message sent twice after a deploy).
+  const method = (init?.method || "GET").toUpperCase();
+  const retryable = method === "GET" || method === "HEAD";
   while (
+    retryable &&
     (response.status === 502 || response.status === 503) &&
     !data?.error &&
     Date.now() < giveUpAt

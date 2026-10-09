@@ -56,6 +56,6 @@ export async function POST(request: Request) {
   }
   if (statements.length) await db.batch(statements);
 
-  await publishStructureChange();
+  await publishStructureChange(serverId);
   return Response.json({ servers: await listServers(db, user.id) });
 }

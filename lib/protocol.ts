@@ -38,6 +38,8 @@ export interface VoiceParticipant extends PresenceUser {
    * to offer an unmute control; they never get to decide it themselves.
    */
   speakAllowed?: boolean;
+  /** Hub-clock ms the hand went up; hosts take raised hands in this order. */
+  handRaisedAt?: number;
   /** Speaker requests centred playback with a modest volume boost. */
   important?: boolean;
   /**
@@ -427,7 +429,10 @@ export type ServerEvent =
     }
   | { t: "signal"; from: string; data: unknown; serverNow: number }
   | { t: "player"; state: PlayerState; serverNow: number }
-  | { t: "structure"; serverNow: number }
+  /** Servers, channels or roles changed; `serverId` when it was one server. */
+  | { t: "structure"; serverId?: string; serverNow: number }
+  /** One person's profile or presence changed. */
+  | { t: "member"; userId: string; serverNow: number }
   | { t: "message-deleted"; channelId: string; id: string; serverNow: number }
   | {
       t: "message-pinned";

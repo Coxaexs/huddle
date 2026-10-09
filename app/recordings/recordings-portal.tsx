@@ -412,7 +412,9 @@ export function RecordingsPortal() {
                     className="portal-video"
                     controls
                     preload="metadata"
-                    src={`${basePath}/api/recordings/file/${encodeURIComponent(r.id)}/session.mp4?${Date.now()}`}
+                    // Busts the cache when the file changes, not on every render: a
+                    // fresh URL each 5-second refresh restarted playback.
+                    src={`${basePath}/api/recordings/file/${encodeURIComponent(r.id)}/session.mp4?v=${encodeURIComponent(r.stoppedAt || r.updatedAt || "")}`}
                   />
                 ) : active ? (
                   <LivePreview sessionId={r.id} />

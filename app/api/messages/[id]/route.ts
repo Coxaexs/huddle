@@ -20,6 +20,10 @@ interface MessageRow {
   user_id: string | null;
   is_bot: number;
   pinned_at: string | null;
+  sender_id: string | null;
+  attachment_key: string | null;
+  attachments: string | null;
+  audio_url: string | null;
 }
 
 async function loadMessage(
@@ -28,7 +32,8 @@ async function loadMessage(
 ): Promise<MessageRow | null> {
   return db
     .prepare(
-      "SELECT id, channel_id, user_id, is_bot, pinned_at FROM messages WHERE id = ? AND deleted_at IS NULL",
+      `SELECT id, channel_id, user_id, is_bot, pinned_at, sender_id, attachment_key, attachments, audio_url
+         FROM messages WHERE id = ? AND deleted_at IS NULL`,
     )
     .bind(id)
     .first<MessageRow>();
@@ -56,12 +61,12 @@ export async function DELETE(
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
 
-  const mine = message.user_id === user.id;
-  // Bot messages belong to the channel rather than a person, so anyone can
-  // clear them. Otherwise you need your own message or MODERATE in the server
+  // Your own message, a bot answer you asked for, or MODERATE in the server
   // this message's channel belongs to.
+  const mine =
+    message.user_id === user.id || (Boolean(message.is_bot) && message.sender_id === user.id);
   let mayModerate = Boolean(user.is_admin);
-  if (!mine && !message.is_bot && !mayModerate && message.channel_id) {
+  if (!mine && !mayModerate && message.channel_id) {
     const channel = await db
       .prepare("SELECT server_id FROM channels WHERE id = ?")
       .bind(message.channel_id)
@@ -70,7 +75,7 @@ export async function DELETE(
       mayModerate = await can(db, user.id, channel.server_id, Permission.MODERATE);
     }
   }
-  if (!mine && !message.is_bot && !mayModerate) {
+  if (!mine && !mayModerate) {
     return Response.json(
       { error: "You can only delete your own messages." },
       { status: 403 },
@@ -81,6 +86,8 @@ export async function DELETE(
     .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), id)
     .run();
+  // A deleted message takes its files with it; they were public by URL.
+  await deleteUploads(message);
 
   if (message.channel_id) {
     await publishMessageEvent(
@@ -221,4 +228,23 @@ export async function PATCH(
     }
   }
   return Response.json({ ok: true, pinned });
+}
+
+/** Removes a message's uploaded files from storage. Never throws. */
+async function deleteUploads(message: MessageRow): Promise<void> {
+  const bucket = bindings().UPLOADS;
+  if (!bucket) return;
+  const keys: string[] = [];
+  if (message.attachment_key) keys.push(message.attachment_key);
+  const audio = message.audio_url?.match(/^\/hangout\/api\/uploads\/([^/?#]+)$/);
+  if (audio) keys.push(decodeURIComponent(audio[1]));
+  try {
+    const extra = JSON.parse(message.attachments || "[]") as unknown;
+    if (Array.isArray(extra)) {
+      for (const key of extra) if (typeof key === "string") keys.push(key);
+    }
+  } catch {
+    // Malformed extras: nothing more to remove.
+  }
+  await Promise.all(keys.map((key) => bucket.delete(key).catch(() => undefined)));
 }

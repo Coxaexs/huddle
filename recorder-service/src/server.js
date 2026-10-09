@@ -328,7 +328,23 @@ class CaptureSession {
         width: this.state.resolution === "1280x720" ? 1280 : 1920,
         height: this.state.resolution === "1280x720" ? 720 : 1080,
       },
-      extraHTTPHeaders: { Authorization: `Bearer ${token}` },
+    });
+    // The token rides only on requests to Hoffle itself and this service.
+    // As an extra header on the whole context it would also go to every
+    // avatar host, GIF CDN or embed the capture page happens to load.
+    const trusted = new Set([new URL(huddleBase).origin, new URL(publicUrl).origin]);
+    await context.route("**/*", (route) => {
+      const request = route.request();
+      let origin = "";
+      try {
+        origin = new URL(request.url()).origin;
+      } catch {
+        // data: and blob: URLs carry no origin and need no token.
+      }
+      if (!trusted.has(origin)) return route.continue();
+      return route.continue({
+        headers: { ...request.headers(), authorization: `Bearer ${token}` },
+      });
     });
     this.page = await context.newPage();
     this.page.on("console", (message) => {

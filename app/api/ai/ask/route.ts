@@ -17,6 +17,7 @@ import {
   type AiPayload,
   type AiTurn,
 } from "@/lib/ai";
+import { canSeeServer } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
 import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
@@ -127,11 +128,9 @@ export async function POST(request: Request): Promise<Response> {
     if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
     audience = await channelAudience(db, channelId);
   } else {
-    const banned = await db
-      .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
-      .bind(channel.server_id, user.id)
-      .first();
-    if (banned) return Response.json({ error: "You are banned from this server." }, { status: 403 });
+    if (!(await canSeeServer(db, channel.server_id, user))) {
+      return Response.json({ error: "You are not a member of this server." }, { status: 403 });
+    }
     const timedOut = await blockIfTimedOut(db, channelId, user.id);
     if (timedOut) return timedOut;
     if (

@@ -21,6 +21,7 @@ export function MiniVoiceBar({
   sidebarShareSetupOpen,
   setSidebarShareSetupOpen,
   setStageChannelId,
+  soundboardAllowed = true,
 }: {
   voice: ReturnType<typeof useVoice>;
   /** The room's name, or the other person's in a DM call. */
@@ -32,6 +33,8 @@ export function MiniVoiceBar({
   sidebarShareSetupOpen: boolean;
   setSidebarShareSetupOpen: Dispatch<SetStateAction<boolean>>;
   setStageChannelId: Dispatch<SetStateAction<string | null>>;
+  /** False in a stage audience or a room with the soundboard switched off. */
+  soundboardAllowed?: boolean;
 }) {
   return (
     <div className="mini-voice-bar">
@@ -52,14 +55,16 @@ export function MiniVoiceBar({
           </div>
         </div>
         <div className="mini-voice-actions flex items-center gap-1 flex-shrink-0">
-          <button
-            type="button"
-            className={`mini-voice-btn ${quickSoundboardOpen ? "on" : ""}`}
-            onClick={() => setQuickSoundboardOpen((o) => !o)}
-            title={quickSoundboardOpen ? "Close soundboard" : "Soundboard"}
-          >
-            <Volume2 size={14} />
-          </button>
+          {soundboardAllowed && (
+            <button
+              type="button"
+              className={`mini-voice-btn ${quickSoundboardOpen ? "on" : ""}`}
+              onClick={() => setQuickSoundboardOpen((o) => !o)}
+              title={quickSoundboardOpen ? "Close soundboard" : "Soundboard"}
+            >
+              <Volume2 size={14} />
+            </button>
+          )}
           <button
             type="button"
             className={`mini-voice-btn ${voice.screenSharing || sidebarShareSetupOpen ? "on" : ""}`}
@@ -111,7 +116,7 @@ export function MiniVoiceBar({
           />
         </div>
       )}
-      {quickSoundboardOpen && (
+      {quickSoundboardOpen && soundboardAllowed && (
         <div className="soundboard-quick-popover">
           <SoundboardDrawer
             serverId={soundboardServerId}

@@ -89,20 +89,25 @@ export function GlobalUserSearchDialog({
     }
 
     setLoading(true);
+    // A slower answer to an older query must not replace a newer one.
+    let stale = false;
     const timer = setTimeout(async () => {
       try {
         const res = await apiFetch<{ users: SearchResultUser[] }>(
           `/api/users/search?q=${encodeURIComponent(trimmed)}&limit=30`,
         );
-        setResults(res.users || []);
+        if (!stale) setResults(res.users || []);
       } catch {
-        setResults([]);
+        if (!stale) setResults([]);
       } finally {
-        setLoading(false);
+        if (!stale) setLoading(false);
       }
     }, 200);
 
-    return () => clearTimeout(timer);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   const handleSendFriendRequest = async (user: SearchResultUser) => {
