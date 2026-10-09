@@ -29,9 +29,10 @@ export function parseReminder(
   spec: string,
   now: number,
   timezoneOffset = 0,
+  { maxText = 300, usage = "Try /remind 20m take the pizza out, or /remind 18:30 call mum." } = {},
 ): { dueAt: number; text: string } | { error: string } {
-  const words = spec.trim().split(/\s+/).filter(Boolean);
-  const usage = "Try /remind 20m take the pizza out, or /remind 18:30 call mum.";
+  // Split on spaces only, so a scheduled message keeps its line breaks.
+  const words = spec.trim().split(/ +/).filter(Boolean);
   if (!words.length) return { error: usage };
 
   let dueAt: number | null = null;
@@ -71,8 +72,8 @@ export function parseReminder(
   }
 
   if (dueAt === null) return { error: usage };
-  const text = words.slice(used).join(" ").trim().slice(0, 300);
-  if (!text) return { error: "What should I remind you about? " + usage };
+  const text = words.slice(used).join(" ").trim().slice(0, maxText);
+  if (!text) return { error: "What should I say? " + usage };
   if (dueAt - now < 10_000) return { error: "Give it at least ten seconds." };
   if (dueAt - now > REMINDER_MAX_MS) return { error: "Reminders can be at most a year away." };
   return { dueAt, text };
@@ -103,6 +104,41 @@ export async function nextReminderAlarm(db: D1Database): Promise<number | null> 
 }
 
 /**
+ * Posts a "Reminder" bot message into someone's own Notes conversation
+ * (reopening it if they closed it) and returns it for the hub to show live.
+ */
+export async function noteToSelf(
+  db: D1Database,
+  userId: string,
+  text: string,
+  now = Date.now(),
+): Promise<{ channelId: string; message: Record<string, unknown> }> {
+  const notes = await findOrCreateDm(db, userId, userId);
+  await reopenDmForAll(db, notes).catch(() => undefined);
+  const message = {
+    id: crypto.randomUUID(),
+    channelId: notes,
+    userId: null,
+    author: "Reminder",
+    avatar: "⏰",
+    color: "#f59e6e",
+    text,
+    bot: true,
+    createdAt: new Date(now).toISOString(),
+    time: "",
+  };
+  await db
+    .prepare(
+      `INSERT INTO messages
+       (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key, is_bot, created_at, sender_id)
+       VALUES (?, 'direct message', ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?)`,
+    )
+    .bind(message.id, notes, message.author, message.avatar, message.color, message.text, message.createdAt, userId)
+    .run();
+  return { channelId: notes, message };
+}
+
+/**
  * Sends every reminder that is due: a message in the person's Notes and a
  * push. Returns the messages posted, so the hub can show them live.
  */
@@ -127,42 +163,16 @@ export async function deliverDueReminders(
       .bind(new Date(now).toISOString(), reminder.id)
       .run();
     if (!claimed.meta.changes) continue;
-    const notes = await findOrCreateDm(db, reminder.user_id, reminder.user_id);
-    // A Notes conversation someone closed comes back for the reminder.
-    await reopenDmForAll(db, notes).catch(() => undefined);
     const where =
       reminder.channel_name && reminder.channel_name !== "direct message"
         ? ` (from #${reminder.channel_name})`
         : "";
-    const message = {
-      id: crypto.randomUUID(),
-      channelId: notes,
-      userId: null,
-      author: "Reminder",
-      avatar: "⏰",
-      color: "#f59e6e",
-      text: `⏰ ${reminder.text}${where}`,
-      bot: true,
-      createdAt: new Date(now).toISOString(),
-      time: "",
-    };
-    await db
-      .prepare(
-        `INSERT INTO messages
-         (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key, is_bot, created_at, sender_id)
-         VALUES (?, 'direct message', ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?)`,
-      )
-      .bind(
-        message.id,
-        notes,
-        message.author,
-        message.avatar,
-        message.color,
-        message.text,
-        message.createdAt,
-        reminder.user_id,
-      )
-      .run();
+    const { channelId: notes, message } = await noteToSelf(
+      db,
+      reminder.user_id,
+      `⏰ ${reminder.text}${where}`,
+      now,
+    );
     await sendPushNotifications(db, [reminder.user_id], {
       title: "⏰ Reminder",
       body: reminder.text.slice(0, 120),

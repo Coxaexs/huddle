@@ -239,6 +239,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Huddle",
   },
   {
+    name: "recap",
+    args: "[weekly]",
+    description: "Post this server's week in numbers here; /recap weekly does it every week (managers)",
+    group: "Huddle",
+  },
+  {
+    name: "schedule",
+    args: "<10m | 2h | 18:30 | tomorrow 9:00> <message>",
+    description: "Post a message here later, as you (/schedule alone lists and cancels them)",
+    group: "Huddle",
+  },
+  {
     name: "game",
     args: "<tictactoe | connect4 | rps | mines | rota>",
     description: "Invite the conversation to a game",

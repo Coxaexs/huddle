@@ -317,6 +317,8 @@ export type ClientEvent =
     }
   | { t: "player"; channelId: string; action: PlayerAction }
   | { t: "typing"; channelId: string }
+  /** Live captions: what this seat's own browser heard it say. */
+  | { t: "caption"; text: string; final: boolean }
   | {
       t: "dm-call";
       channelId: string;
@@ -355,6 +357,25 @@ export type PlayerAction =
   | { name: "live"; live: Omit<LiveTrack, "updatedAt"> | null };
 
 export type ServerEvent =
+  | {
+      /** Stage Q&A: one question's new state, or null with removedId. */
+      t: "qa";
+      channelId: string;
+      question: import("./qa").QaQuestion | null;
+      removedId?: string;
+      serverNow: number;
+    }
+  | {
+      /** Live captions from a seat in your voice room. */
+      t: "caption";
+      channelId: string;
+      connectionId: string;
+      userId: string;
+      displayName: string;
+      text: string;
+      final: boolean;
+      serverNow: number;
+    }
   | {
       t: "ready";
       connectionId: string;

@@ -34,6 +34,8 @@ import {
   ChevronDown,
   ChevronUp as PeopleUp,
   ChevronDown as PeopleDown,
+  Captions,
+  MessageCircleQuestionMark,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
 import {
@@ -62,6 +64,10 @@ import { isOnStage, splitStageRoster } from "@/lib/stage";
 import { DiceOverlay } from "./dice-overlay";
 import { RoomActivities } from "./room-activities";
 import { VoiceDuration } from "./voice-duration";
+import { LiveCaptionsOverlay } from "./live-captions";
+import { QaBanner, QaPanel } from "./qa-panel";
+import { useQa } from "../hooks/use-qa";
+import type { LiveCaptions } from "../hooks/use-live-captions";
 
 interface Sound {
   id: string;
@@ -138,6 +144,8 @@ interface VoiceStageProps {
   stageMode?: boolean;
   /** False when moderators switched this room's soundboard off. */
   soundboardEnabled?: boolean;
+  /** Live captions, when the viewer is seated in this room. */
+  captions?: LiveCaptions;
   /** Viewer may move seats on and off the stage (MUTE_MEMBERS). */
   canManageStage?: boolean;
   userId: string;
@@ -291,6 +299,7 @@ export function VoiceStage({
   canManageSounds,
   stageMode = false,
   soundboardEnabled = true,
+  captions,
   canManageStage = false,
   userId,
   userName,
@@ -318,6 +327,8 @@ export function VoiceStage({
 }: VoiceStageProps) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [qaOpen, setQaOpen] = useState(false);
+  const qa = useQa(joined ? voice.channelId : null, Boolean(joined));
   const [screenSharePopoverOpen, setScreenSharePopoverOpen] = useState(false);
   const [internalViewMode, setInternalViewMode] = useState<"grid" | "table" | "map">("grid");
   const viewMode = controlledViewMode ?? internalViewMode;
@@ -1196,6 +1207,10 @@ export function VoiceStage({
         )}
       </div>
 
+      {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}
+      {joined && <QaBanner qa={qa} beside={qaOpen} />}
+      {joined && qaOpen && <QaPanel qa={qa} userId={userId} onClose={() => setQaOpen(false)} />}
+
       {soundboardOpen && soundboardAllowed && (
         <SoundboardDrawer
           serverId={serverId}
@@ -1656,6 +1671,46 @@ export function VoiceStage({
                     <span>{soundboardOpen ? "Close Soundboard" : "Soundboard"}</span>
                   </button>
                 )}
+                {joined && !stageMode && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    onClick={() => {
+                      setQaOpen((current) => !current);
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <MessageCircleQuestionMark size={15} className="text-[var(--coral)]" />
+                    <span>Q&amp;A{qa.open ? ` (${qa.open})` : ""}</span>
+                  </button>
+                )}
+                {captions && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    onClick={() => {
+                      captions.toggleShowing();
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <Captions size={15} className="text-[var(--lavender)]" />
+                    <span>{captions.showing ? "Hide captions" : "Show captions"}</span>
+                  </button>
+                )}
+                {captions?.supported && (
+                  <button
+                    type="button"
+                    className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                    title="Your browser turns your speech into captions for the room. Off while you are muted."
+                    onClick={() => {
+                      captions.toggleSharing();
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <Captions size={15} className={captions.sharing ? "text-[var(--mint)]" : "text-[var(--muted)]"} />
+                    <span>{captions.sharing ? "Stop captioning my voice" : "Caption my voice"}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
@@ -1711,6 +1766,20 @@ export function VoiceStage({
               </div>
             )}
           </div>
+
+          {joined && stageMode && (
+            <button
+              type="button"
+              className={`vctrl-btn ${qaOpen ? "active" : ""}`}
+              aria-label={`Questions, ${qa.open} open`}
+              aria-pressed={qaOpen}
+              onClick={() => setQaOpen((current) => !current)}
+              title="Q&A"
+            >
+              <MessageCircleQuestionMark size={18} />
+              {qa.open > 0 && <span className="vctrl-badge">{qa.open > 99 ? "99+" : qa.open}</span>}
+            </button>
+          )}
 
           <div className="vctrl-divider" />
 

@@ -1,4 +1,4 @@
-import { currentUser, unauthorized } from "@/lib/auth";
+import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
 import { canSeeServer, channelAccess, messageAccess } from "@/lib/access";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
@@ -418,7 +418,7 @@ async function decorateMessages(
   }
 }
 
-interface PostBody {
+export interface PostBody {
   channelId?: string;
   channel?: string;
   content?: string;
@@ -459,6 +459,29 @@ export async function POST(request: Request) {
   if (limited) return limited;
 
   const body = (await request.json()) as PostBody;
+  return postMessageAs(db, user, body, { origin: new URL(request.url).origin });
+}
+
+/** What a message post needs from outside: the hub, when it posts for you. */
+export interface PostOptions {
+  origin?: string;
+  /** Delivers the new message live; defaults to the hub over its binding. */
+  publish?: typeof publishMessage;
+  /** Who is online, for @here; defaults to asking the hub. */
+  online?: () => Promise<string[]>;
+}
+
+/**
+ * Posts a message as `user`, with every check a typed message gets
+ * (membership, bans, timeouts, blocks, automod) plus mentions and pushes.
+ * Scheduled messages come through here when they fall due.
+ */
+export async function postMessageAs(
+  db: D1Database,
+  user: User,
+  body: PostBody,
+  options: PostOptions = {},
+): Promise<Response> {
   const content = body.content?.trim() || "";
   const refused = refusedPost(body);
   if (refused) return Response.json({ error: refused }, { status: 400 });
@@ -703,7 +726,9 @@ export async function POST(request: Request) {
         .all<{ user_id: string }>();
       broadcastIds = (members.results || []).map((row) => row.user_id);
       if (!wantsEveryone) {
-        const online = new Set((await hubState())?.online || []);
+        const online = new Set(
+          options.online ? await options.online() : (await hubState())?.online || [],
+        );
         broadcastIds = broadcastIds.filter((id) => online.has(id));
       }
     }
@@ -800,13 +825,11 @@ export async function POST(request: Request) {
     }
   }
 
-  await publishMessage(channelId || channelName, message, audience);
+  await (options.publish ?? publishMessage)(channelId || channelName, message, audience);
 
   // Connected Discord bots see the same message. This runs after the hub
   // publish so a slow or absent gateway never delays the sender's own tabs.
-  void dispatchMessage("MESSAGE_CREATE", stored, {
-    origin: new URL(request.url).origin,
-  });
+  void dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin });
 
   const pushTargets = new Set<string>();
   if (message.mentions) {

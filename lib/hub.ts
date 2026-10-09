@@ -17,6 +17,8 @@ import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
+import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
+import { deliverDueRecaps, nextRecapAlarm } from "./recap";
 import { isBlockedBetween } from "./friends";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
@@ -116,6 +118,8 @@ export class HuddleHub extends DurableObject {
    * roster snapshot must never overtake the one sent before it.
    */
   private outbox: Promise<void> = Promise.resolve();
+  /** connectionId -> caption lines sent this second, to cap a chatty tab. */
+  private readonly captionBudget = new Map<string, { second: number; count: number }>();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -196,20 +200,7 @@ export class HuddleHub extends DurableObject {
         /** User ids allowed to see it; absent means everyone (DMs use this). */
         audience?: string[] | null;
       };
-      await this.broadcastTo(
-        body.channelId,
-        {
-          t: "message",
-          channelId: body.channelId,
-          message: body.message,
-          serverNow: Date.now(),
-        },
-        { audience: body.audience },
-      );
-      // DMs carry an audience and never reach server-scoped bot listeners.
-      if (!body.audience?.length) {
-        await this.notifyListeners(body.channelId, body.message);
-      }
+      await this.publishChannelMessage(body.channelId, body.message, body.audience);
       return Response.json({ ok: true });
     }
     if (url.pathname === "/event" && request.method === "POST") {
@@ -535,6 +526,40 @@ export class HuddleHub extends DurableObject {
         );
         return;
 
+      case "caption": {
+        // Only to the people in the same room, only from a seat that may be
+        // heard right now (not muted, not server-muted, on stage if a stage).
+        const room = attachment.voiceChannelId;
+        if (!room || typeof event.text !== "string") return;
+        const text = event.text.trim().slice(0, 300);
+        if (!text || attachment.muted || this.forcedMutes.has(attachment.userId)) return;
+        if ((await this.channelInfo(room)).kind === "stage" && attachment.speakAllowed !== true) return;
+        const second = Math.floor(Date.now() / 1000);
+        const budget = this.captionBudget.get(attachment.connectionId);
+        if (budget?.second === second) {
+          if (budget.count >= 6) return;
+          budget.count += 1;
+        } else {
+          this.captionBudget.set(attachment.connectionId, { second, count: 1 });
+        }
+        const payload = JSON.stringify({
+          t: "caption",
+          channelId: room,
+          connectionId: attachment.connectionId,
+          userId: attachment.userId,
+          displayName: attachment.displayName,
+          text,
+          final: Boolean(event.final),
+          serverNow: Date.now(),
+        } satisfies ServerEvent);
+        for (const { socket, attachment: other } of this.sockets()) {
+          if (other.voiceChannelId === room && other.connectionId !== attachment.connectionId) {
+            socket.send(payload);
+          }
+        }
+        return;
+      }
+
       case "voice-join": {
         const previous = attachment.voiceChannelId;
         if (typeof event.channelId !== "string" || !(await this.mayJoinVoice(attachment, event.channelId))) {
@@ -835,6 +860,7 @@ export class HuddleHub extends DurableObject {
   async webSocketClose(socket: WebSocket) {
     const attachment = socket.deserializeAttachment() as Attachment | null;
     if (attachment) this.markSeen(attachment);
+    if (attachment) this.captionBudget.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.
@@ -1451,7 +1477,21 @@ export class HuddleHub extends DurableObject {
     // Reminders (/remind) ride the same alarm. Each lands in the person's
     // Notes; open tabs get it live. (Event notices used to broadcast a global
     // "structure" reload here, for nothing any client needed.)
-    const reminders = await deliverDueReminders(this.db).catch(() => []);
+    // Scheduled messages post as their writer, delivered straight from here
+    // rather than through the hub binding (this is the hub).
+    const scheduledNotes = await deliverDueScheduled(this.db, {
+      publish: (channelId, message, audience) =>
+        this.publishChannelMessage(channelId, message, audience),
+      online: async () => this.onlineUserIds(),
+    }).catch(() => []);
+    await deliverDueRecaps(this.db, {
+      publish: (channelId, message, audience) =>
+        this.publishChannelMessage(channelId, message, audience),
+    }).catch(() => undefined);
+    const reminders = [
+      ...scheduledNotes,
+      ...(await deliverDueReminders(this.db).catch(() => [])),
+    ];
     for (const reminder of reminders) {
       this.broadcast(
         {
@@ -1465,8 +1505,25 @@ export class HuddleHub extends DurableObject {
     }
     const nextEvent = await nextEventAlarm(this.db).catch(() => null);
     const nextReminder = await nextReminderAlarm(this.db).catch(() => null);
-    const candidates = [nextEvent, nextReminder].filter((at): at is number => at !== null);
+    const nextScheduled = await nextScheduledAlarm(this.db).catch(() => null);
+    const nextRecap = await nextRecapAlarm(this.db).catch(() => null);
+    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap].filter((at): at is number => at !== null);
     if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
+  }
+
+  /** A new channel message: to its audience, and to server bot listeners. */
+  private async publishChannelMessage(
+    channelId: string,
+    message: unknown,
+    audience?: string[] | null,
+  ): Promise<void> {
+    await this.broadcastTo(
+      channelId,
+      { t: "message", channelId, message, serverNow: Date.now() } as ServerEvent,
+      { audience },
+    );
+    // DMs carry an audience and never reach server-scoped bot listeners.
+    if (!audience?.length) await this.notifyListeners(channelId, message);
   }
 
   async alarm(): Promise<void> {

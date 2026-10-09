@@ -55,6 +55,14 @@ interface HubHandlers {
   /** An administrator force-stopped /tts and /say in this channel. */
   onTtsStop?: (channelId: string, by: string) => void;
   onTyping?: (channelId: string, userId: string, displayName: string) => void;
+  /** Live captions from someone in your voice room. */
+  onCaption?: (event: {
+    channelId: string;
+    connectionId: string;
+    displayName: string;
+    text: string;
+    final: boolean;
+  }) => void;
   onPoll?: (
     channelId: string,
     pollId: string,
@@ -365,6 +373,13 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.name,
               payload.by,
             );
+            break;
+          case "qa":
+            // Read by the open Q&A panel / stage banner (see use-qa).
+            window.dispatchEvent(new CustomEvent("huddle-qa", { detail: payload }));
+            break;
+          case "caption":
+            handlersRef.current.onCaption?.(payload);
             break;
           case "typing":
             handlersRef.current.onTyping?.(
