@@ -2,13 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Eye, Flame, Glasses, Map as MapIcon, Smartphone, View, X } from "lucide-react";
+import { Armchair, Eye, Flame, Glasses, Map as MapIcon, Maximize2, Minimize2, Smartphone, View, X } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom } from "../hooks/use-living-room";
-import {
-  LOUNGE_EMOTES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, headingTo, seatById, stepTo, wrapHeading,
-  type LoungePose,
-} from "../lib/living-room";
+import { LOUNGE_EMOTES, headingTo, seatById, stepTo, wrapHeading, type LoungePose } from "../lib/living-room";
+import { buildRoom, roomAmbience, roomThemeFor, type RoomTheme } from "./living-room-scene";
 
 type CameraView = "overhead" | "eyes";
 
@@ -24,23 +22,8 @@ interface Props {
 
 const EYE_SEATED = 1.1;
 const EYE_STANDING = 1.6;
+const EYE_FLOOR = 0.75;
 const WALK_SPEED = 1.6; // m/s
-
-/** Warm by evening, blue at night, bright by day: the window follows the viewer's own clock. */
-function skyColour(date = new Date()): THREE.Color {
-  const h = date.getHours() + date.getMinutes() / 60;
-  const stops: Array<[number, string]> = [
-    [0, "#0b1030"], [5, "#1b1f4a"], [6.5, "#f3a37a"], [8, "#9fd3ff"], [17, "#8cc8ff"],
-    [19, "#f08a5d"], [20.5, "#3a2a5e"], [22, "#0e1238"], [24, "#0b1030"],
-  ];
-  for (let i = 1; i < stops.length; i++) {
-    const [h1, c1] = stops[i];
-    const [h0, c0] = stops[i - 1];
-    if (h <= h1) return new THREE.Color(c0).lerp(new THREE.Color(c1), (h - h0) / (h1 - h0));
-  }
-  return new THREE.Color(stops[0][1]);
-}
-const isNight = (date = new Date()) => date.getHours() >= 20 || date.getHours() < 6;
 
 function labelTexture(text: string, colour = "#ffffff", background = "rgba(20,16,30,0.72)"): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -77,84 +60,104 @@ function emojiTexture(emoji: string): THREE.CanvasTexture {
   return texture;
 }
 
-/** A face: the profile picture when it loads, the avatar letter on the user's colour until then. */
-function faceTexture(person: VoiceParticipant): THREE.Texture {
+/**
+ * A round avatar token like a voice tile's: the profile picture (or the
+ * avatar letter on the user's colour until it loads) inside a ring of their
+ * colour. People are shown as these, not as 3D bodies.
+ */
+function tokenTexture(person: VoiceParticipant): THREE.Texture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 256;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = person.color || "#ffd67c";
-  ctx.fillRect(0, 0, 256, 256);
-  ctx.fillStyle = "#1b1530";
-  ctx.font = "600 130px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText((person.avatar || person.displayName || "?").slice(0, 2), 128, 140);
+  const colour = person.color || "#ffd67c";
+  const paint = (image?: HTMLImageElement) => {
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.fillStyle = colour;
+    ctx.beginPath(); ctx.arc(128, 128, 124, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(128, 128, 110, 0, Math.PI * 2); ctx.clip();
+    if (image) ctx.drawImage(image, 18, 18, 220, 220);
+    else {
+      ctx.fillStyle = colour; ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = "#1b1530";
+      ctx.font = "600 110px system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText((person.avatar || person.displayName || "?").slice(0, 2), 128, 136);
+    }
+    ctx.restore();
+  };
+  paint();
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   if (person.avatarUrl) {
     const image = new Image();
     image.crossOrigin = "anonymous";
-    image.onload = () => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, 256, 256);
-      ctx.clip();
-      ctx.drawImage(image, 0, 0, 256, 256);
-      ctx.restore();
-      texture.needsUpdate = true;
-    };
+    image.onload = () => { paint(image); texture.needsUpdate = true; };
     image.src = person.avatarUrl;
   }
   return texture;
 }
 
+function ringTexture(): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(128, 128, 96, 128, 128, 128);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.18, "rgba(255,255,255,1)");
+  g.addColorStop(0.45, "rgba(255,255,255,0.35)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
 interface Body {
   group: THREE.Group;
-  torso: THREE.Mesh;
-  head: THREE.Mesh;
-  ring: THREE.Mesh;
+  token: THREE.Sprite;
+  ring: THREE.Sprite;
+  pointer: THREE.Mesh;
+  shadow: THREE.Mesh;
   label: THREE.Sprite;
   mute: THREE.Sprite;
   shown: { x: number; z: number; facing: number; lift: number };
   key: string;
 }
 
+/** Token size in metres; big enough to read faces from across the room. */
+const TOKEN = 0.52;
+
 function makeBody(person: VoiceParticipant): Body {
   const group = new THREE.Group();
   const colour = new THREE.Color(person.color || "#ffd67c");
-  const torso = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.2, 0.5, 6, 16),
-    new THREE.MeshStandardMaterial({ color: colour, roughness: 0.75 }),
-  );
-  torso.position.y = 0.6;
-  torso.castShadow = true;
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.19, 32, 20),
-    new THREE.MeshStandardMaterial({ map: faceTexture(person), roughness: 0.6 }),
-  );
-  // The picture faces forward (-Z in the body's frame).
-  head.rotation.y = Math.PI / 2;
-  head.position.y = 1.18;
-  head.castShadow = true;
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshStandardMaterial({ color: colour.clone().multiplyScalar(0.8) }));
-  nose.position.set(0, 1.18, -0.19);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.3, 0.38, 40),
-    new THREE.MeshBasicMaterial({ color: "#7dffb0", transparent: true, opacity: 0, side: THREE.DoubleSide }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.02;
+  const token = new THREE.Sprite(new THREE.SpriteMaterial({ map: tokenTexture(person), transparent: true }));
+  token.scale.setScalar(TOKEN);
+  token.renderOrder = 5;
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTexture(), color: "#5dffa0", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  ring.scale.setScalar(TOKEN * 1.45);
+  ring.renderOrder = 4;
+  // A soft contact shadow, and a little arrow on the floor for which way they face (it is where their ears point).
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.24, 32), new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.32, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.012;
+  const arrow = new THREE.Shape([new THREE.Vector2(0, -0.42), new THREE.Vector2(0.09, -0.29), new THREE.Vector2(-0.09, -0.29)]);
+  const pointer = new THREE.Mesh(new THREE.ShapeGeometry(arrow), new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.85, depthWrite: false }));
+  pointer.rotation.x = -Math.PI / 2;
+  pointer.position.y = 0.014;
+  // ShapeGeometry lies in XY; after tipping it flat, its -Y points to -Z: forward.
+  pointer.scale.y = -1;
   const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(person.displayName || person.username), depthTest: false }));
   const aspect = (label.material.map!.image as HTMLCanvasElement).width / 64;
-  label.scale.set(0.16 * aspect, 0.16, 1);
-  label.position.y = 1.55;
+  label.scale.set(0.14 * aspect, 0.14, 1);
   label.renderOrder = 10;
   const mute = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture("🔇"), depthTest: false }));
-  mute.scale.set(0.18, 0.18, 1);
-  mute.position.set(0.24, 1.38, 0);
+  mute.scale.setScalar(0.17);
+  mute.renderOrder = 11;
   mute.visible = false;
-  group.add(torso, head, nose, ring, label, mute);
-  return { group, torso, head, ring, label, mute, shown: { x: 0, z: 0, facing: 0, lift: 0 }, key: `${person.displayName}|${person.avatarUrl}|${person.color}` };
+  group.add(shadow, pointer, ring, token, label, mute);
+  return { group, token, ring, pointer, shadow, label, mute, shown: { x: 0, z: 0, facing: 0, lift: 0 }, key: `${person.displayName}|${person.avatarUrl}|${person.color}` };
 }
 
 function disposeTree(object: THREE.Object3D) {
@@ -167,291 +170,6 @@ function disposeTree(object: THREE.Object3D) {
       material.dispose();
     }
   });
-}
-
-const box = (w: number, h: number, d: number, colour: string, rough = 0.85) => {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: colour, roughness: rough }));
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-};
-
-/** The furniture. Everything clickable to sit on carries userData.seat. */
-function buildRoom(scene: THREE.Scene) {
-  const W = ROOM_HALF_X * 2;
-  const D = ROOM_HALF_Z * 2;
-  const H = 2.7;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ color: "#8a6446", roughness: 0.9 }));
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  floor.userData.floor = true;
-  scene.add(floor);
-  // Floorboards: thin darker lines.
-  for (let x = -ROOM_HALF_X + 0.25; x < ROOM_HALF_X; x += 0.25) {
-    const line = box(0.008, 0.001, D, "#6e4e36");
-    line.position.set(x, 0.001, 0);
-    line.castShadow = false;
-    scene.add(line);
-  }
-  const rug = new THREE.Mesh(new THREE.CircleGeometry(1.7, 48), new THREE.MeshStandardMaterial({ color: "#b4566a", roughness: 1 }));
-  rug.rotation.x = -Math.PI / 2;
-  rug.scale.set(1.25, 0.85, 1);
-  rug.position.set(0, 0.004, -0.4);
-  rug.receiveShadow = true;
-  rug.userData.floor = true;
-  const rugInner = new THREE.Mesh(new THREE.RingGeometry(1.35, 1.45, 48), new THREE.MeshStandardMaterial({ color: "#f2d29b" }));
-  rugInner.rotation.x = -Math.PI / 2;
-  rugInner.scale.set(1.25, 0.85, 1);
-  rugInner.position.set(0, 0.006, -0.4);
-  scene.add(rug, rugInner);
-
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: "#e9dcc8", roughness: 0.95, side: THREE.BackSide });
-  const walls = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), wallMaterial);
-  walls.position.y = H / 2;
-  walls.receiveShadow = true;
-  // Floor is its own mesh; hide the box's floor face by pushing it a hair below.
-  walls.position.y = H / 2 - 0.002;
-  walls.userData.wall = true;
-  scene.add(walls);
-  const skirting = new THREE.MeshStandardMaterial({ color: "#f7f1e7" });
-  for (const [w, x, z, ry] of [[W, 0, -ROOM_HALF_Z + 0.01, 0], [W, 0, ROOM_HALF_Z - 0.01, 0], [D, -ROOM_HALF_X + 0.01, 0, Math.PI / 2], [D, ROOM_HALF_X - 0.01, 0, Math.PI / 2]] as const) {
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.02), skirting);
-    strip.position.set(x, 0.05, z);
-    strip.rotation.y = ry;
-    scene.add(strip);
-  }
-
-  // Fireplace on the north wall, with a TV above it.
-  const hearth = new THREE.Group();
-  const surround = box(2, 1.1, 0.5, "#c9b9a6");
-  surround.position.set(0, 0.55, -ROOM_HALF_Z + 0.25);
-  const mantel = box(2.2, 0.08, 0.6, "#5b3d2a");
-  mantel.position.set(0, 1.14, -ROOM_HALF_Z + 0.28);
-  const firebox = box(1.0, 0.65, 0.3, "#1a1210");
-  firebox.position.set(0, 0.36, -ROOM_HALF_Z + 0.37);
-  const logs = new THREE.Group();
-  for (let i = 0; i < 3; i++) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 10), new THREE.MeshStandardMaterial({ color: "#4a2e1c" }));
-    log.rotation.z = Math.PI / 2;
-    log.rotation.y = (i - 1) * 0.35;
-    log.position.set(0, 0.1 + (i === 1 ? 0.07 : 0), -ROOM_HALF_Z + 0.5);
-    logs.add(log);
-  }
-  const flames: THREE.Mesh[] = [];
-  for (let i = 0; i < 5; i++) {
-    const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.07 + Math.random() * 0.05, 0.3 + Math.random() * 0.15, 8),
-      new THREE.MeshBasicMaterial({ color: i % 2 ? "#ffb347" : "#ff6a1f", transparent: true, opacity: 0.85 }),
-    );
-    flame.position.set(-0.24 + i * 0.12, 0.28, -ROOM_HALF_Z + 0.5);
-    flame.userData.phase = Math.random() * 10;
-    flames.push(flame);
-    logs.add(flame);
-  }
-  const fireLight = new THREE.PointLight("#ff8a3d", 2.2, 7, 1.6);
-  fireLight.position.set(0, 0.5, -ROOM_HALF_Z + 0.8);
-  fireLight.castShadow = true;
-  fireLight.shadow.mapSize.set(512, 512);
-  hearth.add(surround, mantel, firebox, logs, fireLight);
-  // Candles and a little plant on the mantel.
-  for (const x of [-0.85, -0.7]) {
-    const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 12), new THREE.MeshStandardMaterial({ color: "#fff4dc" }));
-    candle.position.set(x, 1.26, -ROOM_HALF_Z + 0.3);
-    const wick = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshBasicMaterial({ color: "#ffcf70" }));
-    wick.position.set(x, 1.36, -ROOM_HALF_Z + 0.3);
-    wick.userData.phase = Math.random() * 10;
-    flames.push(wick);
-    hearth.add(candle, wick);
-  }
-  scene.add(hearth);
-
-  const tvFrame = box(1.9, 1.1, 0.06, "#111");
-  tvFrame.position.set(0, 1.85, -ROOM_HALF_Z + 0.05);
-  const screenMaterial = new THREE.MeshBasicMaterial({ color: "#16131f" });
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.0125), screenMaterial);
-  screen.position.set(0, 1.85, -ROOM_HALF_Z + 0.085);
-  scene.add(tvFrame, screen);
-
-  // The couch, facing the fire.
-  const couch = new THREE.Group();
-  const fabric = "#4f6d7a";
-  const base = box(2.4, 0.42, 0.85, fabric);
-  base.position.set(0, 0.21, 0.95);
-  const back = box(2.4, 0.5, 0.2, fabric);
-  back.position.set(0, 0.6, 1.3);
-  const armL = box(0.2, 0.3, 0.85, fabric);
-  armL.position.set(-1.2, 0.55, 0.95);
-  const armR = armL.clone();
-  armR.position.x = 1.2;
-  couch.add(base, back, armL, armR);
-  for (const seat of LOUNGE_SEATS.filter((s) => s.id.startsWith("couch"))) {
-    const cushion = box(0.74, 0.1, 0.62, "#5f8191");
-    cushion.position.set(seat.x, 0.47, seat.z + 0.12);
-    cushion.userData.seat = seat.id;
-    const pillow = box(0.45, 0.32, 0.12, "#e7c46b");
-    pillow.position.set(seat.x, 0.68, 1.15);
-    pillow.rotation.x = -0.25;
-    pillow.userData.seat = seat.id;
-    couch.add(cushion, pillow);
-  }
-  scene.add(couch);
-  // A blanket draped over the left arm, for soul.
-  const blanket = box(0.5, 0.04, 0.9, "#c96f4a");
-  blanket.position.set(-1.2, 0.71, 0.95);
-  scene.add(blanket);
-
-  for (const seat of LOUNGE_SEATS.filter((s) => s.id.startsWith("arm"))) {
-    const chair = new THREE.Group();
-    const seatBox = box(0.8, 0.42, 0.8, "#8e5a3c");
-    seatBox.position.y = 0.21;
-    const backBox = box(0.8, 0.55, 0.18, "#8e5a3c");
-    backBox.position.set(0, 0.62, 0.36);
-    const a1 = box(0.14, 0.25, 0.8, "#7a4b31");
-    a1.position.set(-0.37, 0.52, 0);
-    const a2 = a1.clone();
-    a2.position.x = 0.37;
-    for (const part of [seatBox, backBox, a1, a2]) part.userData.seat = seat.id;
-    chair.add(seatBox, backBox, a1, a2);
-    chair.position.set(seat.x, 0, seat.z);
-    chair.rotation.y = -seat.facing;
-    scene.add(chair);
-  }
-  for (const seat of LOUNGE_SEATS.filter((s) => s.id.startsWith("bean"))) {
-    const bean = new THREE.Mesh(new THREE.SphereGeometry(0.45, 24, 16), new THREE.MeshStandardMaterial({ color: seat.id === "bean-1" ? "#7c5cc4" : "#4fae8a", roughness: 1 }));
-    bean.scale.set(1, 0.55, 1);
-    bean.position.set(seat.x, 0.2, seat.z);
-    bean.castShadow = true;
-    bean.userData.seat = seat.id;
-    scene.add(bean);
-  }
-
-  const table = box(1.0, 0.06, 0.55, "#6b4a33");
-  table.position.set(0, 0.42, -0.45);
-  for (const [x, z] of [[-0.45, -0.68], [0.45, -0.68], [-0.45, -0.22], [0.45, -0.22]]) {
-    const leg = box(0.05, 0.4, 0.05, "#5a3d2a");
-    leg.position.set(x, 0.2, z);
-    scene.add(leg);
-  }
-  const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 16), new THREE.MeshStandardMaterial({ color: "#f5f0e6" }));
-  mug.position.set(0.25, 0.5, -0.4);
-  const popcorn = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.14, 16), new THREE.MeshStandardMaterial({ color: "#d9443a" }));
-  popcorn.position.set(-0.2, 0.52, -0.48);
-  const kernels = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#fff3c4", roughness: 1 }));
-  kernels.position.set(-0.2, 0.59, -0.48);
-  scene.add(table, mug, popcorn, kernels);
-
-  // Window on the east wall with the sky behind it, and the reading nook below.
-  const sky = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ color: skyColour() }));
-  sky.position.set(ROOM_HALF_X - 0.005, 1.55, 1.6);
-  sky.rotation.y = -Math.PI / 2;
-  const stars = new THREE.Group();
-  for (let i = 0; i < 24; i++) {
-    const star = new THREE.Mesh(new THREE.CircleGeometry(0.008 + Math.random() * 0.008, 6), new THREE.MeshBasicMaterial({ color: "#fffbe0" }));
-    star.position.set(ROOM_HALF_X - 0.01, 1.0 + Math.random() * 1.1, 0.85 + Math.random() * 1.5);
-    star.rotation.y = -Math.PI / 2;
-    stars.add(star);
-  }
-  stars.visible = isNight();
-  const frame = new THREE.MeshStandardMaterial({ color: "#f7f1e7" });
-  for (const [h, w, y, z] of [[0.06, 1.7, 2.17, 1.6], [0.06, 1.7, 0.93, 1.6], [1.3, 0.06, 1.55, 0.78], [1.3, 0.06, 1.55, 2.42], [1.2, 0.04, 1.55, 1.6], [0.04, 1.6, 1.55, 1.6]] as const) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, h, w), frame);
-    bar.position.set(ROOM_HALF_X - 0.03, y, z);
-    scene.add(bar);
-  }
-  const moonOrSun = new THREE.Mesh(new THREE.CircleGeometry(0.09, 24), new THREE.MeshBasicMaterial({ color: isNight() ? "#f4f1d0" : "#fff2a8" }));
-  moonOrSun.position.set(ROOM_HALF_X - 0.008, 1.9, 2.1);
-  moonOrSun.rotation.y = -Math.PI / 2;
-  scene.add(sky, stars, moonOrSun);
-  const bench = box(1.0, 0.4, 1.6, "#d8c9b4");
-  bench.position.set(3.45, 0.2, 1.95);
-  const cushionA = box(0.9, 0.08, 1.5, "#93b7a0");
-  cushionA.position.set(3.45, 0.44, 1.95);
-  for (const part of [bench, cushionA]) part.userData.seat = "nook-1";
-  scene.add(bench, cushionA);
-  const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.4, 20), new THREE.MeshStandardMaterial({ color: "#d1a35c", roughness: 1 }));
-  pouf.position.set(2.75, 0.2, 2.45);
-  pouf.userData.seat = "nook-2";
-  pouf.castShadow = true;
-  scene.add(pouf);
-  // The nook's soft boundary on the floor, so people can see where it is quiet.
-  const nookMark = new THREE.Mesh(new THREE.RingGeometry(NOOK.radius - 0.03, NOOK.radius, 48), new THREE.MeshBasicMaterial({ color: "#f2d29b", transparent: true, opacity: 0.35 }));
-  nookMark.rotation.x = -Math.PI / 2;
-  nookMark.position.set(NOOK.x, 0.007, NOOK.z);
-  scene.add(nookMark);
-
-  // A floor lamp, a bookshelf and some plants.
-  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.5, 8), new THREE.MeshStandardMaterial({ color: "#2b2b2b" }));
-  lampPole.position.set(-1.65, 0.75, 1.45);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.3, 24, 1, true), new THREE.MeshStandardMaterial({ color: "#fbe7c2", emissive: "#ffcc77", emissiveIntensity: 0.6, side: THREE.DoubleSide }));
-  shade.position.set(-1.65, 1.55, 1.45);
-  const lampLight = new THREE.PointLight("#ffd29a", 1.4, 5, 1.8);
-  lampLight.position.set(-1.65, 1.45, 1.45);
-  scene.add(lampPole, shade, lampLight);
-
-  const shelf = box(0.35, 1.9, 1.4, "#6b4a33");
-  shelf.position.set(-ROOM_HALF_X + 0.18, 0.95, -1.4);
-  scene.add(shelf);
-  const bookColours = ["#c94f4f", "#4f7cc9", "#e3b448", "#5aa36b", "#8d5bc1", "#e07b39", "#2f4858"];
-  for (let row = 0; row < 4; row++) {
-    let z = -2.0;
-    while (z < -0.8) {
-      const w = 0.04 + Math.random() * 0.05;
-      const h = 0.22 + Math.random() * 0.12;
-      const book = box(0.24, h, w, bookColours[Math.floor(Math.random() * bookColours.length)]);
-      book.position.set(-ROOM_HALF_X + 0.33, 0.1 + row * 0.45 + h / 2, z + w / 2);
-      book.castShadow = false;
-      scene.add(book);
-      z += w + 0.005;
-    }
-  }
-  const plant = (x: number, z: number, scale = 1) => {
-    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * scale, 0.14 * scale, 0.35 * scale, 16), new THREE.MeshStandardMaterial({ color: "#c46a43" }));
-    pot.position.set(x, 0.175 * scale, z);
-    scene.add(pot);
-    for (let i = 0; i < 7; i++) {
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.16 * scale, 10, 8), new THREE.MeshStandardMaterial({ color: i % 2 ? "#3f8f4f" : "#57a862", roughness: 0.9 }));
-      leaf.scale.set(0.6, 1.4, 0.6);
-      const a = (i / 7) * Math.PI * 2;
-      leaf.position.set(x + Math.cos(a) * 0.12 * scale, (0.5 + (i % 3) * 0.12) * scale, z + Math.sin(a) * 0.12 * scale);
-      leaf.rotation.set(Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5);
-      leaf.castShadow = true;
-      scene.add(leaf);
-    }
-  };
-  plant(ROOM_HALF_X - 0.4, -ROOM_HALF_Z + 0.4, 1.4);
-  plant(-ROOM_HALF_X + 0.45, ROOM_HALF_Z - 0.45, 1.2);
-  plant(1.45, -ROOM_HALF_Z + 0.35, 0.8);
-
-  // A string of fairy lights along the top of the north wall.
-  const fairy: THREE.Mesh[] = [];
-  for (let i = 0; i < 28; i++) {
-    const t = i / 27;
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: ["#ffd27a", "#ff9ec7", "#9ee7ff", "#c6ff9e"][i % 4] }));
-    bulb.position.set(-ROOM_HALF_X + 0.2 + t * (W - 0.4), 2.45 - Math.sin(t * Math.PI * 4) ** 2 * 0.12, -ROOM_HALF_Z + 0.04);
-    bulb.userData.phase = i;
-    fairy.push(bulb);
-    scene.add(bulb);
-  }
-
-  // Blåhaj lives on the couch. Clicking it squeaks.
-  const shark = new THREE.Group();
-  const sharkBody = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), new THREE.MeshStandardMaterial({ color: "#5a8fb8", roughness: 1 }));
-  sharkBody.scale.set(2.2, 0.9, 0.9);
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), new THREE.MeshStandardMaterial({ color: "#f3f1ec", roughness: 1 }));
-  belly.scale.set(2.0, 0.6, 0.8);
-  belly.position.y = -0.05;
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 8), sharkBody.material);
-  fin.position.set(0, 0.17, 0);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 8), sharkBody.material);
-  tail.rotation.z = Math.PI / 2;
-  tail.position.set(0.38, 0.02, 0);
-  shark.add(sharkBody, belly, fin, tail);
-  shark.position.set(1.0, 0.62, 1.0);
-  shark.rotation.y = 0.4;
-  shark.traverse((part) => { part.userData.blahaj = true; });
-  scene.add(shark);
-
-  return { screen, screenMaterial, flames, fireLight, sky, stars, fairy, shark };
 }
 
 /** A soft procedural fire crackle, only ever made in the viewer's own browser. */
@@ -502,16 +220,42 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
+/** The room dresses itself for the app's current theme, and redresses when it changes. */
+function useRoomTheme(): RoomTheme {
+  const [theme, setTheme] = useState<RoomTheme>("cozy");
+  useEffect(() => {
+    const root = document.documentElement;
+    const read = () => setTheme(roomThemeFor(root.dataset.customThemeId));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id"] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
 type XrNavigator = Navigator & { xr?: { isSessionSupported: (mode: string) => Promise<boolean>; requestSession: (mode: string, init?: object) => Promise<XRSession> } };
 type OrientationEventCtor = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
 
 export function LivingRoomView({ room, participants, connectionId, speaking, screens, onClose }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
+  const theme = useRoomTheme();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === shellRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void shellRef.current?.requestFullscreen?.().catch(() => undefined);
+  };
   const [crackle, setCrackle] = useState(false);
   const [gyro, setGyro] = useState(false);
   const [xr, setXr] = useState<{ vr: boolean; ar: boolean }>({ vr: false, ar: false });
-  const [hint, setHint] = useState<string | null>("Click the floor to walk, a seat to sit. WASD / arrows walk, Q/E turn.");
+  const [hint, setHint] = useState<string | null>("Click the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits.");
   const [xrError, setXrError] = useState<string | null>(null);
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
@@ -553,23 +297,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const background = new THREE.Color("#120e1c");
-    scene.background = background;
-    scene.fog = new THREE.Fog("#120e1c", 9, 18);
-    const night = isNight();
-    scene.add(new THREE.HemisphereLight(night ? "#8f8ac4" : "#fff4e0", "#3a2a22", night ? 0.55 : 1.1));
-    const sun = new THREE.DirectionalLight(night ? "#9fb0ff" : "#fff1d6", night ? 0.35 : 1.3);
-    sun.position.set(6, 5, 2);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5 });
-    scene.add(sun);
-
     // The house: in AR it is shrunk to a dollhouse in front of you.
     const house = new THREE.Group();
     scene.add(house);
-    const parts = buildRoom(house as unknown as THREE.Scene);
-    const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 50);
+    const parts = buildRoom(theme);
+    house.add(parts.root);
+    for (const light of roomAmbience(theme)) house.add(light);
+    const background = parts.background;
+    scene.background = background;
+    scene.fog = parts.fog;
+    renderer.toneMappingExposure = parts.exposure;
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.05, 60);
     // In XR the headset drives the camera; this rig carries it to your spot.
     const rig = new THREE.Group();
     rig.add(camera);
@@ -582,7 +320,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let videoStream: MediaStream | null = null;
 
     // Overhead orbit.
-    const orbit = { yaw: 0.0, pitch: 0.95, distance: 7.2 };
+    const orbit = { yaw: 0.0, pitch: 0.82, distance: 6.2 };
     // First-person look offset, added to body heading.
     const look = { yaw: 0, pitch: -0.08 };
     const gyroPose = { yaw: 0, pitch: 0, base: null as number | null };
@@ -675,12 +413,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const onWheel = (event: WheelEvent) => {
       if (live.current.view !== "overhead") return;
       event.preventDefault();
-      orbit.distance = Math.max(3, Math.min(11, orbit.distance + event.deltaY * 0.005));
+      orbit.distance = Math.max(2.2, Math.min(15, orbit.distance + event.deltaY * 0.005));
     };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       const key = event.key.toLowerCase();
+      if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
       if (!["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) return;
       if (event.type === "keydown") { keys.add(key); walkTarget = null; } else keys.delete(key);
     };
@@ -719,7 +458,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         session.addEventListener("end", () => {
           xrMode = null;
           scene.background = background;
-          scene.fog = new THREE.Fog("#120e1c", 9, 18);
+          scene.fog = parts.fog;
           house.scale.setScalar(1);
           house.position.set(0, 0, 0);
           resize();
@@ -783,23 +522,34 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
         const isSelf = person.connectionId === live.current.connectionId;
         const talking = talk.has(isSelf ? "self" : person.connectionId);
-        (body.ring.material as THREE.MeshBasicMaterial).opacity += ((talking ? 0.9 : 0) - (body.ring.material as THREE.MeshBasicMaterial).opacity) * 0.25;
+        const ringMaterial = body.ring.material;
+        ringMaterial.opacity += ((talking ? 0.95 : 0) - ringMaterial.opacity) * 0.3;
         body.mute.visible = person.muted || Boolean(person.serverMuted) || person.deafened;
-        // Your own body hides in first person and VR so it never blocks your eyes.
+        // Your own token hides in first person and VR so it never blocks your eyes.
         const firstPerson = isSelf && (live.current.view === "eyes" || xrMode === "immersive-vr");
         body.group.visible = !firstPerson;
-        const sitting = Boolean(pose.seat);
-        const seatHeight = seatById(pose.seat)?.height ?? 0;
+        // The token floats where a head would be: low on a cushion or the floor, higher standing.
+        const height = pose.seat === "floor" ? 0.42 : pose.seat ? (seatById(pose.seat)?.height ?? 0.45) + 0.62 : 1.2;
         const s = body.shown;
         s.x += (pose.x - s.x) * 0.18;
         s.z += (pose.z - s.z) * 0.18;
         s.facing += wrapHeading(pose.facing - s.facing) * 0.2;
-        s.lift += ((sitting ? seatHeight - 0.3 : 0) - s.lift) * 0.2;
-        body.group.position.set(s.x, s.lift, s.z);
-        body.group.rotation.y = -s.facing;
-        const bob = talking ? Math.sin(clock.elapsedTime * 14) * 0.015 : 0;
-        body.head.position.y = 1.18 + bob;
-        body.torso.scale.y = sitting ? 0.75 : 1;
+        s.lift += (height - s.lift) * 0.2;
+        body.group.position.set(s.x, 0, s.z);
+        body.pointer.rotation.z = -s.facing;
+        // A walking token bobs; a talking one pulses.
+        const moving = Math.hypot(pose.x - s.x, pose.z - s.z) > 0.02;
+        const bob = moving ? Math.abs(Math.sin(clock.elapsedTime * 9)) * 0.06 : Math.sin(clock.elapsedTime * 1.3 + s.x) * 0.012;
+        const pulse = talking ? 1 + Math.sin(clock.elapsedTime * 12) * 0.035 : 1;
+        body.token.position.y = s.lift + bob;
+        body.token.scale.setScalar(TOKEN * pulse);
+        body.ring.position.y = s.lift + bob;
+        body.ring.scale.setScalar(TOKEN * (1.45 + (talking ? Math.sin(clock.elapsedTime * 8) * 0.08 : 0)));
+        body.label.position.y = s.lift + TOKEN * 0.5 + 0.13;
+        body.mute.position.set(0, s.lift - TOKEN * 0.38, 0);
+        body.mute.position.y = s.lift - TOKEN * 0.36;
+        (body.shadow.material as THREE.MeshBasicMaterial).opacity = 0.34 - Math.min(0.2, s.lift * 0.12);
+        body.group.userData.top = s.lift + TOKEN * 0.5;
       }
       for (const [id, body] of bodies) {
         if (seen.has(id)) continue;
@@ -823,7 +573,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
         const body = bodies.get(emote.connectionId);
         const base = body ? body.group.position : new THREE.Vector3();
-        sprite.position.set(base.x + Math.sin(emote.id) * 0.15, base.y + 1.6 + age * 0.9, base.z);
+        const top = (body?.group.userData.top as number | undefined) ?? 1.4;
+        sprite.position.set(base.x + Math.sin(emote.id) * 0.15, top + 0.25 + age * 0.9, base.z);
         sprite.scale.setScalar(0.35 + Math.min(age * 3, 1) * 0.15);
         sprite.material.opacity = 1 - age ** 3;
       }
@@ -845,7 +596,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       videoTexture = null;
       if (!stream) {
         parts.screenMaterial.map = null;
-        parts.screenMaterial.color.set("#16131f");
+        parts.screenMaterial.color.set("#0f0c16");
         parts.screenMaterial.needsUpdate = true;
         return;
       }
@@ -905,7 +656,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (xrMode === "immersive-ar") return;
       if (xrMode === "immersive-vr") {
         if (!pose) return;
-        rig.position.set(pose.x, pose.seat ? EYE_SEATED - EYE_STANDING : 0, pose.z);
+        rig.position.set(pose.x, pose.seat === "floor" ? EYE_FLOOR - EYE_STANDING : pose.seat ? EYE_SEATED - EYE_STANDING : 0, pose.z);
         // The headset's own turning becomes your heading, so others see where you look.
         const xrCamera = renderer.xr.getCamera();
         const euler = new THREE.Euler().setFromQuaternion(xrCamera.quaternion, "YXZ");
@@ -919,7 +670,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       rig.position.set(0, 0, 0);
       rig.rotation.set(0, 0, 0);
       if (live.current.view === "eyes" && pose) {
-        const eye = pose.seat ? EYE_SEATED : EYE_STANDING;
+        const eye = pose.seat === "floor" ? EYE_FLOOR : pose.seat ? EYE_SEATED : EYE_STANDING;
         const yaw = pose.facing + (live.current.gyro ? -gyroPose.yaw : 0);
         const pitch = live.current.gyro ? gyroPose.pitch : look.pitch;
         camera.position.set(pose.x, eye, pose.z);
@@ -927,7 +678,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         camera.lookAt(target);
         return;
       }
-      const centre = pose ? new THREE.Vector3(pose.x * 0.35, 0.6, pose.z * 0.35 - 0.2) : new THREE.Vector3(0, 0.6, -0.2);
+      // Overhead follows you around the room, so it feels like your corner of it.
+      const centre = pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
       const yaw = orbit.yaw + (live.current.gyro ? -gyroPose.yaw : 0);
       camera.position.set(
         centre.x + Math.sin(yaw) * Math.cos(orbit.pitch) * orbit.distance,
@@ -937,31 +689,19 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       camera.lookAt(centre);
     };
 
-    let skyTick = 0;
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       const t = clock.elapsedTime;
       if (!xrMode || xrMode === "immersive-vr") walk(dt);
       syncBodies();
       syncTv();
-      for (const flame of parts.flames) {
-        const phase = flame.userData.phase as number;
-        flame.scale.y = 0.8 + Math.sin(t * 9 + phase) * 0.15 + Math.sin(t * 23 + phase * 2) * 0.08;
-        flame.scale.x = 0.9 + Math.sin(t * 7 + phase) * 0.1;
-      }
-      parts.fireLight.intensity = 2 + Math.sin(t * 11) * 0.25 + Math.sin(t * 27) * 0.15;
-      for (const bulb of parts.fairy) {
-        (bulb.material as THREE.MeshBasicMaterial).color.offsetHSL(0, 0, Math.sin(t * 2 + (bulb.userData.phase as number)) * 0.002);
-      }
+      parts.update(t, dt);
       const hop = parts.shark.userData.hop as number | undefined;
       const since = hop ? (performance.now() - hop) / 1000 : 1;
-      parts.shark.position.y = 0.62 + (since < 0.5 ? Math.sin(since * Math.PI * 2) * 0.12 : 0);
+      parts.shark.position.y = 0.68 + (since < 0.5 ? Math.sin(since * Math.PI * 2) * 0.12 : 0);
       parts.shark.rotation.z = Math.sin(t * 0.8) * 0.03;
-      if (t - skyTick > 30) {
-        skyTick = t;
-        (parts.sky.material as THREE.MeshBasicMaterial).color.copy(skyColour());
-        parts.stars.visible = isNight();
-      }
+      // Beams and pendant only show from inside; overhead they would hide the room.
+      parts.ceiling.visible = xrMode === "immersive-vr" || (live.current.view === "eyes" && !xrMode);
       placeCamera();
       renderer.render(scene, camera);
     });
@@ -980,12 +720,15 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (video) { video.pause(); video.srcObject = null; }
       videoTexture?.dispose();
       disposeTree(scene);
+      parts.dispose();
       renderer.dispose();
+      // Browsers cap live WebGL contexts; give this one back now, not at GC.
+      renderer.forceContextLoss();
       mount.removeChild(canvas);
       xrStart.current = null;
       for (const controller of controllers) rig.remove(controller);
     };
-  }, []);
+  }, [theme]);
 
   const toggleGyro = async () => {
     if (gyro) { setGyro(false); return; }
@@ -1003,14 +746,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const tvShowing = screens[0]?.name;
 
   return (
-    <div className="living-room" role="region" aria-label="Living room">
+    <div ref={shellRef} className={`living-room living-room-${theme}`} role="region" aria-label="Living room">
       <style>{LIVING_ROOM_CSS}</style>
       <div ref={mountRef} className="living-room-canvas" />
       <div className="living-room-top">
         <div className="living-room-title">
           <Armchair size={16} />
           <span>Living Room</span>
-          {seatName && <small>· on the {seatName.toLowerCase()}</small>}
+          {seatName ? <small>· on the {seatName.toLowerCase()}</small> : me?.seat === "floor" ? <small>· on the floor</small> : null}
           {tvShowing && <small>· TV: {tvShowing}</small>}
         </div>
         <div className="living-room-tools">
@@ -1020,6 +763,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button type="button" className={crackle ? "active" : ""} onClick={() => setCrackle((on) => !on)} title="Fire crackle (only you hear it)" aria-label="Fire sound"><Flame size={16} /></button>
           {xr.vr && <button type="button" onClick={() => xrStart.current?.("immersive-vr")} title="Enter VR" aria-label="Enter VR"><Glasses size={16} /> VR</button>}
           {xr.ar && <button type="button" onClick={() => xrStart.current?.("immersive-ar")} title="Put the room on your table" aria-label="View in AR"><View size={16} /> AR</button>}
+          <button type="button" onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           <button type="button" onClick={onClose} title="Back to tiles" aria-label="Close living room"><X size={16} /></button>
         </div>
       </div>
@@ -1030,9 +774,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         {LOUNGE_EMOTES.map((emoji) => (
           <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
         ))}
-        {me?.seat && (
-          <button type="button" className="living-room-stand" onClick={() => me && room.move({ ...stepTo(me, { x: me.x, z: me.z - 0.55 }), facing: me.facing })}>Stand up</button>
-        )}
+        {me && (me.seat && me.seat !== "floor" ? (
+          <button type="button" className="living-room-stand" onClick={() => room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }), facing: me.facing })}>Stand up</button>
+        ) : (
+          <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
+        ))}
       </div>
     </div>
   );
@@ -1040,20 +786,27 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
 const LIVING_ROOM_CSS = `
 .voice-stage-bottom-bar { position: relative; z-index: 6; }
-.living-room { position: absolute; inset: 0; z-index: 5; background: #120e1c; overflow: hidden; border-radius: inherit; }
+.living-room { --lr-accent: #ffd27a; --lr-ink: #fff4e3; --lr-panel: rgba(28, 18, 12, 0.72); --lr-edge: rgba(255, 210, 160, 0.2); position: absolute; inset: 0; z-index: 5; background: #1a110c; overflow: hidden; border-radius: inherit; }
+.living-room-vampire { --lr-accent: #c2142f; --lr-ink: #f6e3e0; --lr-panel: rgba(20, 4, 8, 0.78); --lr-edge: rgba(176, 138, 62, 0.35); background: #0b0306; }
+.living-room-vampire .living-room-title { font-family: Georgia, serif; letter-spacing: 0.04em; }
+.living-room-matrix { --lr-accent: #00e060; --lr-ink: #b9ffcf; --lr-panel: rgba(0, 10, 3, 0.82); --lr-edge: rgba(0, 224, 96, 0.35); background: #000400; }
+.living-room-matrix .living-room-title { font-family: ui-monospace, monospace; }
+.living-room-cyberpunk { --lr-accent: #ff2fb4; --lr-ink: #e6f9ff; --lr-panel: rgba(10, 5, 30, 0.78); --lr-edge: rgba(0, 240, 255, 0.45); background: #06030f; }
+.living-room-cyberpunk .living-room-title, .living-room-cyberpunk .living-room-tools, .living-room-cyberpunk .living-room-emotes { box-shadow: 0 0 14px rgba(255, 47, 180, 0.35), inset 0 0 8px rgba(0, 240, 255, 0.15); }
+.living-room:fullscreen { border-radius: 0; }
 .living-room-canvas { position: absolute; inset: 0; touch-action: none; }
 .living-room-canvas canvas { width: 100% !important; height: 100% !important; display: block; cursor: pointer; }
 .living-room-top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; pointer-events: none; }
-.living-room-title, .living-room-tools { pointer-events: auto; display: flex; align-items: center; gap: 6px; background: rgba(18, 14, 28, 0.72); backdrop-filter: blur(8px); color: #fff4e3; border: 1px solid rgba(255, 220, 170, 0.18); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+.living-room-title, .living-room-tools { pointer-events: auto; display: flex; align-items: center; gap: 6px; background: var(--lr-panel); backdrop-filter: blur(8px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
 .living-room-title small { font-weight: 400; opacity: 0.75; }
 .living-room-tools { padding: 4px; }
 .living-room-tools button { display: inline-flex; align-items: center; gap: 4px; min-width: 32px; height: 32px; justify-content: center; padding: 0 8px; border-radius: 999px; color: inherit; background: transparent; font-size: 12px; font-weight: 600; }
 .living-room-tools button:hover { background: rgba(255, 220, 170, 0.12); }
-.living-room-tools button.active { background: #ffd27a; color: #1b1530; }
-.living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: rgba(18, 14, 28, 0.8); color: #fff4e3; padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
-.living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: rgba(18, 14, 28, 0.72); backdrop-filter: blur(8px); border: 1px solid rgba(255, 220, 170, 0.18); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
+.living-room-tools button.active { background: var(--lr-accent); color: #1b1530; }
+.living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--lr-panel); color: var(--lr-ink); padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
+.living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--lr-panel); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
 .living-room-emotes button { font-size: 20px; width: 36px; height: 36px; border-radius: 999px; transition: transform 0.12s; flex: none; }
 .living-room-emotes button:hover { transform: scale(1.2); background: rgba(255, 220, 170, 0.12); }
-.living-room-emotes .living-room-stand { font-size: 12px; width: auto; padding: 0 12px; color: #fff4e3; font-weight: 600; }
+.living-room-emotes .living-room-stand { font-size: 12px; width: auto; padding: 0 12px; color: var(--lr-ink); font-weight: 600; }
 .living-room-emotes .living-room-stand:hover { transform: none; }
 `;

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import {
-  clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, seatById,
+  FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, seatById,
   type HeardFrom, type LoungePose,
 } from "../lib/living-room";
 
@@ -21,6 +21,8 @@ export interface LivingRoom {
   emotes: LoungeEmote[];
   move: (pose: LoungePose) => void;
   sit: (seatId: string) => void;
+  /** Sit (or stand back up) right where you are. */
+  toggleFloor: () => void;
   emote: (emoji: string) => void;
   /** How the listener hears a connection, or undefined when the room is not in use. */
   heard: Map<string, HeardFrom> | null;
@@ -111,10 +113,23 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     [participants],
   );
 
-  const poses = useMemo(() => {
-    const present = new Map([...explicit].filter(([id]) => ids.includes(id)));
-    return defaultPoses(ids, present);
+  // Two people can claim one seat in the same moment; the earlier joiner keeps it
+  // and everyone else's view seats the later one elsewhere, the same way everywhere.
+  const contested = useMemo(() => {
+    const holder = new Map<string, string>();
+    const bumped = new Set<string>();
+    for (const id of ids) {
+      const seat = explicit.get(id)?.seat;
+      if (!seat || seat === FLOOR_SEAT) continue;
+      if (holder.has(seat)) bumped.add(id); else holder.set(seat, id);
+    }
+    return bumped;
   }, [explicit, ids]);
+
+  const poses = useMemo(() => {
+    const present = new Map([...explicit].filter(([id]) => ids.includes(id) && !contested.has(id)));
+    return defaultPoses(ids, present);
+  }, [explicit, ids, contested]);
 
   const flush = useCallback(() => {
     timer.current = null;
@@ -144,6 +159,13 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     move({ x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id });
   }, [connectionId, poses, move]);
 
+  const toggleFloor = useCallback(() => {
+    const pose = connectionId ? poses.get(connectionId) : null;
+    if (!pose) return;
+    if (pose.seat === FLOOR_SEAT) move({ ...pose, seat: null });
+    else if (!pose.seat) move({ ...pose, seat: FLOOR_SEAT });
+  }, [connectionId, poses, move]);
+
   const emote = useCallback((emoji: string) => {
     if (!connectionId || !isLoungeEmote(emoji)) return;
     const pose = poses.get(connectionId);
@@ -152,6 +174,13 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     setEmotes((list) => [...list.slice(-20), { id, connectionId, emoji, at: Date.now() }]);
     sendRef.current({ t: "lounge", x: pose.x, z: pose.z, facing: pose.facing, seat: pose.seat, emote: emoji });
   }, [connectionId, poses]);
+
+  // Lost a seat race: take the spot everyone now shows us in.
+  useEffect(() => {
+    if (!connectionId || !contested.has(connectionId)) return;
+    const placed = poses.get(connectionId);
+    if (placed) move(placed);
+  }, [connectionId, contested, poses, move]);
 
   // Walking in: claim a spot so everyone agrees where you are.
   const self = connectionId ? poses.get(connectionId) ?? null : null;
@@ -170,5 +199,5 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     return map;
   }, [open, self, poses, connectionId]);
 
-  return { open: open && Boolean(roomId), setOpen, poses, self, emotes, move, sit, emote, heard };
+  return { open: open && Boolean(roomId), setOpen, poses, self, emotes, move, sit, toggleFloor, emote, heard };
 }
