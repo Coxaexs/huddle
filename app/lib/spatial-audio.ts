@@ -128,6 +128,8 @@ export const ROOM_SHAPES = {
   vampire: { seconds: 2.2, decay: 0.48, damp: 0.42, predelay: 0.03 },
   matrix: { seconds: 0.7, decay: 0.12, damp: 0.5, predelay: 0.008 },
   cyberpunk: { seconds: 1.2, decay: 0.24, damp: 0.6, predelay: 0.02 },
+  // A library: books swallow the highs, the wood keeps a warm, medium tail.
+  academia: { seconds: 1.4, decay: 0.3, damp: 0.22, predelay: 0.024 },
 } satisfies Record<string, RoomShape>;
 export type RoomShapeName = keyof typeof ROOM_SHAPES;
 

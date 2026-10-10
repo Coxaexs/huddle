@@ -7,7 +7,7 @@
 import { ROOM_HALF_X, ROOM_HALF_Z, type LoungePose } from "../lib/living-room";
 import type { RoomTheme } from "../hooks/use-living-room";
 
-type Clip = "fire" | "rain" | "wind" | "computer" | "city";
+type Clip = "fire" | "rain" | "wind" | "computer" | "city" | "clock";
 
 interface Placed {
   clip: Clip;
@@ -15,6 +15,8 @@ interface Placed {
   gain: number;
   /** Heard through the window glass: the top end is gone. */
   muffle?: number;
+  /** Rhythmic sounds (a clock) loop end to end; a crossfade would double the ticks. */
+  seamless?: boolean;
 }
 
 const WINDOW: [number, number, number] = [ROOM_HALF_X - 0.1, 1.7, 2.6];
@@ -33,6 +35,13 @@ export function ambienceFor(theme: RoomTheme, night = isNight()): Placed[] {
     case "matrix":
       return [
         { clip: "computer", at: [ROOM_HALF_X - 0.5, 1.0, -2.6], gain: 0.9 },
+      ];
+    case "academia":
+      // The library: the fire, rain that never stops, and the grandfather clock.
+      return [
+        { clip: "fire", at: HEARTH, gain: 0.9 },
+        { clip: "rain", at: WINDOW, gain: 0.5, muffle: 2200 },
+        { clip: "clock", at: [-ROOM_HALF_X + 0.4, 1.6, -1.4], gain: 0.6, seamless: true },
       ];
     case "cyberpunk":
       return [
@@ -126,6 +135,15 @@ export class RoomAmbience {
       head = glass;
     }
     head.connect(panner).connect(this.master);
+    if (placed.seamless) {
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(level);
+      source.start(context.currentTime + 0.05);
+      this.sources.push(source);
+      return;
+    }
     this.loop(buffer, level, context.currentTime + 0.05, true);
   }
 
