@@ -17,6 +17,7 @@ import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
 import {
   MIC_STATE_EVENT,
   openMicrophone,
+  silentMicChain,
   readMicSettings,
   writeMicSettings,
   type MicChain,
@@ -1166,7 +1167,15 @@ export function useVoice({
    * up. The caller owns the returned chain and must stop it.
    */
   const openMicChain = useCallback(async (): Promise<MicChain> => {
-    const chain = await openMicrophone();
+    let chain: MicChain;
+    try {
+      chain = await openMicrophone();
+    } catch {
+      // No microphone (refused, withdrawn while the tab was in the background,
+      // or none plugged in): join listen-only rather than not at all.
+      setError("No microphone access — you are in voice listen-only. Allow the mic and rejoin to talk.");
+      return silentMicChain();
+    }
     chain.onTelemetry((telemetry) => {
       micTelemetryRef.current = telemetry;
       for (const listener of micListenersRef.current) listener(telemetry);

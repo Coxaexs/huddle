@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { extractInviteCodeFromUrl } from "../lib/chat/invites";
 import type { PublicUser } from "@/lib/users";
 import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
 
@@ -28,14 +29,50 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
   const [busy, setBusy] = useState(false);
 
   // A password reset mail links back here with ?reset=<token>.
+  // An invite link directs here with ?invite=<code>, ?code=<code>, or ?<code>.
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const token = url.searchParams.get("reset");
-    if (!token) return;
-    setResetToken(token);
-    setMode("reset");
-    url.searchParams.delete("reset");
-    window.history.replaceState(null, "", url.toString());
+    try {
+      const url = new URL(window.location.href);
+      const token = url.searchParams.get("reset");
+      if (token) {
+        setResetToken(token);
+        setMode("reset");
+        url.searchParams.delete("reset");
+        window.history.replaceState(null, "", url.toString());
+        return;
+      }
+
+      const inviteCode = extractInviteCodeFromUrl(window.location.search || window.location.href);
+      if (inviteCode) {
+        setInvite(inviteCode);
+        setMode("signup");
+        setNotice(`Invite code applied: ${inviteCode}`);
+
+        void apiFetch<{
+          valid: boolean;
+          error?: string;
+          server?: { name: string } | null;
+          inviter?: { displayName: string } | null;
+        }>(`/api/invites/resolve?code=${encodeURIComponent(inviteCode)}`)
+          .then((res) => {
+            if (!res.valid) {
+              setError(res.error || "This invite code is invalid or has expired.");
+              setNotice("");
+            } else if (res.server) {
+              setNotice(
+                `This invite is for server "${res.server.name}". Account invites are required to register, but you can sign in if you already have an account.`,
+              );
+            } else if (res.inviter?.displayName) {
+              setNotice(
+                `${res.inviter.displayName} invited you! Choose your username to join.`,
+              );
+            }
+          })
+          .catch(() => undefined);
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   function switchMode(next: typeof mode) {
@@ -87,6 +124,19 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           window.localStorage.setItem(TUTORIAL_PENDING_KEY, "1");
         } catch {
           // Storage blocked: the tutorial is still in Settings.
+        }
+        // Clean invite parameters from URL so that subsequent chat-shell checks don't treat this used code as an expired server invite
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("invite");
+          url.searchParams.delete("code");
+          url.searchParams.delete("servercode");
+          if (url.search && !url.search.includes("=")) {
+            url.search = "";
+          }
+          window.history.replaceState(null, "", url.toString());
+        } catch {
+          // ignore
         }
       }
       onSignedIn(data.user, data.defaultTheme || null);
@@ -197,7 +247,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               id="huddle-invite"
               value={invite}
               onChange={(event) => setInvite(event.target.value.toUpperCase())}
-              maxLength={16}
+              maxLength={32}
               placeholder="ABCD1234"
             />
           </>

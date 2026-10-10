@@ -242,11 +242,6 @@ function RollCard({
         <span className="dnd-card-kicker">
           {label || "Dice roll"}
           {roller ? ` · ${roller}` : ""}
-          {verified && (
-            <span className="dnd-verified" title="Rolled by the server: nobody chose these faces">
-              ✓ Verified
-            </span>
-          )}
         </span>
         <span className="dnd-roll-expression">
           {expression}

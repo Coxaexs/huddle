@@ -105,6 +105,17 @@ export function MessageEditor({
       <textarea
         value={value}
         autoFocus
+        rows={Math.min(16, Math.max(2, value.split("\n").length + Math.floor(value.length / 90)))}
+        ref={(node) => {
+          // Grow to fit the whole message, so long edits are not a slot.
+          if (!node) return;
+          node.style.height = "auto";
+          node.style.height = `${Math.min(node.scrollHeight + 2, window.innerHeight * 0.6)}px`;
+        }}
+        onFocus={(event) => {
+          const end = event.currentTarget.value.length;
+          event.currentTarget.setSelectionRange(end, end);
+        }}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") onCancel();
