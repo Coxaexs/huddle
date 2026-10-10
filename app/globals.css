@@ -9314,9 +9314,19 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   margin: 0;
 }
 
+.message-edit {
+  width: 100%;
+  min-width: min(100%, 640px);
+  flex: 1 1 auto;
+}
+
 .message-edit textarea {
   width: 100%;
-  min-height: 52px;
+  min-height: 72px;
+  max-height: 60vh;
+  resize: vertical;
+  line-height: 1.45;
+  overflow-y: auto;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--paper);

@@ -5250,17 +5250,14 @@ export function ChatShell() {
       return;
     }
 
-    if (dmCall.status !== "connected" || dmCallLeftTimerRef.current) return;
-    // They were here and left: wait out a reconnect blip before hanging up.
-    // They accepted but never arrived: give their join a fair chance first.
-    dmCallLeftTimerRef.current = window.setTimeout(
-      () => {
-        dmCallLeftTimerRef.current = null;
-        const current = dmCallRef.current;
-        if (current && current.channelId === dmCall.channelId) endDmCall(false);
-      },
-      dmCall.seenOther ? 4000 : 25000,
-    );
+    // They were here and left: stay in the call, so they can come back (or
+    // you hang up yourself). Only an accept that never arrives times out.
+    if (dmCall.status !== "connected" || dmCall.seenOther || dmCallLeftTimerRef.current) return;
+    dmCallLeftTimerRef.current = window.setTimeout(() => {
+      dmCallLeftTimerRef.current = null;
+      const current = dmCallRef.current;
+      if (current && current.channelId === dmCall.channelId && !current.seenOther) endDmCall(false);
+    }, 25000);
   }, [voiceParticipants, dmCall, endDmCall]);
 
   /**
@@ -7223,6 +7220,41 @@ export function ChatShell() {
                   <Settings size={16} /> Server Settings
                 </span>
               </button>
+              {canCreateServerInvites && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerMenuOpen(false);
+                    void apiFetch<{ invite: { code: string } }>("/api/invites", {
+                      method: "POST",
+                      body: JSON.stringify({ serverId: activeServer.id, maxUses: 0 }),
+                    })
+                      .then(async ({ invite }) => {
+                        const link = `${window.location.origin}/hangout?${invite.code}`;
+                        const copied = await navigator.clipboard
+                          ?.writeText(link)
+                          .then(() => true)
+                          .catch(() => false);
+                        if (copied) showToast(`Invite link copied: ${link}`);
+                        else
+                          showCustomPrompt({
+                            title: "Invite created",
+                            message: "Share this link:",
+                            defaultValue: link,
+                            confirmText: "Done",
+                            onConfirm: () => undefined,
+                          });
+                      })
+                      .catch((error) =>
+                        showToast(error instanceof Error ? error.message : "Could not create an invite."),
+                      );
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <UserPlus size={16} /> Create Invite
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
