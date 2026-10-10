@@ -8043,6 +8043,7 @@ export function ChatShell() {
                 voice={voice}
                 captions={voice.channelId === stageChannel.id ? captions : undefined}
                 livingRoom={voice.channelId === stageChannel.id ? livingRoom : undefined}
+                nowPlaying={voice.channelId === stageChannel.id ? roomPlayer : null}
                 joined={voice.channelId === stageChannel.id}
                 onJoin={() => void openVoiceChannel(stageChannel)}
                 onExit={() => setStageChannelId(null)}
