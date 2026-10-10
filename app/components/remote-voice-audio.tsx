@@ -2,12 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
-import { SpatialAudioPlayback, personalTableLayout } from "../lib/spatial-audio";
+import { SpatialAudioPlayback, personalTableLayout, type RoomShapeName } from "../lib/spatial-audio";
 import type { HeardFrom } from "../lib/living-room";
 import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../lib/head-tracking";
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null }: {
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false }: {
   streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
@@ -25,6 +25,12 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   streamPreferenceFor?: (streamId: string, userId?: string) => { volume: number; muted: boolean };
   /** While the living room is open, where each voice is relative to you replaces the table. */
   livingRoom?: Map<string, HeardFrom> | null;
+  /** Living room: the music bot plays from the TV, heard from here. */
+  tv?: HeardFrom | null;
+  /** Which room's reverb to use: the table's, or the Living Room theme's. */
+  roomShape?: RoomShapeName;
+  /** The Living Room's "spatial voices" switch is off: play everything flat, table mode included. */
+  spatialOff?: boolean;
 }) {
   const playback = useRef<SpatialAudioPlayback | null>(null);
   const status = useRef(onHeadTracking);
@@ -52,6 +58,7 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
     };
   }, [enabled, headTracking, headTrackingSource]);
   useEffect(() => { playback.current?.setHeadphones(headphones); }, [headphones]);
+  useEffect(() => { playback.current?.setRoomShape(roomShape); }, [roomShape]);
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
     playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream, kind }) => {
@@ -61,11 +68,12 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         ? kind === "screen"
         : stream.id === person?.screenStreamId || stream.getVideoTracks().length > 0;
       const voice = person && !person.bot && !person.recorder && !isScreen;
-      const placed = livingRoom?.get(connectionId);
-      const tableSeat = voice || (kind === "tts" && person) ? seats.get(connectionId) : undefined;
-      const seat = placed && (voice || (kind === "tts" && person))
-        ? { pan: placed.pan, ...placed.seat, attenuation: placed.attenuation, privacy: placed.privacy }
-        : tableSeat && { ...tableSeat, attenuation: 1, privacy: 1 };
+      const music = Boolean(person?.bot && person.id === "bot:music" && !isScreen);
+      const placed = music ? tv ?? undefined : spatialOff ? undefined : livingRoom?.get(connectionId);
+      const tableSeat = !spatialOff && (voice || (kind === "tts" && person)) ? seats.get(connectionId) : undefined;
+      const seat = placed && (music || voice || (kind === "tts" && person))
+        ? { pan: placed.pan, ...placed.seat, attenuation: placed.attenuation, privacy: placed.privacy, cutoff: placed.cutoff, wet: placed.wet }
+        : tableSeat && { ...tableSeat, attenuation: 1, privacy: 1, cutoff: undefined, wet: undefined };
 
       let volume = pref.volume;
       let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted);
@@ -90,8 +98,10 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         seat: seat ? { x: seat.x, y: seat.y, z: seat.z } : null,
         attenuation: seat?.attenuation,
         hrtfAttenuation: seat?.privacy,
+        cutoff: seat?.cutoff,
+        wet: seat?.wet,
       };
-    }), enabled || Boolean(livingRoom));
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom]);
+    }), !spatialOff && (enabled || Boolean(livingRoom)) || Boolean(tv));
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff]);
   return null;
 }

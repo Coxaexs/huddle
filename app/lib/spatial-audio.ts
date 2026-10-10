@@ -87,6 +87,10 @@ export interface PlaybackInput {
   attenuation?: number;
   /** Living room gain that applies under HRTF too (the quiet nook). */
   hrtfAttenuation?: number;
+  /** Living room: low-pass cutoff in Hz (distance, a turned head, a wall). */
+  cutoff?: number;
+  /** Living room: this voice's reverb send, instead of the table's fixed ROOM_SEND. */
+  wet?: number;
 }
 /**
  * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
@@ -100,20 +104,41 @@ type Entry = {
   source?: MediaStreamAudioSourceNode;
   panner?: StereoPannerNode | PannerNode;
   gain?: GainNode;
+  /** Living room voices only: tone and reverb are shaped per voice. */
+  shaped?: boolean;
+  filter?: BiquadFilterNode;
+  send?: GainNode;
 };
 type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
 
 /** How much of each headphone voice reaches the shared room; enough to leave the head, not echo. */
 export const ROOM_SEND = 0.1;
 
+/** How a room rings: tail length, decay constant, how dark the tail is, first reflection. */
+export interface RoomShape { seconds: number; decay: number; damp: number; predelay: number }
+
 /**
- * A small furnished room: 12 ms before the first reflection, then a dark tail that
- * is gone in about half a second. Each ear gets its own noise so the room is wide.
+ * The table is a small furnished room. The Living Room themes each get their own:
+ * a warm wooden lounge, a stone gothic parlour that rings, a tight dead server
+ * den, and a bright hard-walled flat.
  */
-export function roomImpulse(context: BaseAudioContext, random = Math.random): AudioBuffer {
+export const ROOM_SHAPES = {
+  table: { seconds: 0.6, decay: 0.11, damp: 0.35, predelay: 0.012 },
+  cozy: { seconds: 1.0, decay: 0.2, damp: 0.28, predelay: 0.018 },
+  vampire: { seconds: 2.2, decay: 0.48, damp: 0.42, predelay: 0.03 },
+  matrix: { seconds: 0.7, decay: 0.12, damp: 0.5, predelay: 0.008 },
+  cyberpunk: { seconds: 1.2, decay: 0.24, damp: 0.6, predelay: 0.02 },
+} satisfies Record<string, RoomShape>;
+export type RoomShapeName = keyof typeof ROOM_SHAPES;
+
+/**
+ * Noise shaped into a room's tail: a short gap before the first reflection,
+ * then a decaying, low-passed tail. Each ear gets its own noise so the room is wide.
+ */
+export function roomImpulse(context: BaseAudioContext, random = Math.random, shape: RoomShape = ROOM_SHAPES.table): AudioBuffer {
   const rate = context.sampleRate;
-  const length = Math.floor(rate * 0.6);
-  const predelay = Math.floor(rate * 0.012);
+  const length = Math.floor(rate * shape.seconds);
+  const predelay = Math.floor(rate * shape.predelay);
   const buffer = context.createBuffer(2, length, rate);
   for (let channel = 0; channel < 2; channel++) {
     const data = buffer.getChannelData(channel);
@@ -121,8 +146,8 @@ export function roomImpulse(context: BaseAudioContext, random = Math.random): Au
     for (let i = predelay; i < length; i++) {
       const t = (i - predelay) / rate;
       // A one-pole low-pass: soft furnishings swallow the highs first.
-      dark += (random() * 2 - 1 - dark) * 0.35;
-      data[i] = dark * Math.exp(-t / 0.11);
+      dark += (random() * 2 - 1 - dark) * shape.damp;
+      data[i] = dark * Math.exp(-t / shape.decay);
     }
   }
   return buffer;
@@ -157,6 +182,8 @@ export class SpatialAudioPlayback {
   private headPose: HeadPose | null = null;
   private headphones = false;
   private room: GainNode | null = null;
+  private reverb: ConvolverNode | null = null;
+  private shape: RoomShapeName = "table";
 
   constructor() {
     window.addEventListener("pointerdown", this.resume);
@@ -213,13 +240,22 @@ export class SpatialAudioPlayback {
     if (typeof context.createConvolver !== "function" || typeof context.createBuffer !== "function") return null;
     try {
       const reverb = context.createConvolver();
-      reverb.buffer = roomImpulse(context);
+      reverb.buffer = roomImpulse(context, Math.random, ROOM_SHAPES[this.shape]);
+      this.reverb = reverb;
       const send = context.createGain();
       send.gain.value = ROOM_SEND;
       send.connect(reverb).connect(context.destination);
       this.room = send;
     } catch { /* A dry mix still works. */ }
     return this.room;
+  }
+
+  /** Swaps the shared reverb for another room's, e.g. when the Living Room opens. */
+  setRoomShape(name: RoomShapeName) {
+    if (this.disposed || this.shape === name) return;
+    this.shape = name;
+    if (!this.reverb || !this.context) return;
+    try { this.reverb.buffer = roomImpulse(this.context, Math.random, ROOM_SHAPES[name]); } catch { /* Keep the old room. */ }
   }
 
   private resume = () => {
@@ -290,11 +326,14 @@ export class SpatialAudioPlayback {
     if (!context) return;
     const wanted = this.spatialFor(input) ? this.mode() : input.volume > 1 ? "boost" : undefined;
     if (!wanted) return;
-    if (entry.mode === wanted) return;
+    const shaped = wanted !== "boost" && (input.cutoff !== undefined || input.wet !== undefined);
+    if (entry.mode === wanted && Boolean(entry.shaped) === shaped) return;
     if (entry.mode) this.detach(entry);
     let source: MediaStreamAudioSourceNode | undefined;
     let panner: StereoPannerNode | PannerNode | undefined;
     let gain: GainNode | undefined;
+    let filter: BiquadFilterNode | undefined;
+    let send: GainNode | undefined;
     try {
       // The stream's source node survives a mode change; only the panner is swapped.
       source = entry.source ?? context.createMediaStreamSource(input.stream);
@@ -318,15 +357,28 @@ export class SpatialAudioPlayback {
       }
       gain = context.createGain();
       gain.gain.value = 0;
-      (panner ? source.connect(panner) : source).connect(gain).connect(context.destination);
+      // Living room voices get a tone filter after the panner: air, a turned head, a wall.
+      if (shaped && typeof context.createBiquadFilter === "function") {
+        filter = context.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.Q.value = 0.5;
+        filter.frequency.value = input.cutoff ?? 20000;
+      }
+      const head = panner ? source.connect(panner) : source;
+      (filter ? head.connect(filter) : head).connect(gain).connect(context.destination);
       if (wanted === "hrtf") {
         const room = this.roomInput(context);
-        if (room) gain.connect(room);
+        if (room && shaped) {
+          // A per-voice send, so a far voice sits further into the room than a near one.
+          send = context.createGain();
+          send.gain.value = (input.wet ?? ROOM_SEND) / ROOM_SEND;
+          gain.connect(send).connect(room);
+        } else if (room) gain.connect(room);
       }
-      Object.assign(entry, { source, panner, gain, mode: wanted });
+      Object.assign(entry, { source, panner, gain, filter, send, shaped, mode: wanted });
     } catch {
-      source?.disconnect(); panner?.disconnect(); gain?.disconnect();
-      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.mode = undefined;
+      source?.disconnect(); panner?.disconnect(); gain?.disconnect(); filter?.disconnect(); send?.disconnect();
+      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.filter = undefined; entry.send = undefined; entry.shaped = undefined; entry.mode = undefined;
     }
   }
 
@@ -402,6 +454,14 @@ export class SpatialAudioPlayback {
         holdParameter(gain.gain, now);
         if (routed && !input.muted) gain.gain.setTargetAtTime(volume, now, 0.025);
         else { gain.gain.cancelScheduledValues(now); gain.gain.value = 0; }
+        if (entry.filter) {
+          holdParameter(entry.filter.frequency, now);
+          entry.filter.frequency.setTargetAtTime(Math.max(200, Math.min(20000, input.cutoff ?? 20000)), now, 0.08);
+        }
+        if (entry.send) {
+          holdParameter(entry.send.gain, now);
+          entry.send.gain.setTargetAtTime((input.wet ?? ROOM_SEND) / ROOM_SEND, now, 0.08);
+        }
         if (!panner) continue;
         if (entry.mode === "hrtf") {
           this.seat(entry, now);
@@ -422,8 +482,13 @@ export class SpatialAudioPlayback {
     entry.source?.disconnect();
     entry.panner?.disconnect();
     entry.gain?.disconnect();
+    entry.filter?.disconnect();
+    entry.send?.disconnect();
     entry.panner = undefined;
     entry.gain = undefined;
+    entry.filter = undefined;
+    entry.send = undefined;
+    entry.shaped = undefined;
     entry.mode = undefined;
   }
 
@@ -448,6 +513,7 @@ export class SpatialAudioPlayback {
     this.entries.clear();
     this.room?.disconnect();
     this.room = null;
+    this.reverb = null;
     if (this.context) {
       this.context.onstatechange = null;
       void this.context.close().catch(() => undefined);

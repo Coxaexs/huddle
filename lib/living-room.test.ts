@@ -22,10 +22,10 @@ describe("living room geometry", () => {
   });
 
   it("is quieter across the room than next to you", () => {
-    const near = hearFrom(at(0, 0), at(0.8, 0));
-    const far = hearFrom(at(-3, -2), at(3, 2));
+    const near = hearFrom(at(0, 0), at(0.8, 0, -Math.PI / 2));
+    const far = hearFrom(at(-3, -2), at(3, 2, headingTo(at(3, 2), at(-3, -2))));
     expect(far.attenuation).toBeLessThan(near.attenuation);
-    expect(near.attenuation).toBe(1);
+    expect(near.attenuation).toBeCloseTo(1);
   });
 
   it("never places a voice inside your head", () => {
@@ -36,9 +36,29 @@ describe("living room geometry", () => {
   it("muffles the quiet nook from the rest of the room, both ways", () => {
     const inside = at(NOOK.x, NOOK.z);
     const outside = at(NOOK.x - 1.6, NOOK.z);
-    expect(hearFrom(outside, inside).privacy).toBe(0.3);
-    expect(hearFrom(inside, outside).privacy).toBe(0.3);
-    expect(hearFrom(inside, at(NOOK.x + 0.3, NOOK.z - 0.3)).privacy).toBe(1);
+    // Speakers facing the listener, so only the wall is measured.
+    const face = (from: LoungePose, to: LoungePose) => ({ ...from, facing: headingTo(from, to) });
+    expect(hearFrom(outside, face(inside, outside)).privacy).toBeCloseTo(0.45);
+    expect(hearFrom(inside, face(outside, inside)).privacy).toBeCloseTo(0.45);
+    expect(hearFrom(outside, face(inside, outside)).cutoff).toBeLessThanOrEqual(1400);
+    const mate = at(NOOK.x + 0.3, NOOK.z - 0.3);
+    expect(hearFrom(inside, face(mate, inside)).privacy).toBeCloseTo(1);
+  });
+
+  it("a voice turned away is softer, duller and roomier than one facing you", () => {
+    const listener = at(0, 0);
+    const facing = hearFrom(listener, at(0, -2, Math.PI)); // two metres ahead, looking back at you
+    const away = hearFrom(listener, at(0, -2, 0)); // same spot, facing the fire
+    expect(away.attenuation).toBeLessThan(facing.attenuation);
+    expect(away.cutoff).toBeLessThan(facing.cutoff);
+    expect(away.wet).toBeGreaterThan(facing.wet);
+  });
+
+  it("distance darkens and wets a voice", () => {
+    const near = hearFrom(at(0, 0), at(1, 0, -Math.PI / 2));
+    const far = hearFrom(at(-5, 0), at(5, 0, -Math.PI / 2));
+    expect(far.cutoff).toBeLessThan(near.cutoff);
+    expect(far.wet).toBeGreaterThan(near.wet);
   });
 
   it("headingTo agrees with hearFrom's frame", () => {

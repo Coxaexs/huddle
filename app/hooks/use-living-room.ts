@@ -3,12 +3,63 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import {
-  FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, seatById,
+  FLOOR_SEAT, TV_POSE, TV_SPOT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, seatById,
   type HeardFrom, type LoungePose,
 } from "../lib/living-room";
 
 /** use-hub re-dispatches lounge traffic as this window event. */
 export const LOUNGE_EVENT = "huddle-lounge";
+
+export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk";
+
+export function roomThemeFor(customThemeId: string | undefined): RoomTheme {
+  if (customThemeId === "vampire" || customThemeId === "matrix" || customThemeId === "cyberpunk") return customThemeId;
+  return "cozy";
+}
+
+/** The room dresses (and sounds) for the app's current theme, and follows it when it changes. */
+export function useRoomTheme(): RoomTheme {
+  const [theme, setTheme] = useState<RoomTheme>("cozy");
+  useEffect(() => {
+    const root = document.documentElement;
+    const read = () => setTheme(roomThemeFor(root.dataset.customThemeId));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id"] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
+/** Per-browser Living Room preferences. */
+export interface LoungeSettings {
+  /** Voices come from where people are. Off: everyone plays flat, like a normal call. */
+  spatial: boolean;
+  /** The music bot plays from the TV instead of everywhere. */
+  tvMusic: boolean;
+  /** The room's own sounds: fire, rain, wind, city. */
+  ambience: boolean;
+  /** 0..1 */
+  ambienceVolume: number;
+}
+
+const SETTINGS_KEY = "huddle-living-room-settings";
+const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5 };
+
+function readSettings(): LoungeSettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") as Partial<LoungeSettings>;
+    return {
+      spatial: typeof raw.spatial === "boolean" ? raw.spatial : DEFAULT_SETTINGS.spatial,
+      tvMusic: typeof raw.tvMusic === "boolean" ? raw.tvMusic : DEFAULT_SETTINGS.tvMusic,
+      ambience: typeof raw.ambience === "boolean" ? raw.ambience : DEFAULT_SETTINGS.ambience,
+      ambienceVolume: typeof raw.ambienceVolume === "number" && Number.isFinite(raw.ambienceVolume)
+        ? Math.max(0, Math.min(1, raw.ambienceVolume)) : DEFAULT_SETTINGS.ambienceVolume,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
 
 export interface LoungeEmote { id: number; connectionId: string; emoji: string; at: number }
 
@@ -24,8 +75,15 @@ export interface LivingRoom {
   /** Sit (or stand back up) right where you are. */
   toggleFloor: () => void;
   emote: (emoji: string) => void;
-  /** How the listener hears a connection, or undefined when the room is not in use. */
+  /** How the listener hears a connection, or null when the room is closed or spatial voices are off. */
   heard: Map<string, HeardFrom> | null;
+  /** Where the music bot is heard from (the TV), or null. */
+  tv: HeardFrom | null;
+  /** The room is open but its spatial voices are switched off: play the call flat. */
+  spatialOff: boolean;
+  theme: RoomTheme;
+  settings: LoungeSettings;
+  setSettings: (patch: Partial<LoungeSettings>) => void;
 }
 
 const OPEN_KEY = "huddle-living-room";
@@ -42,6 +100,16 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     try { return typeof window !== "undefined" && localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; }
   });
   const [explicit, setExplicit] = useState<Map<string, LoungePose>>(new Map());
+  const theme = useRoomTheme();
+  const [settings, setSettingsState] = useState<LoungeSettings>(DEFAULT_SETTINGS);
+  useEffect(() => { setSettingsState(readSettings()); }, []);
+  const setSettings = useCallback((patch: Partial<LoungeSettings>) => {
+    setSettingsState((current) => {
+      const next = { ...current, ...patch };
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* Session only. */ }
+      return next;
+    });
+  }, []);
   const [emotes, setEmotes] = useState<LoungeEmote[]>([]);
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -192,12 +260,20 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     move(seat ? { x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id } : self ?? { x: 0, z: 1.8, facing: 0, seat: null });
   }, [open, roomId, connectionId, claimed, explicit, move, self]);
 
+  const live = open && Boolean(roomId);
   const heard = useMemo(() => {
-    if (!open || !self || !connectionId) return null;
+    if (!live || !settings.spatial || !self || !connectionId) return null;
     const map = new Map<string, HeardFrom>();
     for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose));
     return map;
-  }, [open, self, poses, connectionId]);
+  }, [live, settings.spatial, self, poses, connectionId]);
+  const tv = useMemo(
+    () => (live && settings.tvMusic && self ? hearFrom(self, TV_POSE, TV_SPOT.height) : null),
+    [live, settings.tvMusic, self],
+  );
 
-  return { open: open && Boolean(roomId), setOpen, poses, self, emotes, move, sit, toggleFloor, emote, heard };
+  return {
+    open: live, setOpen, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    spatialOff: live && !settings.spatial, theme, settings, setSettings,
+  };
 }

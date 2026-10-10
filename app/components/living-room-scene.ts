@@ -8,14 +8,8 @@
  * Everything is procedural (canvas textures, primitives) so nothing is fetched.
  */
 import * as THREE from "three";
+import type { RoomTheme } from "../hooks/use-living-room";
 import { LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
-
-export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk";
-
-export function roomThemeFor(customThemeId: string | undefined): RoomTheme {
-  if (customThemeId === "vampire" || customThemeId === "matrix" || customThemeId === "cyberpunk") return customThemeId;
-  return "cozy";
-}
 
 interface Look {
   floor: [string, string]; // plank, grain
