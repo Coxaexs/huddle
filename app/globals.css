@@ -3505,11 +3505,12 @@ button {
   outline: 0;
   flex: 1;
   min-width: 0;
-  min-height: 24px;
-  max-height: 90px;
-  padding: 7px 8px;
-  font-size: 12px;
-  line-height: 1.35;
+  min-height: 36px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 9px 10px;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .composer textarea::placeholder {
@@ -10796,8 +10797,8 @@ html[data-motion="reduced"] .typing-dots i {
 
 .thread-composer-inner textarea {
   flex: 1;
-  min-height: 24px;
-  max-height: 120px;
+  min-height: 32px;
+  max-height: 40vh;
   background: transparent;
   border: none;
   outline: none;
@@ -28630,4 +28631,78 @@ a.link-preview-author:hover {
   text-align: center;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+/* Member Role Badges */
+.member-badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  vertical-align: middle;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.member-badge-tag .badge-icon {
+  flex-shrink: 0;
+}
+
+.member-badge-tag.member-badge-sm {
+  font-size: 8px;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+/* Owner: Warm amber / gold glow */
+.member-badge-tag.member-badge-owner {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.12);
+}
+
+/* Admin: Sleek ruby / crimson */
+.member-badge-tag.member-badge-admin {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.12);
+}
+
+/* Mod: Cool shield blue / cyan */
+.member-badge-tag.member-badge-mod {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.12);
+}
+
+/* Custom Role */
+.member-badge-tag.member-badge-role {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Server Settings Read-Only Notice */
+.server-settings-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  font-size: 13px;
+  line-height: 1.4;
 }

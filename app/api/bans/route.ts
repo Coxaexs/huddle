@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { can, Permission } from "@/lib/permissions";
+import { canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Who is banned from a server, with enough profile to show a row. Gated by
- * MANAGE_SERVER, the same permission that can ban and unban.
+ * MANAGE_SERVER, BAN_MEMBERS or MODERATE.
  */
 export async function GET(request: Request) {
   const db = bindings().DB;
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   await ensureSchema(db);
 
   const serverId = new URL(request.url).searchParams.get("serverId") || "";
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_SERVER))) {
+  if (!(await canAny(db, user.id, serverId, Permission.MANAGE_SERVER, Permission.BAN_MEMBERS, Permission.MODERATE))) {
     return Response.json(
       { error: "You do not have permission to see the ban list." },
       { status: 403 },

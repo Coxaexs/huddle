@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal } from "lucide-react";
+import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal, Info } from "lucide-react";
 import { Avatar } from "./avatar";
 import { SoundboardTab, StickersTab } from "./expression-settings";
 import { AutomodPanel } from "./automod-panel";
@@ -30,6 +30,18 @@ interface ServerSettingsDialogProps {
   canManageServer: boolean;
   /** Manage Emojis & Stickers or Manage Channels: edits stickers and sounds. */
   canManageExpressions?: boolean;
+  /** Permission to manage roles in the server */
+  canManageRoles?: boolean;
+  /** Permission to manage channels and categories */
+  canManageChannels?: boolean;
+  /** Permission to moderate */
+  canModerate?: boolean;
+  /** Permission to kick members */
+  canKickMembers?: boolean;
+  /** Permission to ban members */
+  canBanMembers?: boolean;
+  /** Permission to view audit log */
+  canViewAuditLog?: boolean;
   onClose: () => void;
   onServerUpdated: () => void;
   onServerDeleted: () => void;
@@ -157,6 +169,12 @@ export function ServerSettingsDialog({
   onlineUserIds,
   canManageServer,
   canManageExpressions = canManageServer,
+  canManageRoles = canManageServer,
+  canManageChannels = canManageServer,
+  canModerate = canManageServer,
+  canKickMembers = canManageServer,
+  canBanMembers = canManageServer,
+  canViewAuditLog = canManageServer,
   onClose,
   onServerUpdated,
   onServerDeleted,
@@ -166,7 +184,73 @@ export function ServerSettingsDialog({
   onLeaveServer,
   canCreateInvites = true,
 }: ServerSettingsDialogProps) {
+  const canManageRolesEffective = Boolean(canManageRoles || canManageServer || isOwner);
+  const canModerateEffective = Boolean(canModerate || canManageServer || isOwner);
+  const canKickEffective = Boolean(canKickMembers || canModerate || canManageServer || isOwner);
+  const canBanEffective = Boolean(canBanMembers || canModerate || canManageServer || isOwner);
+  const canAuditEffective = Boolean(canViewAuditLog || canManageServer || isOwner);
+  const canExpressionsEffective = Boolean(canManageExpressions || canManageServer || isOwner);
+  const canInvitesEffective = Boolean(canCreateInvites || canManageServer || isOwner);
+  const canManageMembersEffective = Boolean(
+    canManageServer || canManageRoles || canModerate || canKickMembers || canBanMembers || isOwner
+  );
+
+  const isTabVisible = useCallback((t: Tab): boolean => {
+    switch (t) {
+      case "profile":
+        return true;
+      case "tag":
+      case "engagement":
+      case "boost":
+        return Boolean(canManageServer || isOwner);
+      case "emoji":
+      case "stickers":
+      case "soundboard":
+        return canExpressionsEffective;
+      case "members":
+        return canManageMembersEffective;
+      case "roles":
+        return canManageRolesEffective;
+      case "invites":
+        return canInvitesEffective;
+      case "access":
+        return Boolean(canManageServer || canManageRoles || isOwner);
+      case "integrations":
+      case "app_directory":
+        return Boolean(canManageServer || isOwner);
+      case "safety":
+        return Boolean(canManageServer || canModerate || isOwner);
+      case "audit_log":
+        return canAuditEffective;
+      case "bans":
+        return canBanEffective;
+      case "automod":
+        return Boolean(canManageServer || canModerate || isOwner);
+      case "community":
+      case "template":
+        return Boolean(canManageServer || isOwner);
+      default:
+        return false;
+    }
+  }, [
+    canManageServer,
+    isOwner,
+    canExpressionsEffective,
+    canManageMembersEffective,
+    canManageRolesEffective,
+    canInvitesEffective,
+    canAuditEffective,
+    canBanEffective,
+    canModerate,
+  ]);
+
   const [tab, setTab] = useState<Tab>("profile");
+
+  useEffect(() => {
+    if (!isTabVisible(tab)) {
+      setTab("profile");
+    }
+  }, [tab, isTabVisible]);
   const [serverName, setServerName] = useState(server.name);
   const [serverColor, setServerColor] = useState(server.color || "#7b63e6");
   const [serverIconUrl, setServerIconUrl] = useState(server.iconUrl || "");
@@ -595,7 +679,7 @@ export function ServerSettingsDialog({
   };
 
   const updateRoleName = async (name: string) => {
-    if (!activeRole || !canManageServer || !name.trim()) return;
+    if (!activeRole || !canManageRolesEffective || !name.trim()) return;
     try {
       const res = await apiFetch<{ servers: PublicServer[] }>(
         `/api/roles/${activeRole.id}`,
@@ -620,7 +704,7 @@ export function ServerSettingsDialog({
   };
 
   const handleDeleteRole = (role: PublicRole) => {
-    if (!canManageServer) return;
+    if (!canManageRolesEffective) return;
     onRequestConfirm({
       title: `Delete ${role.name}?`,
       message: `Are you sure you want to delete the role "${role.name}"? This will remove it from all members.`,
@@ -653,7 +737,7 @@ export function ServerSettingsDialog({
   // last one sent, not on the role as it was before the first answer came back.
   const pendingPermsRef = useRef(new Map<string, number>());
   const toggleRolePermission = async (flag: PermissionFlag) => {
-    if (!activeRole || !canManageServer) return;
+    if (!activeRole || !canManageRolesEffective) return;
     const current = pendingPermsRef.current.get(activeRole.id) ?? activeRole.permissions;
     const nextPerms = (current & flag) === flag ? current & ~flag : current | flag;
     pendingPermsRef.current.set(activeRole.id, nextPerms);
@@ -805,146 +889,202 @@ export function ServerSettingsDialog({
         >
           Server Profile
         </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "tag" ? "active" : ""}`}
-          onClick={() => setTab("tag")}
-        >
-          Server Tag
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "engagement" ? "active" : ""}`}
-          onClick={() => setTab("engagement")}
-        >
-          Engagement
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "boost" ? "active" : ""}`}
-          onClick={() => setTab("boost")}
-        >
-          Boost Perks
-        </button>
+        {isTabVisible("tag") && (
+          <button
+            type="button"
+            className={`sidebar-item ${tab === "tag" ? "active" : ""}`}
+            onClick={() => setTab("tag")}
+          >
+            Server Tag
+          </button>
+        )}
+        {isTabVisible("engagement") && (
+          <button
+            type="button"
+            className={`sidebar-item ${tab === "engagement" ? "active" : ""}`}
+            onClick={() => setTab("engagement")}
+          >
+            Engagement
+          </button>
+        )}
+        {isTabVisible("boost") && (
+          <button
+            type="button"
+            className={`sidebar-item ${tab === "boost" ? "active" : ""}`}
+            onClick={() => setTab("boost")}
+          >
+            Boost Perks
+          </button>
+        )}
 
-        <div className="sidebar-divider" />
-        <div className="sidebar-group-header">EXPRESSION</div>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "emoji" ? "active" : ""}`}
-          onClick={() => setTab("emoji")}
-        >
-          Emoji
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "stickers" ? "active" : ""}`}
-          onClick={() => setTab("stickers")}
-        >
-          Stickers
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "soundboard" ? "active" : ""}`}
-          onClick={() => setTab("soundboard")}
-        >
-          Soundboard
-        </button>
+        {(isTabVisible("emoji") || isTabVisible("stickers") || isTabVisible("soundboard")) && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-group-header">EXPRESSION</div>
+            {isTabVisible("emoji") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "emoji" ? "active" : ""}`}
+                onClick={() => setTab("emoji")}
+              >
+                Emoji
+              </button>
+            )}
+            {isTabVisible("stickers") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "stickers" ? "active" : ""}`}
+                onClick={() => setTab("stickers")}
+              >
+                Stickers
+              </button>
+            )}
+            {isTabVisible("soundboard") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "soundboard" ? "active" : ""}`}
+                onClick={() => setTab("soundboard")}
+              >
+                Soundboard
+              </button>
+            )}
+          </>
+        )}
 
-        <div className="sidebar-divider" />
-        <div className="sidebar-group-header">PEOPLE</div>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "members" ? "active" : ""}`}
-          onClick={() => setTab("members")}
-        >
-          Members
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "roles" ? "active" : ""}`}
-          onClick={() => setTab("roles")}
-        >
-          Roles
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "invites" ? "active" : ""}`}
-          onClick={() => setTab("invites")}
-        >
-          Invites
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "access" ? "active" : ""}`}
-          onClick={() => setTab("access")}
-        >
-          Access
-        </button>
+        {(isTabVisible("members") || isTabVisible("roles") || isTabVisible("invites") || isTabVisible("access")) && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-group-header">PEOPLE</div>
+            {isTabVisible("members") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "members" ? "active" : ""}`}
+                onClick={() => setTab("members")}
+              >
+                Members
+              </button>
+            )}
+            {isTabVisible("roles") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "roles" ? "active" : ""}`}
+                onClick={() => setTab("roles")}
+              >
+                Roles
+              </button>
+            )}
+            {isTabVisible("invites") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "invites" ? "active" : ""}`}
+                onClick={() => setTab("invites")}
+              >
+                Invites
+              </button>
+            )}
+            {isTabVisible("access") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "access" ? "active" : ""}`}
+                onClick={() => setTab("access")}
+              >
+                Access
+              </button>
+            )}
+          </>
+        )}
 
-        <div className="sidebar-divider" />
-        <div className="sidebar-group-header">APPS</div>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "integrations" ? "active" : ""}`}
-          onClick={() => setTab("integrations")}
-        >
-          Integrations
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "app_directory" ? "active" : ""}`}
-          onClick={() => setTab("app_directory")}
-        >
-          App Directory <ExternalLink size={13} />
-        </button>
+        {(isTabVisible("integrations") || isTabVisible("app_directory")) && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-group-header">APPS</div>
+            {isTabVisible("integrations") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "integrations" ? "active" : ""}`}
+                onClick={() => setTab("integrations")}
+              >
+                Integrations
+              </button>
+            )}
+            {isTabVisible("app_directory") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "app_directory" ? "active" : ""}`}
+                onClick={() => setTab("app_directory")}
+              >
+                App Directory <ExternalLink size={13} />
+              </button>
+            )}
+          </>
+        )}
 
-        <div className="sidebar-divider" />
-        <div className="sidebar-group-header">MODERATION</div>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "safety" ? "active" : ""}`}
-          onClick={() => setTab("safety")}
-        >
-          Safety Setup
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "audit_log" ? "active" : ""}`}
-          onClick={() => setTab("audit_log")}
-        >
-          Audit Log
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "bans" ? "active" : ""}`}
-          onClick={() => setTab("bans")}
-        >
-          Bans
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "automod" ? "active" : ""}`}
-          onClick={() => setTab("automod")}
-        >
-          AutoMod
-        </button>
+        {(isTabVisible("safety") || isTabVisible("audit_log") || isTabVisible("bans") || isTabVisible("automod")) && (
+          <>
+            <div className="sidebar-divider" />
+            <div className="sidebar-group-header">MODERATION</div>
+            {isTabVisible("safety") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "safety" ? "active" : ""}`}
+                onClick={() => setTab("safety")}
+              >
+                Safety Setup
+              </button>
+            )}
+            {isTabVisible("audit_log") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "audit_log" ? "active" : ""}`}
+                onClick={() => setTab("audit_log")}
+              >
+                Audit Log
+              </button>
+            )}
+            {isTabVisible("bans") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "bans" ? "active" : ""}`}
+                onClick={() => setTab("bans")}
+              >
+                Bans
+              </button>
+            )}
+            {isTabVisible("automod") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "automod" ? "active" : ""}`}
+                onClick={() => setTab("automod")}
+              >
+                AutoMod
+              </button>
+            )}
+          </>
+        )}
 
-        <div className="sidebar-divider" />
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "community" ? "active" : ""}`}
-          onClick={() => setTab("community")}
-        >
-          Enable Community
-        </button>
-        <button
-          type="button"
-          className={`sidebar-item ${tab === "template" ? "active" : ""}`}
-          onClick={() => setTab("template")}
-        >
-          Server Template
-        </button>
+        {(isTabVisible("community") || isTabVisible("template")) && (
+          <>
+            <div className="sidebar-divider" />
+            {isTabVisible("community") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "community" ? "active" : ""}`}
+                onClick={() => setTab("community")}
+              >
+                Enable Community
+              </button>
+            )}
+            {isTabVisible("template") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "template" ? "active" : ""}`}
+                onClick={() => setTab("template")}
+              >
+                Server Template
+              </button>
+            )}
+          </>
+        )}
 
         <div className="sidebar-divider" />
         {/* Owners delete their server; everyone else can leave it. */}
@@ -987,6 +1127,12 @@ export function ServerSettingsDialog({
         {tab === "profile" && (
           <div className="tab-pane profile-pane">
             <div className="pane-left">
+              {!canManageServer && (
+                <div className="server-settings-readonly-banner">
+                  <Info size={16} />
+                  <span>Viewing server overview in read-only mode. You need the Manage Server permission to edit server details.</span>
+                </div>
+              )}
               <h1 className="pane-title">Server Profile</h1>
               <p className="pane-subtitle">
                 Customize how your server appears in invite links and, if enabled, in Server Discovery and Announcement Channel messages
@@ -1348,7 +1494,7 @@ export function ServerSettingsDialog({
                             style={{ background: role.color || "#99aab5" }}
                           />
                           <span style={{ color: role.color || "#dbdee1" }}>{role.name}</span>
-                          {canManageServer && (
+                          {canManageRolesEffective && (
                             <button
                               type="button"
                               className="member-role-remove"
@@ -1364,7 +1510,7 @@ export function ServerSettingsDialog({
                         </span>
                       ))}
 
-                      {canManageServer && (
+                      {canManageRolesEffective && (
                         <div className="relative">
                           <button
                             type="button"
@@ -1415,24 +1561,28 @@ export function ServerSettingsDialog({
                     </div>
 
                     <div className="member-actions-col">
-                      {canManageServer && !isOwner && (
+                      {!isOwner && (canKickEffective || canBanEffective) && (
                         <>
-                          <button
-                            type="button"
-                            className="member-action-btn"
-                            title="Kick Member"
-                            onClick={() => kickMember(member)}
-                          >
-                            <UserMinus size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            className="member-action-btn danger"
-                            title="Ban Member"
-                            onClick={() => banMember(member)}
-                          >
-                            <Hammer size={15} />
-                          </button>
+                          {canKickEffective && (
+                            <button
+                              type="button"
+                              className="member-action-btn"
+                              title="Kick Member"
+                              onClick={() => kickMember(member)}
+                            >
+                              <UserMinus size={15} />
+                            </button>
+                          )}
+                          {canBanEffective && (
+                            <button
+                              type="button"
+                              className="member-action-btn danger"
+                              title="Ban Member"
+                              onClick={() => banMember(member)}
+                            >
+                              <Hammer size={15} />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1468,7 +1618,7 @@ export function ServerSettingsDialog({
                   onChange={(e) => setRoleSearch(e.target.value)}
                 />
               </div>
-              {canManageServer && (
+              {canManageRolesEffective && (
                 <button
                   type="button"
                   className="discord-btn primary-indigo"
@@ -1517,7 +1667,7 @@ export function ServerSettingsDialog({
               ))}
             </div>
 
-            {activeRole && canManageServer && (
+            {activeRole && canManageRolesEffective && (
               <div className="active-role-permissions-editor">
                 <h3>Edit Permissions for {activeRole.name}</h3>
                 <div className="permissions-toggle-grid">
