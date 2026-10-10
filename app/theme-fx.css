@@ -1,0 +1,206 @@
+/* Theme click effects (app/lib/theme-fx.ts) and themed profile card trims. */
+
+.theme-fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483000;
+  overflow: hidden;
+}
+
+.theme-fx {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform, opacity;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Vampire: a glossy drop of blood. */
+.fx-blood {
+  width: 10px;
+  height: 13px;
+  margin-left: -5px;
+  border-radius: 50% 50% 50% 50% / 62% 62% 40% 40%;
+  background: radial-gradient(circle at 35% 30%, #ff6b6b 0 12%, #b3001b 38%, #5c0010 100%);
+  box-shadow: 0 0 4px rgba(179, 0, 27, 0.6);
+  transform-origin: 50% 0;
+}
+
+.fx-glyph {
+  font: 700 12px/1 "Courier New", monospace;
+  color: #3dff6e;
+  text-shadow: 0 0 6px #00ff41;
+}
+
+.fx-neon {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 1px;
+  background: #ff2bd6;
+  box-shadow: 0 0 6px #ff2bd6, 0 0 10px #ff2bd6;
+}
+.fx-neon:nth-child(even) {
+  background: #22e7ff;
+  box-shadow: 0 0 6px #22e7ff, 0 0 10px #22e7ff;
+}
+.fx-glitch {
+  height: 3px;
+  background: linear-gradient(90deg, #22e7ff, #ff2bd6);
+  mix-blend-mode: screen;
+  transform-origin: 0 50%;
+}
+
+.fx-ember {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #ffb000;
+  box-shadow: 0 0 6px #ff8c00;
+}
+
+.fx-ink {
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: #1d1410;
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.35);
+}
+.fx-gold {
+  font-size: 11px;
+  color: #d4af37;
+  text-shadow: 0 0 4px rgba(212, 175, 55, 0.7);
+}
+
+.fx-star {
+  font-size: 12px;
+  color: #c9d6ff;
+  text-shadow: 0 0 6px #8fa8ff;
+}
+.fx-petal {
+  font-size: 12px;
+  color: #ff8a5c;
+  text-shadow: 0 0 4px rgba(255, 120, 80, 0.6);
+}
+.fx-heart {
+  font-size: 12px;
+  color: #e07a5f;
+}
+.fx-msn {
+  font-size: 12px;
+  color: #3a8de0;
+  text-shadow: 0 0 3px #fff;
+}
+.fx-ripple {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #7c6cff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-fx-layer {
+    display: none;
+  }
+}
+
+/* ---- Profile cards: a little of the theme on the banner ---- */
+
+:root[data-custom-theme-id="vampire"] .profile-banner,
+:root[data-custom-theme-id="matrix"] .profile-banner,
+:root[data-custom-theme-id="cyberpunk"] .profile-banner,
+:root[data-custom-theme-id="dark-academia"] .profile-banner,
+:root[data-custom-theme-id="midnight"] .profile-banner,
+:root[data-custom-theme-id="amber"] .profile-banner,
+:root[data-custom-theme-id="sunset"] .profile-banner {
+  position: relative;
+}
+
+:root[data-custom-theme-id] :is(.profile-banner, .profile-card-banner)::after {
+  content: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Vampire: blood running down from the top edge of the banner. */
+:root[data-custom-theme-id="vampire"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "";
+  bottom: auto;
+  height: 34px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 34' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235c0010'/%3E%3Cstop offset='1' stop-color='%23b3001b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M0 0h300v6c-6 0-8 3-10 3s-3-2-8-2-5 9-7 18c-1 4-5 4-5 0 0-8-2-16-6-16s-7 3-14 3-9-2-15-2-6 4-10 4-5-3-12-3-6 14-8 22c-1 5-6 5-6 0 0-10-1-20-6-20s-8 2-14 2-8-3-14-3-7 4-12 4-5-2-11-2-5 6-7 11c-1 3-5 3-5 0 0-5-1-10-5-10s-9 2-15 2-8-2-13-2-6 3-11 3-6-2-12-2-5 16-7 24c-1 6-7 6-7 0 0-11-2-22-6-22s-8 1-13 1z'/%3E%3C/svg%3E") top / 100% 100% no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+/* Matrix: faint green code raining over the banner. */
+:root[data-custom-theme-id="matrix"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "ｱ0ｶ1ﾀ ﾅ0ﾊ ｻ1ｷ ﾑ0ｴ ﾂ1ﾗ ｵ0ﾎ ﾃ1ｸ ﾐ0ｿ ﾈ1ﾙ ｲ0ﾜ ｺ1ﾉ ﾁ0ｾ ﾕ1ﾛ";
+  padding: 4px 6px;
+  font: 700 11px/1.35 "Courier New", monospace;
+  letter-spacing: 3px;
+  word-break: break-all;
+  overflow: hidden;
+  color: rgba(61, 255, 110, 0.35);
+  text-shadow: 0 0 4px rgba(0, 255, 65, 0.5);
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 20, 0, 0.55));
+}
+
+/* Cyberpunk: neon corner brackets and scanlines. */
+:root[data-custom-theme-id="cyberpunk"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "";
+  inset: 6px;
+  background:
+    linear-gradient(#ff2bd6, #ff2bd6) top left / 16px 2px,
+    linear-gradient(#ff2bd6, #ff2bd6) top left / 2px 16px,
+    linear-gradient(#22e7ff, #22e7ff) bottom right / 16px 2px,
+    linear-gradient(#22e7ff, #22e7ff) bottom right / 2px 16px,
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 3px);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  filter: drop-shadow(0 0 3px rgba(255, 43, 214, 0.8));
+}
+
+/* Dark Academia: gilt corner flourishes. */
+:root[data-custom-theme-id="dark-academia"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "❦";
+  inset: auto 8px 4px auto;
+  font-size: 20px;
+  color: #d4af37;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  opacity: 0.85;
+}
+
+/* Midnight: a scatter of stars. */
+:root[data-custom-theme-id="midnight"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "";
+  background:
+    radial-gradient(1.5px 1.5px at 12% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 28% 70%, #cfd8ff, transparent),
+    radial-gradient(1.5px 1.5px at 47% 20%, #fff, transparent),
+    radial-gradient(1px 1px at 63% 55%, #cfd8ff, transparent),
+    radial-gradient(2px 2px at 81% 28%, #fff, transparent),
+    radial-gradient(1px 1px at 90% 75%, #cfd8ff, transparent);
+  opacity: 0.9;
+}
+
+/* Amber: CRT scanlines with a phosphor glow. */
+:root[data-custom-theme-id="amber"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "";
+  background: repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.12) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 18px rgba(255, 140, 0, 0.35);
+}
+
+/* Sunset: a warm sun dipping into the bottom edge. */
+:root[data-custom-theme-id="sunset"] :is(.profile-banner, .profile-card-banner)::after {
+  content: "";
+  background:
+    radial-gradient(circle at 82% 115%, rgba(255, 200, 120, 0.9) 0 18px, rgba(255, 120, 80, 0.35) 30px, transparent 46px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id] :is(.profile-banner, .profile-card-banner)::after {
+    animation: none;
+  }
+}

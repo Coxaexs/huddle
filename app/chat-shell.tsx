@@ -271,6 +271,7 @@ import { ThemeShareCard } from "./components/theme-share-card";
 import { AiAnswerCard } from "./components/ai-answer-card";
 import { ImageGallery } from "./components/image-gallery";
 import { updateAppBadge } from "./lib/chat/app-badge";
+import { installThemeFx } from "./lib/theme-fx";
 import { WelcomeGate } from "./components/server-welcome";
 import {
   type Theme,
@@ -3238,6 +3239,9 @@ export function ChatShell() {
     () => Object.values(unread).reduce((sum, entry) => sum + (entry.mentions || 0), 0),
     [unread],
   );
+
+  // Theme click effects: blood from Vampire buttons, glyphs from Matrix, and so on.
+  useEffect(() => installThemeFx(), []);
 
   // App icon badge (tab favicon, installed app, desktop dock/taskbar): a
   // count for mentions and unread DMs, a dot for any other unread channel.
