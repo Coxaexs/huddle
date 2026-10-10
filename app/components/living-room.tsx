@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Eye, Flame, Glasses, Map as MapIcon, Maximize2, Minimize2, Smartphone, View, X } from "lucide-react";
+import { Armchair, Eye, Flame, Map as MapIcon, Maximize2, Minimize2, Settings2, X } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom } from "../hooks/use-living-room";
 import { LOUNGE_EMOTES, headingTo, seatById, stepTo, wrapHeading, type LoungePose } from "../lib/living-room";
-import { buildRoom, roomAmbience, roomThemeFor, type RoomTheme } from "./living-room-scene";
+import { buildRoom, roomAmbience } from "./living-room-scene";
+import { RoomAmbience } from "./living-room-ambience";
 
 type CameraView = "overhead" | "eyes";
 
@@ -17,6 +18,8 @@ interface Props {
   speaking: Set<string>;
   /** Live screen shares; the first one plays on the TV above the fireplace. */
   screens: Array<{ stream: MediaStream; name: string }>;
+  /** Deafened: the room's own sounds go quiet too. */
+  deafened: boolean;
   onClose: () => void;
 }
 
@@ -177,35 +180,6 @@ function disposeTree(object: THREE.Object3D) {
   });
 }
 
-/** A soft procedural fire crackle, only ever made in the viewer's own browser. */
-function startCrackle(): () => void {
-  const context = new AudioContext();
-  const length = context.sampleRate * 4;
-  const buffer = context.createBuffer(1, length, context.sampleRate);
-  const data = buffer.getChannelData(0);
-  let brown = 0;
-  for (let i = 0; i < length; i++) {
-    brown = (brown + (Math.random() * 2 - 1) * 0.02) * 0.995;
-    data[i] = brown * 0.6;
-    if (Math.random() < 0.0009) {
-      const pop = Math.floor(context.sampleRate * (0.002 + Math.random() * 0.01));
-      const loud = 0.2 + Math.random() * 0.5;
-      for (let j = 0; j < pop && i + j < length; j++) data[i + j] += (Math.random() * 2 - 1) * loud * (1 - j / pop);
-    }
-  }
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-  source.loop = true;
-  const filter = context.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = 3200;
-  const gain = context.createGain();
-  gain.gain.value = 0.18;
-  source.connect(filter).connect(gain).connect(context.destination);
-  source.start();
-  return () => { source.stop(); void context.close(); };
-}
-
 function squeak() {
   try {
     const context = new AudioContext();
@@ -225,27 +199,11 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
-/** The room dresses itself for the app's current theme, and redresses when it changes. */
-function useRoomTheme(): RoomTheme {
-  const [theme, setTheme] = useState<RoomTheme>("cozy");
-  useEffect(() => {
-    const root = document.documentElement;
-    const read = () => setTheme(roomThemeFor(root.dataset.customThemeId));
-    read();
-    const observer = new MutationObserver(read);
-    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id"] });
-    return () => observer.disconnect();
-  }, []);
-  return theme;
-}
-
-type XrNavigator = Navigator & { xr?: { isSessionSupported: (mode: string) => Promise<boolean>; requestSession: (mode: string, init?: object) => Promise<XRSession> } };
-type OrientationEventCtor = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
-
-export function LivingRoomView({ room, participants, connectionId, speaking, screens, onClose }: Props) {
+export function LivingRoomView({ room, participants, connectionId, speaking, screens, deafened, onClose }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
-  const theme = useRoomTheme();
+  const theme = room.theme;
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
@@ -257,37 +215,28 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     else void shellRef.current?.requestFullscreen?.().catch(() => undefined);
   };
-  const [crackle, setCrackle] = useState(false);
-  const [gyro, setGyro] = useState(false);
-  const [xr, setXr] = useState<{ vr: boolean; ar: boolean }>({ vr: false, ar: false });
-  const [hint, setHint] = useState<string | null>("Click the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits.");
-  const [xrError, setXrError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>("Click or tap the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits. Scroll or pinch to zoom.");
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  const live = useRef({ room, participants, connectionId, speaking, screens, view, gyro });
-  live.current = { room, participants, connectionId, speaking, screens, view, gyro };
-  const xrStart = useRef<((mode: "immersive-vr" | "immersive-ar") => void) | null>(null);
+  const live = useRef({ room, participants, connectionId, speaking, screens, view });
+  live.current = { room, participants, connectionId, speaking, screens, view };
+
+  // The room's recorded sounds, placed in 3D and heard from where you are.
+  const ambience = useRef<RoomAmbience | null>(null);
+  const ambienceOn = room.settings.ambience;
+  useEffect(() => {
+    if (!ambienceOn) return;
+    const engine = new RoomAmbience(theme);
+    ambience.current = engine;
+    return () => { engine.dispose(); if (ambience.current === engine) ambience.current = null; };
+  }, [ambienceOn, theme]);
+  useEffect(() => { ambience.current?.setVolume(room.settings.ambienceVolume); }, [room.settings.ambienceVolume, ambienceOn, theme]);
+  useEffect(() => { ambience.current?.setMuted(deafened); }, [deafened, ambienceOn, theme]);
 
   useEffect(() => {
     const t = setTimeout(() => setHint(null), 9000);
     return () => clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    const nav = navigator as XrNavigator;
-    if (!nav.xr) return;
-    void Promise.all([
-      nav.xr.isSessionSupported("immersive-vr").catch(() => false),
-      nav.xr.isSessionSupported("immersive-ar").catch(() => false),
-    ]).then(([vr, ar]) => setXr({ vr, ar }));
-  }, []);
-
-  useEffect(() => {
-    if (!crackle) return;
-    let stop: (() => void) | null = null;
-    try { stop = startCrackle(); } catch { setCrackle(false); }
-    return () => stop?.();
-  }, [crackle]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -298,11 +247,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.xr.enabled = true;
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    // The house: in AR it is shrunk to a dollhouse in front of you.
     const house = new THREE.Group();
     scene.add(house);
     const parts = buildRoom(theme);
@@ -313,10 +260,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     scene.fog = parts.fog;
     renderer.toneMappingExposure = parts.exposure;
     const camera = new THREE.PerspectiveCamera(52, 1, 0.05, 60);
-    // In XR the headset drives the camera; this rig carries it to your spot.
-    const rig = new THREE.Group();
-    rig.add(camera);
-    scene.add(rig);
+    scene.add(camera);
 
     const bodies = new Map<string, Body>();
     const bubbles = new Map<number, THREE.Sprite>();
@@ -329,12 +273,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     // First-person look offset, added to body heading.
     const look = { yaw: 0, pitch: -0.08 };
     let eyeFov = EYE_FOV;
-    const gyroPose = { yaw: 0, pitch: 0, base: null as number | null };
-    let xrMode: "immersive-vr" | "immersive-ar" | null = null;
 
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = mount;
-      if (!w || !h || renderer.xr.isPresenting) return;
+      if (!w || !h) return;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
@@ -346,6 +288,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let drag: { x: number; y: number; moved: boolean } | null = null;
+    // Touch: two fingers pinch to zoom, like the mouse wheel.
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: number | null = null;
+    const zoom = (factor: number) => {
+      if (live.current.view === "overhead") orbit.distance = Math.max(2.2, Math.min(15, orbit.distance * factor));
+      else eyeFov = Math.max(EYE_FOV_MIN, Math.min(EYE_FOV_MAX, eyeFov * factor));
+    };
     let walkTarget: { x: number; z: number } | null = null;
     const keys = new Set<string>();
 
@@ -390,11 +339,29 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
 
+    const spread = () => {
+      const [a, b] = [...touches.values()];
+      return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : null;
+    };
     const onDown = (event: PointerEvent) => {
-      drag = { x: event.clientX, y: event.clientY, moved: false };
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
       renderer.domElement.setPointerCapture(event.pointerId);
+      if (touches.size >= 2) {
+        // A second finger turns the gesture into a pinch; no tap, no drag.
+        drag = null;
+        pinch = spread();
+        return;
+      }
+      drag = { x: event.clientX, y: event.clientY, moved: false };
     };
     const onMove = (event: PointerEvent) => {
+      if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinch !== null) {
+        const now = spread();
+        if (now && pinch) zoom(pinch / now);
+        pinch = now;
+        return;
+      }
       if (!drag) return;
       const dx = event.clientX - drag.x;
       const dy = event.clientY - drag.y;
@@ -413,14 +380,15 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
     const onUp = (event: PointerEvent) => {
+      touches.delete(event.pointerId);
+      if (touches.size < 2) pinch = null;
       if (drag && !drag.moved) pick(event.clientX, event.clientY);
       drag = null;
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       // Overhead the wheel moves the camera in and out; through your eyes it zooms (field of view).
-      if (live.current.view === "overhead") orbit.distance = Math.max(2.2, Math.min(15, orbit.distance + event.deltaY * 0.005));
-      else eyeFov = Math.max(EYE_FOV_MIN, Math.min(EYE_FOV_MAX, eyeFov * Math.exp(event.deltaY * 0.0012)));
+      zoom(Math.exp(event.deltaY * 0.0012));
     };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -430,80 +398,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (!["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) return;
       if (event.type === "keydown") { keys.add(key); walkTarget = null; } else keys.delete(key);
     };
-    const onOrientation = (event: DeviceOrientationEvent) => {
-      if (event.alpha == null || event.beta == null) return;
-      const yaw = THREE.MathUtils.degToRad(event.alpha);
-      if (gyroPose.base == null) gyroPose.base = yaw;
-      gyroPose.yaw = wrapHeading(yaw - gyroPose.base);
-      // Phone held upright is beta ≈ 90°.
-      gyroPose.pitch = THREE.MathUtils.degToRad(event.beta - 90);
-    };
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
-    window.addEventListener("deviceorientation", onOrientation);
-
-    xrStart.current = (mode) => {
-      const nav = navigator as XrNavigator;
-      if (!nav.xr) return;
-      void nav.xr.requestSession(mode, { optionalFeatures: ["local-floor"] }).then(async (session) => {
-        xrMode = mode;
-        renderer.xr.setReferenceSpaceType("local-floor");
-        await renderer.xr.setSession(session);
-        if (mode === "immersive-ar") {
-          scene.background = null;
-          scene.fog = null;
-          house.scale.setScalar(0.1);
-          house.position.set(0, 0.75, -0.7);
-          rig.position.set(0, 0, 0);
-          rig.rotation.set(0, 0, 0);
-        }
-        session.addEventListener("end", () => {
-          xrMode = null;
-          scene.background = background;
-          scene.fog = parts.fog;
-          house.scale.setScalar(1);
-          house.position.set(0, 0, 0);
-          resize();
-        });
-      }).catch((error: unknown) => setXrError(error instanceof Error ? error.message : "Couldn't start XR"));
-    };
-
-    // VR: point a controller and pull the trigger to walk there or sit down.
-    const controllerRay = new THREE.Raycaster();
-    const controllers = [0, 1].map((index) => {
-      const controller = renderer.xr.getController(index);
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -4)]),
-        new THREE.LineBasicMaterial({ color: "#ffd27a" }),
-      );
-      controller.add(line);
-      controller.addEventListener("select", () => {
-        if (xrMode !== "immersive-vr") return;
-        const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-        const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(controller.matrixWorld));
-        controllerRay.set(origin, direction);
-        for (const hit of controllerRay.intersectObjects(house.children, true)) {
-          let object: THREE.Object3D | null = hit.object;
-          while (object && !object.userData.seat && !object.userData.floor && !object.userData.blahaj) object = object.parent;
-          if (!object) continue;
-          if (object.userData.blahaj) { squeak(); parts.shark.userData.hop = performance.now(); return; }
-          if (object.userData.seat) { live.current.room.sit(object.userData.seat); return; }
-          const pose = myPose();
-          if (pose) live.current.room.move({ ...stepTo(pose, { x: hit.point.x, z: hit.point.z }), facing: pose.facing });
-          return;
-        }
-      });
-      rig.add(controller);
-      return controller;
-    });
 
     const clock = new THREE.Clock();
-    let lastXrHeading = 0;
     const target = new THREE.Vector3();
 
     const syncBodies = () => {
@@ -532,8 +436,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         const ringMaterial = body.ring.material;
         ringMaterial.opacity += ((talking ? 0.95 : 0) - ringMaterial.opacity) * 0.3;
         body.mute.visible = person.muted || Boolean(person.serverMuted) || person.deafened;
-        // Your own token hides in first person and VR so it never blocks your eyes.
-        const firstPerson = isSelf && (live.current.view === "eyes" || xrMode === "immersive-vr");
+        // Your own token hides in first person so it never blocks your eyes.
+        const firstPerson = isSelf && live.current.view === "eyes";
         body.group.visible = !firstPerson;
         // The token floats where a head would be: low on a cushion or the floor, higher standing.
         const height = pose.seat === "floor" ? 0.42 : pose.seat ? (seatById(pose.seat)?.height ?? 0.45) + 0.62 : 1.2;
@@ -665,26 +569,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     };
     const placeCamera = () => {
       const pose = myPose();
-      if (xrMode === "immersive-ar") return;
-      if (xrMode === "immersive-vr") {
-        if (!pose) return;
-        rig.position.set(pose.x, pose.seat === "floor" ? EYE_FLOOR - EYE_STANDING : pose.seat ? EYE_SEATED - EYE_STANDING : 0, pose.z);
-        // The headset's own turning becomes your heading, so others see where you look.
-        const xrCamera = renderer.xr.getCamera();
-        const euler = new THREE.Euler().setFromQuaternion(xrCamera.quaternion, "YXZ");
-        const heading = wrapHeading(-euler.y);
-        if (Math.abs(wrapHeading(heading - lastXrHeading)) > 0.08) {
-          lastXrHeading = heading;
-          live.current.room.move({ ...pose, facing: heading });
-        }
-        return;
-      }
-      rig.position.set(0, 0, 0);
-      rig.rotation.set(0, 0, 0);
       if (live.current.view === "eyes" && pose) {
         const eye = pose.seat === "floor" ? EYE_FLOOR : pose.seat ? EYE_SEATED : EYE_STANDING;
-        const yaw = pose.facing + (live.current.gyro ? -gyroPose.yaw : 0);
-        const pitch = live.current.gyro ? gyroPose.pitch : look.pitch;
+        const yaw = pose.facing;
+        const pitch = look.pitch;
         camera.position.set(pose.x, eye, pose.z);
         target.set(pose.x + Math.sin(yaw) * Math.cos(pitch), eye + Math.sin(pitch), pose.z - Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(target);
@@ -693,7 +581,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
       // Overhead follows you around the room, so it feels like your corner of it.
       const centre = pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
-      const yaw = orbit.yaw + (live.current.gyro ? -gyroPose.yaw : 0);
+      const yaw = orbit.yaw;
       camera.position.set(
         centre.x + Math.sin(yaw) * Math.cos(orbit.pitch) * orbit.distance,
         centre.y + Math.sin(orbit.pitch) * orbit.distance,
@@ -706,7 +594,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       const t = clock.elapsedTime;
-      if (!xrMode || xrMode === "immersive-vr") walk(dt);
+      walk(dt);
       syncBodies();
       syncTv();
       parts.update(t, dt);
@@ -715,22 +603,23 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       parts.shark.position.y = 0.68 + (since < 0.5 ? Math.sin(since * Math.PI * 2) * 0.12 : 0);
       parts.shark.rotation.z = Math.sin(t * 0.8) * 0.03;
       // Beams and pendant only show from inside; overhead they would hide the room.
-      parts.ceiling.visible = xrMode === "immersive-vr" || (live.current.view === "eyes" && !xrMode);
+      parts.ceiling.visible = live.current.view === "eyes";
       placeCamera();
+      const me = myPose();
+      if (me) ambience.current?.setListener(me, me.seat === "floor" ? EYE_FLOOR : me.seat ? EYE_SEATED : EYE_STANDING);
       renderer.render(scene, camera);
     });
 
     return () => {
       renderer.setAnimationLoop(null);
-      void renderer.xr.getSession()?.end().catch(() => undefined);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
-      window.removeEventListener("deviceorientation", onOrientation);
       if (video) { video.pause(); video.srcObject = null; }
       videoTexture?.dispose();
       disposeTree(scene);
@@ -739,21 +628,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       // Browsers cap live WebGL contexts; give this one back now, not at GC.
       renderer.forceContextLoss();
       mount.removeChild(canvas);
-      xrStart.current = null;
-      for (const controller of controllers) rig.remove(controller);
     };
   }, [theme]);
-
-  const toggleGyro = async () => {
-    if (gyro) { setGyro(false); return; }
-    const ctor = (typeof DeviceOrientationEvent !== "undefined" ? DeviceOrientationEvent : null) as OrientationEventCtor | null;
-    if (!ctor) { setXrError("This device has no motion sensor."); return; }
-    try {
-      if (ctor.requestPermission && (await ctor.requestPermission()) !== "granted") return;
-      setGyro(true);
-      setView("eyes");
-    } catch { setXrError("Motion sensor permission was refused."); }
-  };
 
   const me = connectionId ? room.poses.get(connectionId) : null;
   const seatName = me?.seat ? seatById(me.seat)?.label : null;
@@ -773,16 +649,35 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         <div className="living-room-tools">
           <button type="button" className={view === "overhead" ? "active" : ""} onClick={() => setView("overhead")} title="Overhead view" aria-label="Overhead view"><MapIcon size={16} /></button>
           <button type="button" className={view === "eyes" ? "active" : ""} onClick={() => setView("eyes")} title="Through your eyes" aria-label="First-person view"><Eye size={16} /></button>
-          <button type="button" className={gyro ? "active" : ""} onClick={() => void toggleGyro()} title="Look around by moving your phone" aria-label="Motion look"><Smartphone size={16} /></button>
-          <button type="button" className={crackle ? "active" : ""} onClick={() => setCrackle((on) => !on)} title="Fire crackle (only you hear it)" aria-label="Fire sound"><Flame size={16} /></button>
-          {xr.vr && <button type="button" onClick={() => xrStart.current?.("immersive-vr")} title="Enter VR" aria-label="Enter VR"><Glasses size={16} /> VR</button>}
-          {xr.ar && <button type="button" onClick={() => xrStart.current?.("immersive-ar")} title="Put the room on your table" aria-label="View in AR"><View size={16} /> AR</button>}
+          <button type="button" className={room.settings.ambience ? "active" : ""} onClick={() => room.setSettings({ ambience: !room.settings.ambience })} title="Room sounds (only you hear them)" aria-label="Room sounds" aria-pressed={room.settings.ambience}><Flame size={16} /></button>
+          <button type="button" className={settingsOpen ? "active" : ""} onClick={() => setSettingsOpen((open) => !open)} title="Living Room settings" aria-label="Living Room settings" aria-expanded={settingsOpen}><Settings2 size={16} /></button>
           <button type="button" onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           <button type="button" onClick={onClose} title="Back to tiles" aria-label="Close living room"><X size={16} /></button>
         </div>
       </div>
-      {(hint || xrError) && (
-        <div className="living-room-hint" onClick={() => { setHint(null); setXrError(null); }}>{xrError ?? hint}</div>
+      {hint && !settingsOpen && (
+        <div className="living-room-hint" onClick={() => setHint(null)}>{hint}</div>
+      )}
+      {settingsOpen && (
+        <div className="living-room-settings" role="dialog" aria-label="Living Room settings">
+          <label className="living-room-switch">
+            <span><strong>Spatial voices</strong><small>Hear people from where they are in the room. Off: everyone sounds like a normal call.</small></span>
+            <input type="checkbox" checked={room.settings.spatial} onChange={(event) => room.setSettings({ spatial: event.target.checked })} />
+          </label>
+          <label className="living-room-switch">
+            <span><strong>Music from the TV</strong><small>The music bot plays from the TV over the fireplace.</small></span>
+            <input type="checkbox" checked={room.settings.tvMusic} onChange={(event) => room.setSettings({ tvMusic: event.target.checked })} />
+          </label>
+          <label className="living-room-switch">
+            <span><strong>Room sounds</strong><small>Recorded fire, rain, wind or city, depending on the theme. Only you hear them.</small></span>
+            <input type="checkbox" checked={room.settings.ambience} onChange={(event) => room.setSettings({ ambience: event.target.checked })} />
+          </label>
+          <label className="living-room-slider">
+            <span>Room sound volume</span>
+            <input type="range" min={0} max={1} step={0.01} value={room.settings.ambienceVolume} disabled={!room.settings.ambience}
+              onChange={(event) => room.setSettings({ ambienceVolume: Number(event.target.value) })} />
+          </label>
+        </div>
       )}
       <div className="living-room-emotes" role="toolbar" aria-label="Emotes">
         {LOUNGE_EMOTES.map((emoji) => (
@@ -818,6 +713,13 @@ const LIVING_ROOM_CSS = `
 .living-room-tools button:hover { background: rgba(255, 220, 170, 0.12); }
 .living-room-tools button.active { background: var(--lr-accent); color: #1b1530; }
 .living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--lr-panel); color: var(--lr-ink); padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
+.living-room-settings { position: absolute; top: 58px; right: 10px; width: min(320px, calc(100% - 20px)); display: grid; gap: 10px; padding: 12px 14px; background: var(--lr-panel); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; z-index: 2; }
+.living-room-switch { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; cursor: pointer; }
+.living-room-switch span { display: grid; gap: 2px; }
+.living-room-switch small { opacity: 0.7; line-height: 1.35; }
+.living-room-switch input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--lr-accent); flex: none; }
+.living-room-slider { display: grid; gap: 6px; }
+.living-room-slider input { width: 100%; accent-color: var(--lr-accent); }
 .living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--lr-panel); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
 .living-room-emotes button { font-size: 20px; width: 36px; height: 36px; border-radius: 999px; transition: transform 0.12s; flex: none; }
 .living-room-emotes button:hover { transform: scale(1.2); background: rgba(255, 220, 170, 0.12); }

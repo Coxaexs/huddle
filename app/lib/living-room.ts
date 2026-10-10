@@ -131,30 +131,52 @@ export interface HeardFrom {
   privacy: number;
   /** Straight-line distance in metres. */
   distance: number;
+  /**
+   * Low-pass cutoff in Hz: air takes the top off distant voices, a voice
+   * turned away loses its brightness, and the nook sounds as if behind a wall.
+   */
+  cutoff: number;
+  /** How much of the voice goes to the room's reverb: close is dry, far is roomy. */
+  wet: number;
 }
+
+/** Where the TV hangs: the music bot plays from here. */
+export const TV_SPOT = { x: 0, z: -ROOM_HALF_Z + 0.5, height: 2.15 };
+/** The TV, as a pose facing into the room. */
+export const TV_POSE: LoungePose = { x: TV_SPOT.x, z: TV_SPOT.z, facing: Math.PI, seat: null };
 
 /**
  * Turns two room poses into how the listener should hear the speaker. The room
  * frame is rotated into the listener's own: whatever is ahead of their body is
  * -Z, to their right is +X. A seated voice comes from a little lower.
  */
-export function hearFrom(listener: LoungePose, speaker: LoungePose): HeardFrom {
+export function hearFrom(listener: LoungePose, speaker: LoungePose, speakerHeight?: number): HeardFrom {
   const dx = speaker.x - listener.x;
   const dz = speaker.z - listener.z;
   const [s, c] = [Math.sin(listener.facing), Math.cos(listener.facing)];
   // Forward is (sin f, -cos f); right is (cos f, sin f).
   const right = dx * c + dz * s;
   const ahead = dx * s - dz * c;
-  const height = earHeight(speaker.seat) - earHeight(listener.seat);
+  const height = (speakerHeight ?? earHeight(speaker.seat)) - earHeight(listener.seat);
   const distance = Math.hypot(dx, dz);
   // Never inside the head: a voice closer than half a metre is held there.
   const scale = distance < 0.5 ? 0.5 / Math.max(distance, 1e-3) : 1;
   const flat = distance < 1e-3 ? { x: 0, z: -0.5 } : { x: right * scale, z: -ahead * scale };
   const pan = distance < 1e-3 ? 0 : 0.65 * Math.max(-1, Math.min(1, right / Math.max(distance, 0.5)));
+  // Voices are directional: facing you is full and bright, turned away is softer
+  // and duller, the way someone talking to the person beside them sounds.
+  const toListener = distance < 1e-3 ? 1 : (-dx * Math.sin(speaker.facing) + dz * Math.cos(speaker.facing)) / distance;
+  const facingYou = (1 + toListener) / 2; // 1 facing you, 0 facing away
+  const directivity = 0.62 + 0.38 * facingYou;
   // The nook keeps a conversation private-ish: in or out, the other side is muffled.
-  const privacy = inNook(listener) !== inNook(speaker) ? 0.3 : 1;
-  const attenuation = privacy / (1 + 0.2 * Math.max(0, distance - 1.2));
-  return { seat: { x: flat.x, y: height, z: flat.z }, pan, attenuation, privacy, distance };
+  const walled = inNook(listener) !== inNook(speaker);
+  const privacy = walled ? 0.45 : 1;
+  const air = 18000 / (1 + 0.22 * Math.max(0, distance - 1.5));
+  const turned = 5200 + 14000 * facingYou;
+  const cutoff = Math.round(Math.max(900, Math.min(air, turned, walled ? 1400 : 20000)));
+  const wet = Math.max(0.04, Math.min(0.32, 0.03 + distance * 0.04 + (1 - facingYou) * 0.06));
+  const attenuation = (privacy * directivity) / (1 + 0.2 * Math.max(0, distance - 1.2));
+  return { seat: { x: flat.x, y: height, z: flat.z }, pan, attenuation, privacy: privacy * directivity, distance, cutoff, wet };
 }
 
 /** Emotes anyone can send; anything else on the wire is dropped. */

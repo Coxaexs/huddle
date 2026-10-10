@@ -1219,6 +1219,7 @@ export function VoiceStage({
           participants={participants}
           connectionId={connectionId}
           speaking={voice.speaking}
+          deafened={voice.deafened}
           screens={videoTiles.filter((tile) => tile.videoKind === "screen" && !tile.hidden).map((tile) => ({ stream: tile.stream, name: tile.label }))}
           onClose={() => livingRoom.setOpen(false)}
         />

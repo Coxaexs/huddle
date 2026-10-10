@@ -1,0 +1,8 @@
+Living Room ambience. All recordings are from BigSoundBank (https://bigsoundbank.com),
+released under CC0 (public domain); re-encoded to mono MP3 and loudness-normalised.
+
+fire.mp3      #2855 "Fireplace #3" by Joseph Sardin (first 2 minutes)
+rain.mp3      #1293 "Rain on car roof"
+wind.mp3      #0155 "Whistling of the Wind #2"
+computer.mp3  #0125 "Computer 1 (Ventilation)"
+city.mp3      #0680 "Paris by Night"

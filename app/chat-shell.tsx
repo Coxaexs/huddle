@@ -10855,6 +10855,9 @@ export function ChatShell() {
           headphones={voice.spatialOutput === "headphones"}
           onHeadTracking={voice.onHeadTracking}
           livingRoom={livingRoom.heard}
+          tv={livingRoom.tv}
+          spatialOff={livingRoom.spatialOff}
+          roomShape={livingRoom.open && livingRoom.settings.spatial ? livingRoom.theme : "table"}
           deafened={voice.deafened}
           preferenceFor={(id) => {
             const pref = prefFor(id);
