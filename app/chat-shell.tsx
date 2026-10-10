@@ -188,6 +188,7 @@ import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./componen
 import { Icon } from "./components/chat/icon-button";
 import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import { MatrixRain } from "./components/matrix-rain";
+import { ThemeClickFx } from "./components/theme-click-fx";
 import { RailFolder, RailQuickDms, RailServer } from "./components/chat/rail";
 import { MessageReactions } from "./components/chat/message-reactions";
 import { MessageEditor, MUSIC_CARD_KINDS, MusicPayloadCard } from "./components/chat/message-parts";
@@ -6961,6 +6962,7 @@ export function ChatShell() {
   return (
     <>
     <MatrixRain />
+    <ThemeClickFx />
     <main
       className={`app-shell ${mobileNav ? "nav-open" : ""} ${threadRoot ? "has-thread" : ""} ${membersOpen && !stageChannel ? "has-members" : ""}`}
       style={{

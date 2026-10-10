@@ -895,3 +895,118 @@
 :root[data-custom-theme-id="msn"] .space-header .icon-button {
   color: #34507f;
 }
+
+/* ── Theme click flourishes (components/theme-click-fx.tsx) ── */
+.click-fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+.click-fx {
+  position: absolute;
+  animation-fill-mode: both;
+  animation-timing-function: ease-out;
+  will-change: transform, opacity;
+}
+
+/* Vampire: blood beads on the button's lower edge, runs down, and fades. */
+.click-fx-blood {
+  width: var(--w);
+  height: var(--len);
+  margin-left: calc(var(--w) / -2);
+  background: linear-gradient(#5a0008, #b3001b 70%, #d10a24);
+  border-radius: 0 0 50% 50% / 0 0 30% 30%;
+  transform-origin: top center;
+  animation-name: click-fx-drip;
+  animation-timing-function: cubic-bezier(0.5, 0, 0.6, 1);
+  filter: drop-shadow(0 0 2px rgba(120, 0, 10, 0.6));
+}
+.click-fx-blood::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: calc(var(--w) + 3px);
+  height: calc(var(--w) + 4px);
+  transform: translateX(-50%);
+  background: #c4001f;
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+}
+@keyframes click-fx-drip {
+  0% { transform: scaleY(0); opacity: 1; }
+  45% { transform: scaleY(1); opacity: 1; }
+  80% { transform: scaleY(1.15) translateY(6px); opacity: 0.9; }
+  100% { transform: scaleY(1.2) translateY(14px); opacity: 0; }
+}
+
+/* Cyberpunk: neon sparks shoot out. */
+.click-fx-spark {
+  width: 6px;
+  height: 2px;
+  background: #0ff;
+  box-shadow: 0 0 6px #0ff, 0 0 10px #f0f;
+  animation-name: click-fx-burst;
+}
+.click-fx-spark:nth-child(even) { background: #ff2bd6; box-shadow: 0 0 6px #ff2bd6; }
+
+/* Matrix: glyphs drop from the press. */
+.click-fx-glyph {
+  font: 700 14px/1 monospace;
+  color: #3dff6a;
+  text-shadow: 0 0 6px #00ff41;
+  margin-left: var(--dx);
+  animation-name: click-fx-fall;
+  animation-timing-function: ease-in;
+}
+@keyframes click-fx-fall {
+  0% { transform: translate(-50%, -50%); opacity: 1; }
+  100% { transform: translate(-50%, 50px); opacity: 0; }
+}
+
+/* Cozy / Midnight / MSN: little symbols float up and away. */
+.click-fx-float {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--accent, #e88);
+  animation-name: click-fx-float;
+}
+:root[data-custom-theme-id="midnight"] .click-fx-float { color: #cfd8ff; text-shadow: 0 0 6px #8fa6ff; }
+@keyframes click-fx-float {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% - 34px)) scale(1.1); opacity: 0; }
+}
+
+@keyframes click-fx-burst {
+  0% { transform: translate(-50%, -50%) rotate(0); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(90deg); opacity: 0; }
+}
+
+/* Dark Academia: an ink blot soaks in. */
+.click-fx-ink {
+  width: 22px;
+  height: 22px;
+  border-radius: 46% 54% 43% 57% / 52% 44% 56% 48%;
+  background: radial-gradient(circle, rgba(30, 18, 10, 0.55), rgba(30, 18, 10, 0) 70%);
+  animation-name: click-fx-ink;
+}
+@keyframes click-fx-ink {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+
+/* Amber / Sunset / Light: a soft ring. */
+.click-fx-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #f5a623);
+  animation-name: click-fx-ring;
+}
+:root[data-custom-theme-id="amber"] .click-fx-ring { border-color: #ffb000; box-shadow: 0 0 8px #ffb000; }
+@keyframes click-fx-ring {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+}
