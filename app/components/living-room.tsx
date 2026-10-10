@@ -228,7 +228,7 @@ interface Body {
 }
 
 /** Token size in metres; big enough to read faces from across the room. */
-const TOKEN = 0.52;
+const TOKEN = 0.364; // 30% smaller than the original 0.52
 
 function makeBody(person: VoiceParticipant): Body {
   const group = new THREE.Group();
