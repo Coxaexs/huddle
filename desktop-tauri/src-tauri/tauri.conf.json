@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Huddle",
-  "version": "1.0.0",
-  "identifier": "online.deeppixel.huddle",
+  "productName": "Hoffle Lite",
+  "version": "1.1.1",
+  "identifier": "online.hoffle.lite",
   "build": {
     "devUrl": "https://chat.hoffle.online",
     "frontendDist": "https://chat.hoffle.online"
@@ -10,13 +10,14 @@
   "app": {
     "windows": [
       {
-        "title": "Huddle",
+        "title": "Hoffle",
         "width": 1280,
         "height": 820,
         "minWidth": 940,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "label": "main"
       }
     ],
     "security": {
