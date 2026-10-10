@@ -331,6 +331,12 @@ function mergeMessages(first: Message[], second: Message[]): Message[] {
   );
 }
 
+/** Sizes a message box to its text, up to 40% of the window. */
+function fitComposer(node: HTMLTextAreaElement) {
+  node.style.height = "auto";
+  node.style.height = `${Math.min(node.scrollHeight + 2, window.innerHeight * 0.4)}px`;
+}
+
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
@@ -5212,6 +5218,10 @@ export function ChatShell() {
 
   // Follows the other person in and out of the room.
   const dmCallLeftTimerRef = useRef<number | null>(null);
+  // The message box grows with what you type instead of scrolling a slot.
+  useLayoutEffect(() => {
+    if (composerRef.current) fitComposer(composerRef.current);
+  }, [draft]);
   useEffect(() => {
     const clearLeftTimer = () => {
       if (dmCallLeftTimerRef.current) {
@@ -10474,6 +10484,9 @@ export function ChatShell() {
               <textarea
                 value={threadDraft}
                 rows={1}
+                ref={(node) => {
+                  if (node) fitComposer(node);
+                }}
                 placeholder="Reply in thread…"
                 aria-label="Reply in thread"
                 onChange={(event) => setThreadDraft(event.target.value)}
