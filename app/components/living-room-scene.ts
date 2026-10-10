@@ -35,7 +35,7 @@ interface Look {
   fairy: string[];
   motes: string;
   exposure: number;
-  sky: "time" | "moon" | "code" | "city";
+  sky: "time" | "moon" | "code" | "city" | "overcast";
   shark: string;
 }
 
@@ -66,6 +66,15 @@ const LOOKS: Record<RoomTheme, Look> = {
     wood: "#18201a", woodDark: "#0b100c", fire: ["#b9ffcf", "#00e676"], fireLight: "#22ff77", lamp: "#7dffaa",
     hemi: ["#3dff8a", "#010402", 0.28], fog: "#010803", background: "#000400",
     fairy: ["#00ff66", "#6dff9e", "#00c853"], motes: "#4dff88", exposure: 1.15, sky: "code", shark: "#1f3a27",
+  },
+  academia: {
+    floor: ["#3a2416", "#22140b"], wall: ["#1f3326", "#1b2c21"], wallPattern: "stripes",
+    wainscot: "#3b2416", trim: "#c9a45c", ceiling: "#241a12", beam: "#24170e",
+    rug: ["#5e1a1a", "#c9a45c", "#1a2b20"], sofa: "#1f4a33", sofaCushion: "#24563c",
+    pillows: ["#6b1f1f", "#c9a45c", "#ebdfc4", "#3b2416"], blanket: ["#2b3a2e", "#9b3030"],
+    wood: "#4a2c1a", woodDark: "#2a170c", fire: ["#ffcf80", "#ff7a2a"], fireLight: "#ff9a50", lamp: "#ffd59a",
+    hemi: ["#c9b48a", "#1a120b", 0.45], fog: "#0e0b08", background: "#0b0906",
+    fairy: ["#ffd59a", "#ffe6b8", "#f3c27a"], motes: "#ffe2b0", exposure: 1.2, sky: "overcast", shark: "#5a8fb8",
   },
   cyberpunk: {
     floor: ["#1a1430", "#100c22"], wall: ["#1b1235", "#2a1a50"], wallPattern: "panels",
@@ -330,6 +339,28 @@ function skyTexture(look: Look) {
       for (const [x, w, h] of [[120, 30, 120], [160, 60, 80], [230, 22, 150], [260, 50, 70]]) {
         ctx.fillRect(x, 330 - h, w, h + 60);
         for (let k = 0; k < w; k += 10) ctx.fillRect(x + k, 322 - h, 6, 8);
+      }
+    } else if (look.sky === "overcast") {
+      // A grey, rain-heavy afternoon (or a black wet night) over college spires.
+      const g = ctx.createLinearGradient(0, 0, 0, 400);
+      g.addColorStop(0, night ? "#0d1115" : "#5d666b");
+      g.addColorStop(1, night ? "#1c2228" : "#8d9590");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 512, 400);
+      ctx.fillStyle = night ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.12)";
+      for (let i = 0; i < 6; i++) {
+        const x = rand() * 512; const y = 30 + rand() * 120;
+        for (let j = 0; j < 6; j++) { ctx.beginPath(); ctx.arc(x + j * 24, y + (j % 2) * 8, 26, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.fillStyle = night ? "#06080a" : "#2c3330";
+      ctx.fillRect(0, 330, 512, 70);
+      for (const [x, w, h] of [[30, 60, 120], [110, 30, 200], [150, 80, 110], [260, 26, 230], [300, 90, 130], [420, 50, 160]]) {
+        ctx.fillRect(x, 400 - h, w, h);
+        ctx.beginPath(); ctx.moveTo(x - 4, 400 - h); ctx.lineTo(x + w / 2, 400 - h - w * 0.9); ctx.lineTo(x + w + 4, 400 - h); ctx.fill();
+        // Lit windows in the old halls.
+        for (let wy = 400 - h + 14; wy < 390; wy += 22) for (let wx = x + 6; wx < x + w - 8; wx += 14) {
+          if (rand() < (night ? 0.4 : 0.15)) { ctx.fillStyle = "#e8b860"; ctx.fillRect(wx, wy, 5, 9); ctx.fillStyle = night ? "#06080a" : "#2c3330"; }
+        }
       }
     } else if (look.sky === "code") {
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 512, 400);
@@ -675,7 +706,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   }
 
   // Seating.
-  const sofaMaterial = mat(look.sofa, theme === "vampire" ? 0.55 : 1);
+  const sofaMaterial = mat(look.sofa, theme === "vampire" ? 0.55 : theme === "academia" ? 0.42 : 1);
   const cushionMaterial = mat(look.sofaCushion, 1);
   const couch = sofa(look, 3, sofaMaterial, cushionMaterial);
   couch.position.set(0, 0, 0.75);
@@ -811,9 +842,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   addGlow("#ffb35c", 0.4, new THREE.Vector3(0.5, 0.6, -1.38), 0.5);
   addLight("#ffb35c", 0.6, 2.5, new THREE.Vector3(0.5, 0.75, -1.38), false, 0.25);
 
-  // Bookshelves along the west wall.
+  // Bookshelves along the west wall (and, in the library, along more walls).
   const rand = seeded(5);
-  for (const zCentre of [-3.2, 0.6]) {
+  const bookshelf = (zCentre: number) => {
     const shelf = new THREE.Group();
     const frame = mat(look.woodDark, 0.7);
     const back = box(0.05, 2.2, 1.5, frame);
@@ -829,7 +860,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       end.position.set(-ROOM_HALF_X + 0.2, 1.1, zCentre + side * 0.75);
       shelf.add(end);
     }
-    const bookColours = theme === "vampire" ? ["#5e0b16", "#2d0a10", "#b08a3e", "#3b1f3d", "#14060a"]
+    const bookColours = theme === "academia" ? ["#5e1a1a", "#1f3326", "#3b2416", "#2a2a3a", "#6b4a2a", "#7a1f1f", "#2b3a2e"]
+      : theme === "vampire" ? ["#5e0b16", "#2d0a10", "#b08a3e", "#3b1f3d", "#14060a"]
       : theme === "matrix" ? ["#0a3d1c", "#14261a", "#00c853", "#1d2620"]
       : theme === "cyberpunk" ? ["#ff2fb4", "#00f0ff", "#9b5cff", "#ffe94a", "#2b2250"]
       : ["#9c3f3a", "#3e5a6b", "#e6b86a", "#5a7d4f", "#8a5a83", "#d98a4a", "#2f4858"];
@@ -847,8 +879,19 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
         z += w + 0.004;
       }
     }
-    root.add(shelf);
-  }
+    return shelf;
+  };
+  for (const zCentre of [-3.2, 0.6]) root.add(bookshelf(zCentre));
+  /** A shelf against any wall: `rotation` turns it from facing east (the west wall's) to face the room. */
+  const shelfAt = (x: number, z: number, rotation: number) => {
+    const holder = new THREE.Group();
+    const shelf = bookshelf(0);
+    shelf.position.x = ROOM_HALF_X;
+    holder.add(shelf);
+    holder.position.set(x, 0, z);
+    holder.rotation.y = rotation;
+    root.add(holder);
+  };
 
   // Window with the outside world, curtains and a cushioned bench in the nook.
   const windowZ = 2.6;
@@ -888,7 +931,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   rod.position.set(ROOM_HALF_X - 0.12, 2.82, windowZ);
   root.add(rod);
   // Rain on the glass at night (always, in the city).
-  if ((look.sky === "time" && isNight()) || look.sky === "city") {
+  if ((look.sky === "time" && isNight()) || look.sky === "city" || look.sky === "overcast") {
     const drops = 60;
     const rain = new THREE.BufferGeometry();
     const rainPos = new Float32Array(drops * 6);
@@ -996,7 +1039,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   }
   // Pictures on the walls.
   const picture = (x: number, y: number, z: number, ry: number, w: number, h: number, colours: string[]) => {
-    const frame = box(w + 0.08, h + 0.08, 0.04, mat(theme === "vampire" ? "#b08a3e" : look.woodDark, 0.4, theme === "vampire" ? { metalness: 0.7 } : {}), false);
+    const gilt = theme === "vampire" || theme === "academia";
+    const frame = box(w + 0.08, h + 0.08, 0.04, mat(gilt ? (theme === "academia" ? "#c9a45c" : "#b08a3e") : look.woodDark, 0.4, gilt ? { metalness: 0.7 } : {}), false);
     frame.position.set(x, y, z);
     frame.rotation.y = ry;
     const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ roughness: 0.9, map: canvasTexture(128, Math.round(128 * h / w), (ctx) => {
@@ -1012,7 +1056,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     art.rotation.y = ry;
     root.add(frame, art);
   };
-  const paint = theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
+  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
   picture(-3.0, 1.85, ROOM_HALF_Z - 0.03, Math.PI, 1.0, 0.7, paint);
   picture(-1.6, 1.75, ROOM_HALF_Z - 0.03, Math.PI, 0.5, 0.6, [...paint].reverse());
   picture(2.5, 1.85, -ROOM_HALF_Z + 0.03, 0, 0.8, 0.6, paint);
@@ -1046,6 +1090,145 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     skull.scale.set(1, 0.95, 1.15);
     skull.position.set(-0.3, mantelTop + 0.08, mantelZ);
     root.add(skull);
+  } else if (theme === "academia") {
+    // More shelves: the south wall and the east wall beside the fireplace.
+    shelfAt(-0.2, ROOM_HALF_Z, Math.PI / 2);
+    shelfAt(1.4, ROOM_HALF_Z, Math.PI / 2);
+    shelfAt(ROOM_HALF_X, -2.4, Math.PI);
+    const gilt = mat("#c9a45c", 0.3, { metalness: 0.85 });
+    // Chesterfield tufting on the couch back.
+    for (let row = 0; row < 2; row++) for (let i = 0; i < 9; i++) {
+      const button = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), mat("#163826", 0.5));
+      button.position.set(-1.2 + i * 0.3 + (row % 2) * 0.15, 0.78 + row * 0.14, 1.16 - row * 0.03);
+      root.add(button);
+    }
+    // A writing desk by the hearth: green banker's lamp, an open book, ink and a quill.
+    const desk = cushion(1.5, 0.06, 0.72, mat(look.wood, 0.4), 0.02);
+    desk.position.set(3.6, 0.76, -4.0);
+    root.add(desk);
+    for (const [x, z] of [[2.92, -4.3], [4.28, -4.3], [2.92, -3.7], [4.28, -3.7]]) {
+      const leg = box(0.06, 0.74, 0.06, mat(look.woodDark, 0.5));
+      leg.position.set(x, 0.37, z);
+      root.add(leg);
+    }
+    const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.03, 20), gilt);
+    lampBase.position.set(3.15, 0.805, -4.15);
+    const lampStem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 8), gilt);
+    lampStem.position.set(3.15, 0.95, -4.15);
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.36, 20, 1, false, 0, Math.PI), mat("#1f6b3a", 0.2, { emissive: "#2f8a4a", emissiveIntensity: 0.5, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+    shade.rotation.z = Math.PI / 2;
+    shade.rotation.y = Math.PI / 2;
+    shade.position.set(3.15, 1.1, -4.12);
+    root.add(lampBase, lampStem, shade);
+    addGlow("#ffd59a", 0.9, new THREE.Vector3(3.15, 1.0, -4.05), 0.45);
+    addLight("#ffd59a", 1.6, 4, new THREE.Vector3(3.15, 1.0, -3.95));
+    const book = cushion(0.42, 0.04, 0.3, mat("#ebdfc4", 0.9), 0.01);
+    book.position.set(3.7, 0.81, -3.92);
+    book.rotation.y = 0.15;
+    const spine = box(0.02, 0.05, 0.3, mat("#5e1a1a", 0.7));
+    spine.position.set(3.7, 0.81, -3.92);
+    spine.rotation.y = 0.15;
+    const ink = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.06, 12), mat("#0a0a12", 0.1, { metalness: 0.3 }));
+    ink.position.set(4.1, 0.82, -4.15);
+    const quill = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.32, 6), mat("#efe6d4", 0.9));
+    quill.position.set(4.12, 0.95, -4.12);
+    quill.rotation.z = -0.35;
+    root.add(book, spine, ink, quill);
+    const chair = new THREE.Group();
+    const seat = cushion(0.48, 0.08, 0.48, mat("#5e1a1a", 0.6), 0.03);
+    seat.position.y = 0.48;
+    const back = box(0.48, 0.5, 0.05, mat(look.wood, 0.5));
+    back.position.set(0, 0.75, 0.23);
+    chair.add(seat, back);
+    for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) {
+      const leg = box(0.04, 0.46, 0.04, mat(look.woodDark, 0.5));
+      leg.position.set(x, 0.23, z);
+      chair.add(leg);
+    }
+    chair.position.set(3.6, 0, -3.35);
+    chair.rotation.y = Math.PI;
+    root.add(chair);
+    // A globe on a stand.
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 32, 20), mat("#ffffff", 0.6, { map: canvasTexture(256, 128, (ctx) => {
+      ctx.fillStyle = "#8a7a52"; ctx.fillRect(0, 0, 256, 128);
+      ctx.fillStyle = "#c9b27a";
+      const rr = seeded(9);
+      for (let i = 0; i < 14; i++) { ctx.beginPath(); ctx.ellipse(rr() * 256, 20 + rr() * 88, 10 + rr() * 26, 6 + rr() * 16, rr() * 3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = "rgba(60,40,20,0.35)"; for (let x = 0; x < 256; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 128); ctx.stroke(); }
+    }) }));
+    globe.position.set(4.9, 1.0, -2.9);
+    globe.rotation.z = 0.41;
+    const meridian = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.01, 6, 32), gilt);
+    meridian.position.copy(globe.position);
+    meridian.rotation.y = Math.PI / 2;
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.18, 0.75, 12), mat(look.woodDark, 0.5));
+    stand.position.set(4.9, 0.38, -2.9);
+    root.add(globe, meridian, stand);
+    animated.push((_, dt) => { globe.rotation.y += dt * 0.08; });
+    // The grandfather clock between the west shelves, its pendulum swinging.
+    const clock = new THREE.Group();
+    const caseBody = box(0.55, 2.1, 0.38, mat(look.woodDark, 0.45));
+    caseBody.position.y = 1.05;
+    const hood = box(0.65, 0.12, 0.44, mat(look.wood, 0.45));
+    hood.position.y = 2.16;
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), mat("#efe2c0", 0.6));
+    face.position.set(0.195, 1.8, 0);
+    face.rotation.y = Math.PI / 2;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.015, 8, 32), gilt);
+    ring.position.copy(face.position);
+    ring.rotation.y = Math.PI / 2;
+    const now = new Date();
+    const hand = (length: number, angle: number) => {
+      const handMesh = box(0.004, length, 0.012, mat("#1a1a1a", 0.5), false);
+      handMesh.geometry.translate(0, length / 2, 0);
+      handMesh.position.set(0.2, 1.8, 0);
+      handMesh.rotation.x = -angle;
+      return handMesh;
+    };
+    const minuteHand = hand(0.16, (now.getMinutes() / 60) * Math.PI * 2);
+    const hourHand = hand(0.11, ((now.getHours() % 12 + now.getMinutes() / 60) / 12) * Math.PI * 2);
+    const glassPane = box(0.02, 0.9, 0.24, mat("#0c0806", 0.2, { transparent: true, opacity: 0.6 }), false);
+    glassPane.position.set(0.19, 0.95, 0);
+    const pendulum = new THREE.Group();
+    const rod = box(0.008, 0.6, 0.008, gilt, false);
+    rod.position.y = -0.3;
+    const bob = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.012, 24), gilt);
+    bob.rotation.z = Math.PI / 2;
+    bob.position.y = -0.62;
+    pendulum.add(rod, bob);
+    pendulum.position.set(0.15, 1.35, 0);
+    clock.add(caseBody, hood, face, ring, minuteHand, hourHand, glassPane, pendulum);
+    clock.position.set(-ROOM_HALF_X + 0.22, 0, -1.4);
+    root.add(clock);
+    animated.push((t) => {
+      pendulum.rotation.x = Math.sin(t * Math.PI) * 0.18;
+      const date = new Date();
+      minuteHand.rotation.x = -(date.getMinutes() / 60) * Math.PI * 2;
+      hourHand.rotation.x = -((date.getHours() % 12 + date.getMinutes() / 60) / 12) * Math.PI * 2;
+    });
+    // Book stacks and candle stubs around the room.
+    const stack = (x: number, z: number, count: number, y = 0) => {
+      for (let i = 0; i < count; i++) {
+        const b = box(0.3 - (i % 3) * 0.03, 0.06, 0.22, mat(["#5e1a1a", "#1f3326", "#3b2416", "#6b4a2a"][i % 4], 0.8));
+        b.position.set(x, y + 0.03 + i * 0.06, z);
+        b.rotation.y = (i * 0.37) % 0.8 - 0.4;
+        root.add(b);
+      }
+    };
+    stack(-0.45, -1.05, 3, 0.45);
+    stack(1.9, 1.3, 5);
+    stack(-3.6, 3.9, 4);
+    stack(5.4, -1.0, 6);
+    for (const [x, z] of [[-0.1, -1.4], [5.45, -0.6], [-3.4, 3.95]] as const) {
+      const holder = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.02, 14), gilt);
+      const baseY = x === -0.1 ? 0.46 : 0;
+      holder.position.set(x, baseY + 0.01, z);
+      const c = candle(0.07, "#efe2c0");
+      c.position.set(x, baseY + 0.02, z);
+      root.add(holder, c);
+      flickers.push({ mesh: c.userData.flame, phase: x * 3 + z, base: 1 });
+      addGlow("#ffcf80", 0.35, new THREE.Vector3(x, baseY + 0.13, z), 0.55);
+    }
   } else if (theme === "matrix") {
     // A desk of glowing CRTs against the east wall.
     const desk = box(0.7, 0.05, 2.0, mat("#141a16", 0.5));

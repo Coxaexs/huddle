@@ -10,10 +10,11 @@ import {
 /** use-hub re-dispatches lounge traffic as this window event. */
 export const LOUNGE_EVENT = "huddle-lounge";
 
-export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk";
+export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk" | "academia";
 
 export function roomThemeFor(customThemeId: string | undefined): RoomTheme {
   if (customThemeId === "vampire" || customThemeId === "matrix" || customThemeId === "cyberpunk") return customThemeId;
+  if (customThemeId === "dark-academia") return "academia";
   return "cozy";
 }
 

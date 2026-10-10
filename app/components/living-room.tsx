@@ -39,6 +39,7 @@ const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: st
   vampire: { bg: ["#2a0610", "#0b0205"], ink: "#f6e3e0", dim: "#c79a9a", accent: "#e0233f", font: "Georgia, serif" },
   matrix: { bg: ["#021a0a", "#000500"], ink: "#b9ffcf", dim: "#4fbf78", accent: "#00ff66", font: "ui-monospace, monospace" },
   cyberpunk: { bg: ["#1c0a3a", "#05020f"], ink: "#e6f9ff", dim: "#9fb4ff", accent: "#ff2fb4", font: "system-ui, sans-serif" },
+  academia: { bg: ["#1d2a1e", "#0e130f"], ink: "#ebdfc4", dim: "#b09f7e", accent: "#c9a45c", font: "'EB Garamond', Garamond, Georgia, serif" },
 };
 
 /** The TV's "now playing" screen: cover, title, artist, a progress bar and the time. */
@@ -852,6 +853,8 @@ const LIVING_ROOM_CSS = `
 .living-room-vampire .living-room-title { font-family: Georgia, serif; letter-spacing: 0.04em; }
 .living-room-matrix { --lr-accent: #00e060; --lr-ink: #b9ffcf; --lr-panel: rgba(0, 10, 3, 0.82); --lr-edge: rgba(0, 224, 96, 0.35); background: #000400; }
 .living-room-matrix .living-room-title { font-family: ui-monospace, monospace; }
+.living-room-academia { --lr-accent: #c9a45c; --lr-ink: #ebdfc4; --lr-panel: rgba(14, 19, 15, 0.82); --lr-edge: rgba(201, 164, 92, 0.3); background: #0e130f; }
+.living-room-academia .living-room-title { font-family: 'EB Garamond', Garamond, Georgia, serif; letter-spacing: 0.03em; font-size: 15px; }
 .living-room-cyberpunk { --lr-accent: #ff2fb4; --lr-ink: #e6f9ff; --lr-panel: rgba(10, 5, 30, 0.78); --lr-edge: rgba(0, 240, 255, 0.45); background: #06030f; }
 .living-room-cyberpunk .living-room-title, .living-room-cyberpunk .living-room-tools, .living-room-cyberpunk .living-room-emotes { box-shadow: 0 0 14px rgba(255, 47, 180, 0.35), inset 0 0 8px rgba(0, 240, 255, 0.15); }
 .living-room:fullscreen { border-radius: 0; }
