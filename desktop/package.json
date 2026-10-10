@@ -1,6 +1,6 @@
 {
   "name": "huddle-desktop",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Hoffle desktop app (Electron shell around chat.hoffle.online)",
   "author": "coxaexs",
@@ -13,7 +13,7 @@
     "pack": "electron-builder --dir"
   },
   "devDependencies": {
-    "electron": "^36.0.0",
+    "electron": "^44.7.0",
     "electron-builder": "^25.1.8"
   },
   "build": {
