@@ -59,6 +59,8 @@ export interface MicChain {
   processing: boolean;
   /** True once RNNoise is loaded and running. */
   rnnoise: boolean;
+  /** True for the no-microphone stand-in: listening only. */
+  silent?: boolean;
   /** False while the processing graph is stopped, so `stream` carries silence. */
   readonly live: boolean;
   update(next: Partial<MicSettings>): void;
@@ -494,4 +496,34 @@ export async function openMicrophone(
     console.warn("[huddle] microphone processing unavailable", error);
     return rawChain(raw, context);
   }
+}
+
+/**
+ * A stand-in for a microphone that could not be opened (permission refused or
+ * withdrawn, no device). It sends silence, so you can still sit in voice and
+ * listen instead of being turned away or dropped.
+ */
+export function silentMicChain(): MicChain {
+  const context = new AudioContext();
+  const destination = context.createMediaStreamDestination();
+  const stream = destination.stream;
+  return {
+    stream,
+    raw: stream,
+    processing: false,
+    rnnoise: false,
+    silent: true,
+    live: true,
+    update() {},
+    onTelemetry() {
+      return () => undefined;
+    },
+    resume() {
+      void context.resume().catch(() => undefined);
+    },
+    stop() {
+      stream.getTracks().forEach((track) => track.stop());
+      void context.close().catch(() => undefined);
+    },
+  };
 }

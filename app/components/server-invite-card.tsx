@@ -41,7 +41,7 @@ export function ServerInviteCard({
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(isMember);
 
-  if (!invite.valid || !invite.server) {
+  if (!invite.valid) {
     return (
       <div className="server-invite-card invalid">
         <div className="server-invite-content">
@@ -54,6 +54,45 @@ export function ServerInviteCard({
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!invite.server) {
+    return (
+      <div className="server-invite-card">
+        <div className="server-invite-header">
+          <span className="server-invite-eyebrow">
+            {invite.inviter
+              ? `${invite.inviter.displayName} shared an account invite`
+              : "ACCOUNT REGISTRATION INVITE"}
+          </span>
+        </div>
+        <div className="server-invite-body">
+          <div
+            className="server-invite-icon"
+            style={{ backgroundColor: "var(--lavender, #7289da)" }}
+          >
+            ✉️
+          </div>
+          <div className="server-invite-details">
+            <div className="server-invite-name">Account Invite</div>
+            <div className="server-invite-counts">
+              <span className="count-item" style={{ fontFamily: "monospace", letterSpacing: "0.05em" }}>
+                Code: {invite.code}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="server-invite-btn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(invite.code);
+            }}
+          >
+            Copy Code
+          </button>
         </div>
       </div>
     );

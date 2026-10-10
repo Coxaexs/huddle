@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractInviteCodes } from "../app/lib/chat/invites";
+import {
+  buildUserInviteLink,
+  extractInviteCodeFromUrl,
+  extractInviteCodes,
+} from "../app/lib/chat/invites";
 import { addServerMember } from "./servers";
 
 vi.mock("cloudflare:workers", () => ({
@@ -7,6 +11,33 @@ vi.mock("cloudflare:workers", () => ({
 }));
 
 import { canUserCreateInvites, isFirstUserOrOwner } from "./auth";
+
+describe("buildUserInviteLink and extractInviteCodeFromUrl", () => {
+  it("builds a link with ?invite= parameter", () => {
+    const link = buildUserInviteLink("myinvite123");
+    expect(link).toContain("?invite=MYINVITE123");
+  });
+
+  it("extracts code from ?invite= query param", () => {
+    expect(extractInviteCodeFromUrl("https://chat.hoffle.online/hangout?invite=code123")).toBe("CODE123");
+    expect(extractInviteCodeFromUrl("?invite=code123")).toBe("CODE123");
+  });
+
+  it("extracts code from ?code= and ?servercode= params", () => {
+    expect(extractInviteCodeFromUrl("https://chat.hoffle.online/hangout?code=code456")).toBe("CODE456");
+    expect(extractInviteCodeFromUrl("https://chat.hoffle.online/hangout?servercode=code789")).toBe("CODE789");
+  });
+
+  it("extracts code from bare ?CODE query string", () => {
+    expect(extractInviteCodeFromUrl("https://chat.hoffle.online/hangout?HX3F-9K2Q")).toBe("HX3F-9K2Q");
+    expect(extractInviteCodeFromUrl("?HX3F-9K2Q")).toBe("HX3F-9K2Q");
+  });
+
+  it("returns empty string when no invite parameter is found", () => {
+    expect(extractInviteCodeFromUrl("https://chat.hoffle.online/hangout")).toBe("");
+    expect(extractInviteCodeFromUrl("")).toBe("");
+  });
+});
 
 describe("extractInviteCodes", () => {
   it("extracts code from full deeppixel.online link format", () => {

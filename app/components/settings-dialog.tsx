@@ -530,6 +530,7 @@ import { PrideBadges } from "./pride-badges";
 import { activitySharingEnabled, setActivitySharing } from "../hooks/use-activity-detector";
 import { SocialPlatformIcon } from "./user-profile-card";
 import { apiFetch } from "../lib/client";
+import { buildUserInviteLink } from "../lib/chat/invites";
 import { comboFromEvent, comboLabel, isModifierOnly } from "../lib/hotkeys";
 import {
   DEVICE_SAVED_EVENT,
@@ -1488,6 +1489,8 @@ export function SettingsDialog({
         }),
       });
       setInvites((list) => [data.invite, ...list]);
+      setStatus("Invite code created! Copy the link or code to share.");
+      window.setTimeout(() => setStatus(""), 3000);
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "Could not make a code.",
@@ -2895,20 +2898,45 @@ export function SettingsDialog({
                           ? "used"
                           : `${invite.uses}/${invite.maxUses || "∞"} used`}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard?.writeText(invite.code)}
-                    >
-                      Copy
-                    </button>
-                    {!invite.revoked && !invite.spent && (
+                    <div className="invite-actions">
                       <button
                         type="button"
-                        onClick={() => revokeInvite(invite.code)}
+                        onClick={() => {
+                          const link = buildUserInviteLink(invite.code);
+                          void navigator.clipboard
+                            ?.writeText(link)
+                            .then(() => {
+                              setStatus("Invite link copied to clipboard.");
+                              window.setTimeout(() => setStatus(""), 2500);
+                            })
+                            .catch(() => undefined);
+                        }}
                       >
-                        Revoke
+                        Copy Link
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard
+                            ?.writeText(invite.code)
+                            .then(() => {
+                              setStatus("Invite code copied to clipboard.");
+                              window.setTimeout(() => setStatus(""), 2500);
+                            })
+                            .catch(() => undefined);
+                        }}
+                      >
+                        Copy Code
+                      </button>
+                      {!invite.revoked && !invite.spent && (
+                        <button
+                          type="button"
+                          onClick={() => revokeInvite(invite.code)}
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
                 {!invites.length && (
