@@ -200,3 +200,13 @@
   right: 0;
   width: auto;
 }
+
+/* Message avatars 30% smaller (36px → 25px), with the gutter to match. */
+:root:not([data-custom-theme-id^="msn"]) .message {
+  grid-template-columns: 27px minmax(0, 1fr);
+}
+:root:not([data-custom-theme-id^="msn"]) .message > .avatar {
+  width: 25px;
+  height: 25px;
+  font-size: 10px;
+}

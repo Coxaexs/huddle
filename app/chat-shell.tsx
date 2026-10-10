@@ -3245,7 +3245,14 @@ export function ChatShell() {
     () => dms.reduce((sum, dm) => sum + (unread[dm.channelId]?.mentions ? 0 : unread[dm.channelId]?.count || 0), 0),
     [dms, unread],
   );
-  const badgeDot = useMemo(() => Object.values(unread).some((entry) => entry.unread), [unread]);
+  // Only channels you can actually see: the reads API also returns channels
+  // of servers you are not in, which would light a dot with nothing to read.
+  const badgeDot = useMemo(() => {
+    const dmIds = new Set(dms.map((dm) => dm.channelId));
+    return Object.entries(unread).some(
+      ([channelId, entry]) => entry.unread && (channelServer.has(channelId) || dmIds.has(channelId)),
+    );
+  }, [unread, dms, channelServer]);
   useEffect(() => {
     updateAppBadge(unreadMentionTotal + badgeDmCount, badgeDot);
   }, [unreadMentionTotal, badgeDmCount, badgeDot]);
