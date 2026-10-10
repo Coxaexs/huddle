@@ -270,6 +270,7 @@ import { ForwardedMessageCard } from "./components/forwarded-message-card";
 import { ThemeShareCard } from "./components/theme-share-card";
 import { AiAnswerCard } from "./components/ai-answer-card";
 import { ImageGallery } from "./components/image-gallery";
+import { updateAppBadge } from "./lib/chat/app-badge";
 import {
   type Theme,
   getActiveThemeId,
@@ -3232,12 +3233,16 @@ export function ChatShell() {
     [unread],
   );
 
-  // Desktop shell: reflect the unread mention count on the dock/taskbar badge.
+  // App icon badge (tab favicon, installed app, desktop dock/taskbar): a
+  // count for mentions and unread DMs, a dot for any other unread channel.
+  const badgeDmCount = useMemo(
+    () => dms.reduce((sum, dm) => sum + (unread[dm.channelId]?.mentions ? 0 : unread[dm.channelId]?.count || 0), 0),
+    [dms, unread],
+  );
+  const badgeDot = useMemo(() => Object.values(unread).some((entry) => entry.unread), [unread]);
   useEffect(() => {
-    (
-      window as unknown as { huddle?: { setBadge?: (n: number) => void } }
-    ).huddle?.setBadge?.(unreadMentionTotal);
-  }, [unreadMentionTotal]);
+    updateAppBadge(unreadMentionTotal + badgeDmCount, badgeDot);
+  }, [unreadMentionTotal, badgeDmCount, badgeDot]);
 
   // The mentions inbox refetches when opened and whenever a new mention lands.
   useEffect(() => {
@@ -3544,6 +3549,15 @@ export function ChatShell() {
         document
           .getElementById(`msg-${first.id}`)
           ?.scrollIntoView({ behavior: "auto", block: "center" });
+        // Short channels never scroll, so no scroll event would hide the bar:
+        // check once laid out whether the latest message is already in view.
+        window.requestAnimationFrame(() => {
+          const el = messagesScrollRef.current;
+          if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+            nearBottomRef.current = !detachedRef.current;
+            if (!detachedRef.current) setUnreadBarVisible(false);
+          }
+        });
         return;
       }
       messageEndRef.current?.scrollIntoView({ behavior: "auto" });
@@ -3558,6 +3572,7 @@ export function ChatShell() {
       messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
       nearBottomRef.current = true;
       setUnseenCount(0);
+      setUnreadBarVisible(false);
       lastSeenTailRef.current = tail?.id ?? null;
     } else if (tailChanged && tail) {
       const lastIdx = messages.findIndex((m) => m.id === lastSeenTailRef.current);
