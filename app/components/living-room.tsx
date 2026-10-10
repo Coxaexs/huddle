@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Eye, Flame, Map as MapIcon, Maximize2, Minimize2, Settings2, X } from "lucide-react";
-import type { VoiceParticipant } from "@/lib/protocol";
-import type { LivingRoom } from "../hooks/use-living-room";
+import { Armchair, Eye, EyeOff, Flame, Map as MapIcon, Maximize2, Minimize2, Settings2 } from "lucide-react";
+import { playbackPosition, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
+import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
 import { LOUNGE_EMOTES, headingTo, seatById, stepTo, wrapHeading, type LoungePose } from "../lib/living-room";
 import { buildRoom, roomAmbience } from "./living-room-scene";
 import { RoomAmbience } from "./living-room-ambience";
@@ -20,7 +20,98 @@ interface Props {
   screens: Array<{ stream: MediaStream; name: string }>;
   /** Deafened: the room's own sounds go quiet too. */
   deafened: boolean;
-  onClose: () => void;
+  /** The room's music player: when nothing is screen-shared, the TV shows what's playing. */
+  nowPlaying?: PlayerState | null;
+  /** The hub's clock, so the TV's time matches everyone else's. */
+  serverNow?: () => number;
+}
+
+const formatTime = (ms: number) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+};
+
+const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: string; accent: string; font: string }> = {
+  cozy: { bg: ["#2a1810", "#120a06"], ink: "#fff4e3", dim: "#d9b98f", accent: "#ffb35c", font: "system-ui, sans-serif" },
+  vampire: { bg: ["#2a0610", "#0b0205"], ink: "#f6e3e0", dim: "#c79a9a", accent: "#e0233f", font: "Georgia, serif" },
+  matrix: { bg: ["#021a0a", "#000500"], ink: "#b9ffcf", dim: "#4fbf78", accent: "#00ff66", font: "ui-monospace, monospace" },
+  cyberpunk: { bg: ["#1c0a3a", "#05020f"], ink: "#e6f9ff", dim: "#9fb4ff", accent: "#ff2fb4", font: "system-ui, sans-serif" },
+};
+
+/** The TV's "now playing" screen: cover, title, artist, a progress bar and the time. */
+function drawNowPlaying(ctx: CanvasRenderingContext2D, state: PlayerState, now: number, art: HTMLImageElement | null, theme: RoomTheme) {
+  const { width: W, height: H } = ctx.canvas;
+  const c = TV_COLOURS[theme];
+  const track = state.track!;
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, c.bg[0]);
+  g.addColorStop(1, c.bg[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  const pad = 56;
+  const size = H - pad * 2 - 90;
+  if (art) {
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 30;
+    ctx.drawImage(art, pad, pad, size, size);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(pad, pad, size, size);
+    ctx.fillStyle = c.accent;
+    ctx.font = `${Math.round(size * 0.5)}px ${c.font}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("♫", pad + size / 2, pad + size / 2);
+  }
+  const x = pad * 2 + size;
+  const textWidth = W - x - pad;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = c.accent;
+  ctx.font = `600 30px ${c.font}`;
+  ctx.fillText(state.paused ? "❚❚  PAUSED" : state.live ? "●  LIVE" : "♫  NOW PLAYING", x, pad + 34);
+  ctx.fillStyle = c.ink;
+  ctx.font = `700 54px ${c.font}`;
+  // Wrap the title to two lines at most.
+  const words = track.title.split(/\s+/);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (ctx.measureText(next).width > textWidth && line) { lines.push(line); line = word; } else line = next;
+  }
+  if (line) lines.push(line);
+  const shown = lines.slice(0, 2);
+  if (lines.length > 2) shown[1] = `${shown[1].replace(/\s*\S*$/, "")}…`;
+  shown.forEach((text, i) => ctx.fillText(text, x, pad + 110 + i * 62, textWidth));
+  ctx.fillStyle = c.dim;
+  ctx.font = `400 36px ${c.font}`;
+  if (track.artist) ctx.fillText(track.artist, x, pad + 110 + shown.length * 62 + 10, textWidth);
+  if (state.queue.length) {
+    ctx.font = `400 26px ${c.font}`;
+    ctx.fillText(`Up next: ${state.queue[0].title}`, x, H - pad - 110, textWidth);
+  }
+  // Progress.
+  const position = playbackPosition(state, now);
+  const duration = track.duration ? track.duration * 1000 : 0;
+  const barY = H - pad - 40;
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.beginPath(); ctx.roundRect(pad, barY, W - pad * 2, 10, 5); ctx.fill();
+  if (duration) {
+    ctx.fillStyle = c.accent;
+    ctx.beginPath(); ctx.roundRect(pad, barY, Math.max(10, (W - pad * 2) * Math.min(1, position / duration)), 10, 5); ctx.fill();
+  }
+  ctx.fillStyle = c.ink;
+  ctx.font = `500 30px ${c.font}`;
+  ctx.fillText(formatTime(position), pad, barY - 16);
+  ctx.textAlign = "right";
+  ctx.fillText(duration ? formatTime(duration) : "", W - pad, barY - 16);
+  ctx.textAlign = "left";
 }
 
 const EYE_SEATED = 1.1;
@@ -199,11 +290,22 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
-export function LivingRoomView({ room, participants, connectionId, speaking, screens, deafened, onClose }: Props) {
+export function LivingRoomView({ room, participants, connectionId, speaking, screens, deafened, nowPlaying = null, serverNow }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
   const theme = room.theme;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Hide every overlay for a clean view of the room; H or the eye button brings them back.
+  const [controlsHidden, setControlsHidden] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.key.toLowerCase() === "h" && !event.repeat) setControlsHidden((hidden) => !hidden);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
@@ -218,8 +320,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [hint, setHint] = useState<string | null>("Click or tap the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits. Scroll or pinch to zoom.");
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  const live = useRef({ room, participants, connectionId, speaking, screens, view });
-  live.current = { room, participants, connectionId, speaking, screens, view };
+  const live = useRef({ room, participants, connectionId, speaking, screens, view, nowPlaying, serverNow });
+  live.current = { room, participants, connectionId, speaking, screens, view, nowPlaying, serverNow };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -375,7 +477,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       } else {
         // Dragging in first person turns your body, so everyone sees you look over.
         const pose = myPose();
-        if (pose) moveTo({ ...pose, facing: wrapHeading(pose.facing - dx * 0.005 * (eyeFov / EYE_FOV)) });
+        if (pose) moveTo({ ...pose, facing: wrapHeading(pose.facing + dx * 0.005 * (eyeFov / EYE_FOV)) });
         look.pitch = Math.max(-1.1, Math.min(0.9, look.pitch - dy * 0.004 * (eyeFov / EYE_FOV)));
       }
     };
@@ -498,6 +600,51 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
 
+    // When nobody is sharing a screen, the TV shows what the music bot is playing.
+    const tvCanvas = document.createElement("canvas");
+    tvCanvas.width = 1024;
+    tvCanvas.height = 576;
+    const tvContext = tvCanvas.getContext("2d")!;
+    const tvTexture = new THREE.CanvasTexture(tvCanvas);
+    tvTexture.colorSpace = THREE.SRGBColorSpace;
+    let tvDrawn = 0;
+    let art: { url: string; image: HTMLImageElement | null } | null = null;
+    const coverFor = (url: string | null) => {
+      if (!url) return null;
+      if (art?.url !== url) {
+        // Covers must allow CORS, or drawing one would taint the texture; without it, a note.
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+        const entry: { url: string; image: HTMLImageElement | null } = { url, image: null };
+        image.onload = () => { entry.image = image; tvDrawn = 0; };
+        image.src = url;
+        art = entry;
+      }
+      return art.image;
+    };
+    const syncMusicTv = () => {
+      const state = live.current.nowPlaying;
+      const showing = Boolean(state?.track) && !videoStream;
+      if (!showing) {
+        if (parts.screenMaterial.map === tvTexture) {
+          parts.screenMaterial.map = null;
+          parts.screenMaterial.color.set("#0f0c16");
+          parts.screenMaterial.needsUpdate = true;
+        }
+        return;
+      }
+      const now = performance.now();
+      if (now - tvDrawn < 500) return;
+      tvDrawn = now;
+      drawNowPlaying(tvContext, state!, (live.current.serverNow ?? Date.now)(), coverFor(state!.track!.thumbnail), theme);
+      tvTexture.needsUpdate = true;
+      if (parts.screenMaterial.map !== tvTexture) {
+        parts.screenMaterial.map = tvTexture;
+        parts.screenMaterial.color.set("#ffffff");
+        parts.screenMaterial.needsUpdate = true;
+      }
+    };
+
     const syncTv = () => {
       const stream = live.current.screens[0]?.stream ?? null;
       if (stream === videoStream) return;
@@ -597,6 +744,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       walk(dt);
       syncBodies();
       syncTv();
+      syncMusicTv();
       parts.update(t, dt);
       const hop = parts.shark.userData.hop as number | undefined;
       const since = hop ? (performance.now() - hop) / 1000 : 1;
@@ -622,6 +770,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       window.removeEventListener("keyup", onKey);
       if (video) { video.pause(); video.srcObject = null; }
       videoTexture?.dispose();
+      tvTexture.dispose();
       disposeTree(scene);
       parts.dispose();
       renderer.dispose();
@@ -633,13 +782,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
   const me = connectionId ? room.poses.get(connectionId) : null;
   const seatName = me?.seat ? seatById(me.seat)?.label : null;
-  const tvShowing = screens[0]?.name;
+  const tvShowing = screens[0]?.name ?? (nowPlaying?.track ? `♫ ${nowPlaying.track.title}` : null);
 
   return (
     <div ref={shellRef} className={`living-room living-room-${theme}`} role="region" aria-label="Living room">
       <style>{LIVING_ROOM_CSS}</style>
       <div ref={mountRef} className="living-room-canvas" />
-      <div className="living-room-top">
+      {controlsHidden && (
+        <button type="button" className="living-room-reveal" onClick={() => setControlsHidden(false)} title="Show controls (H)" aria-label="Show controls"><Eye size={16} /></button>
+      )}
+      {!controlsHidden && <div className="living-room-top">
         <div className="living-room-title">
           <Armchair size={16} />
           <span>Living Room</span>
@@ -652,13 +804,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button type="button" className={room.settings.ambience ? "active" : ""} onClick={() => room.setSettings({ ambience: !room.settings.ambience })} title="Room sounds (only you hear them)" aria-label="Room sounds" aria-pressed={room.settings.ambience}><Flame size={16} /></button>
           <button type="button" className={settingsOpen ? "active" : ""} onClick={() => setSettingsOpen((open) => !open)} title="Living Room settings" aria-label="Living Room settings" aria-expanded={settingsOpen}><Settings2 size={16} /></button>
           <button type="button" onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
-          <button type="button" onClick={onClose} title="Back to tiles" aria-label="Close living room"><X size={16} /></button>
+          <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title="Hide controls (H)" aria-label="Hide controls"><EyeOff size={16} /></button>
         </div>
-      </div>
-      {hint && !settingsOpen && (
+      </div>}
+      {hint && !settingsOpen && !controlsHidden && (
         <div className="living-room-hint" onClick={() => setHint(null)}>{hint}</div>
       )}
-      {settingsOpen && (
+      {settingsOpen && !controlsHidden && (
         <div className="living-room-settings" role="dialog" aria-label="Living Room settings">
           <label className="living-room-switch">
             <span><strong>Spatial voices</strong><small>Hear people from where they are in the room. Off: everyone sounds like a normal call.</small></span>
@@ -679,7 +831,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           </label>
         </div>
       )}
-      <div className="living-room-emotes" role="toolbar" aria-label="Emotes">
+      {!controlsHidden && <div className="living-room-emotes" role="toolbar" aria-label="Emotes">
         {LOUNGE_EMOTES.map((emoji) => (
           <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
         ))}
@@ -688,7 +840,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         ) : (
           <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -713,6 +865,8 @@ const LIVING_ROOM_CSS = `
 .living-room-tools button:hover { background: rgba(255, 220, 170, 0.12); }
 .living-room-tools button.active { background: var(--lr-accent); color: #1b1530; }
 .living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--lr-panel); color: var(--lr-ink); padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
+.living-room-reveal { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 999px; background: var(--lr-panel); color: var(--lr-ink); border: 1px solid var(--lr-edge); opacity: 0.55; transition: opacity 0.15s; }
+.living-room-reveal:hover { opacity: 1; }
 .living-room-settings { position: absolute; top: 58px; right: 10px; width: min(320px, calc(100% - 20px)); display: grid; gap: 10px; padding: 12px 14px; background: var(--lr-panel); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; z-index: 2; }
 .living-room-switch { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; cursor: pointer; }
 .living-room-switch span { display: grid; gap: 2px; }

@@ -48,7 +48,7 @@ import {
   type BackgroundMode,
   type CustomBackgroundItem,
 } from "../lib/virtual-background";
-import type { VoiceParticipant } from "@/lib/protocol";
+import type { PlayerState, VoiceParticipant } from "@/lib/protocol";
 import type { DiceRollEvent } from "@/lib/protocol";
 import type { RoomActivity } from "@/lib/activities";
 import {
@@ -151,6 +151,8 @@ interface VoiceStageProps {
   captions?: LiveCaptions;
   /** The shared 3D living room, when the viewer is seated in this room. */
   livingRoom?: LivingRoom;
+  /** The room's music player, shown on the Living Room TV. */
+  nowPlaying?: PlayerState | null;
   /** Viewer may move seats on and off the stage (MUTE_MEMBERS). */
   canManageStage?: boolean;
   userId: string;
@@ -306,6 +308,7 @@ export function VoiceStage({
   soundboardEnabled = true,
   captions,
   livingRoom,
+  nowPlaying = null,
   canManageStage = false,
   userId,
   userName,
@@ -1220,8 +1223,9 @@ export function VoiceStage({
           connectionId={connectionId}
           speaking={voice.speaking}
           deafened={voice.deafened}
+          nowPlaying={nowPlaying}
           screens={videoTiles.filter((tile) => tile.videoKind === "screen" && !tile.hidden).map((tile) => ({ stream: tile.stream, name: tile.label }))}
-          onClose={() => livingRoom.setOpen(false)}
+          serverNow={serverNow}
         />
       )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}
