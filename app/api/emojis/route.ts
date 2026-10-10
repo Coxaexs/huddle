@@ -1,6 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { publishStructureChange } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     key?: string;
   };
   const serverId = body.serverId || "";
-  if (!(await can(db, user.id, serverId, Permission.MANAGE_CHANNELS))) {
+  if (!(await canAny(db, user.id, serverId, Permission.MANAGE_EMOJIS, Permission.MANAGE_CHANNELS, Permission.MANAGE_SERVER))) {
     return Response.json(
       { error: "You do not have permission to add emoji here." },
       { status: 403 },
@@ -127,7 +127,7 @@ export async function DELETE(request: Request) {
   if (!emoji) {
     return Response.json({ error: "That emoji is gone." }, { status: 404 });
   }
-  if (!(await can(db, user.id, emoji.server_id, Permission.MANAGE_CHANNELS))) {
+  if (!(await canAny(db, user.id, emoji.server_id, Permission.MANAGE_EMOJIS, Permission.MANAGE_CHANNELS, Permission.MANAGE_SERVER))) {
     return Response.json(
       { error: "You do not have permission to remove emoji here." },
       { status: 403 },

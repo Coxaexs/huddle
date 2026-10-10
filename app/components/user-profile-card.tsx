@@ -21,8 +21,10 @@ import {
 import type { Member, PresenceStatus } from "@/lib/users";
 import { PRESENCE, bannerBackground, lastSeenLabel } from "@/lib/users";
 import { Avatar } from "./avatar";
-import type { PublicRole } from "@/lib/servers";
+import type { PublicRole, PublicServer } from "@/lib/servers";
 import { PrideBadges } from "./pride-badges";
+import { getMemberTagInfo } from "@/lib/permissions";
+import { MemberTag } from "./member-tag";
 import { apiFetch } from "../lib/client";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
@@ -104,6 +106,7 @@ interface Mutuals {
 
 interface UserProfileCardProps {
   member: Member;
+  server?: PublicServer | null;
   roles?: PublicRole[];
   userRoles?: string[];
   position?: { x: number; y: number } | null;
@@ -127,6 +130,7 @@ interface UserProfileCardProps {
 
 export function UserProfileCard({
   member,
+  server = null,
   roles = [],
   userRoles: initialUserRoles = [],
   position,
@@ -362,7 +366,10 @@ export function UserProfileCard({
 
       <div className="profile-card-body">
         <div className="profile-card-header">
-          <h2 className="profile-display-name"><StyledText text={member.displayName} /></h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="profile-display-name"><StyledText text={member.displayName} /></h2>
+            {server && <MemberTag tag={getMemberTagInfo(member, server)} />}
+          </div>
           <div className="profile-identity-sub">
             {member.nickname && member.globalName && member.globalName !== member.nickname && (
               <span className="profile-global-name" title="Account display name">

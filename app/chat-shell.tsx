@@ -63,6 +63,8 @@ import {
   ALL_PERMISSIONS,
   hasPermission,
   Permission,
+  canAccessServerSettings,
+  getMemberTagInfo,
 } from "@/lib/permissions";
 import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
@@ -261,6 +263,7 @@ import {
 } from "./components/voice-message";
 import { BlahajBuddy } from "./components/blahaj-buddy";
 import { PrideBadges } from "./components/pride-badges";
+import { MemberTag } from "./components/member-tag";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
 import { ForwardedMessageCard } from "./components/forwarded-message-card";
@@ -329,6 +332,12 @@ function mergeMessages(first: Message[], second: Message[]): Message[] {
   return [...byId.values()].sort((a, b) =>
     String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
   );
+}
+
+/** Sizes a message box to its text, up to 40% of the window. */
+function fitComposer(node: HTMLTextAreaElement) {
+  node.style.height = "auto";
+  node.style.height = `${Math.min(node.scrollHeight + 2, window.innerHeight * 0.4)}px`;
 }
 
 export function ChatShell() {
@@ -2011,11 +2020,16 @@ export function ChatShell() {
 
   const canManageChannels = hasPermission(myPermissions, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(myPermissions, Permission.MANAGE_SERVER);
+  const canManageRoles = hasPermission(myPermissions, Permission.MANAGE_ROLES);
+  const canManageEmojis = hasPermission(myPermissions, Permission.MANAGE_EMOJIS);
   const canRecordSessions = hasPermission(
     myPermissions,
     Permission.RECORD_SESSIONS,
   );
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
+  const canKickMembers = hasPermission(myPermissions, Permission.KICK_MEMBERS);
+  const canBanMembers = hasPermission(myPermissions, Permission.BAN_MEMBERS);
+  const canViewAuditLog = hasPermission(myPermissions, Permission.VIEW_AUDIT_LOG);
   /**
    * Posting in an announcement channel. Matches the server's check exactly —
    * gating the client on a different flag than the server would either hide a
@@ -2029,6 +2043,14 @@ export function ChatShell() {
   const canCreateServerInvites =
     hasPermission(myPermissions, Permission.CREATE_INVITES) ||
     Boolean(user?.isAdmin || user?.canInvite);
+
+  const canOpenServerSettings = useMemo(() => {
+    if (!user || !activeServer) return false;
+    return canAccessServerSettings(myPermissions, {
+      isOwner: Boolean(activeServer.ownerId === user.id),
+      isAdmin: Boolean(user.isAdmin),
+    });
+  }, [user, activeServer, myPermissions]);
 
   /** Roles a member holds on the active server, highest position first. */
   const rolesForMember = useCallback(
@@ -5220,6 +5242,10 @@ export function ChatShell() {
 
   // Follows the other person in and out of the room.
   const dmCallLeftTimerRef = useRef<number | null>(null);
+  // The message box grows with what you type instead of scrolling a slot.
+  useLayoutEffect(() => {
+    if (composerRef.current) fitComposer(composerRef.current);
+  }, [draft]);
   useEffect(() => {
     const clearLeftTimer = () => {
       if (dmCallLeftTimerRef.current) {
@@ -7217,17 +7243,19 @@ export function ChatShell() {
 
           {serverMenuOpen && !inDmHome && activeServer && (
             <div className="server-menu-dropdown" role="menu">
-              <button
-                type="button"
-                onClick={() => {
-                  setServerMenuOpen(false);
-                  setServerSettingsOpen(true);
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <Settings size={16} /> Server Settings
-                </span>
-              </button>
+              {canOpenServerSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerMenuOpen(false);
+                    setServerSettingsOpen(true);
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Settings size={16} /> Server Settings
+                  </span>
+                </button>
+              )}
               {canCreateServerInvites && (
                 <button
                   type="button"
@@ -7263,42 +7291,46 @@ export function ChatShell() {
                   </span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  setServerMenuOpen(false);
-                  showCustomPrompt({
-                    title: "Rename Server",
-                    message: "Enter a new name for this server:",
-                    defaultValue: activeServer.name,
-                    confirmText: "Save Name",
-                    onConfirm: async (name) => {
-                      if (!name?.trim()) return;
-                      const data = await apiFetch<{ servers: PublicServer[] }>(
-                        `/api/servers/${activeServer.id}`,
-                        { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
-                      ).catch(() => null);
-                      if (data) setServers(data.servers);
-                    },
-                  });
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <Pencil size={16} /> Rename Server
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setServerMenuOpen(false);
-                  // The same five-kind picker as the sidebar's "+".
-                  setKindMenu({ categoryId: null });
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <Plus size={16} /> Create Channel
-                </span>
-              </button>
+              {canManageServer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerMenuOpen(false);
+                    showCustomPrompt({
+                      title: "Rename Server",
+                      message: "Enter a new name for this server:",
+                      defaultValue: activeServer.name,
+                      confirmText: "Save Name",
+                      onConfirm: async (name) => {
+                        if (!name?.trim()) return;
+                        const data = await apiFetch<{ servers: PublicServer[] }>(
+                          `/api/servers/${activeServer.id}`,
+                          { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
+                        ).catch(() => null);
+                        if (data) setServers(data.servers);
+                      },
+                    });
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Pencil size={16} /> Rename Server
+                  </span>
+                </button>
+              )}
+              {canManageChannels && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServerMenuOpen(false);
+                    // The same five-kind picker as the sidebar's "+".
+                    setKindMenu({ categoryId: null });
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Plus size={16} /> Create Channel
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -8966,6 +8998,9 @@ export function ChatShell() {
                               >
                                 <StyledText text={author?.displayName || message.author} />
                               </strong>
+                              {!inDmHome && activeServer && author && (
+                                <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
+                              )}
                               {author && <PrideBadges badges={author.prideBadges} mini />}
                               {message.bot && <span className="bot-tag">BOT</span>}
                               {message.payload?.tts && (
@@ -10483,6 +10518,9 @@ export function ChatShell() {
               <textarea
                 value={threadDraft}
                 rows={1}
+                ref={(node) => {
+                  if (node) fitComposer(node);
+                }}
                 placeholder="Reply in thread…"
                 aria-label="Reply in thread"
                 onChange={(event) => setThreadDraft(event.target.value)}
@@ -11620,7 +11658,7 @@ export function ChatShell() {
         />
       )}
 
-      {serverSettingsOpen && activeServer && (
+      {serverSettingsOpen && activeServer && canOpenServerSettings && (
         <ServerSettingsDialog
           server={activeServer}
           members={members}
@@ -11630,6 +11668,12 @@ export function ChatShell() {
             hasPermission(myPermissions, Permission.MANAGE_EMOJIS) ||
             hasPermission(myPermissions, Permission.MANAGE_CHANNELS)
           }
+          canManageRoles={canManageRoles}
+          canManageChannels={canManageChannels}
+          canModerate={canModerate}
+          canKickMembers={canKickMembers}
+          canBanMembers={canBanMembers}
+          canViewAuditLog={canViewAuditLog}
           canCreateInvites={canCreateServerInvites}
           onClose={() => setServerSettingsOpen(false)}
           onServerUpdated={() => void loadServers().catch(() => undefined)}
@@ -11821,6 +11865,7 @@ export function ChatShell() {
       {profileCardTarget && (
         <UserProfileCard
           member={profileCardTarget.member}
+          server={inDmHome ? null : activeServer}
           roles={activeServer?.roles || []}
           userRoles={
             profileCardTarget.member.roleIds?.[activeServerId || ""] || []
@@ -11828,7 +11873,7 @@ export function ChatShell() {
           position={profileCardTarget.pos}
           onClose={() => setProfileCardTarget(null)}
           onToggleRole={
-            canManageServer && activeServer && !inDmHome
+            (canManageServer || canManageRoles) && activeServer && !inDmHome
               ? async (roleId, add) => {
                 const serverId = activeServer.id;
                 await apiFetch("/api/roles/assign", {

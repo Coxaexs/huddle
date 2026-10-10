@@ -275,6 +275,138 @@ export function hasPermission(permissions: number, flag: PermissionFlag): boolea
 }
 
 /**
+ * Any permission that allows managing some part of a server (overview, emojis, roles,
+ * channels, invites, moderation, audit logs). Members with ANY of these permissions
+ * are permitted to open Server Settings.
+ */
+export const SERVER_SETTINGS_PERMISSIONS =
+  Permission.MANAGE_SERVER |
+  Permission.MANAGE_ROLES |
+  Permission.MANAGE_CHANNELS |
+  Permission.MANAGE_EMOJIS |
+  Permission.MODERATE |
+  Permission.KICK_MEMBERS |
+  Permission.BAN_MEMBERS |
+  Permission.VIEW_AUDIT_LOG |
+  Permission.CREATE_INVITES;
+
+/**
+ * True if a member has permission to open Server Settings.
+ * Server owner and global admins can always open it.
+ * Otherwise, requires holding at least one server-management permission.
+ */
+export function canAccessServerSettings(
+  permissions: number,
+  options?: { isOwner?: boolean; isAdmin?: boolean },
+): boolean {
+  if (options?.isOwner || options?.isAdmin) return true;
+  if (hasPermission(permissions, Permission.ADMINISTRATOR)) return true;
+  return (permissions & SERVER_SETTINGS_PERMISSIONS) !== 0;
+}
+
+export type MemberTagType = "owner" | "admin" | "mod" | "role";
+
+export interface MemberTagInfo {
+  label: string;
+  type: MemberTagType;
+  color?: string;
+  icon?: "crown" | "shield" | "mod" | null;
+}
+
+/**
+ * Computes a member's effective permission bitmask in memory from their assigned roles.
+ */
+export function computeMemberPermissions(
+  member: { id: string; isAdmin?: boolean; roleIds?: Record<string, string[]> } | null | undefined,
+  server: { id: string; ownerId?: string | null; roles?: Array<{ id: string; permissions: number }> } | null | undefined,
+): number {
+  if (!member || !server) return 0;
+  if (member.isAdmin || (server.ownerId && server.ownerId === member.id)) {
+    return ALL_PERMISSIONS;
+  }
+  const roleIds = new Set(member.roleIds?.[server.id] || []);
+  let mask = 0;
+  for (const role of server.roles || []) {
+    if (roleIds.has(role.id)) {
+      mask |= role.permissions;
+    }
+  }
+  if (mask & Permission.ADMINISTRATOR) return ALL_PERMISSIONS;
+  return mask;
+}
+
+/**
+ * Derives a member's display tag (Owner, Admin, Mod, or top custom role)
+ * based directly on their permissions and roles on the server.
+ * Updates dynamically as their permissions change.
+ */
+export function getMemberTagInfo(
+  member: {
+    id: string;
+    isAdmin?: boolean;
+    roleIds?: Record<string, string[]>;
+  } | null | undefined,
+  server: {
+    id: string;
+    ownerId?: string | null;
+    roles?: Array<{ id: string; name: string; color: string; permissions: number; position: number }>;
+  } | null | undefined,
+): MemberTagInfo | null {
+  if (!member || !server) return null;
+
+  // 1. Server Owner always gets Owner tag
+  if (server.ownerId && server.ownerId === member.id) {
+    return { label: "Owner", type: "owner", icon: "crown" };
+  }
+
+  const perms = computeMemberPermissions(member, server);
+
+  // 2. Administrator (ADMINISTRATOR flag or global admin or MANAGE_SERVER)
+  if (
+    member.isAdmin ||
+    hasPermission(perms, Permission.ADMINISTRATOR) ||
+    hasPermission(perms, Permission.MANAGE_SERVER)
+  ) {
+    return { label: "Admin", type: "admin", icon: "shield" };
+  }
+
+  // 3. Moderator (MODERATE, BAN_MEMBERS, KICK_MEMBERS, MANAGE_MESSAGES, or MANAGE_ROLES)
+  const isMod =
+    hasPermission(perms, Permission.MODERATE) ||
+    hasPermission(perms, Permission.BAN_MEMBERS) ||
+    hasPermission(perms, Permission.KICK_MEMBERS) ||
+    hasPermission(perms, Permission.MANAGE_MESSAGES) ||
+    hasPermission(perms, Permission.MANAGE_ROLES);
+  if (isMod) {
+    return { label: "Mod", type: "mod", icon: "mod" };
+  }
+
+  // 4. Highest assigned custom role (if any)
+  const roleIds = new Set(member.roleIds?.[server.id] || []);
+  if (roleIds.size > 0 && server.roles) {
+    let topRole: { name: string; color: string; position: number } | null = null;
+    for (const role of server.roles) {
+      if (roleIds.has(role.id)) {
+        if (!topRole || role.position > topRole.position) {
+          topRole = role;
+        }
+      }
+    }
+    if (topRole) {
+      return {
+        label: topRole.name,
+        type: "role",
+        color: topRole.color || undefined,
+        icon: null,
+      };
+    }
+  }
+
+  return null;
+}
+
+
+/**
  * The bitmask a member effectively has in a server. Owner and global admins get
  * everything; otherwise it is the union of their assigned roles.
  */
