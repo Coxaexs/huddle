@@ -412,7 +412,6 @@ export function importThemeCode(raw: string): Theme | null {
       } : undefined,
     };
   } catch (err) {
-    console.error("Failed to parse theme code:", err);
     return null;
   }
 }
