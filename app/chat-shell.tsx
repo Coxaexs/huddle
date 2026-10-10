@@ -271,6 +271,7 @@ import { ThemeShareCard } from "./components/theme-share-card";
 import { AiAnswerCard } from "./components/ai-answer-card";
 import { ImageGallery } from "./components/image-gallery";
 import { updateAppBadge } from "./lib/chat/app-badge";
+import { WelcomeGate } from "./components/server-welcome";
 import {
   type Theme,
   getActiveThemeId,
@@ -1460,6 +1461,11 @@ export function ChatShell() {
   const pendingCommandRef = useRef<{ text: string; by: string } | null>(null);
 
   const inDmHome = activeServerId === DM_HOME;
+  /** Servers whose welcome screen was checked (or accepted) this session. */
+  const [welcomeChecked, setWelcomeChecked] = useState<Set<string>>(() => new Set());
+  const markWelcomeChecked = useCallback((serverId: string) => {
+    setWelcomeChecked((current) => (current.has(serverId) ? current : new Set(current).add(serverId)));
+  }, []);
   const [touchInput, setTouchInput] = useState(false);
   const [dragging, setDragging] = useState(false);
 
@@ -11670,6 +11676,19 @@ export function ChatShell() {
           server={inDmHome ? null : activeServer}
           members={members}
           canManageServer={canManageServer}
+        />
+      )}
+
+      {activeServer && !inDmHome && user && activeServer.ownerId !== user.id && !welcomeChecked.has(activeServer.id) && (
+        <WelcomeGate
+          key={activeServer.id}
+          serverId={activeServer.id}
+          serverName={activeServer.name}
+          onDone={() => markWelcomeChecked(activeServer.id)}
+          onLeave={() => {
+            markWelcomeChecked(activeServer.id);
+            void leaveServer(activeServer.id);
+          }}
         />
       )}
 
