@@ -52,8 +52,8 @@ describe("living room geometry", () => {
 
 describe("living room poses", () => {
   it("clamps wire input into the room and snaps known seats", () => {
-    expect(clampPose({ x: 99, z: -99, facing: 10, seat: null })).toMatchObject({ x: 3.65, z: -2.65 });
-    expect(clampPose({ x: 0, z: 0, facing: 0, seat: "couch-m" })).toMatchObject({ x: 0, z: 0.75, seat: "couch-m" });
+    expect(clampPose({ x: 99, z: -99, facing: 10, seat: null })).toMatchObject({ x: 5.65, z: -4.15 });
+    expect(clampPose({ x: 0, z: 0, facing: 0, seat: "couch-m" })).toMatchObject({ x: 0, z: 0.6, seat: "couch-m" });
     expect(clampPose({ x: "1", z: 0 })).toBeNull();
     expect(clampPose(null)).toBeNull();
     expect(Math.abs(wrapHeading(10))).toBeLessThanOrEqual(Math.PI);
@@ -65,7 +65,7 @@ describe("living room poses", () => {
     expect(poses.get("b")?.seat).toBe("couch-l");
     expect(poses.get("a")?.seat).toBe("couch-m");
     expect(poses.get("c")?.seat).toBe("couch-r");
-    expect(freeSeat(poses.values())?.id).toBe("arm-w");
+    expect(freeSeat(poses.values())?.id).toBe("love-1");
   });
 
   it("stands people on the floor once every seat is full", () => {
@@ -74,11 +74,20 @@ describe("living room poses", () => {
     expect(poses.get("extra")?.seat).toBeNull();
   });
 
+  it("sits on the floor anywhere, and stands up by walking", () => {
+    const sitting = clampPose({ x: 2, z: 2, facing: 0, seat: "floor" });
+    expect(sitting).toMatchObject({ x: 2, z: 2, seat: "floor" });
+    expect(stepTo(sitting!, { x: 2.1, z: 2 }).seat).toBeNull();
+    expect(hearFrom(at(0, 0, 0, "floor"), at(1, 0)).seat.y).toBeCloseTo(0.85);
+    // Floor sitters never hold a seat someone else could take.
+    expect(defaultPoses(["a", "b"], new Map([["a", sitting!]])).get("b")?.seat).toBe("couch-l");
+  });
+
   it("doesn't walk through the couch", () => {
     const start = at(0, 2);
     expect(stepTo(start, { x: 0, z: 1 })).toMatchObject({ x: 0, z: 2 });
     expect(stepTo(start, { x: 2, z: 2 })).toMatchObject({ x: 2, z: 2 });
     // Standing up from the couch walks out of it.
-    expect(stepTo(at(0, 0.75, 0, "couch-m"), { x: 0.05, z: 0.7 })).toMatchObject({ x: 0.05, z: 0.7, seat: null });
+    expect(stepTo(at(0, 0.6, 0, "couch-m"), { x: 0.05, z: 0.55 })).toMatchObject({ x: 0.05, z: 0.55, seat: null });
   });
 });
