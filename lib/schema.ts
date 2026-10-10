@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -233,6 +233,23 @@ async function migrate(db: D1Database): Promise<void> {
         target_id TEXT PRIMARY KEY,
         muted_by TEXT,
         created_at TEXT NOT NULL
+      )`),
+    // Welcome screen: rules (and an optional intro form) shown to people who
+    // join a server after the owner switched it on.
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_welcome (
+        server_id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        enabled_at TEXT,
+        rules TEXT NOT NULL DEFAULT '',
+        fields TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_welcome_answers (
+        server_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        answers TEXT NOT NULL DEFAULT '{}',
+        accepted_at TEXT NOT NULL,
+        PRIMARY KEY (server_id, user_id)
       )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS channel_reads (
         user_id TEXT NOT NULL,

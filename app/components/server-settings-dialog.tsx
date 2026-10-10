@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal, Info } from "lucide-react";
 import { Avatar } from "./avatar";
 import { SoundboardTab, StickersTab } from "./expression-settings";
+import { WelcomeTab } from "./server-welcome";
 import { AutomodPanel } from "./automod-panel";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
@@ -129,6 +130,7 @@ type Tab =
   | "audit_log"
   | "bans"
   | "automod"
+  | "welcome"
   | "community"
   | "template";
 
@@ -226,6 +228,7 @@ export function ServerSettingsDialog({
         return canBanEffective;
       case "automod":
         return Boolean(canManageServer || canModerate || isOwner);
+      case "welcome":
       case "community":
       case "template":
         return Boolean(canManageServer || isOwner);
@@ -951,7 +954,7 @@ export function ServerSettingsDialog({
           </>
         )}
 
-        {(isTabVisible("members") || isTabVisible("roles") || isTabVisible("invites") || isTabVisible("access")) && (
+        {(isTabVisible("members") || isTabVisible("roles") || isTabVisible("invites") || isTabVisible("access") || isTabVisible("welcome")) && (
           <>
             <div className="sidebar-divider" />
             <div className="sidebar-group-header">PEOPLE</div>
@@ -989,6 +992,15 @@ export function ServerSettingsDialog({
                 onClick={() => setTab("access")}
               >
                 Access
+              </button>
+            )}
+            {isTabVisible("welcome") && (
+              <button
+                type="button"
+                className={`sidebar-item ${tab === "welcome" ? "active" : ""}`}
+                onClick={() => setTab("welcome")}
+              >
+                Welcome Screen
               </button>
             )}
           </>
@@ -1364,6 +1376,8 @@ export function ServerSettingsDialog({
             )}
           </div>
         )}
+
+        {tab === "welcome" && <WelcomeTab serverId={server.id} onNotice={setNotice} />}
 
         {tab === "stickers" && (
           <StickersTab

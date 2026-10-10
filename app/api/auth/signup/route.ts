@@ -1,3 +1,4 @@
+import { markServerRead } from "@/lib/servers";
 import {
   AVATAR_COLORS,
   createSession,
@@ -219,6 +220,7 @@ export async function POST(request: Request) {
         )
         .bind(defaultServerId, user.id, new Date().toISOString())
         .run();
+      await markServerRead(db, defaultServerId, user.id);
     }
   }
 

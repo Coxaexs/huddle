@@ -148,6 +148,24 @@ export async function addServerMember(
     )
     .bind(serverId, userId, new Date().toISOString(), code)
     .run();
+  await markServerRead(db, serverId, userId);
+}
+
+/** Marks every channel in a server read for a member, up to now. A new
+ *  member starts caught up instead of with the whole history unread; read
+ *  marks they already have are kept. */
+export async function markServerRead(
+  db: D1Database,
+  serverId: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO channel_reads (user_id, channel_id, read_at)
+       SELECT ?1, id, ?2 FROM channels WHERE server_id = ?3`,
+    )
+    .bind(userId, new Date().toISOString(), serverId)
+    .run();
 }
 
 /** Removes a member and clears any roles they held in that server. */

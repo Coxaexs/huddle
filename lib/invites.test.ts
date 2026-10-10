@@ -86,12 +86,13 @@ describe("addServerMember", () => {
 
     await addServerMember(mockDb, "srv-1", "user-1", "ugrkgmaurc");
 
-    expect(captured).toHaveLength(1);
+    expect(captured).toHaveLength(2);
     expect(captured[0].query).toContain("INSERT INTO server_members");
     expect(captured[0].query).toContain("invite_code = COALESCE(server_members.invite_code, excluded.invite_code)");
     expect(captured[0].args[0]).toBe("srv-1");
     expect(captured[0].args[1]).toBe("user-1");
     expect(captured[0].args[3]).toBe("UGRKGMAURC");
+    expect(captured[1].query).toContain("INSERT OR IGNORE INTO channel_reads");
   });
 
   it("binds null when inviteCode is not provided or empty", async () => {
