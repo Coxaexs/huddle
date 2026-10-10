@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+      - "master"
+  path_filters:
+    - "!dist/**"
+    - "!dist-prev/**"
+    - "!backups/**"
+    - "!state*/**"
+    - "!node_modules/**"
+    - "!package-lock.json"
+    - "!*.jks"
+    - "!.wrangler/**"
+    - "!.cache/**"
+  path_instructions:
+    - path: "worker/**"
+      instructions: |
+        Review Cloudflare Workers code. Ensure Durable Objects state persistence,
+        WebSocket connections, rate limiting, and edge runtime constraints are respected.
+    - path: "lib/protocol.ts"
+      instructions: |
+        Ensure protocol types and schemas remain backward-compatible and align with
+        signaling, WebRTC, and recorder requirements.
+    - path: "app/**"
+      instructions: |
+        Review React / Next.js components for UI state management, proper cleanup of audio/video
+        streams and timers, memory leak avoidance, and clean styling.
+    - path: "recorder-service/**"
+      instructions: |
+        Review recording pipeline code for stream handling, error resilience, and graceful shutdowns.
+
+chat:
+  auto_reply: true
