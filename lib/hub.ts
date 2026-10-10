@@ -28,6 +28,7 @@ import {
   liveTrack,
   playbackPosition,
   type ClientEvent,
+  type LoungeWirePose,
   type PlayerAction,
   type PlayerState,
   type RecordingState,
@@ -60,6 +61,8 @@ interface Attachment {
    * for a stage is the same as no: the floor is granted, never assumed.
    */
   speakAllowed?: boolean;
+  /** Living room spot in the current voice room; cleared on any room change. */
+  lounge?: LoungeWirePose | null;
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
@@ -120,6 +123,8 @@ export class HuddleHub extends DurableObject {
   private outbox: Promise<void> = Promise.resolve();
   /** connectionId -> caption lines sent this second, to cap a chatty tab. */
   private readonly captionBudget = new Map<string, { second: number; count: number }>();
+  /** connectionId -> living room poses relayed this second. */
+  private readonly loungeBudget = new Map<string, { second: number; count: number }>();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -560,6 +565,53 @@ export class HuddleHub extends DurableObject {
         return;
       }
 
+      case "lounge": {
+        const room = attachment.voiceChannelId;
+        if (!room) return;
+        const num = (value: unknown, limit: number) =>
+          typeof value === "number" && Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : null;
+        const x = num(event.x, 5);
+        const z = num(event.z, 4);
+        const facing = num(event.facing, 7);
+        if (x === null || z === null || facing === null) return;
+        const seat = typeof event.seat === "string" && /^[a-z0-9-]{1,24}$/.test(event.seat) ? event.seat : null;
+        const emote = typeof event.emote === "string" && event.emote.length <= 8 ? event.emote : undefined;
+        const second = Math.floor(Date.now() / 1000);
+        const budget = this.loungeBudget.get(attachment.connectionId);
+        if (budget?.second === second) {
+          if (budget.count >= 20) return;
+          budget.count += 1;
+        } else {
+          this.loungeBudget.set(attachment.connectionId, { second, count: 1 });
+        }
+        const pose = { x, z, facing, seat };
+        attachment.lounge = pose;
+        socket.serializeAttachment(attachment);
+        const payload = JSON.stringify({
+          t: "lounge",
+          channelId: room,
+          connectionId: attachment.connectionId,
+          pose,
+          ...(emote ? { emote } : {}),
+          serverNow: Date.now(),
+        } satisfies ServerEvent);
+        for (const { socket: other, attachment: peer } of this.sockets()) {
+          if (peer.voiceChannelId === room && peer.connectionId !== attachment.connectionId) other.send(payload);
+        }
+        return;
+      }
+
+      case "lounge-sync": {
+        const room = attachment.voiceChannelId;
+        if (!room) return;
+        const poses: Array<{ connectionId: string; pose: LoungeWirePose }> = [];
+        for (const { attachment: peer } of this.sockets()) {
+          if (peer.voiceChannelId === room && peer.lounge) poses.push({ connectionId: peer.connectionId, pose: peer.lounge });
+        }
+        socket.send(JSON.stringify({ t: "lounge-state", channelId: room, poses, serverNow: Date.now() } satisfies ServerEvent));
+        return;
+      }
+
       case "voice-join": {
         const previous = attachment.voiceChannelId;
         if (typeof event.channelId !== "string" || !(await this.mayJoinVoice(attachment, event.channelId))) {
@@ -613,6 +665,7 @@ export class HuddleHub extends DurableObject {
 
         attachment.important = false;
         attachment.sfu = event.sfu === true;
+        if (attachment.voiceChannelId !== event.channelId) attachment.lounge = null;
         attachment.voiceChannelId = event.channelId;
         // A re-announce of the same room (a reconnect on the same socket) keeps
         // the clock running; only a genuinely new seat starts it over.
@@ -658,6 +711,7 @@ export class HuddleHub extends DurableObject {
         attachment.important = false;
         const previous = attachment.voiceChannelId;
         attachment.voiceChannelId = null;
+        attachment.lounge = null;
         attachment.voiceJoinedAt = null;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
@@ -861,6 +915,7 @@ export class HuddleHub extends DurableObject {
     const attachment = socket.deserializeAttachment() as Attachment | null;
     if (attachment) this.markSeen(attachment);
     if (attachment) this.captionBudget.delete(attachment.connectionId);
+    if (attachment) this.loungeBudget.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.

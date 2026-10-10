@@ -35,6 +35,7 @@ import {
   ChevronUp as PeopleUp,
   ChevronDown as PeopleDown,
   Captions,
+  Armchair,
   MessageCircleQuestionMark,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
@@ -68,6 +69,8 @@ import { LiveCaptionsOverlay } from "./live-captions";
 import { QaBanner, QaPanel } from "./qa-panel";
 import { useQa } from "../hooks/use-qa";
 import type { LiveCaptions } from "../hooks/use-live-captions";
+import type { LivingRoom } from "../hooks/use-living-room";
+import { LivingRoomView } from "./living-room";
 
 interface Sound {
   id: string;
@@ -146,6 +149,8 @@ interface VoiceStageProps {
   soundboardEnabled?: boolean;
   /** Live captions, when the viewer is seated in this room. */
   captions?: LiveCaptions;
+  /** The shared 3D living room, when the viewer is seated in this room. */
+  livingRoom?: LivingRoom;
   /** Viewer may move seats on and off the stage (MUTE_MEMBERS). */
   canManageStage?: boolean;
   userId: string;
@@ -300,6 +305,7 @@ export function VoiceStage({
   stageMode = false,
   soundboardEnabled = true,
   captions,
+  livingRoom,
   canManageStage = false,
   userId,
   userName,
@@ -1207,6 +1213,16 @@ export function VoiceStage({
         )}
       </div>
 
+      {livingRoom?.open && joined && !stageMode && (
+        <LivingRoomView
+          room={livingRoom}
+          participants={participants}
+          connectionId={connectionId}
+          speaking={voice.speaking}
+          screens={videoTiles.filter((tile) => tile.videoKind === "screen" && !tile.hidden).map((tile) => ({ stream: tile.stream, name: tile.label }))}
+          onClose={() => livingRoom.setOpen(false)}
+        />
+      )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}
       {joined && <QaBanner qa={qa} beside={qaOpen} />}
       {joined && qaOpen && <QaPanel qa={qa} userId={userId} onClose={() => setQaOpen(false)} />}
@@ -1244,6 +1260,18 @@ export function VoiceStage({
           >
             <SlidersHorizontal size={18} />
           </button>
+          {livingRoom && joined && !stageMode && (
+            <button
+              type="button"
+              className={`vctrl-btn ${livingRoom.open ? "active" : ""}`}
+              aria-label="Living room"
+              aria-pressed={livingRoom.open}
+              onClick={() => livingRoom.setOpen(!livingRoom.open)}
+              title="Living Room: hang out in a shared 3D room, voices come from where people sit"
+            >
+              <Armchair size={18} />
+            </button>
+          )}
           <button
             type="button"
             className={`vctrl-btn ${voice.important ? "active" : ""}`}

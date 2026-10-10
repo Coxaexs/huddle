@@ -381,6 +381,11 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
           case "caption":
             handlersRef.current.onCaption?.(payload);
             break;
+          case "lounge":
+          case "lounge-state":
+            // Read by the living room (see use-living-room).
+            window.dispatchEvent(new CustomEvent("huddle-lounge", { detail: payload }));
+            break;
           case "typing":
             handlersRef.current.onTyping?.(
               payload.channelId,

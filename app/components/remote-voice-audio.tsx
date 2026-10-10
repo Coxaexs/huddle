@@ -3,10 +3,11 @@
 import { useEffect, useRef } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { SpatialAudioPlayback, personalTableLayout } from "../lib/spatial-audio";
+import type { HeardFrom } from "../lib/living-room";
 import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../lib/head-tracking";
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor }: {
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null }: {
   streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
@@ -22,6 +23,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   onHeadTracking?: (status: HeadTrackingStatus, live: boolean) => void;
   preferenceFor: (userId: string) => { volume: number; muted: boolean };
   streamPreferenceFor?: (streamId: string, userId?: string) => { volume: number; muted: boolean };
+  /** While the living room is open, where each voice is relative to you replaces the table. */
+  livingRoom?: Map<string, HeardFrom> | null;
 }) {
   const playback = useRef<SpatialAudioPlayback | null>(null);
   const status = useRef(onHeadTracking);
@@ -58,7 +61,11 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         ? kind === "screen"
         : stream.id === person?.screenStreamId || stream.getVideoTracks().length > 0;
       const voice = person && !person.bot && !person.recorder && !isScreen;
-      const seat = voice || (kind === "tts" && person) ? seats.get(connectionId) : undefined;
+      const placed = livingRoom?.get(connectionId);
+      const tableSeat = voice || (kind === "tts" && person) ? seats.get(connectionId) : undefined;
+      const seat = placed && (voice || (kind === "tts" && person))
+        ? { pan: placed.pan, ...placed.seat, attenuation: placed.attenuation, privacy: placed.privacy }
+        : tableSeat && { ...tableSeat, attenuation: 1, privacy: 1 };
 
       let volume = pref.volume;
       let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted);
@@ -81,8 +88,10 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         muted,
         pan: seat ? seat.pan ?? null : null,
         seat: seat ? { x: seat.x, y: seat.y, z: seat.z } : null,
+        attenuation: seat?.attenuation,
+        hrtfAttenuation: seat?.privacy,
       };
-    }), enabled);
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor]);
+    }), enabled || Boolean(livingRoom));
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom]);
   return null;
 }

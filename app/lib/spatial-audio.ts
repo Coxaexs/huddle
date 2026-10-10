@@ -83,6 +83,10 @@ export interface PlaybackInput {
   important?: boolean;
   pan: number | null; // null: music, screen share, or unknown stream
   seat?: Vector | null; // Head-tracked seating; absent falls back to stereo panning.
+  /** Living room distance for loudspeakers; HRTF gets distance from the seat itself. */
+  attenuation?: number;
+  /** Living room gain that applies under HRTF too (the quiet nook). */
+  hrtfAttenuation?: number;
 }
 /**
  * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
@@ -388,7 +392,8 @@ export class SpatialAudioPlayback {
       const spatial = this.spatialFor(input);
       // Web Audio carries the stream when it is spatial or boosted; otherwise the element does.
       const routed = live && !!gain && (spatial ? !!panner : input.volume > 1 && entry.mode === "boost");
-      const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1);
+      const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1)
+        * (spatial && !input.important ? Math.max(0, Math.min(1, (entry.mode === "hrtf" ? input.hrtfAttenuation : input.attenuation) ?? 1)) : 1);
       element.volume = Math.min(1, volume);
       element.muted = input.muted || routed;
       if (gain && this.context) {
