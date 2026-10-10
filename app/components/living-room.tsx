@@ -23,6 +23,11 @@ interface Props {
 const EYE_SEATED = 1.1;
 const EYE_STANDING = 1.6;
 const EYE_FLOOR = 0.75;
+/** First-person field of view in degrees; the wheel zooms between the limits. */
+const EYE_FOV = 70;
+const EYE_FOV_MIN = 20;
+const EYE_FOV_MAX = 100;
+const OVERHEAD_FOV = 52;
 const WALK_SPEED = 1.6; // m/s
 
 function labelTexture(text: string, colour = "#ffffff", background = "rgba(20,16,30,0.72)"): THREE.CanvasTexture {
@@ -323,6 +328,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const orbit = { yaw: 0.0, pitch: 0.82, distance: 6.2 };
     // First-person look offset, added to body heading.
     const look = { yaw: 0, pitch: -0.08 };
+    let eyeFov = EYE_FOV;
     const gyroPose = { yaw: 0, pitch: 0, base: null as number | null };
     let xrMode: "immersive-vr" | "immersive-ar" | null = null;
 
@@ -402,8 +408,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       } else {
         // Dragging in first person turns your body, so everyone sees you look over.
         const pose = myPose();
-        if (pose) moveTo({ ...pose, facing: wrapHeading(pose.facing - dx * 0.005) });
-        look.pitch = Math.max(-1.1, Math.min(0.9, look.pitch - dy * 0.004));
+        if (pose) moveTo({ ...pose, facing: wrapHeading(pose.facing - dx * 0.005 * (eyeFov / EYE_FOV)) });
+        look.pitch = Math.max(-1.1, Math.min(0.9, look.pitch - dy * 0.004 * (eyeFov / EYE_FOV)));
       }
     };
     const onUp = (event: PointerEvent) => {
@@ -411,9 +417,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       drag = null;
     };
     const onWheel = (event: WheelEvent) => {
-      if (live.current.view !== "overhead") return;
       event.preventDefault();
-      orbit.distance = Math.max(2.2, Math.min(15, orbit.distance + event.deltaY * 0.005));
+      // Overhead the wheel moves the camera in and out; through your eyes it zooms (field of view).
+      if (live.current.view === "overhead") orbit.distance = Math.max(2.2, Math.min(15, orbit.distance + event.deltaY * 0.005));
+      else eyeFov = Math.max(EYE_FOV_MIN, Math.min(EYE_FOV_MAX, eyeFov * Math.exp(event.deltaY * 0.0012)));
     };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -651,6 +658,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (next) moveTo({ ...next, facing: wrapHeading(next.facing) });
     };
 
+    const setFov = (fov: number) => {
+      if (Math.abs(camera.fov - fov) < 0.01) return;
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    };
     const placeCamera = () => {
       const pose = myPose();
       if (xrMode === "immersive-ar") return;
@@ -676,6 +688,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         camera.position.set(pose.x, eye, pose.z);
         target.set(pose.x + Math.sin(yaw) * Math.cos(pitch), eye + Math.sin(pitch), pose.z - Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(target);
+        setFov(eyeFov);
         return;
       }
       // Overhead follows you around the room, so it feels like your corner of it.
@@ -687,6 +700,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         centre.z + Math.cos(yaw) * Math.cos(orbit.pitch) * orbit.distance,
       );
       camera.lookAt(centre);
+      setFov(OVERHEAD_FOV);
     };
 
     renderer.setAnimationLoop(() => {
