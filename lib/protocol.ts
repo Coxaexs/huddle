@@ -1,5 +1,7 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
+export interface LoungeWirePose { x: number; z: number; facing: number; seat: string | null }
+
 export interface PresenceUser {
   id: string;
   username: string;
@@ -319,6 +321,10 @@ export type ClientEvent =
   | { t: "typing"; channelId: string }
   /** Live captions: what this seat's own browser heard it say. */
   | { t: "caption"; text: string; final: boolean }
+  /** Living room: where this seat is standing or sitting, and an optional emote. */
+  | { t: "lounge"; x: number; z: number; facing: number; seat: string | null; emote?: string }
+  /** Living room: ask the hub where everyone in your voice room is. */
+  | { t: "lounge-sync" }
   | {
       t: "dm-call";
       channelId: string;
@@ -363,6 +369,22 @@ export type ServerEvent =
       channelId: string;
       question: import("./qa").QaQuestion | null;
       removedId?: string;
+      serverNow: number;
+    }
+  | {
+      /** Living room: one seat moved (pose null: left the room). */
+      t: "lounge";
+      channelId: string;
+      connectionId: string;
+      pose: LoungeWirePose | null;
+      emote?: string;
+      serverNow: number;
+    }
+  | {
+      /** Living room: everyone placed in your voice room, answering lounge-sync. */
+      t: "lounge-state";
+      channelId: string;
+      poses: Array<{ connectionId: string; pose: LoungeWirePose }>;
       serverNow: number;
     }
   | {

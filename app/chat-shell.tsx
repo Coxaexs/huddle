@@ -227,6 +227,7 @@ import {
 } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
 import { useLiveCaptions, type LiveCaptions } from "./hooks/use-live-captions";
+import { useLivingRoom } from "./hooks/use-living-room";
 import { usePlayer } from "./hooks/use-player";
 import {
   nextScreenQuality,
@@ -2749,6 +2750,12 @@ export function ChatShell() {
     () => (voice.channelId ? voiceRooms[voice.channelId] || [] : []),
     [voiceRooms, voice.channelId],
   );
+  const livingRoom = useLivingRoom({
+    roomId: voice.channelId,
+    connectionId: hub.connectionId,
+    participants: voiceParticipants,
+    send: hub.send,
+  });
 
   /** Active screenshare or camera stream in the joined room for floating PiP */
   const floatingStream = useMemo(() => {
@@ -7995,6 +8002,7 @@ export function ChatShell() {
                 serverNow={hub.serverNow}
                 voice={voice}
                 captions={voice.channelId === stageChannel.id ? captions : undefined}
+                livingRoom={voice.channelId === stageChannel.id ? livingRoom : undefined}
                 joined={voice.channelId === stageChannel.id}
                 onJoin={() => void openVoiceChannel(stageChannel)}
                 onExit={() => setStageChannelId(null)}
@@ -10806,6 +10814,7 @@ export function ChatShell() {
           headTrackingSource={voice.headTrackingSource}
           headphones={voice.spatialOutput === "headphones"}
           onHeadTracking={voice.onHeadTracking}
+          livingRoom={livingRoom.heard}
           deafened={voice.deafened}
           preferenceFor={(id) => {
             const pref = prefFor(id);
