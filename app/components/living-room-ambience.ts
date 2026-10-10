@@ -4,6 +4,7 @@
  * SOURCES.txt), each placed where it belongs in the room and heard from where
  * you stand. Plays only in the viewer's own browser; nothing goes over the call.
  */
+import { basePath } from "../lib/client";
 import { ROOM_HALF_X, ROOM_HALF_Z, type LoungePose } from "../lib/living-room";
 import type { RoomTheme } from "../hooks/use-living-room";
 
@@ -61,7 +62,7 @@ const CROSSFADE = 2.5;
 const buffers = new Map<string, Promise<AudioBuffer>>();
 
 function load(context: BaseAudioContext, clip: Clip): Promise<AudioBuffer> {
-  const url = `/sounds/living-room/${clip}.mp3`;
+  const url = `${basePath}/sounds/living-room/${clip}.mp3`;
   let pending = buffers.get(url);
   if (!pending) {
     pending = fetch(url)

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Armchair, Eye, EyeOff, Flame, Map as MapIcon, Maximize2, Minimize2, Settings2 } from "lucide-react";
@@ -618,7 +619,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         image.crossOrigin = "anonymous";
         const entry: { url: string; image: HTMLImageElement | null } = { url, image: null };
         image.onload = () => { entry.image = image; tvDrawn = 0; };
-        image.src = url;
+        // Remote art goes through our cover cache, which adds CORS.
+        image.src = /^https?:/i.test(url) && !url.startsWith(location.origin)
+          ? apiUrl(`/api/media/cover?url=${encodeURIComponent(url)}`)
+          : url;
         art = entry;
       }
       return art.image;
