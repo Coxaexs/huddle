@@ -5,6 +5,7 @@
  * value, the same on every screen. No physics engine: the throw is a short
  * script, and the last stretch turns the tumble into the face that was rolled.
  */
+import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";

@@ -1,5 +1,6 @@
 "use client";
 
+import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -13,6 +14,7 @@ import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
 import { TableExtras, behindScreen, type TentSpec } from "./tabletop-extras";
 import { CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { addInitiative, currentEntry, watchPosition, type TableCard } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
@@ -415,14 +417,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
-    const sync = () => setFullscreen(document.fullscreenElement === shellRef.current);
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
+    const sync = () => setFullscreen(isFullscreen(shellRef.current));
+    return onFullscreenChange(sync);
   }, []);
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
-    else void shellRef.current?.requestFullscreen?.().catch(() => undefined);
-  };
+  // Falls back to filling the window (and the window itself) where the webview has no Fullscreen API.
+  const toggleFullscreen = () => void toggleElementFullscreen(shellRef.current);
   const [hint, setHint] = useState<string | null>(VENUE_HINTS[venueId]);
   useEffect(() => {
     setHint(VENUE_HINTS[venueId]);
@@ -1423,7 +1422,7 @@ const LIVING_ROOM_CSS = `
 .living-room-canvas { position: absolute; inset: 0; touch-action: none; }
 .living-room-canvas canvas { width: 100% !important; height: 100% !important; display: block; cursor: pointer; }
 .living-room-top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; pointer-events: none; }
-.living-room-title, .living-room-tools { pointer-events: auto; display: flex; align-items: center; gap: 6px; background: var(--lr-panel); backdrop-filter: blur(8px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+.living-room-title, .living-room-tools { pointer-events: auto; display: flex; align-items: center; gap: 6px; background: var(--lr-panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
 .living-room-title small { font-weight: 400; opacity: 0.75; }
 .living-room-tools { padding: 4px; }
 .living-room-tools button { display: inline-flex; align-items: center; gap: 4px; min-width: 32px; height: 32px; justify-content: center; padding: 0 8px; border-radius: 999px; color: inherit; background: transparent; font-size: 12px; font-weight: 600; }
@@ -1432,20 +1431,20 @@ const LIVING_ROOM_CSS = `
 .living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--lr-panel); color: var(--lr-ink); padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
 .living-room-reveal { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 999px; background: var(--lr-panel); color: var(--lr-ink); border: 1px solid var(--lr-edge); opacity: 0.55; transition: opacity 0.15s; }
 .living-room-reveal:hover { opacity: 1; }
-.living-room-settings { position: absolute; top: 58px; right: 10px; width: min(320px, calc(100% - 20px)); display: grid; gap: 10px; padding: 12px 14px; background: var(--lr-panel); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; z-index: 2; }
+.living-room-settings { position: absolute; top: 58px; right: 10px; width: min(320px, calc(100% - 20px)); display: grid; gap: 10px; padding: 12px 14px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; z-index: 2; }
 .living-room-switch { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; cursor: pointer; }
 .living-room-switch span { display: grid; gap: 2px; }
 .living-room-switch small { opacity: 0.7; line-height: 1.35; }
 .living-room-switch input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--lr-accent); flex: none; }
 .living-room-slider { display: grid; gap: 6px; }
 .living-room-slider input { width: 100%; accent-color: var(--lr-accent); }
-.living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--lr-panel); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
+.living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--lr-panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
 .living-room-emotes button { font-size: 20px; width: 36px; height: 36px; border-radius: 999px; transition: transform 0.12s; flex: none; }
 .living-room-emotes button:hover { transform: scale(1.2); background: rgba(255, 220, 170, 0.12); }
 .living-room-emotes .living-room-stand { font-size: 12px; width: auto; padding: 0 12px; color: var(--lr-ink); font-weight: 600; }
 .living-room-emotes .living-room-stand:hover { transform: none; }
 .living-room-sep { width: 1px; height: 18px; background: var(--lr-edge); margin: 0 2px; }
-.living-room-dice { position: absolute; left: 10px; bottom: 84px; display: grid; gap: 6px; background: var(--lr-panel); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 16px; padding: 8px; max-width: calc(100% - 20px); color: var(--lr-ink); }
+.living-room-dice { position: absolute; left: 10px; bottom: 84px; display: grid; gap: 6px; background: var(--lr-panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 16px; padding: 8px; max-width: calc(100% - 20px); color: var(--lr-ink); }
 .living-room-dice-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .living-room-dice button { min-width: 38px; height: 32px; padding: 0 8px; border-radius: 10px; font-size: 13px; font-weight: 700; color: inherit; background: rgba(255, 220, 170, 0.1); }
 .living-room-dice button:hover:not(:disabled) { background: rgba(255, 220, 170, 0.22); }
@@ -1453,7 +1452,7 @@ const LIVING_ROOM_CSS = `
 .living-room-dice button:disabled { opacity: 0.4; }
 .living-room-dice-note { opacity: 0.8; max-width: 320px; line-height: 1.3; }
 .living-room-panels { position: absolute; top: 58px; left: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 200px); overflow-y: auto; z-index: 3; }
-.living-room-panel { display: grid; gap: 8px; padding: 10px 12px; background: var(--lr-panel); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; }
+.living-room-panel { display: grid; gap: 8px; padding: 10px 12px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; }
 .living-room-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .living-room-panel-head strong { display: inline-flex; align-items: center; gap: 6px; }
 .living-room-panel-head button { color: inherit; opacity: 0.7; }

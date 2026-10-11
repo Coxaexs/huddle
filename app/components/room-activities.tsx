@@ -1,5 +1,6 @@
 "use client";
 
+import { toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import {
   useEffect,
   useId,
@@ -943,7 +944,7 @@ export function RoomActivities({
           {isGame && (
             <button
               type="button"
-              onClick={() => void gameFrameRef.current?.requestFullscreen?.()}
+              onClick={() => void toggleElementFullscreen(gameFrameRef.current)}
               aria-label="Play full screen"
               title="Full screen"
             >

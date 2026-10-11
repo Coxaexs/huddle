@@ -1,6 +1,6 @@
 [package]
 name = "huddle-desktop"
-version = "1.0.0"
+version = "1.1.2"
 description = "Huddle lightweight desktop client powered by Tauri v2"
 edition = "2021"
 authors = ["coxaexs"]
@@ -14,7 +14,8 @@ tauri-build = { version = "2.6", features = [] }
 cc = "1.2"
 
 [dependencies]
-tauri = { version = "2.6", features = ["tray-icon"] }
+# devtools: right-click > Inspect Element works in release builds, so a problem on a Mac can be read from the console.
+tauri = { version = "2.6", features = ["tray-icon", "devtools"] }
 tauri-plugin-global-shortcut = "2.3"
 tauri-plugin-notification = "2.4"
 tauri-plugin-shell = "2.3"

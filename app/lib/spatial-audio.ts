@@ -297,7 +297,8 @@ export class SpatialAudioPlayback {
       if (context.state === "running" || !this.needsContext || this.disposed) return;
       this.resume();
       this.stallTimer = setTimeout(() => {
-        if (this.context === context && context.state !== "running" && document.visibilityState === "visible") this.rebuild();
+        // Safari reports "interrupted" while the system has the audio (a call, a sound); that ends by itself, and a new context would not help.
+        if (this.context === context && context.state !== "running" && (context.state as string) !== "interrupted" && document.visibilityState === "visible") this.rebuild();
       }, 2000);
     };
     context.addEventListener?.("error", this.rebuild);
