@@ -1,5 +1,6 @@
 "use client";
 
+import { setWindowFullscreen } from "../lib/fullscreen";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Mic,
@@ -606,6 +607,12 @@ export function VoiceStage({
   useEffect(() => {
     if (!focused) setWindowFull(false);
   }, [focused]);
+  // Where the webview has no Fullscreen API, fill the window and, in the Tauri shell, take the window fullscreen too.
+  useEffect(() => {
+    if (!windowFull) return;
+    void setWindowFullscreen(true);
+    return () => void setWindowFullscreen(false);
+  }, [windowFull]);
 
   // Controls overlay auto-hide (hides when not hovered / idle for 3 seconds)
   const [showFocusBar, setShowFocusBar] = useState(true);

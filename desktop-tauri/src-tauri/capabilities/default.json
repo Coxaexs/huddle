@@ -2,9 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions for Huddle desktop app",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["https://chat.hoffle.online"]
+    "urls": [
+      "https://chat.hoffle.online"
+    ]
   },
   "permissions": [
     "core:default",
@@ -13,6 +17,8 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "notification:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen"
   ]
 }

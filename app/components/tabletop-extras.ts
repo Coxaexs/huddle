@@ -4,6 +4,7 @@
  * marker over whoever's turn it is, and a spell or monster card floating over
  * the table. Everything redraws only when its inputs change.
  */
+import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { TableCard } from "@/lib/lounge-shared";
 import { TABLE_CENTRE, TABLE_RADIUS, type LoungeSeat } from "../lib/living-room";

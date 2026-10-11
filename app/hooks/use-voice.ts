@@ -1,6 +1,7 @@
 "use client";
 
 import { installIdlePause, setIdlePauseCallActive } from "../lib/idle-pause";
+import { inTauriShell, installTauriHotkeys } from "../lib/tauri-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
@@ -888,6 +889,9 @@ export function useVoice({
       setIdlePauseCallActive(false);
     };
   }, [channelId]);
+
+  // The Tauri shell sends its global mute shortcut as its own event; hand it to the app as the DOM event Electron's shell sends.
+  useEffect(() => installTauriHotkeys(), []);
 
   // Looping animations rest while the window is in the background outside a call.
   useEffect(() => installIdlePause(), []);
@@ -2439,6 +2443,14 @@ export function useVoice({
         setError("Join a voice channel before sharing your screen.");
         return;
       }
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== "function") {
+        setError(
+          inTauriShell()
+            ? "Screen sharing is not available in the Hoffle Lite app. Use the Hoffle desktop app or a browser to share your screen."
+            : "This browser cannot share your screen.",
+        );
+        return;
+      }
       stopScreenShare();
       const shouldShareAudio = withAudio !== undefined ? withAudio : screenShareAudio;
       try {
@@ -2544,6 +2556,9 @@ export function useVoice({
       } catch (shareError) {
         if ((shareError as DOMException)?.name !== "NotAllowedError") {
           setError("Screen sharing could not start. Try a lower quality setting.");
+        } else if (inTauriShell() && /Mac/i.test(navigator.platform)) {
+          // The Mac webview refuses screen capture outright instead of asking.
+          setError("The Hoffle Lite app cannot share your screen on this computer. Use the Hoffle desktop app or a browser to share.");
         }
       }
     },

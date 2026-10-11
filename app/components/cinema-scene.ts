@@ -3,6 +3,7 @@
  * two instanced meshes (all 150 in two draw calls), so a full house costs next
  * to nothing to draw; people are the part that is limited, see living-room.tsx.
  */
+import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { CINEMA, CINEMA_FIRST_ROW_Z, CINEMA_RISE, CINEMA_ROWS, CINEMA_ROW_PITCH } from "../lib/living-room";

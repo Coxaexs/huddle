@@ -8,10 +8,10 @@ import yt_dlp
 
 
 YDL_OPTIONS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio/best", #are we sure that using the best audio is really neccesery, when we are going to stream it mostly 96kbps?
     "default_search": "ytsearch1",
     "noplaylist": True,
-    "quiet": True,
+    "quiet": True, #what is this flag?, why dont we want logs?
     "no_warnings": True,
     "skip_download": True,
     "nocheckcertificate": True,
