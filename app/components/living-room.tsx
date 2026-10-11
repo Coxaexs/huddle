@@ -4,7 +4,7 @@ import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Clapperboard, Dices, Eye, EyeOff, Flame, Map as MapIcon, Maximize2, Minimize2, Film, Settings2, Swords, UserRound, Users, X } from "lucide-react";
+import { Armchair, Clapperboard, Dices, Eye, EyeOff, Flame, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, Swords, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
 import { LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, headingTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
@@ -13,7 +13,7 @@ import { buildCinema } from "./cinema-scene";
 import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec } from "./tabletop-extras";
-import { CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, extractYouTubeId, type WatchInfo } from "./lounge-panels";
+import { CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { addInitiative, currentEntry, watchPosition, type TableCard, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
@@ -143,48 +143,6 @@ function drawNowPlaying(ctx: CanvasRenderingContext2D, state: PlayerState, now: 
   ctx.textAlign = "right";
   ctx.fillText(duration ? formatTime(duration) : "", W - pad, barY - 16);
   ctx.textAlign = "left";
-}
-
-/** When a YouTube video is playing, the 3D screen displays this artwork texture */
-function drawYouTubeScreen(ctx: CanvasRenderingContext2D, title: string, playing: boolean, theme: RoomTheme) {
-  const { width: W, height: H } = ctx.canvas;
-  const c = TV_COLOURS[theme];
-  const g = ctx.createLinearGradient(0, 0, W, H);
-  g.addColorStop(0, c.bg[0]);
-  g.addColorStop(1, c.bg[1]);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-
-  // Red YouTube play badge
-  const bw = 160;
-  const bh = 110;
-  const bx = (W - bw) / 2;
-  const by = H * 0.26;
-  ctx.fillStyle = "#ff0033";
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 28);
-  ctx.fill();
-
-  // White play triangle
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.moveTo(bx + 62, by + 32);
-  ctx.lineTo(bx + 110, by + 55);
-  ctx.lineTo(bx + 62, by + 78);
-  ctx.closePath();
-  ctx.fill();
-
-  // Title
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = c.ink;
-  ctx.font = `700 40px ${c.font}`;
-  ctx.fillText(title || "YouTube Video", W / 2, H * 0.64, W - 140);
-
-  // Status
-  ctx.fillStyle = c.accent;
-  ctx.font = `600 28px ${c.font}`;
-  ctx.fillText(playing ? "▶  NOW PLAYING" : "❚❚  PAUSED", W / 2, H * 0.77);
 }
 
 const EYE_SEATED = 1.1;
@@ -438,112 +396,6 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
-function YouTubeWatchOverlay({
-  videoId,
-  title,
-  watch,
-  hubNow,
-  watchVolume,
-  deafened,
-  venueId,
-  view,
-  onStop,
-}: {
-  videoId: string;
-  title: string;
-  watch: WatchState | null;
-  hubNow: () => number;
-  watchVolume: number;
-  deafened: boolean;
-  venueId: VenueId;
-  view: CameraView;
-  onStop: () => void;
-}) {
-  const [theater, setTheater] = useState(venueId === "cinema" && view === "eyes");
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const lastState = useRef<{ paused: boolean; pos: number }>({ paused: false, pos: -1 });
-
-  useEffect(() => {
-    if (venueId === "cinema" && view === "eyes") {
-      setTheater(true);
-    }
-  }, [venueId, view]);
-
-  useEffect(() => {
-    if (!watch || !iframeRef.current?.contentWindow) return;
-    const currentHubTime = hubNow();
-    const expected = watchPosition(watch, currentHubTime);
-
-    if (lastState.current.paused !== watch.paused) {
-      lastState.current.paused = watch.paused;
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: watch.paused ? "pauseVideo" : "playVideo", args: [] }),
-        "*"
-      );
-    }
-
-    if (Math.abs(expected - lastState.current.pos) > 2) {
-      lastState.current.pos = expected;
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "seekTo", args: [expected, true] }),
-        "*"
-      );
-    }
-  }, [watch, hubNow]);
-
-  useEffect(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    iframeRef.current.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func: deafened ? "mute" : "unMute", args: [] }),
-      "*"
-    );
-    iframeRef.current.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(watchVolume * 100)] }),
-      "*"
-    );
-  }, [watchVolume, deafened]);
-
-  const initialTime = watch ? Math.floor(watchPosition(watch, hubNow())) : 0;
-  const src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&start=${initialTime}&rel=0`;
-
-  return (
-    <div className={`living-room-yt-player ${theater ? "theater" : "floating"}`} role="dialog" aria-label="YouTube Video">
-      <div className="living-room-yt-bar">
-        <span className="living-room-yt-title">{title || "YouTube Video"}</span>
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => setTheater(!theater)}
-            title={theater ? "Mini player" : "Theater mode"}
-            aria-label={theater ? "Mini player" : "Theater mode"}
-          >
-            {theater ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            <span>{theater ? "Mini" : "Theater"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={onStop}
-            title="Stop watching"
-            aria-label="Stop watching"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-      <div style={{ width: "100%", height: "calc(100% - 34px)", position: "relative" }}>
-        <iframe
-          ref={iframeRef}
-          src={src}
-          title={title || "YouTube video player"}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          style={{ width: "100%", height: "100%", border: "none" }}
-        />
-      </div>
-    </div>
-  );
-}
-
 export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
@@ -611,11 +463,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    // 1.5 is plenty for soft furniture and a crowd of tokens, and a Retina screen at 2 is a lot of pixels to shade.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     mount.appendChild(renderer.domElement);
@@ -1072,9 +923,6 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     // Watch together: one video, the same moment for everyone, on the screen.
     let watchVideo: HTMLVideoElement | null = null;
     let watchTexture: THREE.VideoTexture | null = null;
-    let ytCanvas: HTMLCanvasElement | null = null;
-    let ytTexture: THREE.CanvasTexture | null = null;
-    let ytDrawn = 0;
     let watchUrl = "";
     let watchShowing = false;
     let watchBlocked = false;
@@ -1084,10 +932,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const dropWatch = () => {
       if (watchVideo) { watchVideo.pause(); watchVideo.removeAttribute("src"); watchVideo.load(); }
       watchTexture?.dispose();
-      ytTexture?.dispose();
-      ytTexture = null;
-      ytCanvas = null;
-      if (parts.screenMaterial.map === watchTexture || parts.screenMaterial.map === ytTexture) {
+      if (parts.screenMaterial.map === watchTexture) {
         parts.screenMaterial.map = null;
         parts.screenMaterial.color.set("#0f0c16");
         parts.screenMaterial.needsUpdate = true;
@@ -1104,50 +949,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const syncWatch = () => {
       const w = live.current.room.shared.watch;
       if (!w) {
-        if (watchVideo || ytTexture || watchShowing) {
+        if (watchVideo || watchShowing) {
           dropWatch();
           setWatchInfo({ duration: 0, current: 0, blocked: false, error: null });
-        }
-        return;
-      }
-      const ytId = extractYouTubeId(w.url);
-      if (ytId) {
-        if (watchVideo) {
-          watchVideo.pause();
-          watchVideo.removeAttribute("src");
-          watchVideo.load();
-          watchVideo = null;
-          watchTexture?.dispose();
-          watchTexture = null;
-        }
-        watchUrl = w.url;
-        if (videoStream) { watchShowing = false; return; }
-        poke();
-        if (!ytTexture) {
-          ytCanvas = document.createElement("canvas");
-          ytCanvas.width = 1024;
-          ytCanvas.height = 576;
-          ytTexture = new THREE.CanvasTexture(ytCanvas);
-          ytTexture.colorSpace = THREE.SRGBColorSpace;
-        }
-        const now = performance.now();
-        if (now - ytDrawn > 800) {
-          ytDrawn = now;
-          drawYouTubeScreen(ytCanvas!.getContext("2d")!, w.title || "YouTube Video", !w.paused, theme);
-          ytTexture.needsUpdate = true;
-        }
-        if (parts.screenMaterial.map !== ytTexture) {
-          parts.screenMaterial.map = ytTexture;
-          parts.screenMaterial.color.set("#ffffff");
-          parts.screenMaterial.needsUpdate = true;
-        }
-        watchShowing = true;
-        // Shut off all cinema lights when movie is playing!
-        parts.cinemaLights?.setScreenActive(!w.paused);
-        if (now - watchInfoAt > 500) {
-          watchInfoAt = now;
-          const currentPos = watchPosition(w, (live.current.serverNow ?? Date.now)());
-          setWatchInfo((old) => ({ duration: 0, current: currentPos, blocked: false, error: null }));
         }
         return;
       }
@@ -1508,7 +1312,6 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const me = connectionId ? room.poses.get(connectionId) : null;
   const seatName = me?.seat ? seatById(me.seat, venue)?.label : null;
   const tvShowing = screens[0]?.name ?? (nowPlaying?.track ? `♫ ${nowPlaying.track.title}` : null);
-  const ytVideoId = room.shared.watch?.url ? extractYouTubeId(room.shared.watch.url) : null;
 
   return (
     <div ref={shellRef} className={`living-room living-room-${theme}`} role="region" aria-label={VENUE_NAMES[venueId]}>
@@ -1649,32 +1452,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
         ))}
       </div>}
-      {ytVideoId && (
-        <YouTubeWatchOverlay
-          videoId={ytVideoId}
-          title={room.shared.watch?.title || "YouTube Video"}
-          watch={room.shared.watch}
-          hubNow={() => (serverNow ?? Date.now)()}
-          watchVolume={watchVolume}
-          deafened={deafened}
-          venueId={venueId}
-          view={view}
-          onStop={() => room.setShared("watch", null)}
-        />
-      )}
     </div>
   );
 }
 
 const LIVING_ROOM_CSS = `
 .voice-stage-bottom-bar { position: relative; z-index: 6; }
-.living-room-yt-player { position: absolute; z-index: 4; border-radius: 12px; overflow: hidden; box-shadow: 0 16px 50px rgba(0, 0, 0, 0.8); background: #0b0712; border: 1px solid var(--lr-edge); display: flex; flex-direction: column; }
-.living-room-yt-player.theater { inset: 56px 20px 80px 20px; max-width: 1100px; max-height: 640px; margin: auto; width: calc(100% - 40px); height: calc(100% - 140px); }
-.living-room-yt-player.floating { bottom: 84px; right: 20px; width: min(440px, calc(100% - 40px)); height: 260px; }
-.living-room-yt-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: rgba(18, 12, 28, 0.95); color: var(--lr-ink); font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--lr-edge); }
-.living-room-yt-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
-.living-room-yt-bar button { background: rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 3px 8px; color: inherit; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; border: none; cursor: pointer; transition: background 0.15s; }
-.living-room-yt-bar button:hover { background: rgba(255, 255, 255, 0.18); }
 .living-room { --lr-accent: #ffd27a; --lr-ink: #fff4e3; --lr-panel: rgba(28, 18, 12, 0.72); --lr-edge: rgba(255, 210, 160, 0.2); position: absolute; inset: 0; z-index: 5; background: #1a110c; overflow: hidden; border-radius: inherit; }
 .living-room-vampire { --lr-accent: #c2142f; --lr-ink: #f6e3e0; --lr-panel: rgba(20, 4, 8, 0.78); --lr-edge: rgba(176, 138, 62, 0.35); background: #0b0306; }
 .living-room-vampire .living-room-title { font-family: Georgia, serif; letter-spacing: 0.04em; }
