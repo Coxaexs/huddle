@@ -202,6 +202,19 @@ it("swaps stereo panning for head-tracked HRTF and back again", () => {
   playback.dispose();
 });
 
+it("gives only the nearest dozen voices the binaural panner in a crowd", () => {
+  const { hrtf, panners } = environment();
+  const playback = new SpatialAudioPlayback();
+  const inputs = Array.from({ length: 30 }, (_, i) => ({
+    key: `p${i}`, stream: {} as MediaStream, volume: 1, muted: false, pan: 0, seat: { x: i + 1, y: 0, z: 0 },
+  }));
+  playback.setHeadPose({ yaw: 0, pitch: 0, roll: 0 });
+  playback.update(inputs, true);
+  expect(hrtf).toHaveLength(12);
+  expect(panners).toHaveLength(18);
+  playback.dispose();
+});
+
 it("keeps an important voice in front of the listener's face as they turn", () => {
   const { hrtf } = environment();
   const playback = new SpatialAudioPlayback();

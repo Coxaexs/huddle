@@ -37,6 +37,8 @@ export interface MicSettings {
   clarity: boolean;
   /** A character effect on your voice, applied after all cleanup (see voice-effects.ts). */
   voiceEffect: VoiceEffect;
+  /** Audio delay in milliseconds to sync microphone with stream or video (0 to 2000 ms). */
+  delayMs?: number;
 }
 
 export interface MicTelemetry {
@@ -83,6 +85,7 @@ const KEYS = {
   echoCancellation: "huddle-mic-echo-cancellation",
   clarity: "huddle-mic-clarity",
   voiceEffect: "huddle-voice-effect",
+  delayMs: "huddle-audio-delay",
 };
 
 export const DEFAULT_SETTINGS: MicSettings = {
@@ -94,6 +97,7 @@ export const DEFAULT_SETTINGS: MicSettings = {
   echoCancellation: true,
   clarity: true,
   voiceEffect: "none",
+  delayMs: 0,
 };
 
 export const GAIN_RANGE = { min: -12, max: 30 };
@@ -123,6 +127,8 @@ export function readMicSettings(): MicSettings {
   const gainDb = Number(store.getItem(KEYS.gain));
   const sensitivityRaw = store.getItem(KEYS.sensitivity);
   const sensitivity = Number(sensitivityRaw);
+  const delayRaw = store.getItem(KEYS.delayMs);
+  const delayMs = delayRaw ? Math.max(0, Math.min(2000, Number(delayRaw) || 0)) : 0;
 
   return {
     mode,
@@ -136,6 +142,7 @@ export function readMicSettings(): MicSettings {
     echoCancellation: store.getItem(KEYS.echoCancellation) !== "off",
     clarity: store.getItem(KEYS.clarity) !== "off",
     voiceEffect: (["vampire", "gramophone"] as const).find((id) => id === store.getItem(KEYS.voiceEffect)) || "none",
+    delayMs,
   };
 }
 
@@ -161,6 +168,9 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
   store.setItem(KEYS.echoCancellation, merged.echoCancellation ? "on" : "off");
   store.setItem(KEYS.clarity, merged.clarity ? "on" : "off");
   store.setItem(KEYS.voiceEffect, merged.voiceEffect);
+  if (typeof merged.delayMs === "number") {
+    store.setItem(KEYS.delayMs, String(merged.delayMs));
+  }
   return merged;
 }
 
@@ -387,8 +397,11 @@ export async function openMicrophone(
     // The effect sits between the cleaned-up voice and the wire. Swapping it
     // rewires these nodes only; `destination` (and so the track) stays put.
     let effect = buildVoiceEffect(context, settings.voiceEffect);
+    const delayNode = context.createDelay(5.0);
+    delayNode.delayTime.value = Math.max(0, Math.min(2, (settings.delayMs || 0) / 1000));
     node.connect(effect.input);
-    effect.output.connect(destination);
+    effect.output.connect(delayNode);
+    delayNode.connect(destination);
 
     let current = settings;
     const listeners = new Set<(telemetry: MicTelemetry) => void>();
@@ -448,6 +461,10 @@ export async function openMicrophone(
         // peer renegotiates and the room hears a dropout.
         node.port.postMessage({ type: "settings", ...next });
         if (next.mode) ensureRnnoise(next.mode);
+        if (typeof next.delayMs === "number" && context) {
+          const clamped = Math.max(0, Math.min(2000, next.delayMs));
+          delayNode.delayTime.setTargetAtTime(clamped / 1000, context.currentTime, 0.05);
+        }
 
         const previous = current;
         current = { ...current, ...next };
@@ -461,7 +478,7 @@ export async function openMicrophone(
           effect.dispose();
           effect = buildVoiceEffect(context, current.voiceEffect);
           node.connect(effect.input);
-          effect.output.connect(destination);
+          effect.output.connect(delayNode);
         }
       },
       onTelemetry(listener) {

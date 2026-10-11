@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -173,6 +173,8 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(`CREATE TABLE IF NOT EXISTS dm_members (
         channel_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
+        hidden_at TEXT,
+        pinned_at TEXT,
         PRIMARY KEY (channel_id, user_id)
       )`),
     // Real server membership. Before this table everyone was implicitly in every
@@ -899,6 +901,10 @@ async function migrate(db: D1Database): Promise<void> {
   if (!channelColumns.has("soundboard")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN soundboard INTEGER NOT NULL DEFAULT 1").run();
   }
+  // Voice rooms: preferred voice server region ("auto", "nl", "de").
+  if (!channelColumns.has("rtc_region")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN rtc_region TEXT NOT NULL DEFAULT 'auto'").run();
+  }
 
   const pollColumns = await columnNames(db, "polls");
   if (!pollColumns.has("is_private")) {
@@ -935,9 +941,13 @@ async function migrate(db: D1Database): Promise<void> {
       .run();
   }
   // Closing a DM hides it from your list (per person); messages stay.
+  // Pinning keeps it pinned to the top of your DM list.
   const dmColumns = await columnNames(db, "dm_members");
   if (!dmColumns.has("hidden_at")) {
     await db.prepare("ALTER TABLE dm_members ADD COLUMN hidden_at TEXT").run();
+  }
+  if (!dmColumns.has("pinned_at")) {
+    await db.prepare("ALTER TABLE dm_members ADD COLUMN pinned_at TEXT").run();
   }
   // Group DMs are DM channels with more than two seats; the flag keeps a group
   // that shrinks to two people from being mistaken for a 1:1 conversation.

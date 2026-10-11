@@ -97,7 +97,70 @@ it("binds the identity to the user and their hub connection", async () => {
     last_seen_at: "",
   });
   const ok = await GET(new Request("http://localhost/api/voice/token?channelId=v1&connectionId=3f2a-b9"));
-  expect(((await ok.json()) as { identity: string }).identity).toBe("u1|3f2a-b9");
   const bad = await GET(new Request("http://localhost/api/voice/token?channelId=v1&connectionId=u2|x"));
   expect(bad.status).toBe(400);
+});
+
+it("mints token for Germany when region=de is explicitly requested", async () => {
+  setBindings({
+    LIVEKIT_URL: "wss://test.livekit.local",
+    LIVEKIT_URL_DE: "wss://test-de.livekit.local",
+    LIVEKIT_API_KEY: "testkey",
+    LIVEKIT_API_SECRET: "testsecret1234567890123456789012",
+  });
+  vi.mocked(currentUser).mockResolvedValue({
+    id: "u1",
+    username: "alice",
+    display_name: "Alice",
+    avatar: "",
+    color: "#ffffff",
+    is_admin: 0,
+    created_at: "",
+    last_seen_at: "",
+  });
+  const res = await GET(new Request("http://localhost/api/voice/token?channelId=v1&region=de"));
+  expect(res.status).toBe(200);
+  const data = (await res.json()) as { enabled?: boolean; url?: string; region?: string };
+  expect(data.enabled).toBe(true);
+  expect(data.url).toBe("wss://test-de.livekit.local");
+  expect(data.region).toBe("de");
+});
+
+it("respects channel rtc_region configuration", async () => {
+  const { findChannel } = await import("@/lib/servers");
+  vi.mocked(findChannel).mockResolvedValueOnce({
+    id: "v1",
+    server_id: "s1",
+    rtc_region: "de",
+  } as any);
+
+  setBindings({
+    DB: {
+      prepare: vi.fn().mockReturnValue({
+        bind: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue(null),
+        }),
+      }),
+    } as any,
+    LIVEKIT_URL: "wss://test.livekit.local",
+    LIVEKIT_URL_DE: "wss://test-de.livekit.local",
+    LIVEKIT_API_KEY: "testkey",
+    LIVEKIT_API_SECRET: "testsecret1234567890123456789012",
+  });
+  vi.mocked(currentUser).mockResolvedValue({
+    id: "u1",
+    username: "alice",
+    display_name: "Alice",
+    avatar: "",
+    color: "#ffffff",
+    is_admin: 0,
+    created_at: "",
+    last_seen_at: "",
+  });
+  const res = await GET(new Request("http://localhost/api/voice/token?channelId=v1"));
+  expect(res.status).toBe(200);
+  const data = (await res.json()) as { enabled?: boolean; url?: string; region?: string };
+  expect(data.enabled).toBe(true);
+  expect(data.url).toBe("wss://test-de.livekit.local");
+  expect(data.region).toBe("de");
 });

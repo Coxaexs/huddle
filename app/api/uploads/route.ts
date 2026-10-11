@@ -37,12 +37,8 @@ export async function POST(request: Request) {
   // Voice clips are webm (audio, or audio+video when someone was sharing).
   const isClip =
     upload.type.startsWith("video/") || /\.(webm|mp4)$/i.test(upload.name);
-  if (!isImage && !isPdf && !isAudio && !isClip) {
-    return Response.json(
-      { error: "Huddle accepts images, PDFs, audio and short clips." },
-      { status: 400 },
-    );
-  }
+  const isFile = !isImage && !isPdf && !isAudio && !isClip;
+
   // These must stay at or below nginx's `client_max_body_size` for
   // /hangout/ (see /etc/nginx/snippets/huddle.conf) — nginx rejects a body
   // over its limit with its own 413 before the request reaches us, which
@@ -58,13 +54,25 @@ export async function POST(request: Request) {
         ? 8 * 1024 * 1024
         : isAudio
           ? 3 * 1024 * 1024
-          : 8 * 1024 * 1024;
+          : isFile
+            ? 40 * 1024 * 1024
+            : 8 * 1024 * 1024;
   if (upload.size > maximum) {
     const megabytes = Math.round(maximum / 1024 / 1024);
     return Response.json(
       {
         error: `${
-          isPdf ? "PDFs" : isClip ? "Clips" : isVoiceMessage ? "Voice messages" : isAudio ? "Sound clips" : "Images"
+          isPdf
+            ? "PDFs"
+            : isClip
+              ? "Clips"
+              : isVoiceMessage
+                ? "Voice messages"
+                : isAudio
+                  ? "Sound clips"
+                  : isFile
+                    ? "Files"
+                    : "Images"
         } must be smaller than ${megabytes} MB.`,
       },
       { status: 413 },
@@ -75,8 +83,17 @@ export async function POST(request: Request) {
   // The declared type only picked the size limit above. What gets stored and
   // served is what the bytes actually are, and it must match the family the
   // client claimed so a "PDF" cannot turn out to be something else.
-  const sniffed = sniffUpload(bytes.slice(0, 64));
-  const claimed = isPdf ? "pdf" : isClip ? "clip" : isAudio ? "audio" : "image";
+  // Note: archives (ZIP, RAR, etc.) are never unzipped or decompressed on the server.
+  const sniffed = sniffUpload(bytes.slice(0, 512), upload.name);
+  const claimed = isPdf
+    ? "pdf"
+    : isClip
+      ? "clip"
+      : isAudio
+        ? "audio"
+        : isFile
+          ? "file"
+          : "image";
   const compatible =
     sniffed &&
     (sniffed.family === claimed ||
@@ -85,11 +102,13 @@ export async function POST(request: Request) {
       (claimed === "clip" && sniffed.family === "audio"));
   if (!sniffed || !compatible) {
     return Response.json(
-      { error: "That file's contents don't match a supported image, PDF, audio or clip format." },
+      { error: "That file's contents don't match a supported format." },
       { status: 400 },
     );
   }
-  const fallbackName = `${sniffed.family === "pdf" ? "document" : sniffed.family}.${sniffed.extension}`;
+  const fallbackName = `${
+    sniffed.family === "pdf" ? "document" : sniffed.family === "file" ? "file" : sniffed.family
+  }.${sniffed.extension}`;
   const safeName = (upload.name || fallbackName)
     .replace(/[^a-zA-Z0-9._ -]+/g, "_")
     .replace(/\s+/g, " ")

@@ -145,3 +145,19 @@ export function getRotationForValue(
 
   return baseRotation;
 }
+
+/**
+ * The outward normal, in the die model's own frame, of the face carrying
+ * `value`; null for a die or value the default theme has no face for. A d4 is
+ * read from the face it lands on, so callers turn that one downwards.
+ */
+export function faceNormal(dieType: string, value: number): [number, number, number] | null {
+  const type = dieType.startsWith("d") ? dieType : `d${dieType}`;
+  const normals = FACE_NORMALS[type];
+  if (!normals) return null;
+  const zero = (type === "d10" || type === "d100") && value === (type === "d10" ? 10 : 100) && !normals[value] && normals[0];
+  return normals[zero ? 0 : value] ?? null;
+}
+
+/** The die models the default theme can draw. */
+export const DIE_TYPES = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"] as const;

@@ -1,5 +1,6 @@
 "use client";
 
+import { DraftTextarea } from "./components/draft-textarea";
 import {
   Fragment,
   useCallback,
@@ -16,6 +17,12 @@ import {
   type ReactNode,
 } from "react";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
+import { MessageAttachmentFiles } from "./components/message-file-card";
+import {
+  formatFileSize,
+  getFileBadgeColor,
+  getFileExtensionBadge,
+} from "@/lib/upload-sniff";
 import { ConnectionBanner } from "./components/connection-banner";
 import { convertMsnEmoticons } from "@/lib/msn-emoticons";
 import {
@@ -100,6 +107,7 @@ import {
   Gamepad2,
   Type,
   ChevronDown,
+  ChevronUp,
   X,
   User,
   UserPlus,
@@ -122,6 +130,8 @@ import {
   Timer,
   CalendarDays,
   LogOut,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   startCallingTone,
@@ -180,7 +190,7 @@ import { OutlineEmoji } from "./components/outline-emoji";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
-import type { Message, DmSummary, MentionEntry, MentionOption } from "./lib/chat/types";
+import { type Message, type DmSummary, type MentionEntry, type MentionOption, compareDms } from "./lib/chat/types";
 import { DM_HOME, DEFAULT_QUICK_REACTIONS, QUICK_VOTES } from "./lib/chat/constants";
 import { commandArgsHint, dayDividerLabel, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
 import { applyReaction } from "./lib/chat/reactions";
@@ -512,6 +522,12 @@ export function ChatShell() {
   const [openActionsId, setOpenActionsId] = useState<string | number | null>(
     null,
   );
+  /** Track Shift key hold to reveal all message actions. */
+  const [shiftPressed, setShiftPressed] = useState(false);
+  /** On mobile, toggle more message actions without crowding the bar. */
+  const [mobileActionsMoreId, setMobileActionsMoreId] = useState<string | number | null>(null);
+  /** On mobile, toggle extra tools popup for composer (^). */
+  const [mobileComposerMenuOpen, setMobileComposerMenuOpen] = useState(false);
   /** Which message's quick-vote chips are currently open. */
   const [quickVoteId, setQuickVoteId] = useState<string | number | null>(null);
 
@@ -714,6 +730,49 @@ export function ChatShell() {
     Record<string, ResolvedInvite>
   >({});
   const fetchingInvitesRef = useRef<Set<string>>(new Set());
+
+  const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null);
+
+  // Clean up excessive whitespace/newlines when copying text from the chat messages area
+  useEffect(() => {
+    const handleCopy = (e: ClipboardEvent) => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
+      const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      if (!range) return;
+
+      const container = range.commonAncestorContainer;
+      const element =
+        container.nodeType === Node.ELEMENT_NODE
+          ? (container as Element)
+          : container.parentElement;
+
+      // Only handle selections that touch messages in chat
+      if (!element?.closest(".messages-scroller, .message, .message-body")) return;
+
+      let rawText = selection.toString();
+      if (!rawText) return;
+
+      // Normalize CRLF to LF
+      let cleaned = rawText.replace(/\r\n/g, "\n");
+      // Collapse 3 or more consecutive newlines into 2 (clean paragraph break)
+      cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+      // Strip trailing whitespace per line and overall trim
+      cleaned = cleaned
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .join("\n")
+        .trim();
+
+      if (cleaned && e.clipboardData) {
+        e.clipboardData.setData("text/plain", cleaned);
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener("copy", handleCopy);
+    return () => document.removeEventListener("copy", handleCopy);
+  }, []);
 
   const touchStartRef = useRef<{ x: number; y: number; id: string | number } | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1019,6 +1078,11 @@ export function ChatShell() {
   /** Slash commands registered by connected bots, offered beside our own. */
   const [botCommands, setBotCommands] = useState<SlashCommand[]>([]);
   const [userMenu, setUserMenu] = useState<UserMenuTarget | null>(null);
+  const [groupDmMenu, setGroupDmMenu] = useState<{
+    dm: DmSummary;
+    x: number;
+    y: number;
+  } | null>(null);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
   /** Image(s) opened fullscreen in the carousel lightbox. */
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
@@ -2182,8 +2246,11 @@ export function ChatShell() {
     () => dms.find((dm) => dm.channelId === activeChannelId) || null,
     [dms, activeChannelId],
   );
-  /** DMs shown in the list; closed ones stay reachable through Cmd+K. */
-  const visibleDms = useMemo(() => dms.filter((dm) => !dm.hidden), [dms]);
+  /** DMs shown in the list; closed ones stay reachable through Cmd+K. Pinned first, then sorted by latest message. */
+  const visibleDms = useMemo(
+    () => dms.filter((dm) => !dm.hidden).sort(compareDms),
+    [dms],
+  );
   const isSelfDm = Boolean(
     inDmHome && activeDm && user && activeDm.user.id === user.id,
   );
@@ -2213,6 +2280,25 @@ export function ChatShell() {
       // does not know yet is a brand-new DM (or a server just joined).
       const isDm =
         dmChannelIdsRef.current.has(channelId) || !channelServerRef.current.get(channelId);
+      if (isDm) {
+        setDms((current) => {
+          const exists = current.some((d) => d.channelId === channelId);
+          if (!exists) {
+            void loadDms().catch(() => undefined);
+            return current;
+          }
+          return current.map((d) =>
+            d.channelId === channelId
+              ? {
+                  ...d,
+                  lastAt: incoming.createdAt || new Date().toISOString(),
+                  lastMessage: incoming.text,
+                  hidden: false,
+                }
+              : d,
+          );
+        });
+      }
       // Nudges shake the window when they land in the open conversation or
       // any DM, unless the sender is blocked.
       if (
@@ -2643,12 +2729,14 @@ export function ChatShell() {
     }
     return map;
   }, [servers]);
+  const isDevUser = Boolean(user?.isDev || user?.username === "kiwi" || user?.username === "flo");
   const voice = useVoice({
     connectionId: hub.connectionId,
     session: hub.session,
     rooms: hub.voice,
     send: hub.send,
     roomBitrates,
+    isDev: isDevUser,
   });
   const captions = useLiveCaptions({
     roomId: voice.channelId,
@@ -2676,6 +2764,24 @@ export function ChatShell() {
     const name = voiceChannels.find((channel) => channel.id === channelId)?.name;
     setNotice(name ? `You were moved to ${name}.` : "You were moved to another voice channel.");
   };
+
+  const activeVoiceChannel = useMemo(() => {
+    if (!voice.channelId) return null;
+    for (const server of servers) {
+      for (const channel of server.channels) {
+        if (channel.id === voice.channelId) return channel;
+      }
+    }
+    return null;
+  }, [servers, voice.channelId]);
+
+  useEffect(() => {
+    if (!voice.channelId || !voice.isSfu || !voice.voiceRegion || !activeVoiceChannel) return;
+    const target = activeVoiceChannel.rtcRegion;
+    if (target && target !== "auto" && voice.voiceRegion !== target) {
+      void voice.switchRegion(target);
+    }
+  }, [voice.channelId, voice.isSfu, voice.voiceRegion, activeVoiceChannel, voice.switchRegion]);
   // Native apps: mirror the call into the Android notification + bubble or
   // the iOS call UI, and take Mute / Deafen / Leave presses back from them.
   useMobileShell({
@@ -3067,6 +3173,8 @@ export function ChatShell() {
       [gifOpen, ".gif-picker, .gif-button, .msn-format-shell", () => setGifOpen(false)],
       [formatOpen, ".text-style-menu, .composer-format-btn", () => setFormatOpen(false)],
       [gamesOpen, ".games-picker, .composer-games-btn", () => setGamesOpen(false)],
+      [mobileComposerMenuOpen, ".mobile-composer-menu-popover, .composer-more-mobile-btn", () => setMobileComposerMenuOpen(false)],
+      [mobileActionsMoreId !== null, ".message-actions, .message-action-mobile-more", () => setMobileActionsMoreId(null)],
       [mentionsOpen, '.mentions-panel, [aria-label="Mentions"]', () => setMentionsOpen(false)],
       [pinsOpen, '.pins-panel:not(.mentions-panel), [aria-label="Pinned messages"]', () => setPinsOpen(false)],
       [savedOpen, '.saved-panel, [aria-label="Saved messages"]', () => setSavedOpen(false)],
@@ -3083,7 +3191,21 @@ export function ChatShell() {
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [serverMenuOpen, kindMenu, statusOpen, quickSoundboardOpen, emojiOpen, gifOpen, formatOpen, mentionsOpen, pinsOpen]);
+  }, [
+    serverMenuOpen,
+    kindMenu,
+    statusOpen,
+    quickSoundboardOpen,
+    emojiOpen,
+    gifOpen,
+    formatOpen,
+    gamesOpen,
+    mobileComposerMenuOpen,
+    mobileActionsMoreId,
+    mentionsOpen,
+    pinsOpen,
+    savedOpen,
+  ]);
 
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -3239,6 +3361,25 @@ export function ChatShell() {
     () => Object.values(unread).reduce((sum, entry) => sum + (entry.mentions || 0), 0),
     [unread],
   );
+
+  // Listen for Shift key state to reveal all message actions on hover
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Shift") setShiftPressed(true);
+    };
+    const onKeyUp = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Shift") setShiftPressed(false);
+    };
+    const onBlur = () => setShiftPressed(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   // Theme click effects: blood from Vampire buttons, glyphs from Matrix, and so on.
   useEffect(() => installThemeFx(), []);
@@ -3935,6 +4076,32 @@ export function ChatShell() {
       setDms(data.conversations);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not do that.");
+      void loadDms().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Pins or unpins a DM to keep it at the top of the direct messages list.
+   */
+  async function togglePinDm(channelId: string, pinned: boolean) {
+    const now = new Date().toISOString();
+    setDms((current) =>
+      current.map((dm) =>
+        dm.channelId === channelId
+          ? { ...dm, pinned, pinnedAt: pinned ? now : null, hidden: false }
+          : dm,
+      ),
+    );
+    try {
+      const data = await apiFetch<{ conversations: DmSummary[] }>("/api/dms", {
+        method: "PATCH",
+        body: JSON.stringify({ channelId, pinned }),
+      });
+      if (data?.conversations) {
+        setDms(data.conversations);
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not pin that conversation.");
       void loadDms().catch(() => undefined);
     }
   }
@@ -4807,6 +4974,22 @@ export function ChatShell() {
 
   async function sendText(text: string, attachmentKeys?: string | string[]) {
     if (!activeChannelId) return;
+    const isDm = dmChannelIdsRef.current.has(activeChannelId) || inDmHome;
+    if (isDm) {
+      const now = new Date().toISOString();
+      setDms((current) =>
+        current.map((d) =>
+          d.channelId === activeChannelId
+            ? {
+                ...d,
+                lastAt: now,
+                lastMessage: text,
+                hidden: false,
+              }
+            : d,
+        ),
+      );
+    }
     const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
     setReplyTarget(null);
     const keys =
@@ -5800,13 +5983,16 @@ export function ChatShell() {
     const MAX = 10;
 
     for (const file of list) {
-      const isImage = file.type.startsWith("image/");
-      const isPdf =
-        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-      if (!isImage && !isPdf) {
-        setNotice("Huddle takes images and PDFs.");
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith(".svg") || lower.endsWith(".html") || lower.endsWith(".htm")) {
+        setNotice("For security, HTML and SVG files cannot be attached.");
         continue;
       }
+      if (file.size > 40 * 1024 * 1024) {
+        setNotice(`${file.name} is larger than 40 MB.`);
+        continue;
+      }
+      const isImage = file.type.startsWith("image/");
       const id = `${file.name}:${file.size}:${crypto.randomUUID()}`;
       setPendingFiles((current) =>
         current.length >= MAX ? current : [...current, { id, file, preview: null }],
@@ -6158,6 +6344,39 @@ export function ChatShell() {
     }
   }
 
+  async function editChannelRegion(channel: PublicChannel) {
+    const current = channel.rtcRegion || "auto";
+    showCustomPrompt({
+      title: `Region Override for #${channel.name}`,
+      message:
+        `Select the primary voice server region for this channel.\n` +
+        `• "auto" - Netherlands normally, automatically routes to Germany when 40+ people join\n` +
+        `• "nl" - Netherlands (Home Server)\n` +
+        `• "de" - Germany (Oracle Cloud)`,
+      defaultValue: current,
+      placeholder: "auto, nl, or de",
+      confirmText: "Set Region",
+      onConfirm: async (value) => {
+        const val = (value || "").trim().toLowerCase();
+        if (val !== "auto" && val !== "nl" && val !== "de") {
+          setNotice("Invalid region. Choose 'auto', 'nl', or 'de'.");
+          return;
+        }
+        try {
+          const data = await apiFetch<{ servers: PublicServer[] }>(
+            `/api/channels/${channel.id}`,
+            { method: "PATCH", body: JSON.stringify({ rtcRegion: val }) },
+          );
+          setServers(data.servers);
+          const label = val === "de" ? "Germany" : val === "nl" ? "Netherlands" : "Automatic";
+          setNotice(`Voice region set to ${label} for #${channel.name}.`);
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Could not set region.");
+        }
+      },
+    });
+  }
+
   async function deleteChannel(channel: PublicChannel) {
     showCustomConfirm({
       title: `Delete '${channel.name}'?`,
@@ -6195,10 +6414,21 @@ export function ChatShell() {
     setSettingsOpen(false);
   }
 
-  function openUserMenu(event: MouseEvent, member: Member) {
+  function openUserMenu(
+    event: MouseEvent,
+    member: Member,
+    opts?: { dmChannelId?: string; dmPinned?: boolean },
+  ) {
     event.preventDefault();
     setBotMenu(null);
-    setUserMenu({ member, x: event.clientX, y: event.clientY });
+    setGroupDmMenu(null);
+    setUserMenu({
+      member,
+      x: event.clientX,
+      y: event.clientY,
+      dmChannelId: opts?.dmChannelId,
+      dmPinned: opts?.dmPinned,
+    });
   }
 
   /**
@@ -7493,7 +7723,7 @@ export function ChatShell() {
             {visibleDms.map((dm) => {
               const isSelf = Boolean(user && dm.user.id === user.id);
               return (
-                <div key={dm.channelId} className="dm-row">
+                <div key={dm.channelId} className={`dm-row ${dm.pinned ? "is-pinned" : ""}`}>
                 <button
                   className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
                     }`}
@@ -7503,11 +7733,16 @@ export function ChatShell() {
                     setMobileNav(false);
                   }}
                   onContextMenu={(event) => {
+                    event.preventDefault();
                     if (dm.group) {
-                      event.preventDefault();
+                      setUserMenu(null);
+                      setGroupDmMenu({ dm, x: event.clientX, y: event.clientY });
                       return;
                     }
-                    openUserMenu(event, dm.user);
+                    openUserMenu(event, dm.user, {
+                      dmChannelId: dm.channelId,
+                      dmPinned: dm.pinned,
+                    });
                   }}
                 >
                   {unread[dm.channelId]?.unread && <span className="unread-pill" />}
@@ -7531,6 +7766,9 @@ export function ChatShell() {
                     {isSelf && " (Notes)"}
                   </span>
                   )}
+                  {dm.pinned && (
+                    <Pin size={11} className="dm-pinned-indicator text-[var(--lavender)] fill-[var(--lavender)] rotate-45 ml-auto flex-shrink-0" />
+                  )}
                   {dm.group ? null : isSelf ? (
                     <StickyNote size={12} className="text-amber-400/80 ml-auto flex-shrink-0" />
                   ) : (
@@ -7545,15 +7783,32 @@ export function ChatShell() {
                     </span>
                   )}
                 </button>
-                <button
-                  type="button"
-                  className="dm-close"
-                  aria-label={`Close conversation with ${dm.user.displayName}`}
-                  title="Close (messages are kept, reopen with Cmd+K)"
-                  onClick={() => void setDmClosed(dm.channelId, true)}
-                >
-                  <X size={13} />
-                </button>
+                <div className="dm-row-actions">
+                  <button
+                    type="button"
+                    className={`dm-action-btn dm-pin-btn ${dm.pinned ? "is-pinned" : ""}`}
+                    aria-label={dm.pinned ? `Unpin conversation with ${dm.user.displayName}` : `Pin conversation with ${dm.user.displayName}`}
+                    title={dm.pinned ? "Unpin conversation" : "Pin conversation"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void togglePinDm(dm.channelId, !dm.pinned);
+                    }}
+                  >
+                    <Pin size={12} className={dm.pinned ? "fill-current" : ""} />
+                  </button>
+                  <button
+                    type="button"
+                    className="dm-action-btn dm-close"
+                    aria-label={`Close conversation with ${dm.user.displayName}`}
+                    title="Close (messages are kept, reopen with Cmd+K)"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void setDmClosed(dm.channelId, true);
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
                 </div>
               );
             })}
@@ -7964,6 +8219,15 @@ export function ChatShell() {
                   <div className="dm-call-actions">
                     <button
                       type="button"
+                      className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
+                      onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
+                      title={activeDm.pinned ? "Unpin group from top" : "Pin group to top"}
+                    >
+                      <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
+                      <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
+                    </button>
+                    <button
+                      type="button"
                       className="dm-call-btn flex items-center gap-1.5"
                       onClick={() => setGroupDialog({ mode: "add", channelId: activeDm.channelId })}
                       title="Add friends to this group"
@@ -7988,55 +8252,66 @@ export function ChatShell() {
                     </button>
                   </div>
                 )}
-                {inDmHome && activeChannelId && !isSelfDm && !activeDm?.group && (
+                {inDmHome && activeChannelId && activeDm && !activeDm.group && (
                   <div className="dm-call-actions">
-                    {dmCall && dmCall.channelId === activeChannelId ? (
-                      <button
-                        type="button"
-                        className="dm-call-btn flex items-center gap-1.5"
-                        onClick={() => setStageChannelId(activeChannelId)}
-                        title="Open Full Call View"
-                      >
-                        <Maximize2 size={15} /> Call View
-                      </button>
-                    ) : voiceRooms[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
-                      <button
-                        type="button"
-                        className="dm-join-call-btn flex items-center gap-1.5"
-                        onClick={() => {
-                          void voice.join(activeChannelId);
-                          if (activeDm) {
-                            setDmCall({
-                              channelId: activeChannelId,
-                              otherUser: activeDm.user,
-                              status: "connected",
-                              startTime: Date.now(),
-                            });
-                          }
-                        }}
-                        title="Join Ongoing Call"
-                      >
-                        <PhoneCall size={15} /> Join Call
-                      </button>
-                    ) : (
-                      <>
+                    <button
+                      type="button"
+                      className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
+                      onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
+                      title={activeDm.pinned ? "Unpin conversation from top" : "Pin conversation to top"}
+                    >
+                      <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
+                      <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
+                    </button>
+                    {!isSelfDm && (
+                      dmCall && dmCall.channelId === activeChannelId ? (
                         <button
                           type="button"
                           className="dm-call-btn flex items-center gap-1.5"
-                          onClick={() => startDmCall(false)}
-                          title="Start Voice Call"
+                          onClick={() => setStageChannelId(activeChannelId)}
+                          title="Open Full Call View"
                         >
-                          <PhoneCall size={15} /> Start Call
+                          <Maximize2 size={15} /> Call View
                         </button>
+                      ) : voiceRooms[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
                         <button
                           type="button"
-                          className="dm-call-btn flex items-center gap-1.5"
-                          onClick={() => startDmCall(true)}
-                          title="Start Video Call"
+                          className="dm-join-call-btn flex items-center gap-1.5"
+                          onClick={() => {
+                            void voice.join(activeChannelId);
+                            if (activeDm) {
+                              setDmCall({
+                                channelId: activeChannelId,
+                                otherUser: activeDm.user,
+                                status: "connected",
+                                startTime: Date.now(),
+                              });
+                            }
+                          }}
+                          title="Join Ongoing Call"
                         >
-                          <Video size={15} /> Video Call
+                          <PhoneCall size={15} /> Join Call
                         </button>
-                      </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="dm-call-btn flex items-center gap-1.5"
+                            onClick={() => startDmCall(false)}
+                            title="Start Voice Call"
+                          >
+                            <PhoneCall size={15} /> Start Call
+                          </button>
+                          <button
+                            type="button"
+                            className="dm-call-btn flex items-center gap-1.5"
+                            onClick={() => startDmCall(true)}
+                            title="Start Video Call"
+                          >
+                            <Video size={15} /> Video Call
+                          </button>
+                        </>
+                      )
                     )}
                   </div>
                 )}
@@ -8137,6 +8412,7 @@ export function ChatShell() {
                 onActivity={setRoomActivity}
                 diceRoll={diceRoll}
                 onDiceRollDone={() => setDiceRoll(null)}
+                onRollCommand={(command) => void runCommand(command)}
                 onOpenParticipantMenu={(event, person) => {
                   if (person.bot) {
                     openBotMenu(event, "music");
@@ -9307,7 +9583,7 @@ export function ChatShell() {
                               ...[message.image, ...(message.images || [])]
                                 .filter((img): img is string => typeof img === "string" && Boolean(img))
                                 .map(fileNameFromUrl),
-                              ...(message.file ? [message.file.name] : []),
+                              ...((message.files || (message.file ? [message.file] : [])).map((f: { name: string }) => f.name)),
                             ]}
                           >
                           {(() => {
@@ -9325,25 +9601,10 @@ export function ChatShell() {
                               />
                             );
                           })()}
-                          {message.file?.type === "pdf" && (
-                            <button
-                              type="button"
-                              className="message-file-card"
-                              onClick={() =>
-                                setPdfViewer({
-                                  url: message.file!.url,
-                                  name: message.file!.name,
-                                })
-                              }
-                            >
-                              <span className="message-file-icon">PDF</span>
-                              <span>
-                                <strong>{message.file.name}</strong>
-                                <small>PDF document · view and fill in Huddle</small>
-                              </span>
-                              <b aria-hidden="true">Open</b>
-                            </button>
-                          )}
+                          <MessageAttachmentFiles
+                            files={message.files || message.file}
+                            onPdf={(pdf) => setPdfViewer(pdf)}
+                          />
                           </MsnFileTransfer>
 
                           {(message.threadCount ?? 0) > 0 && message.kind !== "ai" && (
@@ -9506,107 +9767,138 @@ export function ChatShell() {
                               <SmilePlus size={16} />
                             </button>
                           </div>
-                          <button
-                            type="button"
-                            title="Reply"
-                            onClick={() => {
-                              setReplyTarget(message);
-                              composerRef.current?.focus();
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            <Reply size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}
-                            onClick={() => {
-                              void toggleSaved(String(message.id));
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            {savedIds.has(String(message.id)) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-                          </button>
-                          <button
-                            type="button"
-                            title="Reply in thread"
-                            onClick={() => {
-                              void openThread(message);
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            <MessageSquare size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            title="Forward"
-                            onClick={() => {
-                              const chName = inDmHome
-                                ? activeDm?.user.displayName
-                                : activeChannel?.name;
-                              const srvName = inDmHome ? undefined : activeServer?.name;
-                              setForwardTarget({
-                                id: message.id,
-                                author: author?.displayName || message.author,
-                                avatar: author?.avatar || message.avatar,
-                                avatarUrl: author?.avatarUrl,
-                                color: author?.color || message.color,
-                                text: message.text,
-                                createdAt: message.createdAt,
-                                image: message.image,
-                                images: message.images,
-                                file: message.file,
-                                channelId: message.channelId || activeChannelId,
-                                channelName: chName,
-                                serverName: srvName,
-                              });
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            <Forward size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            title="Quick vote"
-                            onClick={() => {
-                              setQuickVoteId((current) =>
-                                current === message.id ? null : message.id,
-                              );
-                              setOpenActionsId(null);
-                            }}
-                          >
-                            <Vote size={16} />
-                          </button>
-                          {message.userId === user.id && !message.bot && (
+                          {/* Show extra actions when Shift is held on desktop or when More is tapped on mobile */}
+                          {(shiftPressed || mobileActionsMoreId === message.id) && (
+                            <>
+                              <button
+                                type="button"
+                                title="Reply"
+                                onClick={() => {
+                                  setReplyTarget(message);
+                                  composerRef.current?.focus();
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                }}
+                              >
+                                <Reply size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}
+                                onClick={() => {
+                                  void toggleSaved(String(message.id));
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                }}
+                              >
+                                {savedIds.has(String(message.id)) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                              </button>
+                              <button
+                                type="button"
+                                title="Reply in thread"
+                                onClick={() => {
+                                  void openThread(message);
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                }}
+                              >
+                                <MessageSquare size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Forward"
+                                onClick={() => {
+                                  const chName = inDmHome
+                                    ? activeDm?.user.displayName
+                                    : activeChannel?.name;
+                                  const srvName = inDmHome ? undefined : activeServer?.name;
+                                  setForwardTarget({
+                                    id: message.id,
+                                    author: author?.displayName || message.author,
+                                    avatar: author?.avatar || message.avatar,
+                                    avatarUrl: author?.avatarUrl,
+                                    color: author?.color || message.color,
+                                    text: message.text,
+                                    createdAt: message.createdAt,
+                                    image: message.image,
+                                    images: message.images,
+                                    file: message.file,
+                                    channelId: message.channelId || activeChannelId,
+                                    channelName: chName,
+                                    serverName: srvName,
+                                  });
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                }}
+                              >
+                                <Forward size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Quick vote"
+                                onClick={() => {
+                                  setQuickVoteId((current) =>
+                                    current === message.id ? null : message.id,
+                                  );
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                }}
+                              >
+                                <Vote size={16} />
+                              </button>
+                              {message.userId === user.id && !message.bot && (
+                                <button
+                                  type="button"
+                                  title="Edit"
+                                  onClick={() => {
+                                    beginEdit(message);
+                                    setOpenActionsId(null);
+                                    setMobileActionsMoreId(null);
+                                  }}
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                              )}
+                              {canPin && (
+                                <button
+                                  type="button"
+                                  title={message.pinned ? "Unpin" : "Pin"}
+                                  onClick={() => {
+                                    void togglePin(message);
+                                    setOpenActionsId(null);
+                                    setMobileActionsMoreId(null);
+                                  }}
+                                >
+                                  <Pin size={16} />
+                                </button>
+                              )}
+                            </>
+                          )}
+
+                          {/* Mobile more button to unfold secondary actions */}
+                          {!shiftPressed && (
                             <button
                               type="button"
-                              title="Edit"
-                              onClick={() => {
-                                beginEdit(message);
-                                setOpenActionsId(null);
+                              className={`message-action-mobile-more ${mobileActionsMoreId === message.id ? "active" : ""}`}
+                              title={mobileActionsMoreId === message.id ? "Fewer actions" : "More actions (or hold Shift)"}
+                              aria-label="More actions"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMobileActionsMoreId((curr) => (curr === message.id ? null : message.id));
                               }}
                             >
-                              <Pencil size={16} />
+                              <MoreHorizontal size={16} />
                             </button>
                           )}
-                          {canPin && (
-                          <button
-                              type="button"
-                              title={message.pinned ? "Unpin" : "Pin"}
-                              onClick={() => {
-                                void togglePin(message);
-                                setOpenActionsId(null);
-                              }}
-                            >
-                              <Pin size={16} />
-                            </button>
-                          )}
+
+                          {/* Delete button always available */}
                           {canDelete && (
                             <button
                               type="button"
                               title="Delete (Hold Shift to skip confirmation)"
                               onClick={(event) => {
                                 setOpenActionsId(null);
+                                setMobileActionsMoreId(null);
                                 if (event.shiftKey) {
                                   void deleteMessage(message.id);
                                 } else {
@@ -9942,11 +10234,13 @@ export function ChatShell() {
                             <img src={entry.preview} alt={entry.file.name} />
                           ) : (
                             <>
-                              <span className="message-file-icon">PDF</span>
+                              <span className={`message-file-icon file-badge-${getFileBadgeColor(entry.file.name)}`}>
+                                {getFileExtensionBadge(entry.file.name)}
+                              </span>
                               <span>
                                 <strong>{entry.file.name}</strong>
                                 <small>
-                                  {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+                                  {formatFileSize(entry.file.size)}
                                 </small>
                               </span>
                             </>
@@ -10057,19 +10351,18 @@ export function ChatShell() {
                         type="button"
                         className="attach-button"
                         onClick={() => fileRef.current?.click()}
-                        aria-label="Attach an image or PDF"
+                        aria-label="Attach files or media"
                       >
                         +
                       </button>
                       <input
                         ref={fileRef}
                         type="file"
-                        accept="image/*,application/pdf,.pdf"
                         multiple
                         hidden
                         onChange={chooseAttachment}
                       />
-                      <textarea
+                      <DraftTextarea
                         ref={composerRef}
                         value={draft}
                         onChange={(event) => {
@@ -10109,9 +10402,74 @@ export function ChatShell() {
                         disabled={!activeChannelId}
                         style={msnTheme ? messageFontStyle(messageFont) : undefined}
                       />
+                      {/* Mobile ^ more menu popover */}
+                      {mobileComposerMenuOpen && (
+                        <div
+                          className="mobile-composer-menu-popover animate-in fade-in zoom-in-95 duration-150"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="mobile-composer-menu-item"
+                            onClick={() => {
+                              setFormatOpen((open) => !open);
+                              setMobileComposerMenuOpen(false);
+                              setEmojiOpen(false);
+                              setGifOpen(false);
+                            }}
+                          >
+                            <Type size={18} />
+                            <span>Text Formatting</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="mobile-composer-menu-item"
+                            onClick={() => {
+                              setPollDialogOpen(true);
+                              setMobileComposerMenuOpen(false);
+                            }}
+                          >
+                            <Vote size={18} />
+                            <span>Create Poll</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="mobile-composer-menu-item"
+                            onClick={() => {
+                              setGamesOpen((open) => !open);
+                              setMobileComposerMenuOpen(false);
+                              setEmojiOpen(false);
+                              setGifOpen(false);
+                              setFormatOpen(false);
+                            }}
+                            disabled={!activeChannelId}
+                          >
+                            <Gamepad2 size={18} />
+                            <span>Play Games</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Mobile ^ more menu toggle button */}
                       <button
                         type="button"
-                        className={`composer-emoji-btn composer-format-btn ${formatOpen ? "active" : ""}`}
+                        className={`composer-emoji-btn composer-more-mobile-btn ${mobileComposerMenuOpen ? "active" : ""}`}
+                        onClick={() => {
+                          setMobileComposerMenuOpen((prev) => !prev);
+                          setEmojiOpen(false);
+                          setGifOpen(false);
+                          setFormatOpen(false);
+                        }}
+                        aria-label="More options"
+                        title="More tools"
+                      >
+                        <ChevronUp size={18} className={mobileComposerMenuOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+                      </button>
+
+                      {/* Formatting button (desktop only) */}
+                      <button
+                        type="button"
+                        className={`composer-emoji-btn composer-format-btn desktop-composer-item ${formatOpen ? "active" : ""}`}
                         onClick={() => {
                           setFormatOpen((open) => !open);
                           setEmojiOpen(false);
@@ -10123,6 +10481,8 @@ export function ChatShell() {
                       >
                         <Type size={18} />
                       </button>
+
+                      {/* Emoji button - visible on both mobile and desktop */}
                       <button
                         type="button"
                         className="composer-emoji-btn"
@@ -10130,35 +10490,43 @@ export function ChatShell() {
                           setEmojiOpen((open) => !open);
                           setGifOpen(false);
                           setFormatOpen(false);
+                          setMobileComposerMenuOpen(false);
                         }}
                         aria-label="Open Emoji Picker"
                         title="Open Emoji Picker"
                       >
                         <Smile size={18} />
                       </button>
+
+                      {/* GIF button - visible on both mobile and desktop */}
                       <button
                         type="button"
                         className="gif-button"
                         onClick={() => {
                           setGifOpen((open) => !open);
                           setEmojiOpen(false);
+                          setMobileComposerMenuOpen(false);
                         }}
                         aria-label="Add a GIF"
                       >
                         GIF
                       </button>
+
+                      {/* Poll button (desktop only) */}
                       <button
                         type="button"
-                        className="composer-emoji-btn"
+                        className="composer-emoji-btn desktop-composer-item"
                         onClick={() => setPollDialogOpen(true)}
                         aria-label="Create a Poll"
                         title="Create a Poll"
                       >
                         <Vote size={18} />
                       </button>
+
+                      {/* Games button (desktop only) */}
                       <button
                         type="button"
-                        className={`composer-emoji-btn composer-games-btn ${gamesOpen ? "active" : ""}`}
+                        className={`composer-emoji-btn composer-games-btn desktop-composer-item ${gamesOpen ? "active" : ""}`}
                         onClick={() => {
                           setGamesOpen((open) => !open);
                           setEmojiOpen(false);
@@ -10172,6 +10540,8 @@ export function ChatShell() {
                       >
                         <Gamepad2 size={18} />
                       </button>
+
+                      {/* Slash command button - visible on both mobile and desktop */}
                       <button
                         type="button"
                         className="gif-button"
@@ -10354,25 +10724,10 @@ export function ChatShell() {
                     />
                   );
                 })()}
-                {threadRoot.file?.type === "pdf" && (
-                  <button
-                    type="button"
-                    className="message-file-card"
-                    onClick={() =>
-                      setPdfViewer({
-                        url: threadRoot.file!.url,
-                        name: threadRoot.file!.name,
-                      })
-                    }
-                  >
-                    <span className="message-file-icon">PDF</span>
-                    <span>
-                      <strong>{threadRoot.file.name}</strong>
-                      <small>PDF document · view and fill in Huddle</small>
-                    </span>
-                    <b aria-hidden="true">Open</b>
-                  </button>
-                )}
+                <MessageAttachmentFiles
+                  files={threadRoot.files || threadRoot.file}
+                  onPdf={(pdf) => setPdfViewer(pdf)}
+                />
                 {extractInviteCodes(threadRoot.text).map((code) => {
                   const inv = resolvedInvites[code];
                   if (!inv) return null;
@@ -10492,25 +10847,10 @@ export function ChatShell() {
                         />
                       );
                     })()}
-                    {reply.file?.type === "pdf" && (
-                      <button
-                        type="button"
-                        className="message-file-card"
-                        onClick={() =>
-                          setPdfViewer({
-                            url: reply.file!.url,
-                            name: reply.file!.name,
-                          })
-                        }
-                      >
-                        <span className="message-file-icon">PDF</span>
-                        <span>
-                          <strong>{reply.file.name}</strong>
-                          <small>PDF document · view and fill in Huddle</small>
-                        </span>
-                        <b aria-hidden="true">Open</b>
-                      </button>
-                    )}
+                    <MessageAttachmentFiles
+                      files={reply.files || reply.file}
+                      onPdf={(pdf) => setPdfViewer(pdf)}
+                    />
                     {extractInviteCodes(reply.text).map((code) => {
                       const inv = resolvedInvites[code];
                       if (!inv) return null;
@@ -11100,6 +11440,14 @@ export function ChatShell() {
             void saveVoicePref(userMenu.member.id, { serverMuted: muted });
             setUserMenu(null);
           }}
+          onTogglePinDm={
+            userMenu.dmChannelId
+              ? () => {
+                  void togglePinDm(userMenu.dmChannelId!, !userMenu.dmPinned);
+                }
+              : undefined
+          }
+          dmPinned={userMenu.dmPinned}
           canModerate={canModerate}
           canManage={canManageServer && !inDmHome}
           onRemoveFromGroup={
@@ -11179,6 +11527,33 @@ export function ChatShell() {
                 }
               : undefined
           }
+        />
+      )}
+
+      {groupDmMenu && (
+        <GroupDmContextMenu
+          target={groupDmMenu}
+          onClose={() => setGroupDmMenu(null)}
+          onTogglePin={() => {
+            void togglePinDm(groupDmMenu.dm.channelId, !groupDmMenu.dm.pinned);
+            setGroupDmMenu(null);
+          }}
+          onRename={() => {
+            renameGroupDm(groupDmMenu.dm);
+            setGroupDmMenu(null);
+          }}
+          onAddMembers={() => {
+            setGroupDialog({ mode: "add", channelId: groupDmMenu.dm.channelId });
+            setGroupDmMenu(null);
+          }}
+          onLeave={() => {
+            leaveGroupDm(groupDmMenu.dm);
+            setGroupDmMenu(null);
+          }}
+          onCloseDm={() => {
+            void setDmClosed(groupDmMenu.dm.channelId, true);
+            setGroupDmMenu(null);
+          }}
         />
       )}
 
@@ -11493,6 +11868,19 @@ export function ChatShell() {
                     }}
                   >
                     {channelMenu.channel.soundboard === false ? "Turn soundboard on" : "Turn soundboard off"}
+                  </button>
+                )}
+                {channelKindInfo(channelMenu.channel.kind).voice && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const channel = channelMenu.channel;
+                      setChannelMenu(null);
+                      void editChannelRegion(channel);
+                    }}
+                  >
+                    Region Override ({channelMenu.channel.rtcRegion === "de" ? "Germany" : channelMenu.channel.rtcRegion === "nl" ? "Netherlands" : "Automatic"})
                   </button>
                 )}
                 {convertibleKinds(channelMenu.channel.kind).map((kind) => (
@@ -12272,7 +12660,32 @@ export function ChatShell() {
           stream={floatingStream.stream}
           streamerName={floatingStream.streamerName}
           streamKind={floatingStream.kind}
-          viewerCount={voiceParticipants.length}
+          viewerCount={
+            floatingStream.isSelf
+              ? (voice.streamViewers?.length || 0)
+              : Math.max(1, voiceParticipants.filter((p) => !p.bot).length - 1)
+          }
+          viewers={
+            floatingStream.isSelf
+              ? (voice.streamViewers || []).map((connId) => {
+                  const p = voiceParticipants.find((vp) => vp.connectionId === connId);
+                  return {
+                    id: p?.id,
+                    displayName: p?.displayName || "Viewer",
+                    avatar: p?.avatar,
+                    avatarUrl: p?.avatarUrl,
+                  };
+                })
+              : voiceParticipants
+                  .filter((p) => !p.bot && p.id !== floatingStream.participantId)
+                  .map((p) => ({
+                    id: p.id,
+                    displayName: p.displayName,
+                    avatar: p.avatar,
+                    avatarUrl: p.avatarUrl,
+                  }))
+          }
+          latency={voice.latency}
           volume={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).volume}
           muted={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).muted}
           onVolumeChange={(vol) => setStreamVolume(floatingStream.stream.id, floatingStream.participantId, vol)}
@@ -12295,5 +12708,83 @@ export function ChatShell() {
       )}
     </main>
     </>
+  );
+}
+
+function GroupDmContextMenu({
+  target,
+  onClose,
+  onTogglePin,
+  onRename,
+  onAddMembers,
+  onLeave,
+  onCloseDm,
+}: {
+  target: { dm: DmSummary; x: number; y: number };
+  onClose: () => void;
+  onTogglePin: () => void;
+  onRename: () => void;
+  onAddMembers: () => void;
+  onLeave: () => void;
+  onCloseDm: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const dismiss = (event: Event) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const timer = window.setTimeout(() => {
+      window.addEventListener("mousedown", dismiss);
+      window.addEventListener("contextmenu", dismiss);
+    }, 0);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("contextmenu", dismiss);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const [pos, setPos] = useState({ left: target.x, top: target.y });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const margin = 12;
+    const { width, height } = el.getBoundingClientRect();
+    const maxLeft = window.innerWidth - width - margin;
+    const maxTop = window.innerHeight - height - margin;
+    setPos({
+      left: Math.max(margin, Math.min(target.x, maxLeft)),
+      top: Math.max(margin, target.y > maxTop ? Math.min(target.y - height, maxTop) : target.y),
+    });
+  }, [target.x, target.y]);
+
+  return (
+    <div className="user-menu group-dm-menu" ref={ref} style={pos} role="menu">
+      <div className="user-menu-head">
+        <strong><StyledText text={target.dm.user.displayName} /></strong>
+        <span>{target.dm.group?.members.length} {target.dm.group?.members.length === 1 ? "member" : "members"}</span>
+      </div>
+      <button type="button" role="menuitem" onClick={onTogglePin}>
+        {target.dm.pinned ? "Unpin group" : "Pin group"}
+      </button>
+      <button type="button" role="menuitem" onClick={onRename}>
+        Rename group
+      </button>
+      <button type="button" role="menuitem" onClick={onAddMembers}>
+        Add members
+      </button>
+      <button type="button" role="menuitem" className="danger" onClick={onLeave}>
+        Leave group
+      </button>
+      <button type="button" role="menuitem" onClick={onCloseDm}>
+        Close conversation
+      </button>
+    </div>
   );
 }

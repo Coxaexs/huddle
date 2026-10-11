@@ -3,6 +3,7 @@ import {
   LOUNGE_SEATS, NOOK, clampPose, defaultPoses, freeSeat, headingTo, hearFrom, stepTo, wrapHeading,
   type LoungePose,
 } from "../app/lib/living-room";
+import { CINEMA, TABLETOP, LOUNGE, clampPose as clampIn } from "../app/lib/living-room";
 
 const at = (x: number, z: number, facing = 0, seat: string | null = null): LoungePose => ({ x, z, facing, seat });
 
@@ -94,6 +95,17 @@ describe("living room poses", () => {
     expect(poses.get("extra")?.seat).toBeNull();
   });
 
+  it("gives 40 people their own spot, none on top of another", () => {
+    const ids = Array.from({ length: 40 }, (_, i) => `p${i}`);
+    const poses = [...defaultPoses(ids, new Map()).values()];
+    expect(poses).toHaveLength(40);
+    for (let i = 0; i < poses.length; i++) {
+      for (let j = i + 1; j < poses.length; j++) {
+        expect(Math.hypot(poses[i].x - poses[j].x, poses[i].z - poses[j].z)).toBeGreaterThan(0.4);
+      }
+    }
+  });
+
   it("sits on the floor anywhere, and stands up by walking", () => {
     const sitting = clampPose({ x: 2, z: 2, facing: 0, seat: "floor" });
     expect(sitting).toMatchObject({ x: 2, z: 2, seat: "floor" });
@@ -109,5 +121,50 @@ describe("living room poses", () => {
     expect(stepTo(start, { x: 2, z: 2 })).toMatchObject({ x: 2, z: 2 });
     // Standing up from the couch walks out of it.
     expect(stepTo(at(0, 0.6, 0, "couch-m"), { x: 0.05, z: 0.55 })).toMatchObject({ x: 0.05, z: 0.55, seat: null });
+  });
+});
+
+describe("venues", () => {
+  it("seats a full cinema of 150, each in a seat of their own", () => {
+    expect(CINEMA.seats).toHaveLength(150);
+    expect(new Set(CINEMA.seats.map((seat) => seat.id)).size).toBe(150);
+    const ids = Array.from({ length: 150 }, (_, i) => `p${i}`);
+    const poses = [...defaultPoses(ids, new Map(), CINEMA).values()];
+    expect(new Set(poses.map((pose) => pose.seat)).size).toBe(150);
+    // The first to arrive get the best seats, in the middle.
+    expect(Math.abs(poses[0].x)).toBeLessThan(1.5);
+  });
+
+  it("stands the 151st person in the cinema on open floor, not on a tier", () => {
+    const ids = Array.from({ length: 151 }, (_, i) => `p${i}`);
+    const last = defaultPoses(ids, new Map(), CINEMA).get("p150")!;
+    expect(last.seat).toBeNull();
+    expect(CINEMA.floorY(last.x, last.z)).toBeLessThanOrEqual(2.7);
+  });
+
+  it("raises the cinema floor row by row and keeps seats on their tier", () => {
+    expect(CINEMA.floorY(0, -6)).toBe(0);
+    const front = CINEMA.seats.find((seat) => seat.id.startsWith("cin-0-"))!;
+    const back = CINEMA.seats.find((seat) => seat.id.startsWith("cin-9-"))!;
+    expect(CINEMA.floorY(front.x, front.z)).toBeCloseTo(0);
+    expect(CINEMA.floorY(back.x, back.z)).toBeCloseTo(2.7);
+    expect(back.y).toBeCloseTo(2.7);
+  });
+
+  it("gives the tabletop ten chairs round the table, the rest stand around it", () => {
+    expect(TABLETOP.seats).toHaveLength(10);
+    const ids = Array.from({ length: 14 }, (_, i) => `p${i}`);
+    const poses = defaultPoses(ids, new Map(), TABLETOP);
+    expect([...poses.values()].filter((pose) => pose.seat).length).toBe(10);
+    for (const pose of [...poses.values()].filter((p) => !p.seat)) {
+      expect(Math.hypot(pose.x - 0, pose.z - 0.3)).toBeGreaterThan(2.5);
+    }
+  });
+
+  it("clamps a pose to the room it is in", () => {
+    expect(clampIn({ x: 20, z: 20, facing: 0, seat: null }, LOUNGE)!.x).toBeLessThan(6);
+    expect(clampIn({ x: 20, z: 20, facing: 0, seat: null }, CINEMA)!.x).toBeGreaterThan(6);
+    // A cinema seat means nothing in the living room.
+    expect(clampIn({ x: 1, z: 1, facing: 0, seat: "cin-3-4" }, LOUNGE)!.seat).toBeNull();
   });
 });

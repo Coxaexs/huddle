@@ -13,6 +13,8 @@ export interface UserMenuTarget {
   };
   x: number;
   y: number;
+  dmChannelId?: string;
+  dmPinned?: boolean;
 }
 
 export interface VoicePref {
@@ -64,6 +66,9 @@ interface UserMenuProps {
   onRemoveFromGroup?: () => void;
   /** Theme extras appended at the bottom (the MSN theme's groups and alerts). */
   extra?: React.ReactNode;
+  /** Pin or unpin this direct message conversation */
+  onTogglePinDm?: () => void;
+  dmPinned?: boolean;
 }
 
 /**
@@ -101,6 +106,8 @@ export function UserMenu({
   onTimeout,
   timeoutUntil = null,
   extra,
+  onTogglePinDm,
+  dmPinned = false,
 }: UserMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -167,6 +174,18 @@ export function UserMenu({
           {!isBlocked && (
             <button type="button" role="menuitem" onClick={onMessage}>
               Message
+            </button>
+          )}
+          {onTogglePinDm && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onTogglePinDm();
+                onClose();
+              }}
+            >
+              {dmPinned ? "Unpin conversation" : "Pin conversation"}
             </button>
           )}
           {isBlocked ? (
@@ -345,6 +364,18 @@ export function UserMenu({
           >
             Note to Self
           </button>
+          {onTogglePinDm && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onTogglePinDm();
+                onClose();
+              }}
+            >
+              {dmPinned ? "Unpin conversation" : "Pin conversation"}
+            </button>
+          )}
           <p className="user-menu-note">This is you.</p>
         </>
       )}

@@ -27,6 +27,7 @@ export interface Message {
   image?: string;
   images?: string[];
   file?: { url: string; name: string; type: "pdf" };
+  files?: Array<{ url: string; name: string; type?: string }>;
   link?: string;
   actionLabel?: string;
   audio?: string;
@@ -141,12 +142,43 @@ export interface DmSummary {
   lastAt: string | null;
   /** Closed from the list; Cmd+K or a new message brings it back. */
   hidden?: boolean;
+  /** Pinned to the top of direct messages. */
+  pinned?: boolean;
+  pinnedAt?: string | null;
   /** Group DMs: `user` then stands for the group (id = channel id). */
   group?: {
     name: string;
     ownerId: string | null;
     members: Member[];
   };
+}
+
+/**
+ * Sorts DM conversations:
+ * 1. Pinned conversations come first.
+ * 2. Conversations are ordered by their latest message timestamp (lastAt) descending.
+ * 3. Tied pinned conversations use pinnedAt descending.
+ * 4. Stable channelId tiebreak.
+ */
+export function compareDms(a: DmSummary, b: DmSummary): number {
+  const aPinned = Boolean(a.pinned);
+  const bPinned = Boolean(b.pinned);
+  if (aPinned !== bPinned) {
+    return aPinned ? -1 : 1;
+  }
+  const aTime = a.lastAt || "";
+  const bTime = b.lastAt || "";
+  if (aTime !== bTime) {
+    return bTime.localeCompare(aTime);
+  }
+  if (aPinned && bPinned) {
+    const aPin = a.pinnedAt || "";
+    const bPin = b.pinnedAt || "";
+    if (aPin !== bPin) {
+      return bPin.localeCompare(aPin);
+    }
+  }
+  return a.channelId.localeCompare(b.channelId);
 }
 
 /** One row of the mentions inbox (see /api/mentions). */

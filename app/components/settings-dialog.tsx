@@ -49,6 +49,7 @@ import {
   setRetroSoundThemeEnabled,
   playRetroSound,
 } from "../lib/msn-sounds";
+import { isThemeFxEnabled, setThemeFxEnabled } from "../lib/theme-fx";
 
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
@@ -491,6 +492,23 @@ function VoiceInput({
         />
       </label>
 
+      <label className="appearance-range">
+        <span>
+          <strong>Stream / Voice Delay</strong> <small>{settings.delayMs || 0} ms</small>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={2000}
+          step={25}
+          value={settings.delayMs || 0}
+          onChange={(event) => change({ delayMs: Number(event.target.value) })}
+        />
+      </label>
+      <p className="modal-hint">
+        Buffer outgoing microphone audio to synchronize voice with screenshare or add latency (0 - 2000 ms).
+      </p>
+
       <label htmlFor="settings-suppression">Noise suppression</label>
       <select
         id="settings-suppression"
@@ -844,6 +862,7 @@ export function SettingsDialog({
   const [cute, setCute] = useState(false);
   const [prideTheme, setPrideTheme] = useState<PrideTheme>("off");
   const [blahaj, setBlahaj] = useState(false);
+  const [clickParticles, setClickParticles] = useState<boolean>(() => isThemeFxEnabled());
   const [diceTheme, setDiceTheme] = useState("default");
   const [diceColor, setDiceColor] = useState("#2563eb");
   const [diceMaterial, setDiceMaterial] = useState<"auto" | "plastic" | "metal" | "wood" | "glass">("auto");
@@ -1169,6 +1188,9 @@ export function SettingsDialog({
     if (typeof th.corners === "number") setCorners(th.corners);
     if (th.backdrop && ["plain", "aurora", "dots"].includes(th.backdrop)) {
       setBackdrop(th.backdrop as Backdrop);
+    }
+    if (typeof window !== "undefined" && window.localStorage.getItem("huddle-theme-fx") === null) {
+      setClickParticles(isThemeFxEnabled(th.id));
     }
   };
 
@@ -2326,6 +2348,7 @@ export function SettingsDialog({
 
                   <div
                     className="user-profile-card-popover profile-card user-profile-scoped-live_preview"
+                    data-has-custom-css={Boolean(profileCustomCss && profileCustomCss.trim())}
                     style={{ position: "relative", width: "100%", maxWidth: "340px", margin: "0 auto", zIndex: 1 }}
                   >
                     {profileCustomCss && (
@@ -3484,6 +3507,22 @@ export function SettingsDialog({
                   type="checkbox"
                   checked={blahaj}
                   onChange={(event) => setBlahaj(event.target.checked)}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
+                  <strong className="inline-flex items-center gap-1.5">Button click particles <Sparkles size={14} /></strong>
+                  <small>Theme effects and sparks when clicking buttons (closed by default in Cozy & Light themes)</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={clickParticles}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setClickParticles(next);
+                    setThemeFxEnabled(next);
+                  }}
                 />
               </label>
 

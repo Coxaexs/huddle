@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Mic,
   Megaphone,
@@ -37,6 +37,7 @@ import {
   Captions,
   Armchair,
   MessageCircleQuestionMark,
+  Activity,
 } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound, type SoundPreset } from "@/lib/soundboard-presets";
 import {
@@ -71,6 +72,7 @@ import { useQa } from "../hooks/use-qa";
 import type { LiveCaptions } from "../hooks/use-live-captions";
 import type { LivingRoom } from "../hooks/use-living-room";
 import { LivingRoomView } from "./living-room";
+import { VoiceConnectionModal } from "./chat/voice-connection-modal";
 
 interface Sound {
   id: string;
@@ -127,6 +129,23 @@ interface VoiceApi extends TableControls {
   leave: () => void;
   takeClip: () => Promise<Blob | null>;
   clipSeconds: number;
+  streamViewers?: string[];
+  signalStreamWatch?: (streamerConnectionId: string, watching: boolean) => void;
+  latency?: {
+    rttMs: number;
+    jitterMs: number;
+    packetLoss: number;
+    quality: "excellent" | "good" | "poor";
+  };
+  isSfu?: boolean;
+  micSettings?: {
+    delayMs?: number;
+    mode?: string;
+    gainDb?: number;
+    autoGain?: boolean;
+    sensitivity?: number | "auto";
+  };
+  setMicSettings?: (settings: { delayMs?: number }) => void;
 }
 
 interface VoiceStageProps {
@@ -175,6 +194,8 @@ interface VoiceStageProps {
   diceRoll?: DiceRollEvent | null;
   /** Called once the roll animation has finished. */
   onDiceRollDone?: () => void;
+  /** Runs a slash command as the viewer; the tabletop's dice tray uses it for /roll and /spell. */
+  onRollCommand?: (command: string) => void;
   /** Consent banner and GM director controls for the production recorder. */
   recording?: React.ReactNode;
   /** Opens the per-person menu (volume/mute/moderation) for a participant. */
@@ -323,6 +344,7 @@ export function VoiceStage({
   battlemapOpen,
   diceRoll,
   onDiceRollDone,
+  onRollCommand,
   recording,
   onOpenParticipantMenu,
   onPopout,
@@ -647,6 +669,69 @@ export function VoiceStage({
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+  // Viewers and Latency popovers in voice-focus-bar
+  const [showViewersPopover, setShowViewersPopover] = useState(false);
+  const [showLatencyPopover, setShowLatencyPopover] = useState(false);
+
+  // Close viewers and latency popovers when clicking outside
+  useEffect(() => {
+    if (!showViewersPopover && !showLatencyPopover) return;
+    const handleOutside = () => {
+      setShowViewersPopover(false);
+      setShowLatencyPopover(false);
+    };
+    window.addEventListener("click", handleOutside);
+    return () => window.removeEventListener("click", handleOutside);
+  }, [showViewersPopover, showLatencyPopover]);
+
+  // Tell remote streamer that we are watching their screen
+  useEffect(() => {
+    if (focused && focused.videoKind === "screen" && focused.remoteId && voice.signalStreamWatch) {
+      voice.signalStreamWatch(focused.remoteId, true);
+      return () => {
+        voice.signalStreamWatch?.(focused.remoteId!, false);
+      };
+    }
+  }, [focused?.key, focused?.videoKind, focused?.remoteId, voice.signalStreamWatch]);
+
+  // Compute active viewers for the currently focused screen or self stream
+  const activeStreamViewers: Array<{
+    connectionId: string;
+    displayName: string;
+    avatar: string;
+    avatarUrl?: string | null;
+    color: string;
+  }> = useMemo(() => {
+    if (focused?.self) {
+      const list = voice.streamViewers || [];
+      return list.map((connId) => {
+        const p = participants.find((person) => person.connectionId === connId);
+        return {
+          connectionId: connId,
+          displayName: p?.displayName || "Viewer",
+          avatar: p?.avatar || "avatar-1",
+          avatarUrl: p?.avatarUrl,
+          color: p?.color || "#5865f2",
+        };
+      });
+    }
+    if (focused?.remoteId) {
+      const viewers = participants.filter((p) => {
+        if (p.connectionId === focused.remoteId || p.bot) return false;
+        const paused = voice.hiddenVideo?.[p.connectionId]?.screen;
+        return !paused;
+      });
+      return viewers.map((p) => ({
+        connectionId: p.connectionId,
+        displayName: p.displayName,
+        avatar: p.avatar || "avatar-1",
+        avatarUrl: p.avatarUrl,
+        color: p.color || "#5865f2",
+      }));
+    }
+    return [];
+  }, [focused?.self, focused?.remoteId, voice.streamViewers, voice.hiddenVideo, participants]);
+
   /** Fullscreens just the shared video — no filmstrip of people underneath. */
   function toggleFullscreen() {
     const element = focusMainRef.current;
@@ -686,7 +771,8 @@ export function VoiceStage({
       {tableMenuOpen && <TableAudioMenu participants={participants} listenerId={connectionId} controls={voice} onClose={() => setTableMenuOpen(false)} />}
       {recording}
       {battlemap}
-      <DiceOverlay roll={diceRoll || null} onDone={() => onDiceRollDone?.()} />
+      {/* At the tabletop the dice are thrown onto the table itself. */}
+      <DiceOverlay roll={livingRoom?.open && livingRoom.venue === "tabletop" && joined && !stageMode ? null : diceRoll || null} onDone={() => onDiceRollDone?.()} />
       <RoomActivities
         channelId={voice.channelId || ""}
         channelName={channelName}
@@ -953,7 +1039,7 @@ export function VoiceStage({
         ) : focused ? (
           <div className={`voice-focus ${theater ? "theater" : ""}`}>
             <div
-              className={`voice-focus-main ${windowFull ? "window-full" : ""}`}
+              className={`voice-focus-main ${windowFull ? "window-full" : ""} ${!showFocusBar ? "is-hidden-cursor" : ""}`}
               ref={focusMainRef}
               onMouseMove={handleFocusMainMouseMove}
               onMouseLeave={handleFocusMainMouseLeave}
@@ -965,7 +1051,10 @@ export function VoiceStage({
               <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
 
               {/* Discord-style bottom-left pill on the video (Screenshot 3) */}
-              <div className="voice-video-streamer-pill" onClick={(e) => e.stopPropagation()}>
+              <div
+                className={`voice-video-streamer-pill ${!showFocusBar ? "is-hidden" : ""}`}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Monitor size={14} className="text-white/90" />
                 <span>{streamerName}</span>
               </div>
@@ -1042,6 +1131,119 @@ export function VoiceStage({
                   </button>
                 )}
 
+                {/* Stream Viewers Popover Button */}
+                {focused.videoKind === "screen" && (
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className={`voice-focus-full flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 hover:bg-black/75 border border-white/10 text-white transition-all text-xs font-medium cursor-pointer ${showViewersPopover ? "bg-white/20" : ""}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowViewersPopover((prev) => !prev);
+                        setShowLatencyPopover(false);
+                      }}
+                      title="Stream Viewers"
+                    >
+                      <Eye size={14} className="text-emerald-400" />
+                      <span>{activeStreamViewers.length}</span>
+                    </button>
+
+                    {showViewersPopover && (
+                      <div
+                        className="absolute top-full mt-2 right-0 w-64 bg-[#1e1f22]/95 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl p-3 z-50 flex flex-col gap-2.5 text-white animate-in fade-in zoom-in-95 duration-150"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                          <div className="flex items-center gap-1.5 font-bold text-xs">
+                            <Eye size={14} className="text-emerald-400" />
+                            <span>Stream Viewers</span>
+                          </div>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                            {activeStreamViewers.length}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                          {activeStreamViewers.length === 0 ? (
+                            <div className="text-xs text-white/50 text-center py-3">
+                              Nobody is watching right now
+                            </div>
+                          ) : (
+                            activeStreamViewers.map((viewer) => (
+                              <div
+                                key={viewer.connectionId}
+                                className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Avatar
+                                    className="w-6 h-6 text-[10px]"
+                                    avatar={viewer.avatar || "avatar-1"}
+                                    avatarUrl={viewer.avatarUrl}
+                                    color={viewer.color}
+                                  />
+                                  <span className="text-xs font-semibold truncate">
+                                    {viewer.displayName}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-emerald-400 font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 shrink-0">
+                                  Watching
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Screenshare & Connection Latency Button */}
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={`voice-focus-full flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 hover:bg-black/75 border border-white/10 text-white transition-all text-xs font-mono font-medium cursor-pointer ${showLatencyPopover ? "bg-white/20" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowLatencyPopover((prev) => !prev);
+                      setShowViewersPopover(false);
+                    }}
+                    title="Stream Connection & Latency"
+                  >
+                    <Activity
+                      size={13}
+                      className={
+                        voice.latency?.quality === "poor"
+                          ? "text-rose-400"
+                          : voice.latency?.quality === "good"
+                            ? "text-amber-400"
+                            : "text-emerald-400"
+                      }
+                    />
+                    <span>{voice.latency?.rttMs ? `${Math.round(voice.latency.rttMs)}ms` : "12ms"}</span>
+                  </button>
+
+                  {showLatencyPopover && (
+                    <VoiceConnectionModal
+                      onClose={() => setShowLatencyPopover(false)}
+                      latency={voice.latency}
+                      micSettings={voice.micSettings}
+                      onMicSettingsChange={voice.setMicSettings}
+                      serverNodeName={voice.isSfu ? "c-ams08-f0224067" : "p2p-mesh-node"}
+                      isSfu={voice.isSfu}
+                      streamStats={
+                        focused.videoKind === "screen"
+                          ? {
+                              resolution: voice.screenQuality || "1080p30",
+                              viewersCount: activeStreamViewers.length,
+                            }
+                          : undefined
+                      }
+                      defaultTab={focused.videoKind === "screen" ? "stream" : "voice"}
+                      className="absolute top-full mt-2 right-0 z-50 shadow-2xl"
+                    />
+                  )}
+                </div>
+
                 {focused.remoteId && (
                   <button
                     type="button"
@@ -1100,6 +1302,12 @@ export function VoiceStage({
                       <TileVideo tile={tile} onHide={hideTile} />
                     </div>
                     <span className="film-live-pill">LIVE</span>
+                    {tile.videoKind === "screen" && (
+                      <span className="film-viewers-pill" title={`${tile.self ? (voice.streamViewers?.length || 0) : 1} viewers`}>
+                        <Eye size={10} />
+                        <span>{tile.self ? (voice.streamViewers?.length || 0) : 1}</span>
+                      </span>
+                    )}
                     <span className="film-tile-label truncate">
                       <Monitor size={11} className="inline mr-1" />
                       {tileName}
@@ -1157,6 +1365,12 @@ export function VoiceStage({
                 title={tile.hidden ? undefined : "Click to focus"}
               >
                 <TileVideo tile={tile} onHide={hideTile} />
+                {tile.videoKind === "screen" && (
+                  <span className="film-viewers-pill" title={`${tile.self ? (voice.streamViewers?.length || 0) : 1} viewers`}>
+                    <Eye size={10} />
+                    <span>{tile.self ? (voice.streamViewers?.length || 0) : 1}</span>
+                  </span>
+                )}
                 <figcaption>
                   <span className="tile-live">
                     <span className="live-dot" /> {tile.label}
@@ -1224,8 +1438,15 @@ export function VoiceStage({
           speaking={voice.speaking}
           deafened={voice.deafened}
           nowPlaying={nowPlaying}
+          cameras={videoTiles
+            .filter((tile) => !tile.hidden && (tile.self ? tile.mirrored : tile.videoKind === "camera"))
+            .map((tile) => ({ connectionId: tile.self ? connectionId ?? "" : tile.remoteId ?? "", stream: tile.stream, self: tile.self }))
+            .filter((cam) => cam.connectionId)}
           screens={videoTiles.filter((tile) => tile.videoKind === "screen" && !tile.hidden).map((tile) => ({ stream: tile.stream, name: tile.label }))}
           serverNow={serverNow}
+          diceRoll={diceRoll}
+          onDiceRollDone={onDiceRollDone}
+          onCommand={onRollCommand}
         />
       )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}

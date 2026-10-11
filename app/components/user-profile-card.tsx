@@ -311,6 +311,7 @@ export function UserProfileCard({
       ref={cardRef}
       className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}`}
       data-user-profile={member.id}
+      data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
       style={stylePosition}
       role="dialog"
       aria-label={`${member.displayName}'s Profile`}
@@ -613,8 +614,8 @@ export function UserProfileCard({
           />
         </div>
 
-        <div className="profile-section flex items-center gap-2 text-xs text-gray-400 mt-2">
-          <Calendar size={14} />
+        <div className="profile-section flex items-center gap-2 text-xs text-[var(--muted)] mt-2">
+          <Calendar size={14} className="shrink-0" />
           <span>Member since {joinedDate}</span>
           {!isSelf && presence === "offline" && lastSeenLabel(member.lastSeenAt) && (
             <span>· {lastSeenLabel(member.lastSeenAt)}</span>
@@ -627,7 +628,7 @@ export function UserProfileCard({
               {currentFriendStatus === "friend" ? (
                 <button
                   type="button"
-                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 text-emerald-400 hover:text-rose-400 border border-emerald-500/20 hover:border-rose-500/30 transition-colors"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap text-emerald-400 hover:text-rose-400 border border-emerald-500/20 hover:border-rose-500/30 transition-colors"
                   disabled={friendLoading}
                   onMouseEnter={() => setFriendHover(true)}
                   onMouseLeave={() => setFriendHover(false)}
@@ -652,27 +653,27 @@ export function UserProfileCard({
                 >
                   {friendHover ? (
                     <>
-                      <UserMinus size={14} className="text-rose-400" /> Remove Friend
+                      <UserMinus size={14} className="text-rose-400 shrink-0" /> Remove Friend
                     </>
                   ) : (
                     <>
-                      <UserCheck size={14} className="text-emerald-400" /> Friends
+                      <UserCheck size={14} className="text-emerald-400 shrink-0" /> Friends
                     </>
                   )}
                 </button>
               ) : currentFriendStatus === "outgoing" ? (
                 <button
                   type="button"
-                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 text-indigo-300 opacity-80 cursor-default"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap text-[var(--lavender,#818cf8)] opacity-90 cursor-default"
                   disabled
                   title="Friend request pending"
                 >
-                  <Clock size={14} /> Request Sent
+                  <Clock size={14} className="shrink-0" /> Request Sent
                 </button>
               ) : currentFriendStatus === "incoming" ? (
                 <button
                   type="button"
-                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 !bg-emerald-600 hover:!bg-emerald-500 text-white font-semibold"
+                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap !bg-emerald-600 hover:!bg-emerald-500 text-white font-semibold"
                   disabled={friendLoading}
                   onClick={async () => {
                     setFriendLoading(true);
@@ -694,12 +695,12 @@ export function UserProfileCard({
                   }}
                   title="Accept friend request"
                 >
-                  <UserCheck size={14} /> {friendLoading ? "Accepting…" : "Accept Request"}
+                  <UserCheck size={14} className="shrink-0" /> {friendLoading ? "Accepting…" : "Accept Request"}
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 font-semibold"
+                  className="discord-btn primary-indigo flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap font-semibold"
                   disabled={friendLoading}
                   onClick={async () => {
                     setFriendLoading(true);
@@ -721,7 +722,7 @@ export function UserProfileCard({
                   }}
                   title="Add as friend"
                 >
-                  <UserPlus size={14} /> {friendLoading ? "Sending…" : "Add Friend"}
+                  <UserPlus size={14} className="shrink-0" /> {friendLoading ? "Sending…" : "Add Friend"}
                 </button>
               )}
             </>
@@ -730,25 +731,25 @@ export function UserProfileCard({
           {onDirectMessage && (!isBlocked || isSelf) && (
             <button
               type="button"
-              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1"
+              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap"
               onClick={() => {
                 onDirectMessage(member.id);
                 onClose();
               }}
             >
-              <MessageSquare size={14} /> {isSelf ? "Note to Self" : "Send DM"}
+              <MessageSquare size={14} className="shrink-0" /> {isSelf ? "Note to Self" : "Send DM"}
             </button>
           )}
           {!isSelf && onMention && (
             <button
               type="button"
-              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1"
+              className="discord-btn secondary-gray flex items-center gap-2 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap"
               onClick={() => {
                 onMention(member.username);
                 onClose();
               }}
             >
-              <AtSign size={14} /> Mention
+              <AtSign size={14} className="shrink-0" /> Mention
             </button>
           )}
           {!isSelf && (
@@ -756,26 +757,26 @@ export function UserProfileCard({
               onUnblock && (
                 <button
                   type="button"
-                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10 px-3"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/10 px-3"
                   onClick={() => {
                     onUnblock(member.id);
                   }}
                   title="Unblock this user"
                 >
-                  <ShieldCheck size={14} /> Unblock
+                  <ShieldCheck size={14} className="shrink-0" /> Unblock
                 </button>
               )
             ) : (
               onBlock && (
                 <button
                   type="button"
-                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:bg-rose-500/10 px-3"
+                  className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:bg-rose-500/10 px-3"
                   onClick={() => {
                     onBlock(member.id);
                   }}
                   title="Block this user"
                 >
-                  <ShieldAlert size={14} /> Block
+                  <ShieldAlert size={14} className="shrink-0" /> Block
                 </button>
               )
             )
@@ -793,7 +794,7 @@ export function UserProfileCard({
                   }}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Edit3 size={15} className="text-gray-300" />
+                    <Edit3 size={15} className="text-[var(--muted)]" />
                     <span>Edit Profile</span>
                   </div>
                 </button>
@@ -817,7 +818,7 @@ export function UserProfileCard({
             title="Copy User ID to clipboard"
           >
             <div className="flex items-center gap-2.5">
-              <Copy size={15} className="text-gray-300" />
+              <Copy size={15} className="text-[var(--muted)]" />
               <span>{copiedId ? "Copied User ID!" : "Copy User ID"}</span>
             </div>
           </button>

@@ -16,15 +16,53 @@
   user-select: none;
 }
 
-/* Vampire: a glossy drop of blood. */
-.fx-blood {
-  width: 10px;
-  height: 13px;
-  margin-left: -5px;
-  border-radius: 50% 50% 50% 50% / 62% 62% 40% 40%;
-  background: radial-gradient(circle at 35% 30%, #ff6b6b 0 12%, #b3001b 38%, #5c0010 100%);
-  box-shadow: 0 0 4px rgba(179, 0, 27, 0.6);
+/* Vampire: a blood drip (pool, stream, bead, splat). */
+.fx-blood-pool {
+  width: 14px;
+  height: 6px;
+  border-radius: 0 0 60% 60% / 0 0 100% 100%;
+  background: radial-gradient(ellipse at 50% 10%, #ba0a24 0, #730010 65%, #3d0007 100%);
+  box-shadow: 0 1px 2px rgba(80, 0, 10, 0.7);
+}
+.fx-blood-stream {
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, #4d000a 0%, #b80d22 45%, #730010 100%);
+}
+.fx-blood-bead {
+  width: 7px;
+  height: 10px;
+  margin: -2px 0 0 -3.5px;
+  border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+  background: radial-gradient(circle at 35% 65%, #ff8090 0, #ba0a24 35%, #5e000e 85%, #380007 100%);
+  box-shadow: 0 1px 3px rgba(80, 0, 10, 0.6);
   transform-origin: 50% 0;
+}
+.fx-blood-splat {
+  width: 13px;
+  height: 5px;
+  border-radius: 55% 45% 50% 50% / 45% 55% 50% 50%;
+  background: radial-gradient(ellipse at 45% 45%, #ba0a24 0, #66000f 70%, transparent 100%);
+}
+.fx-blood-splat::before,
+.fx-blood-splat::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: #8a0017;
+}
+.fx-blood-splat::before {
+  width: 2.5px;
+  height: 2px;
+  left: -4px;
+  top: 1px;
+}
+.fx-blood-splat::after {
+  width: 2px;
+  height: 2px;
+  right: -5px;
+  top: 2px;
 }
 
 .fx-glyph {
@@ -33,32 +71,42 @@
   text-shadow: 0 0 6px #00ff41;
 }
 
-.fx-neon {
-  width: 4px;
-  height: 4px;
-  margin: -2px 0 0 -2px;
-  border-radius: 1px;
-  background: #ff2bd6;
-  box-shadow: 0 0 6px #ff2bd6, 0 0 10px #ff2bd6;
-}
-.fx-neon:nth-child(even) {
-  background: #22e7ff;
-  box-shadow: 0 0 6px #22e7ff, 0 0 10px #22e7ff;
-}
-.fx-glitch {
-  height: 3px;
-  background: linear-gradient(90deg, #22e7ff, #ff2bd6);
+/* Cyberpunk: RGB-split outline, torn slices and stray pixels. */
+.fx-neon-box {
+  box-sizing: border-box;
+  border: 1px solid #22e7ff;
+  border-radius: 6px;
+  box-shadow: 0 0 8px #22e7ff, inset 0 0 8px rgba(34, 231, 255, 0.5);
   mix-blend-mode: screen;
-  transform-origin: 0 50%;
 }
-
-.fx-ember {
+.fx-neon-box-b {
+  border-color: #ff2bd6;
+  box-shadow: 0 0 8px #ff2bd6, inset 0 0 8px rgba(255, 43, 214, 0.5);
+}
+.fx-slice {
+  background: rgba(34, 231, 255, 0.55);
+  mix-blend-mode: screen;
+}
+.fx-slice-b { background: rgba(255, 43, 214, 0.55); }
+.fx-pixel {
   width: 3px;
   height: 3px;
-  margin: -1.5px 0 0 -1.5px;
+  background: #fcee0a;
+  box-shadow: 0 0 5px #fcee0a;
+}
+.fx-pixel:nth-child(3n) { background: #22e7ff; box-shadow: 0 0 5px #22e7ff; }
+.fx-pixel:nth-child(3n + 1) { background: #ff2bd6; box-shadow: 0 0 5px #ff2bd6; }
+
+/* Amber: drifting embers and a warm flash. */
+.fx-amber-glow {
+  border-radius: 8px;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 176, 0, 0.55), transparent 70%);
+  box-shadow: 0 0 14px rgba(255, 140, 0, 0.55);
+}
+.fx-ember {
   border-radius: 50%;
-  background: #ffb000;
-  box-shadow: 0 0 6px #ff8c00;
+  background: #ffc933;
+  box-shadow: 0 0 6px 1px rgba(255, 140, 0, 0.8);
 }
 
 .fx-ink {
@@ -131,7 +179,7 @@
   content: "";
   bottom: auto;
   height: 34px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 34' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235c0010'/%3E%3Cstop offset='1' stop-color='%23b3001b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M0 0h300v6c-6 0-8 3-10 3s-3-2-8-2-5 9-7 18c-1 4-5 4-5 0 0-8-2-16-6-16s-7 3-14 3-9-2-15-2-6 4-10 4-5-3-12-3-6 14-8 22c-1 5-6 5-6 0 0-10-1-20-6-20s-8 2-14 2-8-3-14-3-7 4-12 4-5-2-11-2-5 6-7 11c-1 3-5 3-5 0 0-5-1-10-5-10s-9 2-15 2-8-2-13-2-6 3-11 3-6-2-12-2-5 16-7 24c-1 6-7 6-7 0 0-11-2-22-6-22s-8 1-13 1z'/%3E%3C/svg%3E") top / 100% 100% no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 500 36' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%234a000c'/%3E%3Cstop offset='60%25' stop-color='%238a0017'/%3E%3Cstop offset='100%25' stop-color='%23ba0a24'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M 0 0 L 0 5 Q 10.9 6.2, 21.8 5.5 C 23.6 5.5, 26.5 8.5, 26.9 12.0 C 26.9 15.9, 25.0 18.4, 25.0 20.5 C 25.0 22.8, 31.0 22.8, 31.0 20.5 C 31.0 18.4, 29.1 15.9, 29.1 12.0 C 29.5 8.5, 32.4 5.5, 34.2 5.5 Q 36.2 6.2, 38.2 5.5 C 40.0 5.5, 42.7 8.5, 43.1 10.5 C 43.1 9.5, 41.8 10.4, 41.8 11.9 C 41.8 13.8, 46.2 13.8, 46.2 11.9 C 46.2 10.4, 44.9 9.5, 44.9 10.5 C 45.3 8.5, 48.0 5.5, 49.8 5.5 Q 74.2 5.2, 98.6 5.5 C 100.4 5.5, 103.4 8.5, 103.8 12.0 C 103.8 22.2, 101.4 24.7, 101.4 27.2 C 101.4 29.8, 108.6 29.8, 108.6 27.2 C 108.6 24.7, 106.2 22.2, 106.2 12.0 C 106.6 8.5, 109.6 5.5, 111.4 5.5 Q 123.8 6.2, 136.1 5.5 C 137.9 5.5, 140.7 8.5, 141.1 11.0 C 141.1 11.5, 139.6 13.1, 139.6 14.8 C 139.6 16.8, 144.4 16.8, 144.4 14.8 C 144.4 13.1, 142.9 11.5, 142.9 11.0 C 143.3 8.5, 146.1 5.5, 147.9 5.5 Q 165.8 6.2, 183.8 5.5 C 185.6 5.5, 188.5 8.5, 188.9 12.0 C 188.9 19.7, 186.8 22.2, 186.8 24.4 C 186.8 26.8, 193.2 26.8, 193.2 24.4 C 193.2 22.2, 191.1 19.7, 191.1 12.0 C 191.5 8.5, 194.4 5.5, 196.2 5.5 Q 199.3 6.2, 202.4 5.5 C 204.2 5.5, 206.8 8.5, 207.2 9.5 C 207.2 9.0, 206.0 9.6, 206.0 11.0 C 206.0 12.8, 210.0 12.8, 210.0 11.0 C 210.0 9.6, 208.8 9.0, 208.8 9.5 C 209.2 8.5, 211.8 5.5, 213.6 5.5 Q 238.5 5.2, 263.5 5.5 C 265.3 5.5, 268.4 8.5, 268.8 12.0 C 268.8 23.9, 266.2 26.4, 266.2 29.1 C 266.2 31.8, 273.8 31.8, 273.8 29.1 C 273.8 26.4, 271.2 23.9, 271.2 12.0 C 271.6 8.5, 274.7 5.5, 276.5 5.5 Q 290.3 6.2, 304.1 5.5 C 305.9 5.5, 308.7 8.5, 309.1 11.0 C 309.1 11.5, 307.7 12.2, 307.7 13.8 C 307.7 15.8, 312.3 15.8, 312.3 13.8 C 312.3 12.2, 310.9 11.5, 310.9 11.0 C 311.3 8.5, 314.1 5.5, 315.9 5.5 Q 327.4 5.2, 338.9 5.5 C 340.7 5.5, 343.6 8.5, 344.0 12.0 C 344.0 17.9, 342.0 20.4, 342.0 22.5 C 342.0 24.8, 348.0 24.8, 348.0 22.5 C 348.0 20.4, 346.0 17.9, 346.0 12.0 C 346.4 8.5, 349.3 5.5, 351.1 5.5 Q 369.9 5.6, 388.7 5.5 C 390.5 5.5, 393.4 8.5, 393.8 12.0 C 393.8 21.3, 391.5 23.8, 391.5 26.2 C 391.5 28.8, 398.5 28.8, 398.5 26.2 C 398.5 23.8, 396.2 21.3, 396.2 12.0 C 396.6 8.5, 399.5 5.5, 401.3 5.5 Q 403.8 6.2, 406.4 5.5 C 408.2 5.5, 410.8 8.5, 411.2 9.0 C 411.2 8.5, 410.1 8.7, 410.1 10.0 C 410.1 11.8, 413.9 11.8, 413.9 10.0 C 413.9 8.7, 412.8 8.5, 412.8 9.0 C 413.2 8.5, 415.8 5.5, 417.6 5.5 Q 439.8 5.2, 462.0 5.5 C 463.8 5.5, 466.6 8.5, 467.0 12.0 C 467.0 15.0, 465.3 16.8, 465.3 18.6 C 465.3 20.8, 470.7 20.8, 470.7 18.6 C 470.7 16.8, 469.0 15.0, 469.0 12.0 C 469.4 8.5, 472.2 5.5, 474.0 5.5 Q 487.0 5.8, 500.0 5.0 L 500.0 0.0 Z'/%3E%3Ccircle cx='105.0' cy='32.6' r='1.2' fill='%23ba0a24'/%3E%3Ccircle cx='190.0' cy='29.6' r='1.2' fill='%23ba0a24'/%3E%3Ccircle cx='270.0' cy='34.6' r='1.2' fill='%23ba0a24'/%3E%3Ccircle cx='395.0' cy='31.6' r='1.2' fill='%23ba0a24'/%3E%3C/svg%3E") top / 100% 100% no-repeat;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
 

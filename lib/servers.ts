@@ -19,6 +19,8 @@ export interface ChannelRow {
   bitrate?: number;
   /** Voice rooms: 0 switches the soundboard off. */
   soundboard?: number;
+  /** Voice rooms: preferred voice server region ("auto", "nl", "de"). */
+  rtc_region?: "auto" | "nl" | "de";
   position: number;
   category_id: string | null;
   created_at: string;
@@ -63,6 +65,8 @@ export interface PublicChannel {
   bitrate?: number;
   /** Voice channels: false when moderators switched the soundboard off. */
   soundboard?: boolean;
+  /** Voice channels: preferred voice server region ("auto", "nl", "de"). */
+  rtcRegion?: "auto" | "nl" | "de";
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -109,6 +113,7 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
       ? {
           bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate),
           soundboard: (channel as { soundboard?: number }).soundboard !== 0,
+          rtcRegion: ((channel as { rtc_region?: string }).rtc_region as "auto" | "nl" | "de") || "auto",
         }
       : {}),
     position: channel.position,

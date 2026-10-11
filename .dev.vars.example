@@ -41,3 +41,5 @@ TENOR_API_KEY=
 # carrier-grade NATs (CGNAT), specify your coturn server credentials here:
 # HUDDLE_ICE_SERVERS=[{"urls":["turn:turn.example.com:3478?transport=udp"],"username":"hoffle","credential":"secretturnpassword"},{"urls":["stun:stun.cloudflare.com:3478"]}]
 HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]
+# Comma-separated list of developer usernames who see verbose WebRTC/SFU console logs
+DEV_USERS=kiwi,flo

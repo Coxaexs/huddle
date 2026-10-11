@@ -9,6 +9,8 @@ export interface FloatingScreenPreviewProps {
   streamerName: string;
   streamKind?: "screen" | "camera";
   viewerCount?: number;
+  viewers?: Array<{ id?: string; displayName: string; avatar?: string; avatarUrl?: string | null }>;
+  latency?: { rttMs: number; jitterMs: number; quality: string };
   onMaximize: () => void;
   onClose: () => void;
   volume?: number;
@@ -24,6 +26,8 @@ export function FloatingScreenPreview({
   streamerName,
   streamKind = "screen",
   viewerCount = 1,
+  viewers,
+  latency,
   onMaximize,
   onClose,
   volume = 100,
@@ -64,6 +68,7 @@ export function FloatingScreenPreview({
 
   const [isDragging, setIsDragging] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+  const [showViewersList, setShowViewersList] = useState(false);
   const isDraggingRef = useRef(false);
   const dragInfoRef = useRef<{
     startX: number;
@@ -251,19 +256,58 @@ export function FloatingScreenPreview({
       </div>
 
       {/* Top Header Overlay */}
-      <div className="preview-header-overlay">
-        <button
-          type="button"
-          className="preview-header-back-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMaximize();
-          }}
-          title="Return to channel"
-        >
-          <ArrowLeft size={14} />
-        </button>
-        <span className="preview-channel-name truncate">{channelName}</span>
+      <div className="preview-header-overlay flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            className="preview-header-back-btn shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMaximize();
+            }}
+            title="Return to channel"
+          >
+            <ArrowLeft size={14} />
+          </button>
+          <span className="preview-channel-name truncate">{channelName}</span>
+        </div>
+
+        {/* Top Right: Viewers Badge */}
+        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="preview-viewer-badge cursor-pointer"
+            title={`${viewerCount} watching`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowViewersList((prev) => !prev);
+            }}
+            onMouseEnter={() => setShowViewersList(true)}
+            onMouseLeave={() => setShowViewersList(false)}
+          >
+            <Eye size={13} className="text-emerald-400" />
+            <span>{viewerCount}</span>
+          </div>
+
+          {showViewersList && viewers && viewers.length > 0 && (
+            <div
+              className="absolute top-full mt-1.5 right-0 w-48 bg-[#1e1f22]/95 backdrop-blur-md border border-white/15 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-1 text-white text-[11px]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="font-bold text-white/70 border-b border-white/10 pb-1 flex items-center justify-between">
+                <span>Viewers</span>
+                <span className="text-emerald-400 font-mono">{viewers.length}</span>
+              </div>
+              <div className="max-h-28 overflow-y-auto flex flex-col gap-1 py-0.5">
+                {viewers.map((v, i) => (
+                  <div key={v.id || i} className="flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="truncate">{v.displayName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bottom Footer Overlay */}
@@ -273,10 +317,6 @@ export function FloatingScreenPreview({
         </div>
 
         <div className="preview-footer-actions flex items-center gap-1.5 flex-shrink-0">
-          <div className="preview-viewer-badge" title={`${viewerCount} viewing`}>
-            <Eye size={13} />
-            <span>{viewerCount}</span>
-          </div>
 
           {!isSelf && onVolumeChange && (
             <div className="relative flex items-center">

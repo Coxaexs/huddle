@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("huddle", {
       ipcRenderer.once("ptt-global", (_event, ok) => resolve(Boolean(ok)));
       ipcRenderer.send("set-ptt-key", String(code || ""));
     }),
+  /** Tells the shell whether a call is live, so it throttles the window only when idle. */
+  setInCall: (on) => ipcRenderer.send("set-in-call", Boolean(on)),
   /** Trigger native OS push notification */
   notify: (title, body) =>
     ipcRenderer.send("desktop-notification", { title, body }),

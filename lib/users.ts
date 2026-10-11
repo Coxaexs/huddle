@@ -63,6 +63,7 @@ export interface PublicUser {
   /** Only on the signed-in user's own account. */
   email?: string | null;
   emailPromptSkipped?: boolean;
+  isDev?: boolean;
 }
 
 export interface Member {
@@ -93,6 +94,7 @@ export interface Member {
   createdAt?: string;
   isAdmin?: boolean;
   canInvite?: boolean;
+  isDev?: boolean;
   /** Presence the member chose: online | idle | dnd | invisible. */
   status?: PresenceStatus;
   customStatus?: string | null;

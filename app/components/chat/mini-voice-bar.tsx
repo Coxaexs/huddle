@@ -1,10 +1,11 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
-import { Monitor, PhoneOff, Video, VideoOff, Volume2 } from "lucide-react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import { Monitor, PhoneOff, Radio, Video, VideoOff, Volume2 } from "lucide-react";
 import { screenQualityLabel, type useVoice } from "../../hooks/use-voice";
 import { ScreenShareSetup } from "../screen-share-setup";
 import { SoundboardDrawer } from "../voice-stage";
+import { VoiceConnectionModal } from "./voice-connection-modal";
 
 /**
  * The bar above the user footer while you are in a voice room: where you are,
@@ -36,12 +37,27 @@ export function MiniVoiceBar({
   /** False in a stage audience or a room with the soundboard switched off. */
   soundboardAllowed?: boolean;
 }) {
+  const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+
   return (
-    <div className="mini-voice-bar">
+    <div className="mini-voice-bar relative">
       <div className="mini-voice-bar-header">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          <button
+            type="button"
+            className="mini-voice-signal-btn group relative flex items-center justify-center p-1 rounded hover:bg-white/10 text-emerald-400 cursor-pointer transition-colors"
+            onClick={() => setConnectionModalOpen((prev) => !prev)}
+            title="Voice Connection"
+            aria-label="Voice Connection"
+          >
+            <Radio size={16} />
+            <div className={`mini-voice-ping-bubble ${connectionModalOpen ? "visible" : ""}`}>
+              <span>{Math.max(1, Math.round(voice.latency?.rttMs || 42))} ms</span>
+              <div className="mini-voice-ping-bubble-arrow" />
+            </div>
+          </button>
           <div
-            className="mini-voice-info min-w-0 cursor-pointer"
+            className="mini-voice-info min-w-0 cursor-pointer flex-1"
             onClick={() => setStageChannelId(voice.channelId)}
             title="Open voice channel"
           >
@@ -50,7 +66,9 @@ export function MiniVoiceBar({
             </span>
             <span className="mini-voice-status">
               <span className="mini-voice-dot animate-pulse" aria-hidden="true" />
-              voice connected
+              {voice.isSfu && voice.voiceRegion
+                ? `voice connected · ${voice.voiceRegion === "de" ? "Germany" : "Netherlands"}`
+                : "voice connected"}
             </span>
           </div>
         </div>
@@ -125,6 +143,25 @@ export function MiniVoiceBar({
             onClose={() => setQuickSoundboardOpen(false)}
           />
         </div>
+      )}
+      {connectionModalOpen && (
+        <VoiceConnectionModal
+          onClose={() => setConnectionModalOpen(false)}
+          latency={voice.latency}
+          micSettings={voice.micSettings}
+          onMicSettingsChange={voice.setMicSettings}
+          serverNodeName={
+            voice.isSfu
+              ? voice.voiceRegion === "de"
+                ? "c-fra02-de-oracle (130.61.25.137)"
+                : "c-ams08-nl-optiplex (livekit.hoffle.online)"
+              : "p2p-mesh-node"
+          }
+          isSfu={voice.isSfu ?? true}
+          voiceRegion={voice.voiceRegion}
+          onSwitchRegion={voice.switchRegion}
+          className="absolute bottom-[calc(100%+8px)] left-0 z-50 shadow-2xl"
+        />
       )}
     </div>
   );

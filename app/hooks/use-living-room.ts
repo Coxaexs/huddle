@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
+import type { GameMaster, HiddenRoll, Initiative, TableCard, TableCharacter, WatchState } from "@/lib/lounge-shared";
 import {
-  FLOOR_SEAT, TV_POSE, TV_SPOT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, seatById,
-  type HeardFrom, type LoungePose,
+  FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
+  type HeardFrom, type LoungePose, type Venue, type VenueId,
 } from "../lib/living-room";
 
 /** use-hub re-dispatches lounge traffic as this window event. */
@@ -34,7 +35,11 @@ export function useRoomTheme(): RoomTheme {
 
 /** Per-browser Living Room preferences. */
 export interface LoungeSettings {
-  /** Voices come from where people are. Off: everyone plays flat, like a normal call. */
+  /**
+   * Voices come from where people are. Off: everyone plays flat, like a normal
+   * call. This is the answer for the room you are in: the cinema keeps its own,
+   * and starts off, since a film wants everyone at one volume.
+   */
   spatial: boolean;
   /** The music bot plays from the TV instead of everywhere. */
   tvMusic: boolean;
@@ -46,11 +51,14 @@ export interface LoungeSettings {
 
 const SETTINGS_KEY = "huddle-living-room-settings";
 const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5 };
+/** What is stored: one spatial choice for the lounge and tabletop, and the cinema's own (off). */
+interface StoredSettings extends LoungeSettings { spatialCinema: boolean }
 
-function readSettings(): LoungeSettings {
+function readStored(): StoredSettings {
   try {
-    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") as Partial<LoungeSettings>;
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") as Partial<StoredSettings>;
     return {
+      spatialCinema: typeof raw.spatialCinema === "boolean" ? raw.spatialCinema : false,
       spatial: typeof raw.spatial === "boolean" ? raw.spatial : DEFAULT_SETTINGS.spatial,
       tvMusic: typeof raw.tvMusic === "boolean" ? raw.tvMusic : DEFAULT_SETTINGS.tvMusic,
       ambience: typeof raw.ambience === "boolean" ? raw.ambience : DEFAULT_SETTINGS.ambience,
@@ -58,14 +66,35 @@ function readSettings(): LoungeSettings {
         ? Math.max(0, Math.min(1, raw.ambienceVolume)) : DEFAULT_SETTINGS.ambienceVolume,
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, spatialCinema: false };
   }
 }
 
 export interface LoungeEmote { id: number; connectionId: string; emoji: string; at: number }
 
+/** What the whole call shares in its living room, kept by the hub. */
+export interface LoungeShared {
+  watch: WatchState | null;
+  initiative: Initiative | null;
+  gm: GameMaster | null;
+  card: TableCard | null;
+  /** By user id. */
+  characters: Record<string, TableCharacter>;
+}
+const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {} };
+
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll";
+
 export interface LivingRoom {
   open: boolean;
+  shared: LoungeShared;
+  /** Put up (or, with null, clear) a piece of the room's shared state for everyone. */
+  setShared: (key: LoungeSharedKey, value: unknown) => void;
+  /** The latest roll made behind the game master's screen: the dice, never the faces. */
+  hiddenRoll: (HiddenRoll & { id: number }) | null;
+  /** Which room this tab is hanging out in. */
+  venue: VenueId;
+  setVenue: (venue: VenueId) => void;
   setOpen: (open: boolean) => void;
   /** Everyone in the call, placed: explicit spots first, the rest seated automatically. */
   poses: Map<string, LoungePose>;
@@ -100,20 +129,48 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const [open, setOpenState] = useState(() => {
     try { return typeof window !== "undefined" && localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; }
   });
-  const [explicit, setExplicit] = useState<Map<string, LoungePose>>(new Map());
+  // Everyone's last pose with the room it was in; only those in our room count.
+  const [everyone, setEveryone] = useState<Map<string, { pose: LoungePose; venue: VenueId }>>(new Map());
+  // The room is the call's, chosen once for everyone: the hub keeps it and tells the room.
+  const [venueId, setVenueState] = useState<VenueId>("lounge");
+  const venue: Venue = venueById(venueId);
+  const setVenue = useCallback((next: VenueId) => {
+    setVenueState(next);
+    sendRef.current({ t: "lounge-venue", venue: next });
+  }, []);
+  const explicit = useMemo(() => {
+    const here = new Map<string, LoungePose>();
+    for (const [id, entry] of everyone) if (entry.venue === venueId) here.set(id, entry.pose);
+    return here;
+  }, [everyone, venueId]);
   const theme = useRoomTheme();
-  const [settings, setSettingsState] = useState<LoungeSettings>(DEFAULT_SETTINGS);
-  useEffect(() => { setSettingsState(readSettings()); }, []);
+  const [stored, setStored] = useState<StoredSettings>({ ...DEFAULT_SETTINGS, spatialCinema: false });
+  useEffect(() => { setStored(readStored()); }, []);
+  const settings = useMemo<LoungeSettings>(
+    () => ({ ...stored, spatial: venueId === "cinema" ? stored.spatialCinema : stored.spatial }),
+    [stored, venueId],
+  );
   const setSettings = useCallback((patch: Partial<LoungeSettings>) => {
-    setSettingsState((current) => {
-      const next = { ...current, ...patch };
+    setStored((current) => {
+      const { spatial, ...rest } = patch;
+      const next: StoredSettings = { ...current, ...rest };
+      if (spatial !== undefined) {
+        if (venueId === "cinema") next.spatialCinema = spatial; else next.spatial = spatial;
+      }
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* Session only. */ }
       return next;
     });
-  }, []);
+  }, [venueId]);
   const [emotes, setEmotes] = useState<LoungeEmote[]>([]);
+  const [shared, setSharedState] = useState<LoungeShared>(NO_SHARED);
+  const [hiddenRoll, setHiddenRoll] = useState<(HiddenRoll & { id: number }) | null>(null);
+  const setShared = useCallback((key: LoungeSharedKey, value: unknown) => {
+    sendRef.current({ t: "lounge-set", key, value });
+  }, []);
   const sendRef = useRef(send);
   sendRef.current = send;
+  const venueRef = useRef<VenueId>("lounge");
+  venueRef.current = venueId;
   const pending = useRef<LoungePose | null>(null);
   const lastSent = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,7 +183,10 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
 
   // A new room starts empty; the hub answers lounge-sync with who is where.
   useEffect(() => {
-    setExplicit(new Map());
+    setEveryone(new Map());
+    setVenueState("lounge");
+    setSharedState(NO_SHARED);
+    setHiddenRoll(null);
     setEmotes([]);
     if (roomId) sendRef.current({ t: "lounge-sync" });
   }, [roomId]);
@@ -136,16 +196,42 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     const onEvent = (raw: Event) => {
       const detail = (raw as CustomEvent).detail as
         | { t: "lounge"; channelId: string; connectionId: string; pose: unknown; emote?: string }
-        | { t: "lounge-state"; channelId: string; poses: Array<{ connectionId: string; pose: unknown }> };
+        | { t: "lounge-state"; channelId: string; poses: Array<{ connectionId: string; pose: unknown }>; venue?: unknown }
+        | { t: "lounge-venue"; channelId: string; venue: unknown }
+        | { t: "lounge-shared"; channelId: string; key: string; value: unknown };
       if (!detail || detail.channelId !== roomId) return;
+      if (detail.t === "lounge-venue") {
+        // The call moved to another room: everyone's old spot belonged to the last one.
+        if (isVenueId(detail.venue)) { setVenueState(detail.venue); setEveryone(new Map()); }
+        return;
+      }
+      if (detail.t === "lounge-shared") {
+        if (detail.key === "hiddenroll") {
+          if (detail.value && typeof detail.value === "object") setHiddenRoll({ ...(detail.value as HiddenRoll), id: ++emoteId.current });
+        } else {
+          setSharedState((current) => ({ ...current, [detail.key]: detail.value ?? (detail.key === "characters" ? {} : null) }));
+        }
+        return;
+      }
       if (detail.t === "lounge-state") {
-        const next = new Map<string, LoungePose>();
+        if (isVenueId(detail.venue)) setVenueState(detail.venue);
+        setSharedState({ ...NO_SHARED, ...((detail as { shared?: Partial<LoungeShared> }).shared ?? {}) });
+      }
+      // A pose is read in the room it was sent from, whichever room this tab shows.
+      const read = (raw: unknown): { pose: LoungePose; venue: VenueId } | null => {
+        const sent = (raw as { venue?: unknown } | null)?.venue;
+        const room = isVenueId(sent) ? sent : "lounge";
+        const pose = clampPose(raw, venueById(room));
+        return pose ? { pose, venue: room } : null;
+      };
+      if (detail.t === "lounge-state") {
+        const next = new Map<string, { pose: LoungePose; venue: VenueId }>();
         for (const entry of detail.poses) {
-          const pose = clampPose(entry.pose);
-          if (pose && entry.connectionId !== connectionId) next.set(entry.connectionId, pose);
+          const got = read(entry.pose);
+          if (got && entry.connectionId !== connectionId) next.set(entry.connectionId, got);
         }
         // Keep our own spot: the hub may answer before our first pose landed.
-        setExplicit((current) => {
+        setEveryone((current) => {
           const mine = connectionId ? current.get(connectionId) : undefined;
           if (mine && connectionId) next.set(connectionId, mine);
           return next;
@@ -153,10 +239,10 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         return;
       }
       if (detail.connectionId === connectionId) return;
-      const pose = clampPose(detail.pose);
-      setExplicit((current) => {
+      const got = read(detail.pose);
+      setEveryone((current) => {
         const next = new Map(current);
-        if (pose) next.set(detail.connectionId, pose); else next.delete(detail.connectionId);
+        if (got) next.set(detail.connectionId, got); else next.delete(detail.connectionId);
         return next;
       });
       if (isLoungeEmote(detail.emote)) {
@@ -197,8 +283,8 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
 
   const poses = useMemo(() => {
     const present = new Map([...explicit].filter(([id]) => ids.includes(id) && !contested.has(id)));
-    return defaultPoses(ids, present);
-  }, [explicit, ids, contested]);
+    return defaultPoses(ids, present, venue);
+  }, [explicit, ids, contested, venue]);
 
   const flush = useCallback(() => {
     timer.current = null;
@@ -206,12 +292,12 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     if (!pose) return;
     pending.current = null;
     lastSent.current = Date.now();
-    sendRef.current({ t: "lounge", x: pose.x, z: pose.z, facing: pose.facing, seat: pose.seat });
+    sendRef.current({ t: "lounge", x: pose.x, z: pose.z, facing: pose.facing, seat: pose.seat, venue: venueRef.current });
   }, []);
 
   const move = useCallback((pose: LoungePose) => {
     if (!connectionId) return;
-    setExplicit((current) => new Map(current).set(connectionId, pose));
+    setEveryone((current) => new Map(current).set(connectionId, { pose, venue: venueRef.current }));
     pending.current = pose;
     const wait = SEND_EVERY_MS - (Date.now() - lastSent.current);
     if (wait <= 0) flush();
@@ -221,12 +307,12 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const sit = useCallback((seatId: string) => {
-    const seat = seatById(seatId);
+    const seat = seatById(seatId, venue);
     if (!seat || !connectionId) return;
     const takenBy = [...poses].find(([id, pose]) => pose.seat === seatId && id !== connectionId);
     if (takenBy) return;
     move({ x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id });
-  }, [connectionId, poses, move]);
+  }, [connectionId, poses, move, venue]);
 
   const toggleFloor = useCallback(() => {
     const pose = connectionId ? poses.get(connectionId) : null;
@@ -241,7 +327,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     if (!pose) return;
     const id = ++emoteId.current;
     setEmotes((list) => [...list.slice(-20), { id, connectionId, emoji, at: Date.now() }]);
-    sendRef.current({ t: "lounge", x: pose.x, z: pose.z, facing: pose.facing, seat: pose.seat, emote: emoji });
+    sendRef.current({ t: "lounge", x: pose.x, z: pose.z, facing: pose.facing, seat: pose.seat, venue: venueRef.current, emote: emoji });
   }, [connectionId, poses]);
 
   // Lost a seat race: take the spot everyone now shows us in.
@@ -257,24 +343,24 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   useEffect(() => {
     if (!open || !roomId || !connectionId || claimed) return;
     const others = [...explicit].filter(([id]) => id !== connectionId).map(([, pose]) => pose);
-    const seat = freeSeat(others);
-    move(seat ? { x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id } : self ?? { x: 0, z: 1.8, facing: 0, seat: null });
-  }, [open, roomId, connectionId, claimed, explicit, move, self]);
+    const seat = freeSeat(others, venue);
+    move(seat ? { x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id } : self ?? { x: venue.spawn.x, z: venue.spawn.z, facing: 0, seat: null });
+  }, [open, roomId, connectionId, claimed, explicit, move, self, venue]);
 
   const live = open && Boolean(roomId);
   const heard = useMemo(() => {
     if (!live || !settings.spatial || !self || !connectionId) return null;
     const map = new Map<string, HeardFrom>();
-    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose));
+    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose, undefined, venue));
     return map;
-  }, [live, settings.spatial, self, poses, connectionId]);
+  }, [live, settings.spatial, self, poses, connectionId, venue]);
   const tv = useMemo(
-    () => (live && settings.tvMusic && self ? hearFrom(self, TV_POSE, TV_SPOT.height) : null),
-    [live, settings.tvMusic, self],
+    () => (live && settings.tvMusic && self ? hearFrom(self, tvPoseFor(venue), venue.tv.height, venue) : null),
+    [live, settings.tvMusic, self, venue],
   );
 
   return {
-    open: live, setOpen, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, setOpen, shared, setShared, hiddenRoll, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }
