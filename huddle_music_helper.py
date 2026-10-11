@@ -98,9 +98,126 @@ async def resolve(request: web.Request):
         return web.json_response({"error": message}, status=502)
 
 
+WATCH_DIR = "/mnt/harddisk/data/youtube-watch"
+try:
+    os.makedirs(WATCH_DIR, exist_ok=True)
+except Exception:
+    WATCH_DIR = os.path.join(os.path.dirname(__file__), "state", "youtube-watch")
+    os.makedirs(WATCH_DIR, exist_ok=True)
+
+YTDLP_BIN = "/mnt/harddisk/data/bot/musicbot-main/env/bin/yt-dlp"
+if not os.path.isfile(YTDLP_BIN):
+    YTDLP_BIN = shutil.which("yt-dlp") or "yt-dlp"
+
+_active_downloads: dict[str, asyncio.Task] = {}
+
+
+async def run_yt_dlp_download(url_or_id: str) -> dict:
+    # First get metadata
+    meta_cmd = [
+        YTDLP_BIN,
+        "--no-warnings",
+        "--default-search", "ytsearch1",
+        "--print", "%(id)s\t%(title)s\t%(duration)s",
+        url_or_id,
+    ]
+    if "cookiefile" in YDL_OPTIONS:
+        meta_cmd.extend(["--cookies", YDL_OPTIONS["cookiefile"]])
+
+    proc = await asyncio.create_subprocess_exec(
+        *meta_cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        err = stderr.decode().strip() or "Could not fetch YouTube video details."
+        raise ValueError(err)
+
+    line = stdout.decode().strip().split("\n")[-1]
+    parts = line.split("\t")
+    if len(parts) < 2 or not parts[0]:
+        raise ValueError("Invalid YouTube video information.")
+
+    video_id = parts[0].strip()
+    title = parts[1].strip()
+    try:
+        duration = float(parts[2].strip()) if len(parts) > 2 and parts[2].strip() != "NA" else 0
+    except ValueError:
+        duration = 0
+
+    target_file = os.path.join(WATCH_DIR, f"{video_id}.mp4")
+    if os.path.isfile(target_file) and os.path.getsize(target_file) > 1000:
+        return {"id": video_id, "title": title, "duration": duration, "cached": True}
+
+    # Download format: best 1080p mp4 with audio, merged to mp4
+    dl_cmd = [
+        YTDLP_BIN,
+        "--no-warnings",
+        "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "--merge-output-format", "mp4",
+        "-o", os.path.join(WATCH_DIR, f"{video_id}.%(ext)s"),
+        f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 and not url_or_id.startswith("http") else url_or_id,
+    ]
+    if "cookiefile" in YDL_OPTIONS:
+        dl_cmd.extend(["--cookies", YDL_OPTIONS["cookiefile"]])
+
+    proc_dl = await asyncio.create_subprocess_exec(
+        *dl_cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, dl_stderr = await proc_dl.communicate()
+    if proc_dl.returncode != 0 or not os.path.isfile(target_file):
+        err = dl_stderr.decode().strip() or "Failed to download video from YouTube."
+        raise ValueError(err)
+
+    return {"id": video_id, "title": title, "duration": duration, "cached": False}
+
+
+async def watch_download(request: web.Request):
+    try:
+        body = await request.json()
+        query = str(body.get("url") or body.get("query") or "").strip()
+        if not query:
+            return web.json_response({"error": "Give a YouTube URL or search query."}, status=400)
+
+        # Check if already downloading to avoid duplicate runs
+        if query in _active_downloads:
+            result = await _active_downloads[query]
+        else:
+            task = asyncio.create_task(run_yt_dlp_download(query))
+            _active_downloads[query] = task
+            try:
+                result = await task
+            finally:
+                _active_downloads.pop(query, None)
+
+        return web.json_response({
+            "ok": True,
+            "id": result["id"],
+            "title": result["title"],
+            "duration": result["duration"],
+            "stream_path": f"/watch/stream/{result['id']}.mp4",
+        })
+    except Exception as error:
+        return web.json_response({"error": str(error)}, status=500)
+
+
+async def watch_stream(request: web.Request):
+    video_id = request.match_info.get("id", "").replace(".mp4", "")
+    target = os.path.join(WATCH_DIR, f"{video_id}.mp4")
+    if not os.path.isfile(target):
+        return web.json_response({"error": "Video not found or still downloading."}, status=404)
+    return web.FileResponse(target)
+
+
 app = web.Application(client_max_size=1024 * 1024)
 app.router.add_get("/health", health)
 app.router.add_post("/resolve", resolve)
+app.router.add_post("/watch/download", watch_download)
+app.router.add_get("/watch/stream/{id}", watch_stream)
+app.router.add_get("/watch/stream/{id}.mp4", watch_stream)
 
 
 if __name__ == "__main__":
@@ -112,3 +229,4 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", "8731")),
         print=None,
     )
+

@@ -271,13 +271,15 @@ function knitTexture([a, b]: [string, string]) {
 }
 
 export function glowTexture() {
-  return canvasTexture(128, 128, (ctx) => {
-    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.25, "rgba(255,255,255,0.45)");
+  return canvasTexture(256, 256, (ctx) => {
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, "rgba(255,255,255,0.9)");
+    g.addColorStop(0.15, "rgba(255,255,255,0.6)");
+    g.addColorStop(0.4, "rgba(255,255,255,0.2)");
+    g.addColorStop(0.7, "rgba(255,255,255,0.05)");
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillRect(0, 0, 256, 256);
   });
 }
 
@@ -539,7 +541,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     if (shadow) {
       light.castShadow = true;
       light.shadow.mapSize.set(1024, 1024);
-      light.shadow.bias = -0.0001;
+      light.shadow.bias = 0.0005;
       light.shadow.normalBias = 0.02;
       light.shadow.radius = 1;
     }
@@ -1407,23 +1409,6 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   shark.traverse((part) => { part.userData.blahaj = true; part.castShadow = true; });
   root.add(shark);
 
-  // Dust motes drifting in the warm light.
-  const moteCount = 160;
-  const motes = new THREE.BufferGeometry();
-  const motePos = new Float32Array(moteCount * 3);
-  const moteSeed = Array.from({ length: moteCount }, () => [Math.random() * 2 - 1, Math.random(), Math.random() * 2 - 1, Math.random() * 10]);
-  motes.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
-  const motePoints = new THREE.Points(motes, new THREE.PointsMaterial({ color: look.motes, size: 0.02, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-  root.add(motePoints);
-  animated.push((t) => {
-    for (let i = 0; i < moteCount; i++) {
-      const [x, y, z, p] = moteSeed[i];
-      motePos[i * 3] = x * (ROOM_HALF_X - 0.5) + Math.sin(t * 0.13 + p) * 0.3;
-      motePos[i * 3 + 1] = 0.3 + ((y + t * 0.012) % 1) * (H - 0.6);
-      motePos[i * 3 + 2] = z * (ROOM_HALF_Z - 0.5) + Math.cos(t * 0.11 + p) * 0.3;
-    }
-    motes.attributes.position.needsUpdate = true;
-  });
 
   let codeNext = 0;
   const update = (t: number, dt: number) => {
@@ -1472,7 +1457,7 @@ export function roomAmbience(theme: RoomTheme): THREE.Object3D[] {
   daylight.target.position.set(0, 0, 1);
   daylight.castShadow = true;
   daylight.shadow.mapSize.set(1024, 1024);
-  daylight.shadow.bias = -0.0001;
+  daylight.shadow.bias = 0.0005;
   daylight.shadow.normalBias = 0.02;
   daylight.shadow.radius = 1;
   Object.assign(daylight.shadow.camera, { left: -7, right: 7, top: 6, bottom: -6, far: 20 });

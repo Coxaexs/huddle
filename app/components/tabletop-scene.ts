@@ -304,43 +304,44 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     root.add(chair);
   }
 
-  // Pendant lamp over the table - more elaborate
+  // Pendant lamp over the table
   const shade = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.4, 28, 1, true), new THREE.MeshStandardMaterial({ color: look.lamp, emissive: look.lamp, emissiveIntensity: 0.8, side: THREE.DoubleSide, roughness: 0.5 }));
   shade.position.set(TABLE_CENTRE.x, H - 0.85, TABLE_CENTRE.z);
-  shade.castShadow = true;
+  shade.castShadow = false;
   const cord = box(0.015, 0.7, 0.015, mat("#222", 0.8), false);
   cord.position.set(TABLE_CENTRE.x, H - 0.35, TABLE_CENTRE.z);
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), new THREE.MeshBasicMaterial({ color: "#fff4d8", toneMapped: false }));
   bulb.position.set(TABLE_CENTRE.x, H - 0.92, TABLE_CENTRE.z);
   ceiling.add(shade, cord, bulb);
-  addGlow(look.lamp, 1.6, new THREE.Vector3(TABLE_CENTRE.x, H - 0.95, TABLE_CENTRE.z), 0.55, ceiling);
+  addGlow(look.lamp, 0.75, new THREE.Vector3(TABLE_CENTRE.x, H - 0.95, TABLE_CENTRE.z), 0.35, ceiling);
 
   // Additional pendant lights for atmosphere
   for (const [x, z] of [[-3, -2], [3, -2], [0, 2.5]] as const) {
     const s = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.25, 20, 1, true), new THREE.MeshStandardMaterial({ color: look.lamp, emissive: look.lamp, emissiveIntensity: 0.4, side: THREE.DoubleSide, roughness: 0.7 }));
     s.position.set(x, H - 0.6, z);
-    s.castShadow = true;
+    s.castShadow = false;
     ceiling.add(s);
-    addGlow(look.lamp, 0.8, new THREE.Vector3(x, H - 0.7, z), 0.3, ceiling);
+    addGlow(look.lamp, 0.5, new THREE.Vector3(x, H - 0.7, z), 0.25, ceiling);
   }
 
-  // Main table light - SpotLight for clean shadows on the map
-  const tableLight = new THREE.SpotLight(look.lamp, 35, 6, Math.PI / 3.5, 0.4, 1.2);
+  // Main table light - SpotLight for clean, crisp illumination on the map
+  const tableLight = new THREE.SpotLight(look.lamp, 30, 7, Math.PI / 3.2, 0.45, 1.2);
   tableLight.position.set(TABLE_CENTRE.x, H - 1.05, TABLE_CENTRE.z);
   tableLight.target.position.set(TABLE_CENTRE.x, TABLE_SURFACE_Y, TABLE_CENTRE.z);
   tableLight.castShadow = true;
-  tableLight.shadow.mapSize.set(2048, 2048);
+  tableLight.shadow.mapSize.set(1024, 1024);
   tableLight.shadow.camera.near = 0.5;
-  tableLight.shadow.camera.far = 8;
+  tableLight.shadow.camera.far = 6;
   tableLight.shadow.camera.fov = 50;
-  tableLight.shadow.bias = -0.0001;
+  tableLight.shadow.bias = 0.0005;
   tableLight.shadow.normalBias = 0.02;
   tableLight.shadow.radius = 1;
   root.add(tableLight, tableLight.target);
 
   // Subtle fill light from candles/warmth
-  const fillLight = new THREE.PointLight(look.fireLight, 4, 8, 1.8);
+  const fillLight = new THREE.PointLight(look.fireLight, 3, 7, 1.8);
   fillLight.position.set(TABLE_CENTRE.x, TABLE_SURFACE_Y + 0.5, TABLE_CENTRE.z);
+  fillLight.castShadow = false;
   root.add(fillLight);
 
   // Hemisphere for ambient
@@ -422,31 +423,14 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   // Props from the shared list
   const stopProps = addPropList(root, TABLETOP_PROPS[theme], addGlow);
 
-  // Floating dust motes
-  const moteCount = 80;
-  const motes = new THREE.BufferGeometry();
-  const motePos = new Float32Array(moteCount * 3);
-  const moteSeed = Array.from({ length: moteCount }, () => [Math.random() * 2 - 1, Math.random(), Math.random() * 2 - 1, Math.random() * 10]);
-  motes.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
-  const motePoints = new THREE.Points(motes, new THREE.PointsMaterial({ color: look.motes, size: 0.015, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-  root.add(motePoints);
-
   let lit = 0;
   const update = (t: number) => {
     for (const { mesh, phase } of flickers) {
       mesh.scale.y = 0.85 + Math.sin(t * 9 + phase) * 0.14 + Math.sin(t * 23 + phase * 2) * 0.07;
     }
     for (const b of bulbs) b.scale.setScalar(0.75 + Math.sin(t * 1.4 + (b.userData.phase as number)) * 0.25);
-    // Animate dust motes
-    for (let i = 0; i < moteCount; i++) {
-      const [x, y, z, p] = moteSeed[i];
-      motePos[i * 3] = x * (TABLETOP.halfX - 0.5) + Math.sin(t * 0.1 + p) * 0.2;
-      motePos[i * 3 + 1] = 0.3 + ((y + t * 0.008) % 1) * (H - 0.6);
-      motePos[i * 3 + 2] = z * (TABLETOP.halfZ - 0.5) + Math.cos(t * 0.08 + p) * 0.2;
-    }
-    motes.attributes.position.needsUpdate = true;
     lit = t;
-    tableLight.intensity = 35 * (1 + Math.sin(lit * 3.1) * 0.02);
+    tableLight.intensity = 30 * (1 + Math.sin(lit * 3.1) * 0.02);
   };
 
   return {

@@ -57,8 +57,8 @@ function createCinemaLights(
   stageLight.position.set(0, 4.5, -5.5);
   stageLight.castShadow = true;
   stageLight.shadow.mapSize.set(1024, 1024);
-  stageLight.shadow.bias = -0.0001;
-  stageLight.shadow.normalBias = 0.02;
+  stageLight.shadow.bias = 0.0005;
+  stageLight.shadow.normalBias = 0;
   stageLight.shadow.radius = 1;
   root.add(stageLight);
   lights.push(stageLight);

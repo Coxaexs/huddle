@@ -44,6 +44,19 @@ async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
   }
 }
 
+/** Download YouTube video to server harddisk via yt-dlp */
+async function downloadYouTubeVideo(urlOrId: string): Promise<{ streamUrl: string; title: string }> {
+  const result = await apiFetch<{ ok: boolean; streamUrl: string; title: string }>("/api/youtube/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: urlOrId }),
+  });
+  if (!result.ok || !result.streamUrl) {
+    throw new Error("Failed to download video from YouTube.");
+  }
+  return { streamUrl: result.streamUrl, title: result.title };
+}
+
 export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null }
 
 export function extractYouTubeId(url: string): string | null {
@@ -66,6 +79,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
 }) {
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [showYouTube, setShowYouTube] = useState(false);
   const [ytQuery, setYtQuery] = useState("");
@@ -78,10 +92,10 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
   const start = (url: string, title: string) => setWatch({ url, title, position: 0, paused: false });
   const chooseFile = async (chosen: File | undefined) => {
     if (!chosen) return;
-    setBusy(true); setProblem(null);
+    setBusy(true); setProblem(null); setBusyMessage("Uploading video…");
     try { start(await upload(chosen), chosen.name.replace(/\.[^.]+$/, "")); }
     catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
-    finally { setBusy(false); if (file.current) file.current.value = ""; }
+    finally { setBusy(false); setBusyMessage(null); if (file.current) file.current.value = ""; }
   };
 
   // Debounced YouTube search
@@ -99,13 +113,22 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
     return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
   }, [ytQuery, showYouTube]);
 
-  const handleYtSelect = (video: YouTubeVideo) => {
-    // Use youtube-nocookie.com embed URL for privacy with JS API enabled
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&enablejsapi=1&rel=0`;
-    start(embedUrl, video.title);
-    setShowYouTube(false);
-    setYtQuery("");
-    setYtResults([]);
+  const handleYtSelect = async (video: YouTubeVideo) => {
+    setBusy(true);
+    setProblem(null);
+    setBusyMessage(`Downloading "${video.title}" to server with yt-dlp…`);
+    try {
+      const { streamUrl, title } = await downloadYouTubeVideo(`https://www.youtube.com/watch?v=${video.id}`);
+      start(streamUrl, title || video.title);
+      setShowYouTube(false);
+      setYtQuery("");
+      setYtResults([]);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : "YouTube download failed");
+    } finally {
+      setBusy(false);
+      setBusyMessage(null);
+    }
   };
 
   return (
@@ -132,29 +155,46 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
         <>
           {!showYouTube ? (
             <>
-              <form className="lr-row" onSubmit={(event) => {
+              <form className="lr-row" onSubmit={async (event) => {
                 event.preventDefault();
                 const raw = link.trim();
-                if (raw) {
-                  const ytId = extractYouTubeId(raw);
-                  if (ytId) {
-                    start(`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&enablejsapi=1&rel=0`, "YouTube Video");
-                  } else {
-                    start(raw, raw.split("/").pop()?.split("?")[0] || "Video");
+                if (!raw) return;
+                const ytId = extractYouTubeId(raw);
+                if (ytId) {
+                  setBusy(true);
+                  setProblem(null);
+                  setBusyMessage("Downloading YouTube video with yt-dlp to server storage…");
+                  try {
+                    const { streamUrl, title } = await downloadYouTubeVideo(raw);
+                    start(streamUrl, title);
+                    setLink("");
+                  } catch (err) {
+                    setProblem(err instanceof Error ? err.message : "YouTube download failed");
+                  } finally {
+                    setBusy(false);
+                    setBusyMessage(null);
                   }
+                } else {
+                  start(raw, raw.split("/").pop()?.split("?")[0] || "Video");
                   setLink("");
                 }
               }}>
-                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://… direct link to .mp4/.webm or YouTube URL" aria-label="Video link" maxLength={600} />
-                <button type="submit" disabled={!link.trim()}>Play</button>
+                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://… direct link to .mp4/.webm or YouTube URL" aria-label="Video link" maxLength={600} disabled={busy} />
+                <button type="submit" disabled={!link.trim() || busy}>{busy ? "Downloading…" : "Play"}</button>
               </form>
+              {busy && busyMessage && (
+                <div className="lr-row" style={{ color: "var(--lr-accent, #ffd27a)", fontSize: 13, gap: 8 }}>
+                  <Loader2 size={15} className="animate-spin" />
+                  <span>{busyMessage}</span>
+                </div>
+              )}
               <div className="lr-row">
                 <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a video"}</button>
                 <input ref={file} type="file" accept="video/mp4,video/webm,.mp4,.webm" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
-                <button type="button" onClick={() => setShowYouTube(true)} title="Search YouTube"><PlayCircle size={14} /> YouTube & more…</button>
+                <button type="button" disabled={busy} onClick={() => setShowYouTube(true)} title="Search YouTube"><PlayCircle size={14} /> YouTube & more…</button>
               </div>
-              <p className="lr-note">Links must allow other sites to play them (most direct video files do). YouTube links work via embed. Uploads up to 40 MB. Everyone sees the same moment, and anyone can pause or seek.</p>
-              {problem && <p className="lr-note">{problem}</p>}
+              <p className="lr-note">YouTube videos are downloaded directly to server storage using yt-dlp and played on the screen for everyone in sync. Direct video links and uploads up to 40 MB also supported.</p>
+              {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
             </>
           ) : (
             <div style={{ padding: "8px 0" }}>
