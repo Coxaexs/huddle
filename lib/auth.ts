@@ -121,12 +121,24 @@ function profileFields(user: User) {
   };
 }
 
+/** Checks whether a username belongs to a developer configured in .dev.vars / DEV_USERS. */
+export function isDevUsername(username: string): boolean {
+  try {
+    const raw = bindings().DEV_USERS || "kiwi,flo";
+    const devs = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    return devs.includes(username.toLowerCase());
+  } catch {
+    return ["kiwi", "flo"].includes(username.toLowerCase());
+  }
+}
+
 /** The signed-in user's own account, including their private preferences. */
 export function publicUser(user: User): PublicUser {
   return {
     ...profileFields(user),
     isAdmin: Boolean(user.is_admin),
     canInvite: Boolean(user.is_admin || user.can_invite),
+    isDev: isDevUsername(user.username),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
     email: user.email || null,
@@ -166,6 +178,7 @@ export function memberFromRow(
     createdAt: row.created_at,
     isAdmin: Boolean(row.is_admin),
     canInvite: Boolean(row.is_admin || row.can_invite),
+    isDev: isDevUsername(row.username),
     status: statusSeenBy(row.status, row.id === viewerId),
     timeoutUntil: activeUntil(row.timeout_until),
     roleIds,

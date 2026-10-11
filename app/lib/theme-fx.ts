@@ -1,7 +1,7 @@
 /**
  * Theme click effects: pressing a button (mute, deafen, send, anything) lets
  * a little of the theme spill out of it. Vampire drips blood, Matrix rains
- * glyphs, Cyberpunk throws neon sparks, and every other theme has its own.
+ * glyphs, Cyberpunk glitches, and every other theme has its own.
  * Pure decoration: pointer-events none, capped in number, skipped when the
  * OS asks for reduced motion or `huddle-theme-fx` is "off" in localStorage.
  */
@@ -23,8 +23,8 @@ function particle(
   keyframes: Keyframe[],
   options: KeyframeAnimationOptions,
   text?: string,
-): void {
-  if (!layer || live >= MAX_PARTICLES) return;
+): HTMLElement | null {
+  if (!layer || live >= MAX_PARTICLES) return null;
   const el = document.createElement("span");
   el.className = `theme-fx ${className}`;
   el.style.left = `${left}px`;
@@ -38,25 +38,59 @@ function particle(
   };
   if (typeof el.animate !== "function") {
     window.setTimeout(done, 600);
-    return;
+    return el;
   }
   const animation = el.animate(keyframes, { fill: "forwards", ...options });
   animation.onfinish = done;
   animation.oncancel = done;
+  return el;
 }
 
-/** Drops that cling to the bottom edge, stretch, then fall. */
+/**
+ * Blood that wells at the bottom edge, runs down in a thin stream with a
+ * heavy bead at its tip, then the bead lets go, falls and splats while the
+ * stream thins out and fades.
+ */
 const blood: Spawn = (_layer, rect, x) => {
-  const count = Math.random() < 0.5 ? 1 : 2;
+  const count = 2 + Math.floor(Math.random() * 2);
   for (let i = 0; i < count; i += 1) {
-    const left = Math.min(rect.right - 6, Math.max(rect.left + 4, x + rand(-10, 10)));
-    const fall = rand(28, 60);
-    particle("fx-blood", left, rect.bottom - 3, [
-      { transform: "translateY(0) scale(0.7, 0.5)", opacity: 1 },
-      { transform: "translateY(2px) scale(1, 1.25)", opacity: 1, offset: 0.35 },
-      { transform: `translateY(${fall}px) scale(0.75, 1.6)`, opacity: 0.95, offset: 0.85 },
-      { transform: `translateY(${fall + 6}px) scale(1.3, 0.35)`, opacity: 0 },
-    ], { duration: rand(900, 1300), delay: i * 140, easing: "cubic-bezier(.55,0,.85,.4)" });
+    const offset = i === 0 ? rand(-5, 5) : (i % 2 === 1 ? rand(14, 28) : -rand(14, 28));
+    const left = Math.min(rect.right - 6, Math.max(rect.left + 6, x + offset));
+    const top = rect.bottom;
+    const run = rand(14, 30);
+    const fall = rand(36, 70);
+    const total = rand(1300, 1700);
+    const delay = i * rand(120, 240);
+    const options = { duration: total, delay, easing: "linear" } as const;
+    // Pool clinging to the edge.
+    particle("fx-blood-pool", left, top, [
+      { transform: "translate(-50%, 0) scale(0.2, 0.2)", opacity: 0 },
+      { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.15 },
+      { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.5 },
+      { transform: "translate(-50%, 0) scale(0.6, 0.5)", opacity: 0 },
+    ], options);
+    // Stream: grows while the bead runs, then retracts upwards and fades.
+    particle("fx-blood-stream", left, top, [
+      { height: "0px", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
+      { height: `${run}px`, opacity: 1, offset: 0.4 },
+      { height: `${run * 0.9}px`, opacity: 0.9, offset: 0.55, easing: "ease-in" },
+      { height: `${run * 0.15}px`, opacity: 0 },
+    ], options);
+    // Bead: swells at the tip, detaches at 40%, falls, stretching as it speeds up.
+    particle("fx-blood-bead", left, top, [
+      { transform: "translateY(0) scale(0.5, 0.5)", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
+      { transform: `translateY(${run}px) scale(1, 1.05)`, opacity: 1, offset: 0.4, easing: "cubic-bezier(.5,0,.9,.5)" },
+      { transform: `translateY(${run + fall}px) scale(0.8, 1.45)`, opacity: 1, offset: 0.72 },
+      { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0, offset: 0.73 },
+      { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0 },
+    ], options);
+    // Splat where it lands.
+    particle("fx-blood-splat", left, top + run + fall, [
+      { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0 },
+      { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0, offset: 0.72 },
+      { transform: "translate(-50%, -50%) scale(1, 1)", opacity: 0.9, offset: 0.78 },
+      { transform: "translate(-50%, -50%) scale(1.4, 0.8)", opacity: 0 },
+    ], options);
   }
 };
 
@@ -71,33 +105,71 @@ const glyphs: Spawn = (_layer, rect) => {
   }
 };
 
-/** Sparks flung outwards, plus a short glitch bar across the button. */
-function sparks(className: string, count: number, reach: number): Spawn {
-  return (_layer, rect, x) => {
-    const cy = rect.top + rect.height / 2;
-    for (let i = 0; i < count; i += 1) {
-      const angle = rand(0, Math.PI * 2);
-      const distance = rand(reach * 0.5, reach);
-      particle(className, x, cy, [
-        { transform: "translate(0, 0) scale(1)", opacity: 1 },
-        {
-          transform: `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px) scale(0.2)`,
-          opacity: 0,
-        },
-      ], { duration: rand(380, 620), easing: "cubic-bezier(.2,.8,.3,1)" });
+/** Glitch: an RGB-split outline pulse and torn slices that jitter across the button. */
+const neon: Spawn = (_layer, rect, x) => {
+  const box = (className: string, to: number, ms: number) => {
+    const el = particle(className, rect.left, rect.top, [
+      { transform: "scale(1)", opacity: 0.9 },
+      { transform: `scale(${to})`, opacity: 0 },
+    ], { duration: ms, easing: "cubic-bezier(.1,.7,.3,1)" });
+    if (el) {
+      el.style.width = `${rect.width}px`;
+      el.style.height = `${rect.height}px`;
     }
   };
-}
+  box("fx-neon-box", 1.18, 420);
+  box("fx-neon-box fx-neon-box-b", 1.32, 520);
+  for (let i = 0; i < 4; i += 1) {
+    const h = rand(2, Math.max(3, rect.height / 3));
+    const dx = rand(6, 16) * (Math.random() < 0.5 ? -1 : 1);
+    const el = particle(i % 2 ? "fx-slice fx-slice-b" : "fx-slice", rect.left, rect.top + rand(0, rect.height - h), [
+      { transform: "translateX(0)", opacity: 0 },
+      { transform: `translateX(${dx}px)`, opacity: 0.85, offset: 0.2 },
+      { transform: `translateX(${-dx * 0.6}px)`, opacity: 0.5, offset: 0.5 },
+      { transform: `translateX(${dx * 0.3}px)`, opacity: 0.8, offset: 0.7 },
+      { transform: "translateX(0)", opacity: 0 },
+    ], { duration: rand(260, 380), delay: i * 45, easing: "steps(5)" });
+    if (el) {
+      el.style.width = `${rect.width}px`;
+      el.style.height = `${h}px`;
+    }
+  }
+  for (let i = 0; i < 5; i += 1) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    particle("fx-pixel", x + rand(-rect.width / 2, rect.width / 2), rect.top + rand(0, rect.height), [
+      { transform: "translate(0, 0)", opacity: 1 },
+      { transform: `translate(${side * rand(8, 26)}px, ${rand(-14, 14)}px)`, opacity: 0 },
+    ], { duration: rand(300, 520), delay: rand(0, 120), easing: "steps(4)" });
+  }
+};
 
-const neon: Spawn = (l, rect, x) => {
-  sparks("fx-neon", 7, 34)(l, rect, x);
-  particle("fx-glitch", rect.left, rect.top + rect.height * rand(0.25, 0.7), [
-    { transform: "scaleX(0)", opacity: 0.9 },
-    { transform: "scaleX(1) translateX(4px)", opacity: 0.8, offset: 0.4 },
-    { transform: "scaleX(1) translateX(-3px)", opacity: 0 },
-  ], { duration: 260, easing: "steps(4)" });
-  const bar = layer?.lastElementChild as HTMLElement | null;
-  if (bar?.classList.contains("fx-glitch")) bar.style.width = `${rect.width}px`;
+/** Embers lifting off the button: they sway, cool from yellow to red and die out. */
+const embers: Spawn = (_layer, rect) => {
+  const glow = particle("fx-amber-glow", rect.left, rect.top, [
+    { opacity: 0.7 },
+    { opacity: 0 },
+  ], { duration: 520, easing: "ease-out" });
+  if (glow) {
+    glow.style.width = `${rect.width}px`;
+    glow.style.height = `${rect.height}px`;
+  }
+  for (let i = 0; i < 9; i += 1) {
+    const size = rand(2, 4.5);
+    const sway = rand(5, 14) * (Math.random() < 0.5 ? -1 : 1);
+    const rise = rand(34, 78);
+    const el = particle("fx-ember", rand(rect.left + 4, rect.right - 4), rect.top + rect.height * 0.4, [
+      { transform: "translate(0, 0) scale(1)", opacity: 0, background: "#fff1b0" },
+      { transform: `translate(${sway * 0.5}px, ${-rise * 0.25}px) scale(1)`, opacity: 1, offset: 0.12, background: "#ffc933" },
+      { transform: `translate(${-sway * 0.6}px, ${-rise * 0.55}px) scale(0.8)`, opacity: 0.95, offset: 0.45, background: "#ff8a00" },
+      { transform: `translate(${sway}px, ${-rise * 0.8}px) scale(0.55)`, opacity: 0.6, offset: 0.75, background: "#d63a00" },
+      { transform: `translate(${-sway * 0.4}px, ${-rise}px) scale(0.2)`, opacity: 0, background: "#7a1500" },
+    ], { duration: rand(900, 1500), delay: rand(0, 180), easing: "ease-out" });
+    if (el) {
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      el.style.margin = `${-size / 2}px 0 0 ${-size / 2}px`;
+    }
+  }
 };
 
 /** Symbols that float up and fade: hearts, stars, ink, petals. */
@@ -136,7 +208,7 @@ const EFFECTS: Record<string, Spawn> = {
   vampire: blood,
   matrix: glyphs,
   cyberpunk: neon,
-  amber: sparks("fx-ember", 6, 26),
+  amber: embers,
   "dark-academia": ink,
   midnight: floaters("fx-star", ["✦", "✧", "⋆"]),
   sunset: floaters("fx-petal", ["❀", "✿", "•"]),
@@ -147,13 +219,34 @@ const EFFECTS: Record<string, Spawn> = {
   legacy: ripple,
 };
 
-function enabled(): boolean {
+export function isThemeFxEnabled(themeId?: string): boolean {
+  if (typeof window === "undefined") return true;
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
   try {
-    return window.localStorage.getItem("huddle-theme-fx") !== "off";
+    const pref = window.localStorage.getItem("huddle-theme-fx");
+    if (pref === "on") return true;
+    if (pref === "off") return false;
+    const theme = themeId || document.documentElement.getAttribute("data-custom-theme-id") || "";
+    // Default closed for cozy, light, and legacy themes
+    if (theme === "cozy" || theme === "light" || theme === "legacy") {
+      return false;
+    }
+    return true;
   } catch {
     return true;
   }
+}
+
+export function setThemeFxEnabled(enabled: boolean): void {
+  try {
+    window.localStorage.setItem("huddle-theme-fx", enabled ? "on" : "off");
+  } catch {
+    // Ignore quota issues
+  }
+}
+
+function enabled(): boolean {
+  return isThemeFxEnabled();
 }
 
 function onPointerDown(event: PointerEvent): void {

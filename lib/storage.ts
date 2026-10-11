@@ -42,6 +42,8 @@ export interface HuddleBindings {
   LASTFM_SECRET?: string;
   /** LiveKit SFU server WebSocket URL (e.g. wss://host/livekit or ws://host:7880) */
   LIVEKIT_URL?: string;
+  /** LiveKit SFU Germany server WebSocket URL (e.g. wss://livekit-de.hoffle.online) */
+  LIVEKIT_URL_DE?: string;
   /** LiveKit API Key for minting room tokens */
   LIVEKIT_API_KEY?: string;
   /** LiveKit API Secret for minting room tokens */
@@ -52,6 +54,8 @@ export interface HuddleBindings {
   RESEND_API_KEY?: string;
   /** Sender for outgoing mail, e.g. "Hoffle <noreply@hoffle.online>". */
   MAIL_FROM?: string;
+  /** Comma-separated developer usernames who receive dev logs (e.g. "kiwi,flo"). */
+  DEV_USERS?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

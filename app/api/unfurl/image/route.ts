@@ -8,6 +8,7 @@ import {
   safeFetch,
   verifyImageSignature,
 } from "@/lib/unfurl";
+import { sniffUpload } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
 
@@ -45,40 +46,57 @@ export async function GET(request: Request) {
     () => null,
   );
   if (!upstream) return notFound();
-  const type = (upstream.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  let type = (upstream.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   const length = Number(upstream.headers.get("content-length") || 0);
-  if (!PROXY_IMAGE_TYPES.has(type) || length > MAX_IMAGE_BYTES) {
+  if (length > MAX_IMAGE_BYTES) {
     void upstream.body?.cancel().catch(() => undefined);
     return notFound();
   }
 
-  // Without a length header, buffer it so an endless stream can't run on.
-  let body: ReadableStream<Uint8Array> | ArrayBuffer | null = upstream.body;
-  if (!length) {
-    const reader = upstream.body?.getReader();
-    if (!reader) return notFound();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
-      total += value.byteLength;
-      if (total > MAX_IMAGE_BYTES) {
-        void reader.cancel().catch(() => undefined);
-        return notFound();
-      }
-      chunks.push(value);
-    }
-    const merged = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    body = merged.buffer;
+  const isDirectImage = PROXY_IMAGE_TYPES.has(type);
+  const isGenericType =
+    !type ||
+    type === "application/octet-stream" ||
+    type === "binary/octet-stream" ||
+    type === "application/x-binary";
+
+  if (!isDirectImage && !isGenericType) {
+    void upstream.body?.cancel().catch(() => undefined);
+    return notFound();
   }
 
-  return new Response(body, {
+  // Buffer the response stream so an endless stream cannot run on
+  const reader = upstream.body?.getReader();
+  if (!reader) return notFound();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done || !value) break;
+    total += value.byteLength;
+    if (total > MAX_IMAGE_BYTES) {
+      void reader.cancel().catch(() => undefined);
+      return notFound();
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  // If upstream gave a generic/octet-stream header (e.g. AnyDesk CDN), verify magic bytes
+  if (!isDirectImage) {
+    const sniffed = sniffUpload(merged);
+    if (!sniffed || sniffed.family !== "image" || !PROXY_IMAGE_TYPES.has(sniffed.contentType)) {
+      return notFound();
+    }
+    type = sniffed.contentType;
+  }
+
+  return new Response(merged.buffer, {
     headers: {
       "content-type": type,
       "cache-control": "private, max-age=86400",

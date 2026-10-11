@@ -383,6 +383,8 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "lounge":
           case "lounge-state":
+          case "lounge-venue":
+          case "lounge-shared":
             // Read by the living room (see use-living-room).
             window.dispatchEvent(new CustomEvent("huddle-lounge", { detail: payload }));
             break;

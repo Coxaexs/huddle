@@ -14,6 +14,9 @@ export interface DmSummary {
   lastAt: string | null;
   /** Closed from the DM list; still reachable through the quick switcher. */
   hidden?: boolean;
+  /** Pinned to the top of direct messages. */
+  pinned?: boolean;
+  pinnedAt?: string | null;
   /**
    * Set on group DMs. `user` then describes the group itself (its id is the
    * channel id, its name the group name) so single-person UI keeps working.
@@ -23,6 +26,34 @@ export interface DmSummary {
     ownerId: string | null;
     members: DmSummary["user"][];
   };
+}
+
+/**
+ * Sorts DM conversations:
+ * 1. Pinned conversations come first.
+ * 2. Conversations are ordered by their latest message timestamp (lastAt) descending.
+ * 3. Tied pinned conversations use pinnedAt descending.
+ * 4. Stable channelId tiebreak.
+ */
+export function compareDms(a: DmSummary, b: DmSummary): number {
+  const aPinned = Boolean(a.pinned);
+  const bPinned = Boolean(b.pinned);
+  if (aPinned !== bPinned) {
+    return aPinned ? -1 : 1;
+  }
+  const aTime = a.lastAt || "";
+  const bTime = b.lastAt || "";
+  if (aTime !== bTime) {
+    return bTime.localeCompare(aTime);
+  }
+  if (aPinned && bPinned) {
+    const aPin = a.pinnedAt || "";
+    const bPin = b.pinnedAt || "";
+    if (aPin !== bPin) {
+      return bPin.localeCompare(aPin);
+    }
+  }
+  return a.channelId.localeCompare(b.channelId);
 }
 
 /** Most people a group DM can hold, like Discord. */
@@ -145,15 +176,16 @@ export async function listDms(
               (SELECT created_at FROM messages m
                 WHERE m.channel_id = mine.channel_id AND m.deleted_at IS NULL
                 ORDER BY m.created_at DESC LIMIT 1) AS last_at,
-              mine.hidden_at AS hidden_at
+              c.created_at AS channel_created_at,
+              mine.hidden_at AS hidden_at,
+              mine.pinned_at AS pinned_at
          FROM dm_members mine
          LEFT JOIN dm_members theirs
            ON theirs.channel_id = mine.channel_id AND theirs.user_id != mine.user_id
          JOIN users u ON u.id = COALESCE(theirs.user_id, mine.user_id)
          JOIN channels c ON c.id = mine.channel_id
         WHERE mine.user_id = ? AND COALESCE(c.is_group, 0) = 0
-        GROUP BY mine.channel_id
-        ORDER BY last_at DESC NULLS LAST`,
+        GROUP BY mine.channel_id`,
     )
     .bind(userId)
     .all();
@@ -169,7 +201,9 @@ export async function listDms(
       color: string;
       last_message: string | null;
       last_at: string | null;
+      channel_created_at?: string | null;
       hidden_at?: string | null;
+      pinned_at?: string | null;
     }>
   ).map((row) => ({
     channelId: row.channel_id,
@@ -182,14 +216,14 @@ export async function listDms(
       color: row.color,
     },
     lastMessage: row.last_message,
-    lastAt: row.last_at,
+    lastAt: row.last_at || row.channel_created_at || null,
     hidden: Boolean(row.hidden_at),
+    pinned: Boolean(row.pinned_at),
+    pinnedAt: row.pinned_at || null,
   }));
 
   const groups = await listGroupDms(db, userId);
-  return [...direct, ...groups].sort((a, b) =>
-    (b.lastAt || "").localeCompare(a.lastAt || ""),
-  );
+  return [...direct, ...groups].sort(compareDms);
 }
 
 /** The group DMs this person is in, each with its full member list. */
@@ -198,6 +232,7 @@ async function listGroupDms(db: D1Database, userId: string): Promise<DmSummary[]
     .prepare(
       `SELECT c.id AS channel_id, c.name AS name, c.topic AS owner_id, c.created_at AS created_at,
               mine.hidden_at AS hidden_at,
+              mine.pinned_at AS pinned_at,
               (SELECT content FROM messages m
                 WHERE m.channel_id = c.id AND m.deleted_at IS NULL
                 ORDER BY m.created_at DESC LIMIT 1) AS last_message,
@@ -216,6 +251,7 @@ async function listGroupDms(db: D1Database, userId: string): Promise<DmSummary[]
     owner_id: string;
     created_at: string;
     hidden_at: string | null;
+    pinned_at: string | null;
     last_message: string | null;
     last_at: string | null;
   }>;
@@ -271,6 +307,8 @@ async function listGroupDms(db: D1Database, userId: string): Promise<DmSummary[]
       // A brand-new group sorts by when it was made until someone talks.
       lastAt: group.last_at || group.created_at,
       hidden: Boolean(group.hidden_at),
+      pinned: Boolean(group.pinned_at),
+      pinnedAt: group.pinned_at || null,
       group: { name, ownerId: group.owner_id || null, members },
     };
   });
@@ -342,6 +380,27 @@ export async function setDmHidden(
     .prepare("UPDATE dm_members SET hidden_at = ? WHERE channel_id = ? AND user_id = ?")
     .bind(hidden ? new Date().toISOString() : null, channelId, userId)
     .run();
+  return Boolean(result.meta.changes);
+}
+
+/**
+ * Pins or unpins a DM in one person's list. Only their row in dm_members changes.
+ */
+export async function setDmPinned(
+  db: D1Database,
+  channelId: string,
+  userId: string,
+  pinned: boolean,
+): Promise<boolean> {
+  const result = pinned
+    ? await db
+        .prepare("UPDATE dm_members SET pinned_at = ?, hidden_at = NULL WHERE channel_id = ? AND user_id = ?")
+        .bind(new Date().toISOString(), channelId, userId)
+        .run()
+    : await db
+        .prepare("UPDATE dm_members SET pinned_at = NULL WHERE channel_id = ? AND user_id = ?")
+        .bind(channelId, userId)
+        .run();
   return Boolean(result.meta.changes);
 }
 

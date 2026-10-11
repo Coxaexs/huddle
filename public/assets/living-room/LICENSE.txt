@@ -1,0 +1,4 @@
+3D props in this folder are from Kenney (www.kenney.nl):
+ - Furniture Kit 2.0
+ - Graveyard Kit 5.0
+Both released under Creative Commons Zero (CC0 1.0), https://creativecommons.org/publicdomain/zero/1.0/

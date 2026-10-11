@@ -4,6 +4,8 @@ import { Forward } from "lucide-react";
 import { Avatar } from "./avatar";
 import { MessageBody } from "./message-body";
 
+import { MessageAttachmentFiles, type MessageFileItem } from "./message-file-card";
+
 export interface ForwardedFromData {
   id?: string;
   author: string;
@@ -15,7 +17,8 @@ export interface ForwardedFromData {
   text?: string;
   image?: string;
   images?: string[];
-  file?: { url: string; name: string; type: "pdf" };
+  file?: MessageFileItem;
+  files?: MessageFileItem[];
   channelName?: string;
   serverName?: string;
   createdAt?: string;
@@ -122,20 +125,10 @@ export function ForwardedMessageCard({
             </div>
           )}
 
-          {data.file?.type === "pdf" && (
-            <button
-              type="button"
-              className="message-file-card forwarded-file-card"
-              onClick={() => onPdf?.({ url: data.file!.url, name: data.file!.name })}
-            >
-              <span className="message-file-icon">PDF</span>
-              <span>
-                <strong>{data.file.name}</strong>
-                <small>PDF document · view and fill in Huddle</small>
-              </span>
-              <b aria-hidden="true">Open</b>
-            </button>
-          )}
+          <MessageAttachmentFiles
+            files={data.files || data.file}
+            onPdf={onPdf}
+          />
         </div>
       </div>
     </div>

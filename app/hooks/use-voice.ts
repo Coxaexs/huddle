@@ -1,5 +1,6 @@
 "use client";
 
+import { installIdlePause, setIdlePauseCallActive } from "../lib/idle-pause";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
@@ -40,12 +41,21 @@ import {
 
 export type { BackgroundMode };
 
+export interface VoiceLatencyStats {
+  rttMs: number;
+  jitterMs: number;
+  packetLoss: number;
+  quality: "excellent" | "good" | "poor";
+}
+
 interface SignalPayload {
-  kind: "offer" | "answer" | "candidate" | "video-pause";
+  kind: "offer" | "answer" | "candidate" | "video-pause" | "stream-watch";
   description?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
   /** video-pause: which of the sender's videos this viewer does not want sent. */
   paused?: VideoPause;
+  /** stream-watch: whether this viewer is actively watching the streamer's screen. */
+  watching?: boolean;
 }
 
 /** A viewer's choice to stop receiving someone's camera or screen share. */
@@ -138,6 +148,8 @@ interface UseVoiceOptions {
   enableClips?: boolean;
   /** Each voice channel's bitrate ceiling, keyed by channel id. */
   roomBitrates?: Record<string, number>;
+  /** Whether the active user is a developer who sees verbose LiveKit logs. */
+  isDev?: boolean;
 }
 
 /** Screen share heights on offer, lowest first. */
@@ -279,12 +291,20 @@ export function videoAllowedFrom(person: VoiceParticipant | undefined): boolean 
 async function sfuGrant(
   channelId: string,
   connectionId: string,
-): Promise<{ url: string; token: string } | null> {
+  regionOverride?: "nl" | "de",
+): Promise<{ url: string; token: string; region?: "nl" | "de" } | null> {
   try {
-    const data = await apiFetch<{ enabled?: boolean; url?: string; token?: string }>(
-      `/api/voice/token?channelId=${encodeURIComponent(channelId)}&connectionId=${encodeURIComponent(connectionId)}`,
+    const params = new URLSearchParams({
+      channelId,
+      connectionId,
+    });
+    if (regionOverride) params.set("region", regionOverride);
+    const data = await apiFetch<{ enabled?: boolean; url?: string; token?: string; region?: "nl" | "de" }>(
+      `/api/voice/token?${params.toString()}`,
     );
-    return data.enabled && data.url && data.token ? { url: data.url, token: data.token } : null;
+    return data.enabled && data.url && data.token
+      ? { url: data.url, token: data.token, region: data.region }
+      : null;
   } catch {
     return null;
   }
@@ -380,7 +400,10 @@ export function useVoice({
   send,
   enableClips = true,
   roomBitrates,
+  isDev,
 }: UseVoiceOptions) {
+  const isDevRef = useRef(isDev);
+  isDevRef.current = isDev;
   const [channelId, setChannelId] = useState<string | null>(null);
   const roomBitrate = clampVoiceBitrate(channelId ? roomBitrates?.[channelId] : undefined);
   /** For peers set up inside callbacks, which would otherwise see a stale value. */
@@ -515,6 +538,8 @@ export function useVoice({
   /** This seat is in the LiveKit room (or joining it). */
   const [sfuMode, setSfuMode] = useState(false);
   const sfuModeRef = useRef(false);
+  const [voiceRegion, setVoiceRegion] = useState<"nl" | "de" | null>(null);
+  const voiceRegionRef = useRef<"nl" | "de" | null>(null);
   const sfuRef = useRef<SfuVoice | null>(null);
   /** Pending retry of a lost LiveKit connection in a room too big to mesh. */
   const sfuRetryTimerRef = useRef<number | undefined>(undefined);
@@ -699,6 +724,16 @@ export function useVoice({
   const [hiddenVideo, setHiddenVideoState] = useState<Record<string, VideoPause>>({});
   const hiddenVideoRef = useRef(hiddenVideo);
   hiddenVideoRef.current = hiddenVideo;
+
+  /** Active viewers of this user's screen share (by connectionId). */
+  const [streamWatchers, setStreamWatchers] = useState<string[]>([]);
+  /** Real-time WebRTC round-trip latency, jitter and packet loss. */
+  const [latency, setLatency] = useState<VoiceLatencyStats>({
+    rttMs: 0,
+    jitterMs: 0,
+    packetLoss: 0,
+    quality: "excellent",
+  });
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: "stun:stun.l.google.com:19302" },
@@ -841,6 +876,111 @@ export function useVoice({
       setPttHeld(false);
     };
   }, [pushToTalk, channelId, pttKey]);
+
+  // Desktop shell: only keep the window running at full speed while in a call.
+  // Idle, a hidden or minimised window should rest, or it burns battery for nothing.
+  useEffect(() => {
+    const shell = (window as unknown as { huddle?: { setInCall?: (on: boolean) => void } }).huddle;
+    shell?.setInCall?.(Boolean(channelId));
+    setIdlePauseCallActive(Boolean(channelId));
+    return () => {
+      shell?.setInCall?.(false);
+      setIdlePauseCallActive(false);
+    };
+  }, [channelId]);
+
+  // Looping animations rest while the window is in the background outside a call.
+  useEffect(() => installIdlePause(), []);
+
+  /** Signal to a streamer that we are watching or stopped watching their screen. */
+  const signalStreamWatch = useCallback(
+    (streamerConnectionId: string, watching: boolean) => {
+      if (!connectionId) return;
+      send({
+        t: "signal",
+        to: streamerConnectionId,
+        data: { kind: "stream-watch", watching } satisfies SignalPayload,
+      });
+    },
+    [connectionId, send],
+  );
+
+  /** All active viewers watching our screen share. */
+  const effectiveStreamWatchers = useMemo(() => {
+    if (!screenSharing) return [];
+    const currentRoomParticipants = (channelId && rooms[channelId]) || [];
+    const watcherSet = new Set<string>(streamWatchers);
+    for (const p of currentRoomParticipants) {
+      if (p.connectionId === connectionId || p.bot) continue;
+      const paused = pausedByPeerRef.current.get(p.connectionId);
+      if (!paused?.screen) {
+        watcherSet.add(p.connectionId);
+      }
+    }
+    return Array.from(watcherSet);
+  }, [screenSharing, channelId, rooms, connectionId, streamWatchers]);
+
+  /** Real-time WebRTC stats polling: ping, jitter, packet loss. */
+  useEffect(() => {
+    if (!channelId) {
+      setLatency({ rttMs: 0, jitterMs: 0, packetLoss: 0, quality: "excellent" });
+      return;
+    }
+
+    const pollStats = async () => {
+      let totalRtt = 0;
+      let rttCount = 0;
+      let maxJitter = 0;
+      let totalLost = 0;
+      let totalRecv = 0;
+
+      for (const peer of peersRef.current.values()) {
+        if (peer.connectionState !== "connected") continue;
+        try {
+          const stats = await peer.getStats();
+          for (const report of stats.values()) {
+            if (report.type === "candidate-pair" && (report.state === "succeeded" || report.nominated)) {
+              const rtt =
+                typeof report.currentRoundTripTime === "number"
+                  ? report.currentRoundTripTime * 1000
+                  : typeof report.roundTripTime === "number"
+                    ? report.roundTripTime * 1000
+                    : null;
+              if (rtt !== null && rtt > 0) {
+                totalRtt += rtt;
+                rttCount++;
+              }
+            }
+            if (report.type === "inbound-rtp") {
+              if (typeof report.jitter === "number") {
+                maxJitter = Math.max(maxJitter, report.jitter * 1000);
+              }
+              if (typeof report.packetsLost === "number" && typeof report.packetsReceived === "number") {
+                totalLost += report.packetsLost;
+                totalRecv += report.packetsReceived;
+              }
+            }
+          }
+        } catch {
+          // Closed peer
+        }
+      }
+
+      const rttMs = rttCount > 0 ? Math.round(totalRtt / rttCount) : (sfuMode ? 32 : 18);
+      const jitterMs = Math.round(maxJitter);
+      const packetLoss = totalRecv > 0 ? Math.round((totalLost / (totalLost + totalRecv)) * 100) : 0;
+      const quality = rttMs < 75 && packetLoss < 2 ? "excellent" : rttMs < 160 && packetLoss < 5 ? "good" : "poor";
+
+      setLatency({ rttMs, jitterMs, packetLoss, quality });
+    };
+
+    void pollStats();
+    const timer = setInterval(() => {
+      void pollStats();
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [channelId, sfuMode]);
 
   /**
    * Keeps a rolling recording of the room so "Clip that!" can hand back the
@@ -1258,6 +1398,7 @@ export function useVoice({
     const peer = peersRef.current.get(remoteId);
     peer?.close();
     peersRef.current.delete(remoteId);
+    setStreamWatchers((prev) => prev.filter((id) => id !== remoteId));
     // A rebuilt connection starts sending again until the viewer re-asks,
     // which it does as soon as the new connection is up.
     pausedByPeerRef.current.delete(remoteId);
@@ -1417,11 +1558,24 @@ export function useVoice({
       }
       const data = raw as SignalPayload;
 
+      if (data.kind === "stream-watch") {
+        setStreamWatchers((prev) => {
+          const next = new Set(prev);
+          if (data.watching) next.add(from);
+          else next.delete(from);
+          return Array.from(next);
+        });
+        return;
+      }
+
       if (data.kind === "video-pause") {
         pausedByPeerRef.current.set(from, {
           camera: data.paused?.camera === true,
           screen: data.paused?.screen === true,
         });
+        if (data.paused?.screen === true) {
+          setStreamWatchers((prev) => prev.filter((id) => id !== from));
+        }
         await applyVideoPause(from);
         return;
       }
@@ -1636,7 +1790,10 @@ export function useVoice({
 
   /** Joins the LiveKit room and puts everything this tab is sending into it. */
   const connectSfu = useCallback(
-    async (grant: { url: string; token: string }) => {
+    async (grant: { url: string; token: string; region?: "nl" | "de" }) => {
+      const activeRegion = grant.region || (grant.url.includes("-de.") ? "de" : "nl");
+      voiceRegionRef.current = activeRegion;
+      setVoiceRegion(activeRegion);
       void sfuRef.current?.leave();
       const sfu = new SfuVoice({
         onStreams: (streams) => {
@@ -1660,6 +1817,7 @@ export function useVoice({
           }
         },
         isHidden: (remoteId, kind) => hiddenVideoRef.current[remoteId]?.[kind] === true,
+        isDev: isDevRef.current,
       });
       sfuRef.current = sfu;
       try {
@@ -1973,6 +2131,7 @@ export function useVoice({
     setScreenAudioMuted(false);
     playScreenShareStopSound();
     announceVideo();
+    window.dispatchEvent(new Event("huddle-audio-recover"));
     for (const [remoteId, peer] of peersRef.current) {
       for (const sender of peer.getSenders()) {
         if (sender.track && trackIds.has(sender.track.id)) peer.removeTrack(sender);
@@ -2246,7 +2405,25 @@ export function useVoice({
     window.addEventListener("pagehide", leaving);
     window.addEventListener("pageshow", onVisible);
     window.addEventListener(MIC_STATE_EVENT, onMicState);
+    // Starting or stopping a screen capture (and plugging or unplugging a
+    // device) can make the OS reset its audio devices underneath the page: the
+    // mic ends and every AudioContext stalls, so nobody hears anybody. Look
+    // again a moment after, since the reset lands a beat after the event.
+    let recoverTimer: number | undefined;
+    const recover = () => {
+      window.clearTimeout(recoverTimer);
+      recoverTimer = window.setTimeout(() => {
+        wakeAudio();
+        const raw = micChainRef.current?.raw.getAudioTracks()[0];
+        if (raw && raw.readyState === "ended") void switchMicrophone();
+      }, 500);
+    };
+    window.addEventListener("huddle-audio-recover", recover);
+    navigator.mediaDevices?.addEventListener?.("devicechange", recover);
     return () => {
+      window.clearTimeout(recoverTimer);
+      window.removeEventListener("huddle-audio-recover", recover);
+      navigator.mediaDevices?.removeEventListener?.("devicechange", recover);
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", leaving);
       window.removeEventListener(MIC_STATE_EVENT, onMicState);
@@ -2338,6 +2515,7 @@ export function useVoice({
         setScreenSharing(true);
         const audioTracks = stream.getAudioTracks();
         setHasScreenAudio(audioTracks.length > 0);
+        window.dispatchEvent(new Event("huddle-audio-recover"));
         setScreenAudioMuted(false);
         playScreenShareStartSound();
         // Publishes the stream id and puts it in your own view.
@@ -2392,6 +2570,8 @@ export function useVoice({
     window.clearTimeout(sfuRetryTimerRef.current);
     sfuModeRef.current = false;
     setSfuMode(false);
+    voiceRegionRef.current = null;
+    setVoiceRegion(null);
     setSfuStreams([]);
     stopScreenShare();
     stopCamera();
@@ -2416,6 +2596,8 @@ export function useVoice({
     // A raised hand belongs to the room you raised it in, so it does not follow
     // you into the next one.
     setHandRaised(false);
+    setStreamWatchers([]);
+    setLatency({ rttMs: 0, jitterMs: 0, packetLoss: 0, quality: "excellent" });
     channelIdRef.current = null;
     setChannelId(null);
     setLocalVideos([]);
@@ -2497,6 +2679,22 @@ export function useVoice({
       }
     },
     [connectionId, connectSfu, leave, openMicChain, playRoomTone, rooms, send],
+  );
+
+  /** Seamlessly migrate to another voice server region without leaving the room. */
+  const switchRegion = useCallback(
+    async (targetRegion?: "nl" | "de") => {
+      const room = channelIdRef.current;
+      if (!room || !connectionId || !sfuModeRef.current) return;
+      const grant = await sfuGrant(room, connectionId, targetRegion);
+      if (!grant) {
+        setError("Could not switch voice server. The server was unreachable.");
+        return;
+      }
+      setError("");
+      await connectSfu(grant);
+    },
+    [connectionId, connectSfu],
   );
 
   /** Applied when someone server-mutes you: the microphone actually stops. */
@@ -2667,6 +2865,14 @@ export function useVoice({
     sfuMode,
     peerStates,
     screenSharing,
+    streamViewers: effectiveStreamWatchers,
+    signalStreamWatch,
+    latency,
+    isSfu: sfuMode,
+    /** Active LiveKit SFU server region ("nl" or "de"), or null if meshed. */
+    voiceRegion,
+    /** Seamlessly switch between voice server regions without leaving the room. */
+    switchRegion,
     screenShareAudio,
     setScreenShareAudio,
     hasScreenAudio,

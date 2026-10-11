@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findOrCreateDm, channelAudience, listDms } from "./dms";
+import { findOrCreateDm, channelAudience, listDms, setDmPinned, compareDms, type DmSummary } from "./dms";
 
 describe("Direct Messages & Notes to Self", () => {
   it("finds existing self-DM channel if already created", async () => {
@@ -158,5 +158,102 @@ describe("Direct Messages & Notes to Self", () => {
     expect(group.group?.ownerId).toBe("alice");
     expect(group.group?.members).toHaveLength(3);
     expect(group.lastAt).toBe("2026-09-20T00:00:00Z");
+  });
+
+  describe("compareDms & sorting", () => {
+    const makeDm = (
+      id: string,
+      lastAt: string | null,
+      pinned = false,
+      pinnedAt: string | null = null,
+    ): DmSummary => ({
+      channelId: id,
+      user: { id, username: id, displayName: id, avatar: "", avatarUrl: null, color: "#fff" },
+      lastMessage: "hello",
+      lastAt,
+      pinned,
+      pinnedAt,
+    });
+
+    it("sorts by latest message timestamp on top", () => {
+      const older = makeDm("c1", "2026-10-10T10:00:00Z");
+      const newer = makeDm("c2", "2026-10-10T11:00:00Z");
+      const oldest = makeDm("c3", "2026-10-10T09:00:00Z");
+
+      const sorted = [older, oldest, newer].sort(compareDms);
+      expect(sorted.map((d) => d.channelId)).toEqual(["c2", "c1", "c3"]);
+    });
+
+    it("puts pinned DMs on top, ahead of more recently messaged unpinned DMs", () => {
+      const unpinnedNew = makeDm("unpinned-new", "2026-10-10T12:00:00Z", false);
+      const pinnedOld = makeDm("pinned-old", "2026-10-10T08:00:00Z", true, "2026-10-10T08:00:00Z");
+
+      const sorted = [unpinnedNew, pinnedOld].sort(compareDms);
+      expect(sorted[0].channelId).toBe("pinned-old");
+      expect(sorted[1].channelId).toBe("unpinned-new");
+    });
+
+    it("sorts multiple pinned DMs among themselves by latest message timestamp", () => {
+      const pin1 = makeDm("pin1", "2026-10-10T08:00:00Z", true);
+      const pin2 = makeDm("pin2", "2026-10-10T10:00:00Z", true);
+      const unpinned = makeDm("unpinned", "2026-10-10T12:00:00Z", false);
+
+      const sorted = [pin1, unpinned, pin2].sort(compareDms);
+      expect(sorted.map((d) => d.channelId)).toEqual(["pin2", "pin1", "unpinned"]);
+    });
+
+    it("places conversations with no messages after conversations with messages", () => {
+      const active = makeDm("active", "2026-10-10T10:00:00Z");
+      const empty = makeDm("empty", null);
+
+      const sorted = [empty, active].sort(compareDms);
+      expect(sorted.map((d) => d.channelId)).toEqual(["active", "empty"]);
+    });
+  });
+
+  describe("setDmPinned", () => {
+    it("pins a DM and clears hidden_at", async () => {
+      let executedSql = "";
+      let boundArgs: any[] = [];
+      const mockDb = {
+        prepare: (sql: string) => ({
+          bind: (...args: any[]) => {
+            executedSql = sql;
+            boundArgs = args;
+            return {
+              run: async () => ({ meta: { changes: 1 } }),
+            };
+          },
+        }),
+      } as unknown as D1Database;
+
+      const ok = await setDmPinned(mockDb, "channel-1", "user-1", true);
+      expect(ok).toBe(true);
+      expect(executedSql).toContain("pinned_at = ?, hidden_at = NULL");
+      expect(boundArgs[1]).toBe("channel-1");
+      expect(boundArgs[2]).toBe("user-1");
+    });
+
+    it("unpins a DM", async () => {
+      let executedSql = "";
+      let boundArgs: any[] = [];
+      const mockDb = {
+        prepare: (sql: string) => ({
+          bind: (...args: any[]) => {
+            executedSql = sql;
+            boundArgs = args;
+            return {
+              run: async () => ({ meta: { changes: 1 } }),
+            };
+          },
+        }),
+      } as unknown as D1Database;
+
+      const ok = await setDmPinned(mockDb, "channel-1", "user-1", false);
+      expect(ok).toBe(true);
+      expect(executedSql).toContain("pinned_at = NULL");
+      expect(boundArgs[0]).toBe("channel-1");
+      expect(boundArgs[1]).toBe("user-1");
+    });
   });
 });

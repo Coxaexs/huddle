@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { findOrCreateDm, listDms, setDmHidden } from "@/lib/dms";
+import { findOrCreateDm, listDms, setDmHidden, setDmPinned } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   });
 }
 
-/** Close a DM (hide it from your list) or reopen it. Messages are kept. */
+/** Close a DM (hide it from your list), reopen it, or pin/unpin it. Messages are kept. */
 export async function PATCH(request: Request) {
   const db = bindings().DB;
   if (!db) {
@@ -74,12 +74,31 @@ export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     channelId?: string;
     hidden?: boolean;
+    pinned?: boolean;
   };
-  if (!body.channelId || typeof body.hidden !== "boolean") {
+  if (!body.channelId) {
     return Response.json({ error: "Which conversation?" }, { status: 400 });
   }
-  if (!(await setDmHidden(db, body.channelId, user.id, body.hidden))) {
-    return Response.json({ error: "That conversation is not yours." }, { status: 404 });
+
+  let modified = false;
+
+  if (typeof body.pinned === "boolean") {
+    if (!(await setDmPinned(db, body.channelId, user.id, body.pinned))) {
+      return Response.json({ error: "That conversation is not yours." }, { status: 404 });
+    }
+    modified = true;
   }
+
+  if (typeof body.hidden === "boolean") {
+    if (!(await setDmHidden(db, body.channelId, user.id, body.hidden))) {
+      return Response.json({ error: "That conversation is not yours." }, { status: 404 });
+    }
+    modified = true;
+  }
+
+  if (!modified) {
+    return Response.json({ error: "No change specified." }, { status: 400 });
+  }
+
   return Response.json({ ok: true, conversations: await listDms(db, user.id) });
 }

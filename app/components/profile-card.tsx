@@ -60,6 +60,7 @@ export function ProfileCard({
       <div
         className={`profile-card user-profile-scoped-${safeScopeId}`}
         data-user-profile={member.id}
+        data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
         onClick={(event) => event.stopPropagation()}
       >
         {member.customCss && (

@@ -51,6 +51,8 @@ export async function PATCH(
     kind?: string;
     /** Voice rooms: turn the soundboard on or off. */
     soundboard?: boolean;
+    /** Voice rooms: preferred RTC region ("auto", "nl", "de"). */
+    rtcRegion?: "auto" | "nl" | "de";
   };
 
   let kind = channel.kind;
@@ -84,9 +86,13 @@ export async function PATCH(
       ? normalizeChannelName(kind, channel.name)
       : "";
 
+  const rtcRegion = ["auto", "nl", "de"].includes(body.rtcRegion || "")
+    ? body.rtcRegion
+    : (channel as { rtc_region?: string }).rtc_region || "auto";
+
   await db
     .prepare(
-      "UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, soundboard = ?, kind = ? WHERE id = ?",
+      "UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, soundboard = ?, rtc_region = ?, kind = ? WHERE id = ?",
     )
     .bind(
       name || channel.name,
@@ -96,6 +102,7 @@ export async function PATCH(
       typeof body.soundboard === "boolean"
         ? (body.soundboard ? 1 : 0)
         : (channel as { soundboard?: number }).soundboard ?? 1,
+      rtcRegion,
       kind,
       id,
     )

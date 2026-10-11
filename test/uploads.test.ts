@@ -96,6 +96,31 @@ describe("sniffUpload", () => {
     expect(isInlineSafe("image/svg+xml")).toBe(false);
     expect(isInlineSafe("text/html")).toBe(false);
   });
+  it("recognises files like pptx, txt, md, zip, rar, jar", () => {
+    const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
+    const RAR_MAGIC = [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00];
+    const TXT_BYTES = new TextEncoder().encode("Hello Huddle world");
+    const MD_BYTES = new TextEncoder().encode("# Release Notes\nMarkdown text");
+
+    expect(sniffUpload(new Uint8Array(ZIP_MAGIC), "slides.pptx")?.contentType).toBe(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    expect(sniffUpload(new Uint8Array(ZIP_MAGIC), "archive.zip")?.contentType).toBe(
+      "application/zip",
+    );
+    expect(sniffUpload(new Uint8Array(ZIP_MAGIC), "plugin.jar")?.contentType).toBe(
+      "application/java-archive",
+    );
+    expect(sniffUpload(new Uint8Array(RAR_MAGIC), "backup.rar")?.contentType).toBe(
+      "application/vnd.rar",
+    );
+    expect(sniffUpload(TXT_BYTES, "notes.txt")?.contentType).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(sniffUpload(MD_BYTES, "readme.md")?.contentType).toBe(
+      "text/markdown; charset=utf-8",
+    );
+  });
 });
 
 describe("POST /api/uploads", () => {
@@ -104,6 +129,52 @@ describe("POST /api/uploads", () => {
     expect(response.status).toBe(201);
     const body = (await response.json()) as { type: string };
     expect(body.type).toBe("image/png");
+  });
+
+  it("accepts and stores pptx, txt, md, zip, rar, jar files as raw bytes without unzipping", async () => {
+    const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04, 0, 1, 2, 3];
+    const RAR_MAGIC = [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00, 0, 1];
+    const TXT_BYTES = Array.from(new TextEncoder().encode("Simple plain text notes"));
+    const MD_BYTES = Array.from(new TextEncoder().encode("# Huddle Guide\nDetailed markdown"));
+
+    // PPTX
+    const pptxRes = await upload(ZIP_MAGIC, "presentation.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    expect(pptxRes.status).toBe(201);
+    const pptxBody = (await pptxRes.json()) as { key: string; name: string };
+    expect(pptxBody.name).toContain("presentation.pptx");
+    expect(state.objects.get(pptxBody.key)?.bytes.byteLength).toBe(ZIP_MAGIC.length);
+
+    // TXT
+    const txtRes = await upload(TXT_BYTES, "info.txt", "text/plain");
+    expect(txtRes.status).toBe(201);
+    const txtBody = (await txtRes.json()) as { key: string; name: string };
+    expect(txtBody.name).toContain("info.txt");
+
+    // MD
+    const mdRes = await upload(MD_BYTES, "notes.md", "text/markdown");
+    expect(mdRes.status).toBe(201);
+    const mdBody = (await mdRes.json()) as { key: string; name: string };
+    expect(mdBody.name).toContain("notes.md");
+
+    // ZIP (NEVER unzipped)
+    const zipRes = await upload(ZIP_MAGIC, "files.zip", "application/zip");
+    expect(zipRes.status).toBe(201);
+    const zipBody = (await zipRes.json()) as { key: string; name: string };
+    expect(zipBody.name).toContain("files.zip");
+    expect(state.objects.get(zipBody.key)?.bytes.byteLength).toBe(ZIP_MAGIC.length);
+
+    // RAR (NEVER unzipped)
+    const rarRes = await upload(RAR_MAGIC, "bundle.rar", "application/vnd.rar");
+    expect(rarRes.status).toBe(201);
+    const rarBody = (await rarRes.json()) as { key: string; name: string };
+    expect(rarBody.name).toContain("bundle.rar");
+    expect(state.objects.get(rarBody.key)?.bytes.byteLength).toBe(RAR_MAGIC.length);
+
+    // JAR
+    const jarRes = await upload(ZIP_MAGIC, "app.jar", "application/java-archive");
+    expect(jarRes.status).toBe(201);
+    const jarBody = (await jarRes.json()) as { key: string; name: string };
+    expect(jarBody.name).toContain("app.jar");
   });
 
   it("rejects an SVG even though it claims to be an image", async () => {
@@ -157,5 +228,13 @@ describe("GET /api/uploads/:key", () => {
     const response = await get("k--x.svg");
     expect(response.headers.get("content-type")).toBe("application/octet-stream");
     expect(response.headers.get("content-disposition")).toMatch(/^attachment/);
+  });
+
+  it("serves archives and documents as attachments with download headers", async () => {
+    state.objects.set("k--archive.zip", { bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]).buffer, contentType: "application/zip" });
+    const response = await get("k--archive.zip");
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
+    expect(response.headers.get("content-disposition")).toMatch(/^attachment.*archive\.zip/);
+    expect(response.headers.get("content-security-policy")).toContain("sandbox");
   });
 });

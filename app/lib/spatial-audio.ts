@@ -109,6 +109,9 @@ type Entry = {
   filter?: BiquadFilterNode;
   send?: GainNode;
 };
+/** Most voices that get the binaural panner at once; the rest use stereo. */
+const HRTF_MAX_VOICES = 12;
+
 type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
 
 /** How much of each headphone voice reaches the shared room; enough to leave the head, not echo. */
@@ -186,6 +189,10 @@ export class SpatialAudioPlayback {
   private room: GainNode | null = null;
   private reverb: ConvolverNode | null = null;
   private shape: RoomShapeName = "table";
+  /** Voices that get the costly binaural panner; the rest, further away, are panned in plain stereo. */
+  private hrtfAllowed = new Set<string>();
+  private lastRebuild = 0;
+  private stallTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     window.addEventListener("pointerdown", this.resume);
@@ -260,6 +267,61 @@ export class SpatialAudioPlayback {
     try { this.reverb.buffer = roomImpulse(this.context, Math.random, ROOM_SHAPES[name]); } catch { /* Keep the old room. */ }
   }
 
+  /**
+   * Binaural panning costs a lot of CPU per voice, so a crowd only gets it for
+   * the nearest few; the rest are panned in stereo, which is nearly free. A
+   * voice already binaural stays so a little past the limit, so one drifting
+   * across the rank does not click as its path is rebuilt.
+   */
+  private pickHrtf(inputs: PlaybackInput[]) {
+    const spatial = inputs.filter((input) => this.spatialFor(input));
+    const distance = (input: PlaybackInput) => input.important ? -1 : input.seat ? Math.hypot(input.seat.x, input.seat.y, input.seat.z) : 0;
+    const ranked = [...spatial].sort((a, b) => distance(a) - distance(b));
+    const allowed = new Set<string>();
+    ranked.forEach((input, rank) => {
+      const was = this.entries.get(input.key)?.mode === "hrtf";
+      if (rank < HRTF_MAX_VOICES || (was && rank < HRTF_MAX_VOICES + 3)) allowed.add(input.key);
+    });
+    this.hrtfAllowed = allowed;
+  }
+
+  /**
+   * Plugging in a device or starting a screen capture can make the OS reset
+   * audio underneath us: the context errors, or sits suspended for good. Try to
+   * wake it, and if it will not wake, build a fresh one.
+   */
+  private watchContext(context: AudioContext) {
+    context.onstatechange = () => {
+      this.refresh();
+      clearTimeout(this.stallTimer);
+      if (context.state === "running" || !this.needsContext || this.disposed) return;
+      this.resume();
+      this.stallTimer = setTimeout(() => {
+        if (this.context === context && context.state !== "running" && document.visibilityState === "visible") this.rebuild();
+      }, 2000);
+    };
+    context.addEventListener?.("error", this.rebuild);
+  }
+
+  private rebuild = () => {
+    const old = this.context;
+    if (!old || this.disposed || Date.now() - this.lastRebuild < 1500) return;
+    this.lastRebuild = Date.now();
+    const inputs = [...this.entries.values()].map((entry) => entry.input);
+    for (const entry of this.entries.values()) {
+      this.detach(entry);
+      entry.source = undefined;
+    }
+    old.onstatechange = null;
+    old.removeEventListener?.("error", this.rebuild);
+    void old.close().catch(() => undefined);
+    this.context = null;
+    this.room = null;
+    this.reverb = null;
+    this.sinkReady = false;
+    this.update(inputs, this.enabled);
+  };
+
   private resume = () => {
     if (this.needsContext) void this.context?.resume().catch(() => undefined);
   };
@@ -288,11 +350,12 @@ export class SpatialAudioPlayback {
     if (this.needsContext && !this.context) {
       try {
         this.context = new AudioContext({ latencyHint: "interactive" });
-        this.context.onstatechange = () => this.refresh();
+        this.watchContext(this.context);
         void this.configureSink();
         this.resume();
       } catch { /* Web Audio unavailable: keep native playback. */ }
     }
+    this.pickHrtf(inputs);
     const keys = new Set(inputs.map((input) => input.key));
     for (const [key, entry] of this.entries) {
       if (!keys.has(key)) { this.remove(entry); this.entries.delete(key); }
@@ -326,7 +389,10 @@ export class SpatialAudioPlayback {
     const { input } = entry;
     const context = this.context;
     if (!context) return;
-    const wanted = this.spatialFor(input) ? this.mode() : input.volume > 1 ? "boost" : undefined;
+    const spatialMode = this.mode();
+    const wanted = this.spatialFor(input)
+      ? spatialMode === "hrtf" && !this.hrtfAllowed.has(input.key) ? "stereo" : spatialMode
+      : input.volume > 1 ? "boost" : undefined;
     if (!wanted) return;
     const shaped = wanted !== "boost" && (input.cutoff !== undefined || input.wet !== undefined);
     if (entry.mode === wanted && Boolean(entry.shaped) === shaped) return;
@@ -517,7 +583,9 @@ export class SpatialAudioPlayback {
     this.room = null;
     this.reverb = null;
     if (this.context) {
+      clearTimeout(this.stallTimer);
       this.context.onstatechange = null;
+      this.context.removeEventListener?.("error", this.rebuild);
       void this.context.close().catch(() => undefined);
     }
   }

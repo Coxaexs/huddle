@@ -188,9 +188,9 @@ function createWindow() {
       nodeIntegration: false,
       spellcheck: true,
       preload: path.join(__dirname, "notify-preload.js"),
-      // A voice app keeps working while you are in a game: don't throttle the
-      // page when the window is minimised, hidden to the tray or behind others.
-      backgroundThrottling: false,
+      // Throttled while idle (the page asks us to lift it for the length of a
+      // call, see "set-in-call"), so a hidden window does not burn battery.
+      backgroundThrottling: true,
     },
   });
 
@@ -491,6 +491,12 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     // Unread count → dock/taskbar badge.
+    // A voice app keeps working while you are in a game: no throttling of the
+    // minimised or tray-hidden page, but only while a call is live.
+    ipcMain.on("set-in-call", (event, on) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return;
+      mainWindow.webContents.setBackgroundThrottling(!on);
+    });
     ipcMain.on("set-badge", (_event, count) => {
       const n = Number(count) || 0;
       if (typeof app.setBadgeCount === "function") app.setBadgeCount(n);

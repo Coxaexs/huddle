@@ -7,12 +7,20 @@ import {
   Track,
   VideoPreset,
   DisconnectReason,
+  setLogLevel,
   type LocalTrackPublication,
   type RemoteParticipant,
   type RemoteTrack,
   type RemoteTrackPublication,
   type TrackPublishOptions,
 } from "livekit-client";
+
+// Silence verbose LiveKit websocket connection and signaling logs in console by default
+try {
+  setLogLevel("warn");
+} catch {
+  // ignore
+}
 
 /**
  * Voice through the LiveKit media server.
@@ -101,6 +109,8 @@ export interface SfuHandlers {
   onLost: () => void;
   /** Whether this tab asked not to receive someone's camera or screen. */
   isHidden: (connectionId: string, kind: "camera" | "screen") => boolean;
+  /** Whether the active user is a developer who should see verbose LiveKit logs. */
+  isDev?: boolean;
 }
 
 export class SfuVoice {
@@ -110,6 +120,11 @@ export class SfuVoice {
   private leaving = false;
 
   constructor(private readonly handlers: SfuHandlers) {
+    try {
+      setLogLevel(handlers.isDev ? "info" : "warn");
+    } catch {
+      // ignore
+    }
     this.room = new Room({
       // Adaptive stream watches elements LiveKit attached itself; ours are
       // plain <video>/<audio> fed a MediaStream, so it would see nothing on

@@ -1,6 +1,8 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
-export interface LoungeWirePose { x: number; z: number; facing: number; seat: string | null }
+/** Which room a lounge pose is in; absent means the living room, as before venues existed. */
+export type LoungeVenue = "lounge" | "cinema" | "tabletop";
+export interface LoungeWirePose { x: number; z: number; facing: number; seat: string | null; venue?: LoungeVenue }
 
 export interface PresenceUser {
   id: string;
@@ -322,9 +324,13 @@ export type ClientEvent =
   /** Live captions: what this seat's own browser heard it say. */
   | { t: "caption"; text: string; final: boolean }
   /** Living room: where this seat is standing or sitting, and an optional emote. */
-  | { t: "lounge"; x: number; z: number; facing: number; seat: string | null; emote?: string }
+  | { t: "lounge"; x: number; z: number; facing: number; seat: string | null; venue?: LoungeVenue; emote?: string }
   /** Living room: ask the hub where everyone in your voice room is. */
   | { t: "lounge-sync" }
+  /** Living room: pick the room the whole call hangs out in (living room, cinema, tabletop). */
+  | { t: "lounge-venue"; venue: LoungeVenue }
+  /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
+  | { t: "lounge-set"; key: "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll"; value: unknown }
   | {
       t: "dm-call";
       channelId: string;
@@ -385,6 +391,25 @@ export type ServerEvent =
       t: "lounge-state";
       channelId: string;
       poses: Array<{ connectionId: string; pose: LoungeWirePose }>;
+      /** The room the call is in; absent means the living room. */
+      venue?: LoungeVenue;
+      /** The room's shared state: watch, initiative, gm, card and characters (a map by user). */
+      shared?: Record<string, unknown>;
+      serverNow: number;
+    }
+  | {
+      /** Living room: one piece of shared state changed (null: cleared). */
+      t: "lounge-shared";
+      channelId: string;
+      key: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll";
+      value: unknown;
+      serverNow: number;
+    }
+  | {
+      /** Living room: the call moved to another room, for everyone. */
+      t: "lounge-venue";
+      channelId: string;
+      venue: LoungeVenue;
       serverNow: number;
     }
   | {

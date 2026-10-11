@@ -66,6 +66,10 @@ land "$STAGE/dist"
 sleep 3
 if healthy; then
   echo "Deployed. (scripts/deploy.sh --rollback puts the previous build back.)"
+  if [[ -x "$HOME/.local/bin/hoffle-backup.sh" ]]; then
+    echo "Syncing new build to Oracle standby..."
+    "$HOME/.local/bin/hoffle-backup.sh" || true
+  fi
 else
   echo "Hoffle is not answering at $HEALTH_URL after the deploy." >&2
   echo "Roll back with: scripts/deploy.sh --rollback" >&2

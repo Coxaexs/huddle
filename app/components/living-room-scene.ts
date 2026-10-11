@@ -9,9 +9,10 @@
  */
 import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
-import { LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
+import { addProps } from "./living-room-props";
+import { CIRCLES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
 
-interface Look {
+export interface Look {
   floor: [string, string]; // plank, grain
   wall: [string, string]; // base, pattern
   wallPattern: "stripes" | "damask" | "code" | "panels";
@@ -39,7 +40,7 @@ interface Look {
   shark: string;
 }
 
-const LOOKS: Record<RoomTheme, Look> = {
+export const LOOKS: Record<RoomTheme, Look> = {
   cozy: {
     floor: ["#8a5d3b", "#6b4429"], wall: ["#e8d5b9", "#dcc4a2"], wallPattern: "stripes",
     wainscot: "#7b5236", trim: "#f3e6d0", ceiling: "#d8c3a3", beam: "#5e3c26",
@@ -89,7 +90,7 @@ const LOOKS: Record<RoomTheme, Look> = {
 
 /* ---------- procedural textures ---------- */
 
-function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void, repeat?: [number, number]) {
+export function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void, repeat?: [number, number]) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -105,12 +106,12 @@ function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderin
 }
 
 /** A seeded random so the room is the same every time it is built. */
-function seeded(seed: number) {
+export function seeded(seed: number) {
   let s = seed;
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
-function floorTexture(look: Look) {
+export function floorTexture(look: Look) {
   const rand = seeded(7);
   return canvasTexture(512, 512, (ctx) => {
     const base = new THREE.Color(look.floor[0]);
@@ -145,7 +146,7 @@ function floorTexture(look: Look) {
   }, [ROOM_HALF_X / 1.5, ROOM_HALF_Z / 1.5]);
 }
 
-function wallTexture(look: Look) {
+export function wallTexture(look: Look) {
   const [base, accent] = look.wall;
   return canvasTexture(256, 256, (ctx) => {
     ctx.fillStyle = base;
@@ -190,7 +191,7 @@ function wallTexture(look: Look) {
 const GLYPHS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ0123456789:=+<>";
 
 /** The Matrix walls: falling green glyphs, redrawn a few times a second. */
-function codeRain(width: number, height: number, columns: number) {
+export function codeRain(width: number, height: number, columns: number) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -216,7 +217,7 @@ function codeRain(width: number, height: number, columns: number) {
   return { texture, step };
 }
 
-function rugTexture(look: Look) {
+export function rugTexture(look: Look) {
   const [a, b, c] = look.rug;
   return canvasTexture(512, 512, (ctx) => {
     ctx.fillStyle = a;
@@ -269,7 +270,7 @@ function knitTexture([a, b]: [string, string]) {
   }, [2, 2]);
 }
 
-function glowTexture() {
+export function glowTexture() {
   return canvasTexture(128, 128, (ctx) => {
     const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
     g.addColorStop(0, "rgba(255,255,255,1)");
@@ -389,10 +390,10 @@ function skyTexture(look: Look) {
 
 /* ---------- geometry helpers ---------- */
 
-const mat = (colour: string, rough = 0.85, extra: THREE.MeshStandardMaterialParameters = {}) =>
+export const mat = (colour: string, rough = 0.85, extra: THREE.MeshStandardMaterialParameters = {}) =>
   new THREE.MeshStandardMaterial({ color: colour, roughness: rough, ...extra });
 
-function box(w: number, h: number, d: number, material: THREE.Material, shadow = true) {
+export function box(w: number, h: number, d: number, material: THREE.Material, shadow = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
   mesh.castShadow = shadow;
   mesh.receiveShadow = true;
@@ -400,7 +401,7 @@ function box(w: number, h: number, d: number, material: THREE.Material, shadow =
 }
 
 /** A soft box: the rounded edges are most of what makes upholstery read as cosy. */
-function cushion(w: number, h: number, d: number, material: THREE.Material, radius = 0.06) {
+export function cushion(w: number, h: number, d: number, material: THREE.Material, radius = 0.06) {
   const shape = new THREE.Shape();
   const r = Math.min(radius, w / 2, d / 2);
   shape.moveTo(-w / 2 + r, -d / 2);
@@ -422,7 +423,7 @@ function cushion(w: number, h: number, d: number, material: THREE.Material, radi
   return mesh;
 }
 
-function tagSeat(object: THREE.Object3D, seat: string) {
+export function tagSeat(object: THREE.Object3D, seat: string) {
   object.traverse((part) => { part.userData.seat = seat; });
   return object;
 }
@@ -464,7 +465,7 @@ function pillow(colour: string) {
   return mesh;
 }
 
-function candle(height = 0.16, colour = "#fff4dc") {
+export function candle(height = 0.16, colour = "#fff4dc") {
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.03, height, 12), mat(colour, 0.6));
   body.position.y = height / 2;
@@ -477,7 +478,7 @@ function candle(height = 0.16, colour = "#fff4dc") {
   return group;
 }
 
-function plant(look: Look, scale = 1, leafy = "#4f8f4f") {
+export function plant(look: Look, scale = 1, leafy = "#4f8f4f") {
   const group = new THREE.Group();
   const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.13, 0.32, 18), mat(look.wallPattern === "panels" ? "#2a2340" : "#b8643f", 0.7));
   pot.position.y = 0.16;
@@ -497,12 +498,15 @@ function plant(look: Look, scale = 1, leafy = "#4f8f4f") {
   return group;
 }
 
+const CIRCLE_PILLOWS = [0, 1, 2, 3, 4];
+
 export interface BuiltRoom {
   root: THREE.Group;
   /** Things above head height, hidden in the overhead view so they never block it. */
   ceiling: THREE.Group;
   screenMaterial: THREE.MeshBasicMaterial;
-  shark: THREE.Group;
+  /** The living room's Blåhaj; other rooms have none. */
+  shark?: THREE.Group;
   background: THREE.Color;
   fog: THREE.Fog;
   exposure: number;
@@ -816,6 +820,51 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     tagSeat(bean, id);
     root.add(bean);
   }
+
+  // Two cushion circles on the south floor: a rug, a low table with a lantern, and five poufs each.
+  CIRCLES.forEach((circle, n) => {
+    // A round rug with a thin lighter border; quiet enough that the poufs on it stand out.
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(1.4, 56), mat(look.rug[2], 1));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(circle.x, 0.007, circle.z);
+    ring.receiveShadow = true;
+    ring.userData.floor = true;
+    const inner = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.28, 56), mat(look.rug[1], 1));
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.set(circle.x, 0.009, circle.z);
+    inner.userData.floor = true;
+    root.add(ring, inner);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 28), mat(look.wood, 0.45));
+    top.position.set(circle.x, 0.3, circle.z);
+    top.castShadow = true;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.28, 12), mat(look.woodDark, 0.6));
+    stem.position.set(circle.x, 0.14, circle.z);
+    root.add(top, stem);
+    const lantern = candle(0.1, theme === "vampire" ? "#2a0a10" : "#f5e6c8");
+    lantern.position.set(circle.x, 0.325, circle.z);
+    root.add(lantern);
+    flickers.push({ mesh: lantern.userData.flame, phase: 1.7 + n * 2.3, base: 1 });
+    addGlow(look.lamp, 0.7, new THREE.Vector3(circle.x, 0.45, circle.z), 0.28);
+    // A paper lantern hung low over the circle, so it reads as its own warm corner.
+    const shade = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 12), new THREE.MeshBasicMaterial({ color: look.lamp, toneMapped: false }));
+    shade.position.set(circle.x, H - 0.85, circle.z);
+    const cord = box(0.01, 0.85, 0.01, mat(look.woodDark, 0.8), false);
+    cord.position.set(circle.x, H - 0.425, circle.z);
+    ceiling.add(shade, cord);
+    addGlow(look.lamp, 0.8, new THREE.Vector3(circle.x, H - 0.85, circle.z), 0.3);
+    CIRCLE_PILLOWS.forEach((_, i) => {
+      const seat = seatById(`${circle.id}-${i}`)!;
+      const colour = look.pillows[(i + n) % look.pillows.length];
+      // The dark themes light their cushions faintly, or they vanish into the floor.
+      const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
+      const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.16, 28), mat(colour, 1, dark ? { emissive: colour, emissiveIntensity: 0.3 } : {}));
+      pouf.position.set(seat.x, 0.09, seat.z);
+      pouf.castShadow = true;
+      pouf.receiveShadow = true;
+      tagSeat(pouf, seat.id);
+      root.add(pouf);
+    });
+  });
 
   // Coffee table with snacks, a board game and candles.
   const tableTop = cushion(1.3, 0.07, 0.62, mat(look.wood, 0.45), 0.03);
@@ -1396,6 +1445,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     for (const step of animated) step(t, dt);
   };
 
+  const stopProps = addProps(root, theme, addGlow);
   const background = new THREE.Color(look.background);
   return {
     root,
@@ -1406,7 +1456,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     fog: new THREE.Fog(look.fog, 12, 26),
     exposure: look.exposure,
     update,
-    dispose: () => glow.dispose(),
+    dispose: () => { stopProps(); glow.dispose(); },
   };
 }
 

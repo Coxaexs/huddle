@@ -724,8 +724,7 @@ export function LandingPage() {
         <section className="border-t border-(--line) px-4 py-16 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <p className="max-w-2xl leading-relaxed text-(--ink-2)">
-              Hoffle is a one-person project with no ads and no investors. Bug reports and pull requests are
-              welcome on GitHub.
+              Hoffle is open source. Bug reports and pull requests are welcome on GitHub.
             </p>
             <div className="flex flex-wrap gap-3">
               <a href={REPO} className={secondaryButton}>

@@ -12,6 +12,7 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
+import { sanitizeShared } from "./lounge-shared";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
@@ -28,6 +29,7 @@ import {
   liveTrack,
   playbackPosition,
   type ClientEvent,
+  type LoungeVenue,
   type LoungeWirePose,
   type PlayerAction,
   type PlayerState,
@@ -63,6 +65,8 @@ interface Attachment {
   speakAllowed?: boolean;
   /** Living room spot in the current voice room; cleared on any room change. */
   lounge?: LoungeWirePose | null;
+  /** The room the whole call is hanging out in; kept on every seat so it outlives whoever chose it. */
+  loungeVenue?: LoungeVenue;
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
@@ -125,6 +129,12 @@ export class HuddleHub extends DurableObject {
   private readonly captionBudget = new Map<string, { second: number; count: number }>();
   /** connectionId -> living room poses relayed this second. */
   private readonly loungeBudget = new Map<string, { second: number; count: number }>();
+  /** voice room -> its shared living room state; persisted, since the object may sleep mid-call. */
+  private loungeShared: Record<string, Record<string, unknown>> | null = null;
+  /** connectionId -> when they last changed shared state, to keep it from being spammed. */
+  private readonly sharedAt = new Map<string, number>();
+  /** voice room -> when its living room venue was last changed. */
+  private readonly venueChangedAt = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -570,8 +580,9 @@ export class HuddleHub extends DurableObject {
         if (!room) return;
         const num = (value: unknown, limit: number) =>
           typeof value === "number" && Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : null;
-        const x = num(event.x, 5);
-        const z = num(event.z, 4);
+        // Wide enough for the biggest room (the cinema is 14 by 16 metres).
+        const x = num(event.x, 8);
+        const z = num(event.z, 9);
         const facing = num(event.facing, 7);
         if (x === null || z === null || facing === null) return;
         const seat = typeof event.seat === "string" && /^[a-z0-9-]{1,24}$/.test(event.seat) ? event.seat : null;
@@ -584,7 +595,8 @@ export class HuddleHub extends DurableObject {
         } else {
           this.loungeBudget.set(attachment.connectionId, { second, count: 1 });
         }
-        const pose = { x, z, facing, seat };
+        const venue = event.venue === "cinema" || event.venue === "tabletop" ? event.venue : undefined;
+        const pose: LoungeWirePose = { x, z, facing, seat, ...(venue ? { venue } : {}) };
         attachment.lounge = pose;
         socket.serializeAttachment(attachment);
         const payload = JSON.stringify({
@@ -605,10 +617,80 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const poses: Array<{ connectionId: string; pose: LoungeWirePose }> = [];
+        const shared = (await this.loadLoungeShared())[room];
+        let venue: LoungeVenue | undefined;
         for (const { attachment: peer } of this.sockets()) {
-          if (peer.voiceChannelId === room && peer.lounge) poses.push({ connectionId: peer.connectionId, pose: peer.lounge });
+          if (peer.voiceChannelId !== room) continue;
+          if (peer.lounge) poses.push({ connectionId: peer.connectionId, pose: peer.lounge });
+          venue ??= peer.loungeVenue;
         }
-        socket.send(JSON.stringify({ t: "lounge-state", channelId: room, poses, serverNow: Date.now() } satisfies ServerEvent));
+        // A newcomer learns the room and keeps it, so it outlasts whoever chose it.
+        if (venue && attachment.loungeVenue !== venue) {
+          attachment.loungeVenue = venue;
+          socket.serializeAttachment(attachment);
+        }
+        socket.send(JSON.stringify({ t: "lounge-state", channelId: room, poses, ...(venue ? { venue } : {}), ...(shared && Object.keys(shared).length ? { shared } : {}), serverNow: Date.now() } satisfies ServerEvent));
+        return;
+      }
+
+      case "lounge-venue": {
+        const room = attachment.voiceChannelId;
+        if (!room) return;
+        const venue: LoungeVenue | null = event.venue === "lounge" || event.venue === "cinema" || event.venue === "tabletop" ? event.venue : null;
+        if (!venue) return;
+        // Changing rooms moves everyone, so it cannot be spammed.
+        const now = Date.now();
+        if (now - (this.venueChangedAt.get(room) ?? 0) < 800) return;
+        this.venueChangedAt.set(room, now);
+        const payload = JSON.stringify({ t: "lounge-venue", channelId: room, venue, serverNow: now } satisfies ServerEvent);
+        for (const { socket: other, attachment: peer } of this.sockets()) {
+          if (peer.voiceChannelId !== room) continue;
+          peer.loungeVenue = venue;
+          // Everyone's spot belonged to the old room.
+          peer.lounge = null;
+          other.serializeAttachment(peer);
+          other.send(payload);
+        }
+        return;
+      }
+
+      case "lounge-set": {
+        const room = attachment.voiceChannelId;
+        if (!room) return;
+        const key = event.key;
+        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll") return;
+        const now = Date.now();
+        if (now - (this.sharedAt.get(attachment.connectionId) ?? 0) < 120) return;
+        this.sharedAt.set(attachment.connectionId, now);
+        const by = attachment.displayName || attachment.username || "Someone";
+        const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
+        if (event.value !== null && clean === null) return;
+        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll", value: unknown, includeSender: boolean) => {
+          const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
+          for (const { socket: other, attachment: peer } of this.sockets()) {
+            if (peer.voiceChannelId !== room) continue;
+            if (!includeSender && peer.connectionId === attachment.connectionId) continue;
+            other.send(payload);
+          }
+        };
+        if (key === "hiddenroll") {
+          // Never stored: it is a moment, and it carries no faces.
+          if (clean) send("hiddenroll", { ...(clean as object), by: attachment.connectionId }, false);
+          return;
+        }
+        const all = await this.loadLoungeShared();
+        const bag = (all[room] ??= {});
+        if (key === "character") {
+          const characters = { ...((bag.characters as Record<string, unknown> | undefined) ?? {}) };
+          if (clean) characters[attachment.userId] = clean; else delete characters[attachment.userId];
+          bag.characters = characters;
+          await this.saveLoungeShared();
+          send("characters", characters, true);
+          return;
+        }
+        if (clean) bag[key] = clean; else delete bag[key];
+        await this.saveLoungeShared();
+        send(key, clean, true);
         return;
       }
 
@@ -713,6 +795,7 @@ export class HuddleHub extends DurableObject {
         attachment.voiceChannelId = null;
         attachment.lounge = null;
         attachment.voiceJoinedAt = null;
+        if (attachment.voiceChannelId === null && previous) queueMicrotask(() => void this.pruneLounge(previous));
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
         socket.serializeAttachment(attachment);
@@ -921,6 +1004,7 @@ export class HuddleHub extends DurableObject {
       // room on the next tick of the event loop.
       const channelId = attachment.voiceChannelId;
       queueMicrotask(() => {
+        void this.pruneLounge(channelId);
         this.broadcastVoice(channelId);
         this.broadcastPresence();
       });
@@ -1250,6 +1334,25 @@ export class HuddleHub extends DurableObject {
       online: this.onlineUserIds(),
       serverNow: Date.now(),
     });
+  }
+
+  private async loadLoungeShared(): Promise<Record<string, Record<string, unknown>>> {
+    this.loungeShared ??= (await this.ctx.storage.get<Record<string, Record<string, unknown>>>("loungeShared")) ?? {};
+    return this.loungeShared;
+  }
+
+  private async saveLoungeShared(): Promise<void> {
+    if (this.loungeShared) await this.ctx.storage.put("loungeShared", this.loungeShared);
+  }
+
+  /** Forgets a room's shared state (and its venue clock) once nobody is left in it. */
+  private async pruneLounge(room: string): Promise<void> {
+    for (const { attachment } of this.sockets()) if (attachment.voiceChannelId === room) return;
+    this.venueChangedAt.delete(room);
+    const all = await this.loadLoungeShared();
+    if (!all[room]) return;
+    delete all[room];
+    await this.saveLoungeShared();
   }
 
   private broadcastVoice(channelId: string): void {

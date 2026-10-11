@@ -8,7 +8,7 @@
  * is refused. SVG is deliberately absent: it is a script-capable document.
  */
 
-export type UploadFamily = "image" | "pdf" | "audio" | "clip";
+export type UploadFamily = "image" | "pdf" | "audio" | "clip" | "file";
 
 export interface SniffedType {
   family: UploadFamily;
@@ -25,10 +25,19 @@ function ascii(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.slice(start, end));
 }
 
-/** Returns the detected type, or null when the bytes match nothing allowed. */
-export function sniffUpload(buffer: ArrayBuffer | Uint8Array): SniffedType | null {
+/**
+ * Returns the detected type, or null when the bytes match nothing allowed or
+ * contain dangerous executable script documents (like SVG/HTML).
+ * Archives (ZIP, RAR, etc.) are detected strictly by their header signature
+ * without any decompression or unzipping.
+ */
+export function sniffUpload(
+  buffer: ArrayBuffer | Uint8Array,
+  fileName?: string,
+): SniffedType | null {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
 
+  // 1. Image formats
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
     return { family: "image", contentType: "image/png", extension: "png" };
   }
@@ -50,7 +59,7 @@ export function sniffUpload(buffer: ArrayBuffer | Uint8Array): SniffedType | nul
   if (ascii(bytes, 0, 4) === "OggS") {
     return { family: "audio", contentType: "audio/ogg", extension: "ogg" };
   }
-  if (ascii(bytes, 0, 3) === "ID3" || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) {
+  if (ascii(bytes, 0, 3) === "ID3" || (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) {
     return { family: "audio", contentType: "audio/mpeg", extension: "mp3" };
   }
   // Matroska / WebM: voice messages and clips recorded by MediaRecorder.
@@ -68,6 +77,163 @@ export function sniffUpload(buffer: ArrayBuffer | Uint8Array): SniffedType | nul
     }
     return { family: "clip", contentType: "video/mp4", extension: "mp4" };
   }
+
+  // Refuse SVG and HTML scripts, which can run script on an origin.
+  const sample = ascii(bytes, 0, Math.min(bytes.length, 512)).trim().toLowerCase();
+  if (
+    sample.startsWith("<svg") ||
+    (sample.startsWith("<?xml") && sample.includes("<svg")) ||
+    sample.startsWith("<!doctype html") ||
+    sample.startsWith("<html") ||
+    sample.startsWith("<script")
+  ) {
+    return null;
+  }
+
+  const rawExt = fileName ? fileName.split(".").pop()?.toLowerCase() || "" : "";
+
+  // 2. ZIP containers (standard PK.. header, NEVER unzipped or decompressed)
+  // Covers PPTX, DOCX, XLSX, JAR, APK, ODT, and generic ZIP archives.
+  if (
+    startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]) ||
+    startsWith(bytes, [0x50, 0x4b, 0x05, 0x06]) ||
+    startsWith(bytes, [0x50, 0x4b, 0x07, 0x08])
+  ) {
+    if (rawExt === "pptx") {
+      return {
+        family: "file",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        extension: "pptx",
+      };
+    }
+    if (rawExt === "docx") {
+      return {
+        family: "file",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        extension: "docx",
+      };
+    }
+    if (rawExt === "xlsx") {
+      return {
+        family: "file",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        extension: "xlsx",
+      };
+    }
+    if (rawExt === "jar") {
+      return {
+        family: "file",
+        contentType: "application/java-archive",
+        extension: "jar",
+      };
+    }
+    if (rawExt === "apk") {
+      return {
+        family: "file",
+        contentType: "application/vnd.android.package-archive",
+        extension: "apk",
+      };
+    }
+    return {
+      family: "file",
+      contentType: "application/zip",
+      extension: rawExt === "zip" ? "zip" : rawExt || "zip",
+    };
+  }
+
+  // 3. RAR archives (v1.5 through v5+ start with Rar!\x1a\x07, NEVER decompressed)
+  if (startsWith(bytes, [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07])) {
+    return {
+      family: "file",
+      contentType: "application/vnd.rar",
+      extension: "rar",
+    };
+  }
+
+  // 4. 7-Zip archives (NEVER decompressed)
+  if (startsWith(bytes, [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])) {
+    return {
+      family: "file",
+      contentType: "application/x-7z-compressed",
+      extension: "7z",
+    };
+  }
+
+  // 5. Gzip, Bzip2, XZ, TAR archives (NEVER decompressed)
+  if (startsWith(bytes, [0x1f, 0x8b])) {
+    return { family: "file", contentType: "application/gzip", extension: "gz" };
+  }
+  if (startsWith(bytes, [0x42, 0x5a, 0x68])) {
+    return { family: "file", contentType: "application/x-bzip2", extension: "bz2" };
+  }
+  if (startsWith(bytes, [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00])) {
+    return { family: "file", contentType: "application/x-xz", extension: "xz" };
+  }
+  if (rawExt === "tar") {
+    return { family: "file", contentType: "application/x-tar", extension: "tar" };
+  }
+
+  // 6. Microsoft Compound File Binary (legacy PPT, DOC, XLS)
+  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    if (rawExt === "ppt") {
+      return { family: "file", contentType: "application/vnd.ms-powerpoint", extension: "ppt" };
+    }
+    if (rawExt === "xls") {
+      return { family: "file", contentType: "application/vnd.ms-excel", extension: "xls" };
+    }
+    return { family: "file", contentType: "application/msword", extension: rawExt || "doc" };
+  }
+
+  // 7. Plain text, markdown, documentation, and code files
+  const isPrintableText = (b: Uint8Array): boolean => {
+    if (b.length === 0) return true;
+    for (let i = 0; i < b.length; i++) {
+      if (b[i] === 0) return false;
+    }
+    return true;
+  };
+
+  const textExtensions = new Set([
+    "txt", "text", "md", "markdown", "csv", "json", "xml", "yaml", "yml",
+    "toml", "ini", "log", "sql", "env", "sh", "bash", "zsh", "fish",
+    "js", "jsx", "ts", "tsx", "mjs", "cjs", "py", "rs", "go", "c", "cpp",
+    "h", "hpp", "cs", "java", "kt", "swift", "rb", "php", "css", "scss",
+    "less", "sass", "vue", "svelte", "graphql", "proto",
+  ]);
+
+  if (textExtensions.has(rawExt) && isPrintableText(bytes)) {
+    if (rawExt === "md" || rawExt === "markdown") {
+      return { family: "file", contentType: "text/markdown; charset=utf-8", extension: "md" };
+    }
+    if (rawExt === "json") {
+      return { family: "file", contentType: "application/json", extension: "json" };
+    }
+    if (rawExt === "csv") {
+      return { family: "file", contentType: "text/csv; charset=utf-8", extension: "csv" };
+    }
+    return { family: "file", contentType: "text/plain; charset=utf-8", extension: rawExt || "txt" };
+  }
+
+  // 8. Any other file with a recognized filename extension (excluding executable web scripts)
+  if (fileName && fileName.includes(".")) {
+    const safeExt = rawExt.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (safeExt && safeExt !== "svg" && safeExt !== "html" && safeExt !== "htm") {
+      return {
+        family: "file",
+        contentType: "application/octet-stream",
+        extension: safeExt,
+      };
+    }
+  }
+
+  // 9. Unnamed plain text buffer
+  if (bytes.length > 0 && isPrintableText(bytes)) {
+    return { family: "file", contentType: "text/plain; charset=utf-8", extension: "txt" };
+  }
+
   return null;
 }
 
@@ -76,4 +242,47 @@ export function isInlineSafe(contentType: string): boolean {
   return /^(image\/(png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/(webm|mp4)|application\/pdf)$/.test(
     contentType,
   );
+}
+
+/** Formats an extension string for badges (e.g. "PPTX", "ZIP", "TXT"). */
+export function getFileExtensionBadge(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toUpperCase() || "FILE";
+  return ext.slice(0, 4);
+}
+
+/** Color category for the file badge. */
+export function getFileBadgeColor(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf") return "pdf";
+  if (["pptx", "ppt", "key", "odp"].includes(ext)) return "presentation";
+  if (["docx", "doc", "rtf", "odt", "pages"].includes(ext)) return "document";
+  if (["xlsx", "xls", "csv", "numbers", "ods"].includes(ext)) return "sheet";
+  if (["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"].includes(ext)) return "archive";
+  if (["jar", "apk", "js", "ts", "jsx", "tsx", "py", "rs", "go", "java", "c", "cpp", "h", "cs", "rb", "php", "sh", "sql"].includes(ext)) return "code";
+  if (["txt", "md", "markdown", "log", "yaml", "yml", "json", "toml", "ini", "env"].includes(ext)) return "text";
+  return "generic";
+}
+
+/** Human-readable short file description. */
+export function getFileDescription(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pptx" || ext === "ppt") return "Presentation · click to download";
+  if (ext === "docx" || ext === "doc") return "Word document · click to download";
+  if (ext === "xlsx" || ext === "xls") return "Spreadsheet · click to download";
+  if (ext === "zip") return "ZIP archive · click to download";
+  if (ext === "rar") return "RAR archive · click to download";
+  if (ext === "7z") return "7-Zip archive · click to download";
+  if (ext === "jar") return "Java archive · click to download";
+  if (ext === "txt") return "Text document · click to download";
+  if (ext === "md" || ext === "markdown") return "Markdown note · click to download";
+  if (ext === "csv") return "CSV data · click to download";
+  if (ext === "json") return "JSON file · click to download";
+  return "File attachment · click to download";
+}
+
+/** Formats raw byte size into KB/MB string. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

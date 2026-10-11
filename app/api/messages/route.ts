@@ -35,7 +35,9 @@ export interface PublicMessage {
   image?: string;
   /** Additional image attachments beyond `image`. */
   images?: string[];
-  file?: { url: string; name: string; type: "pdf" };
+  file?: { url: string; name: string; type: string };
+  /** All file attachments (including PPTX, TXT, MD, ZIP, RAR, JAR, PDF, etc.). */
+  files?: Array<{ url: string; name: string; type: string }>;
   link?: string;
   actionLabel?: string;
   audio?: string;
@@ -83,12 +85,46 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     }
   }
 
-  const attachmentUrl = message.attachment_key
-    ? `/hangout/api/uploads/${encodeURIComponent(message.attachment_key)}`
-    : undefined;
-  const isPdf = Boolean(message.attachment_key?.toLowerCase().endsWith(".pdf"));
-  const attachmentName =
-    message.attachment_key?.split("--").slice(1).join("--") || "document.pdf";
+  // Collect all uploaded attachment keys (primary key + extras)
+  const allKeys: string[] = [];
+  if (message.attachment_key) {
+    allKeys.push(message.attachment_key);
+  }
+  if (message.attachments) {
+    try {
+      const extra = JSON.parse(message.attachments) as unknown;
+      if (Array.isArray(extra)) {
+        for (const k of extra) {
+          if (typeof k === "string" && k.trim()) allKeys.push(k.trim());
+        }
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+
+  const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif"]);
+  const imageAttachments: string[] = [];
+  const fileAttachments: Array<{ url: string; name: string; type: string }> = [];
+
+  for (const key of allKeys) {
+    const url = `/hangout/api/uploads/${encodeURIComponent(key)}`;
+    const filename = key.split("--").slice(1).join("--") || "file";
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    if (imageExts.has(ext)) {
+      imageAttachments.push(url);
+    } else {
+      fileAttachments.push({
+        url,
+        name: filename,
+        type: ext === "pdf" ? "pdf" : ext || "file",
+      });
+    }
+  }
+
+  const primaryImage = imageAttachments[0];
+  const extraImages = imageAttachments.slice(1);
+  const primaryFile = fileAttachments[0];
 
   return {
     id: message.id,
@@ -106,11 +142,8 @@ export function publicMessage(message: StoredMessage): PublicMessage {
       timeZone: "UTC",
     }).format(new Date(message.created_at)),
     createdAt: message.created_at,
-    image: attachmentUrl && !isPdf ? attachmentUrl : undefined,
-    file:
-      attachmentUrl && isPdf
-        ? { url: attachmentUrl, name: attachmentName, type: "pdf" }
-        : undefined,
+    image: primaryImage,
+    file: primaryFile,
     link: message.link || undefined,
     actionLabel: message.action_label || undefined,
     audio: message.audio_url || undefined,
@@ -119,7 +152,8 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     pinned: Boolean(message.pinned_at),
     editedAt: message.edited_at || undefined,
     replyTo: message.reply_to || undefined,
-    images: extraAttachments(message.attachments),
+    images: extraImages.length ? extraImages : undefined,
+    files: fileAttachments.length ? fileAttachments : undefined,
     threadId: message.thread_id || undefined,
     commandText: message.command_text || undefined,
     commandBy: message.command_by || undefined,
@@ -649,9 +683,13 @@ export async function postMessageAs(
       content ||
       (hasPayloadForward
         ? "Forwarded a message"
-        : attachmentKey?.toLowerCase().endsWith(".pdf")
-          ? "Shared a PDF document"
-          : "Shared an image"),
+        : /\.(png|jpe?g|gif|webp|avif)$/i.test(attachmentKey || "")
+          ? "Shared an image"
+          : attachmentKey?.toLowerCase().endsWith(".pdf")
+            ? "Shared a PDF document"
+            : attachmentKey
+              ? "Shared a file"
+              : "Shared an attachment"),
     attachment_key: attachmentKey,
     is_bot: body.asBot ? 1 : 0,
     created_at: new Date().toISOString(),

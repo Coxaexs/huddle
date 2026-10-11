@@ -19,11 +19,12 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const b = bindings();
-  const livekitUrl = b.LIVEKIT_URL?.trim();
+  const livekitUrlNl = b.LIVEKIT_URL?.trim();
+  const livekitUrlDe = b.LIVEKIT_URL_DE?.trim() || "wss://livekit-de.hoffle.online";
   const apiKey = b.LIVEKIT_API_KEY?.trim();
   const apiSecret = b.LIVEKIT_API_SECRET?.trim();
 
-  if (!livekitUrl || !apiKey || !apiSecret) {
+  if ((!livekitUrlNl && !livekitUrlDe) || !apiKey || !apiSecret) {
     return Response.json({
       enabled: false,
       reason: "LiveKit SFU is not configured on this instance.",
@@ -57,9 +58,10 @@ export async function GET(request: Request) {
     return Response.json({ error: "Invalid connectionId" }, { status: 400 });
   }
 
+  let channel: Awaited<ReturnType<typeof findChannel>> = null;
   const db = b.DB;
   if (db && !recorder) {
-    const channel = await findChannel(db, channelId);
+    channel = await findChannel(db, channelId);
     // A room name is just a string to LiveKit, so an unknown one would mint a
     // private room for anyone who asked.
     if (!channel) {
@@ -83,6 +85,39 @@ export async function GET(request: Request) {
       }
     }
   }
+
+  // Determine RTC region (Discord-style: explicit switch, channel setting, or auto)
+  let targetRegion: "nl" | "de" = "nl";
+  const explicitRegion = searchParams.get("region")?.trim();
+
+  if (explicitRegion === "de" || explicitRegion === "nl") {
+    targetRegion = explicitRegion;
+  } else if (channel && channel.rtc_region === "de") {
+    targetRegion = "de";
+  } else if (channel && channel.rtc_region === "nl") {
+    targetRegion = "nl";
+  } else {
+    // Auto-selection: check active participants in channel
+    const state = await hubState().catch(() => null);
+    const activeSeats = (state?.voice[channelId] || []).filter((p) => !p.bot);
+    // If the room has 40 or more participants, route to Germany!
+    if (activeSeats.length >= 40) {
+      targetRegion = "de";
+    } else {
+      targetRegion = "nl";
+    }
+  }
+
+  // Ensure graceful fallback if one region's URL is missing
+  let livekitUrl = "";
+  if (targetRegion === "de" && livekitUrlDe) {
+    livekitUrl = livekitUrlDe;
+  } else if (targetRegion === "nl" && livekitUrlNl) {
+    livekitUrl = livekitUrlNl;
+  } else {
+    livekitUrl = livekitUrlNl || livekitUrlDe || "";
+  }
+  const effectiveRegion: "nl" | "de" = livekitUrl === livekitUrlDe ? "de" : "nl";
 
   // A timed-out member may listen but not speak or share.
   const timedOut = db && user ? await timeoutInChannel(db, channelId, user.id) : null;
@@ -115,6 +150,7 @@ export async function GET(request: Request) {
   return Response.json({
     enabled: true,
     url: livekitUrl,
+    region: effectiveRegion,
     token,
     identity,
     room: channelId,
