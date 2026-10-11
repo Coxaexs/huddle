@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Crown, Film, Plus, SkipBack, SkipForward, Trash2, Upload, X } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Crown, Film, Plus, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
   addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
   type GameMaster, type Initiative, type TableCharacter, type WatchState,
@@ -18,6 +18,14 @@ const formatTime = (seconds: number) => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 };
 
+interface YouTubeVideo {
+  id: string;
+  title: string;
+  thumbnail: string;
+  channelTitle: string;
+  duration: string;
+}
+
 /** Uploads a file to this server and returns the link everyone can load it from. */
 async function upload(file: File): Promise<string> {
   const form = new FormData();
@@ -26,9 +34,25 @@ async function upload(file: File): Promise<string> {
   return result.url;
 }
 
+/** Search YouTube via our backend proxy */
+async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
+  try {
+    const res = await apiFetch<{ videos: YouTubeVideo[] }>(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+    return res.videos || [];
+  } catch {
+    return [];
+  }
+}
+
 export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null }
 
-/** Watch together: pick a video (a link or an upload) and the whole room sees it on the screen, in step. */
+export function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+?&v=))([\w-]{11})/i);
+  return match ? match[1] : null;
+}
+
+/** Watch together: pick a video (a link, upload, or YouTube search) and the whole room sees it on the screen, in step. */
 export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, onStartSound, onYoutube, onClose }: {
   watch: WatchState | null;
   hubNow: () => number;
@@ -43,7 +67,13 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [showYouTube, setShowYouTube] = useState(false);
+  const [ytQuery, setYtQuery] = useState("");
+  const [ytResults, setYtResults] = useState<YouTubeVideo[]>([]);
+  const [ytSearching, setYtSearching] = useState(false);
+  const [ytError, setYtError] = useState<string | null>(null);
   const file = useRef<HTMLInputElement | null>(null);
+  const searchDebounce = useRef<NodeJS.Timeout | null>(null);
   const here = watch ? watchPosition(watch, hubNow()) : 0;
   const start = (url: string, title: string) => setWatch({ url, title, position: 0, paused: false });
   const chooseFile = async (chosen: File | undefined) => {
@@ -53,8 +83,33 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
     catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
+
+  // Debounced YouTube search
+  useEffect(() => {
+    if (!showYouTube || !ytQuery.trim()) return;
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(async () => {
+      setYtSearching(true);
+      setYtError(null);
+      const results = await searchYouTube(ytQuery);
+      setYtResults(results);
+      setYtSearching(false);
+      if (results.length === 0) setYtError("No videos found. Try a different search.");
+    }, 400);
+    return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
+  }, [ytQuery, showYouTube]);
+
+  const handleYtSelect = (video: YouTubeVideo) => {
+    // Use youtube-nocookie.com embed URL for privacy with JS API enabled
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&enablejsapi=1&rel=0`;
+    start(embedUrl, video.title);
+    setShowYouTube(false);
+    setYtQuery("");
+    setYtResults([]);
+  };
+
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Watch together">
+    <div className="living-room-panel" role="dialog" aria-label="Watch together" style={{ maxHeight: "85vh", overflow: "auto" }}>
       <div className="living-room-panel-head"><strong><Film size={14} /> Watch together</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
       {watch ? (
         <>
@@ -75,17 +130,74 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
         </>
       ) : (
         <>
-          <form className="lr-row" onSubmit={(event) => { event.preventDefault(); const url = link.trim(); if (url) { start(url, url.split("/").pop()?.split("?")[0] || "Video"); setLink(""); } }}>
-            <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://… link to an .mp4 or .webm" aria-label="Video link" maxLength={600} />
-            <button type="submit" disabled={!link.trim()}>Play</button>
-          </form>
-          <div className="lr-row">
-            <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a video"}</button>
-            <input ref={file} type="file" accept="video/mp4,video/webm,.mp4,.webm" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
-            {onYoutube && <button type="button" onClick={onYoutube} title="Opens the YouTube-style watch party over the room">YouTube &amp; more…</button>}
-          </div>
-          <p className="lr-note">Links must allow other sites to play them (most direct video files do). Uploads can be up to 40 MB. Everyone sees the same moment, and anyone can pause or seek.</p>
-          {problem && <p className="lr-note">{problem}</p>}
+          {!showYouTube ? (
+            <>
+              <form className="lr-row" onSubmit={(event) => {
+                event.preventDefault();
+                const raw = link.trim();
+                if (raw) {
+                  const ytId = extractYouTubeId(raw);
+                  if (ytId) {
+                    start(`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&enablejsapi=1&rel=0`, "YouTube Video");
+                  } else {
+                    start(raw, raw.split("/").pop()?.split("?")[0] || "Video");
+                  }
+                  setLink("");
+                }
+              }}>
+                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://… direct link to .mp4/.webm or YouTube URL" aria-label="Video link" maxLength={600} />
+                <button type="submit" disabled={!link.trim()}>Play</button>
+              </form>
+              <div className="lr-row">
+                <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a video"}</button>
+                <input ref={file} type="file" accept="video/mp4,video/webm,.mp4,.webm" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
+                <button type="button" onClick={() => setShowYouTube(true)} title="Search YouTube"><PlayCircle size={14} /> YouTube & more…</button>
+              </div>
+              <p className="lr-note">Links must allow other sites to play them (most direct video files do). YouTube links work via embed. Uploads up to 40 MB. Everyone sees the same moment, and anyone can pause or seek.</p>
+              {problem && <p className="lr-note">{problem}</p>}
+            </>
+          ) : (
+            <div style={{ padding: "8px 0" }}>
+              <div className="lr-row" style={{ gap: 8 }}>
+                <Search size={14} style={{ opacity: 0.5 }} />
+                <input
+                  value={ytQuery}
+                  onChange={(e) => { setYtQuery(e.target.value); setYtError(null); }}
+                  placeholder="Search YouTube…"
+                  aria-label="Search YouTube"
+                  style={{ flex: 1, minWidth: 0 }}
+                  autoFocus
+                />
+                {ytSearching && <Loader2 size={14} className="animate-spin" />}
+              </div>
+              {ytError && <p className="lr-note" style={{ color: "#ff6b6b" }}>{ytError}</p>}
+              {ytResults.length > 0 && (
+                <div style={{ maxHeight: "40vh", overflow: "auto" }}>
+                  {ytResults.map((video) => (
+                    <button
+                      key={video.id}
+                      type="button"
+                      className="lr-row"
+                      onClick={() => handleYtSelect(video)}
+                      style={{ textAlign: "left", padding: "8px", borderRadius: "8px", background: "var(--panel)", border: "1px solid var(--line)", transition: "background 0.1s", width: "100%" }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--line)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "var(--panel)"}
+                    >
+                      <img src={video.thumbnail} alt="" style={{ width: 120, height: 68, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</div>
+                        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{video.channelTitle}</div>
+                        <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>{video.duration}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="lr-row" style={{ marginTop: 8 }}>
+                <button type="button" onClick={() => setShowYouTube(false)}>Back</button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -135,7 +247,6 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const isGm = Boolean(gm && gm.connectionId === myId);
-  // With no game master anyone may run the order; with one, only they may.
   const canEdit = !gm || isGm;
   const current = currentEntry(initiative);
   const addNpc = () => {

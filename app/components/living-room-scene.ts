@@ -539,8 +539,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     if (shadow) {
       light.castShadow = true;
       light.shadow.mapSize.set(1024, 1024);
-      light.shadow.bias = -0.002;
-      light.shadow.radius = 4;
+      light.shadow.bias = -0.0001;
+      light.shadow.normalBias = 0.02;
+      light.shadow.radius = 1;
     }
     root.add(light);
     if (flicker) lights.push({ light, base: intensity, phase: Math.random() * 10, amount: flicker });
@@ -1471,6 +1472,9 @@ export function roomAmbience(theme: RoomTheme): THREE.Object3D[] {
   daylight.target.position.set(0, 0, 1);
   daylight.castShadow = true;
   daylight.shadow.mapSize.set(1024, 1024);
+  daylight.shadow.bias = -0.0001;
+  daylight.shadow.normalBias = 0.02;
+  daylight.shadow.radius = 1;
   Object.assign(daylight.shadow.camera, { left: -7, right: 7, top: 6, bottom: -6, far: 20 });
   return [hemi, daylight, daylight.target];
 }

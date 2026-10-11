@@ -477,6 +477,7 @@ export function VoiceStage({
       self: true,
       mirrored: kind === "camera",
       connecting: false,
+      videoKind: kind,
     });
   }
   for (const { connectionId: remoteId, stream, kind } of voice.remoteStreams) {
