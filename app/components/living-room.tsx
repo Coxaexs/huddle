@@ -49,6 +49,8 @@ const VENUE_HINTS: Record<VenueId, string> = {
   cinema: "Pick any seat (up to 150) and watch what is shared or played on the big screen. Voices are one volume here; turn on Spatial voices in settings to hear the room. WASD walks, X sits.",
   tabletop: "Take a chair at the table (ten fit), others can stand around it. Roll from the dice tray and the dice are thrown onto the map for everyone at the table.",
 };
+/** A spell or monster card floats over the table this long, unless someone clicks it away first. */
+const CARD_SECONDS = 20;
 /** Only this many people are drawn as full tokens; the rest of a crowd are small dots. */
 const MAX_BODIES = 20;
 
@@ -992,11 +994,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           if (p.bot || p.recorder) continue;
           const seat = seatById(r.poses.get(p.connectionId)?.seat, venue);
           if (!seat || !seat.id.startsWith("tab-")) continue;
+          // Only people who made a character get a card; nobody's profile picture is put on the table for them.
           const character = shared.characters[p.id];
+          if (!character) continue;
           const isTurn = turn?.connectionId === p.connectionId;
           specs.push({
-            key: `${p.connectionId}|${character?.name ?? ""}|${character?.portraitUrl ?? ""}|${p.displayName}|${p.avatarUrl ?? ""}|${p.color}|${isTurn}`,
-            seat, name: character?.name || p.displayName, portraitUrl: character?.portraitUrl || p.avatarUrl || null,
+            key: `${p.connectionId}|${character.name}|${character.portraitUrl ?? ""}|${p.displayName}|${p.avatarUrl ?? ""}|${p.color}|${isTurn}`,
+            seat, name: character.name, portraitUrl: character.portraitUrl || null,
             letter: (p.avatar || p.displayName || "?").slice(0, 2), colour: p.color || "#ffd67c", turn: isTurn,
           });
         }
@@ -1004,7 +1008,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         const gmSeat = seatById(shared.gm ? r.poses.get(shared.gm.connectionId)?.seat : null, venue);
         extras.setScreen(gmSeat && gmSeat.id.startsWith("tab-") ? gmSeat : null);
         const hubNow = (live.current.serverNow ?? Date.now)();
-        extras.setCard(shared.card, Boolean(shared.card) && hubNow - shared.card!.at > 90_000);
+        extras.setCard(shared.card, Boolean(shared.card) && hubNow - shared.card!.at > CARD_SECONDS * 1000);
       }
       let marker: { x: number; y: number; z: number } | null = null;
       if (turn?.connectionId) {
