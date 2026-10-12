@@ -4,16 +4,18 @@ import { Check, Plus, Trash2, X, Upload, Pencil, ImagePlus, Palette, Link2, Musi
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "../avatar";
 import { checkProfileCss, PROFILE_CSS_PRESETS } from "@/lib/themes";
-import { PRIDE_BADGES, type PrideBadgeId, type PublicUser, type SocialLink } from "@/lib/users";
+import { PRIDE_BADGES, type PrideBadgeId, type ProfileStyle, type PublicUser, type SocialLink } from "@/lib/users";
+import { StyleTab } from "./style-tab";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { BANNER_PRESETS, COLOR_SWATCHES, STATUS_EMOJIS, PROFILE_CSS_SNIPPETS } from "./constants";
 import { DecorationPicker, DecorationSwatch, DecoratedAvatar, cosmeticName, type DecorationKind } from "./decoration-picker";
 import { ProfilePreviewCard, bannerBackground, type PreviewProfile } from "./profile-preview-card";
 
-type DetailsTab = "identity" | "about" | "links" | "music" | "css";
+type DetailsTab = "identity" | "style" | "about" | "links" | "music" | "css";
 
 const DETAILS_TABS: { id: DetailsTab; label: string; icon: typeof UserRound }[] = [
   { id: "identity", label: "Identity", icon: UserRound },
+  { id: "style", label: "Style", icon: Palette },
   { id: "about", label: "About", icon: Sparkles },
   { id: "links", label: "Connections", icon: Link2 },
   { id: "music", label: "Music", icon: Music },
@@ -37,6 +39,8 @@ const SOCIAL_PLATFORMS: [string, string][] = [
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
 export function ProfileTab({
+  profileStyle,
+  setProfileStyle,
   displayName,
   setDisplayName,
   pronouns,
@@ -96,6 +100,8 @@ export function ProfileTab({
   error,
   user,
 }: {
+  profileStyle: ProfileStyle;
+  setProfileStyle: SetState<ProfileStyle>;
   displayName: string;
   setDisplayName: SetState<string>;
   pronouns: string;
@@ -181,6 +187,7 @@ export function ProfileTab({
     isAdmin: user.isAdmin,
     unrestrictedCss: user.unrestrictedCss,
     createdAt: (user as { createdAt?: string }).createdAt,
+    profileStyle,
     song: spotifySong.trim() ? { title: spotifySong, artist: spotifyArtist || "Unknown artist", cover: spotifyCover.startsWith("/") || spotifyCover.startsWith("http") ? spotifyCover : undefined } : null,
   };
 
@@ -204,6 +211,7 @@ export function ProfileTab({
     spotifyArtist !== (user.spotifyActivity?.artist || "") ||
     spotifyCover !== (user.spotifyActivity?.albumArt || "") ||
     !same(socialLinks, user.socialLinks || []) ||
+    !same(profileStyle, user.profileStyle || {}) ||
     !same(prideBadges, user.prideBadges || []);
 
   function requestClose() {
@@ -508,6 +516,17 @@ export function ProfileTab({
                 <input id="pe-letters" className="pe-input pe-input-short" value={avatar} maxLength={2} onChange={(event) => setAvatar(event.target.value)} />
               </Field>
             </>
+          )}
+
+          {details === "style" && (
+            <StyleTab
+              style={profileStyle}
+              setStyle={setProfileStyle}
+              displayName={displayName || user.username}
+              avatar={avatar}
+              avatarUrl={avatarUrl}
+              color={color}
+            />
           )}
 
           {details === "about" && (

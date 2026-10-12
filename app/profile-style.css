@@ -1,0 +1,446 @@
+/*
+ * Profile style: name effects, card theme + motion, voice rings and join
+ * flourishes. Classes come from app/lib/profile-style.ts.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Pacifico&family=Fredoka:wght@500;600&display=swap');
+
+/* ================================================================== */
+/* Names                                                               */
+/* ================================================================== */
+
+.pname { --n1: currentColor; --n2: var(--n1); --n3: var(--n1); position: relative; display: inline-block; max-width: 100%; }
+.pname-solid { color: var(--n1) !important; }
+.pname-grad {
+  background: linear-gradient(90deg, var(--n1), var(--n2), var(--n3), var(--n1));
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--n1) !important;
+}
+.pname-grad * { -webkit-text-fill-color: transparent; }
+
+/* Fonts (Syne, Cormorant, JetBrains Mono, Pirata One, Rajdhani come from globals.css). */
+.pname-font-serif { font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+.pname-font-elegant { font-family: "Cormorant Garamond", Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: 0.01em; }
+.pname-font-mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 500; letter-spacing: -0.02em; }
+.pname-font-rounded { font-family: "Fredoka", "Nunito", system-ui, sans-serif; font-weight: 600; }
+.pname-font-display { font-family: "Syne", system-ui, sans-serif; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; font-size: 0.92em; }
+.pname-font-gothic { font-family: "Pirata One", serif; font-weight: 400; letter-spacing: 0.03em; font-size: 1.08em; }
+.pname-font-pixel { font-family: "Pixelify Sans", ui-monospace, monospace; font-weight: 500; }
+.pname-font-script { font-family: "Pacifico", cursive; font-weight: 400; font-size: 0.95em; line-height: 1.35; padding-right: 0.15em; }
+.pname-font-tech { font-family: "Rajdhani", "Share Tech Mono", sans-serif; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Shimmer: a bright sweep runs across the name every few seconds. */
+.pname-fx-shimmer {
+  background:
+    linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.95) 50%, transparent 60%) 0 0 / 250% 100% no-repeat,
+    linear-gradient(90deg, var(--n1), var(--n2), var(--n3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pnameShimmer 3.4s ease-in-out infinite;
+}
+.pname-fx-shimmer * { -webkit-text-fill-color: transparent; }
+@keyframes pnameShimmer { 0%, 35% { background-position: 160% 0, 0 0; } 75%, 100% { background-position: -60% 0, 0 0; } }
+
+/* Glow: a soft breathing halo in the name color. */
+.pname-fx-glow { animation: pnameGlow 2.8s ease-in-out infinite; }
+@keyframes pnameGlow {
+  0%, 100% { filter: drop-shadow(0 0 2px color-mix(in srgb, var(--n1) 70%, transparent)); }
+  50% { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--n2) 85%, transparent)) drop-shadow(0 0 1px #fff8); }
+}
+
+/* Wave: the gradient flows slowly along the name. */
+.pname-fx-wave {
+  background: linear-gradient(90deg, var(--n1), var(--n2), var(--n3), var(--n2), var(--n1));
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pnameFlow 6s linear infinite;
+}
+.pname-fx-wave * { -webkit-text-fill-color: transparent; }
+@keyframes pnameFlow { to { background-position: 400% 0; } }
+
+/* Rainbow: ignores the chosen colors on purpose. */
+.pname-fx-rainbow {
+  background: linear-gradient(90deg, #ff5f6d, #ffc371, #f9f871, #5eead4, #60a5fa, #c084fc, #ff5f6d);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pnameFlow 5s linear infinite;
+}
+.pname-fx-rainbow * { -webkit-text-fill-color: transparent; }
+
+/* Neon: a tube sign that buzzes now and then. */
+.pname-fx-neon {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  background: none;
+  text-shadow: 0 0 2px #fff, 0 0 6px var(--n1), 0 0 12px var(--n1), 0 0 22px var(--n2);
+  animation: pnameNeon 5s steps(1) infinite;
+}
+.pname-fx-neon * { -webkit-text-fill-color: #fff; }
+@keyframes pnameNeon { 0%, 18%, 22%, 64%, 66%, 100% { opacity: 1; } 20%, 65% { opacity: 0.45; } }
+
+/* Fire: warm gradient rising with flickering embers of glow. */
+.pname-fx-fire {
+  background: linear-gradient(0deg, #ff3d00, #ff9100 45%, #ffe082);
+  background-size: 100% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pnameFire 1.6s ease-in-out infinite alternate;
+}
+.pname-fx-fire * { -webkit-text-fill-color: transparent; }
+@keyframes pnameFire {
+  from { background-position: 0 0; filter: drop-shadow(0 -1px 3px #ff6a0099); }
+  to { background-position: 0 100%; filter: drop-shadow(0 -2px 6px #ffab40cc); }
+}
+
+/* Frost: icy gradient with a cold sparkle. */
+.pname-fx-frost {
+  background: linear-gradient(100deg, #e0f7ff, #8fd3ff 40%, #ffffff 50%, #8fd3ff 60%, #c7ecff);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 3px #7fd0ff88);
+  animation: pnameFlow 7s linear infinite;
+}
+.pname-fx-frost * { -webkit-text-fill-color: transparent; }
+
+/* Glitch: two offset clones jitter in red and cyan. */
+.pname-fx-glitch { animation: pnameGlitchShake 3.2s steps(1) infinite; }
+.pname-fx-glitch::before,
+.pname-fx-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-text-fill-color: currentColor;
+  background: none;
+  opacity: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pname-fx-glitch::before { color: #ff2d75; animation: pnameGlitchA 3.2s steps(1) infinite; }
+.pname-fx-glitch::after { color: #2de2ff; animation: pnameGlitchB 3.2s steps(1) infinite; }
+@keyframes pnameGlitchShake { 0%, 88%, 100% { transform: none; } 90% { transform: translate(1px, 0) skewX(-6deg); } 93% { transform: translate(-1px, 0); } }
+@keyframes pnameGlitchA { 0%, 87%, 97%, 100% { opacity: 0; } 88% { opacity: 0.85; transform: translate(-2px, -1px); clip-path: inset(0 0 55% 0); } 92% { opacity: 0.85; transform: translate(2px, 1px); clip-path: inset(40% 0 10% 0); } }
+@keyframes pnameGlitchB { 0%, 87%, 97%, 100% { opacity: 0; } 89% { opacity: 0.85; transform: translate(2px, 1px); clip-path: inset(50% 0 0 0); } 94% { opacity: 0.85; transform: translate(-2px, 0); clip-path: inset(10% 0 60% 0); } }
+
+/* ================================================================== */
+/* Cards                                                               */
+/* ================================================================== */
+
+/* Theme colors replace the single-accent tint with a two-color one. */
+:root:not([data-custom-theme-id^="msn"]) .user-profile-card-popover.pcard-themed,
+.pv-card.pcard-themed {
+  --profile-accent: var(--pt-a);
+  --pv-accent: var(--pt-a);
+  --pv-ring: color-mix(in srgb, var(--pt-a) 30%, #121318);
+  --pop-bg:
+    radial-gradient(120% 70% at 100% 100%, color-mix(in srgb, var(--pt-b) 34%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--pt-a) 32%, #15161b) 0%, color-mix(in srgb, var(--pt-a) 12%, #0f1014) 100%);
+  background: var(--pop-bg);
+}
+.pv-card.pcard-themed,
+:root:not([data-custom-theme-id^="msn"]) .user-profile-card-popover.pcard-themed:not([class*="profile-frame-"]) {
+  border: 2px solid transparent;
+  background: var(--pop-bg) padding-box, linear-gradient(150deg, var(--pt-a), var(--pt-b)) border-box;
+}
+.pcard-themed .profile-card-panel,
+.pcard-themed .pv-section,
+.pcard-themed .pv-song { background-color: color-mix(in srgb, var(--pt-b) 10%, rgba(0, 0, 0, 0.32)); }
+.pcard-themed .pv-btn-primary,
+.pcard-themed .profile-card-actions .btn-primary { background: linear-gradient(135deg, var(--pt-a), var(--pt-b)); }
+
+/* Entrance: every card springs in, the avatar and name follow a beat later. */
+.profile-popover-host.pcard-motion-tilt,
+.profile-popover-host.pcard-motion-float,
+.profile-popover-host.pcard-motion-still { animation: pcardIn 0.42s cubic-bezier(0.2, 1.3, 0.35, 1) both; }
+.profile-popover-host .profile-card-avatar-wrap { animation: pcardAvatarIn 0.5s 0.08s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.profile-popover-host .profile-display-name { animation: pcardRise 0.4s 0.14s ease-out both; }
+.profile-popover-host .profile-card-panel { animation: pcardRise 0.4s 0.2s ease-out both; }
+@keyframes pcardIn { from { opacity: 0; translate: 0 10px; scale: 0.94; } }
+@keyframes pcardAvatarIn { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } }
+@keyframes pcardRise { from { opacity: 0; transform: translateY(6px); } }
+
+/* Tilt: the host leans toward the pointer; a glare follows it. */
+.pcard-motion-tilt {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1);
+  transform-style: preserve-3d;
+}
+.pcard-motion-tilt.is-tilting { transition: transform 0.08s linear; }
+.pcard-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.35s;
+  background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 0%), rgba(255, 255, 255, 0.16), transparent 45%);
+  mix-blend-mode: soft-light;
+}
+.pcard-motion-tilt.is-tilting .pcard-glare { opacity: 1; }
+.profile-popover-host .pcard-glare,
+.pv-host-lg .pcard-glare { border-radius: 18px; }
+
+/* Float: a slow bob, like the card is hovering. */
+.pcard-motion-float { animation: pcardIn 0.42s cubic-bezier(0.2, 1.3, 0.35, 1) both, pcardFloat 5s 0.45s ease-in-out infinite; }
+@keyframes pcardFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -5px; } }
+
+/* ================================================================== */
+/* Voice tiles: speaking rings                                         */
+/* ================================================================== */
+
+.vring { --vr-a: var(--vr-color, #23a55a); }
+.vring .stage-avatar,
+.vring .film-avatar { position: relative; overflow: visible; }
+.vring .stage-avatar .avatar-image,
+.vring .film-avatar .avatar-image { border-radius: 50%; }
+.vring.is-speaking { animation: none !important; border-color: color-mix(in srgb, var(--vr-a) 60%, transparent) !important; box-shadow: none !important; }
+.vring .stage-avatar::after,
+.vring .film-avatar::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.vring.is-speaking .stage-avatar::after,
+.vring.is-speaking .film-avatar::after { opacity: 1; }
+.vring.is-speaking .film-avatar.is-speaking { box-shadow: none; }
+
+.vring-pulse .stage-avatar::after,
+.vring-pulse .film-avatar::after { border: 3px solid var(--vr-a); animation: vrPulse 1.1s ease-out infinite; }
+@keyframes vrPulse { from { transform: scale(0.94); box-shadow: 0 0 0 0 color-mix(in srgb, var(--vr-a) 60%, transparent); } to { transform: scale(1.12); box-shadow: 0 0 0 14px transparent; opacity: 0.2; } }
+
+.vring-rainbow .stage-avatar::after,
+.vring-rainbow .film-avatar::after {
+  padding: 4px;
+  background: conic-gradient(#ff5f6d, #ffc371, #f9f871, #5eead4, #60a5fa, #c084fc, #ff5f6d);
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  filter: drop-shadow(0 0 6px #c084fc99);
+  animation: vrSpin 2.4s linear infinite;
+}
+@keyframes vrSpin { to { rotate: 360deg; } }
+
+.vring-soundwave .stage-avatar::after,
+.vring-soundwave .film-avatar::after {
+  inset: -12px;
+  background: repeating-conic-gradient(var(--vr-a) 0 4deg, transparent 4deg 12deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 78%, #000 80%, #000 96%, transparent 98%);
+  mask: radial-gradient(closest-side, transparent 78%, #000 80%, #000 96%, transparent 98%);
+  animation: vrWave 0.5s ease-in-out infinite alternate, vrSpin 8s linear infinite;
+}
+@keyframes vrWave { from { transform: scale(0.96); } to { transform: scale(1.08); } }
+
+.vring-flame .stage-avatar::after,
+.vring-flame .film-avatar::after {
+  inset: -10px;
+  background: radial-gradient(closest-side, transparent 72%, #ffb300 80%, #ff5722 88%, transparent 100%);
+  filter: blur(1.5px) drop-shadow(0 -4px 8px #ff6d00);
+  animation: vrFlame 0.35s ease-in-out infinite alternate;
+}
+@keyframes vrFlame { from { transform: scale(1, 1) translateY(0); } to { transform: scale(1.04, 1.12) translateY(-3px); } }
+
+.vring-sparkle .stage-avatar::after,
+.vring-sparkle .film-avatar::after {
+  inset: -14px;
+  background:
+    radial-gradient(circle at 50% 4%, #fff 0 2px, transparent 3px),
+    radial-gradient(circle at 92% 30%, #fff6b0 0 2.5px, transparent 3.5px),
+    radial-gradient(circle at 85% 82%, #fff 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 18% 88%, #ffe9f5 0 2.5px, transparent 3.5px),
+    radial-gradient(circle at 6% 40%, #fff 0 2px, transparent 3px),
+    radial-gradient(closest-side, transparent 80%, color-mix(in srgb, var(--vr-a) 70%, #fff) 84%, transparent 90%);
+  filter: drop-shadow(0 0 4px #fff);
+  animation: vrSpin 4s linear infinite, vrTwinkle 0.8s ease-in-out infinite alternate;
+}
+@keyframes vrTwinkle { from { opacity: 0.55; } to { opacity: 1; } }
+
+.vring-glitch .stage-avatar::after,
+.vring-glitch .film-avatar::after {
+  border: 3px solid #2de2ff;
+  box-shadow: -3px 0 0 #ff2d75, 3px 0 0 #2de2ff;
+  animation: vrGlitch 0.6s steps(2) infinite;
+}
+@keyframes vrGlitch { 0% { transform: translate(0, 0); clip-path: inset(0 0 0 0); } 25% { transform: translate(-2px, 1px); clip-path: inset(10% 0 30% 0); } 50% { transform: translate(2px, -1px); clip-path: inset(40% 0 0 0); } 75% { transform: translate(-1px, 0); clip-path: inset(0 0 50% 0); } }
+
+.vring-hearts .stage-avatar::after,
+.vring-hearts .film-avatar::after {
+  inset: -18px;
+  content: "♥ ♥ ♥";
+  display: grid;
+  place-items: start center;
+  color: #ff5ca8;
+  font-size: 14px;
+  letter-spacing: 10px;
+  text-shadow: 0 0 6px #ff5ca8;
+  animation: vrHearts 1.2s ease-out infinite;
+}
+@keyframes vrHearts { from { transform: translateY(14px) scale(0.8); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-10px) scale(1.1); opacity: 0; } }
+
+.vring-orbit .stage-avatar::after,
+.vring-orbit .film-avatar::after {
+  inset: -10px;
+  border: 1.5px dashed color-mix(in srgb, var(--vr-a) 70%, transparent);
+  background: radial-gradient(circle at 50% 0%, var(--vr-a) 0 4px, transparent 5px), radial-gradient(circle at 50% 100%, #fff 0 3px, transparent 4px);
+  filter: drop-shadow(0 0 4px var(--vr-a));
+  animation: vrSpin 1.6s linear infinite;
+}
+
+/* ================================================================== */
+/* Voice tiles: join flourish (plays once, when the tile mounts)        */
+/* ================================================================== */
+
+.ventr .stage-avatar,
+.ventr .film-avatar { position: relative; }
+.ventr-pop .avatar-tile-inner,
+.ventr-pop .avatar-film-center { animation: ventrPop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+@keyframes ventrPop { from { transform: scale(0.2); opacity: 0; } }
+
+.ventr-drop .avatar-tile-inner,
+.ventr-drop .avatar-film-center { animation: ventrDrop 0.75s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+@keyframes ventrDrop { 0% { transform: translateY(-60px); opacity: 0; } 60% { transform: translateY(4px) scaleY(0.88) scaleX(1.08); opacity: 1; } }
+
+.ventr-glitch .avatar-tile-inner,
+.ventr-glitch .avatar-film-center { animation: ventrGlitch 0.7s steps(1) both; }
+@keyframes ventrGlitch { 0% { opacity: 0; } 10% { opacity: 1; transform: translateX(-6px) skewX(12deg); filter: hue-rotate(90deg); } 25% { transform: translateX(5px); filter: none; } 40% { opacity: 0.3; } 55% { opacity: 1; transform: translateX(-2px) skewX(-6deg); } 70%, 100% { transform: none; } }
+
+.ventr-portal .avatar-tile-inner,
+.ventr-portal .avatar-film-center { animation: ventrPortal 0.9s cubic-bezier(0.2, 1, 0.3, 1) both; }
+@keyframes ventrPortal { from { transform: scale(0) rotate(-540deg); opacity: 0; filter: blur(4px) hue-rotate(120deg); } }
+
+/* Burst layers sit on the tile and fade away. */
+.ventr::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+}
+.ventr-shockwave::before { border: 3px solid var(--vr-color, #a78bfa); animation: ventrShock 0.9s ease-out both; }
+@keyframes ventrShock { from { transform: scale(0.3); opacity: 1; box-shadow: 0 0 20px var(--vr-color, #a78bfa); } to { transform: scale(2.4); opacity: 0; } }
+
+.ventr-sparkle::before {
+  background:
+    radial-gradient(circle at 50% 0, #fff 0 3px, transparent 4px), radial-gradient(circle at 100% 50%, #ffe680 0 3px, transparent 4px),
+    radial-gradient(circle at 50% 100%, #fff 0 3px, transparent 4px), radial-gradient(circle at 0 50%, #ffd1ec 0 3px, transparent 4px),
+    radial-gradient(circle at 15% 15%, #fff 0 2px, transparent 3px), radial-gradient(circle at 85% 15%, #b9f3ff 0 2px, transparent 3px),
+    radial-gradient(circle at 85% 85%, #fff 0 2px, transparent 3px), radial-gradient(circle at 15% 85%, #fff6b0 0 2px, transparent 3px);
+  filter: drop-shadow(0 0 4px #fff);
+  animation: ventrBurst 1s ease-out both;
+}
+@keyframes ventrBurst { 0% { transform: scale(0.3) rotate(0); opacity: 1; } 100% { transform: scale(2) rotate(60deg); opacity: 0; } }
+
+.ventr-petals::before {
+  content: "🌸 🌸 🌸 🌸";
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  letter-spacing: 18px;
+  word-spacing: 10px;
+  white-space: pre-wrap;
+  animation: ventrPetals 1.4s ease-out both;
+}
+@keyframes ventrPetals { 0% { transform: scale(0.4) rotate(0); opacity: 1; } 100% { transform: scale(2.2) rotate(140deg) translateY(20px); opacity: 0; } }
+
+.ventr-bats::before {
+  content: "🦇 🦇 🦇";
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  letter-spacing: 14px;
+  animation: ventrBats 1.3s ease-in both;
+}
+@keyframes ventrBats { 0% { transform: scale(0.4); opacity: 1; } 100% { transform: scale(2.6) translateY(-50px); opacity: 0; } }
+
+.ventr-portal::before {
+  background: conic-gradient(from 0deg, #7c3aed, #22d3ee, #f472b6, #7c3aed);
+  -webkit-mask: radial-gradient(closest-side, transparent 60%, #000 64%, #000 80%, transparent 84%);
+  mask: radial-gradient(closest-side, transparent 60%, #000 64%, #000 80%, transparent 84%);
+  animation: ventrPortalRing 1.1s ease-out both;
+}
+@keyframes ventrPortalRing { 0% { transform: scale(0.2) rotate(0); opacity: 1; } 60% { opacity: 1; } 100% { transform: scale(1.5) rotate(270deg); opacity: 0; } }
+
+/* ================================================================== */
+/* Editor: Style tab                                                    */
+/* ================================================================== */
+
+.ps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.ps-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 64px;
+  padding: 10px 6px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: #f2f3f5;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+  overflow: hidden;
+}
+.ps-option:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.07); }
+.ps-option small { font-size: 11px; opacity: 0.7; font-family: inherit; }
+.ps-option.chosen { border-color: var(--pe-accent, #5865f2); box-shadow: 0 0 0 1px var(--pe-accent, #5865f2), 0 6px 18px color-mix(in srgb, var(--pe-accent, #5865f2) 30%, transparent); }
+.ps-option.chosen::after { content: "✓"; position: absolute; top: 4px; right: 7px; font-size: 11px; color: var(--pe-accent, #8b93ff); }
+.ps-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ps-color { position: relative; width: 34px; height: 34px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, 0.18); overflow: hidden; cursor: pointer; }
+.ps-color input { position: absolute; inset: -8px; width: 200%; height: 200%; opacity: 0; cursor: pointer; }
+.ps-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ps-preset { width: 46px; height: 22px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; }
+.ps-preset.chosen { border-color: #fff; }
+.ps-name-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+}
+.ps-name-preview .stage-avatar { width: 42px; height: 42px; font-size: 17px; flex-shrink: 0; }
+.ps-name-preview .ps-msg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps-name-preview strong { font-size: 16px; }
+.ps-name-preview span.ps-msg-text { font-size: 13px; opacity: 0.75; }
+.ps-tile-demo { position: relative; display: grid; place-items: center; width: 100%; height: 74px; }
+.ps-tile-demo .stage-avatar { width: 44px; height: 44px; font-size: 18px; }
+.ps-tile-demo .vring-pulse, .ps-tile-demo > div { display: grid; place-items: center; }
+.ps-replay { font-size: 11px; opacity: 0.75; }
+.ps-option .ventr::before { width: 70px; height: 70px; margin: -35px 0 0 -35px; }
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="pname-fx-"], [class*="pname-fx-"]::before, [class*="pname-fx-"]::after,
+  .vring *::after, .ventr *, .ventr::before,
+  .pcard-motion-float, .profile-popover-host, .profile-popover-host .profile-card-avatar-wrap,
+  .profile-popover-host .profile-display-name, .profile-popover-host .profile-card-panel { animation: none !important; }
+  .pcard-motion-tilt { transform: none !important; }
+}
+:root[data-reduced-motion="true"] [class*="pname-fx-"],
+:root[data-reduced-motion="true"] .vring *::after,
+:root[data-reduced-motion="true"] .ventr::before { animation: none !important; }

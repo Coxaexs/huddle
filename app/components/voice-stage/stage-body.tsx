@@ -6,6 +6,8 @@ import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
 import { VoiceApi, VideoTile } from "./types";
 import { TileVideo, VideoSurface } from "./tiles";
+import { useRef } from "react";
+import { useProfileStyles, voiceTileClasses } from "../../lib/profile-style";
 
 export function StageBody({
   joined,
@@ -90,6 +92,19 @@ export function StageBody({
   onOpenParticipantMenu: ((event: React.MouseEvent, participant: VoiceParticipant) => void) | undefined;
   wrapperRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const styleOf = useProfileStyles();
+  // Join flourishes are for people arriving while you watch, not for everyone
+  // already seated when the stage opens.
+  const seated = useRef<Set<string> | null>(null);
+  if (seated.current === null) seated.current = new Set(participants.map((p) => p.connectionId));
+  const tileStyle = (person: VoiceParticipant) => {
+    const style = styleOf(person.id);
+    const classes = voiceTileClasses(
+      seated.current!.has(person.connectionId) && style ? { ...style, entrance: undefined } : style,
+    );
+    const ring = style?.themeColors?.[0] || style?.nameColors?.[0] || person.color;
+    return { className: classes, style: { "--vr-color": ring } as React.CSSProperties };
+  };
   return (
     <div className="voice-stage-body">
       {!joined ? (
@@ -439,7 +454,8 @@ export function StageBody({
               const isSpeaking = selfSpeaking(person);
               return (
                 <div
-                  className={`film-tile avatar-film ${isSpeaking ? "is-speaking" : ""}`}
+                  className={`film-tile avatar-film ${isSpeaking ? "is-speaking" : ""} ${tileStyle(person).className}`}
+                  style={tileStyle(person).style}
                   key={`a:${person.connectionId}`}
                   onContextMenu={(event) => {
                     if (person.connectionId === connectionId) return;
@@ -503,7 +519,8 @@ export function StageBody({
             return (
               <figure
                 key={person.connectionId}
-                className={`stage-tile avatar-tile ${speaking ? "is-speaking" : ""}`}
+                className={`stage-tile avatar-tile ${speaking ? "is-speaking" : ""} ${tileStyle(person).className}`}
+                style={tileStyle(person).style}
                 onContextMenu={(event) => {
                   if (person.connectionId === connectionId) return;
                   onOpenParticipantMenu?.(event, person);

@@ -135,6 +135,7 @@ import { DmCallView } from "./components/chat/shell/dm-call-view";
 import { MessageList } from "./components/chat/shell/message-list";
 import { Composer } from "./components/chat/shell/composer";
 import { ChatHeader } from "./components/chat/shell/chat-header";
+import { registerProfileStyles } from "./lib/profile-style";
 
 
 
@@ -172,6 +173,10 @@ export function ChatShell() {
 
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  // Voice tiles and anything else without the full Member read styles from here.
+  useEffect(() => {
+    registerProfileStyles(user ? [...members, user] : members);
+  }, [members, user]);
   const [memberFilterQuery, setMemberFilterQuery] = useState("");
   const [dms, setDms] = useState<DmSummary[]>([]);
   /** The friend picker for starting a group DM, or adding people to one. */

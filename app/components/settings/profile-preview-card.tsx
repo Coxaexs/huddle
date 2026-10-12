@@ -6,7 +6,9 @@ import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "../cosmetics";
 import { PrideBadges } from "../pride-badges";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { scopeProfileCss } from "@/lib/themes";
-import type { PrideBadgeId, SocialLink } from "@/lib/users";
+import type { PrideBadgeId, ProfileStyle, SocialLink } from "@/lib/users";
+import { useRef } from "react";
+import { cardThemeProps, nameStyleProps, useCardTilt } from "../../lib/profile-style";
 
 export interface Cosmetics {
   avatarFrame: string;
@@ -33,6 +35,7 @@ export interface PreviewProfile {
   unrestrictedCss?: boolean;
   createdAt?: string;
   song?: { title: string; artist: string; cover?: string } | null;
+  profileStyle?: ProfileStyle;
 }
 
 /** The CSS background for a banner value: an image URL, a gradient, or the profile color. */
@@ -66,11 +69,15 @@ export function ProfilePreviewCard({
     ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
   const frame = cosmetics.profileFrame !== "none" ? ` profile-frame-${cosmetics.profileFrame}` : "";
+  const theme = cardThemeProps(profile.profileStyle);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useCardTilt(hostRef, lg ? profile.profileStyle?.cardMotion : "still");
   return (
-    <div className={`pframe-host pv-host-${size}`}>
+    <div ref={hostRef} className={`pframe-host pv-host-${size}${lg ? ` ${theme.className.split(" ")[0]}` : ""}`}>
+    {lg && <span className="pcard-glare" aria-hidden="true" />}
     <div
-      className={`pv-card pv-${size} profile-card user-profile-scoped-live_preview${frame}`}
-      style={{ "--pv-accent": profile.color || "#5865f2" } as React.CSSProperties}
+      className={`pv-card pv-${size} profile-card user-profile-scoped-live_preview${frame}${profile.profileStyle?.themeColors ? " pcard-themed" : ""}`}
+      style={{ "--pv-accent": profile.color || "#5865f2", ...theme.style } as React.CSSProperties}
       data-has-custom-css={Boolean(customCss?.trim())}
     >
       {customCss?.trim() && <style dangerouslySetInnerHTML={{ __html: scopeProfileCss(customCss, "live_preview", profile.unrestrictedCss) }} />}
@@ -88,7 +95,7 @@ export function ProfilePreviewCard({
         )}
       </div>
       <div className="pv-body">
-        <h2 className="pv-name profile-name">{profile.displayName || profile.username}</h2>
+        <h2 className="pv-name profile-name"><span {...nameStyleProps(profile.profileStyle, profile.displayName || profile.username)}>{profile.displayName || profile.username}</span></h2>
         <div className="pv-sub">
           <span className="profile-username">{profile.username}</span>
           {profile.pronouns && (

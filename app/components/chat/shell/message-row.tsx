@@ -14,6 +14,7 @@ import { type Member, type PublicUser } from "@/lib/users";
 import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
+import { nameStyleProps } from "../../../lib/profile-style";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
@@ -505,8 +506,12 @@ function MessageRowImpl({
                         {!continuation && (
                           <div className="message-meta">
                             <strong
-                              className={author ? "clickable-name" : ""}
-                              style={{ color: roleColorFor(author) || undefined }}
+                              {...nameStyleProps(
+                                author?.profileStyle,
+                                stripTextStyle(author?.displayName || message.author),
+                                roleColorFor(author),
+                                author ? "clickable-name" : "",
+                              )}
                               onContextMenu={(event) => {
                                 if (author) openUserMenu(event, author);
                               }}

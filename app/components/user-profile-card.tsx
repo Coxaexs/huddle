@@ -40,6 +40,7 @@ import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
 import { stripTextStyle } from "@/lib/text-style";
+import { cardThemeProps, nameStyleProps, useCardTilt } from "../lib/profile-style";
 
 const CARD_WIDTH = 300;
 const CARD_GAP = 14;
@@ -165,6 +166,8 @@ export function UserProfileCard({
   onToggleRole,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useCardTilt(hostRef, member.profileStyle?.cardMotion);
   const [currentFriendStatus, setCurrentFriendStatus] =
     useState<FriendRelationshipStatus>(friendStatus);
   const [friendLoading, setFriendLoading] = useState(false);
@@ -336,17 +339,20 @@ export function UserProfileCard({
   };
 
   const hasLongBio = (member.bio || "").length > 130;
+  const cardTheme = cardThemeProps(member.profileStyle);
 
   return (
-    <div className="pframe-host profile-popover-host" style={stylePosition}>
+    <div ref={hostRef} className={`pframe-host profile-popover-host ${cardTheme.className.split(" ")[0]}`} style={stylePosition}>
+    <span className="pcard-glare" aria-hidden="true" />
     <div
       ref={cardRef}
-      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}`}
+      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${member.profileStyle?.themeColors ? " pcard-themed" : ""}`}
       data-user-profile={member.id}
       data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
       style={{
         position: "relative",
         ...(member.color ? { ["--profile-accent" as string]: member.color } : null),
+        ...cardTheme.style,
       }}
       role="dialog"
       aria-label={`${member.displayName}'s Profile`}
@@ -414,7 +420,7 @@ export function UserProfileCard({
       <div className="profile-card-body">
         <div className="profile-card-header">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="profile-display-name"><StyledText text={member.displayName} /></h2>
+            <h2 className="profile-display-name"><span {...nameStyleProps(member.profileStyle, stripTextStyle(member.displayName))}><StyledText text={member.displayName} /></span></h2>
             {server && <MemberTag tag={getMemberTagInfo(member, server)} />}
           </div>
           <div className="profile-identity-sub">

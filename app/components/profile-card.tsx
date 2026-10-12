@@ -8,6 +8,7 @@ import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
+import { nameStyleProps } from "../lib/profile-style";
 
 interface ProfileCardProps {
   member: Member;
@@ -100,7 +101,7 @@ export function ProfileCard({
 
         <div className="profile-body">
           <div className="profile-name">
-            <strong style={{ color: nameColor || undefined }}>
+            <strong {...nameStyleProps(member.profileStyle, member.displayName, nameColor)}>
               <StyledText text={member.displayName} />
             </strong>
             {member.isAdmin && <span className="profile-badge owner">OWNER</span>}

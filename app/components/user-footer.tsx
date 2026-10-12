@@ -8,6 +8,7 @@ import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
 import { StyledText } from "./message-body";
 import { stripTextStyle } from "@/lib/text-style";
+import { nameStyleProps } from "../lib/profile-style";
 import {
   DEVICE_SAVED_EVENT,
   listDevices,
@@ -143,7 +144,7 @@ export function UserFooter({
           />
         </div>
         <div className="user-footer-info">
-          <span className="user-footer-name"><StyledText text={user.displayName} /></span>
+          <span className="user-footer-name"><span {...nameStyleProps(user.profileStyle, stripTextStyle(user.displayName))}><StyledText text={user.displayName} /></span></span>
           <span className="user-footer-status">
             <StyledText text={customStatus || presenceInfo.label} />
           </span>
