@@ -40,7 +40,7 @@ function toWaveform(levels: number[]): number[] {
   return bars.map((v) => Math.max(6, Math.round((v / peak) * 100)));
 }
 
-type RecorderState = "idle" | "recording" | "paused" | "sending";
+export type RecorderState = "idle" | "recording" | "paused" | "sending";
 
 /**
  * Microphone recording for voice messages: MediaRecorder for the audio plus an
