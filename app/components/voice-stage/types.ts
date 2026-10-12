@@ -1,5 +1,6 @@
 "use client";
 
+import type { SpeakingStore } from "../../lib/speaking-store";
 import { type BackgroundMode } from "../../lib/virtual-background";
 import { type ScreenShareQuality } from "../../hooks/use-voice";
 import { type TableControls } from "../table-audio-menu";
@@ -27,7 +28,7 @@ export interface VoiceApi extends TableControls {
   /** Videos this tab stopped receiving (to save data), and the switch for it. */
   hiddenVideo: Record<string, { camera: boolean; screen: boolean }>;
   setVideoHidden: (connectionId: string, which: "camera" | "screen", hidden: boolean) => void;
-  speaking: Set<string>;
+  speakingStore: SpeakingStore;
   /** `kind` is set for LiveKit streams, whose ids are not the sender's. */
   remoteStreams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   peerStates: Record<string, string>;

@@ -1,5 +1,6 @@
 "use client";
 
+import { createSpeakingStore } from "../lib/speaking-store";
 import { installIdlePause, setIdlePauseCallActive } from "../lib/idle-pause";
 import { inTauriShell, installTauriHotkeys } from "../lib/tauri-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -530,7 +531,8 @@ export function useVoice({
     if (!channelId || muted || deafened || forcedMute) return;
     send({ t: "voice-state", important: !important });
   }, [channelId, muted, deafened, forcedMute, important, send]);
-  const [speaking, setSpeaking] = useState<Set<string>>(new Set());
+  // Not state: the 200ms level poll would re-render every consumer of this hook.
+  const [speakingStore] = useState(createSpeakingStore);
   const [remoteStreams, setRemoteStreams] = useState<
     Array<{ connectionId: string; stream: MediaStream }>
   >([]);
@@ -975,7 +977,15 @@ export function useVoice({
       const packetLoss = totalRecv > 0 ? Math.round((totalLost / (totalLost + totalRecv)) * 100) : 0;
       const quality = rttMs < 75 && packetLoss < 2 ? "excellent" : rttMs < 160 && packetLoss < 5 ? "good" : "poor";
 
-      setLatency({ rttMs, jitterMs, packetLoss, quality });
+      // Same numbers: keep the old object so nothing re-renders for a no-op tick.
+      setLatency((current) =>
+        current.rttMs === rttMs &&
+        current.jitterMs === jitterMs &&
+        current.packetLoss === packetLoss &&
+        current.quality === quality
+          ? current
+          : { rttMs, jitterMs, packetLoss, quality },
+      );
     };
 
     void pollStats();
@@ -1293,15 +1303,7 @@ export function useVoice({
       if (sending && own && own.gateOpen && own.outputDb > -50) loud.add("self");
       const say = ttsOutRef.current;
       if (say && say.context.currentTime < say.endsAt) loud.add("self");
-      setSpeaking((current) => {
-        if (
-          current.size === loud.size &&
-          [...loud].every((id) => current.has(id))
-        ) {
-          return current;
-        }
-        return loud;
-      });
+      speakingStore.set(loud);
     }, 200);
     return () => window.clearInterval(timer);
   }, [channelId]);
@@ -2607,7 +2609,7 @@ export function useVoice({
     setRemoteStreams([]);
     hiddenVideoRef.current = {};
     setHiddenVideoState({});
-    setSpeaking(new Set());
+    speakingStore.set(new Set());
     // A raised hand belongs to the room you raised it in, so it does not follow
     // you into the next one.
     setHandRaised(false);
@@ -2874,7 +2876,7 @@ export function useVoice({
     setVideoHidden,
     /** Stage rooms: move a seat on or off the stage. Moderator-only, rechecked by the hub. */
     setStageSpeaker,
-    speaking,
+    speakingStore,
     remoteStreams: allRemoteStreams,
     /** This seat's media goes through the LiveKit server rather than the mesh. */
     sfuMode,

@@ -90,7 +90,6 @@ import {
 } from "@/lib/emoji-shortcodes";
 import { FriendsView } from "./components/friends-view";
 import { GlobalUserSearchDialog } from "./components/global-user-search-dialog";
-import { RecordingDirector } from "./components/recording-director";
 import { VoiceDuration } from "./components/voice-duration";
 import { type UserMenuTarget, type VoicePref } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
@@ -102,6 +101,7 @@ import { apiFetch, apiUrl } from "./lib/client";
 import { useMessageSearch } from "./hooks/use-message-search";
 import { useSavedMessages } from "./hooks/use-saved-messages";
 import { useDmCalls } from "./hooks/use-dm-calls";
+import { Speaking, LiveRecordingDirector } from "./components/chat/shell/live-speaking";
 import { unlockAudio } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
 import { disableWebPush, enableWebPush, registerServiceWorker } from "./lib/web-push";
@@ -134,6 +134,7 @@ import { DmCallView } from "./components/chat/shell/dm-call-view";
 import { MessageList } from "./components/chat/shell/message-list";
 import { Composer } from "./components/chat/shell/composer";
 import { ChatHeader } from "./components/chat/shell/chat-header";
+
 
 
 
@@ -6471,16 +6472,14 @@ export function ChatShell() {
           {people.length > 0 && (
             <div className={`voice-members ${isConnectedVoice ? "contour-members" : ""}`}>
               {people.map((person) => {
-                const isSpeaking = voice.speaking.has(
-                  person.connectionId === hub.connectionId
-                    ? "self"
-                    : person.connectionId,
-                );
+                const speakingId =
+                  person.connectionId === hub.connectionId ? "self" : person.connectionId;
                 return (
+                  <Speaking key={person.connectionId} store={voice.speakingStore} id={speakingId}>
+                    {(isSpeaking) => (
                   <div
                     className={`voice-member ${canModerate && !person.bot ? "draggable-member" : ""
                       } ${isSpeaking ? "is-speaking" : ""}`}
-                    key={person.connectionId}
                     draggable={canModerate && !person.bot}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
@@ -6560,6 +6559,8 @@ export function ChatShell() {
                       )}
                     </span>
                   </div>
+                    )}
+                  </Speaking>
                 );
               })}
             </div>
@@ -6985,13 +6986,13 @@ export function ChatShell() {
                 }}
                 recording={
                   features.recordSessions ? (
-                    <RecordingDirector
+                    <LiveRecordingDirector
                       channelId={stageChannel.id}
                       recording={hub.recordings[stageChannel.id] || null}
                       participants={voiceParticipants}
                       currentUserId={user.id}
                       canControl={canRecordSessions}
-                      speaking={voice.speaking}
+                      speakingStore={voice.speakingStore}
                       onNotice={setNotice}
                     />
                   ) : null
