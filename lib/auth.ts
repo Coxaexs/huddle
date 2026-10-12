@@ -61,6 +61,8 @@ export interface User {
   hidden_emojis?: string | null;
   email?: string | null;
   email_prompt_skipped?: number;
+  /** When an instance admin suspended the account; null while it is in good standing. */
+  suspended_at?: string | null;
 }
 
 const USER_COLUMN_NAMES = [
@@ -68,7 +70,7 @@ const USER_COLUMN_NAMES = [
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
-  "email_prompt_skipped", "created_at", "last_seen_at",
+  "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
@@ -134,6 +136,8 @@ function profileFields(user: User) {
     profileFrame: user.profile_frame || "none",
     color: user.color,
     customCss: user.custom_css || null,
+    // Instance admins' profile CSS is used as written (see scopeProfileCss).
+    ...(isInstanceAdmin(user) ? { unrestrictedCss: true } : {}),
     customTheme: user.custom_theme || null,
   };
 }
@@ -149,6 +153,31 @@ export function isDevUsername(username: string): boolean {
   }
 }
 
+/**
+ * Instance admins run /admin and /admin/media: site admins plus the account
+ * ids listed in ADMIN_IDS. Ids rather than usernames, because a username can
+ * be changed and then claimed by someone else.
+ */
+export function isInstanceAdmin(user: Pick<User, "id" | "is_admin">): boolean {
+  if (user.is_admin) return true;
+  let raw = "";
+  try {
+    const env = bindings();
+    // MEDIA_ADMIN_IDS was the first name for this list.
+    raw = env.ADMIN_IDS || env.MEDIA_ADMIN_IDS || "";
+  } catch {
+    return false;
+  }
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .includes(user.id);
+}
+
+/** Media moderation is part of instance admin. */
+export const canManageMedia = isInstanceAdmin;
+
 /** The signed-in user's own account, including their private preferences. */
 export function publicUser(user: User): PublicUser {
   return {
@@ -156,6 +185,8 @@ export function publicUser(user: User): PublicUser {
     isAdmin: Boolean(user.is_admin),
     canInvite: Boolean(user.is_admin || user.can_invite),
     isDev: isDevUsername(user.username),
+    canManageMedia: canManageMedia(user),
+    isInstanceAdmin: isInstanceAdmin(user),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
     lastfmUsername: user.lastfm_username || null,
@@ -363,6 +394,8 @@ export async function currentUser(request: Request): Promise<User | null> {
     await destroySession(db, token);
     return null;
   }
+  // A suspended account is treated as signed out everywhere, sockets included.
+  if (row.suspended_at) return null;
   return row;
 }
 

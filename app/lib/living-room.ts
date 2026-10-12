@@ -111,8 +111,8 @@ export const PROP_ZONES = [
 type Box = { x0: number; x1: number; z0: number; z1: number };
 type Spot = { x: number; z: number };
 
-export type VenueId = "lounge" | "cinema" | "tabletop";
-export const VENUE_IDS: readonly VenueId[] = ["lounge", "cinema", "tabletop"];
+export type VenueId = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
+export const VENUE_IDS: readonly VenueId[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow"];
 export const isVenueId = (value: unknown): value is VenueId => typeof value === "string" && (VENUE_IDS as readonly string[]).includes(value);
 
 /**
@@ -286,7 +286,224 @@ export const TABLETOP: Venue = {
   capacity: 10,
 };
 
-export const VENUES: Record<VenueId, Venue> = { lounge: LOUNGE, cinema: CINEMA, tabletop: TABLETOP };
+/**
+ * The board hall: the room's DeepPixel game laid out as a giant board on the
+ * floor, big enough to walk on, with the players' pawns hopping round it.
+ * Spectators sit on benches along the four sides.
+ */
+export const BOARD_HALL_HALF = 12;
+/** Width of the floor board, edge to edge. */
+export const FLOOR_BOARD_SIZE = 15;
+const BENCH_DISTANCE = 9.7;
+const BOARD_HALL_SEATS: LoungeSeat[] = [0, 1, 2, 3].flatMap((side) =>
+  [-2.4, -0.8, 0.8, 2.4].map((along, i) => {
+    // Side 0 south, 1 west, 2 north, 3 east; everyone faces the board.
+    const x = side === 1 ? -BENCH_DISTANCE : side === 3 ? BENCH_DISTANCE : along;
+    const z = side === 0 ? BENCH_DISTANCE : side === 2 ? -BENCH_DISTANCE : along;
+    return { id: `bench-${side}-${i}`, label: "Bench", x, z, facing: headingTo({ x, z }, { x: 0, z: 0 }), height: 0.45 };
+  }),
+);
+const BOARD_HALL_SOLIDS: Box[] = [
+  // The four benches.
+  { x0: -3.2, x1: 3.2, z0: BENCH_DISTANCE + 0.05, z1: BENCH_DISTANCE + 0.55 },
+  { x0: -3.2, x1: 3.2, z0: -BENCH_DISTANCE - 0.55, z1: -BENCH_DISTANCE - 0.05 },
+  { x0: -BENCH_DISTANCE - 0.55, x1: -BENCH_DISTANCE - 0.05, z0: -3.2, z1: 3.2 },
+  { x0: BENCH_DISTANCE + 0.05, x1: BENCH_DISTANCE + 0.55, z0: -3.2, z1: 3.2 },
+];
+
+export const BOARD_HALL: Venue = {
+  id: "boardhall",
+  label: "Board hall",
+  halfX: BOARD_HALL_HALF,
+  halfZ: BOARD_HALL_HALF,
+  height: 5,
+  seats: BOARD_HALL_SEATS,
+  seatIndex: indexSeats(BOARD_HALL_SEATS),
+  solids: BOARD_HALL_SOLIDS,
+  nook: null,
+  tv: { x: 0, z: -BOARD_HALL_HALF + 0.1, height: 3.1 },
+  focus: { x: 0, z: 0 },
+  // Standing room is the board itself: stand on your street.
+  crowd: crowdSpots({
+    halfX: BOARD_HALL_HALF, halfZ: BOARD_HALL_HALF, solids: BOARD_HALL_SOLIDS, seats: BOARD_HALL_SEATS, centre: { x: 0, z: 8.4 }, margin: 1, top: 1, step: 1.1,
+    avoid: [{ x: 0, z: 0, radius: 2.4 }],
+  }),
+  spawn: { x: 0, z: 8.6 },
+  floorY: () => 0,
+  capacity: 60,
+};
+
+/**
+ * The meadow: a small outdoor world to wander. Rolling hills, a pond with a
+ * jetty, a campfire with log seats, a cabin, a picnic table and a lookout on
+ * the hill. Kept small (about 50 m across) so it draws cheaply.
+ */
+export const MEADOW_HALF = 25;
+export const CAMPFIRE = { x: 0, z: 3 };
+export const POND = { x: -11, z: 8, radius: 5 };
+export const WATER_Y = -0.35;
+export const LOOKOUT = { x: 14, z: -13 };
+/** Home: a log cabin you can walk into (the door is in the middle of its south wall). */
+export const CABIN = { x: -12, z: -11, w: 7, d: 5.5 };
+export const CABIN_DOOR_HALF = 0.65;
+/** Height of the cabin's plank floor. */
+export const CABIN_FLOOR_Y = 0.3;
+const CABIN_WALL = 0.3;
+export const inCabin = (x: number, z: number) =>
+  Math.abs(x - CABIN.x) < CABIN.w / 2 && Math.abs(z - CABIN.z) < CABIN.d / 2;
+export const PICNIC = { x: 9, z: 9 };
+export const JETTY = { x0: -7.2, x1: -4.6, z: 8 };
+
+const smooth = (edge0: number, edge1: number, v: number) => {
+  const t = Math.max(0, Math.min(1, (v - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+};
+
+/** Height of the ground anywhere in (and past) the meadow. */
+export function meadowHeight(x: number, z: number): number {
+  let h = 0.55 * Math.sin(x * 0.17 + 0.6) * Math.cos(z * 0.13 - 0.4) + 0.35 * Math.sin((x + z) * 0.09);
+  // The lookout hill, and a rim of higher ground at the edge of the world.
+  h += 3.2 * Math.exp(-((x - LOOKOUT.x) ** 2 + (z - LOOKOUT.z) ** 2) / 55);
+  const edge = Math.max(Math.abs(x), Math.abs(z));
+  h += smooth(MEADOW_HALF - 2, MEADOW_HALF + 12, edge) * 6;
+  // Level ground where things stand.
+  const flatten = (cx: number, cz: number, r: number, level: number) => {
+    const k = 1 - smooth(r * 0.6, r, Math.hypot(x - cx, z - cz));
+    h = h * (1 - k) + level * k;
+  };
+  flatten(CAMPFIRE.x, CAMPFIRE.z, 6.5, 0.1);
+  flatten(CABIN.x, CABIN.z, 7, 0.25);
+  flatten(PICNIC.x, PICNIC.z, 3.5, 0.15);
+  // The pond is a bowl under the water line.
+  const d = Math.hypot(x - POND.x, z - POND.z);
+  if (d < POND.radius + 2.5) {
+    const k = 1 - smooth(POND.radius - 1.5, POND.radius + 2.5, d);
+    h = h * (1 - k) + (WATER_Y - 0.9) * k;
+  }
+  return h;
+}
+
+/** Where people stand: on the ground, or on the jetty over the water. */
+const meadowFloorY = (x: number, z: number) => {
+  if (inCabin(x, z)) return CABIN_FLOOR_Y;
+  if (x > JETTY.x0 && x < JETTY.x1 + 0.4 && Math.abs(z - JETTY.z) < 0.7) return WATER_Y + 0.35;
+  return Math.max(meadowHeight(x, z), WATER_Y - 0.2);
+};
+
+/** Trees, the same on every client: a seeded scatter that leaves the paths and places clear. */
+export const MEADOW_TREES: Array<{ x: number; z: number; scale: number; kind: 0 | 1 }> = (() => {
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const trees: Array<{ x: number; z: number; scale: number; kind: 0 | 1 }> = [];
+  const clearOf = [
+    { ...CAMPFIRE, r: 8 }, { x: POND.x, z: POND.z, r: POND.radius + 2.2 }, { x: CABIN.x, z: CABIN.z, r: 6.5 },
+    { ...PICNIC, r: 4 }, { ...LOOKOUT, r: 3.5 }, { x: 0, z: 10, r: 4 }, { x: -6, z: 8, r: 2.5 },
+  ];
+  for (let tries = 0; trees.length < 70 && tries < 2000; tries++) {
+    const x = (rand() * 2 - 1) * (MEADOW_HALF + 8);
+    const z = (rand() * 2 - 1) * (MEADOW_HALF + 8);
+    if (clearOf.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
+    if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < 3)) continue;
+    // Keep the middle airy: trees thin out towards the campfire.
+    if (Math.hypot(x, z) < 14 && rand() < 0.55) continue;
+    trees.push({ x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, scale: 0.8 + rand() * 0.6, kind: rand() < 0.6 ? 0 : 1 });
+  }
+  return trees;
+})();
+
+const meadowSeat = (id: string, label: string, x: number, z: number, look: Spot, height = 0.45): LoungeSeat => ({
+  id, label, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, facing: headingTo({ x, z }, look), height, y: meadowFloorY(x, z),
+});
+const MEADOW_SEATS: LoungeSeat[] = [
+  ...Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    return meadowSeat(`fire-${i}`, "Log by the fire", CAMPFIRE.x + Math.sin(a) * 2.5, CAMPFIRE.z + Math.cos(a) * 2.5, CAMPFIRE, 0.38);
+  }),
+  ...[-0.9, 0, 0.9].flatMap((dx, i) => [
+    meadowSeat(`picnic-n${i}`, "Picnic bench", PICNIC.x + dx, PICNIC.z - 0.75, { x: PICNIC.x + dx, z: PICNIC.z }),
+    meadowSeat(`picnic-s${i}`, "Picnic bench", PICNIC.x + dx, PICNIC.z + 0.75, { x: PICNIC.x + dx, z: PICNIC.z }),
+  ]),
+  meadowSeat("lookout-1", "Lookout bench", LOOKOUT.x - 0.5, LOOKOUT.z + 0.6, { x: 0, z: 6 }),
+  meadowSeat("lookout-2", "Lookout bench", LOOKOUT.x + 0.5, LOOKOUT.z + 0.6, { x: 0, z: 6 }),
+  { id: "jetty-1", label: "End of the jetty", x: JETTY.x0 + 0.35, z: JETTY.z - 0.3, facing: -Math.PI / 2, height: 0.2, y: WATER_Y + 0.35 },
+  { id: "jetty-2", label: "End of the jetty", x: JETTY.x0 + 0.35, z: JETTY.z + 0.3, facing: -Math.PI / 2, height: 0.2, y: WATER_Y + 0.35 },
+  meadowSeat("porch-1", "Cabin porch", CABIN.x - 2.1, CABIN.z + CABIN.d / 2 + 0.7, { x: 0, z: 3 }),
+  meadowSeat("porch-2", "Cabin porch", CABIN.x + 2.1, CABIN.z + CABIN.d / 2 + 0.7, { x: 0, z: 3 }),
+  // Inside: the couch faces the fireplace on the north wall.
+  ...[-0.8, 0, 0.8].map((dx, i): LoungeSeat => ({ id: `home-couch-${i}`, label: "Couch at home", x: CABIN.x + dx, z: CABIN.z + 0.75, facing: 0, height: 0.45, y: CABIN_FLOOR_Y })),
+  { id: "home-arm", label: "Armchair at home", x: CABIN.x - 2.5, z: CABIN.z - 0.6, facing: Math.PI / 2, height: 0.45, y: CABIN_FLOOR_Y },
+  ...[-0.75, 0.75].map((dx, i): LoungeSeat => {
+    const x = CABIN.x + dx;
+    const z = CABIN.z - CABIN.d / 2 + 1.35;
+    return { id: `home-fire-${i}`, label: "By the fire at home", x, z, facing: headingTo({ x, z }, { x: CABIN.x, z: CABIN.z - CABIN.d / 2 }), height: 0.12, y: CABIN_FLOOR_Y };
+  }),
+];
+const cabinX0 = CABIN.x - CABIN.w / 2;
+const cabinX1 = CABIN.x + CABIN.w / 2;
+const cabinZ0 = CABIN.z - CABIN.d / 2;
+const cabinZ1 = CABIN.z + CABIN.d / 2;
+const MEADOW_SOLIDS: Box[] = [
+  // The cabin's walls, with a gap for the door; its couch and hearth inside.
+  { x0: cabinX0 - CABIN_WALL / 2, x1: cabinX1 + CABIN_WALL / 2, z0: cabinZ0 - CABIN_WALL / 2, z1: cabinZ0 + CABIN_WALL / 2 },
+  { x0: cabinX0 - CABIN_WALL / 2, x1: cabinX0 + CABIN_WALL / 2, z0: cabinZ0, z1: cabinZ1 },
+  { x0: cabinX1 - CABIN_WALL / 2, x1: cabinX1 + CABIN_WALL / 2, z0: cabinZ0, z1: cabinZ1 },
+  { x0: cabinX0 - CABIN_WALL / 2, x1: CABIN.x - CABIN_DOOR_HALF, z0: cabinZ1 - CABIN_WALL / 2, z1: cabinZ1 + CABIN_WALL / 2 },
+  { x0: CABIN.x + CABIN_DOOR_HALF, x1: cabinX1 + CABIN_WALL / 2, z0: cabinZ1 - CABIN_WALL / 2, z1: cabinZ1 + CABIN_WALL / 2 },
+  { x0: CABIN.x - 1.35, x1: CABIN.x + 1.35, z0: CABIN.z + 0.95, z1: CABIN.z + 1.55 },
+  { x0: CABIN.x - 1.1, x1: CABIN.x + 1.1, z0: cabinZ0, z1: cabinZ0 + 0.6 },
+  { x0: PICNIC.x - 1.3, x1: PICNIC.x + 1.3, z0: PICNIC.z - 0.4, z1: PICNIC.z + 0.4 },
+  { x0: CAMPFIRE.x - 0.6, x1: CAMPFIRE.x + 0.6, z0: CAMPFIRE.z - 0.6, z1: CAMPFIRE.z + 0.6 },
+  // The pond: wade in at the edge, but not across (the jetty runs out over it).
+  { x0: POND.x - POND.radius * 0.7, x1: JETTY.x0 - 0.05, z0: POND.z - POND.radius * 0.7, z1: POND.z + POND.radius * 0.7 },
+  ...MEADOW_TREES.filter((t) => Math.abs(t.x) < MEADOW_HALF && Math.abs(t.z) < MEADOW_HALF)
+    .map((t) => ({ x0: t.x - 0.3, x1: t.x + 0.3, z0: t.z - 0.3, z1: t.z + 0.3 })),
+];
+
+export const MEADOW: Venue = {
+  id: "meadow",
+  label: "Meadow",
+  halfX: MEADOW_HALF,
+  halfZ: MEADOW_HALF,
+  height: 30,
+  seats: MEADOW_SEATS,
+  seatIndex: indexSeats(MEADOW_SEATS),
+  solids: MEADOW_SOLIDS,
+  nook: null,
+  // An open-air screen just north of the fire.
+  tv: { x: CAMPFIRE.x, z: CAMPFIRE.z - 6.2, height: 2.4 },
+  focus: CAMPFIRE,
+  crowd: crowdSpots({
+    halfX: 14, halfZ: 14, solids: MEADOW_SOLIDS, seats: MEADOW_SEATS, centre: { x: CAMPFIRE.x, z: CAMPFIRE.z + 3.8 }, margin: 1, top: 1, step: 1.1,
+    avoid: [{ x: CAMPFIRE.x, z: CAMPFIRE.z, radius: 3.2 }, { x: POND.x, z: POND.z, radius: POND.radius + 0.5 }, { x: CABIN.x, z: CABIN.z, radius: 5 }],
+  }),
+  spawn: { x: 0, z: 10 },
+  floorY: meadowFloorY,
+  capacity: 80,
+};
+
+/** Just outside and just inside the cabin's door. */
+export const CABIN_DOOR_OUT = { x: CABIN.x, z: cabinZ1 + 0.7 };
+export const CABIN_DOOR_IN = { x: CABIN.x, z: cabinZ1 - 0.7 };
+
+/**
+ * The way to walk somewhere: straight there, except into or out of the meadow's
+ * cabin, which goes through its door.
+ */
+export function routeTo(venue: Venue, from: Spot, to: Spot): Spot[] {
+  if (venue.id !== "meadow") return [to];
+  const fromIn = inCabin(from.x, from.z);
+  const toIn = inCabin(to.x, to.z);
+  if (fromIn === toIn) return [to];
+  return fromIn ? [CABIN_DOOR_IN, CABIN_DOOR_OUT, to] : [CABIN_DOOR_OUT, CABIN_DOOR_IN, to];
+}
+
+/** Where you can fish from: the end of the jetty, or the pond's edge. */
+export function fishingSpot(pose: Spot): boolean {
+  if (pose.x < JETTY.x0 + 1.4 && pose.x > JETTY.x0 - 0.5 && Math.abs(pose.z - JETTY.z) < 0.8) return true;
+  return Math.hypot(pose.x - POND.x, pose.z - POND.z) < POND.radius + 2.2;
+}
+
+export const VENUES: Record<VenueId, Venue> = { lounge: LOUNGE, cinema: CINEMA, tabletop: TABLETOP, boardhall: BOARD_HALL, meadow: MEADOW };
 export const venueById = (id: VenueId | null | undefined): Venue => VENUES[id ?? "lounge"] ?? LOUNGE;
 
 export const seatById = (id: string | null | undefined, venue: Venue = LOUNGE) => (id ? venue.seatIndex.get(id) ?? null : null);
@@ -397,7 +614,7 @@ export const tvPoseFor = (venue: Venue): LoungePose => ({ x: venue.tv.x, z: venu
  * frame is rotated into the listener's own: whatever is ahead of their body is
  * -Z, to their right is +X. A seated voice comes from a little lower.
  */
-export function hearFrom(listener: LoungePose, speaker: LoungePose, speakerHeight?: number, venue: Venue = LOUNGE): HeardFrom {
+export function hearFrom(listener: LoungePose, speaker: LoungePose, speakerHeight?: number, venue: Venue = LOUNGE, echo = 0.5): HeardFrom {
   const dx = speaker.x - listener.x;
   const dz = speaker.z - listener.z;
   const [s, c] = [Math.sin(listener.facing), Math.cos(listener.facing)];
@@ -421,15 +638,20 @@ export function hearFrom(listener: LoungePose, speaker: LoungePose, speakerHeigh
   const air = 18000 / (1 + 0.22 * Math.max(0, distance - 1.5));
   const turned = 5200 + 14000 * facingYou;
   const cutoff = Math.round(Math.max(900, Math.min(air, turned, walled ? 1400 : 20000)));
-  const wet = Math.max(0.04, Math.min(0.32, 0.03 + distance * 0.04 + (1 - facingYou) * 0.06));
+  const echoMultiplier = Number.isFinite(echo) ? Math.max(0, Math.min(1, echo)) * 2 : 1;
+  const baseWet = 0.012 + distance * 0.012 + (1 - facingYou) * 0.02;
+  const wet = Math.max(0, Math.min(0.18, baseWet * echoMultiplier));
   const attenuation = (privacy * directivity) / (1 + 0.2 * Math.max(0, distance - 1.2));
   return { seat: { x: flat.x, y: height, z: flat.z }, pan, attenuation, privacy: privacy * directivity, distance, cutoff, wet };
 }
 
 /** Emotes anyone can send; anything else on the wire is dropped. */
 export const LOUNGE_EMOTES = ["👋", "😂", "❤️", "🎉", "🔥", "👏", "😮", "🍿"] as const;
+/** Not in the emote bar, but sent the same way: a jump, and a fish caught in the meadow. */
+export const JUMP_SIGNAL = "⤒";
+export const LOUNGE_SIGNALS = [JUMP_SIGNAL, "🐟"] as const;
 export const isLoungeEmote = (value: unknown): value is string =>
-  typeof value === "string" && (LOUNGE_EMOTES as readonly string[]).includes(value);
+  typeof value === "string" && ((LOUNGE_EMOTES as readonly string[]).includes(value) || (LOUNGE_SIGNALS as readonly string[]).includes(value));
 
 /** Moving a step: stops at walls, and furniture is solid. */
 export function stepTo(pose: LoungePose, target: { x: number; z: number }, venue: Venue = LOUNGE, allowAnnex = false): LoungePose {

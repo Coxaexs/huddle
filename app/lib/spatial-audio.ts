@@ -126,13 +126,13 @@ export interface RoomShape { seconds: number; decay: number; damp: number; prede
  * den, and a bright hard-walled flat.
  */
 export const ROOM_SHAPES = {
-  table: { seconds: 0.6, decay: 0.11, damp: 0.35, predelay: 0.012 },
-  cozy: { seconds: 1.0, decay: 0.2, damp: 0.28, predelay: 0.018 },
-  vampire: { seconds: 2.2, decay: 0.48, damp: 0.42, predelay: 0.03 },
-  matrix: { seconds: 0.7, decay: 0.12, damp: 0.5, predelay: 0.008 },
-  cyberpunk: { seconds: 1.2, decay: 0.24, damp: 0.6, predelay: 0.02 },
+  table: { seconds: 0.5, decay: 0.09, damp: 0.35, predelay: 0.012 },
+  cozy: { seconds: 0.6, decay: 0.10, damp: 0.32, predelay: 0.014 },
+  vampire: { seconds: 1.1, decay: 0.22, damp: 0.42, predelay: 0.022 },
+  matrix: { seconds: 0.45, decay: 0.08, damp: 0.55, predelay: 0.006 },
+  cyberpunk: { seconds: 0.7, decay: 0.13, damp: 0.6, predelay: 0.015 },
   // A library: books swallow the highs, the wood keeps a warm, medium tail.
-  academia: { seconds: 1.4, decay: 0.3, damp: 0.22, predelay: 0.024 },
+  academia: { seconds: 0.8, decay: 0.15, damp: 0.25, predelay: 0.018 },
 } satisfies Record<string, RoomShape>;
 export type RoomShapeName = keyof typeof ROOM_SHAPES;
 

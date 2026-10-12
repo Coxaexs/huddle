@@ -43,39 +43,27 @@ export function VoiceConnectionModal({
   onSwitchRegion,
 }: VoiceConnectionModalProps) {
   const [activeTab, setActiveTab] = useState<"voice" | "stream">(defaultTab);
-  const currentPing = Math.max(1, Math.round(latency?.rttMs || 42));
+  // 0 until the first WebRTC stats sample comes in.
+  const currentPing = Math.max(0, Math.round(latency?.rttMs || 0));
+  const currentPingRef = useRef(currentPing);
+  currentPingRef.current = currentPing;
   const [debugOpen, setDebugOpen] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
   const [switching, setSwitching] = useState(false);
 
-  // Ping history state for real-time Discord graph
-  const [history, setHistory] = useState<Array<{ ping: number; time: string }>>(() => {
-    const initial: Array<{ ping: number; time: string }> = [];
-    const now = Date.now();
-    for (let i = 18; i >= 0; i--) {
-      const d = new Date(now - i * 15000);
-      const timeStr = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      const jitterVariation = Math.sin(i * 1.5) * 8 + (Math.random() * 6 - 3);
-      initial.push({
-        ping: Math.max(10, Math.min(120, Math.round(currentPing + jitterVariation))),
-        time: timeStr,
-      });
-    }
-    return initial;
-  });
-
-  // Track new ping updates
+  // Real samples only, one every 3s, newest last.
+  const [history, setHistory] = useState<Array<{ ping: number; time: string }>>([]);
   useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      setHistory((prev) => {
-        const next = [...prev.slice(1), { ping: currentPing, time: timeStr }];
-        return next;
-      });
-    }, 3000);
+    const sample = () => {
+      const ping = currentPingRef.current;
+      if (ping <= 0) return;
+      const time = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      setHistory((prev) => [...prev.slice(-18), { ping, time }]);
+    };
+    sample();
+    const timer = setInterval(sample, 3000);
     return () => clearInterval(timer);
-  }, [currentPing]);
+  }, []);
 
   const avgPing = useMemo(() => {
     if (!history.length) return currentPing;
@@ -83,7 +71,8 @@ export function VoiceConnectionModal({
     return Math.round(sum / history.length);
   }, [history, currentPing]);
 
-  const packetLossPercent = ((latency?.packetLoss || 0) * 100).toFixed(1);
+  // The hook already reports packet loss as a percentage.
+  const packetLossPercent = (latency?.packetLoss || 0).toFixed(1);
 
   // Graph dimensions
   const svgWidth = 320;
@@ -147,7 +136,7 @@ export function VoiceConnectionModal({
       timestamp: new Date().toISOString(),
       currentPingMs: currentPing,
       avgPingMs: avgPing,
-      jitterMs: Math.round(latency?.jitterMs || 2),
+      jitterMs: Math.round(latency?.jitterMs || 0),
       packetLoss: `${packetLossPercent}%`,
       audioDelayMs: micSettings?.delayMs || 0,
       protocol: isSfu ? "LiveKit SFU (WebRTC)" : "P2P Mesh (WebRTC)",
@@ -319,11 +308,11 @@ export function VoiceConnectionModal({
             <div className="connection-stats-list">
               <div className="connection-stat-row">
                 <span className="stat-label">Average ping:</span>
-                <span className="stat-value">{avgPing} ms</span>
+                <span className="stat-value">{avgPing ? `${avgPing} ms` : "—"}</span>
               </div>
               <div className="connection-stat-row">
                 <span className="stat-label">Last ping:</span>
-                <span className="stat-value">{currentPing} ms</span>
+                <span className="stat-value">{currentPing ? `${currentPing} ms` : "—"}</span>
               </div>
               <div className="connection-stat-row">
                 <span className="stat-label">Outbound packet loss rate:</span>
@@ -376,7 +365,7 @@ export function VoiceConnectionModal({
               <div className="connection-debug-panel">
                 <div className="debug-row">
                   <span>Jitter:</span>
-                  <span className="font-mono">{Math.round(latency?.jitterMs || 2)} ms</span>
+                  <span className="font-mono">{Math.round(latency?.jitterMs || 0)} ms</span>
                 </div>
                 <div className="debug-row">
                   <span>Protocol:</span>
@@ -439,7 +428,7 @@ export function VoiceConnectionModal({
             </div>
             <div className="connection-stat-row">
               <span className="stat-label">Stream Latency:</span>
-              <span className="stat-value">{Math.round(currentPing * 1.15)} ms</span>
+              <span className="stat-value">{currentPing ? `${currentPing} ms` : "—"}</span>
             </div>
             <div className="connection-stat-row">
               <span className="stat-label">Bitrate:</span>

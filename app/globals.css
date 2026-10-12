@@ -1330,11 +1330,19 @@ body {
   overflow: hidden;
 }
 
-/* Allow normal window scrolling on landing page */
+/* Allow normal window scrolling on landing page, portal and admin pages */
 html.landing-page-active,
 body.landing-page-active,
+html.portal-page-active,
+body.portal-page-active,
 html:has(.lp-root),
-body:has(.lp-root) {
+body:has(.lp-root),
+html:has(.recordings-portal),
+body:has(.recordings-portal),
+html:has(.admin-panel),
+body:has(.admin-panel),
+html:has(.media-admin),
+body:has(.media-admin) {
   overflow-y: auto !important;
   overflow-x: hidden !important;
   height: auto !important;
@@ -1474,6 +1482,17 @@ button {
   padding: 18px 0;
   display: flex;
   position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
 }
 
 .brand-mark,
@@ -1488,6 +1507,7 @@ button {
   height: 44px;
   font-weight: 800;
   display: grid;
+  flex-shrink: 0;
 }
 
 .brand-mark {
@@ -1502,6 +1522,7 @@ button {
   background: #4a4b55;
   width: 32px;
   height: 1px;
+  flex-shrink: 0;
 }
 
 .space-mark {
@@ -1521,8 +1542,15 @@ button {
   font-size: 24px;
 }
 
+.rail-item,
+.rail-folder {
+  flex-shrink: 0;
+}
+
 .rail-spacer {
   flex: 1;
+  min-height: 14px;
+  flex-shrink: 0;
 }
 
 .profile-dot {
@@ -29855,3 +29883,44 @@ a.link-preview-author:hover {
 }
 
 :root[data-custom-theme-id^="msn"] .user-profile-card-popover .profile-card-close.profile-card-copy { right: 26px; }
+
+/* ── Board hall: the game page stays loaded out of sight (the hall's menu plays it), at a desktop size so its controls lay out normally ── */
+.voice-stage.board-hall:not(.board-dock) .room-activity.kind-deeppixel {
+  display: flex !important;
+  position: fixed;
+  left: -12000px;
+  top: 0;
+  width: 1200px;
+  height: 860px;
+  max-height: none;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Board hall: the DeepPixel game docks beside the living room's 3D board (the lobby, or when asked) ── */
+.voice-stage.board-dock .room-activity.kind-deeppixel {
+  position: absolute;
+  z-index: 7;
+  top: 58px;
+  right: 10px;
+  bottom: 84px;
+  width: min(480px, 44%);
+  flex: none;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  border: 1px solid rgba(255, 244, 225, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 720px) {
+  .voice-stage.board-dock .room-activity.kind-deeppixel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    height: 58%;
+  }
+}

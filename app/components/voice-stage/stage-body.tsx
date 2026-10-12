@@ -338,7 +338,7 @@ export function StageBody({
                           : "text-emerald-400"
                     }
                   />
-                  <span>{voice.latency?.rttMs ? `${Math.round(voice.latency.rttMs)}ms` : "12ms"}</span>
+                  <span>{voice.latency?.rttMs ? `${Math.round(voice.latency.rttMs)}ms` : "—"}</span>
                 </button>
 
                 {showLatencyPopover && (

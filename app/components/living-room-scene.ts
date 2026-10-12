@@ -520,6 +520,8 @@ export interface BuiltRoom {
   fog: THREE.Fog;
   exposure: number;
   update: (t: number, dt: number) => void;
+  /** Where I am and how I look at the room, for scenery that changes with it (the meadow cabin's roof). */
+  viewer?: (x: number, z: number, view: string) => void;
   dispose: () => void;
 }
 

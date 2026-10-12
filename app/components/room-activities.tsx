@@ -12,6 +12,8 @@ import {
 } from "react";
 import {
   DEEPPIXEL_URL,
+  DEEPPIXEL_FROM_GAME,
+  DEEPPIXEL_TO_GAME,
   DEFAULT_TIERS,
   RICHUP_URL,
   richupRoomUrl,
@@ -784,6 +786,30 @@ export function RoomActivities({
   useEffect(() => {
     if (activity) onOpen(true);
   }, [activity?.kind]);
+
+  // The living room's board hall plays DeepPixel from its own menu: relay between it and the game's iframe.
+  const isDeepPixel = activity?.kind === "deeppixel";
+  useEffect(() => {
+    if (!isDeepPixel) return;
+    const frame = () => gameFrameRef.current?.querySelector("iframe")?.contentWindow ?? null;
+    const target = new URL(DEEPPIXEL_URL).origin;
+    const fromGame = (event: MessageEvent) => {
+      if (event.origin !== target || event.source !== frame()) return;
+      const data = event.data as { source?: string } | null;
+      if (data?.source !== "deeppixel") return;
+      window.dispatchEvent(new CustomEvent(DEEPPIXEL_FROM_GAME, { detail: data }));
+    };
+    const toGame = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      frame()?.postMessage({ ...detail, source: "hoffle" }, target);
+    };
+    window.addEventListener("message", fromGame);
+    window.addEventListener(DEEPPIXEL_TO_GAME, toGame);
+    return () => {
+      window.removeEventListener("message", fromGame);
+      window.removeEventListener(DEEPPIXEL_TO_GAME, toGame);
+    };
+  }, [isDeepPixel]);
 
   /** Canvas callbacks shared by the whiteboard and Draw & Guess. */
   function drawProps(current: RoomActivity) {
