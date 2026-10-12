@@ -1,7 +1,7 @@
+import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
-import { isDmMember } from "@/lib/dms";
 import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
-import { ensureSchema } from "@/lib/schema";
+import { DEFAULT_SERVER_ID, DM_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import {
   buildMessageFilters,
@@ -45,15 +45,10 @@ export async function GET(request: Request) {
     return Response.json({ results: [] });
   }
 
-  // If searching a specific DM channel, verify user is a participant
+  // If searching a specific channel, verify the user has access to it.
   if (channelId) {
-    const isDm = await isDmMember(db, channelId, user.id);
-    const channelRow = await db
-      .prepare("SELECT server_id FROM channels WHERE id = ?")
-      .bind(channelId)
-      .first<{ server_id: string }>();
-
-    if (channelRow?.server_id === "dm" && !isDm) {
+    const access = await channelAccess(db, channelId, user);
+    if (!access.ok) {
       return Response.json({ results: [] }, { status: 403 });
     }
   }
@@ -68,8 +63,36 @@ export async function GET(request: Request) {
   // Both paths below share these predicates, so `has:image` cannot mean one
   // thing when FTS answers and another when the LIKE fallback does.
   const filters = buildMessageFilters(query);
-  // The hoffle.online guestbook is only for its moderators, and search is not
-  // otherwise limited to the servers you are in.
+
+  // Scope search to channels the user has permission to read.
+  if (!channelId) {
+    if (user.is_admin) {
+      // Admins can search all server channels, plus any DMs they are a participant in.
+      // DMs between other users are never exposed in search.
+      filters.clauses.push(
+        "(m.channel_id IN (SELECT c.id FROM channels c WHERE c.server_id != ?) OR m.channel_id IN (SELECT dm.channel_id FROM dm_members dm WHERE dm.user_id = ?) OR m.channel_id IS NULL)",
+      );
+      filters.params.push(DM_SERVER_ID, user.id);
+    } else {
+      // Regular members can only search channels in servers they belong to (and aren't banned from),
+      // plus DMs they are in, and legacy home-server messages.
+      filters.clauses.push(
+        "(m.channel_id IN (SELECT c.id FROM channels c JOIN server_members sm ON sm.server_id = c.server_id WHERE sm.user_id = ? AND c.server_id != ? AND sm.server_id NOT IN (SELECT server_id FROM bans WHERE user_id = ?)) OR m.channel_id IN (SELECT dm.channel_id FROM dm_members dm WHERE dm.user_id = ?) OR (m.channel_id IS NULL AND EXISTS (SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?) AND NOT EXISTS (SELECT 1 FROM bans WHERE server_id = ? AND user_id = ?)))",
+      );
+      filters.params.push(
+        user.id,
+        DM_SERVER_ID,
+        user.id,
+        user.id,
+        DEFAULT_SERVER_ID,
+        user.id,
+        DEFAULT_SERVER_ID,
+        user.id,
+      );
+    }
+  }
+
+  // The hoffle.online guestbook is only for its moderators.
   const inGuestbook = await db
     .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
     .bind(GUESTBOOK_SERVER_ID, user.id)

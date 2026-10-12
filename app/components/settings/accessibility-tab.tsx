@@ -106,7 +106,7 @@ export function AccessibilityTab({
                 <div>
                   <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
                     <span>Text size in chat</span>
-                    <span className="font-bold text-indigo-400">{chatFontSize}px</span>
+                    <span className="font-bold text-indigo-400" data-testid="chat-font-size-value">{chatFontSize}px</span>
                   </div>
                   <p className="text-xs text-gray-400 mb-3">Adjust the size of the chat font.</p>
 
@@ -118,17 +118,23 @@ export function AccessibilityTab({
                       max={24}
                       step={1}
                       value={chatFontSize}
+                      aria-label="Chat font size"
                       onChange={(e) => setChatFontSize(Number(e.target.value))}
                       className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />
                     <div className="flex justify-between text-[11px] text-gray-400 mt-2 px-1">
-                      <span className={chatFontSize === 12 ? "text-indigo-400 font-bold" : ""}>12px</span>
-                      <span className={chatFontSize === 14 ? "text-indigo-400 font-bold" : ""}>14px</span>
-                      <span className={chatFontSize === 15 ? "text-indigo-400 font-bold" : ""}>15px</span>
-                      <span className={chatFontSize === 16 ? "text-indigo-400 font-bold" : ""}>16px</span>
-                      <span className={chatFontSize === 18 ? "text-indigo-400 font-bold" : ""}>18px</span>
-                      <span className={chatFontSize === 20 ? "text-indigo-400 font-bold" : ""}>20px</span>
-                      <span className={chatFontSize === 24 ? "text-indigo-400 font-bold" : ""}>24px</span>
+                      {[12, 14, 15, 16, 18, 20, 24].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setChatFontSize(size)}
+                          className={`hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-[11px] ${
+                            chatFontSize === size ? "text-indigo-400 font-bold" : "text-gray-400"
+                          }`}
+                        >
+                          {size}px
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -141,6 +147,7 @@ export function AccessibilityTab({
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
+                      aria-label="Always underline links"
                       checked={alwaysUnderlineLinks}
                       onChange={(e) => setAlwaysUnderlineLinks(e.target.checked)}
                     />
@@ -156,6 +163,7 @@ export function AccessibilityTab({
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
+                      aria-label="Display Name Styles"
                       checked={displayNameStyles}
                       onChange={(e) => setDisplayNameStyles(e.target.checked)}
                     />
@@ -171,6 +179,7 @@ export function AccessibilityTab({
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
+                      aria-label="Interface motion"
                       checked={motion}
                       onChange={(e) => setMotion(e.target.checked)}
                     />

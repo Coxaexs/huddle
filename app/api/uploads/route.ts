@@ -34,9 +34,9 @@ export async function POST(request: Request) {
   const isAudio =
     upload.type.startsWith("audio/") ||
     /\.(mp3|ogg|wav|m4a)$/i.test(upload.name);
-  // Voice clips are webm (audio, or audio+video when someone was sharing).
+  // Voice clips and video files are webm, mp4, mov, m4v, ogv.
   const isClip =
-    upload.type.startsWith("video/") || /\.(webm|mp4)$/i.test(upload.name);
+    upload.type.startsWith("video/") || /\.(webm|mp4|mov|m4v|ogv)$/i.test(upload.name);
   const isFile = !isImage && !isPdf && !isAudio && !isClip;
 
   // These must stay at or below nginx's `client_max_body_size` for

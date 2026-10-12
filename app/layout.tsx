@@ -6,6 +6,7 @@ import "./redesign.css";
 import "./theme-flavors.css";
 import "./refresh.css";
 import "./theme-fx.css";
+import "./cosmetics.css";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {

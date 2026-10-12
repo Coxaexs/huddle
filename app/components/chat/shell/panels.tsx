@@ -10,6 +10,7 @@ import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type Pu
 import { activeUntil } from "@/lib/timeouts";
 import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays } from "lucide-react";
 import { Avatar } from "../../avatar";
+import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
 import { MessageBody, StyledText, type MentionChannel } from "../../message-body";
 import { eventIsOpen, eventWhen } from "../../events-panel";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
@@ -1479,19 +1480,22 @@ export function MemberPanel({
         const row = (member: Member, offline: boolean) =>
           offline ? (
         <div
-          className="member offline-member clickable-name"
+          className={`member offline-member clickable-name${nameplateClass(member.nameplate)}`}
           key={member.id}
           {...userMenuHandlers(member)}
-          onClick={() => openProfile(member)}
+          onClick={(event) => openProfile(member, event)}
             onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
             onMouseLeave={() => msnTheme && queueHoverCard(null)}
         >
+          <NameplateArt id={member.nameplate} />
           <Avatar
             className="member-avatar"
             avatar={member.avatar}
             avatarUrl={member.avatarUrl}
             color={member.color}
-          />
+          >
+            <AvatarDecoration id={member.avatarFrame} inChat />
+          </Avatar>
           <div>
             <div className="member-name-line">
               <strong style={{ color: roleColorFor(member) || undefined }}>
@@ -1512,19 +1516,21 @@ export function MemberPanel({
         </div>
           ) : (
         <div
-          className="member clickable-name"
+          className={`member clickable-name${nameplateClass(member.nameplate)}`}
           key={member.id}
           {...userMenuHandlers(member)}
-          onClick={() => openProfile(member)}
+          onClick={(event) => openProfile(member, event)}
             onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
             onMouseLeave={() => msnTheme && queueHoverCard(null)}
         >
+          <NameplateArt id={member.nameplate} />
           <Avatar
             className="member-avatar"
             avatar={member.avatar}
             avatarUrl={member.avatarUrl}
             color={member.color}
           >
+            <AvatarDecoration id={member.avatarFrame} inChat />
             <span
               className="presence-dot"
               title={

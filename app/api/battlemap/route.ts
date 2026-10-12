@@ -170,6 +170,13 @@ export async function POST(request: Request) {
       ownerId: body.token?.ownerId || null,
       hp: body.token?.hp ?? null,
       maxHp: body.token?.maxHp ?? null,
+      conditions: Array.isArray(body.token?.conditions)
+        ? body.token.conditions.map(String).slice(0, 10)
+        : [],
+      initiative:
+        typeof body.token?.initiative === "number"
+          ? body.token.initiative
+          : null,
     };
     const tokens = [...map.tokens, token].slice(0, 60);
     await db
@@ -182,6 +189,65 @@ export async function POST(request: Request) {
       tokens,
     });
     return Response.json({ tokens });
+  }
+
+  // ---- update token conditions, initiative, or hp -------------------------
+  if (body.action === "update-token") {
+    const token = map.tokens.find((entry) => entry.id === body.tokenId);
+    if (!token) {
+      return Response.json({ error: "No such token." }, { status: 404 });
+    }
+    if (token.ownerId && token.ownerId !== user.id && !(await gm())) {
+      return Response.json(
+        { error: "That is not your character." },
+        { status: 403 },
+      );
+    }
+    if (Array.isArray(body.token?.conditions)) {
+      token.conditions = body.token.conditions.map(String).slice(0, 10);
+    }
+    if (body.token?.initiative !== undefined) {
+      token.initiative =
+        body.token.initiative === null
+          ? null
+          : Math.round(Number(body.token.initiative));
+    }
+    if (body.token?.hp !== undefined) {
+      token.hp =
+        body.token.hp === null ? null : Math.round(Number(body.token.hp));
+    }
+    if (body.token?.maxHp !== undefined) {
+      token.maxHp =
+        body.token.maxHp === null ? null : Math.round(Number(body.token.maxHp));
+    }
+    await db
+      .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
+      .bind(JSON.stringify(map.tokens), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "token",
+      token,
+    });
+    return Response.json({ token });
+  }
+
+  // ---- clear initiatives across tokens (GM) ------------------------------
+  if (body.action === "reset-initiative") {
+    if (!(await gm())) return forbidden();
+    for (const entry of map.tokens) {
+      entry.initiative = null;
+    }
+    await db
+      .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
+      .bind(JSON.stringify(map.tokens), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "tokens",
+      tokens: map.tokens,
+    });
+    return Response.json({ tokens: map.tokens });
   }
 
   if (body.action === "remove-token") {

@@ -13,6 +13,7 @@ import { getMemberTagInfo } from "@/lib/permissions";
 import { type Member, type PublicUser } from "@/lib/users";
 import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut } from "lucide-react";
 import { Avatar } from "../../avatar";
+import { AvatarDecoration } from "../../cosmetics";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
@@ -471,7 +472,9 @@ function MessageRowImpl({
                             // opened beside the avatar. Right-click keeps the menu.
                             if (author) openProfile(author, event);
                           }}
-                        />
+                        >
+                          <AvatarDecoration id={author?.avatarFrame} inChat />
+                        </Avatar>
                       )}
                       <div className="message-body">
                         {message.commandText && (
@@ -507,8 +510,8 @@ function MessageRowImpl({
                               onContextMenu={(event) => {
                                 if (author) openUserMenu(event, author);
                               }}
-                              onClick={() => {
-                                if (author) openProfile(author);
+                              onClick={(event) => {
+                                if (author) openProfile(author, event);
                               }}
                             >
                               <StyledText text={author?.displayName || message.author} />
@@ -974,21 +977,21 @@ function MessageRowImpl({
                             <SmilePlus size={16} />
                           </button>
                         </div>
+                        <button
+                          type="button"
+                          title="Reply"
+                          onClick={() => {
+                            setReplyTarget(message);
+                            composerRef.current?.focus();
+                            setOpenActionsId(null);
+                            setMobileActionsMoreId(null);
+                          }}
+                        >
+                          <Reply size={16} />
+                        </button>
                         {/* Show extra actions when Shift is held on desktop or when More is tapped on mobile */}
                         {(shiftPressed || mobileActionsMoreId === message.id) && (
                           <>
-                            <button
-                              type="button"
-                              title="Reply"
-                              onClick={() => {
-                                setReplyTarget(message);
-                                composerRef.current?.focus();
-                                setOpenActionsId(null);
-                                setMobileActionsMoreId(null);
-                              }}
-                            >
-                              <Reply size={16} />
-                            </button>
                             <button
                               type="button"
                               title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}

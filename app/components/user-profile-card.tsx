@@ -16,6 +16,7 @@ import {
   Clock,
   Edit3,
   Copy,
+  Check,
   Globe,
   Plus,
 } from "lucide-react";
@@ -37,7 +38,11 @@ import { MemberTag } from "./member-tag";
 import { apiFetch } from "../lib/client";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
+import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
 import { stripTextStyle } from "@/lib/text-style";
+
+const CARD_WIDTH = 300;
+const CARD_GAP = 14;
 
 export type FriendRelationshipStatus = "none" | "friend" | "incoming" | "outgoing";
 
@@ -118,7 +123,8 @@ interface UserProfileCardProps {
   server?: PublicServer | null;
   roles?: PublicRole[];
   userRoles?: string[];
-  position?: { x: number; y: number } | null;
+  /** The clicked element: x/y is its top-left, right/bottom its far corner (or just the click point). */
+  position?: { x: number; y: number; right?: number; bottom?: number } | null;
   onClose: () => void;
   onDirectMessage?: (userId: string) => void;
   onMention?: (username: string) => void;
@@ -279,7 +285,7 @@ export function UserProfileCard({
 
   // The card's real height (it grows with roles, mutuals and the note), so it
   // can be kept fully on screen instead of assuming a fixed size.
-  const [cardHeight, setCardHeight] = useState(440);
+  const [cardHeight, setCardHeight] = useState(380);
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -290,20 +296,36 @@ export function UserProfileCard({
     return () => observer.disconnect();
   }, []);
 
-  const stylePosition: React.CSSProperties = position
-    ? {
-        position: "fixed",
-        top: Math.max(12, Math.min(position.y, window.innerHeight - cardHeight - 12)),
-        left: Math.min(position.x, window.innerWidth - 360),
-        zIndex: 9999,
-      }
-    : {
-        position: "fixed",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        zIndex: 9999,
-      };
+  // Opens beside the clicked element, like Discord: on whichever side has
+  // room (left for the member list, right for message avatars), lined up with
+  // its top, and clamped so no part of the card leaves the window.
+  const cardWidth = Math.min(CARD_WIDTH, window.innerWidth - 24);
+  const framed = Boolean(member.profileFrame && member.profileFrame !== "none");
+  let stylePosition: React.CSSProperties;
+  if (position) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const right = position.right ?? position.x;
+    const roomLeft = position.x - CARD_GAP - 12;
+    const roomRight = vw - right - CARD_GAP - 12;
+    const placeLeft = roomLeft >= cardWidth || (roomRight < cardWidth && roomLeft > roomRight);
+    const rawLeft = placeLeft ? position.x - CARD_GAP - cardWidth : right + CARD_GAP;
+    stylePosition = {
+      position: "fixed",
+      // Frames draw art above and below the card, so leave room for it.
+      top: Math.max(framed ? 64 : 12, Math.min(position.y, vh - cardHeight - (framed ? 40 : 12))),
+      left: Math.max(12, Math.min(rawLeft, vw - cardWidth - 12)),
+      zIndex: 9999,
+    };
+  } else {
+    stylePosition = {
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      zIndex: 9999,
+    };
+  }
 
   const safeScopeId = member.id.replace(/[^a-zA-Z0-9_-]/g, "_");
 
@@ -316,12 +338,16 @@ export function UserProfileCard({
   const hasLongBio = (member.bio || "").length > 130;
 
   return (
+    <div className="pframe-host profile-popover-host" style={stylePosition}>
     <div
       ref={cardRef}
-      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}`}
+      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}`}
       data-user-profile={member.id}
       data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
-      style={stylePosition}
+      style={{
+        position: "relative",
+        ...(member.color ? { ["--profile-accent" as string]: member.color } : null),
+      }}
       role="dialog"
       aria-label={`${member.displayName}'s Profile`}
     >
@@ -332,6 +358,7 @@ export function UserProfileCard({
           }}
         />
       )}
+      <ProfileEffect id={member.profileEffect} />
       <div
         className="profile-card-banner profile-banner"
         style={{
@@ -341,6 +368,15 @@ export function UserProfileCard({
           ),
         }}
       >
+        <button
+          type="button"
+          className="profile-card-close profile-card-copy"
+          onClick={handleCopyId}
+          aria-label="Copy user ID"
+          title={copiedId ? "Copied!" : "Copy User ID"}
+        >
+          {copiedId ? <Check size={14} /> : <Copy size={14} />}
+        </button>
         <button
           type="button"
           className="profile-card-close"
@@ -359,6 +395,7 @@ export function UserProfileCard({
             avatarUrl={member.avatarUrl}
             color={member.color}
           />
+          <AvatarDecoration id={member.avatarFrame} />
           <span
             className="profile-presence-dot"
             style={{ background: statusInfo.color }}
@@ -491,8 +528,7 @@ export function UserProfileCard({
           );
         })()}
 
-        <div className="profile-card-divider" />
-
+        <div className="profile-card-panel">
         <div className="profile-section">
           <p className={`profile-bio ${hasLongBio && !bioExpanded ? "clamped" : ""}`}>
             {member.bio && member.bio.trim()
@@ -655,12 +691,13 @@ export function UserProfileCard({
           />
         </div>
 
-        <div className="profile-section flex items-center gap-2 text-xs text-[var(--muted)] mt-2">
-          <Calendar size={14} className="shrink-0" />
+        <div className="profile-section profile-since">
+          <Calendar size={13} className="shrink-0" />
           <span>Member since {joinedDate}</span>
           {!isSelf && presence === "offline" && lastSeenLabel(member.lastSeenAt) && (
             <span>· {lastSeenLabel(member.lastSeenAt)}</span>
           )}
+        </div>
         </div>
 
         <div className="profile-card-actions flex flex-wrap gap-2 pt-2">
@@ -824,7 +861,7 @@ export function UserProfileCard({
           )}
 
           {isSelf && (
-            <div className="profile-self-actions w-full flex flex-col gap-1.5">
+            <div className="profile-self-actions w-full flex gap-1.5">
               {onEditProfile && (
                 <button
                   type="button"
@@ -852,19 +889,10 @@ export function UserProfileCard({
             </div>
           )}
 
-          <button
-            type="button"
-            className="profile-action-tile w-full"
-            onClick={handleCopyId}
-            title="Copy User ID to clipboard"
-          >
-            <div className="flex items-center gap-2.5">
-              <Copy size={15} className="text-[var(--muted)]" />
-              <span>{copiedId ? "Copied User ID!" : "Copy User ID"}</span>
-            </div>
-          </button>
         </div>
       </div>
+    </div>
+    <ProfileFrameArt id={member.profileFrame} />
     </div>
   );
 }

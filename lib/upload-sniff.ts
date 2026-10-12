@@ -239,7 +239,7 @@ export function sniffUpload(
 
 /** Types the browser may render in place; everything else is sent as a download. */
 export function isInlineSafe(contentType: string): boolean {
-  return /^(image\/(png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/(webm|mp4)|application\/pdf)$/.test(
+  return /^(image\/(png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/(webm|mp4|quicktime|ogg|x-matroska)|application\/pdf)$/.test(
     contentType,
   );
 }
@@ -254,6 +254,8 @@ export function getFileExtensionBadge(fileName: string): string {
 export function getFileBadgeColor(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   if (ext === "pdf") return "pdf";
+  if (["mp4", "webm", "mov", "m4v", "ogv", "mkv"].includes(ext)) return "video";
+  if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(ext)) return "audio";
   if (["pptx", "ppt", "key", "odp"].includes(ext)) return "presentation";
   if (["docx", "doc", "rtf", "odt", "pages"].includes(ext)) return "document";
   if (["xlsx", "xls", "csv", "numbers", "ods"].includes(ext)) return "sheet";
@@ -266,6 +268,8 @@ export function getFileBadgeColor(fileName: string): string {
 /** Human-readable short file description. */
 export function getFileDescription(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  if (["mp4", "webm", "mov", "m4v", "ogv", "mkv"].includes(ext)) return "Video · click to download";
+  if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(ext)) return "Audio · click to download";
   if (ext === "pptx" || ext === "ppt") return "Presentation · click to download";
   if (ext === "docx" || ext === "doc") return "Word document · click to download";
   if (ext === "xlsx" || ext === "xls") return "Spreadsheet · click to download";

@@ -15,8 +15,25 @@ import {
   UserRound,
   Maximize2,
   Minimize2,
+  Grid,
+  Hexagon,
+  Swords,
+  Heart,
+  Activity,
+  Dice5,
+  ChevronRight,
+  Check,
 } from "lucide-react";
-import type { Battlemap, MapFog, MapStroke, MapToken } from "@/lib/battlemap";
+import {
+  type Battlemap,
+  type MapFog,
+  type MapStroke,
+  type MapToken,
+  type GridType,
+  CONDITIONS,
+  HEX_ROW_HEIGHT,
+  snapPoint,
+} from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
 
 interface BattlemapBoardProps {
@@ -100,6 +117,90 @@ export function BattlemapBoard({
   const [fogDraft, setFogDraft] = useState<MapFog | null>(null);
   /** Expand battlemap to full stage height. */
   const [expanded, setExpanded] = useState(false);
+  /** Grid snapping mode: square, hex, or free/none. */
+  const [snapMode, setSnapMode] = useState<GridType>("square");
+  /** Encounter / initiative tracker panel visibility. */
+  const [initiativeOpen, setInitiativeOpen] = useState(false);
+  /** Active combatant turn ID in encounter. */
+  const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
+  /** Current encounter round number. */
+  const [round, setRound] = useState(1);
+  /** Token currently picking conditions. */
+  const [conditionPickerTokenId, setConditionPickerTokenId] = useState<string | null>(null);
+
+  function toggleCondition(token: MapToken, conditionId: string) {
+    const current = token.conditions || [];
+    const next = current.includes(conditionId)
+      ? current.filter((c) => c !== conditionId)
+      : [...current, conditionId];
+    const updated = { ...token, conditions: next };
+    onLocalToken(updated);
+    void act({
+      action: "update-token",
+      tokenId: token.id,
+      token: { conditions: next },
+    });
+  }
+
+  function updateTokenHp(token: MapToken, delta: number) {
+    const curHp = token.hp ?? (token.maxHp ?? 10);
+    const maxHp = token.maxHp ?? 10;
+    const nextHp = Math.max(0, curHp + delta);
+    const updated = { ...token, hp: nextHp, maxHp };
+    onLocalToken(updated);
+    void act({
+      action: "update-token",
+      tokenId: token.id,
+      token: { hp: nextHp, maxHp },
+    });
+  }
+
+  function setTokenInitiative(token: MapToken, val: number | null) {
+    const updated = { ...token, initiative: val };
+    onLocalToken(updated);
+    void act({
+      action: "update-token",
+      tokenId: token.id,
+      token: { initiative: val },
+    });
+  }
+
+  function rollTokenInitiative(token: MapToken) {
+    const roll = Math.floor(Math.random() * 20) + 1;
+    setTokenInitiative(token, roll);
+  }
+
+  function rollAllInitiatives() {
+    for (const t of map.tokens) {
+      if (t.initiative === null || t.initiative === undefined) {
+        rollTokenInitiative(t);
+      }
+    }
+  }
+
+  function resetEncounter() {
+    setCurrentTurnId(null);
+    setRound(1);
+    void act({ action: "reset-initiative" });
+  }
+
+  function nextTurn() {
+    const sorted = [...map.tokens]
+      .filter((t) => typeof t.initiative === "number")
+      .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0));
+    if (sorted.length === 0) return;
+    if (!currentTurnId) {
+      setCurrentTurnId(sorted[0].id);
+      return;
+    }
+    const idx = sorted.findIndex((t) => t.id === currentTurnId);
+    if (idx === -1 || idx >= sorted.length - 1) {
+      setCurrentTurnId(sorted[0].id);
+      setRound((r) => r + 1);
+    } else {
+      setCurrentTurnId(sorted[idx + 1].id);
+    }
+  }
 
   /** Detected natural aspect ratio of the background image (width / height). */
   const [imageAspect, setImageAspect] = useState<number | null>(null);
@@ -212,7 +313,11 @@ export function BattlemapBoard({
     };
 
     const move = (event: PointerEvent) => {
-      const point = toGrid(event);
+      const raw = toGrid(event);
+      const point =
+        snapMode !== "none" && !event.shiftKey
+          ? snapPoint(raw.x, raw.y, snapMode, map.grid, rows)
+          : raw;
       lastX = point.x;
       lastY = point.y;
       onLocalToken({ ...token, x: point.x, y: point.y });
@@ -223,7 +328,11 @@ export function BattlemapBoard({
       }
     };
     const up = (event: PointerEvent) => {
-      const point = toGrid(event);
+      const raw = toGrid(event);
+      const point =
+        snapMode !== "none" && !event.shiftKey
+          ? snapPoint(raw.x, raw.y, snapMode, map.grid, rows)
+          : raw;
       setDragging(null);
       save(point.x, point.y);
     };
@@ -234,7 +343,7 @@ export function BattlemapBoard({
       window.removeEventListener("pointerup", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragging, channelId]);
+  }, [dragging, channelId, snapMode, rows]);
 
   // Panning the view: drag on empty space in move mode.
   useEffect(() => {
@@ -530,6 +639,26 @@ function onBoardPointerDown(event: React.PointerEvent) {
           >
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
+          <button
+            type="button"
+            className={snapMode !== "none" ? "on" : ""}
+            title={`Grid snap: ${snapMode.toUpperCase()} (Click to toggle: Square -> Hex -> None)`}
+            onClick={() =>
+              setSnapMode((prev) =>
+                prev === "square" ? "hex" : prev === "hex" ? "none" : "square",
+              )
+            }
+          >
+            {snapMode === "hex" ? <Hexagon size={14} /> : <Grid size={14} />}
+          </button>
+          <button
+            type="button"
+            className={initiativeOpen ? "on" : ""}
+            title="Initiative & Encounter Tracker"
+            onClick={() => setInitiativeOpen((open) => !open)}
+          >
+            <Swords size={14} />
+          </button>
           {mode === "paint" && (
             <>
               {PAINT_COLORS.map((option) => (
@@ -660,8 +789,17 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 strokeWidth="0.02"
               />
             </pattern>
+            <pattern id="bm-hex-grid" width="1" height={HEX_ROW_HEIGHT * 2} patternUnits="userSpaceOnUse">
+              <path
+                d="M 0 0.433 L 0.5 0.144 L 1 0.433 L 1 1.011 L 0.5 1.299 L 0 1.011 Z M 0 1.299 L 0.5 1.011 L 1 1.299 L 1 1.877 L 0.5 2.165 L 0 1.877 Z"
+                fill="none"
+                stroke="rgba(255,255,255,.18)"
+                strokeWidth="0.02"
+              />
+            </pattern>
           </defs>
-          <rect width={map.grid} height={rows} fill="url(#bm-grid)" />
+          {snapMode === "square" && <rect width={map.grid} height={rows} fill="url(#bm-grid)" />}
+          {snapMode === "hex" && <rect width={map.grid} height={rows} fill="url(#bm-hex-grid)" />}
           {map.strokes.map((stroke) => (
             <path
               key={stroke.id}
@@ -719,6 +857,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
         {map.tokens.map((token) => {
           const mine = canMove(token);
           const renaming = renamingId === token.id;
+          const isActiveTurn = currentTurnId === token.id;
           return (
             <div
               key={token.id}
@@ -731,6 +870,9 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 top: `${(token.y / rows) * 100}%`,
                 width: `${((token.size ?? 1) / map.grid) * 100}%`,
                 borderColor: token.color,
+                boxShadow: isActiveTurn
+                  ? "0 0 0 3px #f59e0b, 0 0 16px rgba(245, 158, 11, 0.85)"
+                  : undefined,
               }}
               title={token.label}
               onPointerDown={(event) => {
@@ -745,6 +887,30 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 void act({ action: "remove-token", tokenId: token.id });
               }}
             >
+              {/* Condition badges above token */}
+              {token.conditions && token.conditions.length > 0 && (
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 pointer-events-auto z-10 whitespace-nowrap">
+                  {token.conditions.map((cid) => {
+                    const info = CONDITIONS.find((c) => c.id === cid);
+                    if (!info) return null;
+                    return (
+                      <span
+                        key={cid}
+                        className="px-1 py-0.2 text-[8px] font-black rounded shadow text-white leading-tight uppercase cursor-pointer hover:opacity-80"
+                        style={{ backgroundColor: info.color }}
+                        title={`${info.label}: ${info.description} (click to remove)`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCondition(token, cid);
+                        }}
+                      >
+                        {info.badge}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
               {token.avatarUrl ? (
                 <img src={token.avatarUrl} alt={token.label} />
               ) : (
@@ -753,6 +919,78 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 </span>
               )}
               <b>{token.label}</b>
+
+              {/* HP badge below label */}
+              {typeof token.hp === "number" && (
+                <div className="absolute -bottom-4.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-emerald-400 whitespace-nowrap bg-black/85 px-1 rounded shadow pointer-events-none">
+                  {token.hp}
+                  {typeof token.maxHp === "number" ? `/${token.maxHp}` : ""}
+                </div>
+              )}
+
+              {/* Status conditions toggle button on token */}
+              {canRename(token) && (
+                <button
+                  type="button"
+                  className="battlemap-rename-btn !right-auto !left-[-10px] !bg-neutral-800 hover:!bg-neutral-700"
+                  title="Conditions"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConditionPickerTokenId(
+                      conditionPickerTokenId === token.id ? null : token.id,
+                    );
+                  }}
+                >
+                  <Activity size={10} />
+                </button>
+              )}
+
+              {/* Floating condition picker */}
+              {conditionPickerTokenId === token.id && (
+                <div
+                  className="absolute left-1/2 top-full mt-4 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-lg p-2 shadow-2xl z-40 w-48 text-left text-white pointer-events-auto cursor-default"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between pb-1 mb-1 border-b border-white/10 text-[11px] font-semibold">
+                    <span>Conditions</span>
+                    <button
+                      type="button"
+                      className="text-white/60 hover:text-white"
+                      onClick={() => setConditionPickerTokenId(null)}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto flex flex-col gap-0.5">
+                    {CONDITIONS.map((c) => {
+                      const active = (token.conditions || []).includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] transition-colors ${
+                            active
+                              ? "bg-white/20 text-white font-medium"
+                              : "hover:bg-white/10 text-white/80"
+                          }`}
+                          onClick={() => toggleCondition(token, c.id)}
+                          title={c.description}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: c.color }}
+                          />
+                          <span className="flex-1 truncate">{c.label}</span>
+                          {active && <Check size={11} className="text-emerald-400" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {canRename(token) && !renaming && (
                 <button
                   type="button"
@@ -796,6 +1034,203 @@ function onBoardPointerDown(event: React.PointerEvent) {
         })}
         </div>
       </div>
+
+      {/* Encounter / Initiative Tracker Sidebar */}
+      {initiativeOpen && (
+        <aside
+          className="absolute right-0 top-[41px] bottom-0 w-72 bg-neutral-900/95 border-l border-white/10 text-white flex flex-col z-30 shadow-2xl backdrop-blur-md"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between p-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <Swords size={15} className="text-amber-400" />
+              <span className="font-semibold text-sm">Initiative Tracker</span>
+            </div>
+            <button
+              type="button"
+              className="p-1 hover:bg-white/10 rounded text-white/60 hover:text-white"
+              onClick={() => setInitiativeOpen(false)}
+              title="Close tracker"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Turn & Round controls */}
+          <div className="p-2.5 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-amber-400">Round {round}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={nextTurn}
+                className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold rounded flex items-center gap-1 transition-colors"
+                title="Advance to next turn"
+              >
+                <span>Next Turn</span>
+                <ChevronRight size={13} />
+              </button>
+              {gm && (
+                <button
+                  type="button"
+                  onClick={resetEncounter}
+                  className="p-1 hover:bg-white/10 rounded text-white/60 hover:text-white"
+                  title="Reset encounter"
+                >
+                  <RotateCcw size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick actions for GM */}
+          {gm && (
+            <div className="px-3 py-1.5 bg-black/20 border-b border-white/5 flex items-center justify-between text-[11px] text-white/60">
+              <span>Quick actions:</span>
+              <button
+                type="button"
+                onClick={rollAllInitiatives}
+                className="hover:text-amber-300 flex items-center gap-1"
+              >
+                <Dice5 size={12} />
+                <span>Roll All d20</span>
+              </button>
+            </div>
+          )}
+
+          {/* Combatant list */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+            {map.tokens.length === 0 ? (
+              <div className="text-center py-8 text-white/40 text-xs">
+                No tokens on the map.
+              </div>
+            ) : (
+              [...map.tokens]
+                .sort((a, b) => {
+                  const initA = a.initiative ?? -999;
+                  const initB = b.initiative ?? -999;
+                  return initB - initA;
+                })
+                .map((t) => {
+                  const isActive = currentTurnId === t.id;
+                  const curHp = t.hp ?? (t.maxHp ?? 10);
+                  const maxHp = t.maxHp ?? 10;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`p-2 rounded-lg border transition-all ${
+                        isActive
+                          ? "bg-amber-500/15 border-amber-500/60 ring-1 ring-amber-500/30"
+                          : "bg-white/5 border-white/5 hover:border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: t.color }}
+                          />
+                          <span className="font-semibold text-xs truncate" title={t.label}>
+                            {t.label}
+                          </span>
+                          {isActive && (
+                            <span className="text-[9px] bg-amber-400 text-black font-extrabold px-1 rounded uppercase">
+                              Turn
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Initiative score / roll */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {typeof t.initiative === "number" ? (
+                            <button
+                              type="button"
+                              onClick={() => rollTokenInitiative(t)}
+                              className="px-1.5 py-0.5 bg-black/40 hover:bg-black/60 rounded text-xs font-bold text-amber-300 border border-amber-500/30"
+                              title="Click to re-roll initiative"
+                            >
+                              ⚡ {t.initiative}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => rollTokenInitiative(t)}
+                              className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] text-white/70 flex items-center gap-1"
+                              title="Roll 1d20 initiative"
+                            >
+                              <Dice5 size={11} />
+                              <span>Roll</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* HP Tracker */}
+                      <div className="flex items-center justify-between text-[11px] text-white/70 bg-black/25 px-1.5 py-0.5 rounded mb-1.5">
+                        <span className="flex items-center gap-1">
+                          <Heart size={10} className="text-rose-400" />
+                          <span>
+                            HP: {curHp} / {maxHp}
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateTokenHp(t, -1)}
+                            className="w-4 h-4 rounded bg-white/10 hover:bg-rose-500/30 hover:text-rose-300 flex items-center justify-center font-bold text-xs"
+                            title="-1 HP"
+                          >
+                            -
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateTokenHp(t, 1)}
+                            className="w-4 h-4 rounded bg-white/10 hover:bg-emerald-500/30 hover:text-emerald-300 flex items-center justify-center font-bold text-xs"
+                            title="+1 HP"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Conditions row */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {(t.conditions || []).map((cid) => {
+                          const info = CONDITIONS.find((c) => c.id === cid);
+                          if (!info) return null;
+                          return (
+                            <span
+                              key={cid}
+                              className="px-1 py-0.2 text-[8px] font-bold rounded shadow text-white leading-tight uppercase cursor-pointer hover:opacity-80"
+                              style={{ backgroundColor: info.color }}
+                              title={`${info.label} (click to remove)`}
+                              onClick={() => toggleCondition(t, cid)}
+                            >
+                              {info.badge} ×
+                            </span>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConditionPickerTokenId(
+                              conditionPickerTokenId === t.id ? null : t.id,
+                            )
+                          }
+                          className="text-[10px] text-white/40 hover:text-white/80 px-1 py-0.2 rounded hover:bg-white/10"
+                          title="Add condition"
+                        >
+                          + Cond
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

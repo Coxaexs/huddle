@@ -200,3 +200,37 @@
   right: 0;
   width: auto;
 }
+
+/* Discord-style account dock: the footer card floats across the bottom of
+   the rail AND the channel list instead of sitting inside the sidebar.
+   The columns reserve its height so nothing scrolls underneath. */
+@media (min-width: 769px) {
+  :root:not([data-custom-theme-id^="msn"]) .app-shell { --dock-h: 70px; }
+
+  :root:not([data-custom-theme-id^="msn"]) :is(.rail, .sidebar) {
+    padding-bottom: var(--dock-h);
+  }
+
+  :root:not([data-custom-theme-id^="msn"]):not(#_) .discord-user-footer {
+    position: fixed;
+    left: 8px;
+    bottom: 8px;
+    width: calc(60px + var(--sidebar-w, 240px) - 16px);
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 16px;
+    z-index: 40;
+    box-shadow: var(--shadow-md);
+  }
+
+  :root:not([data-custom-theme-id^="msn"]):not(#_) .mini-voice-bar {
+    border: 1px solid var(--line) !important;
+    border-radius: 14px;
+    margin-bottom: 8px;
+  }
+
+  :root:not([data-custom-theme-id^="msn"]):not(#_) .mini-voice-bar + .discord-user-footer {
+    border-radius: 16px;
+    border: 1px solid var(--line) !important;
+  }
+}

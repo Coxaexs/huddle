@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check, User } from "lucide-react";
 import { Avatar } from "./avatar";
+import { AvatarDecoration, NameplateArt, nameplateClass } from "./cosmetics";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
 import { StyledText } from "./message-body";
@@ -120,19 +121,22 @@ export function UserFooter({
   return (
     <footer className="discord-user-footer">
       <div
-        className="user-footer-profile"
+        className={`user-footer-profile${nameplateClass(user.nameplate)}`}
         onClick={onOpenStatusMenu}
         title={stripTextStyle(`${user.displayName} · ${customStatus || presenceInfo.label}`)}
         role="button"
         tabIndex={0}
       >
+        <NameplateArt id={user.nameplate} />
         <div className="avatar-wrapper">
           <Avatar
             className="user-footer-avatar"
             avatar={user.avatar}
             avatarUrl={user.avatarUrl}
             color={user.color}
-          />
+          >
+            <AvatarDecoration id={user.avatarFrame} inChat />
+          </Avatar>
           <span
             className="user-footer-presence-dot"
             style={{ background: presenceInfo.color }}

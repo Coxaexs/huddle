@@ -11,7 +11,7 @@ import { GamesPicker } from "../../game-card";
 import { type GameKind } from "@/lib/games";
 import { saveMessageFont, type MessageFont } from "@/lib/text-style";
 import { type Member, type PublicUser } from "@/lib/users";
-import { Radio, Smile, Vote, Gamepad2, Type, ChevronUp, AtSign, Send, ShieldAlert, Timer } from "lucide-react";
+import { Radio, Smile, Vote, Gamepad2, Type, ChevronUp, AtSign, Send, ShieldAlert, Timer, EyeOff } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { GifPicker } from "../../gif-picker";
 import { StyledText } from "../../message-body";
@@ -447,39 +447,76 @@ export function Composer({
 
                 {pendingFiles.length > 0 && (
                   <div className="attachment-row">
-                    {pendingFiles.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={`attachment-preview ${entry.preview ? "" : "file-preview"}`}
-                      >
-                        {entry.preview ? (
-                          <img src={entry.preview} alt={entry.file.name} />
-                        ) : (
-                          <>
-                            <span className={`message-file-icon file-badge-${getFileBadgeColor(entry.file.name)}`}>
-                              {getFileExtensionBadge(entry.file.name)}
-                            </span>
-                            <span>
-                              <strong>{entry.file.name}</strong>
-                              <small>
-                                {formatFileSize(entry.file.size)}
-                              </small>
-                            </span>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPendingFiles((current) =>
-                              current.filter((item) => item.id !== entry.id),
-                            )
-                          }
-                          aria-label={`Remove ${entry.file.name}`}
+                    {pendingFiles.map((entry) => {
+                      const isSpoiler = entry.file.name.startsWith("SPOILER_");
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`attachment-preview relative group ${entry.preview ? "" : "file-preview"} ${
+                            isSpoiler ? "ring-2 ring-amber-500/60" : ""
+                          }`}
                         >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                          {entry.preview ? (
+                            <img src={entry.preview} alt={entry.file.name} />
+                          ) : (
+                            <>
+                              <span className={`message-file-icon file-badge-${getFileBadgeColor(entry.file.name)}`}>
+                                {getFileExtensionBadge(entry.file.name)}
+                              </span>
+                              <span>
+                                <strong>{entry.file.name}</strong>
+                                <small>
+                                  {formatFileSize(entry.file.size)}
+                                </small>
+                              </span>
+                            </>
+                          )}
+                          {isSpoiler && (
+                            <span className="absolute bottom-1 left-1 bg-amber-500 text-black font-extrabold text-[8px] px-1 rounded uppercase tracking-wider select-none pointer-events-none">
+                              Spoiler
+                            </span>
+                          )}
+                          <div className="absolute top-1 right-1 flex items-center gap-1">
+                            <button
+                              type="button"
+                              className={`w-5 h-5 rounded flex items-center justify-center text-xs transition-colors cursor-pointer ${
+                                isSpoiler
+                                  ? "bg-amber-500 text-black font-bold hover:bg-amber-400"
+                                  : "bg-black/60 text-white/70 hover:text-white hover:bg-black/80"
+                              }`}
+                              title={isSpoiler ? "Remove spoiler tag" : "Mark attachment as spoiler"}
+                              aria-label={isSpoiler ? "Remove spoiler tag" : "Mark attachment as spoiler"}
+                              onClick={() => {
+                                setPendingFiles((current) =>
+                                  current.map((item) => {
+                                    if (item.id !== entry.id) return item;
+                                    const nextName = isSpoiler
+                                      ? item.file.name.replace(/^SPOILER_/, "")
+                                      : `SPOILER_${item.file.name}`;
+                                    const nextFile = new File([item.file], nextName, { type: item.file.type });
+                                    return { ...item, file: nextFile };
+                                  }),
+                                );
+                              }}
+                            >
+                              <EyeOff size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPendingFiles((current) =>
+                                  current.filter((item) => item.id !== entry.id),
+                                )
+                              }
+                              aria-label={`Remove ${entry.file.name}`}
+                              className="w-5 h-5 rounded bg-black/60 hover:bg-black/80 text-white/70 hover:text-white flex items-center justify-center text-xs cursor-pointer"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 

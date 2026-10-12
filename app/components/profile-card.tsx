@@ -7,6 +7,7 @@ import { Avatar } from "./avatar";
 import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
+import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
 
 interface ProfileCardProps {
   member: Member;
@@ -57,8 +58,9 @@ export function ProfileCard({
       aria-modal="true"
       onClick={onClose}
     >
+      <div className="pframe-host">
       <div
-        className={`profile-card user-profile-scoped-${safeScopeId}`}
+        className={`profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}`}
         data-user-profile={member.id}
         data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
         onClick={(event) => event.stopPropagation()}
@@ -70,6 +72,7 @@ export function ProfileCard({
             }}
           />
         )}
+        <ProfileEffect id={member.profileEffect} />
         <div
           className="profile-banner"
           style={{
@@ -92,6 +95,7 @@ export function ProfileCard({
             avatarUrl={member.avatarUrl}
             color={member.color}
           />
+          <AvatarDecoration id={member.avatarFrame} />
         </div>
 
         <div className="profile-body">
@@ -150,6 +154,8 @@ export function ProfileCard({
             {isSelf ? "Note to Self" : "Message"}
           </button>
         </div>
+      </div>
+      <ProfileFrameArt id={member.profileFrame} />
       </div>
     </div>
   );

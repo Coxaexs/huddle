@@ -495,8 +495,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch blahaj-appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Blåhaj buddy <Fish size={14} /></strong>
-                  <small>A small, decorative shark friend who hangs out by the chat</small>
+                  <strong className="inline-flex items-center gap-1.5">Desktop buddy <Fish size={14} /></strong>
+                  <small>Interactive companion (Blåhaj on Cozy, Bat on Vampire, Terminal Bot on Matrix, Owl on Dark Academia...) with draggable desk tools &amp; wellness timers</small>
                 </span>
                 <input
                   type="checkbox"

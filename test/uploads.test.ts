@@ -237,4 +237,19 @@ describe("GET /api/uploads/:key", () => {
     expect(response.headers.get("content-disposition")).toMatch(/^attachment.*archive\.zip/);
     expect(response.headers.get("content-security-policy")).toContain("sandbox");
   });
+
+  it("serves videos inline with media CSP permissions", async () => {
+    state.objects.set("k--ekran.mp4", { bytes: new Uint8Array([0, 0, 0, 0x20]).buffer, contentType: "video/mp4" });
+    const response = await get("k--ekran.mp4");
+    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(response.headers.get("content-disposition")).toMatch(/^inline/);
+    expect(response.headers.get("content-security-policy")).toContain("media-src 'self'");
+  });
+
+  it("infers video content type for legacy octet-stream video uploads", async () => {
+    state.objects.set("k--clip.mp4", { bytes: new Uint8Array([0, 0, 0, 0x20]).buffer, contentType: "application/octet-stream" });
+    const response = await get("k--clip.mp4");
+    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(response.headers.get("content-disposition")).toMatch(/^inline/);
+  });
 });

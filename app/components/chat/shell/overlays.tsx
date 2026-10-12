@@ -15,6 +15,7 @@ import { type Message } from "../../../lib/chat/types";
 import { EmojiPicker } from "../../emoji-picker";
 import { FloatingScreenPreview } from "../../floating-screen-preview";
 import { apiFetch } from "../../../lib/client";
+import { requestProfileEditor } from "@/lib/profile-editor-request";
 import { UserProfileCard } from "../../user-profile-card";
 import type { Dispatch, SetStateAction, RefObject } from "react";
 import type { MsnContacts } from "@/lib/msn-contacts";
@@ -293,11 +294,11 @@ export function ProfileCardLayer({
   setDraft,
   composerRef,
 }: {
-  profileCardTarget: { member: Member; pos?: { x: number; y: number; }; } | null;
+  profileCardTarget: { member: Member; pos?: { x: number; y: number; right?: number; bottom?: number; }; } | null;
   inDmHome: boolean;
   activeServer: PublicServer | null;
   activeServerId: string | null;
-  setProfileCardTarget: Dispatch<SetStateAction<{ member: Member; pos?: { x: number; y: number; }; } | null>>;
+  setProfileCardTarget: Dispatch<SetStateAction<{ member: Member; pos?: { x: number; y: number; right?: number; bottom?: number; }; } | null>>;
   canManageServer: boolean;
   canManageRoles: boolean;
   loadMembers: () => Promise<void>;
@@ -351,6 +352,7 @@ export function ProfileCardLayer({
           isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
           onEditProfile={() => {
             setProfileCardTarget(null);
+            requestProfileEditor();
             setSettingsOpen(true);
           }}
           friendStatus={
@@ -702,9 +704,9 @@ export function ReactionViewerLayer({
                         type="button"
                         key={u.id}
                         className="reaction-viewer-user"
-                        onClick={() => {
+                        onClick={(event) => {
                           const member = membersById.get(u.id);
-                          if (member) openProfile(member);
+                          if (member) openProfile(member, event);
                           setReactionViewer(null);
                         }}
                       >

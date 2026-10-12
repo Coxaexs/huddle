@@ -56,6 +56,7 @@ import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
 import type { MusicSettings } from "./components/music-cards";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
+import { requestProfileEditor } from "@/lib/profile-editor-request";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
 import { type Message, type DmSummary, type MentionEntry, type MentionOption, compareDms } from "./lib/chat/types";
@@ -1542,17 +1543,17 @@ export function ChatShell() {
     }).catch(() => undefined);
   }, []);
 
-  /** Sets a notification level for a channel id or a `server:<id>` key. */
-  const setNotifyLevel = useCallback((key: string, level: string) => {
+  /** Sets a notification level for a channel id or a `server:<id>` key, with optional temporary duration. */
+  const setNotifyLevel = useCallback((key: string, level: string, durationMs?: number) => {
     setChannelPrefs((prefs) => {
       const next = { ...prefs };
-      if (level === "all") delete next[key];
+      if (level === "all" && !durationMs) delete next[key];
       else next[key] = level;
       return next;
     });
     void apiFetch("/api/channels/prefs", {
       method: "POST",
-      body: JSON.stringify({ channelId: key, level }),
+      body: JSON.stringify({ channelId: key, level, durationMs }),
     }).catch(() => undefined);
   }, []);
 
@@ -1935,7 +1936,13 @@ export function ChatShell() {
 
   function openProfile(member: Member, e?: React.MouseEvent) {
     setUserMenu(null);
-    const pos = e ? { x: e.clientX, y: e.clientY } : undefined;
+    // Anchor to the clicked avatar / name / row, not the cursor.
+    const rect = e?.currentTarget instanceof Element ? e.currentTarget.getBoundingClientRect() : null;
+    const pos = rect
+      ? { x: rect.left, y: rect.top, right: rect.right, bottom: rect.bottom }
+      : e
+        ? { x: e.clientX, y: e.clientY }
+        : undefined;
     setProfileCardTarget({ member, pos });
   }
   function openProfileByHandle(handle: string) {
@@ -3026,7 +3033,7 @@ export function ChatShell() {
     }
   }, []);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
-  const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number } } | null>(null);
+  const [profileCardTarget, setProfileCardTarget] = useState<{ member: Member; pos?: { x: number; y: number; right?: number; bottom?: number } } | null>(null);
 
   useActivityDetector({
     user,
@@ -3147,6 +3154,34 @@ export function ChatShell() {
     window.addEventListener("huddle-hotkey", onHotkey);
     return () => window.removeEventListener("huddle-hotkey", onHotkey);
   }, [voice.channelId, voice.toggleMute]);
+
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
+
+  useEffect(() => {
+    const handleDiceRollEvent = (e: Event) => {
+      const custom = e as CustomEvent<DiceRollEvent>;
+      if (custom.detail) {
+        lastDiceRollSeedRef.current = custom.detail.animationSeed;
+        setDiceRoll(custom.detail);
+        window.dispatchEvent(
+          new CustomEvent("huddle-dice-rolled", { detail: custom.detail }),
+        );
+      }
+    };
+    const handleRunCommandEvent = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      if (custom.detail) {
+        void runCommandRef.current(custom.detail);
+      }
+    };
+    window.addEventListener("huddle-dice-roll", handleDiceRollEvent);
+    window.addEventListener("huddle-run-command", handleRunCommandEvent);
+    return () => {
+      window.removeEventListener("huddle-dice-roll", handleDiceRollEvent);
+      window.removeEventListener("huddle-run-command", handleRunCommandEvent);
+    };
+  }, []);
 
   // Desktop shell: keep its global mute shortcut in step with the setting, so
   // the same combo works when the window is not focused.
@@ -3641,6 +3676,16 @@ export function ChatShell() {
       "--ui-corners",
       `${Number(window.localStorage.getItem("huddle-corners")) || 16}px`,
     );
+
+    // Accessibility settings
+    const savedChatFontSize = Number(window.localStorage.getItem("huddle_chat_font_size"));
+    if (savedChatFontSize && !Number.isNaN(savedChatFontSize)) {
+      root.style.setProperty("--chat-font-size", `${savedChatFontSize}px`);
+    }
+    root.dataset.underlineLinks =
+      window.localStorage.getItem("huddle_underline_links") === "true" ? "on" : "off";
+    root.dataset.displayNameStyles =
+      window.localStorage.getItem("huddle_display_names_styles") !== "false" ? "on" : "off";
 
     // Apply client-side custom UI CSS if enabled
     applyClientUiCss();
@@ -4550,6 +4595,11 @@ export function ChatShell() {
         onRoll: (roll) => {
           lastDiceRollSeedRef.current = roll.animationSeed;
           setDiceRoll(roll);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("huddle-dice-rolled", { detail: roll }),
+            );
+          }
         },
       });
       return;
@@ -7914,7 +7964,10 @@ export function ChatShell() {
             openPoll: () => setPollDialogOpen(true),
             rollDice: () => setDiceRoll(practiceRoll({ id: user.id, displayName: user.displayName })),
             openGames: () => setGamesOpen(true),
-            openProfile: () => setSettingsOpen(true),
+            openProfile: () => {
+              requestProfileEditor();
+              setSettingsOpen(true);
+            },
             openShortcuts: () => setShortcutsOpen(true),
           }}
         />
@@ -7988,7 +8041,7 @@ export function ChatShell() {
         composerRef={composerRef}
       />
 
-      <BlahajBuddy />
+      <BlahajBuddy onRollCommand={(command) => void runCommand(command)} />
       <ToastContainer />
       <DeviceSwitchPrompt
         inCall={Boolean(voice.channelId)}

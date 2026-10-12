@@ -17,6 +17,17 @@ import type { MsnContacts } from "@/lib/msn-contacts";
 import type { Dispatch, SetStateAction } from "react";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
 
+// Keeps a fixed-position menu fully on screen: flips upward near the bottom edge.
+function clampToViewport(el: HTMLDivElement | null) {
+  if (!el) return;
+  const margin = 12;
+  const { width, height, left, top } = el.getBoundingClientRect();
+  const maxLeft = window.innerWidth - width - margin;
+  const maxTop = window.innerHeight - height - margin;
+  el.style.left = `${Math.max(margin, Math.min(left, maxLeft))}px`;
+  el.style.top = `${Math.max(margin, top > maxTop ? Math.min(top - height, maxTop) : top)}px`;
+}
+
 export function UserMenuLayer({
   userMenu,
   user,
@@ -319,7 +330,7 @@ export function RailMenuLayer({
   saveServerFolders: (next: ServerFolder[]) => void;
   serverFolders: ServerFolder[];
   channelPrefs: Record<string, string>;
-  setNotifyLevel: (key: string, level: string) => void;
+  setNotifyLevel: (key: string, level: string, durationMs?: number) => void;
 }) {
   return (
     <>
@@ -335,6 +346,7 @@ export function RailMenuLayer({
           />
           <div
             className="user-menu"
+            ref={clampToViewport}
             role="menu"
             style={{
               left: Math.min(railMenu.x, (globalThis.innerWidth || 1200) - 240),
@@ -381,19 +393,47 @@ export function RailMenuLayer({
               const key = `server:${railMenu.server.id}`;
               const current = channelPrefs[key] || "all";
               return (
-                <button
-                  key={level}
-                  type="button"
-                  role="menuitem"
-                  className={current === level ? "active" : ""}
-                  onClick={() => {
-                    setNotifyLevel(key, level);
-                    setRailMenu(null);
-                  }}
-                >
-                  {current === level ? "● " : "○ "}
-                  {label}
-                </button>
+                <div key={level} className="flex flex-col">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={current === level ? "active" : ""}
+                    onClick={() => {
+                      setNotifyLevel(key, level);
+                      if (level !== "nothing") setRailMenu(null);
+                    }}
+                  >
+                    {current === level ? "● " : "○ "}
+                    {label}
+                  </button>
+                  {level === "nothing" && current === "nothing" && (
+                    <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
+                      <span className="text-[10px] text-white/40 uppercase">For:</span>
+                      {(
+                        [
+                          ["15m", 15 * 60 * 1000],
+                          ["1h", 60 * 60 * 1000],
+                          ["8h", 8 * 60 * 60 * 1000],
+                          ["24h", 24 * 60 * 60 * 1000],
+                          ["∞", undefined],
+                        ] as const
+                      ).map(([lbl, ms]) => (
+                        <button
+                          key={lbl}
+                          type="button"
+                          className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer text-[10px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotifyLevel(key, "nothing", ms);
+                            setRailMenu(null);
+                          }}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -434,6 +474,7 @@ export function FolderMenuLayer({
           />
           <div
             className="user-menu"
+            ref={clampToViewport}
             role="menu"
             style={{
               left: Math.min(folderMenu.x, (globalThis.innerWidth || 1200) - 240),
@@ -545,7 +586,7 @@ export function ChannelMenuLayer({
   channelMenu: { channel: PublicChannel; x: number; y: number; } | null;
   setChannelMenu: Dispatch<SetStateAction<{ channel: PublicChannel; x: number; y: number; } | null>>;
   channelPrefs: Record<string, string>;
-  setNotifyLevel: (key: string, level: string) => void;
+  setNotifyLevel: (key: string, level: string, durationMs?: number) => void;
   canManageChannels: boolean;
   renameChannel: (channel: PublicChannel) => Promise<void>;
   editChannelTopic: (channel: PublicChannel) => Promise<void>;
@@ -570,6 +611,7 @@ export function ChannelMenuLayer({
           />
           <div
             className="user-menu"
+            ref={clampToViewport}
             role="menu"
             style={{
               left: Math.min(channelMenu.x, (globalThis.innerWidth || 1200) - 240),
@@ -593,19 +635,47 @@ export function ChannelMenuLayer({
             ).map(([level, label]) => {
               const current = channelPrefs[channelMenu.channel.id] || "all";
               return (
-                <button
-                  key={level}
-                  type="button"
-                  role="menuitem"
-                  className={current === level ? "active" : ""}
-                  onClick={() => {
-                    setNotifyLevel(channelMenu.channel.id, level);
-                    setChannelMenu(null);
-                  }}
-                >
-                  {current === level ? "● " : "○ "}
-                  {label}
-                </button>
+                <div key={level} className="flex flex-col">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={current === level ? "active" : ""}
+                    onClick={() => {
+                      setNotifyLevel(channelMenu.channel.id, level);
+                      if (level !== "nothing") setChannelMenu(null);
+                    }}
+                  >
+                    {current === level ? "● " : "○ "}
+                    {label}
+                  </button>
+                  {level === "nothing" && current === "nothing" && (
+                    <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
+                      <span className="text-[10px] text-white/40 uppercase">For:</span>
+                      {(
+                        [
+                          ["15m", 15 * 60 * 1000],
+                          ["1h", 60 * 60 * 1000],
+                          ["8h", 8 * 60 * 60 * 1000],
+                          ["24h", 24 * 60 * 60 * 1000],
+                          ["∞", undefined],
+                        ] as const
+                      ).map(([lbl, ms]) => (
+                        <button
+                          key={lbl}
+                          type="button"
+                          className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer text-[10px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotifyLevel(channelMenu.channel.id, "nothing", ms);
+                            setChannelMenu(null);
+                          }}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
             {canManageChannels && (

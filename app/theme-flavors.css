@@ -116,7 +116,7 @@
 /* Body copy: book-sized text with an open line height. */
 :root[data-custom-theme-id="dark-academia"] .message p,
 :root[data-custom-theme-id="dark-academia"] .message .message-body {
-  font-size: 16px;
+  font-size: var(--chat-font-size, 16px);
   line-height: 1.6;
   color: #e6d9bc;
 }

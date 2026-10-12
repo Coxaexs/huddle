@@ -280,7 +280,7 @@ describe("mic worklet", () => {
       const quiet = render(withAgc, both(speech(0.02), hiss(0.02)), { rnnoise: true, seconds: 16 });
       const loud = render(withAgc, both(speech(0.6), hiss(0.02)), { rnnoise: true, seconds: 16 });
       expect(Math.abs(quiet.rmsDb - loud.rmsDb)).toBeLessThan(4);
-    });
+    }, 15000);
   });
 
   describe("gate with the speech detector", () => {

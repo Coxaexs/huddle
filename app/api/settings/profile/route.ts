@@ -41,6 +41,9 @@ export async function PATCH(request: Request) {
     lastfmUsername?: string | null;
     socialLinks?: unknown;
     avatarFrame?: string;
+    profileEffect?: string;
+    nameplate?: string;
+    profileFrame?: string;
     customCss?: string | null;
     customTheme?: string | null;
     quickReactions?: unknown;
@@ -175,6 +178,19 @@ export async function PATCH(request: Request) {
       ? (body.avatarFrame ? body.avatarFrame.trim().slice(0, 30) : "none")
       : (user as { avatar_frame?: string | null }).avatar_frame || "none";
 
+  const cosmetic = (value: string | undefined, current: string | null | undefined) =>
+    value !== undefined
+      ? (/^[a-z0-9-]{1,30}$/.test(value.trim()) ? value.trim() : "none")
+      : current || "none";
+  // A profile effect is a built-in id, or "gif:" / "gifx:" (screen-blended) plus an upload key.
+  const customEffect = /^gifx?:[0-9a-f-]{36}--[a-zA-Z0-9._ -]{1,100}$/;
+  const profileEffect =
+    typeof body.profileEffect === "string" && customEffect.test(body.profileEffect.trim())
+      ? body.profileEffect.trim()
+      : cosmetic(body.profileEffect, (user as { profile_effect?: string | null }).profile_effect);
+  const profileFrame = cosmetic(body.profileFrame, (user as { profile_frame?: string | null }).profile_frame);
+  const nameplate = cosmetic(body.nameplate, (user as { nameplate?: string | null }).nameplate);
+
   let quickReactions: string = (user as { quick_reactions?: string | null }).quick_reactions || "[]";
   if (body.quickReactions !== undefined) {
     if (Array.isArray(body.quickReactions)) {
@@ -205,7 +221,7 @@ export async function PATCH(request: Request) {
 
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, profile_effect = ?, nameplate = ?, profile_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
     )
     .bind(
       displayName,
@@ -223,6 +239,9 @@ export async function PATCH(request: Request) {
       lastfmUsername,
       socialLinks,
       avatarFrame,
+      profileEffect,
+      nameplate,
+      profileFrame,
       customCss,
       customTheme,
       quickReactions,
@@ -251,6 +270,9 @@ export async function PATCH(request: Request) {
       lastfm_username: lastfmUsername,
       social_links: socialLinks,
       avatar_frame: avatarFrame,
+      profile_effect: profileEffect,
+      nameplate,
+      profile_frame: profileFrame,
       color,
       custom_css: customCss,
       custom_theme: customTheme,

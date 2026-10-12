@@ -45,6 +45,9 @@ export interface User {
   lastfm_username?: string | null;
   social_links?: string | null;
   avatar_frame?: string | null;
+  profile_effect?: string | null;
+  nameplate?: string | null;
+  profile_frame?: string | null;
   color: string;
   is_admin: number;
   can_invite?: number;
@@ -63,7 +66,7 @@ export interface User {
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
-  "social_links", "avatar_frame", "color", "is_admin", "can_invite", "status",
+  "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
   "email_prompt_skipped", "created_at", "last_seen_at",
 ] as const;
@@ -126,6 +129,9 @@ function profileFields(user: User) {
     activity: profileActivity(user.activity),
     socialLinks: normalizeSocialLinks(parseJson(user.social_links)),
     avatarFrame: user.avatar_frame || "none",
+    profileEffect: user.profile_effect || "none",
+    nameplate: user.nameplate || "none",
+    profileFrame: user.profile_frame || "none",
     color: user.color,
     customCss: user.custom_css || null,
     customTheme: user.custom_theme || null,

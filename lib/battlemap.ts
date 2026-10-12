@@ -15,7 +15,37 @@ export interface MapToken {
   ownerId?: string | null;
   hp?: number | null;
   maxHp?: number | null;
+  /** Active status condition markers (e.g. 'blinded', 'concentrating'). */
+  conditions?: string[];
+  /** Initiative roll score for encounter turn tracking. */
+  initiative?: number | null;
 }
+
+export interface ConditionInfo {
+  id: string;
+  label: string;
+  color: string;
+  badge: string;
+  description: string;
+}
+
+export const CONDITIONS: ConditionInfo[] = [
+  { id: "blinded", label: "Blinded", color: "#64748b", badge: "BLI", description: "Auto-fails sight checks. Attacks against have advantage, own attacks disadvantage." },
+  { id: "charmed", label: "Charmed", color: "#ec4899", badge: "CHA", description: "Cannot attack the charmer. Charmer has advantage on social interactions." },
+  { id: "concentrating", label: "Concentrating", color: "#0284c7", badge: "CNC", description: "Concentrating on a spell. Damage triggers Constitution save to maintain." },
+  { id: "deafened", label: "Deafened", color: "#94a3b8", badge: "DEF", description: "Cannot hear. Auto-fails ability checks requiring hearing." },
+  { id: "frightened", label: "Frightened", color: "#a855f7", badge: "FRI", description: "Disadvantage on checks/attacks while source in sight. Cannot willingly move closer." },
+  { id: "grappled", label: "Grappled", color: "#f97316", badge: "GRP", description: "Speed is 0. Ends if grappler is incapacitated or moved away." },
+  { id: "incapacitated", label: "Incapacitated", color: "#ef4444", badge: "INC", description: "Cannot take actions or reactions." },
+  { id: "invisible", label: "Invisible", color: "#06b6d4", badge: "INV", description: "Unseeable without special senses. Attacks have advantage, attacks against disadvantage." },
+  { id: "paralyzed", label: "Paralyzed", color: "#dc2626", badge: "PAR", description: "Incapacitated, cannot move/speak. Auto-fails Str/Dex saves. Attacks within 5ft are crits." },
+  { id: "petrified", label: "Petrified", color: "#78716c", badge: "PET", description: "Transformed into solid stone. Weight x10. Resistance to all damage." },
+  { id: "poisoned", label: "Poisoned", color: "#22c55e", badge: "POI", description: "Disadvantage on attack rolls and ability checks." },
+  { id: "prone", label: "Prone", color: "#eab308", badge: "PRO", description: "Crawling costs movement. Attacks have disadvantage. Melee attacks against have advantage." },
+  { id: "restrained", label: "Restrained", color: "#d97706", badge: "RES", description: "Speed is 0. Attacks against have advantage, own disadvantage. Disadvantage on Dex saves." },
+  { id: "stunned", label: "Stunned", color: "#8b5cf6", badge: "STU", description: "Incapacitated, faltering speech. Auto-fails Str/Dex saves. Attacks against have advantage." },
+  { id: "unconscious", label: "Unconscious", color: "#475569", badge: "UNC", description: "Incapacitated, drops items, falls prone. Attacks within 5ft are crits." },
+];
 
 export interface MapStroke {
   id: string;
@@ -37,6 +67,8 @@ export interface MapFog {
   h: number;
 }
 
+export type GridType = "square" | "hex" | "none";
+
 export interface Battlemap {
   id: string;
   channelId: string;
@@ -50,6 +82,8 @@ export interface Battlemap {
   strokes: MapStroke[];
   /** Rectangles of fog hiding parts of the map from non-GMs. */
   fog: MapFog[];
+  /** Grid overlay and snapping geometry. */
+  gridType?: GridType;
 }
 
 export interface BattlemapRow {
@@ -95,4 +129,33 @@ export function publicBattlemap(row: BattlemapRow): Battlemap {
 export function clampPoint(value: number, max: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.round(Math.max(0, Math.min(max, value)) * 100) / 100;
+}
+
+export const HEX_ROW_HEIGHT = 0.866;
+
+/** Snaps coordinates according to the selected grid mode. */
+export function snapPoint(
+  x: number,
+  y: number,
+  mode: GridType,
+  maxX = 60,
+  maxY = 60,
+): { x: number; y: number } {
+  if (mode === "none") {
+    return { x: clampPoint(x, maxX), y: clampPoint(y, maxY) };
+  }
+  if (mode === "square") {
+    return {
+      x: clampPoint(Math.round(x), maxX),
+      y: clampPoint(Math.round(y), maxY),
+    };
+  }
+  // Hex grid with staggered alternating rows
+  const row = Math.round(y / HEX_ROW_HEIGHT);
+  const rowOffset = (Math.abs(row) % 2 === 1) ? 0.5 : 0;
+  const col = Math.round(x - rowOffset) + rowOffset;
+  return {
+    x: clampPoint(col, maxX),
+    y: clampPoint(row * HEX_ROW_HEIGHT, maxY),
+  };
 }

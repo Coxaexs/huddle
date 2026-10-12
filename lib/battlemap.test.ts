@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPoint, publicBattlemap, type BattlemapRow } from "./battlemap";
+import { clampPoint, publicBattlemap, snapPoint, type BattlemapRow } from "./battlemap";
 
 describe("clampPoint", () => {
   it("clamps to the [0, max] range", () => {
@@ -74,5 +74,23 @@ describe("publicBattlemap", () => {
     expect(map.strokes).toEqual([]);
     expect(map.grid).toBe(20);
     expect(map.imageUrl).toBeNull();
+  });
+});
+
+describe("snapPoint", () => {
+  it("leaves coordinates untouched when mode is none", () => {
+    expect(snapPoint(3.4, 7.8, "none")).toEqual({ x: 3.4, y: 7.8 });
+  });
+
+  it("snaps to integers in square mode", () => {
+    expect(snapPoint(3.4, 7.8, "square")).toEqual({ x: 3, y: 8 });
+    expect(snapPoint(3.5, 7.2, "square")).toEqual({ x: 4, y: 7 });
+  });
+
+  it("snaps to staggered hex centers in hex mode", () => {
+    expect(snapPoint(2.1, 0.1, "hex")).toEqual({ x: 2, y: 0 });
+    const hexSnap = snapPoint(2.1, 0.9, "hex");
+    expect(hexSnap.x).toBe(2.5);
+    expect(hexSnap.y).toBe(0.87);
   });
 });

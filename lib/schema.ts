@@ -419,11 +419,12 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS poll_votes_poll_idx ON poll_votes(poll_id)",
     ),
-    // Per-channel notification level: all | mentions | nothing.
+    // Per-channel notification level: all | mentions | nothing, plus optional temporary mute.
     db.prepare(`CREATE TABLE IF NOT EXISTS channel_prefs (
         user_id TEXT NOT NULL,
         channel_id TEXT NOT NULL,
         level TEXT NOT NULL DEFAULT 'all',
+        muted_until TEXT,
         PRIMARY KEY (user_id, channel_id)
       )`),
     // Cached link previews (title/description/image scraped from a page).
@@ -831,6 +832,9 @@ async function migrate(db: D1Database): Promise<void> {
     ["tagline", "ALTER TABLE users ADD COLUMN tagline TEXT NOT NULL DEFAULT ''"],
     ["social_links", "ALTER TABLE users ADD COLUMN social_links TEXT NOT NULL DEFAULT '[]'"],
     ["avatar_frame", "ALTER TABLE users ADD COLUMN avatar_frame TEXT NOT NULL DEFAULT 'none'"],
+    ["profile_effect", "ALTER TABLE users ADD COLUMN profile_effect TEXT NOT NULL DEFAULT 'none'"],
+    ["nameplate", "ALTER TABLE users ADD COLUMN nameplate TEXT NOT NULL DEFAULT 'none'"],
+    ["profile_frame", "ALTER TABLE users ADD COLUMN profile_frame TEXT NOT NULL DEFAULT 'none'"],
     ["quick_reactions", "ALTER TABLE users ADD COLUMN quick_reactions TEXT NOT NULL DEFAULT '[]'"],
     ["hidden_emojis", "ALTER TABLE users ADD COLUMN hidden_emojis TEXT NOT NULL DEFAULT '[]'"],
     // Optional recovery address (lower-cased), used for password resets.
@@ -958,6 +962,10 @@ async function migrate(db: D1Database): Promise<void> {
     await db
       .prepare("ALTER TABLE channels ADD COLUMN is_group INTEGER NOT NULL DEFAULT 0")
       .run();
+  }
+  const prefColumns = await columnNames(db, "channel_prefs");
+  if (!prefColumns.has("muted_until")) {
+    await db.prepare("ALTER TABLE channel_prefs ADD COLUMN muted_until TEXT").run();
   }
   // Private notes you keep about other people (only you ever see yours).
   await db

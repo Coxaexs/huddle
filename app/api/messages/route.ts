@@ -687,9 +687,13 @@ export async function postMessageAs(
           ? "Shared an image"
           : attachmentKey?.toLowerCase().endsWith(".pdf")
             ? "Shared a PDF document"
-            : attachmentKey
-              ? "Shared a file"
-              : "Shared an attachment"),
+            : /\.(mp4|webm|mov|m4v|ogv|mkv)$/i.test(attachmentKey || "")
+              ? "Shared a video"
+              : /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(attachmentKey || "")
+                ? "Shared an audio file"
+                : attachmentKey
+                  ? "Shared a file"
+                  : "Shared an attachment"),
     attachment_key: attachmentKey,
     is_bot: body.asBot ? 1 : 0,
     created_at: new Date().toISOString(),
@@ -879,14 +883,69 @@ export async function postMessageAs(
     }
   }
   if (pushTargets.size > 0) {
-    // Awaited: a Worker may drop un-awaited work once the response is sent,
-    // which silently lost these notifications. sendPushNotifications never throws.
-    await sendPushNotifications(db, Array.from(pushTargets), {
-      title: stripTextStyle(stored.author),
-      body: stored.content ? stripTextStyle(stored.content).slice(0, 120) : "Shared an attachment",
-      url: `/hangout`,
-      tag: `msg-${stored.channel_id || stored.channel}`,
-    });
+    // Filter pushTargets by per-channel or per-server notification levels and temporary mutes.
+    const targetIds = Array.from(pushTargets);
+    const channelKey = stored.channel_id || "";
+    const serverKey = serverId ? `server:${serverId}` : "";
+    const mentionsSet = new Set(message.mentions || []);
+
+    try {
+      const placeholders = targetIds.map(() => "?").join(",");
+      const prefRows = await db
+        .prepare(
+          `SELECT user_id, channel_id, level, muted_until FROM channel_prefs WHERE user_id IN (${placeholders}) AND channel_id IN (?, ?)`,
+        )
+        .bind(...targetIds, channelKey, serverKey)
+        .all<{ user_id: string; channel_id: string; level: string; muted_until?: string | null }>();
+
+      const nowIso = new Date().toISOString();
+      const userPrefs = new Map<string, { channelLevel?: string; serverLevel?: string; isMuted?: boolean }>();
+
+      for (const row of prefRows.results || []) {
+        let entry = userPrefs.get(row.user_id);
+        if (!entry) {
+          entry = {};
+          userPrefs.set(row.user_id, entry);
+        }
+        const isTempMuted = Boolean(row.muted_until && row.muted_until > nowIso);
+        if (row.channel_id === channelKey) {
+          entry.channelLevel = row.level;
+          if (isTempMuted) entry.isMuted = true;
+        } else if (row.channel_id === serverKey) {
+          entry.serverLevel = row.level;
+          if (isTempMuted) entry.isMuted = true;
+        }
+      }
+
+      for (const tid of targetIds) {
+        const pref = userPrefs.get(tid);
+        if (pref?.isMuted) {
+          pushTargets.delete(tid);
+          continue;
+        }
+        const effectiveLevel = pref?.channelLevel || pref?.serverLevel || "all";
+        if (effectiveLevel === "nothing") {
+          pushTargets.delete(tid);
+        } else if (effectiveLevel === "mentions") {
+          if (!mentionsSet.has(tid)) {
+            pushTargets.delete(tid);
+          }
+        }
+      }
+    } catch {
+      // In case of query failure, proceed with default pushTargets
+    }
+
+    if (pushTargets.size > 0) {
+      // Awaited: a Worker may drop un-awaited work once the response is sent,
+      // which silently lost these notifications. sendPushNotifications never throws.
+      await sendPushNotifications(db, Array.from(pushTargets), {
+        title: stripTextStyle(stored.author),
+        body: stored.content ? stripTextStyle(stored.content).slice(0, 120) : "Shared an attachment",
+        url: `/hangout`,
+        tag: `msg-${stored.channel_id || stored.channel}`,
+      });
+    }
   }
 
   return Response.json({ message }, { status: 201 });

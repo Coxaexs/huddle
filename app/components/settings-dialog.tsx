@@ -34,6 +34,8 @@ import { readMicSettings, writeMicSettings, type MicSettings, type MicTelemetry 
 import { RolesTab } from "./settings/roles-tab";
 import { Invite, Tab, PrideTheme, Density, Backdrop } from "./settings/types";
 import { ProfileTab } from "./settings/profile-tab";
+import { ProfileEditorShell } from "./settings/profile-editor-shell";
+import { takeProfileEditorRequest } from "@/lib/profile-editor-request";
 import { VoiceTab } from "./settings/voice-tab";
 import { PasswordTab } from "./settings/password-tab";
 import { InvitesTab } from "./settings/invites-tab";
@@ -179,7 +181,14 @@ export function SettingsDialog({
     },
     [onMicSettings],
   );
-  const [tab, setTab] = useState<Tab>("profile");
+  const [tab, setTab] = useState<Tab>("password");
+  // The profile editor is its own full-screen page, not a settings tab.
+  const [startedInEditor] = useState(() => takeProfileEditorRequest());
+  const [profileEditor, setProfileEditor] = useState(startedInEditor);
+  function closeProfileEditor() {
+    setProfileEditor(false);
+    if (startedInEditor) onClose();
+  }
   // Phones show one pane at a time: the section list, then the chosen page.
   const [mobilePage, setMobilePage] = useState(false);
   const [devices, setDevices] = useState<DeviceLists>({
@@ -231,6 +240,9 @@ export function SettingsDialog({
   const [tagline, setTagline] = useState(user.tagline || "");
   const [customStatus, setCustomStatus] = useState(user.customStatus || "");
   const [avatarFrame, setAvatarFrame] = useState(user.avatarFrame || "none");
+  const [profileEffect, setProfileEffect] = useState(user.profileEffect || "none");
+  const [nameplate, setNameplate] = useState(user.nameplate || "none");
+  const [profileFrame, setProfileFrame] = useState(user.profileFrame || "none");
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(user.socialLinks || []);
   const [newPlatform, setNewPlatform] = useState("github");
   const [newUrl, setNewUrl] = useState("");
@@ -351,6 +363,13 @@ export function SettingsDialog({
     if (savedDiceTexture) {
       setDiceTexture(savedDiceTexture);
     }
+
+    const onBlahajChange = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      setBlahaj(custom.detail === "on");
+    };
+    window.addEventListener("huddle-blahaj-change", onBlahajChange);
+    return () => window.removeEventListener("huddle-blahaj-change", onBlahajChange);
   }, []);
 
   useEffect(() => {
@@ -529,6 +548,32 @@ export function SettingsDialog({
     onUser(data.user);
   }
 
+  /** Puts every profile field back to what is saved. */
+  function resetProfileDraft(from: PublicUser = user) {
+    setDisplayName(from.displayName);
+    setAvatar(from.avatar);
+    setColor(from.color);
+    setPronouns(from.pronouns || "");
+    setBio(from.bio || "");
+    setPrideBadges(from.prideBadges || []);
+    setTagline(from.tagline || "");
+    setCustomStatus(from.customStatus || "");
+    setAvatarUrl(from.avatarUrl || null);
+    setAvatarKey(undefined);
+    setBannerUrl(from.bannerUrl || null);
+    setBannerKey(undefined);
+    setAvatarFrame(from.avatarFrame || "none");
+    setProfileEffect(from.profileEffect || "none");
+    setNameplate(from.nameplate || "none");
+    setProfileFrame(from.profileFrame || "none");
+    setSocialLinks(from.socialLinks || []);
+    setSpotifySong(from.spotifyActivity?.song || "");
+    setSpotifyArtist(from.spotifyActivity?.artist || "");
+    setSpotifyCover(from.spotifyActivity?.albumArt || "");
+    setProfileCustomCss(from.customCss || "");
+    setError("");
+  }
+
   async function saveProfile() {
     setError("");
     try {
@@ -544,6 +589,9 @@ export function SettingsDialog({
           bio,
           prideBadges,
           avatarFrame,
+          profileEffect,
+          nameplate,
+          profileFrame,
           socialLinks,
           spotifyActivity: spotifySong.trim()
             ? {
@@ -559,6 +607,7 @@ export function SettingsDialog({
         }),
       });
       onUser(data.user);
+      resetProfileDraft(data.user);
       setStatus("Profile saved!");
       window.setTimeout(() => setStatus(""), 2500);
     } catch (failure) {
@@ -967,7 +1016,6 @@ export function SettingsDialog({
     {
       title: "USER SETTINGS",
       items: [
-        { id: "profile" as Tab, label: "Profile", icon: User, desc: "Avatar, banner, bio, pride badges, and custom CSS" },
         { id: "password" as Tab, label: "Account & Password", icon: ShieldCheck, desc: "Username, email, password and account security" },
         { id: "activities" as Tab, label: "Activities & Privacy", icon: Activity, desc: "Status sharing, games and Spotify" },
       ],
@@ -1038,10 +1086,7 @@ export function SettingsDialog({
               <button
                 type="button"
                 className="settings-sidebar-user-sub"
-                onClick={() => {
-                  setTab("profile");
-                  setMobilePage(true);
-                }}
+                onClick={() => setProfileEditor(true)}
               >
                 <span>Edit Profiles</span>
                 <Edit3 size={11} />
@@ -1172,59 +1217,7 @@ export function SettingsDialog({
           </header>
 
           <div className="settings-content-scroll">
-          <ProfileTab
-        tab={tab}
-        displayName={displayName}
-        setDisplayName={setDisplayName}
-        pronouns={pronouns}
-        setPronouns={setPronouns}
-        tagline={tagline}
-        setTagline={setTagline}
-        customStatus={customStatus}
-        setCustomStatus={setCustomStatus}
-        bannerUrl={bannerUrl}
-        color={color}
-        bannerRef={bannerRef}
-        setBannerUrl={setBannerUrl}
-        setBannerKey={setBannerKey}
-        chooseBanner={chooseBanner}
-        avatarFrame={avatarFrame}
-        avatarUrl={avatarUrl}
-        avatar={avatar}
-        pictureRef={pictureRef}
-        setAvatarUrl={setAvatarUrl}
-        setAvatarKey={setAvatarKey}
-        choosePicture={choosePicture}
-        setAvatar={setAvatar}
-        setAvatarFrame={setAvatarFrame}
-        setColor={setColor}
-        bio={bio}
-        setBio={setBio}
-        prideBadges={prideBadges}
-        setPrideBadges={setPrideBadges}
-        newPlatform={newPlatform}
-        setNewPlatform={setNewPlatform}
-        newUrl={newUrl}
-        setNewUrl={setNewUrl}
-        newLabel={newLabel}
-        setNewLabel={setNewLabel}
-        setSocialLinks={setSocialLinks}
-        socialLinks={socialLinks}
-        spotifySong={spotifySong}
-        setSpotifySong={setSpotifySong}
-        spotifyArtist={spotifyArtist}
-        setSpotifyArtist={setSpotifyArtist}
-        spotifyCover={spotifyCover}
-        setSpotifyCover={setSpotifyCover}
-        setShowProfileCssGuide={setShowProfileCssGuide}
-        showProfileCssGuide={showProfileCssGuide}
-        setProfileCustomCss={setProfileCustomCss}
-        profileCustomCss={profileCustomCss}
-        saveProfile={saveProfile}
-        status={status}
-        error={error}
-        user={user}
-      />
+
 
           {tab === "tts" && <TtsSettings />}
 
@@ -1462,6 +1455,70 @@ export function SettingsDialog({
           </div>
         </main>
       </div>
+      {profileEditor && (
+        <ProfileEditorShell>
+          <ProfileTab
+        displayName={displayName}
+        setDisplayName={setDisplayName}
+        pronouns={pronouns}
+        setPronouns={setPronouns}
+        tagline={tagline}
+        setTagline={setTagline}
+        customStatus={customStatus}
+        setCustomStatus={setCustomStatus}
+        bannerUrl={bannerUrl}
+        color={color}
+        bannerRef={bannerRef}
+        setBannerUrl={setBannerUrl}
+        setBannerKey={setBannerKey}
+        chooseBanner={chooseBanner}
+        avatarFrame={avatarFrame}
+        profileEffect={profileEffect}
+        nameplate={nameplate}
+        profileFrame={profileFrame}
+        avatarUrl={avatarUrl}
+        avatar={avatar}
+        pictureRef={pictureRef}
+        setAvatarUrl={setAvatarUrl}
+        setAvatarKey={setAvatarKey}
+        choosePicture={choosePicture}
+        setAvatar={setAvatar}
+        setAvatarFrame={setAvatarFrame}
+        setProfileEffect={setProfileEffect}
+        setNameplate={setNameplate}
+        setProfileFrame={setProfileFrame}
+        setColor={setColor}
+        bio={bio}
+        setBio={setBio}
+        prideBadges={prideBadges}
+        setPrideBadges={setPrideBadges}
+        newPlatform={newPlatform}
+        setNewPlatform={setNewPlatform}
+        newUrl={newUrl}
+        setNewUrl={setNewUrl}
+        newLabel={newLabel}
+        setNewLabel={setNewLabel}
+        setSocialLinks={setSocialLinks}
+        socialLinks={socialLinks}
+        spotifySong={spotifySong}
+        setSpotifySong={setSpotifySong}
+        spotifyArtist={spotifyArtist}
+        setSpotifyArtist={setSpotifyArtist}
+        spotifyCover={spotifyCover}
+        setSpotifyCover={setSpotifyCover}
+        setShowProfileCssGuide={setShowProfileCssGuide}
+        showProfileCssGuide={showProfileCssGuide}
+        setProfileCustomCss={setProfileCustomCss}
+        profileCustomCss={profileCustomCss}
+        saveProfile={saveProfile}
+        resetProfile={() => resetProfileDraft()}
+        onClose={closeProfileEditor}
+        status={status}
+        error={error}
+        user={user}
+      />
+        </ProfileEditorShell>
+      )}
       {testRoll && (
         <DiceOverlay
           roll={testRoll}

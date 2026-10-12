@@ -132,6 +132,9 @@ export interface PublicUser {
   activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];
   avatarFrame?: string;
+  profileEffect?: string;
+  nameplate?: string;
+  profileFrame?: string;
   color: string;
   isAdmin: boolean;
   canInvite: boolean;
@@ -168,6 +171,9 @@ export interface Member {
   activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];
   avatarFrame?: string;
+  profileEffect?: string;
+  nameplate?: string;
+  profileFrame?: string;
   color: string;
   customCss?: string | null;
   customTheme?: string | null;
