@@ -1,0 +1,32 @@
+"use client";
+
+
+
+export interface Invite {
+  code: string;
+  uses: number;
+  maxUses: number;
+  revoked: boolean;
+  spent: boolean;
+  note: string;
+  defaultTheme?: string | null;
+  defaultServerId?: string | null;
+}
+export type Tab =
+  | "profile"
+  | "activities"
+  | "voice"
+  | "tts"
+  | "password"
+  | "invites"
+  | "appearance"
+  | "dice"
+  | "custom_ui_css"
+  | "accessibility"
+  | "roles"
+  | "requests"
+  | "tutorial"
+  | "licenses";
+export type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
+export type Density = "compact" | "cozy" | "roomy";
+export type Backdrop = "plain" | "aurora" | "dots";

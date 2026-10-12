@@ -1,27 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2, Shield, GripVertical, Users, Pencil, MoreHorizontal, ExternalLink, LogOut, Smile, Hammer, Zap, Crown, Skull, Plus, X, Link as LinkIcon, UserMinus, Bot, Copy, Check, Power, Terminal, Info } from "lucide-react";
-import { Avatar } from "./avatar";
+import { Trash2, ExternalLink, LogOut } from "lucide-react";
 import { SoundboardTab, StickersTab } from "./expression-settings";
 import { WelcomeTab } from "./server-welcome";
 import { AutomodPanel } from "./automod-panel";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
-import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+import { type PermissionFlag } from "@/lib/permissions";
+import { ServerBot, ServerInvite, AuditEntry, Tab, CustomEmoji, ServerBan } from "./server-settings/types";
+import { BANNER_COLORS } from "./server-settings/constants";
+import { ServerProfileTab } from "./server-settings/profile-tab";
+import { ServerEmojiTab } from "./server-settings/emoji-tab";
+import { ServerMembersTab } from "./server-settings/members-tab";
+import { ServerRolesTab } from "./server-settings/roles-tab";
+import { ServerBansTab } from "./server-settings/bans-tab";
+import { ServerInvitesTab } from "./server-settings/invites-tab";
+import { ServerAuditLogTab } from "./server-settings/audit-log-tab";
+import { ServerIntegrationsTab } from "./server-settings/integrations-tab";
 
-interface ServerBot {
-  id: string;
-  server_id: string;
-  name: string;
-  avatar: string;
-  token: string;
-  description: string;
-  kind: string;
-  enabled: number;
-  created_at: string;
-}
+
 
 interface ServerSettingsDialogProps {
   server: PublicServer;
@@ -69,101 +68,19 @@ interface ServerSettingsDialogProps {
   canCreateInvites?: boolean;
 }
 
-interface ServerInvite {
-  code: string;
-  createdAt: string;
-  maxUses: number;
-  uses: number;
-  revoked: boolean;
-  note: string;
-  spent: boolean;
-}
 
-interface AuditEntry {
-  id: string;
-  actorId: string | null;
-  actorName: string;
-  action: string;
-  targetId: string | null;
-  targetName: string | null;
-  detail: string | null;
-  createdAt: string;
-}
 
-/** Human-friendly label for an audit action verb. */
-const AUDIT_LABELS: Record<string, string> = {
-  "server.create": "created the server",
-  "server.update": "updated server settings",
-  "channel.create": "created a channel",
-  "channel.update": "edited a channel",
-  "channel.delete": "deleted a channel",
-  "role.create": "created a role",
-  "role.update": "edited a role",
-  "role.delete": "deleted a role",
-  "member.join": "joined",
-  "member.leave": "left",
-  "member.kick": "kicked a member",
-  "member.move": "moved a member",
-  "member.ban": "banned a member",
-  "member.unban": "unbanned a member",
-  "member.nickname": "changed a nickname",
-  "member.timeout": "timed out a member",
-  "member.timeout_remove": "lifted a timeout",
-  "invite.create": "created an invite",
-};
 
-type Tab =
-  | "profile"
-  | "tag"
-  | "engagement"
-  | "boost"
-  | "emoji"
-  | "stickers"
-  | "soundboard"
-  | "members"
-  | "roles"
-  | "invites"
-  | "access"
-  | "integrations"
-  | "app_directory"
-  | "safety"
-  | "audit_log"
-  | "bans"
-  | "automod"
-  | "welcome"
-  | "community"
-  | "template";
 
-interface CustomEmoji {
-  id: string;
-  serverId: string;
-  name: string;
-  url: string;
-}
 
-interface ServerBan {
-  userId: string;
-  username: string;
-  displayName: string;
-  avatar: string;
-  avatarUrl: string | null;
-  color: string;
-  bannedAt: string;
-  bannedBy: string | null;
-}
 
-const BANNER_COLORS = [
-  { label: "Dark", value: "linear-gradient(135deg, #1e1f29, #111218)" },
-  { label: "Soul", value: "linear-gradient(135deg, #ff4081, #ff80ab)" },
-  { label: "Crimson", value: "linear-gradient(135deg, #f44336, #ff7961)" },
-  { label: "Amber", value: "linear-gradient(135deg, #ff9800, #ffc947)" },
-  { label: "Gold", value: "linear-gradient(135deg, #ffeb3b, #fff350)" },
-  { label: "Purple", value: "linear-gradient(135deg, #9c27b0, #ba68c8)" },
-  { label: "Cyan", value: "linear-gradient(135deg, #00bcd4, #4dd0e1)" },
-  { label: "Teal", value: "linear-gradient(135deg, #009688, #4db6ac)" },
-  { label: "Green", value: "linear-gradient(135deg, #4caf50, #81c784)" },
-  { label: "Charcoal", value: "linear-gradient(135deg, #37474f, #263238)" },
-];
+
+
+
+
+
+
+
 
 export function ServerSettingsDialog({
   server,
@@ -1136,246 +1053,39 @@ export function ServerSettingsDialog({
         {notice && <div className="discord-notice-banner">{notice}</div>}
 
         {/* Tab 1: Server Profile (SS 1) */}
-        {tab === "profile" && (
-          <div className="tab-pane profile-pane">
-            <div className="pane-left">
-              {!canManageServer && (
-                <div className="server-settings-readonly-banner">
-                  <Info size={16} />
-                  <span>Viewing server overview in read-only mode. You need the Manage Server permission to edit server details.</span>
-                </div>
-              )}
-              <h1 className="pane-title">Server Profile</h1>
-              <p className="pane-subtitle">
-                Customize how your server appears in invite links and, if enabled, in Server Discovery and Announcement Channel messages
-              </p>
-
-              <div className="form-field">
-                <label>Name</label>
-                <input
-                  type="text"
-                  className="discord-text-input"
-                  value={serverName}
-                  onChange={(e) => setServerName(e.target.value)}
-                  maxLength={50}
-                  disabled={!canManageServer}
-                />
-              </div>
-
-              <input
-                ref={iconFileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleIconUpload}
-              />
-              <input
-                ref={bannerFileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleBannerUpload}
-              />
-
-              <div className="form-field">
-                <label>Server Icon (Photo)</label>
-                <p className="field-hint">Upload a custom image/photo for your server icon (minimum 512x512 recommended).</p>
-                <div className="button-group">
-                  <button
-                    type="button"
-                    className="discord-btn primary-indigo"
-                    onClick={() => iconFileInputRef.current?.click()}
-                  >
-                    Upload Server Icon
-                  </button>
-                  {serverIconUrl && (
-                    <button
-                      type="button"
-                      className="discord-btn secondary-gray"
-                      onClick={() => setServerIconUrl("")}
-                    >
-                      Remove Icon
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="form-field">
-                <label>Server Banner Image</label>
-                <p className="field-hint">Upload a custom header banner image for your server sidebar.</p>
-                <div className="button-group">
-                  <button
-                    type="button"
-                    className="discord-btn primary-indigo"
-                    onClick={() => bannerFileInputRef.current?.click()}
-                  >
-                    Upload Server Banner
-                  </button>
-                  {serverBannerUrl && (
-                    <button
-                      type="button"
-                      className="discord-btn secondary-gray"
-                      onClick={() => setServerBannerUrl("")}
-                    >
-                      Remove Banner
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="form-field">
-                <label>Or Pick Banner Gradient</label>
-                <div className="banner-swatches">
-                  {BANNER_COLORS.map((b) => (
-                    <button
-                      key={b.label}
-                      type="button"
-                      className={`banner-swatch ${bannerGradient === b.value ? "selected" : ""}`}
-                      style={{ background: b.value }}
-                      onClick={() => {
-                        setBannerGradient(b.value);
-                        setServerBannerUrl("");
-                      }}
-                      title={b.label}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="form-field">
-                <label>Traits</label>
-                <p className="field-hint">Add up to 5 traits to show off your server's interests and personality.</p>
-                <div className="traits-grid">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="trait-box">
-                      <span className="trait-icon"><Smile size={20} /></span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {canManageServer && (
-                <div className="save-bar-actions">
-                  <button
-                    type="button"
-                    className="discord-btn primary-indigo"
-                    onClick={handleSaveProfile}
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Right Side Live Server Preview Card */}
-            <div className="pane-right-preview">
-              <div className="server-card-preview">
-                <div
-                  className="server-card-banner"
-                  style={{
-                    background: serverBannerUrl ? `url(${serverBannerUrl}) center/cover no-repeat` : bannerGradient,
-                  }}
-                />
-                <div className="server-card-content">
-                  <div
-                    className="server-card-avatar"
-                    style={{ background: serverColor, overflow: "hidden" }}
-                  >
-                    {serverIconUrl ? (
-                      <img src={serverIconUrl} alt={serverName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <span>{server.icon || serverName.slice(0, 2).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <h3 className="server-card-name">{serverName}</h3>
-                  <div className="server-card-stats">
-                    <span className="dot green" /> {onlineCount} Online &nbsp;
-                    <span className="dot gray" /> {serverMembers.length || 12} Members
-                  </div>
-                  <div className="server-card-est">Est. Jun 2026</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <ServerProfileTab
+        tab={tab}
+        canManageServer={canManageServer}
+        serverName={serverName}
+        setServerName={setServerName}
+        iconFileInputRef={iconFileInputRef}
+        handleIconUpload={handleIconUpload}
+        bannerFileInputRef={bannerFileInputRef}
+        handleBannerUpload={handleBannerUpload}
+        serverIconUrl={serverIconUrl}
+        setServerIconUrl={setServerIconUrl}
+        serverBannerUrl={serverBannerUrl}
+        setServerBannerUrl={setServerBannerUrl}
+        bannerGradient={bannerGradient}
+        setBannerGradient={setBannerGradient}
+        handleSaveProfile={handleSaveProfile}
+        serverColor={serverColor}
+        server={server}
+        onlineCount={onlineCount}
+        serverMembers={serverMembers}
+      />
 
         {/* Tab 2: Emoji (SS 2) */}
-        {tab === "emoji" && (
-          <div className="tab-pane emoji-pane">
-            <h1 className="pane-title">Emoji</h1>
-            <p className="pane-subtitle">
-              Add up to 50 custom emoji that anyone can use in this server. Animated GIF emoji may be used by members with Discord Nitro.
-            </p>
-
-            {canManageServer && (
-              <div className="emoji-upload-row">
-                <button
-                  type="button"
-                  className="discord-btn primary-indigo"
-                  disabled={uploadingEmoji}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingEmoji ? "Uploading..." : "Upload Emoji"}
-                </button>
-                <p className="drag-drop-note">
-                  If you want to upload multiple emojis or skip the editor, drag and drop the file(s) onto this page.
-                </p>
-              </div>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={handleFileSelect}
-            />
-
-            {loadingEmojis ? (
-              <p className="loading-state">Loading emojis...</p>
-            ) : emojis.length > 0 ? (
-              <div className="custom-emojis-table">
-                <div className="table-head">
-                  <span>EMOJI</span>
-                  <span>NAME</span>
-                  <span>ACTIONS</span>
-                </div>
-                {emojis.map((emoji) => (
-                  <div key={emoji.id} className="table-row">
-                    <div className="emoji-preview-col">
-                      <img src={emoji.url} alt={emoji.name} className="table-emoji-img" />
-                    </div>
-                    <div className="emoji-name-col">:{emoji.name}:</div>
-                    <div className="emoji-actions-col">
-                      {canManageServer && (
-                        <button
-                          type="button"
-                          className="table-action-btn danger"
-                          onClick={() => handleDeleteEmoji(emoji.id, emoji.name)}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* Empty State Graphic (SS 2) */
-              <div className="empty-illustration-box">
-                <div className="illustration-graphic">
-                  <div className="graphic-emojis-cluster">
-                    <span><Crown size={22} /></span>
-                    <span><Smile size={22} /></span>
-                    <span><MoreHorizontal size={22} /></span>
-                    <span><Skull size={22} /></span>
-                  </div>
-                </div>
-                <h2>NO EMOJI</h2>
-                <p>Get the party started by uploading an emoji</p>
-              </div>
-            )}
-          </div>
-        )}
+        <ServerEmojiTab
+        tab={tab}
+        canManageServer={canManageServer}
+        uploadingEmoji={uploadingEmoji}
+        fileInputRef={fileInputRef}
+        handleFileSelect={handleFileSelect}
+        loadingEmojis={loadingEmojis}
+        emojis={emojis}
+        handleDeleteEmoji={handleDeleteEmoji}
+      />
 
         {tab === "welcome" && <WelcomeTab serverId={server.id} onNotice={setNotice} />}
 
@@ -1398,425 +1108,49 @@ export function ServerSettingsDialog({
         )}
 
         {/* Tab: Members */}
-        {tab === "members" && (
-          <div className="tab-pane members-pane">
-            <h1 className="pane-title">Server Members</h1>
-            <p className="pane-subtitle">
-              {filteredMembers.length} {filteredMembers.length === 1 ? "member" : "members"} in {server.name}. Manage their server roles, view invite sources, and moderate members here.
-            </p>
-
-            <div className="members-toolbar">
-              <div className="search-wrap">
-                <Search size={14} className="search-icon" />
-                <input
-                  type="text"
-                  className="discord-search-input"
-                  placeholder="Search Members, Roles, or Invites"
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="members-table-head">
-              <span>MEMBER</span>
-              <span>JOINED VIA</span>
-              <span>ROLES</span>
-              <span style={{ textAlign: "right" }}>ACTIONS</span>
-            </div>
-
-            <div className="members-list-wrapper">
-              {filteredMembers.map((member) => {
-                const isOwner = member.id === server.ownerId;
-                const assignedRoleIds = new Set(member.roleIds?.[server.id] || []);
-                const memberRoles = roles.filter((r) => assignedRoleIds.has(r.id));
-                const unassignedRoles = roles.filter((r) => !assignedRoleIds.has(r.id));
-                const isMenuOpen = roleAssignMenuUser === member.id;
-
-                return (
-                  <div key={member.id} className="member-table-row">
-                    <div className="member-user-col">
-                      <div className="relative flex-shrink-0">
-                        <Avatar
-                          avatar={member.avatar}
-                          avatarUrl={member.avatarUrl}
-                          color={member.color}
-                          size={36}
-                        />
-                        {onlineUserIds && (
-                          <span
-                            className={`member-online-dot ${
-                              onlineUserIds.has(member.id) ? "online" : "offline"
-                            }`}
-                            title={
-                              onlineUserIds.has(member.id)
-                                ? "Online"
-                                : "Offline"
-                            }
-                          />
-                        )}
-                      </div>
-                      <div className="member-info-text">
-                        <span className="member-info-name">
-                          {member.displayName}
-                          {isOwner && (
-                            <span title="Server Owner" className="owner-crown">
-                              <Crown size={14} />
-                            </span>
-                          )}
-                        </span>
-                        <span className="member-info-user">@{member.username}</span>
-                      </div>
-                    </div>
-
-                    <div className="member-invite-col">
-                      {member.joinedVia ? (
-                        <div className="member-invite-info">
-                          <span
-                            className="member-invite-badge"
-                            title={`Invite code: ${member.joinedVia.code}`}
-                          >
-                            <LinkIcon size={12} className="inline-icon" />
-                            <code>{member.joinedVia.code}</code>
-                          </span>
-                          {member.joinedVia.creatorUsername || member.joinedVia.creatorName ? (
-                            <span className="member-invite-by">
-                              by @{member.joinedVia.creatorUsername || member.joinedVia.creatorName}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : isOwner ? (
-                        <span className="member-invite-tag owner">
-                          <Crown size={12} /> Server Owner
-                        </span>
-                      ) : (
-                        <span className="member-invite-tag direct">
-                          Direct / Default
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="member-roles-col">
-                      {memberRoles.map((role) => (
-                        <span
-                          key={role.id}
-                          className="member-role-chip"
-                          style={role.color ? { borderColor: `${role.color}66` } : undefined}
-                        >
-                          <span
-                            className="member-role-dot"
-                            style={{ background: role.color || "#99aab5" }}
-                          />
-                          <span style={{ color: role.color || "#dbdee1" }}>{role.name}</span>
-                          {canManageRolesEffective && (
-                            <button
-                              type="button"
-                              className="member-role-remove"
-                              title={`Remove ${role.name}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleMemberRole(member.id, role.id, false);
-                              }}
-                            >
-                              <X size={12} />
-                            </button>
-                          )}
-                        </span>
-                      ))}
-
-                      {canManageRolesEffective && (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            className="add-role-btn"
-                            title="Add Role"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRoleAssignMenuUser(isMenuOpen ? null : member.id);
-                            }}
-                          >
-                            <Plus size={14} />
-                          </button>
-
-                          {isMenuOpen && (
-                            <div
-                              className="role-assign-menu"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {!unassignedRoles.length ? (
-                                <div style={{ padding: "6px 8px", fontSize: 11, color: "#949ba4" }}>
-                                  No more roles to add
-                                </div>
-                              ) : (
-                                unassignedRoles.map((role) => (
-                                  <button
-                                    key={role.id}
-                                    type="button"
-                                    className="role-assign-option"
-                                    onClick={() => {
-                                      setRoleAssignMenuUser(null);
-                                      void toggleMemberRole(member.id, role.id, true);
-                                    }}
-                                  >
-                                    <span
-                                      className="member-role-dot"
-                                      style={{ background: role.color || "#99aab5" }}
-                                    />
-                                    <span style={{ color: role.color || "#dbdee1" }}>
-                                      {role.name}
-                                    </span>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="member-actions-col">
-                      {!isOwner && (canKickEffective || canBanEffective) && (
-                        <>
-                          {canKickEffective && (
-                            <button
-                              type="button"
-                              className="member-action-btn"
-                              title="Kick Member"
-                              onClick={() => kickMember(member)}
-                            >
-                              <UserMinus size={15} />
-                            </button>
-                          )}
-                          {canBanEffective && (
-                            <button
-                              type="button"
-                              className="member-action-btn danger"
-                              title="Ban Member"
-                              onClick={() => banMember(member)}
-                            >
-                              <Hammer size={15} />
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <ServerMembersTab
+        tab={tab}
+        filteredMembers={filteredMembers}
+        server={server}
+        memberSearch={memberSearch}
+        setMemberSearch={setMemberSearch}
+        roles={roles}
+        roleAssignMenuUser={roleAssignMenuUser}
+        onlineUserIds={onlineUserIds}
+        canManageRolesEffective={canManageRolesEffective}
+        toggleMemberRole={toggleMemberRole}
+        setRoleAssignMenuUser={setRoleAssignMenuUser}
+        canKickEffective={canKickEffective}
+        canBanEffective={canBanEffective}
+        kickMember={kickMember}
+        banMember={banMember}
+      />
 
         {/* Tab 3: Roles (SS 3) */}
-        {tab === "roles" && (
-          <div className="tab-pane roles-pane">
-            <h1 className="pane-title">Roles</h1>
-            <p className="pane-subtitle">Use roles to group your server members and assign permissions.</p>
-
-            <div className="default-permissions-card">
-              <div className="card-info">
-                <strong>Default Permissions</strong>
-                <span>@everyone · applies to all server members</span>
-              </div>
-              <span className="chevron-arrow">›</span>
-            </div>
-
-            <div className="roles-toolbar">
-              <div className="search-wrap">
-                <Search size={14} className="search-icon" />
-                <input
-                  type="text"
-                  className="discord-search-input"
-                  placeholder="Search Roles"
-                  value={roleSearch}
-                  onChange={(e) => setRoleSearch(e.target.value)}
-                />
-              </div>
-              {canManageRolesEffective && (
-                <button
-                  type="button"
-                  className="discord-btn primary-indigo"
-                  onClick={handleCreateRole}
-                >
-                  Create Role
-                </button>
-              )}
-            </div>
-
-            <div className="roles-table-head">
-              <span>ROLES - {filteredRoles.length}</span>
-              <span>MEMBERS</span>
-            </div>
-
-            <div className="roles-list-wrapper">
-              {filteredRoles.map((role) => (
-                <div
-                  key={role.id}
-                  className={`role-table-row ${activeRole?.id === role.id ? "selected" : ""}`}
-                  onClick={() => setActiveRole(role)}
-                >
-                  <div className="role-name-col">
-                    <span className="drag-dots"><GripVertical size={14} /></span>
-                    <span
-                      className="role-shield-icon"
-                      style={{ color: role.color || "#99aab5" }}
-                    >
-                      <Shield size={16} />
-                    </span>
-                    <strong>{role.name}</strong>
-                  </div>
-                  <div className="role-members-col flex items-center gap-1">
-                    <span>{members.length}</span>
-                    <Users size={14} />
-                  </div>
-                  <div className="role-actions-col">
-                    <button type="button" className="icon-action-btn" title="Edit Role">
-                      <Pencil size={14} />
-                    </button>
-                    <button type="button" className="icon-action-btn" title="More">
-                      <MoreHorizontal size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {activeRole && canManageRolesEffective && (
-              <div className="active-role-permissions-editor">
-                <h3>Edit Permissions for {activeRole.name}</h3>
-                <div className="permissions-toggle-grid">
-                  {PERMISSION_INFO.map((info) => {
-                    const enabled = (activeRole.permissions & info.flag) === info.flag;
-                    return (
-                      <label key={info.flag} className="perm-item-row">
-                        <div>
-                          <strong>{info.label}</strong>
-                          <p>{info.description}</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={() => toggleRolePermission(info.flag)}
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        <ServerRolesTab
+        tab={tab}
+        roleSearch={roleSearch}
+        setRoleSearch={setRoleSearch}
+        canManageRolesEffective={canManageRolesEffective}
+        handleCreateRole={handleCreateRole}
+        filteredRoles={filteredRoles}
+        activeRole={activeRole}
+        setActiveRole={setActiveRole}
+        members={members}
+        toggleRolePermission={toggleRolePermission}
+      />
 
         {/* Tab 4: Bans (SS 4) */}
-        {tab === "bans" && (
-          <div className="tab-pane bans-pane">
-            <h1 className="pane-title">Server Ban List</h1>
-            <p className="pane-subtitle">
-              Bans by default are by account and IP. A user can circumvent an IP ban by using a proxy. Ban circumvention can be made very hard by enabling phone verification in Moderation.
-            </p>
-
-            <div className="bans-search-row">
-              <div className="search-wrap">
-                <Search size={14} className="search-icon" />
-                <input
-                  type="text"
-                  className="discord-search-input"
-                  placeholder="Search Bans by User Id or Username"
-                  value={banSearch}
-                  onChange={(e) => setBanSearch(e.target.value)}
-                />
-              </div>
-              <button
-                type="button"
-                className="discord-btn primary-indigo"
-                onClick={() => void loadBans()}
-              >
-                Refresh
-              </button>
-            </div>
-
-            {(() => {
-              const term = banSearch.trim().toLowerCase();
-              const shown = term
-                ? bans.filter(
-                    (ban) =>
-                      ban.username.toLowerCase().includes(term) ||
-                      ban.displayName.toLowerCase().includes(term) ||
-                      ban.userId.toLowerCase().includes(term),
-                  )
-                : bans;
-
-              if (loadingBans) {
-                return <p className="pane-subtitle">Loading the ban list…</p>;
-              }
-
-              if (!bans.length) {
-                return (
-                  <div className="bans-empty-card">
-                    <div className="ban-hammer-illustration">
-                      <span className="hammer-emoji"><Hammer size={26} /><Zap size={26} /></span>
-                    </div>
-                    <h2>NO BANS</h2>
-                    <p>
-                      You haven&apos;t banned anybody... but if and when you must,
-                      do not hesitate!
-                    </p>
-                  </div>
-                );
-              }
-
-              if (!shown.length) {
-                return <p className="pane-subtitle">Nobody matched that search.</p>;
-              }
-
-              return (
-                <ul className="ban-list">
-                  {shown.map((ban) => (
-                    <li key={ban.userId} className="ban-row">
-                      <span
-                        className="ban-avatar"
-                        style={{
-                          background: ban.avatarUrl ? undefined : ban.color,
-                        }}
-                      >
-                        {ban.avatarUrl ? (
-                          <img src={ban.avatarUrl} alt="" />
-                        ) : (
-                          ban.avatar
-                        )}
-                      </span>
-                      <span className="ban-who">
-                        <strong>{ban.displayName}</strong>
-                        <small>
-                          @{ban.username}
-                          {ban.bannedBy ? ` · banned by ${ban.bannedBy}` : ""}
-                          {ban.bannedAt
-                            ? ` · ${new Date(ban.bannedAt).toLocaleDateString()}`
-                            : ""}
-                        </small>
-                      </span>
-                      <button
-                        type="button"
-                        className="discord-btn"
-                        onClick={() =>
-                          onRequestConfirm({
-                            title: `Unban ${ban.displayName}?`,
-                            message:
-                              "They will be able to read and post here again.",
-                            confirmText: "Unban",
-                            onConfirm: () => void unban(ban),
-                          })
-                        }
-                      >
-                        Unban
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              );
-            })()}
-          </div>
-        )}
+        <ServerBansTab
+        tab={tab}
+        banSearch={banSearch}
+        setBanSearch={setBanSearch}
+        loadBans={loadBans}
+        bans={bans}
+        loadingBans={loadingBans}
+        onRequestConfirm={onRequestConfirm}
+        unban={unban}
+      />
 
         {/* Invites: server-scoped codes that let people join THIS server. */}
         {/* The automod tab has existed in the sidebar since the beginning but
@@ -1830,361 +1164,42 @@ export function ServerSettingsDialog({
           />
         )}
 
-        {tab === "invites" && (
-          <div className="tab-pane invites-pane">
-            <h1 className="pane-title">Invite People</h1>
-            <p className="pane-subtitle">
-              Share one of these codes to let someone join {server.name}. A code
-              with no use limit works until you revoke it.
-            </p>
-            {canCreateInvites ? (
-              <button
-                type="button"
-                className="discord-btn primary-indigo"
-                onClick={() => void createServerInvite()}
-                disabled={creatingInvite}
-              >
-                {creatingInvite ? "Creating…" : "Create Invite Code"}
-              </button>
-            ) : (
-              <p className="pane-subtitle" style={{ color: "#f0b232", marginTop: "8px" }}>
-                Only the server owner and designated members can create invite codes.
-              </p>
-            )}
-
-            {loadingInvites ? (
-              <p className="pane-subtitle">Loading invites…</p>
-            ) : !invites.length ? (
-              <p className="pane-subtitle">No invites yet — create one above.</p>
-            ) : (
-              <ul className="invite-list">
-                {invites.map((invite) => (
-                  <li key={invite.code} className="invite-row">
-                    <code className="invite-code">{invite.code}</code>
-                    <span className="invite-meta">
-                      {invite.revoked
-                        ? "revoked"
-                        : invite.spent
-                          ? "used up"
-                          : invite.maxUses > 0
-                            ? `${invite.uses}/${invite.maxUses} uses`
-                            : `${invite.uses} uses · unlimited`}
-                    </span>
-                    <div className="invite-actions">
-                      <button
-                        type="button"
-                        className="discord-btn"
-                        onClick={() => {
-                          const origin = typeof window !== "undefined" ? window.location.origin : "https://deeppixel.online";
-                          const link = `${origin}/hangout?${invite.code}`;
-                          void navigator.clipboard
-                            ?.writeText(link)
-                            .then(() => setNotice("Invite link copied to clipboard."))
-                            .catch(() => undefined);
-                        }}
-                      >
-                        Copy Link
-                      </button>
-                      <button
-                        type="button"
-                        className="discord-btn secondary"
-                        onClick={() =>
-                          void navigator.clipboard
-                            ?.writeText(invite.code)
-                            .then(() => setNotice("Invite code copied."))
-                            .catch(() => undefined)
-                        }
-                      >
-                        Copy Code
-                      </button>
-                      {!invite.revoked && (
-                        <button
-                          type="button"
-                          className="discord-btn danger-btn"
-                          onClick={() => void revokeInvite(invite.code)}
-                        >
-                          Revoke
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        <ServerInvitesTab
+        tab={tab}
+        server={server}
+        canCreateInvites={canCreateInvites}
+        createServerInvite={createServerInvite}
+        creatingInvite={creatingInvite}
+        loadingInvites={loadingInvites}
+        invites={invites}
+        setNotice={setNotice}
+        revokeInvite={revokeInvite}
+      />
 
         {/* Audit log: a real trail of moderation and structure changes. */}
-        {tab === "audit_log" && (
-          <div className="tab-pane audit-pane">
-            <div className="bans-search-row">
-              <div>
-                <h1 className="pane-title">Audit Log</h1>
-                <p className="pane-subtitle">
-                  Who did what in {server.name}, newest first.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="discord-btn primary-indigo"
-                onClick={() => void loadAudit()}
-              >
-                Refresh
-              </button>
-            </div>
-
-            {loadingAudit ? (
-              <p className="pane-subtitle">Loading the audit log…</p>
-            ) : !audit.length ? (
-              <div className="empty-illustration-box">
-                <p>Nothing has happened here yet.</p>
-              </div>
-            ) : (
-              <ul className="audit-list">
-                {audit.map((entry) => (
-                  <li key={entry.id} className="audit-row">
-                    <span className="audit-dot" aria-hidden="true">
-                      •
-                    </span>
-                    <span className="audit-text">
-                      <strong>{entry.actorName}</strong>{" "}
-                      {AUDIT_LABELS[entry.action] || entry.action}
-                      {entry.targetName ? (
-                        <>
-                          {" "}
-                          <em>{entry.targetName}</em>
-                        </>
-                      ) : null}
-                      {entry.detail ? (
-                        <span className="audit-detail"> ({entry.detail})</span>
-                      ) : null}
-                    </span>
-                    <time className="audit-time">
-                      {new Date(entry.createdAt).toLocaleString()}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        <ServerAuditLogTab
+        tab={tab}
+        server={server}
+        loadAudit={loadAudit}
+        loadingAudit={loadingAudit}
+        audit={audit}
+      />
 
         {/* Integrations: Bots, Webhooks & Discord Bridge */}
-        {tab === "integrations" && (
-          <div className="tab-pane integrations-pane">
-            <div className="bans-search-row">
-              <div>
-                <h1 className="pane-title">Bots & Integrations</h1>
-                <p className="pane-subtitle">
-                  Add music bots, D&D companions, Discord bridges, or custom Discord-compatible bots to {server.name}.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="discord-btn primary-indigo"
-                onClick={() => {
-                  onRequestPrompt({
-                    title: "Create Custom Bot",
-                    message: "Give your bot a name. A unique Discord-compatible bot token will be generated.",
-                    placeholder: "e.g. Trivia Bot",
-                    confirmText: "Create Bot",
-                    onConfirm: (val) => {
-                      if (val?.trim()) void addBot(val.trim(), "custom", "🤖");
-                    },
-                  });
-                }}
-                disabled={creatingBot}
-              >
-                <Plus size={16} style={{ marginRight: 6 }} /> Create Bot Integration
-              </button>
-            </div>
-
-            {/* Quick-Add Built-in Bot Templates */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🎵</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>Hoffle Music Bot</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>Voice Audio & Synchronized Playback</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Streams YouTube / audio into voice channels with synchronized playback, lyrics, autoplay, and smart queue.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("Hoffle Music", "music", "🎵", "Synchronized voice audio & playback")}
-                >
-                  Add Music Bot to Server
-                </button>
-              </div>
-
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>⚔️</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>D&D 5e Bot</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>SRD Compendium & Dice Roller</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Look up 5e spells, monsters, items, conditions and roll cryptographic dice directly in chat channels.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller")}
-                >
-                  Add D&D Bot to Server
-                </button>
-              </div>
-
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🌉</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>Discord Bridge</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>Bidirectional Discord &lt;-&gt; Hoffle Sync</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Sync channels bidirectionally with your Discord server. Forwards chat, embeds, and attachments.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("Discord Bridge", "discord-bridge", "🌉", "Bidirectional Discord bridge")}
-                >
-                  Add Discord Bridge to Server
-                </button>
-              </div>
-            </div>
-
-            {/* Active Bots List */}
-            <h2 style={{ fontSize: 16, color: "#fff", marginTop: 24, marginBottom: 8 }}>Installed Bots ({bots.length})</h2>
-            {loadingBots ? (
-              <p className="pane-subtitle">Loading installed bots…</p>
-            ) : !bots.length ? (
-              <div className="empty-illustration-box">
-                <p>No bots installed on {server.name} yet. Add one above or create a custom bot!</p>
-              </div>
-            ) : (
-              <ul className="invite-list" style={{ display: "flex", flexDirection: "column", gap: 12, padding: 0, listStyle: "none" }}>
-                {bots.map((bot) => (
-                  <li
-                    key={bot.id}
-                    style={{
-                      background: "#2b2d31",
-                      border: "1px solid #3f4147",
-                      borderRadius: 8,
-                      padding: "14px 18px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 16,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <span style={{ fontSize: 24 }}>{bot.avatar || "🤖"}</span>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <strong style={{ color: "#fff", fontSize: 15 }}>{bot.name}</strong>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              background: bot.enabled ? "#23a55a" : "#ed4245",
-                              color: "#fff",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {bot.enabled ? "ACTIVE" : "DISABLED"}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#949ba4" }}>{bot.kind}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                          <code style={{ fontSize: 12, background: "#1e1f22", padding: "2px 6px", borderRadius: 4, color: "#00a8fc" }}>
-                            {revealedTokens[bot.id] ? bot.token : `${bot.token.slice(0, 10)}••••••••••••••••`}
-                          </code>
-                          <button
-                            type="button"
-                            className="discord-btn"
-                            style={{ padding: "2px 8px", fontSize: 12 }}
-                            onClick={() => {
-                              setRevealedTokens((prev) => ({ ...prev, [bot.id]: !prev[bot.id] }));
-                            }}
-                          >
-                            {revealedTokens[bot.id] ? "Hide" : "Reveal"}
-                          </button>
-                          <button
-                            type="button"
-                            className="discord-btn secondary"
-                            style={{ padding: "2px 8px", fontSize: 12 }}
-                            onClick={() => {
-                              void navigator.clipboard?.writeText(bot.token).then(() => {
-                                setNotice(`Copied bot token for ${bot.name}.`);
-                              });
-                            }}
-                          >
-                            <Copy size={12} style={{ marginRight: 4 }} /> Copy Token
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="discord-btn secondary"
-                        onClick={() => void toggleBot(bot)}
-                        title={bot.enabled ? "Disable Bot" : "Enable Bot"}
-                      >
-                        <Power size={14} style={{ marginRight: 4 }} /> {bot.enabled ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        className="discord-btn danger-btn"
-                        onClick={() => void removeBot(bot)}
-                        title="Remove Bot"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {/* Developer Quick Reference */}
-            <div style={{ background: "#1e1f22", border: "1px solid #3f4147", borderRadius: 8, padding: 18, marginTop: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "#5865f2" }}>
-                <Terminal size={18} />
-                <h3 style={{ margin: 0, fontSize: 15, color: "#fff" }}>Discord-Compatible Bot API</h3>
-              </div>
-              <p style={{ fontSize: 13, color: "#949ba4", margin: "0 0 10px 0" }}>
-                Connect your custom bots or Discord bot code to Hoffle by sending standard HTTP requests:
-              </p>
-              <pre style={{ margin: 0, padding: 12, background: "#111214", borderRadius: 6, fontSize: 12, color: "#dbdee1", overflowX: "auto" }}>
-{`# Send a message to a channel:
-curl -X POST "\${typeof window !== "undefined" ? window.location.origin : "https://chat.hoffle.online"}/hangout/api/v1/channels/<CHANNEL_ID>/messages" \\
-  -H "Authorization: Bot <YOUR_BOT_TOKEN>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"content": "Hello from my self-hosted bot!"}'
-
-# Real-time event gateway:
-# Connect via WebSocket to: /hangout/api/realtime
-# Or stream SSE events: /hangout/api/v1/gateway/events?token=<YOUR_BOT_TOKEN>`}
-              </pre>
-            </div>
-          </div>
-        )}
+        <ServerIntegrationsTab
+        tab={tab}
+        server={server}
+        onRequestPrompt={onRequestPrompt}
+        addBot={addBot}
+        creatingBot={creatingBot}
+        bots={bots}
+        loadingBots={loadingBots}
+        revealedTokens={revealedTokens}
+        setRevealedTokens={setRevealedTokens}
+        setNotice={setNotice}
+        toggleBot={toggleBot}
+        removeBot={removeBot}
+      />
 
         {/* Sidebar items with no panel yet. Listed by what exists rather than
             what doesn't, so a new panel can't end up with this under it. */}

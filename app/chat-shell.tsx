@@ -1,28 +1,6 @@
 "use client";
-
-import { DraftTextarea } from "./components/draft-textarea";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type DragEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
-import { MessageAttachmentFiles } from "./components/message-file-card";
-import {
-  formatFileSize,
-  getFileBadgeColor,
-  getFileExtensionBadge,
-} from "@/lib/upload-sniff";
 import { ConnectionBanner } from "./components/connection-banner";
 import { convertMsnEmoticons } from "@/lib/msn-emoticons";
 import {
@@ -33,116 +11,25 @@ import {
 } from "./lib/native-voice";
 import { registerNativePush, unregisterNativePush } from "./lib/native-push";
 import { useMobileShell } from "./hooks/use-mobile-shell";
-import {
-  MsnAdBanner,
-  MsnDisplayPictures,
-  MsnFormatToolbar,
-  MsnSignInToasts,
-  messageFontStyle,
-  MsnFileTransfer,
-  MsnPicturePicker,
-  MsnSoundsDialog,
-  MsnHoverCard,
-  MsnWhatsNew,
-  fileNameFromUrl,
-  findWink,
-  flashTitle,
-  playMessageChime,
-  playNudge,
-  playWink,
-  useMsnTheme,
-} from "./components/msn-chrome";
+import { MsnDisplayPictures, findWink, flashTitle, playMessageChime, playNudge, playWink, useMsnTheme } from "./components/msn-chrome";
 import { isRetroSoundThemeEnabled, playSound as playMsnSound } from "./lib/msn-sounds";
-import { TextStyleMenu } from "./components/text-style-menu";
-import { GameCard, GamesPicker } from "./components/game-card";
-import { MsnToday, shouldShowMsnToday } from "./components/msn-today";
+import { shouldShowMsnToday } from "./components/msn-today";
 import { useMsnContacts, usePersonalEmoticons, useWhatsNew } from "./hooks/use-msn-extras";
 import { applyPersonalEmoticons } from "@/lib/msn-contacts";
 import { msnPictureFile, type MsnPicture } from "./lib/msn-pictures";
 import { GAME_INFO, isGameKind, type GameKind } from "@/lib/games";
-import { applyMessageFont, readMessageFont, saveMessageFont, stripTextStyle, type MessageFont } from "@/lib/text-style";
+import { applyMessageFont, readMessageFont, stripTextStyle, type MessageFont } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
-import { channelKindInfo, channelNameRules, convertibleKinds, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
+import { channelKindInfo, channelNameRules, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
 import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT, VOICE_BITRATE_MAX, VOICE_BITRATE_MIN } from "@/lib/voice-quality";
 import { shouldStartMuted } from "@/lib/stage";
-import {
-  ALL_PERMISSIONS,
-  hasPermission,
-  Permission,
-  canAccessServerSettings,
-  getMemberTagInfo,
-} from "@/lib/permissions";
-import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
+import { ALL_PERMISSIONS, hasPermission, Permission, canAccessServerSettings } from "@/lib/permissions";
+import { type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
 import { findTagQuery, nameToHandle } from "@/lib/mention-handles";
-import {
-  Search,
-  Bell,
-  BellOff,
-  CheckCheck,
-  Pin,
-  Bookmark,
-  BookmarkCheck,
-  Settings,
-  Users,
-  Menu,
-  Pencil,
-  Plus,
-  Trash2,
-  StickyNote,
-  Hash,
-  Volume1,
-  Volume2,
-  VolumeX,
-  Radio,
-  Reply,
-  MessageSquare,
-  Smile,
-  SmilePlus,
-  ArrowUp,
-  PhoneCall,
-  Video,
-  Vote,
-  Gamepad2,
-  Type,
-  ChevronDown,
-  ChevronUp,
-  X,
-  User,
-  UserPlus,
-  MoreHorizontal,
-  AtSign,
-  Send,
-  PhoneOff,
-  Phone,
-  VideoOff,
-  Mic,
-  ShieldAlert,
-  MicOff,
-  Headphones,
-  HeadphoneOff,
-  AudioLines,
-  Monitor,
-  Maximize2,
-  ExternalLink,
-  Forward,
-  Timer,
-  CalendarDays,
-  LogOut,
-  Copy,
-  Check,
-} from "lucide-react";
-import {
-  startCallingTone,
-  stopCallingTone,
-  startIncomingCallTone,
-  stopIncomingCallTone,
-  playCallAnswerSound,
-  playCallEndSound,
-  playScreenShareStartSound,
-  playScreenShareStopSound,
-} from "./lib/audio-cues";
+import { ChevronDown, Mic, MicOff, HeadphoneOff, AudioLines } from "lucide-react";
+import { playScreenShareStartSound, playScreenShareStopSound } from "./lib/audio-cues";
 import { AuthGate } from "./components/auth-gate";
 import { EmailPrompt } from "./components/email-prompt";
 import { Avatar } from "./components/avatar";
@@ -150,60 +37,36 @@ import {
   BotMenu,
   type BotMenuAction,
 } from "./components/bot-menu";
-import { DndCard } from "./components/dnd-card";
-import {
-  BotEmbeds,
-} from "./components/bot-embeds";
 import { DiceOverlay } from "./components/dice-overlay";
-import { GifPicker } from "./components/gif-picker";
-import { LyricsNow } from "./components/lyrics-now";
-import { MessageBody, StyledText, isImageUrl, type MentionChannel } from "./components/message-body";
+import { StyledText, isImageUrl, type MentionChannel } from "./components/message-body";
 import { EditHistoryDialog } from "./components/edit-history";
-import { EventsPanel, eventIsOpen, eventWhen, useServerEvents } from "./components/events-panel";
-import {
-  ServerInviteCard,
-  type ResolvedInvite,
-} from "./components/server-invite-card";
+import { EventsPanel, eventWhen, useServerEvents } from "./components/events-panel";
+import { type ResolvedInvite } from "./components/server-invite-card";
 import { BattlemapBoard } from "./components/battlemap";
 import { useBattlemap } from "./hooks/use-battlemap";
 import { QuickSwitcher, type QuickSwitcherTarget } from "./components/quick-switcher";
 import { GroupDmDialog } from "./components/group-dm-dialog";
-import {
-  createFolder,
-  moveToFolder,
-  railEntries,
-  removeFromFolders,
-  type ServerFolder,
-} from "@/lib/server-folders";
+import { createFolder, moveToFolder, removeFromFolders, type ServerFolder } from "@/lib/server-folders";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { practiceRoll, TUTORIAL_PENDING_KEY, TutorialPill, WelcomeTutorial } from "./components/welcome-tutorial";
 import { ToastContainer, showToast } from "./components/toast";
 import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
-import { PollCard } from "./components/poll-card";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
 import type { MusicSettings } from "./components/music-cards";
-import { NowPlaying } from "./components/now-playing";
-import { MiniMusicBar } from "./components/mini-music-bar";
-import { OutlineEmoji } from "./components/outline-emoji";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
 import { type Message, type DmSummary, type MentionEntry, type MentionOption, compareDms } from "./lib/chat/types";
-import { DM_HOME, DEFAULT_QUICK_REACTIONS, QUICK_VOTES } from "./lib/chat/constants";
-import { commandArgsHint, dayDividerLabel, notifyLevel, rankMentionMatches, formatClientTime, formatClientDateTime, msnLastReceived, volumeGain, withArticle } from "./lib/chat/format";
+import { DM_HOME, DEFAULT_QUICK_REACTIONS } from "./lib/chat/constants";
+import { commandArgsHint, notifyLevel, rankMentionMatches, formatClientDateTime, volumeGain, withArticle } from "./lib/chat/format";
 import { applyReaction } from "./lib/chat/reactions";
 import { pickImageFile, showNotification, playSound } from "./lib/chat/browser";
 import { extractInviteCodes } from "./lib/chat/invites";
 import { CHANNEL_KIND_COPY, channelKindLabel, channelKindIcon } from "./components/chat/channel-kind";
-import { Icon } from "./components/chat/icon-button";
-import { MiniVoiceBar } from "./components/chat/mini-voice-bar";
 import { MatrixRain } from "./components/matrix-rain";
-import { RailFolder, RailQuickDms, RailServer } from "./components/chat/rail";
-import { MessageReactions } from "./components/chat/message-reactions";
-import { MessageEditor, MUSIC_CARD_KINDS, MusicPayloadCard } from "./components/chat/message-parts";
-import { StatusMenu } from "./components/chat/status-menu";
+import { RailFolder, RailServer } from "./components/chat/rail";
 import { runSpeechCommand, SPEECH_COMMANDS, type SpeechCommand } from "./lib/chat/speech-commands";
 import { runLookupCommand } from "./lib/chat/commands/lookup";
 import { runMusicCommand } from "./lib/chat/commands/music";
@@ -217,12 +80,9 @@ import {
   ttsPlaybackEnabled,
   type TtsLanguage,
 } from "./lib/tts/client";
-import { UserFooter } from "./components/user-footer";
 import { ServerSettingsDialog } from "./components/server-settings-dialog";
-import { EmojiPicker } from "./components/emoji-picker";
-import { SlashMenu } from "./components/slash-menu";
-import { VoiceStage, hasLiveVideo } from "./components/voice-stage";
-import { FloatingScreenPreview } from "./components/floating-screen-preview";
+import { VoiceStage } from "./components/voice-stage";
+import { hasLiveVideo } from "./components/voice-stage/tiles";
 import {
   replaceEmojiShortcodes,
   parseQuickReaction,
@@ -232,22 +92,16 @@ import { FriendsView } from "./components/friends-view";
 import { GlobalUserSearchDialog } from "./components/global-user-search-dialog";
 import { RecordingDirector } from "./components/recording-director";
 import { VoiceDuration } from "./components/voice-duration";
-import {
-  UserMenu,
-  type UserMenuTarget,
-  type VoicePref,
-} from "./components/user-menu";
+import { type UserMenuTarget, type VoicePref } from "./components/user-menu";
 import { useHub } from "./hooks/use-hub";
 import { useLiveCaptions, type LiveCaptions } from "./hooks/use-live-captions";
 import { useLivingRoom } from "./hooks/use-living-room";
 import { usePlayer } from "./hooks/use-player";
-import {
-  nextScreenQuality,
-  screenQualityLabel,
-  useVoice,
-} from "./hooks/use-voice";
-import { ScreenShareSetup } from "./components/screen-share-setup";
+import { useVoice } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
+import { useMessageSearch } from "./hooks/use-message-search";
+import { useSavedMessages } from "./hooks/use-saved-messages";
+import { useDmCalls } from "./hooks/use-dm-calls";
 import { unlockAudio } from "./lib/devices";
 import { comboToAccelerator } from "./lib/hotkeys";
 import { disableWebPush, enableWebPush, registerServiceWorker } from "./lib/web-push";
@@ -262,96 +116,38 @@ import {
   type SlashCommand,
 } from "./lib/commands";
 import { PollDialog } from "./components/poll-dialog";
-import { UserProfileCard } from "./components/user-profile-card";
-import {
-  VoiceMessagePlayer,
-  VoiceRecordButton,
-  VoiceRecordingBar,
-  formatDuration,
-  useVoiceRecorder,
-  type VoiceClip,
-} from "./components/voice-message";
+import { formatDuration, useVoiceRecorder, type VoiceClip } from "./components/voice-message";
 import { BlahajBuddy } from "./components/blahaj-buddy";
-import { PrideBadges } from "./components/pride-badges";
-import { MemberTag } from "./components/member-tag";
 import { useActivityDetector } from "./hooks/use-activity-detector";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/forward-message-dialog";
-import { ForwardedMessageCard } from "./components/forwarded-message-card";
-import { ThemeShareCard } from "./components/theme-share-card";
-import { AiAnswerCard } from "./components/ai-answer-card";
-import { ImageGallery } from "./components/image-gallery";
 import { updateAppBadge } from "./lib/chat/app-badge";
 import { installThemeFx } from "./lib/theme-fx";
 import { WelcomeGate } from "./components/server-welcome";
-import {
-  type Theme,
-  getActiveThemeId,
-  findThemeById,
-  applyThemeToDocument,
-  applyClientUiCss,
-  importThemeCode,
-  exportThemeCode,
-} from "@/lib/themes";
+import { type Theme, getActiveThemeId, findThemeById, applyThemeToDocument, applyClientUiCss, exportThemeCode } from "@/lib/themes";
+import { DRAFTS_KEY, mergeMessages, fitComposer } from "./lib/chat/shell-helpers";
+import { GroupDmContextMenu } from "./components/chat/group-dm-context-menu";
+import { MsnOverlays, ImageLightbox, ProfileCardLayer, IncomingDmCall, MarkdownGuideModal, ReactionPickerLayer, ReactionViewerLayer, FloatingStreamPreview } from "./components/chat/shell/overlays";
+import { ServerRail, ChannelSidebar, ThreadPanel, MemberPanel } from "./components/chat/shell/panels";
+import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from "./components/chat/shell/menus";
+import { SearchPanel, SavedPanel, MentionsPanel, PinsPanel } from "./components/chat/shell/side-panels";
+import { DmCallView } from "./components/chat/shell/dm-call-view";
+import { MessageList } from "./components/chat/shell/message-list";
+import { Composer } from "./components/chat/shell/composer";
+import { ChatHeader } from "./components/chat/shell/chat-header";
 
-/**
- * Combines two message lists (any overlap), newest version of each message
- * winning, in reading order.
- */
-/** "18:04", or "Tue 18:04" / "3 Oct 18:04" for older unread. */
-function unreadSinceLabel(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const age = Date.now() - date.getTime();
-  if (date.toDateString() === new Date().toDateString()) return time;
-  if (age < 6 * 86_400_000) return `${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
-  return `${date.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
-}
 
-/** Puts the "New" line above the first unread message. */
-function withUnreadLine(show: boolean, id: string | number, node: ReactNode): ReactNode {
-  if (!show) return node;
-  return (
-    <Fragment key={id}>
-      <div className="unread-divider" role="separator" aria-label="New messages">
-        <span>New</span>
-      </div>
-      {node}
-    </Fragment>
-  );
-}
 
-const DRAFTS_KEY = "huddle-drafts";
 
-/** One entry of the saved-messages panel (see /api/saved). */
-interface SavedEntry {
-  messageId: string;
-  savedAt: string;
-  channelId: string;
-  serverId: string | null;
-  channelName: string | null;
-  serverName: string | null;
-  author: string;
-  avatar: string;
-  color: string;
-  text: string;
-  createdAt: string;
-}
 
-function mergeMessages(first: Message[], second: Message[]): Message[] {
-  const byId = new Map<string, Message>();
-  for (const message of first) byId.set(String(message.id), message);
-  for (const message of second) byId.set(String(message.id), message);
-  return [...byId.values()].sort((a, b) =>
-    String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
-  );
-}
 
-/** Sizes a message box to its text, up to 40% of the window. */
-function fitComposer(node: HTMLTextAreaElement) {
-  node.style.height = "auto";
-  node.style.height = `${Math.min(node.scrollHeight + 2, window.innerHeight * 0.4)}px`;
-}
+
+
+
+
+
+
+
+
 
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -437,9 +233,11 @@ export function ChatShell() {
   const [pinsOpen, setPinsOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
   /** Saved messages: the panel, its contents, and which ids are saved. */
-  const [savedOpen, setSavedOpen] = useState(false);
-  const [savedList, setSavedList] = useState<SavedEntry[] | null>(null);
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const { savedOpen, setSavedOpen, savedList, savedIds, loadSaved, toggleSaved } =
+    useSavedMessages(
+      (message) => setNotice(message),
+      () => showToast("Saved. Find it under the bookmark at the top.", "success"),
+    );
   const [mentionsTab, setMentionsTab] = useState<"all" | "unread">("all");
   const [mentionInbox, setMentionInbox] = useState<MentionEntry[] | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -501,17 +299,15 @@ export function ChatShell() {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<
-    Array<{
-      id: string;
-      channelId: string;
-      channelName: string;
-      author: string;
-      snippet: string;
-    }>
-  >([]);
+  const {
+    searchOpen,
+    setSearchOpen,
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    setSearchResults,
+    runSearch: runMessageSearch,
+  } = useMessageSearch();
   /** Files staged in the composer; images carry a data-URL preview. */
   const [pendingFiles, setPendingFiles] = useState<
     Array<{ id: string; file: File; preview: string | null }>
@@ -4216,37 +4012,6 @@ export function ChatShell() {
     });
   }
 
-  /** Loads the saved list (and which ids are saved). */
-  async function loadSaved() {
-    const data = await apiFetch<{ saved: SavedEntry[] }>("/api/saved").catch(() => null);
-    if (!data) return;
-    setSavedList(data.saved);
-    setSavedIds(new Set(data.saved.map((entry) => entry.messageId)));
-  }
-
-  async function toggleSaved(messageId: string) {
-    const saved = savedIds.has(messageId);
-    setSavedIds((current) => {
-      const next = new Set(current);
-      if (saved) next.delete(messageId);
-      else next.add(messageId);
-      return next;
-    });
-    try {
-      await apiFetch(
-        saved ? `/api/saved?messageId=${encodeURIComponent(messageId)}` : "/api/saved",
-        saved
-          ? { method: "DELETE" }
-          : { method: "POST", body: JSON.stringify({ messageId }) },
-      );
-      if (saved) setSavedList((list) => list?.filter((entry) => entry.messageId !== messageId) ?? list);
-      else showToast("Saved. Find it under the bookmark at the top.", "success");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not save that.");
-      void loadSaved();
-    }
-  }
-
   async function deleteMessage(id: string | number) {
     try {
       await apiFetch(`/api/messages/${id}`, { method: "DELETE" });
@@ -5205,328 +4970,36 @@ export function ChatShell() {
     });
   }
 
-  const [incomingDmCall, setIncomingDmCall] = useState<{
-    channelId: string;
-    fromUserId: string;
-    fromDisplayName: string;
-    fromAvatar: string;
-    fromAvatarUrl?: string | null;
-    isVideo?: boolean;
-  } | null>(null);
-
-  const [dmCall, setDmCall] = useState<{
-    channelId: string;
-    otherUser: { id: string; displayName: string; avatar?: string; avatarUrl?: string | null; color?: string };
-    status: "calling" | "connected";
-    startTime: number;
-    isVideo?: boolean;
-    /**
-     * Whether the other person has actually appeared in the voice room. An
-     * "accept" arrives before their join does, so "connected" alone must not
-     * be read as "they are here" — doing so hung the call up on accept.
-     */
-    seenOther?: boolean;
-  } | null>(null);
-  /** Set while we are deliberately leaving, so the restore effect stays out. */
-  const dmCallEndingRef = useRef(false);
-  const dmCallRef = useRef(dmCall);
-  dmCallRef.current = dmCall;
-  const callingTimeoutRef = useRef<number | null>(null);
-  const incomingRingTimeoutRef = useRef<number | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-
-  useEffect(() => {
-    if (!dmCall || dmCall.status !== "connected") {
-      setCallDuration(0);
-      return;
-    }
-    const interval = window.setInterval(() => {
-      setCallDuration(Math.max(0, Math.floor((Date.now() - dmCall.startTime) / 1000)));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [dmCall]);
-
-  const endDmCall = useCallback(
-    (missed = false) => {
-      stopCallingTone();
-      stopIncomingCallTone();
-      playCallEndSound();
-      if (callingTimeoutRef.current) {
-        window.clearTimeout(callingTimeoutRef.current);
-        callingTimeoutRef.current = null;
-      }
-      const currentCall = dmCallRef.current;
-      if (currentCall && currentCall.status === "calling") {
-        hub.send({
-          t: "dm-call",
-          channelId: currentCall.channelId,
-          targetUserId: currentCall.otherUser.id,
-          action: "cancel",
-        });
-      }
-      if (missed && currentCall && user) {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-        const dateStr = now.toLocaleDateString([], { month: "short", day: "numeric" });
-        // Into the call's own DM, not whichever channel happens to be open.
-        void apiFetch("/api/messages", {
-          method: "POST",
-          body: JSON.stringify({
-            channelId: currentCall.channelId,
-            content: `📞 Missed call from ${user.displayName} on ${dateStr} at ${timeStr}`,
-          }),
-        }).catch(() => undefined);
-      }
-      dmCallEndingRef.current = true;
-      voice.leave();
-      setDmCall(null);
-    },
-    [activeChannelId, user, voice, hub],
-  );
-
-  const startDmCall = useCallback(
-    (video = false) => {
-      if (!activeDm || !activeChannelId || !user) return;
-      setDmCall({
-        channelId: activeChannelId,
-        otherUser: activeDm.user,
-        status: "calling",
-        startTime: Date.now(),
-        isVideo: video,
-      });
-      startCallingTone();
-      void voice.join(activeChannelId);
-      if (video) void voice.startCamera();
-
-      hub.send({
-        t: "dm-call",
-        channelId: activeChannelId,
-        targetUserId: activeDm.user.id,
-        action: "call",
-        isVideo: video,
-      });
-
-      if (callingTimeoutRef.current) window.clearTimeout(callingTimeoutRef.current);
-      callingTimeoutRef.current = window.setTimeout(() => {
-        endDmCall(true);
-      }, 35000);
-    },
-    [activeDm, activeChannelId, user, voice, hub, endDmCall],
-  );
-
-  const acceptIncomingCall = useCallback(() => {
-    if (!incomingDmCall || !user) return;
-    const callInfo = incomingDmCall;
-    stopIncomingCallTone();
-    setIncomingDmCall(null);
-
-    hub.send({
-      t: "dm-call",
-      channelId: callInfo.channelId,
-      targetUserId: callInfo.fromUserId,
-      action: "accept",
-    });
-
-    setActiveServerId(DM_HOME);
-    setActiveChannelId(callInfo.channelId);
-    setDmCall({
-      channelId: callInfo.channelId,
-      otherUser: {
-        id: callInfo.fromUserId,
-        displayName: callInfo.fromDisplayName,
-        avatar: callInfo.fromAvatar,
-        avatarUrl: callInfo.fromAvatarUrl,
-      },
-      status: "connected",
-      startTime: Date.now(),
-      isVideo: callInfo.isVideo,
-    });
-
-    playCallAnswerSound();
-    void voice.join(callInfo.channelId);
-    if (callInfo.isVideo) void voice.startCamera();
-  }, [incomingDmCall, user, hub, voice]);
-
-  const declineIncomingCall = useCallback(() => {
-    if (!incomingDmCall) return;
-    const callInfo = incomingDmCall;
-    stopIncomingCallTone();
-    setIncomingDmCall(null);
-
-    hub.send({
-      t: "dm-call",
-      channelId: callInfo.channelId,
-      targetUserId: callInfo.fromUserId,
-      action: "decline",
-    });
-  }, [incomingDmCall, hub]);
-
-  // Wire up incoming DM call socket handler
-  useEffect(() => {
-    onDmCallRef.current = (payload: {
-      channelId: string;
-      fromUserId: string;
-      fromDisplayName: string;
-      fromAvatar: string;
-      fromAvatarUrl?: string | null;
-      action: "call" | "accept" | "decline" | "cancel";
-      isVideo?: boolean;
-    }) => {
-      if (payload.action === "call") {
-        if (payload.fromUserId === user?.id) return;
-        if (blockedUserIdsRef.current.has(payload.fromUserId)) return;
-        startIncomingCallTone();
-        // If the caller's tab dies without cancelling, stop ringing anyway.
-        if (incomingRingTimeoutRef.current) window.clearTimeout(incomingRingTimeoutRef.current);
-        incomingRingTimeoutRef.current = window.setTimeout(() => {
-          incomingRingTimeoutRef.current = null;
-          stopIncomingCallTone();
-          setIncomingDmCall((current) =>
-            current?.channelId === payload.channelId ? null : current,
-          );
-        }, 45_000);
-        showNotification(
-          `Incoming ${payload.isVideo ? "Video" : "Voice"} Call`,
-          `${payload.fromDisplayName || "Someone"} is calling you...`,
-          `call-${payload.channelId}`,
-        );
-        setIncomingDmCall({
-          channelId: payload.channelId,
-          fromUserId: payload.fromUserId,
-          fromDisplayName: payload.fromDisplayName,
-          fromAvatar: payload.fromAvatar,
-          fromAvatarUrl: payload.fromAvatarUrl,
-          isVideo: payload.isVideo,
-        });
-      } else if (payload.action === "accept") {
-        stopCallingTone();
-        playCallAnswerSound();
-        if (callingTimeoutRef.current) {
-          window.clearTimeout(callingTimeoutRef.current);
-          callingTimeoutRef.current = null;
-        }
-        setDmCall((curr) =>
-          curr ? { ...curr, status: "connected", startTime: Date.now() } : null,
-        );
-      } else if (payload.action === "decline") {
-        stopCallingTone();
-        playCallEndSound();
-        if (callingTimeoutRef.current) {
-          window.clearTimeout(callingTimeoutRef.current);
-          callingTimeoutRef.current = null;
-        }
-        setDmCall(null);
-        voice.leave();
-        setNotice(`${payload.fromDisplayName} declined the call.`);
-      } else if (payload.action === "cancel") {
-        if (incomingRingTimeoutRef.current) window.clearTimeout(incomingRingTimeoutRef.current);
-        stopIncomingCallTone();
-        setIncomingDmCall(null);
-      }
-    };
-  }, [user, voice]);
-
-  // Clean up tones on unmount
-  useEffect(() => {
-    return () => {
-      stopCallingTone();
-      stopIncomingCallTone();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!voice.channelId) dmCallEndingRef.current = false;
-  }, [voice.channelId]);
-
-  // Coming back to a DM call (a reload, a rejoin, answering on another
-  // device's prompt) rebuilds its state from the room, so the call panel and
-  // timer are there whenever you are in the call.
-  useEffect(() => {
-    if (dmCall || dmCallEndingRef.current || !voice.channelId || !user) return;
-    if (!voiceParticipants.some((p) => p.id === user.id)) return;
-    const dm = dms.find((d) => d.channelId === voice.channelId);
-    if (!dm?.user || dm.group) return;
-    setDmCall({
-      channelId: voice.channelId,
-      otherUser: dm.user,
-      status: "connected",
-      startTime: Date.now(),
-      seenOther: voiceParticipants.some((p) => p.id === dm.user.id),
-    });
-  }, [dmCall, voice.channelId, voiceParticipants, dms, user]);
-
-  // Follows the other person in and out of the room.
-  const dmCallLeftTimerRef = useRef<number | null>(null);
   // The message box grows with what you type instead of scrolling a slot.
   useLayoutEffect(() => {
     if (composerRef.current) fitComposer(composerRef.current);
   }, [draft]);
-  useEffect(() => {
-    const clearLeftTimer = () => {
-      if (dmCallLeftTimerRef.current) {
-        window.clearTimeout(dmCallLeftTimerRef.current);
-        dmCallLeftTimerRef.current = null;
-      }
-    };
-    if (!dmCall) {
-      clearLeftTimer();
-      return;
-    }
-    const otherInRoom = voiceParticipants.some((p) => p.id === dmCall.otherUser.id);
 
-    if (otherInRoom) {
-      clearLeftTimer();
-      if (dmCall.status === "calling") {
-        stopCallingTone();
-        playCallAnswerSound();
-      }
-      if (callingTimeoutRef.current) {
-        window.clearTimeout(callingTimeoutRef.current);
-        callingTimeoutRef.current = null;
-      }
-      if (dmCall.status === "calling" || !dmCall.seenOther) {
-        setDmCall((curr) =>
-          curr
-            ? {
-                ...curr,
-                status: "connected",
-                seenOther: true,
-                startTime: curr.status === "calling" ? Date.now() : curr.startTime,
-              }
-            : null,
-        );
-      }
-      return;
-    }
-
-    // They were here and left: stay in the call, so they can come back (or
-    // you hang up yourself). Only an accept that never arrives times out.
-    if (dmCall.status !== "connected" || dmCall.seenOther || dmCallLeftTimerRef.current) return;
-    dmCallLeftTimerRef.current = window.setTimeout(() => {
-      dmCallLeftTimerRef.current = null;
-      const current = dmCallRef.current;
-      if (current && current.channelId === dmCall.channelId && !current.seenOther) endDmCall(false);
-    }, 25000);
-  }, [voiceParticipants, dmCall, endDmCall]);
-
-  /**
-   * What the DM call panel shows for the open conversation: whoever is in its
-   * voice room, plus the person being rung while a call is still dialling.
-   */
-  const dmCallView = useMemo(() => {
-    if (!activeChannelId || !activeDm?.user || activeDm.group) return null;
-    const people = voiceRooms[activeChannelId] || [];
-    const placing = dmCall?.channelId === activeChannelId ? dmCall : null;
-    const ringing =
-      placing?.status === "calling" && !people.some((p) => p.id === placing.otherUser.id)
-        ? placing.otherUser
-        : null;
-    if (!people.length && !placing) return null;
-    // Placing (or having just accepted) the call counts as in it, even in the
-    // moment before our own join lands.
-    const joined = voice.channelId === activeChannelId || Boolean(placing);
-    return { people, ringing, joined };
-  }, [activeChannelId, activeDm, voiceRooms, dmCall, voice.channelId]);
+  const {
+    incomingDmCall,
+    dmCall,
+    setDmCall,
+    callDuration,
+    dmCallView,
+    startDmCall,
+    endDmCall,
+    acceptIncomingCall,
+    declineIncomingCall,
+  } = useDmCalls({
+    user,
+    hub,
+    voice,
+    voiceParticipants,
+    voiceRooms,
+    dms,
+    activeDm,
+    activeChannelId,
+    blockedUserIdsRef,
+    onDmCallRef,
+    setNotice,
+    setActiveServerId,
+    setActiveChannelId,
+  });
 
   // Peer screen sharing sound tracker
   const prevPeerScreenShares = useRef<Set<string>>(new Set());
@@ -5553,37 +5026,8 @@ export function ChatShell() {
     prevPeerScreenShares.current = currentScreenPeers;
   }, [voiceParticipants, voice.channelId, hub.connectionId]);
 
-  const searchTimerRef = useRef<number | null>(null);
-  const searchSeqRef = useRef(0);
-  function runSearch(query: string) {
-    setSearchQuery(query);
-    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
-    const seq = ++searchSeqRef.current;
-    if (query.trim().length < 2 || !activeServerId || inDmHome) {
-      setSearchResults([]);
-      return;
-    }
-    // Wait for a pause in typing, and ignore answers to older queries.
-    searchTimerRef.current = window.setTimeout(() => {
-      void searchNow(query, seq);
-    }, 250);
-  }
-
-  async function searchNow(query: string, seq: number) {
-    if (!activeServerId) return;
-    const data = await apiFetch<{
-      results: Array<{
-        id: string;
-        channelId: string;
-        channelName: string;
-        author: string;
-        snippet: string;
-      }>;
-    }>(
-      `/api/messages/search?serverId=${encodeURIComponent(activeServerId)}&q=${encodeURIComponent(query)}`,
-    ).catch(() => ({ results: [] }));
-    if (seq === searchSeqRef.current) setSearchResults(data.results);
-  }
+  const runSearch = (query: string) =>
+    runMessageSearch(query, inDmHome ? null : activeServerId);
 
   function jumpToMessage(channelId: string, messageId: string) {
     setSearchOpen(false);
@@ -7270,93 +6714,35 @@ export function ChatShell() {
       } as React.CSSProperties}
     >
       <ConnectionBanner connected={hub.connected} />
-      {msnTheme && (
-        <>
-        {soundsOpen && <MsnSoundsDialog onClose={() => setSoundsOpen(false)} />}
-        {hoverCard && (
-          <MsnHoverCard
-            name={hoverCard.member.displayName}
-            username={hoverCard.member.username}
-            avatar={hoverCard.member.avatar}
-            avatarUrl={hoverCard.member.avatarUrl}
-            color={hoverCard.member.color}
-            presence={
-              PRESENCE[
-                (presenceOf(hoverCard.member) === "offline"
-                  ? "invisible"
-                  : presenceOf(hoverCard.member)) as PresenceStatus
-              ]
-            }
-            offline={presenceOf(hoverCard.member) === "offline"}
-            personalMessage={
-              hoverCard.member.id === user?.id ? myCustomStatus : hoverCard.member.customStatus
-            }
-            group={
-              msnContacts.contacts.groups.find(
-                (g) => g.id === msnContacts.contacts.placement[hoverCard.member.id],
-              )?.name
-            }
-            style={{ top: hoverCard.top, left: hoverCard.left }}
-            onEnter={() => hoverTimer.current && window.clearTimeout(hoverTimer.current)}
-            onLeave={() => queueHoverCard(null)}
-            onMessage={
-              hoverCard.member.id === user?.id
-                ? undefined
-                : () => {
-                    const id = hoverCard.member.id;
-                    setHoverCard(null);
-                    void openDm(id);
-                  }
-            }
-            onProfile={() => {
-              const member = hoverCard.member;
-              setHoverCard(null);
-              openProfile(member);
-            }}
-          />
-        )}
-        {pictureOpen && (
-          <MsnPicturePicker
-            onPick={setStockPicture}
-            onBrowse={() => {
-              setPictureOpen(false);
-              setSettingsOpen(true);
-            }}
-            onClose={() => setPictureOpen(false)}
-          />
-        )}
-        {todayOpen && todayData && user && (
-          <MsnToday
-            userName={user.displayName}
-            online={todayData.online}
-            waiting={todayData.waiting}
-            playing={todayData.playing}
-            whatsNew={whatsNew.feed}
-            serverIds={servers.map((server) => server.id)}
-            onOpenPerson={(id) => {
-              setTodayOpen(false);
-              void openDm(id);
-            }}
-            onOpenEvent={(event) => {
-              setTodayOpen(false);
-              setActiveServerId(event.serverId);
-              setStageChannelId(null);
-              setEventsOpen(true);
-            }}
-            onClose={() => setTodayOpen(false)}
-          />
-        )}
-        <MsnSignInToasts
-          online={hub.online}
-          people={members
-            .filter((m) => !msnContacts.contacts.quiet.includes(m.id))
-            .map((m) => ({ ...m, name: m.displayName }))}
-          selfId={user?.id ?? null}
-          connected={hub.connected}
-          onOpen={(id) => void openDm(id)}
-        />
-        </>
-      )}
+      <MsnOverlays
+        msnTheme={msnTheme}
+        soundsOpen={soundsOpen}
+        setSoundsOpen={setSoundsOpen}
+        hoverCard={hoverCard}
+        presenceOf={presenceOf}
+        user={user}
+        myCustomStatus={myCustomStatus}
+        msnContacts={msnContacts}
+        hoverTimer={hoverTimer}
+        queueHoverCard={queueHoverCard}
+        setHoverCard={setHoverCard}
+        openDm={openDm}
+        openProfile={openProfile}
+        pictureOpen={pictureOpen}
+        setStockPicture={setStockPicture}
+        setPictureOpen={setPictureOpen}
+        setSettingsOpen={setSettingsOpen}
+        todayOpen={todayOpen}
+        todayData={todayData}
+        whatsNew={whatsNew}
+        servers={servers}
+        setTodayOpen={setTodayOpen}
+        setActiveServerId={setActiveServerId}
+        setStageChannelId={setStageChannelId}
+        setEventsOpen={setEventsOpen}
+        hub={hub}
+        members={members}
+      />
 
       {/* Tapping outside the drawer on a phone closes it. */}
       <div
@@ -7364,661 +6750,108 @@ export function ChatShell() {
         onClick={() => setMobileNav(false)}
         aria-hidden="true"
       />
-      <aside className="rail" aria-label="Servers">
-        <div className="rail-item">
-          {inDmHome && <span className="rail-active-pill" />}
-          <button
-            className={`brand-mark ${inDmHome ? "active-space" : ""}`}
-            aria-label="Direct messages"
-            title="Direct messages"
-            onClick={() => {
-              setActiveServerId(DM_HOME);
-              setActiveChannelId(visibleDms[0]?.channelId || null);
-              setStageChannelId(null);
-              setMobileNav(false);
-            }}
-          >
-            h
-            {dmUnreadTotal > 0 && !inDmHome && (
-              <span className="rail-badge">{dmUnreadTotal}</span>
-            )}
-          </button>
-        </div>
+      <ServerRail
+        inDmHome={inDmHome}
+        setActiveServerId={setActiveServerId}
+        setActiveChannelId={setActiveChannelId}
+        visibleDms={visibleDms}
+        setStageChannelId={setStageChannelId}
+        setMobileNav={setMobileNav}
+        dmUnreadTotal={dmUnreadTotal}
+        servers={servers}
+        serverFolders={serverFolders}
+        renderRailServer={renderRailServer}
+        renderRailFolder={renderRailFolder}
+        createServer={createServer}
+        activeChannelId={activeChannelId}
+        unread={unread}
+        voiceRooms={voiceRooms}
+        presenceOf={presenceOf}
+        statusOpen={statusOpen}
+        myStatus={myStatus}
+        myCustomStatus={myCustomStatus}
+        savePresence={savePresence}
+        autoIdleRef={autoIdleRef}
+        setStatusOpen={setStatusOpen}
+        msnTheme={msnTheme}
+        shareListening={shareListening}
+        setShareListening={setShareListening}
+        autoReply={autoReply}
+        setAutoReply={setAutoReply}
+        showCustomPrompt={showCustomPrompt}
+        setSoundsOpen={setSoundsOpen}
+        setPictureOpen={setPictureOpen}
+        setTodayOpen={setTodayOpen}
+        setSettingsOpen={setSettingsOpen}
+      />
 
-        <div className="rail-divider" />
-        {railEntries(servers, serverFolders).map((entry) =>
-          entry.kind === "server"
-            ? renderRailServer(entry.server)
-            : renderRailFolder(entry.folder, entry.servers),
-        )}
-        <button
-          className="space-mark add-space"
-          aria-label="Create a server"
-          title="Create a server"
-          onClick={createServer}
-        >
-          +
-        </button>
-
-        <div className="rail-divider" />
-
-        {/* Quick DMs directly on rail from Figma design */}
-        <RailQuickDms
-          dms={visibleDms}
-          inDmHome={inDmHome}
-          activeChannelId={activeChannelId}
-          unread={unread}
-          voiceRooms={voiceRooms}
-          presenceOf={presenceOf}
-          onOpen={(channelId) => {
-            setActiveServerId(DM_HOME);
-            setActiveChannelId(channelId);
-            setStageChannelId(null);
-            setMobileNav(false);
-          }}
-        />
-        <div className="rail-spacer" />
-
-        {statusOpen && (
-          <StatusMenu
-            myStatus={myStatus}
-            myCustomStatus={myCustomStatus}
-            savePresence={savePresence}
-            autoIdleRef={autoIdleRef}
-            setStatusOpen={setStatusOpen}
-            msnTheme={msnTheme}
-            shareListening={shareListening}
-            setShareListening={setShareListening}
-            autoReply={autoReply}
-            setAutoReply={setAutoReply}
-            showCustomPrompt={showCustomPrompt}
-            setSoundsOpen={setSoundsOpen}
-            setPictureOpen={setPictureOpen}
-            setTodayOpen={setTodayOpen}
-            setSettingsOpen={setSettingsOpen}
-          />
-        )}
-        {/* 
-        <Avatar
-          className="profile-dot"
-          avatar={user.avatar}
-          avatarUrl={user.avatarUrl}
-          color={user.color}
-          title={
-            myCustomStatus ||
-            `${PRESENCE[myStatus].label} · click for status, right-click for settings`
-          }
-          onClick={() => setStatusOpen((open) => !open)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            setSettingsOpen(true);
-          }}
-        >
-          <span
-            className="presence-dot"
-            style={{
-              background: hub.connected
-                ? PRESENCE[myStatus].color
-                : PRESENCE.invisible.color,
-            }}
-          />
-        </Avatar> */}
-      </aside>
-
-      <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
-        {/* Mobile close button from Figma */}
-        <div className="mobile-drawer-header md:hidden">
-          <button
-            type="button"
-            className="mobile-drawer-close"
-            onClick={() => setMobileNav(false)}
-            aria-label="Close menu"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        {activeServer?.bannerUrl && !inDmHome && (
-          <div
-            className="server-banner-header"
-            style={{
-              backgroundImage: `url(${activeServer.bannerUrl})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              height: "120px",
-              width: "100%",
-              flexShrink: 0,
-            }}
-          />
-        )}
-        <header className="space-header" style={{ position: "relative" }}>
-          <div>
-            <span className="eyebrow">
-              {inDmHome ? "PRIVATE" : "PRIVATE SPACE"}
-            </span>
-            <h1>{inDmHome ? "Direct messages" : activeServer?.name || "Huddle"}</h1>
-          </div>
-          {!inDmHome && (
-            <Icon label="Server settings" onClick={() => setServerMenuOpen((o) => !o)}>
-              •••
-            </Icon>
-          )}
-
-          {serverMenuOpen && !inDmHome && activeServer && (
-            <div className="server-menu-dropdown" role="menu">
-              {canOpenServerSettings && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServerMenuOpen(false);
-                    setServerSettingsOpen(true);
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Settings size={16} /> Server Settings
-                  </span>
-                </button>
-              )}
-              {canCreateServerInvites && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServerMenuOpen(false);
-                    void apiFetch<{ invite: { code: string } }>("/api/invites", {
-                      method: "POST",
-                      body: JSON.stringify({ serverId: activeServer.id, maxUses: 0 }),
-                    })
-                      .then(async ({ invite }) => {
-                        const link = `${window.location.origin}/hangout?${invite.code}`;
-                        const copied = await navigator.clipboard
-                          ?.writeText(link)
-                          .then(() => true)
-                          .catch(() => false);
-                        if (copied) showToast(`Invite link copied: ${link}`);
-                        else
-                          showCustomPrompt({
-                            title: "Invite created",
-                            message: "Share this link:",
-                            defaultValue: link,
-                            confirmText: "Done",
-                            onConfirm: () => undefined,
-                          });
-                      })
-                      .catch((error) =>
-                        showToast(error instanceof Error ? error.message : "Could not create an invite."),
-                      );
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <UserPlus size={16} /> Create Invite
-                  </span>
-                </button>
-              )}
-              {canManageServer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServerMenuOpen(false);
-                    showCustomPrompt({
-                      title: "Rename Server",
-                      message: "Enter a new name for this server:",
-                      defaultValue: activeServer.name,
-                      confirmText: "Save Name",
-                      onConfirm: async (name) => {
-                        if (!name?.trim()) return;
-                        const data = await apiFetch<{ servers: PublicServer[] }>(
-                          `/api/servers/${activeServer.id}`,
-                          { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
-                        ).catch(() => null);
-                        if (data) setServers(data.servers);
-                      },
-                    });
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Pencil size={16} /> Rename Server
-                  </span>
-                </button>
-              )}
-              {canManageChannels && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setServerMenuOpen(false);
-                    // The same five-kind picker as the sidebar's "+".
-                    setKindMenu({ categoryId: null });
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Plus size={16} /> Create Channel
-                  </span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setServerMenuOpen(false);
-                  markServerRead(activeServer);
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <CheckCheck size={16} /> Mark as Read
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setServerMenuOpen(false);
-                  const key = `server:${activeServer.id}`;
-                  setNotifyLevel(key, channelPrefs[key] ? "all" : "mentions");
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  {channelPrefs[`server:${activeServer.id}`] ? (
-                    <><Bell size={16} /> Unmute Server</>
-                  ) : (
-                    <><BellOff size={16} /> Mute Server</>
-                  )}
-                </span>
-              </button>
-              <div className="server-menu-divider" />
-              {canManageServer && (
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={() => {
-                    setServerMenuOpen(false);
-                    showCustomConfirm({
-                      title: `Delete '${activeServer.name}'?`,
-                      message: "Are you sure? This will permanently delete the server and all channels.",
-                      isDanger: true,
-                      confirmText: "Delete Server",
-                      onConfirm: async () => {
-                        const data = await apiFetch<{ servers: PublicServer[] }>(
-                          `/api/servers/${activeServer.id}`,
-                          { method: "DELETE" },
-                        ).catch(() => null);
-                        if (data) {
-                          setServers(data.servers);
-                          setActiveServerId(data.servers[0]?.id || null);
-                        }
-                      },
-                    });
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Trash2 size={16} /> Delete Server
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
-        </header>
-
-        {inDmHome ? (
-          <nav className="channel-nav" aria-label="Conversations">
-            <div className="px-2 pt-1 pb-2">
-              <button
-                type="button"
-                onClick={() => setGlobalSearchOpen(true)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[var(--muted)] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
-                title="Search all users (⌘K)"
-              >
-                <span className="flex items-center gap-2">
-                  <Search size={14} className="text-[var(--lavender)]" />
-                  <span>Find conversation or user</span>
-                </span>
-                <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
-                  ⌘K
-                </kbd>
-              </button>
-            </div>
-
-            <div className="px-2 pb-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveChannelId(null);
-                  setStageChannelId(null);
-                  setMobileNav(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${!activeChannelId && !stageChannelId
-                  ? "bg-white/[0.12] text-white"
-                  : "text-[var(--muted)] hover:bg-white/[0.05] hover:text-white"
-                  }`}
-              >
-                <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[var(--lavender)]" : "text-[#7c7599]"} />
-                <span className="flex-1 text-left">Friends</span>
-                {pendingFriendCount > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[11px] leading-tight">
-                    {pendingFriendCount}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="section-label flex items-center justify-between">
-              <span>DIRECT MESSAGES</span>
-              {user && (
-                <span className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="hover:text-white transition-colors"
-                  title="Create DM or group"
-                  aria-label="Create DM or group"
-                  onClick={() => setGroupDialog({ mode: "create" })}
-                >
-                  <Plus size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="hover:text-white transition-colors"
-                  title="Note to Self"
-                  onClick={() => void openDm(user.id)}
-                >
-                  <StickyNote size={14} />
-                </button>
-                </span>
-              )}
-            </div>
-            {visibleDms.map((dm) => {
-              const isSelf = Boolean(user && dm.user.id === user.id);
-              return (
-                <div key={dm.channelId} className={`dm-row ${dm.pinned ? "is-pinned" : ""}`}>
-                <button
-                  className={`channel dm-channel ${activeChannelId === dm.channelId ? "selected" : ""} ${unread[dm.channelId]?.unread ? "has-unread" : ""
-                    }`}
-                  onClick={() => {
-                    setActiveChannelId(dm.channelId);
-                    setStageChannelId(null);
-                    setMobileNav(false);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    if (dm.group) {
-                      setUserMenu(null);
-                      setGroupDmMenu({ dm, x: event.clientX, y: event.clientY });
-                      return;
-                    }
-                    openUserMenu(event, dm.user, {
-                      dmChannelId: dm.channelId,
-                      dmPinned: dm.pinned,
-                    });
-                  }}
-                >
-                  {unread[dm.channelId]?.unread && <span className="unread-pill" />}
-                  <Avatar
-                    className="tiny-avatar"
-                    avatar={dm.user.avatar}
-                    avatarUrl={dm.user.avatarUrl}
-                    color={dm.user.color}
-                  />
-                  {dm.group ? (
-                    <span className="dm-group-label">
-                      <span className="truncate"><StyledText text={dm.user.displayName} /></span>
-                      <small>
-                        {dm.group.members.length}{" "}
-                        {dm.group.members.length === 1 ? "Member" : "Members"}
-                      </small>
-                    </span>
-                  ) : (
-                  <span className="flex items-center gap-1.5 truncate">
-                    <StyledText text={dm.user.displayName} />
-                    {isSelf && " (Notes)"}
-                  </span>
-                  )}
-                  {dm.pinned && (
-                    <Pin size={11} className="dm-pinned-indicator text-[var(--lavender)] fill-[var(--lavender)] rotate-45 ml-auto flex-shrink-0" />
-                  )}
-                  {dm.group ? null : isSelf ? (
-                    <StickyNote size={12} className="text-amber-400/80 ml-auto flex-shrink-0" />
-                  ) : (
-                    hub.online.has(dm.user.id) && <i className="dm-online" />
-                  )}
-                  {voiceRooms[dm.channelId]?.length > 0 && (
-                    <PhoneCall size={12} className="text-green-400 ml-auto animate-pulse" />
-                  )}
-                  {(unread[dm.channelId]?.count ?? 0) > 0 && (
-                    <span className="mention-badge">
-                      {unread[dm.channelId].count}
-                    </span>
-                  )}
-                </button>
-                <div className="dm-row-actions">
-                  <button
-                    type="button"
-                    className={`dm-action-btn dm-pin-btn ${dm.pinned ? "is-pinned" : ""}`}
-                    aria-label={dm.pinned ? `Unpin conversation with ${dm.user.displayName}` : `Pin conversation with ${dm.user.displayName}`}
-                    title={dm.pinned ? "Unpin conversation" : "Pin conversation"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void togglePinDm(dm.channelId, !dm.pinned);
-                    }}
-                  >
-                    <Pin size={12} className={dm.pinned ? "fill-current" : ""} />
-                  </button>
-                  <button
-                    type="button"
-                    className="dm-action-btn dm-close"
-                    aria-label={`Close conversation with ${dm.user.displayName}`}
-                    title="Close (messages are kept, reopen with Cmd+K)"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void setDmClosed(dm.channelId, true);
-                    }}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-                </div>
-              );
-            })}
-            {!visibleDms.length && (
-              <p className="sidebar-empty">
-                Right-click someone or click the note icon above to start a conversation.
-              </p>
-            )}
-          </nav>
-        ) : (
-          <nav className="channel-nav" aria-label="Channels">
-            <div className="section-label">
-              <span>Channels</span>
-              {canManageChannels && (
-                <span className="section-actions">
-                  <button
-                    aria-label="Add category"
-                    title="Add category"
-                    onClick={() => void addCategory()}
-                  >
-                    <ChevronDown size={14} /><Plus size={14} />
-                  </button>
-                  {/* One picker for all five kinds. Separate text/voice buttons
-                      made the other three undiscoverable. */}
-                  <span className="channel-kind-picker">
-                    <button
-                      aria-label="Create channel"
-                      title="Create channel"
-                      aria-haspopup="menu"
-                      aria-expanded={kindMenu?.categoryId === null}
-                      onClick={() =>
-                        setKindMenu(kindMenu?.categoryId === null ? null : { categoryId: null })
-                      }
-                    >
-                      <Plus size={14} />
-                    </button>
-                    {kindMenu?.categoryId === null && renderKindMenu(null)}
-                  </span>
-                </span>
-              )}
-            </div>
-
-            <button
-              type="button"
-              className={`events-chip ${nextEvent && eventIsOpen(nextEvent) ? "is-open" : ""}`}
-              onClick={() => setEventsOpen(true)}
-              title={nextEvent ? `${nextEvent.title} · ${eventWhen(nextEvent)}` : "Plan an event"}
-            >
-              <CalendarDays size={15} />
-              {nextEvent ? (
-                <span className="events-chip-text">
-                  <strong>{nextEvent.title}</strong>
-                  <small>{eventWhen(nextEvent)}</small>
-                </span>
-              ) : (
-                <span className="events-chip-text">
-                  <strong>Events</strong>
-                </span>
-              )}
-              {serverEvents.length > 1 && <span className="events-chip-count">{serverEvents.length}</span>}
-            </button>
-
-            {/* Uncategorised channels sit above every category, Discord-style. */}
-            <div className="category-body" {...categoryDropProps(null)}>
-              {channelLayout.uncategorised.map((channel) => renderChannel(channel))}
-            </div>
-
-            {channelLayout.grouped.map(({ category, channels }) => {
-              const collapsed = collapsedCats.has(category.id);
-              return (
-                <div className="category" key={category.id}>
-                  <div
-                    className="category-head"
-                    {...categoryDropProps(category.id)}
-                  >
-                    <button
-                      className="category-toggle"
-                      onClick={() => toggleCategory(category.id)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        if (canManageChannels)
-                          void renameCategory(category.id, category.name);
-                      }}
-                    >
-                      <ChevronDown
-                        size={14}
-                        className={`cat-caret transition-transform ${collapsed ? "-rotate-90" : ""}`}
-                      />
-                      <span>{category.name}</span>
-                    </button>
-                    {canManageChannels && (
-                      <span className="category-actions">
-                        <span className="channel-kind-picker">
-                          <button
-                            aria-label={`Add channel to ${category.name}`}
-                            title="Add channel here"
-                            aria-haspopup="menu"
-                            aria-expanded={kindMenu?.categoryId === category.id}
-                            onClick={() =>
-                              setKindMenu(
-                                kindMenu?.categoryId === category.id
-                                  ? null
-                                  : { categoryId: category.id },
-                              )
-                            }
-                          >
-                            +
-                          </button>
-                          {kindMenu?.categoryId === category.id && renderKindMenu(category.id)}
-                        </span>
-                        <button
-                          aria-label={`Delete ${category.name}`}
-                          title="Delete category"
-                          onClick={() => void deleteCategory(category.id, category.name)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                  {!collapsed && (
-                    <div className="category-body" {...categoryDropProps(category.id)}>
-                      {channels.map((channel) => renderChannel(channel))}
-                      {!channels.length && (
-                        <p className="category-empty">Drag channels here</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-          </nav>
-        )}
-
-        {/* Synchronized Music Bar - sits on top of mini-voice-bar */}
-        {roomPlayer?.track && (
-          <MiniMusicBar
-            state={roomPlayer}
-            position={player.position}
-            controllable
-            onToggle={() =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "toggle" },
-              })
-            }
-            onSeek={(positionMs) =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "seek", positionMs },
-              })
-            }
-            onSkip={() =>
-              hub.send({
-                t: "player",
-                channelId: voice.channelId!,
-                action: { name: "skip" },
-              })
-            }
-          />
-        )}
-
-        {/* Mini voice bar - seamless top extension of discord-user-footer */}
-        {voice.channelId && (
-          <MiniVoiceBar
-            voice={voice}
-            roomName={
-              servers.flatMap((s) => s.channels).find((c) => c.id === voice.channelId)?.name ||
-              (dmCall && dmCall.channelId === voice.channelId
-                ? dmCall.otherUser.displayName
-                : "Voice Connected")
-            }
-            soundboardServerId={
-              servers.find((s) => s.channels.some((c) => c.id === voice.channelId))?.id || null
-            }
-            quickSoundboardOpen={quickSoundboardOpen}
-            setQuickSoundboardOpen={setQuickSoundboardOpen}
-            sidebarShareSetupOpen={sidebarShareSetupOpen}
-            setSidebarShareSetupOpen={setSidebarShareSetupOpen}
-            setStageChannelId={setStageChannelId}
-            soundboardAllowed={voiceSoundboardAllowed}
-          />
-        )}
-
-        {user && (
-          <UserFooter
-            user={user}
-            status={myStatus}
-            customStatus={myCustomStatus || undefined}
-            muted={voice.muted}
-            deafened={voice.deafened}
-            onToggleMute={voice.toggleMute}
-            onToggleDeafen={voice.toggleDeafen}
-            onOpenStatusMenu={() => setStatusOpen((o) => !o)}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenProfileSettings={() => setSettingsOpen(true)}
-            onMicrophoneChange={() => void voice.switchMicrophone()}
-          />
-        )}
-
-        {/* Sidebar Resize Handle (Desktop) */}
-        <div
-          className="sidebar-resize-handle"
-          onMouseDown={onSidebarResizeDown}
-          title="Drag to resize channels"
-        />
-      </aside>
+      <ChannelSidebar
+        mobileNav={mobileNav}
+        setMobileNav={setMobileNav}
+        activeServer={activeServer}
+        inDmHome={inDmHome}
+        setServerMenuOpen={setServerMenuOpen}
+        serverMenuOpen={serverMenuOpen}
+        canOpenServerSettings={canOpenServerSettings}
+        setServerSettingsOpen={setServerSettingsOpen}
+        canCreateServerInvites={canCreateServerInvites}
+        showCustomPrompt={showCustomPrompt}
+        canManageServer={canManageServer}
+        setServers={setServers}
+        canManageChannels={canManageChannels}
+        setKindMenu={setKindMenu}
+        markServerRead={markServerRead}
+        setNotifyLevel={setNotifyLevel}
+        channelPrefs={channelPrefs}
+        showCustomConfirm={showCustomConfirm}
+        setActiveServerId={setActiveServerId}
+        setGlobalSearchOpen={setGlobalSearchOpen}
+        setActiveChannelId={setActiveChannelId}
+        setStageChannelId={setStageChannelId}
+        activeChannelId={activeChannelId}
+        stageChannelId={stageChannelId}
+        pendingFriendCount={pendingFriendCount}
+        user={user}
+        setGroupDialog={setGroupDialog}
+        openDm={openDm}
+        visibleDms={visibleDms}
+        unread={unread}
+        setUserMenu={setUserMenu}
+        setGroupDmMenu={setGroupDmMenu}
+        openUserMenu={openUserMenu}
+        hub={hub}
+        voiceRooms={voiceRooms}
+        togglePinDm={togglePinDm}
+        setDmClosed={setDmClosed}
+        addCategory={addCategory}
+        kindMenu={kindMenu}
+        renderKindMenu={renderKindMenu}
+        nextEvent={nextEvent}
+        setEventsOpen={setEventsOpen}
+        serverEvents={serverEvents}
+        categoryDropProps={categoryDropProps}
+        channelLayout={channelLayout}
+        renderChannel={renderChannel}
+        collapsedCats={collapsedCats}
+        toggleCategory={toggleCategory}
+        renameCategory={renameCategory}
+        deleteCategory={deleteCategory}
+        roomPlayer={roomPlayer}
+        player={player}
+        voice={voice}
+        servers={servers}
+        dmCall={dmCall}
+        quickSoundboardOpen={quickSoundboardOpen}
+        setQuickSoundboardOpen={setQuickSoundboardOpen}
+        sidebarShareSetupOpen={sidebarShareSetupOpen}
+        setSidebarShareSetupOpen={setSidebarShareSetupOpen}
+        voiceSoundboardAllowed={voiceSoundboardAllowed}
+        myStatus={myStatus}
+        myCustomStatus={myCustomStatus}
+        setStatusOpen={setStatusOpen}
+        setSettingsOpen={setSettingsOpen}
+        onSidebarResizeDown={onSidebarResizeDown}
+      />
 
       <section
         className={`chat-panel ${dragging ? "drop-target" : ""}`}
@@ -8055,323 +6888,52 @@ export function ChatShell() {
           />
         ) : (
           <>
-            <header className="chat-header">
-              <button
-                className="mobile-menu"
-                aria-label="Open channels"
-                onClick={() => setMobileNav((open) => !open)}
-              >
-                <Menu size={20} />
-              </button>
-              <span className="big-hash">
-                {stageChannel ? (
-                  channelKindIcon(stageChannel.kind, 20)
-                ) : inDmHome ? (
-                  isSelfDm ? (
-                    <StickyNote size={20} />
-                  ) : (
-                    <AtSign size={20} />
-                  )
-                ) : (
-                  channelKindIcon(activeChannel?.kind ?? "text", 20)
-                )}
-              </span>
-              <div className="channel-heading min-w-0 flex items-center gap-2">
-                <strong className="truncate">{stageChannel ? stageChannel.name : channelTitle}</strong>
-                {stageChannel && activeScreenShare && (
-                  <>
-                    <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
-                    <div className="voice-stage-stream-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--line)] text-xs text-[var(--ink)] font-semibold truncate">
-                      <Monitor size={13} className="text-[var(--lavender)] flex-shrink-0" />
-                      <span className="truncate">{activeScreenShare.streamerName}'s Screen</span>
-                    </div>
-                  </>
-                )}
-                <span className="text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
-                  {stageChannel
-                    ? `· ${voiceParticipants.length === 1 ? "1 in call" : `${voiceParticipants.length} in call`}`
-                    : inDmHome
-                      ? activeDm
-                        ? isSelfDm
-                          ? "Your personal space for notes, drafts, and to-dos"
-                          : activeDm.group
-                            ? `${activeDm.group.members.length} ${activeDm.group.members.length === 1 ? "member" : "members"}`
-                            : `Just you and ${activeDm.user.displayName}`
-                        : "Pick a conversation"
-                      : activeChannel?.topic ||
-                      (activeChannel
-                        ? `Everything happening in ${activeChannel.name}`
-                        : "Create a channel to start talking")}
-                </span>
-              </div>
-              <div className="header-actions items-center">
-                {stageChannel && (
-                  <div className="voice-stage-header-controls flex items-center gap-2 mr-1 flex-shrink-0">
-                    {activeScreenShare && (
-                      <>
-                        <div className="voice-stream-quality-pill flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--panel)] border border-[var(--line)] shadow-sm">
-                          <button
-                            type="button"
-                            className="voice-quality-btn text-[11px] font-bold text-[var(--ink)] hover:text-[var(--lavender)] transition-colors cursor-pointer"
-                            title="Click to cycle screen resolution & FPS"
-                            onClick={() => {
-                              const nextQ = nextScreenQuality(voice.screenQuality);
-                              voice.setScreenQuality(nextQ);
-                            }}
-                          >
-                            {screenQualityLabel(voice.screenQuality)}
-                          </button>
-                          <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">
-                            LIVE
-                          </span>
-                        </div>
-
-                        {/* Streamer Audio Mute Toggle (if you are sharing screen) */}
-                        {(activeScreenShare.self || voice.screenSharing) && (
-                          <button
-                            type="button"
-                            className={`voice-stage-topbar-btn ${voice.screenAudioMuted ? "text-amber-400 bg-amber-500/10" : ""}`}
-                            onClick={voice.toggleScreenAudio}
-                            title={voice.screenAudioMuted ? "Stream audio muted (click to unmute)" : "Mute stream audio"}
-                          >
-                            {voice.screenAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-                          </button>
-                        )}
-
-                        {/* Watcher Stream Audio Volume Slider (if watching someone else) */}
-                        {!(activeScreenShare.self || voice.screenSharing) && (
-                          (() => {
-                            const sId = activeScreenShare.streamId || "";
-                            const pId = activeScreenShare.participantId;
-                            const pref = streamPreferenceFor(sId, pId);
-                            return (
-                              <div className="voice-stream-volume-pill flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--panel)] border border-[var(--line)] shadow-sm">
-                                <button
-                                  type="button"
-                                  className="hover:text-[var(--lavender)] transition-colors cursor-pointer p-0.5"
-                                  onClick={() => toggleStreamMute(sId, pId)}
-                                  title={pref.muted ? "Unmute stream audio" : `Stream audio: ${pref.volume}% (Click to mute)`}
-                                >
-                                  {pref.muted || pref.volume === 0 ? (
-                                    <VolumeX size={14} className="text-rose-400" />
-                                  ) : pref.volume < 50 ? (
-                                    <Volume1 size={14} />
-                                  ) : (
-                                    <Volume2 size={14} />
-                                  )}
-                                </button>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={200}
-                                  step={1}
-                                  value={pref.muted ? 0 : pref.volume}
-                                  onChange={(e) => setStreamVolume(sId, pId, Number(e.target.value))}
-                                  className="w-16 accent-[var(--lavender)] h-1 cursor-pointer"
-                                  title={`Stream volume: ${pref.muted ? "Muted" : `${pref.volume}%`}`}
-                                />
-                                <span className="text-[11px] font-mono text-[var(--ink)] w-7 text-right select-none">
-                                  {pref.muted ? "0%" : `${pref.volume}%`}
-                                </span>
-                              </div>
-                            );
-                          })()
-                        )}
-
-                        <button
-                          type="button"
-                          className="voice-stage-topbar-btn"
-                          onClick={() => {
-                            setStageChannelId(null);
-                            setPipDismissed(false);
-                          }}
-                          title="Pop out to floating movable preview"
-                        >
-                          <ExternalLink size={15} />
-                        </button>
-                      </>
-                    )}
-
-                    <div className="voice-view-switcher">
-                      {(["grid", "table", "map"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          className={`voice-view-pill ${voiceViewMode === mode ? "active" : ""}`}
-                          onClick={() => {
-                            setVoiceViewMode(mode);
-                            if (mode === "map" && !battlemap) {
-                              void openBattlemap();
-                            } else if (mode !== "map" && battlemap) {
-                              closeBattlemap();
-                            }
-                          }}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="w-[1px] h-5 bg-[var(--line)] mx-1 opacity-60 flex-shrink-0" />
-                  </div>
-                )}
-                {inDmHome && activeDm?.group && (
-                  <div className="dm-call-actions">
-                    <button
-                      type="button"
-                      className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
-                      onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
-                      title={activeDm.pinned ? "Unpin group from top" : "Pin group to top"}
-                    >
-                      <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
-                      <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="dm-call-btn flex items-center gap-1.5"
-                      onClick={() => setGroupDialog({ mode: "add", channelId: activeDm.channelId })}
-                      title="Add friends to this group"
-                    >
-                      <UserPlus size={15} /> Add
-                    </button>
-                    <button
-                      type="button"
-                      className="dm-call-btn flex items-center gap-1.5"
-                      onClick={() => renameGroupDm(activeDm)}
-                      title="Rename group"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className="dm-call-btn flex items-center gap-1.5"
-                      onClick={() => leaveGroupDm(activeDm)}
-                      title="Leave group"
-                    >
-                      <LogOut size={15} />
-                    </button>
-                  </div>
-                )}
-                {inDmHome && activeChannelId && activeDm && !activeDm.group && (
-                  <div className="dm-call-actions">
-                    <button
-                      type="button"
-                      className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
-                      onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
-                      title={activeDm.pinned ? "Unpin conversation from top" : "Pin conversation to top"}
-                    >
-                      <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
-                      <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
-                    </button>
-                    {!isSelfDm && (
-                      dmCall && dmCall.channelId === activeChannelId ? (
-                        <button
-                          type="button"
-                          className="dm-call-btn flex items-center gap-1.5"
-                          onClick={() => setStageChannelId(activeChannelId)}
-                          title="Open Full Call View"
-                        >
-                          <Maximize2 size={15} /> Call View
-                        </button>
-                      ) : voiceRooms[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
-                        <button
-                          type="button"
-                          className="dm-join-call-btn flex items-center gap-1.5"
-                          onClick={() => {
-                            void voice.join(activeChannelId);
-                            if (activeDm) {
-                              setDmCall({
-                                channelId: activeChannelId,
-                                otherUser: activeDm.user,
-                                status: "connected",
-                                startTime: Date.now(),
-                              });
-                            }
-                          }}
-                          title="Join Ongoing Call"
-                        >
-                          <PhoneCall size={15} /> Join Call
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="dm-call-btn flex items-center gap-1.5"
-                            onClick={() => startDmCall(false)}
-                            title="Start Voice Call"
-                          >
-                            <PhoneCall size={15} /> Start Call
-                          </button>
-                          <button
-                            type="button"
-                            className="dm-call-btn flex items-center gap-1.5"
-                            onClick={() => startDmCall(true)}
-                            title="Start Video Call"
-                          >
-                            <Video size={15} /> Video Call
-                          </button>
-                        </>
-                      )
-                    )}
-                  </div>
-                )}
-                {!inDmHome && (
-                  <Icon
-                    label="Find users"
-                    onClick={() => setGlobalSearchOpen(true)}
-                  >
-                    <UserPlus size={18} />
-                  </Icon>
-                )}
-                {!inDmHome && (
-                  <Icon
-                    label="Search messages"
-                    active={searchOpen}
-                    onClick={() => setSearchOpen((open) => !open)}
-                  >
-                    <Search size={18} />
-                  </Icon>
-                )}
-                <Icon
-                  label="Mentions"
-                  active={mentionsOpen}
-                  badge={unreadMentionTotal}
-                  onClick={() => setMentionsOpen((open) => !open)}
-                >
-                  <AtSign size={18} />
-                </Icon>
-                <Icon
-                  label="Pinned messages"
-                  active={pinsOpen}
-                  onClick={() => setPinsOpen((open) => !open)}
-                >
-                  <Pin size={18} />
-                </Icon>
-                <Icon
-                  label="Saved messages"
-                  active={savedOpen}
-                  onClick={() => {
-                    setSavedOpen((open) => !open);
-                    void loadSaved();
-                  }}
-                >
-                  <Bookmark size={18} />
-                </Icon>
-                {/* Settings already lives in the user footer; MSN shows it as "Options". */}
-                {msnTheme && (
-                  <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
-                    <Settings size={18} />
-                  </Icon>
-                )}
-                <Icon
-                  label="Toggle member list"
-                  active={membersOpen}
-                  onClick={() => setMembersOpen((open) => !open)}
-                >
-                  <Users size={18} />
-                </Icon>
-              </div>
-            </header>
+            <ChatHeader
+        setMobileNav={setMobileNav}
+        stageChannel={stageChannel}
+        inDmHome={inDmHome}
+        isSelfDm={isSelfDm}
+        activeChannel={activeChannel}
+        channelTitle={channelTitle}
+        activeScreenShare={activeScreenShare}
+        voiceParticipants={voiceParticipants}
+        activeDm={activeDm}
+        voice={voice}
+        streamPreferenceFor={streamPreferenceFor}
+        toggleStreamMute={toggleStreamMute}
+        setStreamVolume={setStreamVolume}
+        setStageChannelId={setStageChannelId}
+        setPipDismissed={setPipDismissed}
+        voiceViewMode={voiceViewMode}
+        setVoiceViewMode={setVoiceViewMode}
+        battlemap={battlemap}
+        openBattlemap={openBattlemap}
+        closeBattlemap={closeBattlemap}
+        togglePinDm={togglePinDm}
+        setGroupDialog={setGroupDialog}
+        renameGroupDm={renameGroupDm}
+        leaveGroupDm={leaveGroupDm}
+        activeChannelId={activeChannelId}
+        dmCall={dmCall}
+        voiceRooms={voiceRooms}
+        setDmCall={setDmCall}
+        startDmCall={startDmCall}
+        setGlobalSearchOpen={setGlobalSearchOpen}
+        searchOpen={searchOpen}
+        setSearchOpen={setSearchOpen}
+        mentionsOpen={mentionsOpen}
+        unreadMentionTotal={unreadMentionTotal}
+        setMentionsOpen={setMentionsOpen}
+        pinsOpen={pinsOpen}
+        setPinsOpen={setPinsOpen}
+        savedOpen={savedOpen}
+        setSavedOpen={setSavedOpen}
+        loadSaved={loadSaved}
+        msnTheme={msnTheme}
+        setSettingsOpen={setSettingsOpen}
+        membersOpen={membersOpen}
+        setMembersOpen={setMembersOpen}
+      />
 
             {stageChannel ? (
               <VoiceStage
@@ -8484,422 +7046,62 @@ export function ChatShell() {
               />
             ) : (
               <>
-                {searchOpen && (
-                  <div className="search-panel">
-                    <div className="search-head">
-                      <input
-                        autoFocus
-                        value={searchQuery}
-                        placeholder={`Search #${channelTitle}'s server…`}
-                        onChange={(event) => void runSearch(event.target.value)}
-                        aria-label="Search messages"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchOpen(false);
-                          setSearchQuery("");
-                          setSearchResults([]);
-                        }}
-                        aria-label="Close search"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="search-filter-pills">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const q = searchQuery.includes("from:") ? searchQuery : `from: ${searchQuery}`.trim();
-                          setSearchQuery(q);
-                        }}
-                      >
-                        from:
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const q = searchQuery.includes("in:") ? searchQuery : `in: ${searchQuery}`.trim();
-                          setSearchQuery(q);
-                        }}
-                      >
-                        in:
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const q = searchQuery.includes("has:link") ? searchQuery : `${searchQuery} has:link`.trim();
-                          setSearchQuery(q);
-                          void runSearch(q);
-                        }}
-                      >
-                        has:link
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const q = searchQuery.includes("has:file") ? searchQuery : `${searchQuery} has:file`.trim();
-                          setSearchQuery(q);
-                          void runSearch(q);
-                        }}
-                      >
-                        has:file
-                      </button>
-                    </div>
-                    <div className="search-results">
-                      {searchResults.map((result) => (
-                        <button
-                          type="button"
-                          key={result.id}
-                          className="search-result"
-                          onClick={() => jumpToMessage(result.channelId, result.id)}
-                        >
-                          <span className="search-result-meta">
-                            <span className="channel-hash">#</span>
-                            {result.channelName} · <strong>{result.author}</strong>
-                          </span>
-                          <span className="search-result-snippet">{result.snippet}</span>
-                        </button>
-                      ))}
-                      {searchQuery.length >= 2 && !searchResults.length && (
-                        <p className="pins-empty">Nothing matched that.</p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <SearchPanel
+        searchOpen={searchOpen}
+        searchQuery={searchQuery}
+        channelTitle={channelTitle}
+        runSearch={runSearch}
+        setSearchOpen={setSearchOpen}
+        setSearchQuery={setSearchQuery}
+        setSearchResults={setSearchResults}
+        searchResults={searchResults}
+        jumpToMessage={jumpToMessage}
+      />
 
-                {savedOpen && (
-                  <div className="pins-panel saved-panel">
-                    <div className="pins-head">
-                      <strong>Saved messages</strong>
-                      <button
-                        type="button"
-                        className="popup-close-x"
-                        onClick={() => setSavedOpen(false)}
-                        aria-label="Close saved messages"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                    {!savedList ? (
-                      <p className="pins-empty">Loading…</p>
-                    ) : !savedList.length ? (
-                      <p className="pins-empty">
-                        Nothing saved yet. Hover a message and press the bookmark to keep it here.
-                      </p>
-                    ) : (
-                      savedList.map((entry) => (
-                        <div key={entry.messageId} className="search-result mention-entry saved-entry">
-                          <button
-                            type="button"
-                            className="saved-open"
-                            onClick={() => {
-                              setSavedOpen(false);
-                              setActiveServerId(entry.serverId || DM_HOME);
-                              jumpToMessage(entry.channelId, entry.messageId);
-                            }}
-                          >
-                            <span className="search-result-meta">
-                              {entry.serverName && entry.channelName ? (
-                                <>
-                                  {entry.serverName} · <span className="channel-hash">#</span>
-                                  {entry.channelName}
-                                </>
-                              ) : (
-                                "Direct message"
-                              )}
-                              {" · "}
-                              {formatClientDateTime(entry.createdAt)}
-                            </span>
-                            <span className="search-result-meta">
-                              <strong>{entry.author}</strong>
-                            </span>
-                            <span className="search-result-snippet">{entry.text}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="saved-remove"
-                            onClick={() => void toggleSaved(entry.messageId)}
-                            aria-label="Remove from saved"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-                {mentionsOpen && (
-                  <div className="pins-panel mentions-panel">
-                    <div className="pins-head">
-                      <strong>Mentions</strong>
-                      <button
-                        type="button"
-                        className="popup-close-x"
-                        onClick={() => setMentionsOpen(false)}
-                        aria-label="Close mentions"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                    <div className="mentions-tabs" role="tablist">
-                      {(["all", "unread"] as const).map((tab) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          role="tab"
-                          aria-selected={mentionsTab === tab}
-                          className={mentionsTab === tab ? "active" : ""}
-                          onClick={() => setMentionsTab(tab)}
-                        >
-                          {tab === "all" ? "All" : `Unread${unreadMentionTotal ? ` (${unreadMentionTotal})` : ""}`}
-                        </button>
-                      ))}
-                    </div>
-                    {(() => {
-                      if (!mentionInbox) return <p className="pins-empty">Loading…</p>;
-                      const shown =
-                        mentionsTab === "unread"
-                          ? mentionInbox.filter((entry) => !entry.read)
-                          : mentionInbox;
-                      if (!shown.length) {
-                        return (
-                          <p className="pins-empty">
-                            {mentionsTab === "unread"
-                              ? "You're all caught up."
-                              : "Nobody has mentioned you yet."}
-                          </p>
-                        );
-                      }
-                      return shown.map((entry) => (
-                        <button
-                          type="button"
-                          key={entry.message.id}
-                          className={`search-result mention-entry ${entry.read ? "" : "is-unread"}`}
-                          onClick={() => openMention(entry)}
-                        >
-                          <span className="search-result-meta">
-                            {entry.serverName ? (
-                              <>
-                                {entry.serverName} · <span className="channel-hash">#</span>
-                                {entry.channelName}
-                              </>
-                            ) : (
-                              "Direct message"
-                            )}
-                            {" · "}
-                            {formatClientDateTime(entry.message.createdAt)}
-                          </span>
-                          <span className="search-result-meta">
-                            <strong>{entry.message.author}</strong>
-                          </span>
-                          <span className="search-result-snippet">{entry.message.text}</span>
-                        </button>
-                      ));
-                    })()}
-                  </div>
-                )}
+                <SavedPanel
+        savedOpen={savedOpen}
+        setSavedOpen={setSavedOpen}
+        savedList={savedList}
+        setActiveServerId={setActiveServerId}
+        jumpToMessage={jumpToMessage}
+        toggleSaved={toggleSaved}
+      />
+                <MentionsPanel
+        mentionsOpen={mentionsOpen}
+        setMentionsOpen={setMentionsOpen}
+        mentionsTab={mentionsTab}
+        setMentionsTab={setMentionsTab}
+        unreadMentionTotal={unreadMentionTotal}
+        mentionInbox={mentionInbox}
+        openMention={openMention}
+      />
 
-                {pinsOpen && (
-                  <div className="pins-panel">
-                    <div className="pins-head">
-                      <strong>Pinned in {channelTitle}</strong>
-                      <button
-                        type="button"
-                        className="popup-close-x"
-                        onClick={() => setPinsOpen(false)}
-                        aria-label="Close pinned messages"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                    {pins.length ? (
-                      pins.map((pin) => (
-                        <div
-                          className="pin-item cursor-pointer hover:bg-white/5 p-2.5 rounded-lg transition-colors border border-transparent hover:border-white/10 my-1"
-                          key={pin.id}
-                          onClick={() => {
-                            // Works for pins older than what is loaded, too.
-                            if (activeChannelId) jumpToMessage(activeChannelId, String(pin.id));
-                          }}
-                          title="Click to jump to message"
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <strong className="text-xs text-white">{pin.author}</strong>
-                            {canPin && (
-                            <button
-                                type="button"
-                                className="text-xs text-red-400 hover:text-red-300 font-medium px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void togglePin(pin);
-                                }}
-                              >
-                                Unpin
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-300 line-clamp-3">{pin.text}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="pins-empty">
-                        Nothing pinned yet. Hover a message and press the pin.
-                      </p>
-                    )}
-                  </div>
-                )}
+                <PinsPanel
+        pinsOpen={pinsOpen}
+        channelTitle={channelTitle}
+        setPinsOpen={setPinsOpen}
+        pins={pins}
+        activeChannelId={activeChannelId}
+        jumpToMessage={jumpToMessage}
+        canPin={canPin}
+        togglePin={togglePin}
+      />
 
-                {inDmHome && activeChannelId && dmCallView && (
-                  <section
-                    className={`dm-call-stage ${dmCallView.ringing ? "is-calling" : "is-connected"}`}
-                    aria-label="Direct Message Call"
-                  >
-                    <span className="dm-call-status">
-                      {dmCallView.ringing
-                        ? `Calling ${dmCallView.ringing.displayName}…`
-                        : dmCallView.joined && dmCall?.channelId === activeChannelId
-                          ? `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, "0")}`
-                          : `${dmCallView.people.length} in the call`}
-                    </span>
-
-                    {/* Everyone in the call, large and centred; a ring lights up
-                        whoever is speaking. Built from the room itself, so it is
-                        here whenever the call is, not only for whoever placed it. */}
-                    <div className="dm-call-people">
-                      {dmCallView.people.map((person) => {
-                        const isSelf = person.id === user.id;
-                        const speaking = voice.speaking.has(
-                          isSelf ? "self" : person.connectionId,
-                        );
-                        const muted = isSelf ? voice.muted : person.muted;
-                        return (
-                          <div
-                            key={person.connectionId}
-                            className={`dm-call-person ${speaking ? "is-speaking" : ""} ${muted ? "is-muted" : ""}`}
-                            title={person.displayName}
-                          >
-                            <Avatar
-                              name={person.displayName}
-                              avatar={person.avatar}
-                              avatarUrl={person.avatarUrl}
-                              color={person.color || "var(--lavender)"}
-                              size={96}
-                            />
-                            <span className="dm-call-person-name">{isSelf ? user.displayName : person.displayName}</span>
-                            {muted && (
-                              <span className="dm-call-person-badge" aria-label="Muted">
-                                <MicOff size={13} />
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {dmCallView.ringing && (
-                        <div className="dm-call-person is-ringing" title={dmCallView.ringing.displayName}>
-                          <Avatar
-                            name={dmCallView.ringing.displayName}
-                            avatar={dmCallView.ringing.avatar || "?"}
-                            avatarUrl={dmCallView.ringing.avatarUrl}
-                            color={dmCallView.ringing.color || "var(--lavender)"}
-                            size={96}
-                          />
-                          <span className="dm-call-person-name">{dmCallView.ringing.displayName}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {dmCallView.joined ? (
-                      <div className="dm-call-controls">
-                        <div className="dm-call-group">
-                          <button
-                            type="button"
-                            className={`dm-call-ctrl ${voice.muted ? "off" : ""}`}
-                            onClick={() => voice.toggleMute()}
-                            title={voice.muted ? "Unmute" : "Mute"}
-                            aria-pressed={voice.muted}
-                          >
-                            {voice.muted ? <MicOff size={19} /> : <Mic size={19} />}
-                          </button>
-                          <button
-                            type="button"
-                            className={`dm-call-ctrl ${voice.deafened ? "off" : ""}`}
-                            onClick={() => voice.toggleDeafen()}
-                            title={voice.deafened ? "Undeafen" : "Deafen"}
-                            aria-pressed={voice.deafened}
-                          >
-                            {voice.deafened ? <HeadphoneOff size={19} /> : <Headphones size={19} />}
-                          </button>
-                        </div>
-                        <div className="dm-call-group">
-                          <button
-                            type="button"
-                            className={`dm-call-ctrl ${voice.cameraOn ? "on" : ""}`}
-                            onClick={() => (voice.cameraOn ? voice.stopCamera() : void voice.startCamera())}
-                            title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
-                            aria-pressed={voice.cameraOn}
-                          >
-                            {voice.cameraOn ? <Video size={19} /> : <VideoOff size={19} />}
-                          </button>
-                          <button
-                            type="button"
-                            className={`dm-call-ctrl ${voice.screenSharing ? "on" : ""}`}
-                            onClick={() => (voice.screenSharing ? voice.stopScreenShare() : void voice.startScreenShare())}
-                            title={voice.screenSharing ? "Stop sharing" : "Share screen"}
-                            aria-pressed={voice.screenSharing}
-                          >
-                            <Monitor size={19} />
-                          </button>
-                          <button
-                            type="button"
-                            className="dm-call-ctrl"
-                            onClick={() => setStageChannelId(activeChannelId)}
-                            title="Open full call view"
-                          >
-                            <Maximize2 size={19} />
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          className="dm-call-hangup"
-                          onClick={() => endDmCall(false)}
-                          title={dmCallView.ringing ? "Cancel call" : "Leave call"}
-                        >
-                          <PhoneOff size={21} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="dm-call-controls">
-                        <button
-                          type="button"
-                          className="dm-call-join"
-                          onClick={() => {
-                            // Joining the call you are being rung for is answering it:
-                            // that also stops the ringtone and tells the caller.
-                            if (incomingDmCall?.channelId === activeChannelId) {
-                              acceptIncomingCall();
-                              return;
-                            }
-                            const other = activeDm?.user;
-                            if (other) {
-                              setDmCall({
-                                channelId: activeChannelId,
-                                otherUser: other,
-                                status: "connected",
-                                startTime: Date.now(),
-                                seenOther: dmCallView.people.some((p) => p.id === other.id),
-                              });
-                            }
-                            playCallAnswerSound();
-                            void voice.join(activeChannelId);
-                          }}
-                        >
-                          <Phone size={18} /> Join call
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                )}
+                <DmCallView
+        inDmHome={inDmHome}
+        activeChannelId={activeChannelId}
+        dmCallView={dmCallView}
+        dmCall={dmCall}
+        callDuration={callDuration}
+        user={user}
+        voice={voice}
+        setStageChannelId={setStageChannelId}
+        endDmCall={endDmCall}
+        incomingDmCall={incomingDmCall}
+        acceptIncomingCall={acceptIncomingCall}
+        activeDm={activeDm}
+        setDmCall={setDmCall}
+      />
 
                 {/* A forum's posts are its top-level messages, so the board
                     replaces the chat list rather than sitting beside it. The
@@ -8939,992 +7141,104 @@ export function ChatShell() {
                     </span>
                   </div>
                 )}
-                <div
-                  ref={messagesScrollRef}
-                  onScroll={handleMessagesScroll}
-                  className={`messages ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}
-                  aria-live="polite"
-                >
-                  {unreadBarVisible && unreadMarker?.channelId === activeChannelId && (
-                    <div className="unread-bar" role="status">
-                      <button type="button" className="unread-bar-jump" onClick={jumpToFirstUnread}>
-                        {unreadMarker.count > 99 ? "99+" : unreadMarker.count}
-                        {unreadMarker.more ? "+" : ""} new message{unreadMarker.count === 1 ? "" : "s"}
-                        {unreadMarker.since ? ` since ${unreadSinceLabel(unreadMarker.since)}` : ""}
-                      </button>
-                      <button
-                        type="button"
-                        className="unread-bar-dismiss"
-                        onClick={() => setUnreadBarVisible(false)}
-                      >
-                        Mark as read
-                      </button>
-                    </div>
-                  )}
-                  {msnTheme && (
-                    <p className="msn-warning">
-                      Never give out your password or credit card number in an instant message conversation.
-                    </p>
-                  )}
-                  {hasOlder && (
-                    <button type="button" className="load-older" onClick={() => void loadOlder()}>
-                      Load earlier messages
-                    </button>
-                  )}
-                  {!hasOlder && <div className="channel-intro">
-                    <div className="cozy-intro-pill">
-                      <span className="cozy-intro-icon">
-                        {inDmHome ? (
-                          isSelfDm ? (
-                            <StickyNote size={13} />
-                          ) : (
-                            <AtSign size={13} />
-                          )
-                        ) : (
-                          <Hash size={13} />
-                        )}
-                      </span>
-                      <span className="cozy-intro-text">
-                        {inDmHome
-                          ? isSelfDm
-                            ? "This is your personal space for notes, drafts, and reminders."
-                            : activeDm?.group
-                              ? `welcome to the beginning of ${channelTitle}`
-                              : `this is the beginning of your conversation with ${channelTitle}`
-                          : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
-                      </span>
-                    </div>
-                    <div className="legacy-intro-content">
-                      <div className="intro-icon">
-                        {inDmHome ? (isSelfDm ? "📝" : "@") : "#"}
-                      </div>
-                      <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
-                      <p>
-                        {inDmHome
-                          ? isSelfDm
-                            ? "Messages sent here are private and only visible to you. Great for jotting down thoughts, saving links, or staging drafts."
-                            : activeDm?.group
-                              ? "Welcome to the beginning of this group. Only its members can see it."
-                              : "This conversation is only visible to the two of you."
-                          : "This is the start of the channel. Be excellent to each other."}
-                      </p>
-                    </div>
-                  </div>}
-
-                  {messages.map((message, index) => withUnreadLine(
-                    unreadMarker?.channelId === activeChannelId &&
-                      String(message.id) === unreadMarker.messageId &&
-                      index > 0,
-                    message.id,
-                    ((): ReactNode => {
-                    const dayLabel = dayDividerLabel(message, messages[index - 1]) ?? undefined;
-                    if (message.kind?.startsWith("system-")) {
-                      const pinnedId =
-                        message.kind === "system-pin" &&
-                          message.payload &&
-                          typeof (message.payload as { messageId?: unknown }).messageId === "string"
-                          ? (message.payload as { messageId: string }).messageId
-                          : null;
-                      const actor =
-                        (message.userId && membersById.get(message.userId)) ||
-                        (message.userId &&
-                          activeDm?.group?.members.find((m) => m.id === message.userId)) ||
-                        null;
-                      const actorName = actor?.displayName || message.author;
-                      // The stored text starts with the name it had when posted;
-                      // show the current name and keep the rest of the sentence.
-                      const rest = message.text.startsWith(message.author)
-                        ? message.text.slice(message.author.length)
-                        : ` ${message.text}`;
-                      return (
-                        <div
-                          key={message.id}
-                          id={`msg-${message.id}`}
-                          data-day={dayLabel}
-                          className={`system-message system-message--${message.kind.slice(7)}`}
-                        >
-                          <span className="system-message-icon" aria-hidden="true">
-                            {message.kind === "system-pin" ? (
-                              <Pin size={15} />
-                            ) : message.kind === "system-group-leave" ||
-                              message.kind === "system-group-remove" ? (
-                              <LogOut size={15} />
-                            ) : message.kind === "system-group-rename" ? (
-                              <Pencil size={15} />
-                            ) : (
-                              <UserPlus size={15} />
-                            )}
-                          </span>
-                          <p>
-                            <button
-                              type="button"
-                              className="system-message-actor"
-                              onClick={(event) => {
-                                if (actor) openUserMenu(event, actor as Member);
-                              }}
-                            >
-                              {actorName}
-                            </button>
-                            {message.kind === "system-pin" ? (
-                              <>
-                                {" pinned "}
-                                {pinnedId ? (
-                                  <button
-                                    type="button"
-                                    className="system-message-link"
-                                    onClick={() => {
-                                      if (activeChannelId) jumpToMessage(activeChannelId, pinnedId);
-                                    }}
-                                  >
-                                    a message
-                                  </button>
-                                ) : (
-                                  "a message"
-                                )}
-                                {" to this channel. See all "}
-                                <button
-                                  type="button"
-                                  className="system-message-link"
-                                  onClick={() => setPinsOpen(true)}
-                                >
-                                  pinned messages
-                                </button>
-                                .
-                              </>
-                            ) : (
-                              rest
-                            )}
-                            <time title={formatClientDateTime(message.createdAt)}>
-                              {formatClientTime(message.createdAt, message.time)}
-                            </time>
-                          </p>
-                        </div>
-                      );
-                    }
-                    const author = message.userId
-                      ? membersById.get(message.userId)
-                      : undefined;
-                    const canDelete =
-                      message.userId === user.id ||
-                      message.bot ||
-                      user.isAdmin ||
-                      canModerate;
-
-                    const isBlockedUser = Boolean(
-                      message.userId && blockedUserIds.has(message.userId),
-                    );
-                    const isBlockedExpanded = expandedBlockedMessages.has(String(message.id));
-
-                    if (isBlockedUser && !isBlockedExpanded) {
-                      return (
-                        <div key={message.id} className="blocked-message-notice">
-                          <div className="flex items-center gap-2">
-                            <ShieldAlert size={14} className="text-rose-400 shrink-0" />
-                            <span>1 Blocked message ({message.author})</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="blocked-message-toggle"
-                            onClick={() => {
-                              setExpandedBlockedMessages((prev) =>
-                                new Set(prev).add(String(message.id)),
-                              );
-                            }}
-                          >
-                            Show message
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    if (message.payload?.nudge) {
-                      return (
-                        <div key={message.id} id={`msg-${message.id}`} className="nudge-line">
-                          <span className="nudge-line-rule" aria-hidden="true" />
-                          {message.userId === user.id
-                            ? "You have just sent a nudge."
-                            : `${stripTextStyle(author?.displayName || message.author)} has just sent you a nudge.`}
-                          <span className="nudge-line-rule" aria-hidden="true" />
-                        </div>
-                      );
-                    }
-                    const wink = findWink(message.payload?.wink);
-                    if (wink) {
-                      return (
-                        <div key={message.id} id={`msg-${message.id}`} className="nudge-line wink-line">
-                          <span className="nudge-line-rule" aria-hidden="true" />
-                          <span className="wink-line-emoji" aria-hidden="true">{wink.emoji}</span>
-                          {message.userId === user.id
-                            ? `You have just sent a wink: ${wink.name}.`
-                            : `${stripTextStyle(author?.displayName || message.author)} has just sent you a wink: ${wink.name}.`}
-                          <button type="button" className="wink-replay" onClick={() => playWink(wink.id)}>
-                            Play
-                          </button>
-                          <span className="nudge-line-rule" aria-hidden="true" />
-                        </div>
-                      );
-                    }
-
-                    // Collapse the avatar/name header when the same author sends a
-                    // burst of messages close together — but never for replies or
-                    // rich cards, which each need their own header.
-                    const prev = index > 0 ? messages[index - 1] : undefined;
-                    const sameAuthor =
-                      !!prev &&
-                      Boolean(prev.bot) === Boolean(message.bot) &&
-                      (message.bot
-                        ? prev.author === message.author
-                        : !!prev.userId && prev.userId === message.userId);
-                    const closeInTime =
-                      !!prev && message.createdAt && prev.createdAt
-                        ? new Date(message.createdAt).getTime() -
-                        new Date(prev.createdAt).getTime() <
-                        7 * 60 * 1000
-                        : true;
-                    const continuation =
-                      !dayLabel &&
-                      sameAuthor &&
-                      closeInTime &&
-                      !message.replyTo &&
-                      // A run of command answers from the same bot groups too;
-                      // each keeps its small "x used /cmd" line. MSN repeats
-                      // the "says:" header on every message, so it opts out.
-                      (!message.commandText || (Boolean(message.bot) && !msnTheme)) &&
-                      (!message.kind || message.kind === "voice") &&
-                      (!prev?.kind || prev.kind === "voice");
-                    return (
-                      <article
-                        id={`msg-${message.id}`}
-                        data-day={dayLabel}
-                        className={`message ${continuation ? "continuation" : ""} ${message.pinned ? "is-pinned" : ""
-                          } ${openActionsId === message.id ? "actions-open" : ""} ${reactionPicker?.messageId === message.id
-                            ? "actions-open reaction-picker-active"
-                            : ""
-                          } ${user && message.mentions?.includes(user.id) ? "mentions-me" : ""
-                          } ${ttsSpeakingId === String(message.id) ? "tts-speaking" : ""}`}
-                        key={message.id}
-                        onTouchStart={(e) => handleMessageTouchStart(message.id, e)}
-                        onTouchMove={handleMessageTouchMove}
-                        onTouchEnd={handleMessageTouchEnd}
-                        onTouchCancel={handleMessageTouchEnd}
-                        onContextMenu={(event) => {
-                          if (longPressTriggeredRef.current || touchInput) {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setOpenActionsId(message.id);
-                            return;
-                          }
-                          if (message.bot) {
-                            openBotMenu(
-                              event,
-                              message.author.toLowerCase().includes("d&d")
-                                ? "dnd"
-                                : "music",
-                            );
-                          }
-                        }}
-                      >
-                        {isBlockedUser && (
-                          <div className="col-span-full flex items-center justify-between text-[11px] text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md mb-2">
-                            <span className="flex items-center gap-1.5 font-bold">
-                              <ShieldAlert size={12} /> Message from blocked user
-                            </span>
-                            <button
-                              type="button"
-                              className="text-xs font-bold underline hover:text-rose-300 cursor-pointer"
-                              onClick={() => {
-                                setExpandedBlockedMessages((prev) => {
-                                  const n = new Set(prev);
-                                  n.delete(String(message.id));
-                                  return n;
-                                });
-                              }}
-                            >
-                              Hide message
-                            </button>
-                          </div>
-                        )}
-                        {continuation ? (
-                          <span className="message-gutter" aria-hidden="true">
-                            <time title={formatClientDateTime(message.createdAt)}>
-                              {formatClientTime(message.createdAt, message.time)}
-                            </time>
-                          </span>
-                        ) : (
-                          <Avatar
-                            className={`avatar ${message.bot ? "bot-avatar" : ""}`}
-                            avatar={author?.avatar || message.avatar}
-                            avatarUrl={author?.avatarUrl}
-                            color={author?.color || message.color}
-                            onContextMenu={(event) => {
-                              if (author) openUserMenu(event, author);
-                            }}
-                            onClick={(event) => {
-                              // Same as clicking the name: show their profile card,
-                              // opened beside the avatar. Right-click keeps the menu.
-                              if (author) openProfile(author, event);
-                            }}
-                          />
-                        )}
-                        <div className="message-body">
-                          {message.commandText && (
-                            <div className="command-invocation">
-                              <span className="reply-arrow">↩</span>
-                              <strong>{message.commandBy || "someone"}</strong>
-                              <span className="command-used">used</span>
-                              <code>{message.commandText}</code>
-                            </div>
-                          )}
-                          {message.replyTo && (
-                            <button
-                              type="button"
-                              className="reply-preview"
-                              onClick={() =>
-                                document
-                                  .getElementById(`msg-${message.replyTo}`)
-                                  ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                              }
-                            >
-                              <span className="reply-arrow">↩</span>
-                              <strong>{message.replyPreview?.author || "someone"}</strong>
-                              <span className="reply-snippet">
-                                {message.replyPreview?.text || "message"}
-                              </span>
-                            </button>
-                          )}
-                          {!continuation && (
-                            <div className="message-meta">
-                              <strong
-                                className={author ? "clickable-name" : ""}
-                                style={{ color: roleColorFor(author) || undefined }}
-                                onContextMenu={(event) => {
-                                  if (author) openUserMenu(event, author);
-                                }}
-                                onClick={() => {
-                                  if (author) openProfile(author);
-                                }}
-                              >
-                                <StyledText text={author?.displayName || message.author} />
-                              </strong>
-                              {!inDmHome && activeServer && author && (
-                                <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
-                              )}
-                              {author && <PrideBadges badges={author.prideBadges} mini />}
-                              {message.bot && <span className="bot-tag">BOT</span>}
-                              {message.payload?.tts && (
-                                <span
-                                  className={`tts-tag ${ttsSpeakingId === String(message.id) ? "speaking" : ""}`}
-                                  title="Sent with /tts: read aloud to everyone in the channel"
-                                >
-                                  <Volume2 size={12} aria-hidden="true" /> TTS
-                                </span>
-                              )}
-                              <time title={formatClientDateTime(message.createdAt)}>
-                                {formatClientTime(message.createdAt, message.time)}
-                              </time>
-                              {message.editedAt && (
-                                <button
-                                  type="button"
-                                  className="edited-tag"
-                                  title={`Edited ${formatClientDateTime(message.editedAt)} · show history`}
-                                  onClick={() => setEditHistoryId(String(message.id))}
-                                >
-                                  (edited)
-                                </button>
-                              )}
-                              {message.pinned && (
-                                <span className="pin-tag flex items-center gap-1" title="Pinned">
-                                  <Pin size={12} />
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          {message.kind === "lyricsnow" && message.payload?.lines ? (
-                            <LyricsNow
-                              track={typeof message.payload.track === "string" ? message.payload.track : message.payload.track?.title}
-                              artist={message.payload.artist}
-                              lines={message.payload.lines}
-                              loose={Boolean(message.payload.loose)}
-                              trackKey={message.payload.trackId ? String(message.payload.trackId) : undefined}
-                              positionMs={
-                                message.payload.voiceChannelId === voice.channelId
-                                  ? player.position
-                                  : undefined
-                              }
-                              live={
-                                message.payload.voiceChannelId === voice.channelId &&
-                                hub.players[voice.channelId!]?.track?.id ===
-                                message.payload.trackId
-                              }
-                            />
-                          ) : message.kind === "ai" ? (
-                            <AiAnswerCard
-                              messageId={message.id}
-                              channelId={activeChannelId}
-                              question={message.payload?.question}
-                              sources={message.payload?.sources}
-                              threadCount={message.threadCount}
-                              onOpenThread={() => void openThread(message)}
-                              onError={setNotice}
-                            >
-                              <MessageBody
-                                text={message.text}
-                                selfHandle={user.username}
-                                onMention={openProfileByHandle}
-                                onImage={setLightboxImage}
-                                emojis={emojiMap}
-                              />
-                            </AiAnswerCard>
-                          ) : message.kind === "dnd" && message.payload ? (
-                            <DndCard
-                              {...message.payload}
-                              onCommand={(command) => void runCommand(command)}
-                            />
-                          ) : MUSIC_CARD_KINDS.has(message.kind || "") && message.payload ? (
-                            <MusicPayloadCard
-                              kind={message.kind || ""}
-                              payload={message.payload}
-                              onCommand={(command) =>
-                                runMusicUiCommand(
-                                  command,
-                                  message.payload?.voiceChannelId,
-                                )
-                              }
-                            />
-                          ) : message.kind === "voice" && message.audio ? (
-                            <VoiceMessagePlayer
-                              src={message.audio}
-                              durationMs={message.payload?.voice?.durationMs}
-                              waveform={message.payload?.voice?.waveform}
-                            />
-                          ) : message.kind === "game" && message.payload?.game ? (
-                            <GameCard
-                              messageId={String(message.id)}
-                              game={message.payload.game}
-                              userId={user.id}
-                              onPlayAgain={(kind, solo) => void startGame(kind, solo)}
-                            />
-                          ) : message.kind === "poll" && message.payload?.pollId ? (
-                            <PollCard
-                              pollId={message.payload.pollId}
-                              question={message.payload.question || message.text}
-                              options={message.payload.options || []}
-                              multi={message.payload.multi}
-                              liveCounts={pollCounts[message.payload.pollId]}
-                              liveVoters={pollVoters[message.payload.pollId]}
-                            />
-                          ) : editingId === message.id ? (
-                            <MessageEditor
-                              value={editDraft}
-                              onChange={setEditDraft}
-                              onCancel={() => setEditingId(null)}
-                              onSave={() => void saveEdit(message)}
-                            />
-                          ) : message.payload?.forwardedFrom ? (
-                            <ForwardedMessageCard
-                              data={message.payload.forwardedFrom}
-                              comment={message.text}
-                              selfHandle={user.username}
-                              emojis={emojiMap}
-                              onMention={openProfileByHandle}
-                              onImage={setLightboxImage}
-                              onPdf={setPdfViewer}
-                              formatTime={(d) => formatClientTime(d, "")}
-                            />
-                          ) : (
-                            <MessageBody
-                              text={message.text}
-                              selfHandle={user.username}
-                              onMention={openProfileByHandle}
-                              onImage={setLightboxImage}
-                              emojis={emojiMap}
-                              linkPreviews
-                              channels={activeServer?.channels}
-                              roles={activeServer?.roles}
-                              onChannel={openMentionedChannel}
-                            />
-                          )}
-
-                          {!message.kind &&
-                            (message.payload?.embeds?.length ||
-                              message.payload?.components?.length) ? (
-                            <BotEmbeds
-                              embeds={message.payload.embeds}
-                              components={message.payload.components}
-                              selfHandle={user.username}
-                              onMention={openProfileByHandle}
-                              onImage={setLightboxImage}
-                              emojis={emojiMap}
-                              onComponent={(customId, componentType, values) =>
-                                pressBotComponent(message, customId, componentType, values)
-                              }
-                            />
-                          ) : null}
-
-                          {message.payload?.themeShare && (
-                            <ThemeShareCard
-                              theme={message.payload.themeShare}
-                              onApplyTheme={(th) => applyTheme(th)}
-                            />
-                          )}
-
-                          {!message.payload?.themeShare && message.text?.includes("huddle-theme:v1:") && (() => {
-                            const match = message.text.match(/huddle-theme:v1:[a-zA-Z0-9+/=_-]+/);
-                            if (!match) return null;
-                            const parsed = importThemeCode(match[0]);
-                            if (!parsed) return null;
-                            return (
-                              <ThemeShareCard
-                                theme={parsed}
-                                onApplyTheme={(th) => applyTheme(th)}
-                              />
-                            );
-                          })()}
-
-                          {extractInviteCodes(message.text).map((code) => {
-                            const inv = resolvedInvites[code];
-                            if (!inv) return null;
-                            const isCurrentlyMember = inv.server
-                              ? servers.some((s) => s.id === inv.server?.id)
-                              : false;
-                            return (
-                              <ServerInviteCard
-                                key={code}
-                                invite={inv}
-                                isMember={isCurrentlyMember}
-                                onJoin={() => {
-                                  if (isCurrentlyMember && inv.server) {
-                                    setActiveServerId(inv.server.id);
-                                  } else {
-                                    void joinServerDirect(code);
-                                  }
-                                }}
-                              />
-                            );
-                          })}
-
-                          {message.kind === "nowplaying" &&
-                            message.payload?.voiceChannelId && (
-                              <NowPlaying
-                                state={hub.players[message.payload.voiceChannelId] || null}
-                                trackId={message.payload.trackId}
-                                trackLabel={message.payload.label}
-                                position={
-                                  voice.channelId === message.payload.voiceChannelId
-                                    ? player.position
-                                    : 0
-                                }
-                                controllable={
-                                  voice.channelId === message.payload.voiceChannelId
-                                }
-                                blocked={!botStreaming && player.blocked}
-                                onUnblock={player.unblock}
-                                voiceChannelName={
-                                  voiceChannels.find(
-                                    (channel) =>
-                                      channel.id === message.payload?.voiceChannelId,
-                                  )?.name
-                                }
-                                onSeek={(positionMs) =>
-                                  hub.send({
-                                    t: "player",
-                                    channelId: message.payload!.voiceChannelId!,
-                                    action: { name: "seek", positionMs },
-                                  })
-                                }
-                                onToggle={() =>
-                                  hub.send({
-                                    t: "player",
-                                    channelId: message.payload!.voiceChannelId!,
-                                    action: { name: "toggle" },
-                                  })
-                                }
-                                onSkip={() =>
-                                  hub.send({
-                                    t: "player",
-                                    channelId: message.payload!.voiceChannelId!,
-                                    action: { name: "skip" },
-                                  })
-                                }
-                                volume={prefFor("bot:music").volume}
-                                onVolume={(volume) =>
-                                  void saveVoicePref("bot:music", { volume })
-                                }
-                              />
-                            )}
-
-                          {message.link && (
-                            <a
-                              className="bot-action"
-                              href={message.link}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {message.actionLabel || "Open"}
-                              <span aria-hidden="true">↗</span>
-                            </a>
-                          )}
-                          {message.audio && message.kind !== "voice" && (
-                            <audio
-                              className="message-audio"
-                              controls
-                              preload="none"
-                              src={message.audio}
-                            />
-                          )}
-                          <MsnFileTransfer
-                            enabled={msnTheme && !message.bot}
-                            messageId={String(message.id)}
-                            mine={message.userId === user.id}
-                            fromName={author?.displayName || message.author}
-                            createdAt={message.createdAt}
-                            fileNames={[
-                              ...[message.image, ...(message.images || [])]
-                                .filter((img): img is string => typeof img === "string" && Boolean(img))
-                                .map(fileNameFromUrl),
-                              ...((message.files || (message.file ? [message.file] : [])).map((f: { name: string }) => f.name)),
-                            ]}
-                          >
-                          {(() => {
-                            const allImages = [
-                              message.image,
-                              ...(message.images || []),
-                            ].filter((img): img is string => typeof img === "string" && Boolean(img));
-                            if (allImages.length === 0) return null;
-                            return (
-                              <ImageGallery
-                                images={allImages}
-                                onOpenLightbox={(imgs, idx) =>
-                                  setLightbox({ images: imgs, index: idx })
-                                }
-                              />
-                            );
-                          })()}
-                          <MessageAttachmentFiles
-                            files={message.files || message.file}
-                            onPdf={(pdf) => setPdfViewer(pdf)}
-                          />
-                          </MsnFileTransfer>
-
-                          {(message.threadCount ?? 0) > 0 && message.kind !== "ai" && (
-                            <button
-                              type="button"
-                              className="thread-link inline-flex items-center gap-1.5"
-                              onClick={() => void openThread(message)}
-                            >
-                              <MessageSquare size={14} /> {message.threadCount}{" "}
-                              {message.threadCount === 1 ? "reply" : "replies"}
-                            </button>
-                          )}
-
-                          {message.reactions && message.reactions.length > 0 && (
-                            <MessageReactions
-                              reactions={message.reactions}
-                              emojiMap={emojiMap}
-                              viewerEmoji={reactionViewer?.messageId === message.id ? reactionViewer.emoji : null}
-                              pickerOpen={reactionPicker?.messageId === message.id}
-                              onToggle={(emoji) => void toggleReaction(message.id, emoji)}
-                              onOpenViewer={(e, emoji) => handleOpenReactionViewer(e, message.id, emoji)}
-                              onOpenPicker={(e, mode) => handleOpenReactionPicker(e, message.id, mode)}
-                            />
-                          )}
-
-                          {quickVoteId === message.id && (
-                            <div className="quick-vote">
-                              <span className="quick-vote-title">Vote</span>
-                              {QUICK_VOTES.map((emoji) => {
-                                const reacted =
-                                  message.reactions?.find((r) => r.emoji === emoji)?.mine ||
-                                  false;
-                                return (
-                                  <button
-                                    key={emoji}
-                                    type="button"
-                                    className={`reaction ${reacted ? "mine" : ""}`}
-                                    onClick={() =>
-                                      void toggleReaction(message.id, emoji)
-                                    }
-                                  >
-                                    <OutlineEmoji emoji={emoji} />
-                                    <b>
-                                      {message.reactions?.find((r) => r.emoji === emoji)
-                                        ?.count || 0}
-                                    </b>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Touch-only: reveal this message's actions on tap instead of
-                    showing every message's full bar at once. */}
-                        <button
-                          type="button"
-                          className="message-actions-toggle"
-                          aria-label="Message actions"
-                          onClick={() =>
-                            setOpenActionsId((current) =>
-                              current === message.id ? null : message.id,
-                            )
-                          }
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-                        <div className="message-actions">
-                          <div className="quick-reactions">
-                            {quickReactions.map((emoji) => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                className="quick-react-outline-btn"
-                                title={`React ${emoji} · Shift-click to remove`}
-                                onClick={(e) => {
-                                  if (e.shiftKey) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    removeQuickReaction(emoji);
-                                    if (message.reactions?.some((r) => r.emoji === emoji && r.mine)) {
-                                      void toggleReaction(message.id, emoji);
-                                    }
-                                    return;
-                                  }
-                                  void toggleReaction(message.id, emoji);
-                                  setOpenActionsId(null);
-                                }}
-                              >
-                                {emojiMap[emoji.replace(/^:|:$/g, "")] ? (
-                                  <img
-                                    className="custom-emoji"
-                                    src={emojiMap[emoji.replace(/^:|:$/g, "")]}
-                                    alt={emoji}
-                                  />
-                                ) : (
-                                  <OutlineEmoji emoji={emoji} />
-                                )}
-                              </button>
-                            ))}
-                            {/* The server's own emoji, right where you react. */}
-                            {emojis
-                              .filter((emoji) => {
-                                const code = `:${emoji.name}:`;
-                                const clean = emoji.name;
-                                return (
-                                  !hiddenServerEmojiIds.includes(emoji.id) &&
-                                  !hiddenServerEmojiIds.includes(clean) &&
-                                  !hiddenServerEmojiIds.includes(code) &&
-                                  !quickReactions.includes(code) &&
-                                  !quickReactions.includes(clean)
-                                );
-                              })
-                              .slice(0, 4)
-                              .map((emoji) => {
-                                const emojiCode = `:${emoji.name}:`;
-                                return (
-                                  <button
-                                    key={emoji.id}
-                                    type="button"
-                                    title={`React ${emojiCode} · Shift-click to remove`}
-                                    onClick={(e) => {
-                                      if (e.shiftKey) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        hideServerEmoji(emoji.id, emoji.name);
-                                        if (
-                                          message.reactions?.some(
-                                            (r) =>
-                                              (r.emoji === emojiCode || r.emoji === emoji.name) &&
-                                              r.mine,
-                                          )
-                                        ) {
-                                          void toggleReaction(message.id, emojiCode);
-                                        }
-                                        return;
-                                      }
-                                      void toggleReaction(message.id, emojiCode);
-                                      setOpenActionsId(null);
-                                    }}
-                                  >
-                                    <img className="custom-emoji" src={emoji.url} alt={emoji.name} />
-                                  </button>
-                                );
-                              })}
-                            <button
-                              type="button"
-                              title="Add reaction · Shift-click to add to quick reactions"
-                              className={`add-reaction-action-btn ${reactionPicker?.messageId === message.id ? "active" : ""}`}
-                              onClick={(e) => {
-                                if (e.shiftKey) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleOpenReactionPicker(e, message.id, "addToQuickReactions");
-                                  return;
-                                }
-                                handleOpenReactionPicker(e, message.id, "react");
-                              }}
-                            >
-                              <SmilePlus size={16} />
-                            </button>
-                          </div>
-                          {/* Show extra actions when Shift is held on desktop or when More is tapped on mobile */}
-                          {(shiftPressed || mobileActionsMoreId === message.id) && (
-                            <>
-                              <button
-                                type="button"
-                                title="Reply"
-                                onClick={() => {
-                                  setReplyTarget(message);
-                                  composerRef.current?.focus();
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                <Reply size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}
-                                onClick={() => {
-                                  void toggleSaved(String(message.id));
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                {savedIds.has(String(message.id)) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-                              </button>
-                              <button
-                                type="button"
-                                title="Reply in thread"
-                                onClick={() => {
-                                  void openThread(message);
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                <MessageSquare size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                title="Forward"
-                                onClick={() => {
-                                  const chName = inDmHome
-                                    ? activeDm?.user.displayName
-                                    : activeChannel?.name;
-                                  const srvName = inDmHome ? undefined : activeServer?.name;
-                                  setForwardTarget({
-                                    id: message.id,
-                                    author: author?.displayName || message.author,
-                                    avatar: author?.avatar || message.avatar,
-                                    avatarUrl: author?.avatarUrl,
-                                    color: author?.color || message.color,
-                                    text: message.text,
-                                    createdAt: message.createdAt,
-                                    image: message.image,
-                                    images: message.images,
-                                    file: message.file,
-                                    channelId: message.channelId || activeChannelId,
-                                    channelName: chName,
-                                    serverName: srvName,
-                                  });
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                <Forward size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                title="Quick vote"
-                                onClick={() => {
-                                  setQuickVoteId((current) =>
-                                    current === message.id ? null : message.id,
-                                  );
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                <Vote size={16} />
-                              </button>
-                              {message.userId === user.id && !message.bot && (
-                                <button
-                                  type="button"
-                                  title="Edit"
-                                  onClick={() => {
-                                    beginEdit(message);
-                                    setOpenActionsId(null);
-                                    setMobileActionsMoreId(null);
-                                  }}
-                                >
-                                  <Pencil size={16} />
-                                </button>
-                              )}
-                              {canPin && (
-                                <button
-                                  type="button"
-                                  title={message.pinned ? "Unpin" : "Pin"}
-                                  onClick={() => {
-                                    void togglePin(message);
-                                    setOpenActionsId(null);
-                                    setMobileActionsMoreId(null);
-                                  }}
-                                >
-                                  <Pin size={16} />
-                                </button>
-                              )}
-                            </>
-                          )}
-
-                          {/* Mobile more button to unfold secondary actions */}
-                          {!shiftPressed && (
-                            <button
-                              type="button"
-                              className={`message-action-mobile-more ${mobileActionsMoreId === message.id ? "active" : ""}`}
-                              title={mobileActionsMoreId === message.id ? "Fewer actions" : "More actions (or hold Shift)"}
-                              aria-label="More actions"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMobileActionsMoreId((curr) => (curr === message.id ? null : message.id));
-                              }}
-                            >
-                              <MoreHorizontal size={16} />
-                            </button>
-                          )}
-
-                          {/* Delete button always available */}
-                          {canDelete && (
-                            <button
-                              type="button"
-                              title="Delete (Hold Shift to skip confirmation)"
-                              onClick={(event) => {
-                                setOpenActionsId(null);
-                                setMobileActionsMoreId(null);
-                                if (event.shiftKey) {
-                                  void deleteMessage(message.id);
-                                } else {
-                                  showCustomConfirm({
-                                    title: "Delete Message",
-                                    message:
-                                      "Are you sure you want to delete this message? Pro tip: You can delete while pressing Shift to skip this confirmation.",
-                                    isDanger: true,
-                                    confirmText: "Delete",
-                                    cancelText: "Cancel",
-                                    onConfirm: () => {
-                                      void deleteMessage(message.id);
-                                    },
-                                  });
-                                }
-                              }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })()))}
-                  <div ref={messageEndRef} />
-                </div>
+                <MessageList
+        messagesScrollRef={messagesScrollRef}
+        handleMessagesScroll={handleMessagesScroll}
+        activeChannelInfo={activeChannelInfo}
+        inDmHome={inDmHome}
+        unreadBarVisible={unreadBarVisible}
+        unreadMarker={unreadMarker}
+        activeChannelId={activeChannelId}
+        jumpToFirstUnread={jumpToFirstUnread}
+        setUnreadBarVisible={setUnreadBarVisible}
+        msnTheme={msnTheme}
+        hasOlder={hasOlder}
+        loadOlder={loadOlder}
+        isSelfDm={isSelfDm}
+        activeDm={activeDm}
+        channelTitle={channelTitle}
+        activeChannel={activeChannel}
+        messages={messages}
+        membersById={membersById}
+        openUserMenu={openUserMenu}
+        jumpToMessage={jumpToMessage}
+        setPinsOpen={setPinsOpen}
+        user={user}
+        canModerate={canModerate}
+        blockedUserIds={blockedUserIds}
+        expandedBlockedMessages={expandedBlockedMessages}
+        setExpandedBlockedMessages={setExpandedBlockedMessages}
+        openActionsId={openActionsId}
+        reactionPicker={reactionPicker}
+        ttsSpeakingId={ttsSpeakingId}
+        handleMessageTouchStart={handleMessageTouchStart}
+        handleMessageTouchMove={handleMessageTouchMove}
+        handleMessageTouchEnd={handleMessageTouchEnd}
+        longPressTriggeredRef={longPressTriggeredRef}
+        touchInput={touchInput}
+        setOpenActionsId={setOpenActionsId}
+        openBotMenu={openBotMenu}
+        openProfile={openProfile}
+        roleColorFor={roleColorFor}
+        activeServer={activeServer}
+        setEditHistoryId={setEditHistoryId}
+        voice={voice}
+        player={player}
+        hub={hub}
+        openThread={openThread}
+        setNotice={setNotice}
+        openProfileByHandle={openProfileByHandle}
+        setLightboxImage={setLightboxImage}
+        emojiMap={emojiMap}
+        runCommand={runCommand}
+        runMusicUiCommand={runMusicUiCommand}
+        startGame={startGame}
+        pollCounts={pollCounts}
+        pollVoters={pollVoters}
+        editingId={editingId}
+        editDraft={editDraft}
+        setEditDraft={setEditDraft}
+        setEditingId={setEditingId}
+        saveEdit={saveEdit}
+        setPdfViewer={setPdfViewer}
+        openMentionedChannel={openMentionedChannel}
+        pressBotComponent={pressBotComponent}
+        applyTheme={applyTheme}
+        resolvedInvites={resolvedInvites}
+        servers={servers}
+        setActiveServerId={setActiveServerId}
+        joinServerDirect={joinServerDirect}
+        botStreaming={botStreaming}
+        voiceChannels={voiceChannels}
+        prefFor={prefFor}
+        saveVoicePref={saveVoicePref}
+        setLightbox={setLightbox}
+        reactionViewer={reactionViewer}
+        toggleReaction={toggleReaction}
+        handleOpenReactionViewer={handleOpenReactionViewer}
+        handleOpenReactionPicker={handleOpenReactionPicker}
+        quickVoteId={quickVoteId}
+        quickReactions={quickReactions}
+        removeQuickReaction={removeQuickReaction}
+        emojis={emojis}
+        hiddenServerEmojiIds={hiddenServerEmojiIds}
+        hideServerEmoji={hideServerEmoji}
+        shiftPressed={shiftPressed}
+        mobileActionsMoreId={mobileActionsMoreId}
+        setReplyTarget={setReplyTarget}
+        composerRef={composerRef}
+        setMobileActionsMoreId={setMobileActionsMoreId}
+        savedIds={savedIds}
+        toggleSaved={toggleSaved}
+        setForwardTarget={setForwardTarget}
+        setQuickVoteId={setQuickVoteId}
+        beginEdit={beginEdit}
+        canPin={canPin}
+        togglePin={togglePin}
+        deleteMessage={deleteMessage}
+        showCustomConfirm={showCustomConfirm}
+        messageEndRef={messageEndRef}
+      />
 
                 <div className={`jump-latest-anchor ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}>
                   <button
@@ -9958,648 +7272,80 @@ export function ChatShell() {
                   </button>
                 )}
 
-                <form className="composer-wrap" onSubmit={sendMessage}>
-                  {activeSlashCommand && draft.startsWith("/") && (
-                    <div className="active-command-helper">
-                      <span className="command-title">/{activeSlashCommand.name}</span>
-                      {activeSlashCommand.args && (
-                        <span className="command-args">{activeSlashCommand.args}</span>
-                      )}
-                      <span className="command-desc">— {activeSlashCommand.description}</span>
-                    </div>
-                  )}
-
-                  {slashActive && (
-                    <SlashMenu
-                      query={draft.split(/\s+/)[0]}
-                      highlighted={slashIndex}
-                      onHighlight={setSlashIndex}
-                      onPick={(command) =>
-                        pickCommand(
-                          slashMatches.findIndex((item) => item.name === command.name),
-                        )
-                      }
-                      inVoice={Boolean(voice.channelId)}
-                    />
-                  )}
-
-                  {mentionActive && (
-                    <div className="mention-menu" role="listbox" aria-label={tagQuery?.trigger === "#" ? "Channels" : "Mentions"}>
-                      {mentionMatches.map((option, index) => {
-                        const active = index === slashIndex % mentionMatches.length;
-                        // Section headers, printed when the kind changes.
-                        const previous = mentionMatches[index - 1];
-                        const header =
-                          !previous || previous.kind !== option.kind ? (
-                            <div className="mention-section" key={`h:${option.kind}`}>
-                              {option.kind === "user"
-                                ? "MEMBERS"
-                                : option.kind === "role"
-                                  ? "ROLES"
-                                  : option.kind === "broadcast"
-                                    ? "NOTIFY"
-                                    : "CHANNELS"}
-                            </div>
-                          ) : null;
-
-                        if (option.kind === "channel") {
-                          const channel = option.channel;
-                          return (
-                            <div key={`channel:${channel.id}`}>
-                              {header}
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={active}
-                                className={`mention-item ${active ? "active" : ""}`}
-                                onMouseEnter={() => setSlashIndex(index)}
-                                onClick={() => pickMention(option)}
-                              >
-                                {channelKindIcon(channel.kind, 16, "mention-channel-icon")}
-                                <span className="mention-primary">{channel.name}</span>
-                                <span className="mention-note">
-                                  {channel.topic || channelKindLabel(channel.kind)}
-                                </span>
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        if (option.kind === "broadcast") {
-                          return (
-                            <div key={`broadcast:${option.name}`}>
-                              {header}
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={active}
-                                className={`mention-item ${active ? "active" : ""}`}
-                                onMouseEnter={() => setSlashIndex(index)}
-                                onClick={() => pickMention(option)}
-                              >
-                                <AtSign size={16} className="mention-channel-icon" />
-                                <span className="mention-primary">@{option.name}</span>
-                                <span className="mention-note">
-                                  {option.name === "everyone"
-                                    ? "Notify every member of this server"
-                                    : "Notify everyone who is online"}
-                                </span>
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        if (option.kind === "role") {
-                          return (
-                            <div key={`role:${option.role.id}`}>
-                              {header}
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={active}
-                                className={`mention-item ${active ? "active" : ""}`}
-                                onMouseEnter={() => setSlashIndex(index)}
-                                onClick={() => pickMention(option)}
-                              >
-                                <span
-                                  className="mention-role-dot"
-                                  style={{ background: option.role.color }}
-                                />
-                                <span
-                                  className="mention-primary"
-                                  style={{ color: option.role.color }}
-                                >
-                                  @{option.role.name}
-                                </span>
-                                <span className="mention-note">
-                                  Notify everyone with this role
-                                </span>
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        const member = option.member;
-                        return (
-                          <div key={`user:${member.id}`}>
-                            {header}
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={active}
-                              className={`mention-item ${active ? "active" : ""}`}
-                              onMouseEnter={() => setSlashIndex(index)}
-                              onClick={() => pickMention(option)}
-                            >
-                              <Avatar
-                                className="tiny-avatar"
-                                avatar={member.avatar}
-                                avatarUrl={member.avatarUrl}
-                                color={member.color}
-                              />
-                              <span
-                                className="mention-primary"
-                                style={{ color: roleColorFor(member) || undefined }}
-                              >
-                                <StyledText text={member.displayName} />
-                              </span>
-                              <span className="mention-note">
-                                {member.globalName && member.globalName !== member.displayName
-                                  ? `${member.globalName} · `
-                                  : ""}
-                                @{member.username}
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {emojiActive && (
-                    <div className="mention-menu">
-                      <div className="mention-section">
-                        {emojiShortcodeMatch?.prefix.includes("+")
-                          ? "REACT TO LAST MESSAGE"
-                          : "EMOJI SHORTCODES"}
-                      </div>
-                      {emojiMatches.map((item, index) => {
-                        const active = index === emojiIndex % emojiMatches.length;
-                        return (
-                          <button
-                            key={item.name}
-                            type="button"
-                            className={`mention-item ${active ? "active" : ""}`}
-                            onMouseEnter={() => setEmojiIndex(index)}
-                            onClick={() => pickEmojiShortcode(item)}
-                          >
-                            <span className="text-base shrink-0 mr-2 flex items-center justify-center w-5 h-5">
-                              {item.url ? (
-                                <img src={item.url} alt={item.name} className="w-4 h-4 object-contain" />
-                              ) : (
-                                item.symbol
-                              )}
-                            </span>
-                            <span className="mention-primary">
-                              {emojiShortcodeMatch?.prefix.includes("+")
-                                ? `:+${item.name}:`
-                                : `:${item.name}:`}
-                            </span>
-                            {item.isCustom && <span className="mention-note">Server Emoji</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {gifOpen && (
-                    <GifPicker
-                      onClose={() => setGifOpen(false)}
-                      serverId={inDmHome ? null : activeServerId}
-                      canManageStickers={canManageChannels}
-                      onPick={(url) => {
-                        setGifOpen(false);
-                        void sendText(url);
-                      }}
-                      onInsert={(text) => {
-                        setDraft((current) => current + text);
-                        composerRef.current?.focus();
-                      }}
-                      onEmojiChange={() => void loadEmojis().catch(() => undefined)}
-                    />
-                  )}
-
-                  {gamesOpen && !msnTheme && (
-                    <GamesPicker
-                      inVoice={Boolean(voice.channelId)}
-                      onClose={() => setGamesOpen(false)}
-                      onStart={(kind, solo) => {
-                        setGamesOpen(false);
-                        void startGame(kind, solo);
-                      }}
-                      onActivities={() => {
-                        setGamesOpen(false);
-                        if (!voice.channelId) return;
-                        setStageChannelId(voice.channelId);
-                        window.setTimeout(() => window.dispatchEvent(new Event("huddle:open-activities")), 150);
-                      }}
-                    />
-                  )}
-
-                  {formatOpen && !msnTheme && (
-                    <TextStyleMenu
-                      onWrap={(open, close) => {
-                        wrapSelection(open, close);
-                        setFormatOpen(false);
-                      }}
-                    />
-                  )}
-
-                  {emojiOpen && (
-                    <EmojiPicker
-                      serverId={inDmHome ? null : activeServerId}
-                      canManageEmojis={canManageChannels}
-                      onPickEmoji={(codeOrUrl) => {
-                        setEmojiOpen(false);
-                        setDraft((current) => current + codeOrUrl + " ");
-                        composerRef.current?.focus();
-                      }}
-                      onClose={() => setEmojiOpen(false)}
-                    />
-                  )}
-
-                  {replyTarget && (
-                    <div className="reply-bar">
-                      <span>
-                        Replying to <strong>{replyTarget.author}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setReplyTarget(null)}
-                        aria-label="Cancel reply"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-
-                  {pendingFiles.length > 0 && (
-                    <div className="attachment-row">
-                      {pendingFiles.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className={`attachment-preview ${entry.preview ? "" : "file-preview"}`}
-                        >
-                          {entry.preview ? (
-                            <img src={entry.preview} alt={entry.file.name} />
-                          ) : (
-                            <>
-                              <span className={`message-file-icon file-badge-${getFileBadgeColor(entry.file.name)}`}>
-                                {getFileExtensionBadge(entry.file.name)}
-                              </span>
-                              <span>
-                                <strong>{entry.file.name}</strong>
-                                <small>
-                                  {formatFileSize(entry.file.size)}
-                                </small>
-                              </span>
-                            </>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPendingFiles((current) =>
-                                current.filter((item) => item.id !== entry.id),
-                              )
-                            }
-                            aria-label={`Remove ${entry.file.name}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {myTimeoutUntil && !isDmBlocked ? (
-                    <div className="dm-blocked-banner">
-                      <Timer size={16} className="text-amber-400 shrink-0" />
-                      <span>
-                        You are timed out in this server until{" "}
-                        {formatClientDateTime(myTimeoutUntil)}. You can still read along.
-                      </span>
-                    </div>
-                  ) : isDmBlocked ? (
-                    <div className="dm-blocked-banner">
-                      <ShieldAlert size={16} className="text-rose-400 shrink-0" />
-                      <span>You have blocked this user. Unblock them to send messages.</span>
-                      <button
-                        type="button"
-                        className="dm-unblock-btn"
-                        onClick={() => activeDm && handleUnblockUser(activeDm.user.id)}
-                      >
-                        Unblock
-                      </button>
-                    </div>
-                  ) : composerBlocked ? (
-                    <div className="dm-blocked-banner">
-                      <Radio size={16} className="text-violet-400 shrink-0" />
-                      <span>
-                        This is an announcement channel, so only moderators can post here.
-                      </span>
-                    </div>
-                  ) : (
-                    <>
-                    {msnTheme &&
-                      inDmHome &&
-                      activeDm &&
-                      !activeDm.group &&
-                      !isSelfDm &&
-                      hub.connected &&
-                      !hub.online.has(activeDm.user.id) && (
-                        <p className="msn-offline-note">
-                          <span aria-hidden="true">ⓘ</span>
-                          <StyledText text={activeDm.user.displayName} /> appears to be offline. Messages you
-                          send will be delivered when they sign in.
-                        </p>
-                      )}
-                    {msnTheme && (
-                      <MsnFormatToolbar
-                        messageFont={messageFont}
-                        onMessageFont={(font) => {
-                          setMessageFont(font);
-                          saveMessageFont(font);
-                          composerRef.current?.focus();
-                        }}
-                        onWrap={wrapSelection}
-                        onEmoticons={() => {
-                          setEmojiOpen((open) => !open);
-                          setGifOpen(false);
-                        }}
-                        onWinks={() => {
-                          setGifOpen((open) => !open);
-                          setEmojiOpen(false);
-                        }}
-                        onSendWink={(id) => void sendWink(id)}
-                        onStartGame={(kind, solo) => void startGame(kind, solo)}
-                        personalEmoticons={personalEmoticons.emoticons}
-                        onAddEmoticon={personalEmoticons.add}
-                        onRemoveEmoticon={(shortcut) => void personalEmoticons.remove(shortcut).catch(() => undefined)}
-                        inVoice={Boolean(voice.channelId)}
-                        onActivities={() => {
-                          if (!voice.channelId) return;
-                          setStageChannelId(voice.channelId);
-                          // The stage mounts first, then opens its panel.
-                          window.setTimeout(() => window.dispatchEvent(new Event("huddle:open-activities")), 150);
-                        }}
-                        onVoiceClip={voiceRecorder.start}
-                        onHandwriting={(file) => {
-                          acceptAttachment([file]);
-                          composerRef.current?.focus();
-                        }}
-                        channelId={activeChannelId}
-                        onNudge={() => void sendNudge()}
-                        nudgeCooling={nudgeCooling || !activeChannelId}
-                      />
-                    )}
-                    <div className="composer">
-                      {voiceRecorder.state !== "idle" ? (
-                        <VoiceRecordingBar recorder={voiceRecorder} />
-                      ) : (
-                      <>
-                      <button
-                        type="button"
-                        className="attach-button"
-                        onClick={() => fileRef.current?.click()}
-                        aria-label="Attach files or media"
-                      >
-                        +
-                      </button>
-                      <input
-                        ref={fileRef}
-                        type="file"
-                        multiple
-                        hidden
-                        onChange={chooseAttachment}
-                      />
-                      <DraftTextarea
-                        ref={composerRef}
-                        value={draft}
-                        onChange={(event) => {
-                          setDraft(event.target.value);
-                          setComposerCaret(event.target.selectionStart ?? event.target.value.length);
-                          if (event.target.value.trim()) noteTyping();
-                        }}
-                        onSelect={(event) =>
-                          setComposerCaret(event.currentTarget.selectionStart ?? 0)
-                        }
-                        onKeyDown={onComposerKeyDown}
-                        onPaste={(event) => {
-                          // Pasting a screenshot attaches it instead of doing nothing.
-                          const files = Array.from(event.clipboardData.files || []);
-                          if (files.length) {
-                            event.preventDefault();
-                            acceptAttachment(files);
-                          }
-                        }}
-                        placeholder={
-                          activeChannelId
-                            ? isSelfDm
-                              ? "Jot down a note or link to yourself..."
-                              : activeChannelInfo.threadContainer
-                                ? "Start a new post…"
-                                : activeChannelInfo.moderatorOnlyPosting
-                                  ? `Post an announcement in #${channelTitle}`
-                                  : `Message ${inDmHome ? "" : "#"}${channelTitle}`
-                            : "Pick a channel first"
-                        }
-                        aria-label={
-                          activeChannelInfo.threadContainer
-                            ? `New post in ${channelTitle}`
-                            : `Message ${channelTitle}`
-                        }
-                        rows={1}
-                        disabled={!activeChannelId}
-                        style={msnTheme ? messageFontStyle(messageFont) : undefined}
-                      />
-                      {/* Mobile ^ more menu popover */}
-                      {mobileComposerMenuOpen && (
-                        <div
-                          className="mobile-composer-menu-popover animate-in fade-in zoom-in-95 duration-150"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            className="mobile-composer-menu-item"
-                            onClick={() => {
-                              setFormatOpen((open) => !open);
-                              setMobileComposerMenuOpen(false);
-                              setEmojiOpen(false);
-                              setGifOpen(false);
-                            }}
-                          >
-                            <Type size={18} />
-                            <span>Text Formatting</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="mobile-composer-menu-item"
-                            onClick={() => {
-                              setPollDialogOpen(true);
-                              setMobileComposerMenuOpen(false);
-                            }}
-                          >
-                            <Vote size={18} />
-                            <span>Create Poll</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="mobile-composer-menu-item"
-                            onClick={() => {
-                              setGamesOpen((open) => !open);
-                              setMobileComposerMenuOpen(false);
-                              setEmojiOpen(false);
-                              setGifOpen(false);
-                              setFormatOpen(false);
-                            }}
-                            disabled={!activeChannelId}
-                          >
-                            <Gamepad2 size={18} />
-                            <span>Play Games</span>
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Mobile ^ more menu toggle button */}
-                      <button
-                        type="button"
-                        className={`composer-emoji-btn composer-more-mobile-btn ${mobileComposerMenuOpen ? "active" : ""}`}
-                        onClick={() => {
-                          setMobileComposerMenuOpen((prev) => !prev);
-                          setEmojiOpen(false);
-                          setGifOpen(false);
-                          setFormatOpen(false);
-                        }}
-                        aria-label="More options"
-                        title="More tools"
-                      >
-                        <ChevronUp size={18} className={mobileComposerMenuOpen ? "rotate-180 transition-transform" : "transition-transform"} />
-                      </button>
-
-                      {/* Formatting button (desktop only) */}
-                      <button
-                        type="button"
-                        className={`composer-emoji-btn composer-format-btn desktop-composer-item ${formatOpen ? "active" : ""}`}
-                        onClick={() => {
-                          setFormatOpen((open) => !open);
-                          setEmojiOpen(false);
-                          setGifOpen(false);
-                        }}
-                        aria-label="Text formatting"
-                        title="Colours, fonts and effects"
-                        aria-expanded={formatOpen}
-                      >
-                        <Type size={18} />
-                      </button>
-
-                      {/* Emoji button - visible on both mobile and desktop */}
-                      <button
-                        type="button"
-                        className="composer-emoji-btn"
-                        onClick={() => {
-                          setEmojiOpen((open) => !open);
-                          setGifOpen(false);
-                          setFormatOpen(false);
-                          setMobileComposerMenuOpen(false);
-                        }}
-                        aria-label="Open Emoji Picker"
-                        title="Open Emoji Picker"
-                      >
-                        <Smile size={18} />
-                      </button>
-
-                      {/* GIF button - visible on both mobile and desktop */}
-                      <button
-                        type="button"
-                        className="gif-button"
-                        onClick={() => {
-                          setGifOpen((open) => !open);
-                          setEmojiOpen(false);
-                          setMobileComposerMenuOpen(false);
-                        }}
-                        aria-label="Add a GIF"
-                      >
-                        GIF
-                      </button>
-
-                      {/* Poll button (desktop only) */}
-                      <button
-                        type="button"
-                        className="composer-emoji-btn desktop-composer-item"
-                        onClick={() => setPollDialogOpen(true)}
-                        aria-label="Create a Poll"
-                        title="Create a Poll"
-                      >
-                        <Vote size={18} />
-                      </button>
-
-                      {/* Games button (desktop only) */}
-                      <button
-                        type="button"
-                        className={`composer-emoji-btn composer-games-btn desktop-composer-item ${gamesOpen ? "active" : ""}`}
-                        onClick={() => {
-                          setGamesOpen((open) => !open);
-                          setEmojiOpen(false);
-                          setGifOpen(false);
-                          setFormatOpen(false);
-                        }}
-                        aria-label="Games"
-                        title="Play a game"
-                        aria-expanded={gamesOpen}
-                        disabled={!activeChannelId}
-                      >
-                        <Gamepad2 size={18} />
-                      </button>
-
-                      {/* Slash command button - visible on both mobile and desktop */}
-                      <button
-                        type="button"
-                        className="gif-button"
-                        onClick={() => {
-                          setDraft("/");
-                          composerRef.current?.focus();
-                        }}
-                        aria-label="Show commands"
-                      >
-                        /
-                      </button>
-                      {!draft.trim() && pendingFiles.length === 0 ? (
-                        <VoiceRecordButton
-                          recorder={voiceRecorder}
-                          disabled={!activeChannelId}
-                        />
-                      ) : (
-                        <button
-                          className="send-button"
-                          type="submit"
-                          aria-label="Send message"
-                        >
-                          <Send size={15} />
-                        </button>
-                      )}
-                      </>
-                      )}
-                    </div>
-                    </>
-                  )}
-
-                  <div className="composer-hint">
-                    {typingNames.length > 0 ? (
-                      <span className="typing-line">
-                        <span className="typing-dots">
-                          <i />
-                          <i />
-                          <i />
-                        </span>
-                        {msnTheme
-                          ? typingNames.length === 1
-                            ? `${typingNames[0]} is writing a message...`
-                            : `${typingNames.slice(0, 3).join(", ")} are writing messages...`
-                          : typingNames.length === 1
-                          ? `${typingNames[0]} is typing…`
-                          : typingNames.length === 2
-                            ? `${typingNames[0]} and ${typingNames[1]} are typing…`
-                            : `${typingNames.length} people are typing…`}
-                      </span>
-                    ) : msnTheme ? (
-                      <span className="msn-status-bar">{msnLastReceived(messages, user?.id)}</span>
-                    ) : (
-                      <span className="composer-hint-keys">
-                        <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> new line · <kbd>/</kbd> commands
-                      </span>
-                    )}
-                  </div>
-                </form>
+                <Composer
+        sendMessage={sendMessage}
+        activeSlashCommand={activeSlashCommand}
+        draft={draft}
+        slashActive={slashActive}
+        slashIndex={slashIndex}
+        setSlashIndex={setSlashIndex}
+        pickCommand={pickCommand}
+        slashMatches={slashMatches}
+        voice={voice}
+        mentionActive={mentionActive}
+        tagQuery={tagQuery}
+        mentionMatches={mentionMatches}
+        pickMention={pickMention}
+        roleColorFor={roleColorFor}
+        emojiActive={emojiActive}
+        emojiShortcodeMatch={emojiShortcodeMatch}
+        emojiMatches={emojiMatches}
+        emojiIndex={emojiIndex}
+        setEmojiIndex={setEmojiIndex}
+        pickEmojiShortcode={pickEmojiShortcode}
+        gifOpen={gifOpen}
+        setGifOpen={setGifOpen}
+        inDmHome={inDmHome}
+        activeServerId={activeServerId}
+        canManageChannels={canManageChannels}
+        sendText={sendText}
+        setDraft={setDraft}
+        composerRef={composerRef}
+        loadEmojis={loadEmojis}
+        gamesOpen={gamesOpen}
+        msnTheme={msnTheme}
+        setGamesOpen={setGamesOpen}
+        startGame={startGame}
+        setStageChannelId={setStageChannelId}
+        formatOpen={formatOpen}
+        wrapSelection={wrapSelection}
+        setFormatOpen={setFormatOpen}
+        emojiOpen={emojiOpen}
+        setEmojiOpen={setEmojiOpen}
+        replyTarget={replyTarget}
+        setReplyTarget={setReplyTarget}
+        pendingFiles={pendingFiles}
+        setPendingFiles={setPendingFiles}
+        myTimeoutUntil={myTimeoutUntil}
+        isDmBlocked={isDmBlocked}
+        activeDm={activeDm}
+        handleUnblockUser={handleUnblockUser}
+        composerBlocked={composerBlocked}
+        isSelfDm={isSelfDm}
+        hub={hub}
+        messageFont={messageFont}
+        setMessageFont={setMessageFont}
+        sendWink={sendWink}
+        personalEmoticons={personalEmoticons}
+        voiceRecorder={voiceRecorder}
+        acceptAttachment={acceptAttachment}
+        activeChannelId={activeChannelId}
+        sendNudge={sendNudge}
+        nudgeCooling={nudgeCooling}
+        fileRef={fileRef}
+        chooseAttachment={chooseAttachment}
+        setComposerCaret={setComposerCaret}
+        noteTyping={noteTyping}
+        onComposerKeyDown={onComposerKeyDown}
+        activeChannelInfo={activeChannelInfo}
+        channelTitle={channelTitle}
+        mobileComposerMenuOpen={mobileComposerMenuOpen}
+        setMobileComposerMenuOpen={setMobileComposerMenuOpen}
+        setPollDialogOpen={setPollDialogOpen}
+        typingNames={typingNames}
+        messages={messages}
+        user={user}
+      />
               </>
             )}
             {msnTheme && (
@@ -10622,632 +7368,70 @@ export function ChatShell() {
         )}
       </section>
 
-      {threadRoot && (
-        <aside
-          className="thread-panel"
-          aria-label="Thread"
-          style={{ width: `${threadWidth}px` }}
-        >
-          {/* Resize handle for thread panel */}
-          <div
-            className="thread-resize-handle"
-            onMouseDown={onThreadResizeDown}
-            title="Drag to resize thread"
-          />
+      <ThreadPanel
+        threadRoot={threadRoot}
+        threadWidth={threadWidth}
+        onThreadResizeDown={onThreadResizeDown}
+        activeChannel={activeChannel}
+        setThreadRoot={setThreadRoot}
+        membersById={membersById}
+        roleColorFor={roleColorFor}
+        user={user}
+        openProfileByHandle={openProfileByHandle}
+        setLightboxImage={setLightboxImage}
+        emojiMap={emojiMap}
+        activeServer={activeServer}
+        openMentionedChannel={openMentionedChannel}
+        setLightbox={setLightbox}
+        setPdfViewer={setPdfViewer}
+        resolvedInvites={resolvedInvites}
+        servers={servers}
+        setActiveServerId={setActiveServerId}
+        joinServerDirect={joinServerDirect}
+        threadMessages={threadMessages}
+        applyTheme={applyTheme}
+        threadBottomRef={threadBottomRef}
+        sendThreadReply={sendThreadReply}
+        threadDraft={threadDraft}
+        setThreadDraft={setThreadDraft}
+      />
 
-          <header className="thread-head">
-            <div className="thread-head-info">
-              <div className="thread-head-title-row">
-                <MessageSquare size={16} className="thread-icon" />
-                <span className="thread-title">
-                  {threadRoot.text?.slice(0, 36) || (threadRoot.image ? "Image" : "Thread")}
-                </span>
-              </div>
-              <span className="thread-head-channel">
-                #{activeChannel?.name || "channel"}
-              </span>
-            </div>
-            <div className="thread-head-actions">
-              <button
-                type="button"
-                className="thread-close-btn"
-                onClick={() => setThreadRoot(null)}
-                aria-label="Close thread"
-                title="Close thread"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </header>
-
-          <div className="thread-body">
-            <article className="message thread-root">
-              <Avatar
-                className="avatar"
-                avatar={
-                  (threadRoot.userId
-                    ? membersById.get(threadRoot.userId)?.avatar
-                    : null) || threadRoot.avatar
-                }
-                avatarUrl={
-                  threadRoot.userId
-                    ? membersById.get(threadRoot.userId)?.avatarUrl
-                    : undefined
-                }
-                color={
-                  (threadRoot.userId
-                    ? membersById.get(threadRoot.userId)?.color
-                    : null) || threadRoot.color
-                }
-              />
-              <div className="message-body">
-                <div className="message-meta">
-                  <strong
-                    style={{
-                      color:
-                        roleColorFor(
-                          threadRoot.userId
-                            ? membersById.get(threadRoot.userId)
-                            : undefined,
-                        ) || undefined,
-                    }}
-                  >
-                    {threadRoot.author}
-                  </strong>
-                  <time title={formatClientDateTime(threadRoot.createdAt)}>
-                    {formatClientTime(threadRoot.createdAt, threadRoot.time)}
-                  </time>
-                </div>
-                <MessageBody
-                  text={threadRoot.text}
-                  selfHandle={user.username}
-                  onMention={openProfileByHandle}
-                  onImage={setLightboxImage}
-                  emojis={emojiMap}
-                  linkPreviews
-                  channels={activeServer?.channels}
-                  roles={activeServer?.roles}
-                  onChannel={openMentionedChannel}
-                />
-                {(() => {
-                  const allImages = [
-                    threadRoot.image,
-                    ...(threadRoot.images || []),
-                  ].filter((img): img is string => typeof img === "string" && Boolean(img));
-                  if (allImages.length === 0) return null;
-                  return (
-                    <ImageGallery
-                      images={allImages}
-                      onOpenLightbox={(imgs, idx) =>
-                        setLightbox({ images: imgs, index: idx })
-                      }
-                    />
-                  );
-                })()}
-                <MessageAttachmentFiles
-                  files={threadRoot.files || threadRoot.file}
-                  onPdf={(pdf) => setPdfViewer(pdf)}
-                />
-                {extractInviteCodes(threadRoot.text).map((code) => {
-                  const inv = resolvedInvites[code];
-                  if (!inv) return null;
-                  const isCurrentlyMember = inv.server
-                    ? servers.some((s) => s.id === inv.server?.id)
-                    : false;
-                  return (
-                    <ServerInviteCard
-                      key={code}
-                      invite={inv}
-                      isMember={isCurrentlyMember}
-                      onJoin={() => {
-                        if (isCurrentlyMember && inv.server) {
-                          setActiveServerId(inv.server.id);
-                        } else {
-                          void joinServerDirect(code);
-                        }
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </article>
-
-            <div className="thread-divider">
-              <span>
-                {threadMessages.length}{" "}
-                {threadMessages.length === 1 ? "reply" : "replies"}
-              </span>
-            </div>
-
-            {threadMessages.length === 0 && (
-              <div className="thread-empty-state">
-                <MessageSquare size={24} className="thread-empty-icon" />
-                <p>No replies yet.</p>
-                <span>Be the first to reply in this thread!</span>
-              </div>
-            )}
-
-            {threadMessages.map((reply) => {
-              const author = reply.userId
-                ? membersById.get(reply.userId)
-                : undefined;
-              return (
-                <article className="message thread-reply" key={reply.id}>
-                  <Avatar
-                    className="avatar"
-                    avatar={author?.avatar || reply.avatar}
-                    avatarUrl={author?.avatarUrl}
-                    color={author?.color || reply.color}
-                  />
-                  <div className="message-body">
-                    <div className="message-meta">
-                      <strong
-                        style={{ color: roleColorFor(author) || undefined }}
-                      >
-                        {author?.displayName || reply.author}
-                      </strong>
-                      <time title={formatClientDateTime(reply.createdAt)}>
-                        {formatClientTime(reply.createdAt, reply.time)}
-                      </time>
-                    </div>
-                    {reply.payload?.forwardedFrom ? (
-                      <ForwardedMessageCard
-                        data={reply.payload.forwardedFrom}
-                        comment={reply.text}
-                        selfHandle={user.username}
-                        emojis={emojiMap}
-                        onMention={openProfileByHandle}
-                        onImage={setLightboxImage}
-                        onPdf={setPdfViewer}
-                        formatTime={(d) => formatClientTime(d, "")}
-                      />
-                    ) : (
-                      <MessageBody
-                        text={reply.text}
-                        selfHandle={user.username}
-                        onMention={openProfileByHandle}
-                        onImage={setLightboxImage}
-                        emojis={emojiMap}
-                        linkPreviews
-                        channels={activeServer?.channels}
-                        roles={activeServer?.roles}
-                        onChannel={openMentionedChannel}
-                      />
-                    )}
-                    {reply.payload?.themeShare && (
-                      <ThemeShareCard
-                        theme={reply.payload.themeShare}
-                        onApplyTheme={(th) => applyTheme(th)}
-                      />
-                    )}
-                    {!reply.payload?.themeShare && reply.text?.includes("huddle-theme:v1:") && (() => {
-                      const match = reply.text.match(/huddle-theme:v1:[a-zA-Z0-9+/=_-]+/);
-                      if (!match) return null;
-                      const parsed = importThemeCode(match[0]);
-                      if (!parsed) return null;
-                      return (
-                        <ThemeShareCard
-                          theme={parsed}
-                          onApplyTheme={(th) => applyTheme(th)}
-                        />
-                      );
-                    })()}
-                    {(() => {
-                      const allImages = [
-                        reply.image,
-                        ...(reply.images || []),
-                      ].filter((img): img is string => typeof img === "string" && Boolean(img));
-                      if (allImages.length === 0) return null;
-                      return (
-                        <ImageGallery
-                          images={allImages}
-                          onOpenLightbox={(imgs, idx) =>
-                            setLightbox({ images: imgs, index: idx })
-                          }
-                        />
-                      );
-                    })()}
-                    <MessageAttachmentFiles
-                      files={reply.files || reply.file}
-                      onPdf={(pdf) => setPdfViewer(pdf)}
-                    />
-                    {extractInviteCodes(reply.text).map((code) => {
-                      const inv = resolvedInvites[code];
-                      if (!inv) return null;
-                      const isCurrentlyMember = inv.server
-                        ? servers.some((s) => s.id === inv.server?.id)
-                        : false;
-                      return (
-                        <ServerInviteCard
-                          key={code}
-                          invite={inv}
-                          isMember={isCurrentlyMember}
-                          onJoin={() => {
-                            if (isCurrentlyMember && inv.server) {
-                              setActiveServerId(inv.server.id);
-                            } else {
-                              void joinServerDirect(code);
-                            }
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </article>
-              );
-            })}
-            <div ref={threadBottomRef} />
-          </div>
-
-          <form
-            className="thread-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void sendThreadReply();
-            }}
-          >
-            <div className="thread-composer-inner">
-              <textarea
-                value={threadDraft}
-                rows={1}
-                ref={(node) => {
-                  if (node) fitComposer(node);
-                }}
-                placeholder="Reply in thread…"
-                aria-label="Reply in thread"
-                onChange={(event) => setThreadDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendThreadReply();
-                  }
-                }}
-              />
-              <button
-                type="submit"
-                className={`thread-send-btn ${threadDraft.trim() ? "can-send" : ""}`}
-                disabled={!threadDraft.trim()}
-                aria-label="Send reply"
-                title="Send reply"
-              >
-                <Send size={15} />
-              </button>
-            </div>
-          </form>
-        </aside>
-      )}
-
-      <aside
-        className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"} ${
-          voice.channelId && !collapsedGroups.voice ? "voice-panel-open" : ""
-        }`}
-      >
-        {/* Resize handle for members panel (Desktop) */}
-        <div
-          className="member-resize-handle"
-          onMouseDown={onMembersResizeDown}
-          title="Drag to resize member list"
-        />
-
-        {/* Outside MSN the sidebar voice bar already has these controls. */}
-        {msnTheme && voice.channelId && (
-          <>
-            <div
-              className={`member-panel-title voice-panel-title ${collapsedGroups.voice ? "msn-collapsed" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-expanded={!collapsedGroups.voice}
-              onClick={() => setCollapsedGroups((g) => ({ ...g, voice: !g.voice }))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setCollapsedGroups((g) => ({ ...g, voice: !g.voice }));
-                }
-              }}
-            >
-              <span>IN VOICE — {voiceParticipants.length}</span>
-            </div>
-            {!collapsedGroups.voice && (
-            <>
-            <div className="voice-feature">
-              <div className="voice-feature-avatars">
-                {voiceParticipants.slice(0, 5).map((person) => (
-                  <Avatar
-                    key={person.connectionId}
-                    avatar={person.avatar}
-                    avatarUrl={person.avatarUrl}
-                    color={person.color}
-                  />
-                ))}
-              </div>
-              <strong>{currentVoiceChannel?.name}</strong>
-              <p>
-                {voiceParticipants.length === 1
-                  ? "Just you so far"
-                  : `${voiceParticipants.length} in the room`}
-              </p>
-              <div className="voice-controls">
-                <button
-                  className={`mic-control ${voice.muted ? "muted" : ""}`}
-                  onClick={voice.toggleMute}
-                  disabled={voice.forcedMute}
-                >
-                  {voice.forcedMute
-                    ? "Server muted"
-                    : voice.muted
-                      ? "Muted"
-                      : "Mic on"}
-                </button>
-                <button className="leave-outline" onClick={voice.leave}>
-                  Leave
-                </button>
-              </div>
-              <div className="screen-share-controls compact">
-                <button
-                  className={voice.screenSharing ? "sharing" : sidebarShareSetupOpen ? "active" : ""}
-                  aria-expanded={!voice.screenSharing && sidebarShareSetupOpen}
-                  onClick={() =>
-                    voice.screenSharing
-                      ? voice.stopScreenShare()
-                      : setSidebarShareSetupOpen((open) => !open)
-                  }
-                >
-                  {voice.screenSharing ? `Stop · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
-                </button>
-                <button
-                  className={voice.cameraOn ? "sharing" : ""}
-                  onClick={() =>
-                    voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
-                  }
-                >
-                  {voice.cameraOn ? "Camera off" : "Camera"}
-                </button>
-              </div>
-              {sidebarShareSetupOpen && !voice.screenSharing && (
-                <ScreenShareSetup
-                  className="screen-share-setup-inline"
-                  quality={voice.screenQuality}
-                  onQuality={voice.setScreenQuality}
-                  film={voice.screenFilm}
-                  onFilm={voice.setScreenFilm}
-                  audio={voice.screenShareAudio}
-                  onAudio={voice.setScreenShareAudio}
-                  onClose={() => setSidebarShareSetupOpen(false)}
-                  onStart={() => {
-                    setSidebarShareSetupOpen(false);
-                    void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio, voice.screenFilm);
-                  }}
-                />
-              )}
-            </div>
-
-            {stageChannelId !== voice.channelId && voice.channelId && (
-              <button
-                type="button"
-                className="open-stage-button"
-                onClick={() => setStageChannelId(voice.channelId)}
-              >
-                Open call view
-              </button>
-            )}
-            </>
-            )}
-          </>
-        )}
-
-        <div className="px-3 pt-2 pb-1">
-          <div className="relative flex items-center">
-            <input
-              type="text"
-              value={memberFilterQuery}
-              onChange={(e) => setMemberFilterQuery(e.target.value)}
-              placeholder="Search members..."
-              className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] text-xs text-white placeholder-white/40 rounded-lg px-2.5 py-1.5 outline-none transition-colors border border-white/5 focus:border-[var(--lavender)]/50"
-            />
-            {memberFilterQuery && (
-              <button
-                type="button"
-                onClick={() => setMemberFilterQuery("")}
-                className="absolute right-2 text-white/40 hover:text-white text-xs px-1"
-                title="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        {(() => {
-          // One row per contact; Online and Not Online share it, and so do
-          // the MSN theme's own groups.
-          const row = (member: Member, offline: boolean) =>
-            offline ? (
-          <div
-            className="member offline-member clickable-name"
-            key={member.id}
-            {...userMenuHandlers(member)}
-            onClick={() => openProfile(member)}
-              onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
-              onMouseLeave={() => msnTheme && queueHoverCard(null)}
-          >
-            <Avatar
-              className="member-avatar"
-              avatar={member.avatar}
-              avatarUrl={member.avatarUrl}
-              color={member.color}
-            />
-            <div>
-              <div className="member-name-line">
-                <strong style={{ color: roleColorFor(member) || undefined }}>
-                  <StyledText text={member.displayName} />
-                </strong>
-                <PrideBadges badges={member.prideBadges} mini />
-                {activeUntil(member.timeoutUntil) && (
-                  <span
-                    className="member-timeout-icon"
-                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
-                    aria-label="Timed out"
-                  >
-                    <Timer size={12} />
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-            ) : (
-          <div
-            className="member clickable-name"
-            key={member.id}
-            {...userMenuHandlers(member)}
-            onClick={() => openProfile(member)}
-              onMouseEnter={(event) => msnTheme && queueHoverCard(member, event.currentTarget)}
-              onMouseLeave={() => msnTheme && queueHoverCard(null)}
-          >
-            <Avatar
-              className="member-avatar"
-              avatar={member.avatar}
-              avatarUrl={member.avatarUrl}
-              color={member.color}
-            >
-              <span
-                className="presence-dot"
-                title={
-                  PRESENCE[
-                    (presenceOf(member) === "offline"
-                      ? "invisible"
-                      : presenceOf(member)) as PresenceStatus
-                  ].label
-                }
-                style={{
-                  background:
-                    presenceOf(member) === "offline"
-                      ? PRESENCE.invisible.color
-                      : PRESENCE[presenceOf(member) as PresenceStatus].color,
-                }}
-              />
-            </Avatar>
-            <div>
-              <div className="member-name-line">
-                <strong style={{ color: roleColorFor(member) || undefined }}>
-                  <StyledText text={member.displayName} />
-                </strong>
-                <PrideBadges badges={member.prideBadges} mini />
-                {activeUntil(member.timeoutUntil) && (
-                  <span
-                    className="member-timeout-icon"
-                    title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
-                    aria-label="Timed out"
-                  >
-                    <Timer size={12} />
-                  </span>
-                )}
-              </div>
-              <span>
-                <StyledText text={(member.id === user.id ? myCustomStatus : member.customStatus) ||
-                  (member.id === user.id
-                    ? "Here now"
-                    : prefFor(member.id).muted
-                      ? "Muted for you"
-                      : hub.forcedMutes.has(member.id)
-                        ? "Server muted"
-                        : PRESENCE[
-                          (presenceOf(member) === "offline"
-                            ? "invisible"
-                            : presenceOf(member)) as PresenceStatus
-                        ].label)} />
-              </span>
-            </div>
-          </div>
-            );
-          const placement = msnTheme ? msnContacts.contacts.placement : {};
-          const groups = msnTheme ? msnContacts.contacts.groups : [];
-          const unplaced = (list: Member[]) =>
-            groups.length ? list.filter((m) => !groups.some((g) => g.id === placement[m.id])) : list;
-          const looseOnline = unplaced(onlineMembers);
-          const looseOffline = unplaced(offlineMembers);
-          const header = (key: string, label: string, extraClass: string, tools?: ReactNode) => (
-            <div
-              className={`member-panel-title ${extraClass} ${msnTheme && collapsedGroups[key] ? "msn-collapsed" : ""}`}
-              role={msnTheme ? "button" : undefined}
-              tabIndex={msnTheme ? 0 : undefined}
-              aria-expanded={msnTheme ? !collapsedGroups[key] : undefined}
-              onClick={() => msnTheme && setCollapsedGroups((g) => ({ ...g, [key]: !g[key] }))}
-              onKeyDown={(event) => {
-                if (msnTheme && (event.key === "Enter" || event.key === " ")) {
-                  event.preventDefault();
-                  setCollapsedGroups((g) => ({ ...g, [key]: !g[key] }));
-                }
-              }}
-            >
-              <span>{label}</span>
-              {tools}
-            </div>
-          );
-          // MSN groups stop growing at about ten contacts and scroll instead.
-          const rows = (nodes: ReactNode) =>
-            msnTheme ? <div className="msn-contact-scroll">{nodes}</div> : nodes;
-          return (
-            <>
-              {groups.map((group) => {
-                const inGroupOnline = onlineMembers.filter((m) => placement[m.id] === group.id);
-                const inGroupOffline = offlineMembers.filter((m) => placement[m.id] === group.id);
-                return (
-                  <div key={group.id} className="msn-contact-group">
-                    {header(
-                      `group:${group.id}`,
-                      `${group.name} (${inGroupOnline.length}/${inGroupOnline.length + inGroupOffline.length})`,
-                      "msn-group-title",
-                      <span className="msn-group-tools" onClick={(event) => event.stopPropagation()}>
-                        <button type="button" title="Rename group" onClick={() => renameContactGroup(group.id)}>
-                          ✎
-                        </button>
-                        <button type="button" title="Delete group" onClick={() => deleteContactGroup(group.id)}>
-                          ×
-                        </button>
-                      </span>,
-                    )}
-                    {!collapsedGroups[`group:${group.id}`] &&
-                      rows(
-                        <>
-                          {inGroupOnline.map((member) => row(member, false))}
-                          {inGroupOffline.map((member) => row(member, true))}
-                        </>,
-                      )}
-                  </div>
-                );
-              })}
-              {header(
-                "online",
-                msnTheme ? `Online (${looseOnline.length})` : `Online — ${looseOnline.length}`,
-                "online-title",
-              )}
-              {!(msnTheme && collapsedGroups.online) && rows(looseOnline.map((member) => row(member, false)))}
-              {header(
-                "offline",
-                msnTheme ? `Not Online (${looseOffline.length})` : `Offline — ${looseOffline.length}`,
-                "offline-title",
-              )}
-              {!(msnTheme && collapsedGroups.offline) && rows(looseOffline.map((member) => row(member, true)))}
-              {msnTheme && (
-                <button type="button" className="msn-add-group" onClick={() => createContactGroup()}>
-                  + Create a group
-                </button>
-              )}
-            </>
-          );
-        })()}
-        {msnTheme && (
-          <MsnWhatsNew
-            feed={whatsNew.feed}
-            onClear={whatsNew.clear}
-            onOpen={(id) => {
-              const person = whatsNewPeople.find((p) => p.id === id);
-              if (person) openProfile(person);
-            }}
-          />
-        )}
-        {msnTheme && <MsnAdBanner onClick={() => setGlobalSearchOpen(true)} />}
-      </aside>
+      <MemberPanel
+        membersOpen={membersOpen}
+        inDmHome={inDmHome}
+        activeChannelId={activeChannelId}
+        voice={voice}
+        collapsedGroups={collapsedGroups}
+        onMembersResizeDown={onMembersResizeDown}
+        msnTheme={msnTheme}
+        setCollapsedGroups={setCollapsedGroups}
+        voiceParticipants={voiceParticipants}
+        currentVoiceChannel={currentVoiceChannel}
+        sidebarShareSetupOpen={sidebarShareSetupOpen}
+        setSidebarShareSetupOpen={setSidebarShareSetupOpen}
+        stageChannelId={stageChannelId}
+        setStageChannelId={setStageChannelId}
+        memberFilterQuery={memberFilterQuery}
+        setMemberFilterQuery={setMemberFilterQuery}
+        userMenuHandlers={userMenuHandlers}
+        openProfile={openProfile}
+        queueHoverCard={queueHoverCard}
+        roleColorFor={roleColorFor}
+        presenceOf={presenceOf}
+        user={user}
+        myCustomStatus={myCustomStatus}
+        prefFor={prefFor}
+        hub={hub}
+        msnContacts={msnContacts}
+        onlineMembers={onlineMembers}
+        offlineMembers={offlineMembers}
+        renameContactGroup={renameContactGroup}
+        deleteContactGroup={deleteContactGroup}
+        createContactGroup={createContactGroup}
+        whatsNew={whatsNew}
+        whatsNewPeople={whatsNewPeople}
+        setGlobalSearchOpen={setGlobalSearchOpen}
+      />
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
       {voice.channelId && (
@@ -11323,212 +7507,42 @@ export function ChatShell() {
         />
       )}
 
-      {userMenu && (
-        <UserMenu
-          target={userMenu}
-          isSelf={userMenu.member.id === user.id}
-          extra={
-            msnTheme && userMenu.member.id !== user.id ? (
-              <div className="msn-menu-extra">
-                <div className="user-menu-divider" />
-                <p className="user-menu-note">Contact group</p>
-                {msnContacts.contacts.groups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={msnContacts.contacts.placement[userMenu.member.id] === group.id}
-                    className={msnContacts.contacts.placement[userMenu.member.id] === group.id ? "active" : ""}
-                    onClick={() => {
-                      placeContact(userMenu.member.id, group.id);
-                      setUserMenu(null);
-                    }}
-                  >
-                    {msnContacts.contacts.placement[userMenu.member.id] === group.id ? "✓ " : ""}
-                    {group.name}
-                  </button>
-                ))}
-                {msnContacts.contacts.placement[userMenu.member.id] && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      placeContact(userMenu.member.id, null);
-                      setUserMenu(null);
-                    }}
-                  >
-                    Remove from group
-                  </button>
-                )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const id = userMenu.member.id;
-                    setUserMenu(null);
-                    createContactGroup(id);
-                  }}
-                >
-                  New group…
-                </button>
-                <div className="user-menu-divider" />
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={!msnContacts.contacts.quiet.includes(userMenu.member.id)}
-                  onClick={() => {
-                    toggleSignInAlert(userMenu.member.id);
-                    setUserMenu(null);
-                  }}
-                >
-                  {msnContacts.contacts.quiet.includes(userMenu.member.id) ? "" : "✓ "}
-                  Alert me when they sign in
-                </button>
-              </div>
-            ) : undefined
-          }
-          isOwner={Boolean(user.isAdmin)}
-          onToggleInvitePermission={
-            user.isAdmin && !userMenu.member.isAdmin && userMenu.member.id !== user.id
-              ? async () => {
-                const targetMember = userMenu.member;
-                const newCanInvite = !targetMember.canInvite;
-                setUserMenu(null);
-                try {
-                  await apiFetch("/api/invites/permissions", {
-                    method: "POST",
-                    body: JSON.stringify({
-                      userId: targetMember.id,
-                      canInvite: newCanInvite,
-                    }),
-                  });
-                  setMembers((prev) =>
-                    prev.map((m) =>
-                      m.id === targetMember.id
-                        ? { ...m, canInvite: newCanInvite }
-                        : m,
-                    ),
-                  );
-                } catch (err) {
-                  console.error("Failed to update invite permission:", err);
-                }
-              }
-              : undefined
-          }
-          pref={prefFor(userMenu.member.id)}
-          serverMuted={hub.forcedMutes.has(userMenu.member.id)}
-          isBlocked={blockedUserIds.has(userMenu.member.id)}
-          onBlock={() => {
-            void handleBlockUser(userMenu.member.id);
-          }}
-          onUnblock={() => {
-            void handleUnblockUser(userMenu.member.id);
-          }}
-          onClose={() => setUserMenu(null)}
-          onMessage={() => {
-            const id = userMenu.member.id;
-            setUserMenu(null);
-            void openDm(id);
-          }}
-          onLocalMute={(muted) => {
-            void saveVoicePref(userMenu.member.id, { muted });
-          }}
-          onVolume={(volume) => {
-            void saveVoicePref(userMenu.member.id, { volume });
-          }}
-          onServerMute={(muted) => {
-            void saveVoicePref(userMenu.member.id, { serverMuted: muted });
-            setUserMenu(null);
-          }}
-          onTogglePinDm={
-            userMenu.dmChannelId
-              ? () => {
-                  void togglePinDm(userMenu.dmChannelId!, !userMenu.dmPinned);
-                }
-              : undefined
-          }
-          dmPinned={userMenu.dmPinned}
-          canModerate={canModerate}
-          canManage={canManageServer && !inDmHome}
-          onRemoveFromGroup={
-            inDmHome &&
-              activeDm?.group &&
-              activeDm.group.ownerId === user.id &&
-              userMenu.member.id !== user.id &&
-              activeDm.group.members.some((m) => m.id === userMenu.member.id)
-              ? () => {
-                removeFromGroupDm(activeDm, userMenu.member);
-                setUserMenu(null);
-              }
-              : undefined
-          }
-          onKick={() => {
-            void moderateMember(userMenu.member.id, "kick");
-            setUserMenu(null);
-          }}
-          onBan={() => {
-            void moderateMember(userMenu.member.id, "ban");
-            setUserMenu(null);
-          }}
-          banned={bannedIds.has(userMenu.member.id)}
-          onUnban={() => {
-            void moderateMember(userMenu.member.id, "unban");
-            setUserMenu(null);
-          }}
-          voiceChannels={
-            canModerate && !inDmHome
-              ? voiceChannels.map((channel) => ({
-                id: channel.id,
-                name: channel.name,
-              }))
-              : []
-          }
-          targetVoiceChannelId={
-            voiceChannels.find((channel) =>
-              (voiceRooms[channel.id] || []).some(
-                (person) => person.id === userMenu.member.id,
-              ),
-            )?.id || null
-          }
-          voiceJoinedAt={userMenuVoiceJoinedAt}
-          serverNow={hub.serverNow}
-          onMove={(channelId) => {
-            void moveMember(userMenu.member.id, channelId);
-            setUserMenu(null);
-          }}
-          timeoutUntil={activeUntil(membersById.get(userMenu.member.id)?.timeoutUntil)}
-          onTimeout={
-            !inDmHome &&
-            userMenu.member.id !== user.id &&
-            membersById.has(userMenu.member.id) &&
-            !membersById.get(userMenu.member.id)?.isAdmin &&
-            activeServer?.ownerId !== userMenu.member.id &&
-            (canModerate ||
-              canManageServer ||
-              hasPermission(myPermissions, Permission.KICK_MEMBERS))
-              ? (minutes) => {
-                  const id = userMenu.member.id;
-                  setUserMenu(null);
-                  void timeoutMember(id, minutes);
-                }
-              : undefined
-          }
-          onNickname={
-            !inDmHome &&
-            membersById.has(userMenu.member.id) &&
-            (userMenu.member.id === user.id ||
-              (canManageNicknames &&
-                !membersById.get(userMenu.member.id)?.isAdmin &&
-                activeServer?.ownerId !== userMenu.member.id))
-              ? () => {
-                  const id = userMenu.member.id;
-                  setUserMenu(null);
-                  editNickname(id);
-                }
-              : undefined
-          }
-        />
-      )}
+      <UserMenuLayer
+        userMenu={userMenu}
+        user={user}
+        msnTheme={msnTheme}
+        msnContacts={msnContacts}
+        placeContact={placeContact}
+        setUserMenu={setUserMenu}
+        createContactGroup={createContactGroup}
+        toggleSignInAlert={toggleSignInAlert}
+        setMembers={setMembers}
+        prefFor={prefFor}
+        hub={hub}
+        blockedUserIds={blockedUserIds}
+        handleBlockUser={handleBlockUser}
+        handleUnblockUser={handleUnblockUser}
+        openDm={openDm}
+        saveVoicePref={saveVoicePref}
+        togglePinDm={togglePinDm}
+        canModerate={canModerate}
+        canManageServer={canManageServer}
+        inDmHome={inDmHome}
+        activeDm={activeDm}
+        removeFromGroupDm={removeFromGroupDm}
+        moderateMember={moderateMember}
+        bannedIds={bannedIds}
+        voiceChannels={voiceChannels}
+        voiceRooms={voiceRooms}
+        userMenuVoiceJoinedAt={userMenuVoiceJoinedAt}
+        moveMember={moveMember}
+        membersById={membersById}
+        activeServer={activeServer}
+        myPermissions={myPermissions}
+        timeoutMember={timeoutMember}
+        canManageNicknames={canManageNicknames}
+        editNickname={editNickname}
+      />
 
       {groupDmMenu && (
         <GroupDmContextMenu
@@ -11579,424 +7593,45 @@ export function ChatShell() {
         <EditHistoryDialog messageId={editHistoryId} onClose={() => setEditHistoryId(null)} />
       )}
 
-      {railMenu && (
-        <>
-          <div
-            className="menu-shade"
-            onClick={() => setRailMenu(null)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setRailMenu(null);
-            }}
-          />
-          <div
-            className="user-menu"
-            role="menu"
-            style={{
-              left: Math.min(railMenu.x, (globalThis.innerWidth || 1200) - 240),
-              top: Math.min(railMenu.y, (globalThis.innerHeight || 800) - 260),
-            }}
-          >
-            <div className="user-menu-head">
-              <strong>{railMenu.server.name}</strong>
-            </div>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!railMenu.server.channels.some((c) => unread[c.id])}
-              onClick={() => {
-                markServerRead(railMenu.server);
-                setRailMenu(null);
-              }}
-            >
-              Mark as read
-            </button>
-            {folderIdOf(railMenu.server.id) && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  saveServerFolders(removeFromFolders(serverFolders, railMenu.server.id));
-                  setRailMenu(null);
-                }}
-              >
-                Remove from folder
-              </button>
-            )}
-            <div className="user-menu-divider" />
-            <div className="user-menu-head">
-              <span>Notifications</span>
-            </div>
-            {(
-              [
-                ["all", "All messages"],
-                ["mentions", "Only @mentions"],
-                ["nothing", "Nothing"],
-              ] as const
-            ).map(([level, label]) => {
-              const key = `server:${railMenu.server.id}`;
-              const current = channelPrefs[key] || "all";
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  role="menuitem"
-                  className={current === level ? "active" : ""}
-                  onClick={() => {
-                    setNotifyLevel(key, level);
-                    setRailMenu(null);
-                  }}
-                >
-                  {current === level ? "● " : "○ "}
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <RailMenuLayer
+        railMenu={railMenu}
+        setRailMenu={setRailMenu}
+        unread={unread}
+        markServerRead={markServerRead}
+        folderIdOf={folderIdOf}
+        saveServerFolders={saveServerFolders}
+        serverFolders={serverFolders}
+        channelPrefs={channelPrefs}
+        setNotifyLevel={setNotifyLevel}
+      />
 
-      {folderMenu && (
-        <>
-          <div
-            className="menu-shade"
-            onClick={() => setFolderMenu(null)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setFolderMenu(null);
-            }}
-          />
-          <div
-            className="user-menu"
-            role="menu"
-            style={{
-              left: Math.min(folderMenu.x, (globalThis.innerWidth || 1200) - 240),
-              top: Math.min(folderMenu.y, (globalThis.innerHeight || 800) - 260),
-            }}
-          >
-            <div className="user-menu-head">
-              <strong>{folderMenu.folder.name || "Server folder"}</strong>
-            </div>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                for (const server of servers) {
-                  if (folderMenu.folder.serverIds.includes(server.id)) markServerRead(server);
-                }
-                setFolderMenu(null);
-              }}
-            >
-              Mark folder as read
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const target = folderMenu.folder;
-                setFolderMenu(null);
-                showCustomPrompt({
-                  title: "Folder name",
-                  message: "Leave it empty to show the servers' names.",
-                  defaultValue: target.name,
-                  placeholder: "Games, Friends, Work…",
-                  confirmText: "Save",
-                  maxLength: 40,
-                  onConfirm: (value) =>
-                    saveServerFolders(
-                      serverFolders.map((folder) =>
-                        folder.id === target.id
-                          ? { ...folder, name: (value || "").trim() }
-                          : folder,
-                      ),
-                    ),
-                });
-              }}
-            >
-              Rename folder
-            </button>
-            <div className="user-menu-divider" />
-            <div className="user-menu-head">
-              <span>Colour</span>
-            </div>
-            <div className="rail-folder-colors">
-              {["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#9b59b6", "#1abc9c", "#747f8d"].map(
-                (color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    aria-label={`Colour ${color}`}
-                    className={folderMenu.folder.color === color ? "is-current" : ""}
-                    style={{ background: color }}
-                    onClick={() => {
-                      saveServerFolders(
-                        serverFolders.map((folder) =>
-                          folder.id === folderMenu.folder.id ? { ...folder, color } : folder,
-                        ),
-                      );
-                      setFolderMenu(null);
-                    }}
-                  />
-                ),
-              )}
-            </div>
-            <div className="user-menu-divider" />
-            <button
-              type="button"
-              role="menuitem"
-              className="danger"
-              onClick={() => {
-                saveServerFolders(
-                  serverFolders.filter((folder) => folder.id !== folderMenu.folder.id),
-                );
-                setFolderMenu(null);
-              }}
-            >
-              Ungroup servers
-            </button>
-          </div>
-        </>
-      )}
+      <FolderMenuLayer
+        folderMenu={folderMenu}
+        setFolderMenu={setFolderMenu}
+        servers={servers}
+        markServerRead={markServerRead}
+        showCustomPrompt={showCustomPrompt}
+        saveServerFolders={saveServerFolders}
+        serverFolders={serverFolders}
+      />
 
-      {channelMenu && (
-        <>
-          <div
-            className="menu-shade"
-            onClick={() => setChannelMenu(null)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setChannelMenu(null);
-            }}
-          />
-          <div
-            className="user-menu"
-            role="menu"
-            style={{
-              left: Math.min(channelMenu.x, (globalThis.innerWidth || 1200) - 240),
-              top: Math.min(channelMenu.y, (globalThis.innerHeight || 800) - 280),
-            }}
-          >
-            <div className="user-menu-head">
-              <strong>
-                {channelKindIcon(channelMenu.channel.kind)}
-                {" "}
-                {channelMenu.channel.name}
-              </strong>
-              <span>Notifications</span>
-            </div>
-            {(
-              [
-                ["all", "All messages"],
-                ["mentions", "Only @mentions"],
-                ["nothing", "Nothing"],
-              ] as const
-            ).map(([level, label]) => {
-              const current = channelPrefs[channelMenu.channel.id] || "all";
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  role="menuitem"
-                  className={current === level ? "active" : ""}
-                  onClick={() => {
-                    setNotifyLevel(channelMenu.channel.id, level);
-                    setChannelMenu(null);
-                  }}
-                >
-                  {current === level ? "● " : "○ "}
-                  {label}
-                </button>
-              );
-            })}
-            {canManageChannels && (
-              <>
-                <div className="user-menu-divider" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const channel = channelMenu.channel;
-                    setChannelMenu(null);
-                    void renameChannel(channel);
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const channel = channelMenu.channel;
-                    setChannelMenu(null);
-                    void editChannelTopic(channel);
-                  }}
-                >
-                  Edit Topic
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const channel = channelMenu.channel;
-                    setChannelMenu(null);
-                    void editChannelSlowmode(channel);
-                  }}
-                >
-                  Set Slowmode
-                </button>
-                {channelKindInfo(channelMenu.channel.kind).voice && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      const channel = channelMenu.channel;
-                      setChannelMenu(null);
-                      void editChannelBitrate(channel);
-                    }}
-                  >
-                    Voice Bitrate ({Math.round(clampVoiceBitrate(channelMenu.channel.bitrate) / 1000)} kbps)
-                  </button>
-                )}
-                {channelKindInfo(channelMenu.channel.kind).voice && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      const channel = channelMenu.channel;
-                      setChannelMenu(null);
-                      void toggleChannelSoundboard(channel);
-                    }}
-                  >
-                    {channelMenu.channel.soundboard === false ? "Turn soundboard on" : "Turn soundboard off"}
-                  </button>
-                )}
-                {channelKindInfo(channelMenu.channel.kind).voice && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      const channel = channelMenu.channel;
-                      setChannelMenu(null);
-                      void editChannelRegion(channel);
-                    }}
-                  >
-                    Region Override ({channelMenu.channel.rtcRegion === "de" ? "Germany" : channelMenu.channel.rtcRegion === "nl" ? "Netherlands" : "Automatic"})
-                  </button>
-                )}
-                {convertibleKinds(channelMenu.channel.kind).map((kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      const channel = channelMenu.channel;
-                      setChannelMenu(null);
-                      void changeChannelKind(channel, kind);
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      {channelKindIcon(kind)} Make it {withArticle(channelKindLabel(kind))}
-                    </span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => {
-                    const channel = channelMenu.channel;
-                    setChannelMenu(null);
-                    void deleteChannel(channel);
-                  }}
-                >
-                  Delete channel
-                </button>
-              </>
-            )}
-          </div>
-        </>
-      )}
+      <ChannelMenuLayer
+        channelMenu={channelMenu}
+        setChannelMenu={setChannelMenu}
+        channelPrefs={channelPrefs}
+        setNotifyLevel={setNotifyLevel}
+        canManageChannels={canManageChannels}
+        renameChannel={renameChannel}
+        editChannelTopic={editChannelTopic}
+        editChannelSlowmode={editChannelSlowmode}
+        editChannelBitrate={editChannelBitrate}
+        toggleChannelSoundboard={toggleChannelSoundboard}
+        editChannelRegion={editChannelRegion}
+        changeChannelKind={changeChannelKind}
+        deleteChannel={deleteChannel}
+      />
 
-      {lightbox && lightbox.images[lightbox.index] && (
-        <div
-          className="lightbox"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setLightbox(null)}
-        >
-          <button
-            type="button"
-            className="lightbox-close"
-            aria-label="Close image"
-            onClick={() => setLightbox(null)}
-          >
-            ×
-          </button>
-          {lightbox.images.length > 1 && (
-            <>
-              <button
-                type="button"
-                className="lightbox-nav lightbox-prev"
-                aria-label="Previous image"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightbox((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          index:
-                            (prev.index - 1 + prev.images.length) %
-                            prev.images.length,
-                        }
-                      : null,
-                  );
-                }}
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                className="lightbox-nav lightbox-next"
-                aria-label="Next image"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightbox((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          index: (prev.index + 1) % prev.images.length,
-                        }
-                      : null,
-                  );
-                }}
-              >
-                ›
-              </button>
-              <div
-                className="lightbox-counter"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {lightbox.index + 1} / {lightbox.images.length}
-              </div>
-            </>
-          )}
-          <img
-            key={lightbox.images[lightbox.index]}
-            src={lightbox.images[lightbox.index]}
-            alt=""
-            onClick={(event) => event.stopPropagation()}
-          />
-          <a
-            className="lightbox-open"
-            href={lightbox.images[lightbox.index]}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => event.stopPropagation()}
-          >
-            Open original ↗
-          </a>
-        </div>
-      )}
+      <ImageLightbox lightbox={lightbox} setLightbox={setLightbox} />
 
       {pdfViewer && (
         <PdfViewer
@@ -12295,200 +7930,40 @@ export function ChatShell() {
         }}
       />
 
-      {profileCardTarget && (
-        <UserProfileCard
-          member={profileCardTarget.member}
-          server={inDmHome ? null : activeServer}
-          roles={activeServer?.roles || []}
-          userRoles={
-            profileCardTarget.member.roleIds?.[activeServerId || ""] || []
-          }
-          position={profileCardTarget.pos}
-          onClose={() => setProfileCardTarget(null)}
-          onToggleRole={
-            (canManageServer || canManageRoles) && activeServer && !inDmHome
-              ? async (roleId, add) => {
-                const serverId = activeServer.id;
-                await apiFetch("/api/roles/assign", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    serverId,
-                    userId: profileCardTarget.member.id,
-                    roleId,
-                    add,
-                  }),
-                });
-                void loadMembers().catch(() => undefined);
-              }
-              : undefined
-          }
-          isSelf={user?.id === profileCardTarget.member.id}
-          presence={presenceOf(profileCardTarget.member)}
-          isBlocked={blockedUserIds.has(profileCardTarget.member.id)}
-          onEditProfile={() => {
-            setProfileCardTarget(null);
-            setSettingsOpen(true);
-          }}
-          friendStatus={
-            friendUserIds.has(profileCardTarget.member.id)
-              ? "friend"
-              : incomingFriendUserIds.has(profileCardTarget.member.id)
-                ? "incoming"
-                : outgoingFriendUserIds.has(profileCardTarget.member.id)
-                  ? "outgoing"
-                  : "none"
-          }
-          onAddFriend={(targetUserId, targetUsername) => {
-            void handleAddFriend(targetUserId, targetUsername);
-          }}
-          onRemoveFriend={(targetUserId) => {
-            void handleRemoveFriend(targetUserId);
-          }}
-          onAcceptFriend={(targetUserId) => {
-            void handleAcceptFriend(targetUserId);
-          }}
-          onBlock={(targetUserId) => {
-            void handleBlockUser(targetUserId);
-          }}
-          onUnblock={(targetUserId) => {
-            void handleUnblockUser(targetUserId);
-          }}
-          onDirectMessage={(targetUserId) => {
-            void openDm(targetUserId);
-          }}
-          onMention={(username) => {
-            setDraft((curr) => curr + `@${username} `);
-            composerRef.current?.focus();
-          }}
-        />
-      )}
+      <ProfileCardLayer
+        profileCardTarget={profileCardTarget}
+        inDmHome={inDmHome}
+        activeServer={activeServer}
+        activeServerId={activeServerId}
+        setProfileCardTarget={setProfileCardTarget}
+        canManageServer={canManageServer}
+        canManageRoles={canManageRoles}
+        loadMembers={loadMembers}
+        user={user}
+        presenceOf={presenceOf}
+        blockedUserIds={blockedUserIds}
+        setSettingsOpen={setSettingsOpen}
+        friendUserIds={friendUserIds}
+        incomingFriendUserIds={incomingFriendUserIds}
+        outgoingFriendUserIds={outgoingFriendUserIds}
+        handleAddFriend={handleAddFriend}
+        handleRemoveFriend={handleRemoveFriend}
+        handleAcceptFriend={handleAcceptFriend}
+        handleBlockUser={handleBlockUser}
+        handleUnblockUser={handleUnblockUser}
+        openDm={openDm}
+        setDraft={setDraft}
+        composerRef={composerRef}
+      />
 
-      {incomingDmCall && (
-        <div className="incoming-call-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming Call">
-          <div className="incoming-call-card">
-            <div className="incoming-call-avatar-wrapper">
-              <Avatar
-                avatar={incomingDmCall.fromAvatar}
-                avatarUrl={incomingDmCall.fromAvatarUrl}
-                color="#a78bfa"
-                name={incomingDmCall.fromDisplayName}
-                size={52}
-              />
-            </div>
-            <div className="incoming-call-info">
-              <span className="incoming-call-name">{incomingDmCall.fromDisplayName}</span>
-              <span className="incoming-call-subtitle">
-                {incomingDmCall.isVideo ? <Video size={13} /> : <PhoneCall size={13} />}
-                Incoming {incomingDmCall.isVideo ? "Video" : "Voice"} Call...
-              </span>
-            </div>
-            <div className="incoming-call-actions">
-              <button
-                type="button"
-                className="incoming-call-btn decline"
-                onClick={declineIncomingCall}
-                title="Decline Call"
-                aria-label="Decline Call"
-              >
-                <PhoneOff size={20} />
-              </button>
-              <button
-                type="button"
-                className="incoming-call-btn accept"
-                onClick={acceptIncomingCall}
-                title="Accept Call"
-                aria-label="Accept Call"
-              >
-                {incomingDmCall.isVideo ? <Video size={20} /> : <PhoneCall size={20} />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <IncomingDmCall incomingDmCall={incomingDmCall} declineIncomingCall={declineIncomingCall} acceptIncomingCall={acceptIncomingCall} />
 
-      {markdownModalOpen && (
-        <div
-          className="markdown-guide-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-          onClick={() => setMarkdownModalOpen(false)}
-        >
-          <div
-            className="markdown-guide-modal w-full max-w-lg rounded-2xl border border-[#2e2646] bg-[#161224] p-5 shadow-2xl text-white space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[var(--ink)]">Markdown & Code Snippets</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-300">
-                  Active
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMarkdownModalOpen(false)}
-                className="popup-close-x"
-                aria-label="Close markdown guide"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="text-xs text-[#b8b0cf] leading-relaxed">
-              Hoffle natively formats your messages with Discord-flavoured Markdown. Send code snippets with syntax highlighting using triple backticks.
-            </p>
-
-            <div className="space-y-2">
-              <div className="text-[11px] font-bold text-[var(--lavender)] uppercase tracking-wider">
-                Code Blocks (C++, Python, JS, Bash):
-              </div>
-              <div className="rounded-xl border border-[#28223e] bg-[#0f0d19] p-3 font-mono text-[11px] text-[var(--accent-hi)]">
-                <div>```cpp</div>
-                <div className="text-[var(--muted)] pl-2">#include &lt;iostream&gt;</div>
-                <div className="text-[var(--muted)] pl-2">int main() &#123;</div>
-                <div className="text-emerald-400 pl-4">std::cout &lt;&lt; &quot;Hello from Hoffle!&quot; &lt;&lt; std::endl;</div>
-                <div className="text-[var(--muted)] pl-4">return 0;</div>
-                <div className="text-[var(--muted)] pl-2">&#125;</div>
-                <div>```</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
-              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <strong className="text-white">**bold**</strong> → <strong>bold</strong>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <em className="text-white">*italic*</em> → <em>italic</em>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <code className="text-purple-300">`code`</code> → <code className="text-xs">code</code>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <span className="text-white">||spoiler||</span> → spoiler
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft("```cpp\n#include <iostream>\n\nint main() {\n    std::cout << \"Hello from Hoffle!\" << std::endl;\n    return 0;\n}\n```");
-                  setMarkdownModalOpen(false);
-                  composerRef.current?.focus();
-                }}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[var(--accent-strong)] hover:brightness-110 text-[var(--on-accent)] transition-colors cursor-pointer"
-              >
-                Insert C++ Code Template
-              </button>
-              <button
-                type="button"
-                onClick={() => setMarkdownModalOpen(false)}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-[#b8b0cf] transition-colors cursor-pointer"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MarkdownGuideModal
+        markdownModalOpen={markdownModalOpen}
+        setMarkdownModalOpen={setMarkdownModalOpen}
+        setDraft={setDraft}
+        composerRef={composerRef}
+      />
 
       <BlahajBuddy />
       <ToastContainer />
@@ -12498,50 +7973,15 @@ export function ChatShell() {
         onMicrophoneChange={() => void voice.switchMicrophone()}
       />
 
-      {reactionPicker && (
-        <div
-          className="reaction-picker-overlay"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            className="reaction-picker-backdrop"
-            onClick={() => setReactionPicker(null)}
-          />
-          <div
-            className="reaction-picker-floating"
-            style={{
-              top: reactionPicker.top,
-              right: reactionPicker.right,
-            }}
-          >
-            <EmojiPicker
-              className="discord-emoji-picker reaction-picker"
-              serverId={inDmHome ? null : activeServerId}
-              canManageEmojis={canManageChannels}
-              title={
-                reactionPicker.mode === "addToQuickReactions"
-                  ? "Add to Quick Reactions"
-                  : undefined
-              }
-              subtitle={
-                reactionPicker.mode === "addToQuickReactions"
-                  ? "Click any emoji to add to your message actions bar"
-                  : undefined
-              }
-              onPickEmoji={(codeOrUrl, _isCustom, e) => {
-                if (reactionPicker.mode === "addToQuickReactions" || e?.shiftKey) {
-                  addQuickReaction(codeOrUrl);
-                  setReactionPicker(null);
-                  return;
-                }
-                void toggleReaction(reactionPicker.messageId, codeOrUrl);
-                setReactionPicker(null);
-              }}
-              onClose={() => setReactionPicker(null)}
-            />
-          </div>
-        </div>
-      )}
+      <ReactionPickerLayer
+        reactionPicker={reactionPicker}
+        setReactionPicker={setReactionPicker}
+        inDmHome={inDmHome}
+        activeServerId={activeServerId}
+        canManageChannels={canManageChannels}
+        addQuickReaction={addQuickReaction}
+        toggleReaction={toggleReaction}
+      />
 
       <ForwardMessageDialog
         target={forwardTarget}
@@ -12552,239 +7992,37 @@ export function ChatShell() {
         onForward={handleForwardMessage}
       />
 
-      {reactionViewer && (
-        <div
-          className="reaction-viewer-overlay"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            className="reaction-viewer-backdrop"
-            onClick={() => setReactionViewer(null)}
-          />
-          <div
-            className="reaction-viewer-floating"
-            style={{
-              top: reactionViewer.top,
-              left: reactionViewer.left,
-            }}
-          >
-            {(() => {
-              const msg =
-                messages.find((m) => m.id === reactionViewer.messageId) ||
-                threadMessages.find((m) => m.id === reactionViewer.messageId) ||
-                (threadRoot?.id === reactionViewer.messageId ? threadRoot : undefined);
-              const reaction = msg?.reactions?.find(
-                (r) => r.emoji === reactionViewer.emoji,
-              );
-              const users = reaction?.users || [];
-              return (
-                <>
-                  <div className="reaction-viewer-header">
-                    <span className="reaction-viewer-emoji">
-                      {emojiMap[reactionViewer.emoji.replace(/^:|:$/g, "")] ? (
-                        <img
-                          className="custom-emoji"
-                          src={
-                            emojiMap[reactionViewer.emoji.replace(/^:|:$/g, "")]
-                          }
-                          alt={reactionViewer.emoji}
-                        />
-                      ) : (
-                        <OutlineEmoji emoji={reactionViewer.emoji} />
-                      )}
-                    </span>
-                    <span className="reaction-viewer-title">
-                      {users.length}{" "}
-                      {users.length === 1 ? "reaction" : "reactions"}
-                    </span>
-                    <button
-                      type="button"
-                      className="popup-close-x"
-                      onClick={() => setReactionViewer(null)}
-                      aria-label="Close reactions"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <div className="reaction-viewer-list">
-                    {users.length === 0 && (
-                      <div className="reaction-viewer-empty">
-                        No one has reacted yet.
-                      </div>
-                    )}
-                    {users.map((u) => (
-                      <button
-                        type="button"
-                        key={u.id}
-                        className="reaction-viewer-user"
-                        onClick={() => {
-                          const member = membersById.get(u.id);
-                          if (member) openProfile(member);
-                          setReactionViewer(null);
-                        }}
-                      >
-                        <Avatar
-                          name={u.displayName}
-                          avatar={u.avatar}
-                          avatarUrl={u.avatarUrl}
-                          color={u.color}
-                          size={28}
-                        />
-                        <span className="reaction-viewer-name">
-                          {u.displayName}
-                        </span>
-                        <span className="reaction-viewer-username">
-                          @{u.username}
-                        </span>
-                        {u.id === user?.id && (
-                          <span className="reaction-viewer-you">You</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+      <ReactionViewerLayer
+        reactionViewer={reactionViewer}
+        setReactionViewer={setReactionViewer}
+        messages={messages}
+        threadMessages={threadMessages}
+        threadRoot={threadRoot}
+        emojiMap={emojiMap}
+        membersById={membersById}
+        openProfile={openProfile}
+        user={user}
+      />
 
       {/* Floating Movable Screen Share Preview (Picture-in-Picture) */}
-      {floatingStream && !pipDismissed && stageChannelId !== voice.channelId && (
-        <FloatingScreenPreview
-          channelName={
-            servers
-              .flatMap((s) => s.channels)
-              .find((c) => c.id === voice.channelId)?.name || "Voice Room"
-          }
-          stream={floatingStream.stream}
-          streamerName={floatingStream.streamerName}
-          streamKind={floatingStream.kind}
-          viewerCount={
-            floatingStream.isSelf
-              ? (voice.streamViewers?.length || 0)
-              : Math.max(1, voiceParticipants.filter((p) => !p.bot).length - 1)
-          }
-          viewers={
-            floatingStream.isSelf
-              ? (voice.streamViewers || []).map((connId) => {
-                  const p = voiceParticipants.find((vp) => vp.connectionId === connId);
-                  return {
-                    id: p?.id,
-                    displayName: p?.displayName || "Viewer",
-                    avatar: p?.avatar,
-                    avatarUrl: p?.avatarUrl,
-                  };
-                })
-              : voiceParticipants
-                  .filter((p) => !p.bot && p.id !== floatingStream.participantId)
-                  .map((p) => ({
-                    id: p.id,
-                    displayName: p.displayName,
-                    avatar: p.avatar,
-                    avatarUrl: p.avatarUrl,
-                  }))
-          }
-          latency={voice.latency}
-          volume={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).volume}
-          muted={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).muted}
-          onVolumeChange={(vol) => setStreamVolume(floatingStream.stream.id, floatingStream.participantId, vol)}
-          onToggleMute={() => toggleStreamMute(floatingStream.stream.id, floatingStream.participantId)}
-          isSelf={floatingStream.isSelf}
-          onMaximize={() => {
-            if (voice.channelId) {
-              const targetChannel = servers
-                .flatMap((s) => s.channels)
-                .find((c) => c.id === voice.channelId);
-              if (targetChannel?.serverId && targetChannel.serverId !== activeServerId) {
-                setActiveServerId(targetChannel.serverId);
-              }
-              setStageChannelId(voice.channelId);
-              setPipDismissed(false);
-            }
-          }}
-          onClose={() => setPipDismissed(true)}
-        />
-      )}
+      <FloatingStreamPreview
+        floatingStream={floatingStream}
+        pipDismissed={pipDismissed}
+        stageChannelId={stageChannelId}
+        voice={voice}
+        servers={servers}
+        voiceParticipants={voiceParticipants}
+        streamPreferenceFor={streamPreferenceFor}
+        setStreamVolume={setStreamVolume}
+        toggleStreamMute={toggleStreamMute}
+        activeServerId={activeServerId}
+        setActiveServerId={setActiveServerId}
+        setStageChannelId={setStageChannelId}
+        setPipDismissed={setPipDismissed}
+      />
     </main>
     </>
   );
 }
 
-function GroupDmContextMenu({
-  target,
-  onClose,
-  onTogglePin,
-  onRename,
-  onAddMembers,
-  onLeave,
-  onCloseDm,
-}: {
-  target: { dm: DmSummary; x: number; y: number };
-  onClose: () => void;
-  onTogglePin: () => void;
-  onRename: () => void;
-  onAddMembers: () => void;
-  onLeave: () => void;
-  onCloseDm: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const dismiss = (event: Event) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    const timer = window.setTimeout(() => {
-      window.addEventListener("mousedown", dismiss);
-      window.addEventListener("contextmenu", dismiss);
-    }, 0);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("contextmenu", dismiss);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  const [pos, setPos] = useState({ left: target.x, top: target.y });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const margin = 12;
-    const { width, height } = el.getBoundingClientRect();
-    const maxLeft = window.innerWidth - width - margin;
-    const maxTop = window.innerHeight - height - margin;
-    setPos({
-      left: Math.max(margin, Math.min(target.x, maxLeft)),
-      top: Math.max(margin, target.y > maxTop ? Math.min(target.y - height, maxTop) : target.y),
-    });
-  }, [target.x, target.y]);
-
-  return (
-    <div className="user-menu group-dm-menu" ref={ref} style={pos} role="menu">
-      <div className="user-menu-head">
-        <strong><StyledText text={target.dm.user.displayName} /></strong>
-        <span>{target.dm.group?.members.length} {target.dm.group?.members.length === 1 ? "member" : "members"}</span>
-      </div>
-      <button type="button" role="menuitem" onClick={onTogglePin}>
-        {target.dm.pinned ? "Unpin group" : "Pin group"}
-      </button>
-      <button type="button" role="menuitem" onClick={onRename}>
-        Rename group
-      </button>
-      <button type="button" role="menuitem" onClick={onAddMembers}>
-        Add members
-      </button>
-      <button type="button" role="menuitem" className="danger" onClick={onLeave}>
-        Leave group
-      </button>
-      <button type="button" role="menuitem" onClick={onCloseDm}>
-        Close conversation
-      </button>
-    </div>
-  );
-}
