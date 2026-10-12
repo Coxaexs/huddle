@@ -185,10 +185,13 @@ function glowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext("2d")!;
+  // Opaque grey on black (additive), not alpha: WebKit's gradient dither turns into coloured speckle otherwise.
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, 128, 128);
   const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.35, "rgba(255,255,255,0.35)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
+  g.addColorStop(0, "rgb(255,255,255)");
+  g.addColorStop(0.35, "rgb(89,89,89)");
+  g.addColorStop(1, "rgb(0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(canvas);

@@ -3039,6 +3039,10 @@ export function ChatShell() {
         prev.map((m) => (m.id === user.id ? { ...m, spotifyActivity: spotifyAct } : m)),
       );
     },
+    onUpdateActivity: (activity) => {
+      if (!user) return;
+      setMembers((prev) => prev.map((m) => (m.id === user.id ? { ...m, activity } : m)));
+    },
   });
 
   const activeSlashCommand = useMemo(() => {
@@ -5121,6 +5125,17 @@ export function ChatShell() {
     }
   }
 
+  // Posts a file (e.g. a filled-in PDF copy) straight to the current channel.
+  async function sendFileCopy(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    const upload = await apiFetch<{ key: string }>("/api/uploads", {
+      method: "POST",
+      body: form,
+    });
+    await sendText("", [upload.key]);
+  }
+
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(
     () =>
@@ -5918,7 +5933,12 @@ export function ChatShell() {
   if (!ready) {
     return (
       <main className="app-shell booting">
-        <div className="boot-card">Opening Hoffle…</div>
+        <div className="boot-card">
+          <p>Opening Hoffle…</p>
+          <p style={{ fontSize: 13, opacity: 0.7, marginTop: 8, maxWidth: 360 }}>
+            An open-source, self-hostable chat app: voice channels with screen sharing, servers, DMs and friends, on web and desktop. AGPL-3.0, no tracking.
+          </p>
+        </div>
       </main>
     );
   }
@@ -6962,6 +6982,7 @@ export function ChatShell() {
                 onToggleStreamMute={toggleStreamMute}
                 serverId={stageChannel.serverId}
                 canManageSounds={canManageChannels}
+                canProject={canManageChannels}
                 // A stage has an audience, so the view splits the room into
                 // audible and listening, and offers the listening half a hand.
                 stageMode={channelKindInfo(stageChannel.kind).kind === "stage"}
@@ -7639,6 +7660,7 @@ export function ChatShell() {
           url={pdfViewer.url}
           name={pdfViewer.name}
           onClose={() => setPdfViewer(null)}
+          onSendCopy={activeChannelId ? sendFileCopy : undefined}
         />
       )}
 

@@ -5,7 +5,7 @@
  * checks its shape (sanitize), so a client can only ever store these.
  */
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -15,6 +15,16 @@ export interface WatchState {
   /** Hub clock (ms) when `position` was true; the hub stamps it. */
   at: number;
   paused: boolean;
+  by: string;
+}
+
+/** The cinema's house lights, set from the projection booth: automatic (dim while a film plays) or held at a level. */
+export interface HouseLights {
+  /** 0..1, used when `auto` is off. */
+  level: number;
+  auto: boolean;
+  /** Hub clock (ms) when it was set; the hub stamps it. */
+  at: number;
   by: string;
 }
 
@@ -60,6 +70,8 @@ const num = (value: unknown, min: number, max: number, fallback = 0): number =>
 export function safeMediaUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 600) return null;
   if (/^\/hangout\/api\/uploads\/[\w%.\-]+$/.test(value)) return value;
+  // Videos the server downloaded with yt-dlp (the id is YouTube's 11 characters).
+  if (/^\/hangout\/api\/youtube\/stream\/[\w\-]{11}\.mp4$/.test(value)) return value;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && url.hostname.includes(".") ? url.toString() : null;
@@ -89,6 +101,8 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         by,
       } satisfies WatchState;
     }
+    case "house":
+      return { level: num(value.level, 0, 1, 1), auto: value.auto !== false, at: now, by } satisfies HouseLights;
     case "initiative": {
       const entries = (Array.isArray(value.entries) ? value.entries : []).slice(0, 30).flatMap((entry): InitiativeEntry[] => {
         if (!entry || typeof entry !== "object") return [];

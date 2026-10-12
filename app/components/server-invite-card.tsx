@@ -79,7 +79,7 @@ export function ServerInviteCard({
           <div className="server-invite-details">
             <div className="server-invite-name">Account Invite</div>
             <div className="server-invite-counts">
-              <span className="count-item" style={{ fontFamily: "monospace", letterSpacing: "0.05em" }}>
+              <span className="server-invite-count-item" style={{ fontFamily: "monospace", letterSpacing: "0.05em" }}>
                 Code: {invite.code}
               </span>
             </div>
@@ -138,10 +138,11 @@ export function ServerInviteCard({
       )}
 
       <div className="server-invite-header">
+        <Sparkles size={12} className="server-invite-spark" />
         <span className="server-invite-eyebrow">
           {inviter
             ? `${inviter.displayName} invited you to join`
-            : "YOU'VE BEEN INVITED TO JOIN A SERVER"}
+            : "You've been invited to join a server"}
         </span>
       </div>
 
@@ -158,12 +159,12 @@ export function ServerInviteCard({
             {server.name}
           </div>
           <div className="server-invite-counts">
-            <span className="count-item">
-              <span className="status-indicator online" />
+            <span className="server-invite-count-item">
+              <span className="server-invite-dot online" />
               <b>{server.onlineCount}</b> Online
             </span>
-            <span className="count-item">
-              <span className="status-indicator total" />
+            <span className="server-invite-count-item">
+              <span className="server-invite-dot total" />
               <b>{server.memberCount}</b> Members
             </span>
           </div>

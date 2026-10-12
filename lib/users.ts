@@ -5,6 +5,84 @@ export interface SpotifyActivity {
   artist: string;
   albumArt?: string;
   isPlaying?: boolean;
+  /** Link to the track, when the source knows it. */
+  url?: string;
+  /** ms epoch of the last time the sender confirmed this song is still on. */
+  updatedAt?: number;
+}
+
+/** A song that nobody has re-confirmed for this long has stopped playing. */
+export const SPOTIFY_STALE_MS = 9 * 60_000;
+/** How often a live song/activity is re-confirmed; two beats can be missed. */
+export const ACTIVITY_HEARTBEAT_MS = 4 * 60_000;
+
+/** The song to show for a member, or null when it has gone stale. */
+export function liveSpotify(
+  activity: SpotifyActivity | null | undefined,
+  now = Date.now(),
+): SpotifyActivity | null {
+  if (!activity || activity.isPlaying === false) return null;
+  // Older rows carry no timestamp; they are shown until the owner next syncs.
+  if (typeof activity.updatedAt === "number" && now - activity.updatedAt > SPOTIFY_STALE_MS) {
+    return null;
+  }
+  return activity;
+}
+
+export type ProfileActivityKind = "playing" | "coding" | "streaming" | "app";
+
+/** What someone is doing right now: a game, an editor, a stream. */
+export interface ProfileActivity {
+  kind: ProfileActivityKind;
+  name: string;
+  details?: string;
+  /** ms epoch when this started, for the "for 2h" timer. */
+  startedAt: number;
+  /** ms epoch of the last confirmation; stale ones are hidden. */
+  updatedAt: number;
+  /** Typed in by the person instead of detected by the desktop app. */
+  manual?: boolean;
+}
+
+/** Last.fm names are 2-15 letters, digits, "_" or "-", starting with a letter. */
+export function normalizeLastfmUsername(value: unknown): string | null {
+  const name = typeof value === "string" ? value.trim() : "";
+  return /^[A-Za-z][A-Za-z0-9_-]{1,14}$/.test(name) ? name : null;
+}
+
+export const ACTIVITY_STALE_MS = 9 * 60_000;
+/** Manual statuses are not re-confirmed by a poller, so they last longer. */
+export const MANUAL_ACTIVITY_STALE_MS = 12 * 60 * 60_000;
+
+export function liveActivity(
+  activity: ProfileActivity | null | undefined,
+  now = Date.now(),
+): ProfileActivity | null {
+  if (!activity) return null;
+  const limit = activity.manual ? MANUAL_ACTIVITY_STALE_MS : ACTIVITY_STALE_MS;
+  return now - activity.updatedAt > limit ? null : activity;
+}
+
+const ACTIVITY_KINDS = new Set<string>(["playing", "coding", "streaming", "app"]);
+
+/** Validates untrusted JSON (request body or stored column) into an activity. */
+export function normalizeProfileActivity(value: unknown): ProfileActivity | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const name = typeof v.name === "string" ? v.name.trim().slice(0, 80) : "";
+  if (!name) return null;
+  const now = Date.now();
+  const startedAt = Number(v.startedAt);
+  const updatedAt = Number(v.updatedAt);
+  const details = typeof v.details === "string" ? v.details.trim().slice(0, 120) : "";
+  return {
+    kind: ACTIVITY_KINDS.has(String(v.kind)) ? (v.kind as ProfileActivityKind) : "playing",
+    name,
+    ...(details ? { details } : {}),
+    startedAt: Number.isFinite(startedAt) && startedAt > 0 ? Math.min(startedAt, now) : now,
+    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? Math.min(updatedAt, now) : now,
+    ...(v.manual === true ? { manual: true } : {}),
+  };
 }
 
 export const PRIDE_BADGES = [
@@ -51,6 +129,7 @@ export interface PublicUser {
   customStatus?: string | null;
   prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
+  activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];
   avatarFrame?: string;
   color: string;
@@ -61,6 +140,7 @@ export interface PublicUser {
   quickReactions?: string[];
   hiddenEmojis?: string[];
   /** Only on the signed-in user's own account. */
+  lastfmUsername?: string | null;
   email?: string | null;
   emailPromptSkipped?: boolean;
   isDev?: boolean;
@@ -85,6 +165,7 @@ export interface Member {
   tagline?: string;
   prideBadges?: PrideBadgeId[];
   spotifyActivity?: SpotifyActivity | null;
+  activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];
   avatarFrame?: string;
   color: string;
@@ -215,4 +296,33 @@ export function lastSeenLabel(iso: string | null | undefined, now = Date.now()):
   const days = Math.floor(hours / 24);
   if (days < 30) return `Last seen ${days}d ago`;
   return `Last seen ${new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+const ACTIVITY_VERB: Record<ProfileActivityKind, string> = {
+  playing: "Playing",
+  coding: "Coding in",
+  streaming: "Streaming with",
+  app: "Using",
+};
+
+/** "Playing Minecraft", "Coding in Visual Studio Code". */
+export function activityLabel(activity: ProfileActivity): string {
+  return `${ACTIVITY_VERB[activity.kind]} ${activity.name}`;
+}
+
+/** "for 2h 5m", or "" under a minute. */
+export function activityElapsed(activity: ProfileActivity, now = Date.now()): string {
+  const minutes = Math.floor((now - activity.startedAt) / 60_000);
+  if (minutes < 1) return "";
+  if (minutes < 60) return `for ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `for ${hours}h ${minutes % 60}m`;
+}
+
+/** One line for the member list: the game you are in, else the song you are on. */
+export function memberActivityLine(member: Pick<Member, "activity" | "spotifyActivity">): string {
+  const activity = liveActivity(member.activity);
+  if (activity) return activityLabel(activity);
+  const song = liveSpotify(member.spotifyActivity);
+  return song ? `🎵 ${song.song} · ${song.artist}` : "";
 }

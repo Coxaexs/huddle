@@ -16,7 +16,9 @@ import {
   statusSeenBy,
   type Member,
   type PublicUser,
+  type ProfileActivity,
   type SpotifyActivity,
+  normalizeProfileActivity,
 } from "./users";
 
 export { AVATAR_COLORS } from "./users";
@@ -39,6 +41,8 @@ export interface User {
   tagline?: string | null;
   pride_badges?: string | null;
   spotify_activity?: string | null;
+  activity?: string | null;
+  lastfm_username?: string | null;
   social_links?: string | null;
   avatar_frame?: string | null;
   color: string;
@@ -58,7 +62,7 @@ export interface User {
 
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
-  "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity",
+  "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
   "social_links", "avatar_frame", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
   "email_prompt_skipped", "created_at", "last_seen_at",
@@ -95,7 +99,13 @@ function spotifyActivity(value: string | null | undefined): SpotifyActivity | nu
     artist: parsed.artist,
     ...(isSafeProfileImage(parsed.albumArt) ? { albumArt: parsed.albumArt } : {}),
     ...(typeof parsed.isPlaying === "boolean" ? { isPlaying: parsed.isPlaying } : {}),
+    ...(typeof parsed.url === "string" && /^https:\/\//i.test(parsed.url) ? { url: parsed.url } : {}),
+    ...(typeof parsed.updatedAt === "number" ? { updatedAt: parsed.updatedAt } : {}),
   };
+}
+
+function profileActivity(value: string | null | undefined): ProfileActivity | null {
+  return normalizeProfileActivity(parseJson(value));
 }
 
 /** The profile everyone can see, shared by publicUser and memberFromRow. */
@@ -113,6 +123,7 @@ function profileFields(user: User) {
     customStatus: user.custom_status || null,
     prideBadges: normalizePrideBadges(parseJson(user.pride_badges)),
     spotifyActivity: spotifyActivity(user.spotify_activity),
+    activity: profileActivity(user.activity),
     socialLinks: normalizeSocialLinks(parseJson(user.social_links)),
     avatarFrame: user.avatar_frame || "none",
     color: user.color,
@@ -141,6 +152,7 @@ export function publicUser(user: User): PublicUser {
     isDev: isDevUsername(user.username),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
+    lastfmUsername: user.lastfm_username || null,
     email: user.email || null,
     emailPromptSkipped: Boolean(user.email_prompt_skipped),
   };

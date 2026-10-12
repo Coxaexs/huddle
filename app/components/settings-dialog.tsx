@@ -26,7 +26,7 @@ import { isThemeFxEnabled } from "../lib/theme-fx";
 
 
 import type { PublicServer } from "@/lib/servers";
-import { type Member, type PrideBadgeId, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
+import { type Member, type PrideBadgeId, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
 import { activitySharingEnabled } from "../hooks/use-activity-detector";
 import { apiFetch } from "../lib/client";
 import { DEVICE_SAVED_EVENT, listDevices, primeDeviceLabels, savedDevice, type DeviceLists } from "../lib/devices";
@@ -308,7 +308,7 @@ export function SettingsDialog({
   const [spotifyShare, setSpotifyShare] = useState(() =>
     typeof window === "undefined" ? true : activitySharingEnabled(),
   );
-  const [spotifyUserInput, setSpotifyUserInput] = useState("");
+  const [spotifyUserInput, setSpotifyUserInput] = useState(() => user.lastfmUsername || "");
   const [trackSearchInput, setTrackSearchInput] = useState("");
   const pictureRef = useRef<HTMLInputElement>(null);
 
@@ -504,6 +504,28 @@ export function SettingsDialog({
     setSpotifySong(saved?.song || "");
     setSpotifyArtist(saved?.artist || "");
     setSpotifyCover(saved?.albumArt || "");
+    onUser(data.user);
+  }
+
+  async function saveLastfm(username: string | null) {
+    const data = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ lastfmUsername: username }),
+    });
+    try {
+      if (username) window.localStorage.setItem("huddle-spotify-username", username);
+      else window.localStorage.removeItem("huddle-spotify-username");
+    } catch {
+      // Account copy is the source of truth.
+    }
+    onUser(data.user);
+  }
+
+  async function saveActivity(activity: ProfileActivity | null) {
+    const data = await apiFetch<{ user: PublicUser }>("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ activity }),
+    });
     onUser(data.user);
   }
 
@@ -1380,6 +1402,10 @@ export function SettingsDialog({
         setStatus={setStatus}
         trackSearchInput={trackSearchInput}
         setTrackSearchInput={setTrackSearchInput}
+        activity={user.activity}
+        saveActivity={saveActivity}
+        lastfmUsername={user.lastfmUsername}
+        saveLastfm={saveLastfm}
       />
 
           <CustomCssTab

@@ -469,6 +469,16 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
 
     // Native OS push notification handler
+    // Running game/app and Spotify's current song, for the profile card. Only
+    // answers the Hoffle window itself.
+    ipcMain.handle("activity:scan", async (event) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+      try {
+        return await require("./activity-scan").scan();
+      } catch {
+        return null;
+      }
+    });
     ipcMain.on("desktop-notification", (_event, { title, body }) => {
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");

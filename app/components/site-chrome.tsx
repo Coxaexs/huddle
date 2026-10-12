@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Coffee, Heart } from "lucide-react";
+import { Coffee, Heart } from "./site-icons";
 import { SiteThemeToggle } from "./landing-client";
 
 /**
@@ -27,7 +27,7 @@ export function GithubMark({ className = "" }: { className?: string }) {
 /** The app icon and name, as in the browser tab and on the desktop. */
 function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-2.5 font-bold tracking-tight ${className}`}>
+    <span className={`inline-flex items-center gap-2.5 font-semibold tracking-tight ${className}`}>
       <img src="/favicon.svg?v=2" alt="" width={40} height={40} className="h-[1.6em] w-[1.6em] shadow-[0_2px_8px_-2px_rgba(106,77,219,.6)] rounded-[22%]" />
       <span className="text-(--violet)">Hoffle</span>
     </span>
@@ -105,7 +105,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
         html[data-lp-theme="light"] body { background: #ffffff; }
         html[data-lp-theme="dark"] .lp-if-light, html:not([data-lp-theme="dark"]) .lp-if-dark { display: none; }
         .lp-display {
-          letter-spacing: -0.015em;
+          font-family: Syne, "Instrument Sans", ui-sans-serif, sans-serif;
+          font-weight: 500;
+          letter-spacing: -0.02em;
         }
         .lp-root a:focus-visible, .lp-root button:focus-visible, .lp-root summary:focus-visible {
           outline: 3px solid var(--violet); outline-offset: 3px; border-radius: 8px;

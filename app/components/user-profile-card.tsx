@@ -9,6 +9,7 @@ import {
   Calendar,
   X,
   Music,
+  Gamepad2,
   UserPlus,
   UserCheck,
   UserMinus,
@@ -19,7 +20,15 @@ import {
   Plus,
 } from "lucide-react";
 import type { Member, PresenceStatus } from "@/lib/users";
-import { PRESENCE, bannerBackground, lastSeenLabel } from "@/lib/users";
+import {
+  PRESENCE,
+  activityElapsed,
+  activityLabel,
+  bannerBackground,
+  lastSeenLabel,
+  liveActivity,
+  liveSpotify,
+} from "@/lib/users";
 import { Avatar } from "./avatar";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { PrideBadges } from "./pride-badges";
@@ -427,28 +436,60 @@ export function UserProfileCard({
           </div>
         )}
 
-        {member.spotifyActivity && (
-          <div className="bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
-            <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0 overflow-hidden">
-              {member.spotifyActivity.albumArt ? (
-                <img src={member.spotifyActivity.albumArt} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <Music size={20} className="animate-pulse" />
-              )}
+        {(() => {
+          const song = liveSpotify(member.spotifyActivity);
+          if (!song) return null;
+          const body = (
+            <>
+              <div className="w-10 h-10 bg-green-900/60 rounded flex items-center justify-center text-green-400 flex-shrink-0 overflow-hidden">
+                {song.albumArt ? (
+                  <img src={song.albumArt} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <Music size={20} className="animate-pulse" />
+                )}
+              </div>
+              <div className="overflow-hidden text-xs">
+                <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
+                  LISTENING TO SPOTIFY
+                </div>
+                <div className="font-semibold text-white truncate">{song.song}</div>
+                <div className="text-gray-400 truncate">by {song.artist}</div>
+              </div>
+            </>
+          );
+          const cls = "bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1";
+          return song.url ? (
+            <a href={song.url} target="_blank" rel="noopener noreferrer" className={`${cls} no-underline`}>
+              {body}
+            </a>
+          ) : (
+            <div className={cls}>{body}</div>
+          );
+        })()}
+
+        {(() => {
+          const activity = liveActivity(member.activity);
+          if (!activity) return null;
+          const elapsed = activityElapsed(activity);
+          return (
+            <div className="bg-indigo-950/40 border border-indigo-400/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
+              <div className="w-10 h-10 bg-indigo-900/60 rounded flex items-center justify-center text-indigo-300 flex-shrink-0">
+                <Gamepad2 size={20} />
+              </div>
+              <div className="overflow-hidden text-xs">
+                <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider">
+                  {activity.kind === "playing" ? "PLAYING" : activity.kind === "coding" ? "CODING" : activity.kind === "streaming" ? "STREAMING" : "ACTIVE IN"}
+                </div>
+                <div className="font-semibold text-white truncate">{activity.name}</div>
+                {(activity.details || elapsed) && (
+                  <div className="text-gray-400 truncate">
+                    {[activity.details, elapsed].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="overflow-hidden text-xs">
-              <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
-                LISTENING TO SPOTIFY
-              </div>
-              <div className="font-semibold text-white truncate">
-                {member.spotifyActivity.song}
-              </div>
-              <div className="text-gray-400 truncate">
-                by {member.spotifyActivity.artist}
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="profile-card-divider" />
 

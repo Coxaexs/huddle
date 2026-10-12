@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Crown, Film, Plus, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { Clapperboard, Crown, Film, Plus, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
   addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
-  type GameMaster, type Initiative, type TableCharacter, type WatchState,
+  type GameMaster, type HouseLights, type Initiative, type TableCharacter, type WatchState,
 } from "@/lib/lounge-shared";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
@@ -159,8 +159,9 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 event.preventDefault();
                 const raw = link.trim();
                 if (!raw) return;
-                const ytId = extractYouTubeId(raw);
-                if (ytId) {
+                // A YouTube link, or anything that is not a web address (a name), goes through yt-dlp.
+                const isUrl = /^(https?:)?\/\//i.test(raw) || /^\/hangout\/api\//.test(raw);
+                if (extractYouTubeId(raw) || !isUrl) {
                   setBusy(true);
                   setProblem(null);
                   setBusyMessage("Downloading YouTube video with yt-dlp to server storage…");
@@ -179,7 +180,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                   setLink("");
                 }
               }}>
-                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://… direct link to .mp4/.webm or YouTube URL" aria-label="Video link" maxLength={600} disabled={busy} />
+                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="YouTube link or a name to search, or a direct .mp4/.webm link" aria-label="Video link" maxLength={600} disabled={busy} />
                 <button type="submit" disabled={!link.trim() || busy}>{busy ? "Downloading…" : "Play"}</button>
               </form>
               {busy && busyMessage && (
@@ -240,6 +241,89 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The projection booth's desk: run the film (play, pause, skip, stop), set the house lights for the whole room,
+ * and run the usual moments (showtime, intermission) with one press. Only reachable from inside the booth.
+ */
+export function BoothPanel({ watch, hubNow, info, house, setWatch, setHouse, onPick, onClose }: {
+  watch: WatchState | null;
+  hubNow: () => number;
+  info: WatchInfo;
+  house: HouseLights | null;
+  setWatch: (value: Omit<WatchState, "at" | "by"> | null) => void;
+  setHouse: (value: Pick<HouseLights, "level" | "auto"> | null) => void;
+  onPick: () => void;
+  onClose: () => void;
+}) {
+  const here = watch ? watchPosition(watch, hubNow()) : 0;
+  const auto = house?.auto ?? true;
+  const level = house?.level ?? 1;
+  const playing = !!watch && !watch.paused;
+  // The slider is dragged continuously, but the hub takes a change at most every 120 ms: send once it settles.
+  const [draft, setDraft] = useState<number | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (settle.current) clearTimeout(settle.current); }, []);
+  const dragLights = (value: number) => {
+    setDraft(value);
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => { setHouse({ level: value, auto: false }); setDraft(null); }, 160);
+  };
+  const seek = (position: number) => { if (watch) setWatch({ url: watch.url, title: watch.title, position: Math.max(0, position), paused: watch.paused }); };
+  const mode = auto ? "auto" : level >= 0.95 ? "up" : level <= 0.02 ? "out" : "dim";
+  const scenes: Array<{ id: string; label: string; hint: string; run: () => void }> = [
+    { id: "showtime", label: "🎬 Showtime", hint: "Lights down, film rolling", run: () => { setHouse({ level: 0, auto: true }); if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: false }); } },
+    { id: "intermission", label: "🍿 Intermission", hint: "Pause and bring the lights up", run: () => { if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: true }); setHouse({ level: 1, auto: false }); } },
+  ];
+  return (
+    <div className="living-room-panel lr-booth" role="dialog" aria-label="Projection booth">
+      <div className="living-room-panel-head">
+        <strong><Clapperboard size={14} /> Projection booth {playing && <span className="lr-onair">ON AIR</span>}</strong>
+        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
+      </div>
+      <div className="lr-line">
+        <span className="lr-title">{watch ? watch.title || "Video" : "Nothing loaded"}</span>
+        <small>{watch ? `loaded by ${watch.by}` : "Pick something for the screen: a link, an upload or YouTube."}</small>
+      </div>
+      <div className="lr-row">
+        <button type="button" onClick={onPick}><Film size={13} /> {watch ? "Change film…" : "Choose a film…"}</button>
+        {watch && <button type="button" onClick={() => setWatch(null)}>Eject</button>}
+      </div>
+      {watch && (
+        <>
+          <div className="lr-row">
+            <button type="button" onClick={() => seek(here - 10)} aria-label="Back 10 seconds" title="Back 10 seconds"><SkipBack size={13} /> 10s</button>
+            <button type="button" className={playing ? "active" : ""} onClick={() => setWatch({ url: watch.url, title: watch.title, position: here, paused: playing })}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
+            <button type="button" onClick={() => seek(Math.min(here + 10, info.duration || here + 10))} aria-label="Forward 10 seconds" title="Forward 10 seconds">10s <SkipForward size={13} /></button>
+            <button type="button" onClick={() => seek(0)} title="Back to the start">⏮ Start</button>
+          </div>
+          <div className="lr-row">
+            <input
+              type="range" min={0} max={Math.max(1, Math.floor(info.duration || 1))} step={1} value={Math.min(Math.floor(here), Math.floor(info.duration || 1))}
+              disabled={!info.duration} aria-label="Seek" style={{ flex: 1 }} onChange={(event) => seek(Number(event.target.value))}
+            />
+            <small>{formatTime(here)} / {info.duration ? formatTime(info.duration) : "--:--"}</small>
+          </div>
+        </>
+      )}
+      <div className="lr-line"><span className="lr-title">House lights</span><small>Set for everyone in the room.</small></div>
+      <div className="lr-row">
+        {scenes.map((scene) => <button key={scene.id} type="button" onClick={scene.run} title={scene.hint} disabled={!watch && scene.id !== "intermission"}>{scene.label}</button>)}
+      </div>
+      <div className="lr-row">
+        <button type="button" className={mode === "up" ? "active" : ""} onClick={() => setHouse({ level: 1, auto: false })}>Up</button>
+        <button type="button" className={mode === "dim" ? "active" : ""} onClick={() => setHouse({ level: 0.35, auto: false })}>Dim</button>
+        <button type="button" className={mode === "out" ? "active" : ""} onClick={() => setHouse({ level: 0, auto: false })}>Out</button>
+        <button type="button" className={mode === "auto" ? "active" : ""} onClick={() => setHouse(null)} title="Dim by themselves while a film plays">Auto</button>
+      </div>
+      <label className="lr-row">
+        <small style={{ width: 54 }}>{Math.round((draft ?? level) * 100)}%</small>
+        <input type="range" min={0} max={1} step={0.01} value={draft ?? level} disabled={auto && !draft} aria-label="House light level" style={{ flex: 1 }} onChange={(event) => dragLights(Number(event.target.value))} />
+      </label>
+      {info.error && <p className="lr-note">{info.error}</p>}
     </div>
   );
 }

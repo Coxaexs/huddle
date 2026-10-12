@@ -270,17 +270,24 @@ function knitTexture([a, b]: [string, string]) {
   }, [2, 2]);
 }
 
+/**
+ * A soft round glow for additive sprites. Opaque grey on black, not white fading through alpha: WebKit dithers
+ * canvas gradients, and un-premultiplying those near-transparent pixels turns the dither into coloured speckle.
+ */
 export function glowTexture() {
-  return canvasTexture(256, 256, (ctx) => {
+  const texture = canvasTexture(256, 256, (ctx) => {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, 256, 256);
     const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    g.addColorStop(0, "rgba(255,255,255,0.9)");
-    g.addColorStop(0.15, "rgba(255,255,255,0.6)");
-    g.addColorStop(0.4, "rgba(255,255,255,0.2)");
-    g.addColorStop(0.7, "rgba(255,255,255,0.05)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
+    for (const [at, level] of [[0, 0.9], [0.15, 0.6], [0.4, 0.2], [0.7, 0.05], [1, 0]]) {
+      const v = Math.round(level * 255);
+      g.addColorStop(at, `rgb(${v},${v},${v})`);
+    }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 256);
   });
+  texture.colorSpace = THREE.NoColorSpace; // the grey is a strength, not a colour
+  return texture;
 }
 
 /** Warm by evening, blue at night, bright by day: the cosy window follows the viewer's own clock. */
@@ -540,9 +547,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     light.position.copy(at);
     if (shadow) {
       light.castShadow = true;
-      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.mapSize.set(2048, 2048);
       light.shadow.bias = 0.0005;
-      light.shadow.normalBias = 0.02;
+      light.shadow.normalBias = 0.03;
       light.shadow.radius = 1;
     }
     root.add(light);
@@ -623,6 +630,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   mantel.position.set(0, 1.34, hearthZ + 0.36);
   const firebox = box(1.2, 0.8, 0.36, mat("#0d0806", 1), false);
   firebox.position.set(0, 0.42, hearthZ + 0.45);
+  // Its face is 3cm proud of the stone behind it, closer than the fire light's shadow map can resolve: it would speckle.
+  firebox.receiveShadow = false;
   const hearthStep = box(2.9, 0.08, 0.5, stone);
   hearthStep.position.set(0, 0.04, hearthZ + 0.82);
   root.add(surround, chimney, mantel, firebox, hearthStep);

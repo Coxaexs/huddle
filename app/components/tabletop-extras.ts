@@ -201,11 +201,12 @@ function createCharacterToken(spec: CharacterTokenSpec, surfaceY: number): THREE
   const turnCanvas = document.createElement("canvas");
   turnCanvas.width = turnCanvas.height = 64;
   const tctx = turnCanvas.getContext("2d")!;
+  // Opaque grey on black (additive), not alpha: WebKit's gradient dither turns into coloured speckle otherwise.
+  tctx.fillStyle = "#000"; tctx.fillRect(0, 0, 64, 64);
   const g = tctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,210,60,1)"); g.addColorStop(1, "rgba(255,210,60,0)");
+  g.addColorStop(0, "rgb(255,255,255)"); g.addColorStop(1, "rgb(0,0,0)");
   tctx.fillStyle = g; tctx.fillRect(0, 0, 64, 64);
   const turnTexture = new THREE.CanvasTexture(turnCanvas);
-  turnTexture.colorSpace = THREE.SRGBColorSpace;
   const turnSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: turnTexture, color: "#ffd23c", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
   turnSprite.scale.setScalar(0.6);
   turnSprite.position.set(0, surfaceY + 0.55, 0);
@@ -248,8 +249,9 @@ export class TableExtras {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 64;
     const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 64, 64);
     const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(1, "rgba(255,255,255,0)");
+    g.addColorStop(0, "rgb(255,255,255)"); g.addColorStop(1, "rgb(0,0,0)");
     ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
     this.glow = new THREE.CanvasTexture(canvas);
     const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 4), new THREE.MeshBasicMaterial({ color: "#ffd23c", toneMapped: false }));

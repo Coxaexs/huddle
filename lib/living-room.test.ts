@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  LOUNGE_SEATS, NOOK, clampPose, defaultPoses, freeSeat, headingTo, hearFrom, stepTo, wrapHeading,
+  LOUNGE_SEATS, NOOK, clampPose, inAnnex, defaultPoses, freeSeat, headingTo, hearFrom, stepTo, wrapHeading,
   type LoungePose,
 } from "../app/lib/living-room";
 import { CINEMA, TABLETOP, LOUNGE, clampPose as clampIn } from "../app/lib/living-room";
@@ -166,5 +166,33 @@ describe("venues", () => {
     expect(clampIn({ x: 20, z: 20, facing: 0, seat: null }, CINEMA)!.x).toBeGreaterThan(6);
     // A cinema seat means nothing in the living room.
     expect(clampIn({ x: 1, z: 1, facing: 0, seat: "cin-3-4" }, LOUNGE)!.seat).toBeNull();
+  });
+});
+
+describe("the cinema's projection booth", () => {
+  const a = CINEMA.annex!;
+  const at = (x: number, z: number, allow: boolean) => clampPose({ x, z, facing: 0, seat: null }, CINEMA, allow)!;
+  it("holds anyone not allowed in to the hall", () => {
+    expect(at(a.doorX, a.z0 + 2, false).z).toBeLessThan(a.z0);
+  });
+  it("lets those allowed in through the door but not through the wall", () => {
+    expect(at(a.doorX, a.z0 + 2, true).z).toBeCloseTo(a.z0 + 2);
+    expect(at(0, a.z0 - 0.1 + 0.3, true).z).toBeLessThan(a.z0);
+    expect(at(0, a.z0 + 2, true).z).toBeCloseTo(a.z0 + 2); // already inside: free to roam
+  });
+  it("stops at the booth's own walls", () => {
+    const far = at(20, 40, true);
+    expect(far.x).toBeLessThan(a.x1);
+    expect(far.z).toBeLessThan(a.z1);
+  });
+  it("walks in a step at a time only when allowed", () => {
+    const start: LoungePose = { x: a.doorX, z: a.z0 - 0.6, facing: 0, seat: null };
+    let allowed = start, denied = start;
+    for (let i = 0; i < 40; i++) {
+      allowed = stepTo(allowed, { x: a.doorX, z: allowed.z + 0.1 }, CINEMA, true);
+      denied = stepTo(denied, { x: a.doorX, z: denied.z + 0.1 }, CINEMA, false);
+    }
+    expect(inAnnex(allowed, CINEMA)).toBe(true);
+    expect(inAnnex(denied, CINEMA)).toBe(false);
   });
 });

@@ -142,7 +142,12 @@ export interface Venue {
   floorY: (x: number, z: number) => number;
   /** Most people the room is meant for. */
   capacity: number;
+  /** A staff-only room behind a door in the far wall (the cinema's projection booth). */
+  annex?: Annex;
 }
+
+/** A room off the hall: through a door in the wall at `z0`, out to `z1`. Only those allowed in can walk through. */
+export interface Annex { x0: number; x1: number; z0: number; z1: number; doorX: number; doorHalf: number }
 
 /**
  * Open floor for a crowd: a grid of spots `step` metres apart, nearest `centre`
@@ -241,7 +246,12 @@ export const CINEMA: Venue = {
   spawn: { x: 0, z: -5.6 },
   floorY: cinemaFloorY,
   capacity: 150,
+  // The projection booth: behind the back wall, on the walkway's level, through a door in the left aisle.
+  annex: { x0: -5, x1: 5, z0: 8, z1: 11.4, doorX: -3.5, doorHalf: 0.7 },
 };
+
+/** Is this pose inside the venue's annex (the booth), past the door? */
+export const inAnnex = (pose: { z: number }, venue: Venue): boolean => !!venue.annex && pose.z > venue.annex.z0 + 0.2;
 
 /** The tabletop room: a round table with ten chairs, and room to stand around it. */
 export const TABLE_CENTRE = { x: 0, z: 0.3 };
@@ -282,18 +292,27 @@ export const venueById = (id: VenueId | null | undefined): Venue => VENUES[id ??
 export const seatById = (id: string | null | undefined, venue: Venue = LOUNGE) => (id ? venue.seatIndex.get(id) ?? null : null);
 
 /** Whatever arrives over the wire becomes a pose inside the room, or null. */
-export function clampPose(raw: unknown, venue: Venue = LOUNGE): LoungePose | null {
+export function clampPose(raw: unknown, venue: Venue = LOUNGE, allowAnnex = false): LoungePose | null {
   if (!raw || typeof raw !== "object") return null;
   const { x, z, facing, seat } = raw as Record<string, unknown>;
   if (typeof x !== "number" || typeof z !== "number" || !Number.isFinite(x) || !Number.isFinite(z)) return null;
   const known = typeof seat === "string" ? seatById(seat, venue) : null;
   if (known) return { x: known.x, z: known.z, facing: known.facing, seat: known.id };
-  return {
-    x: Math.max(-venue.halfX + WALL_MARGIN, Math.min(venue.halfX - WALL_MARGIN, x)),
-    z: Math.max(-venue.halfZ + WALL_MARGIN, Math.min(venue.halfZ - WALL_MARGIN, z)),
-    facing: wrapHeading(finite(facing)),
-    seat: seat === FLOOR_SEAT ? FLOOR_SEAT : null,
-  };
+  let px = Math.max(-venue.halfX + WALL_MARGIN, Math.min(venue.halfX - WALL_MARGIN, x));
+  let pz = Math.max(-venue.halfZ + WALL_MARGIN, Math.min(venue.halfZ - WALL_MARGIN, z));
+  const a = venue.annex;
+  if (a && allowAnnex && z > a.z0 - WALL_MARGIN) {
+    // Through the door, or not at all: the wall either side of it holds you in the hall.
+    const atDoor = Math.abs(x - a.doorX) <= a.doorHalf - 0.2;
+    if (z > a.z0 + WALL_MARGIN) {
+      px = Math.max(a.x0 + WALL_MARGIN, Math.min(a.x1 - WALL_MARGIN, x));
+      pz = Math.min(a.z1 - WALL_MARGIN, z);
+    } else if (atDoor) {
+      px = x;
+      pz = z;
+    }
+  }
+  return { x: px, z: pz, facing: wrapHeading(finite(facing)), seat: seat === FLOOR_SEAT ? FLOOR_SEAT : null };
 }
 
 /** How many people fit with a seat or a clear spot of their own. */
@@ -413,8 +432,8 @@ export const isLoungeEmote = (value: unknown): value is string =>
   typeof value === "string" && (LOUNGE_EMOTES as readonly string[]).includes(value);
 
 /** Moving a step: stops at walls, and furniture is solid. */
-export function stepTo(pose: LoungePose, target: { x: number; z: number }, venue: Venue = LOUNGE): LoungePose {
-  const next = clampPose({ x: target.x, z: target.z, facing: pose.facing, seat: null }, venue) ?? pose;
+export function stepTo(pose: LoungePose, target: { x: number; z: number }, venue: Venue = LOUNGE, allowAnnex = false): LoungePose {
+  const next = clampPose({ x: target.x, z: target.z, facing: pose.facing, seat: null }, venue, allowAnnex) ?? pose;
   const inside = (p: Spot, box: Box) => p.x > box.x0 && p.x < box.x1 && p.z > box.z0 && p.z < box.z1;
   for (const box of venue.solids) {
     // Getting up off the couch starts inside it; only walking in is blocked.

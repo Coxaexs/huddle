@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Coffee, Heart } from "lucide-react";
+import { Coffee, Heart } from "./site-icons";
 import { CopyButton, DownloadButton } from "./landing-client";
 import { LiveChannel, MatrixRain, ThemeTour, type JoinLinks } from "./landing-demo";
 import { APP_URL, GithubMark, RELEASES, REPO, SITE, SiteShell, KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
@@ -205,7 +205,7 @@ const jsonLd = {
 
 /* ─── Theme tour ───────────────────────────────────────────────────────── */
 
-const tourTitle = "lp-display text-3xl font-bold leading-tight sm:text-[44px]";
+const tourTitle = "lp-display text-3xl font-normal leading-tight sm:text-[44px]";
 
 function TourCopy({ title, titleClass, intro, points, tone }: { title: ReactNode; titleClass: string; intro: string; points: string[]; tone: string }) {
   return (
@@ -277,7 +277,7 @@ const TOUR_SLIDES = [
         />
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
           <div className="text-white">
-            <h2 className="lp-display text-3xl font-bold leading-tight [text-shadow:0_1px_0_rgba(0,40,120,.35)] sm:text-[44px]">
+            <h2 className="lp-display text-3xl font-normal leading-tight [text-shadow:0_1px_0_rgba(0,40,120,.35)] sm:text-[44px]">
               The MSN Messenger theme
             </h2>
             <p className="mt-5 max-w-md text-[17px] leading-relaxed text-white/90">
@@ -294,13 +294,12 @@ const TOUR_SLIDES = [
             </ul>
             <ul className="lp-msn mt-6 flex flex-wrap gap-2 text-sm" aria-label="Emoticons that turn into pictures when you send them">
               {[
-                [":)", "🙂"],
                 [";)", "😉"],
                 ["(Y)", "👍"],
                 ["<3", "❤️"],
                 [":$", "😳"],
               ].map(([typed, shown]) => (
-                <li key={typed} className="rounded border border-white/40 bg-white/15 px-2.5 py-1 font-semibold backdrop-blur-sm">
+                <li key={typed} className="rounded border border-white/40 bg-white/15 px-2.5 py-1 font-semibold">
                   <code className="font-mono">{typed}</code> <span aria-hidden>→</span> {shown}
                 </li>
               ))}
@@ -439,7 +438,7 @@ const TOUR_SLIDES = [
         </div>
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[5fr_7fr]">
           <TourCopy
-            tone="text-[#c8ffd8] [font-family:'Geist_Mono',ui-monospace,monospace]"
+            tone="text-[#c8ffd8] font-mono"
             titleClass={`${tourTitle} font-normal [font-family:'Share_Tech_Mono',ui-monospace,monospace] text-[#b9ffd0] [text-shadow:0_0_14px_rgba(0,255,102,.6)] sm:text-[56px]`}
             title={<>Matrix<span className="animate-pulse text-[#00ff66]">_</span></>}
             intro="Phosphor green on black, monospace type, and digital rain falling behind slightly see-through panels."
@@ -490,7 +489,7 @@ const button =
   "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-[15px] font-semibold transition";
 const primaryButton = `${button} bg-(--violet-fill) text-white hover:bg-(--violet-fill-hover)`;
 const secondaryButton = `${button} border border-(--line) bg-(--card) text-(--ink) hover:border-(--ink)`;
-const sectionTitle = "lp-display text-3xl font-bold leading-tight sm:text-4xl";
+const sectionTitle = "lp-display text-3xl font-normal leading-tight sm:text-4xl";
 const link = "font-semibold text-(--violet) underline decoration-dotted underline-offset-2";
 
 /* ─── Page ─────────────────────────────────────────────────────────────── */
@@ -511,7 +510,7 @@ export function LandingPage() {
         {/* ── Hero ──────────────────────────────────────────────────── */}
         <section className="px-4 pt-14 sm:px-6 sm:pt-20">
           <div className="mx-auto max-w-6xl">
-            <h1 className="lp-display max-w-[22ch] text-4xl font-bold leading-[1.1] sm:text-[56px]">
+            <h1 className="lp-display max-w-[22ch] text-4xl font-normal leading-[1.1] sm:text-[56px]">
               A chat app for small groups, with voice, screen sharing and game night built in.
             </h1>
             <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -541,7 +540,7 @@ export function LandingPage() {
             <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
               {FEATURES.map((group) => (
                 <div key={group.title}>
-                  <h3 className="text-lg font-bold">{group.title}</h3>
+                  <h3 className="text-lg font-medium">{group.title}</h3>
                   <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-(--ink-2) marker:text-(--muted)">
                     {group.items.map((item, i) => (
                       <li key={i}>{item}</li>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Coffee, Heart, Mail, Server, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coffee, Heart, Mail, Server, X } from "./site-icons";
 import type { EmbedToParent, ParentToEmbed } from "../landing/say-hi/say-hi-embed";
 import type { GuestbookMessage } from "../api/guestbook/route";
 import type { DiceRollEvent } from "../../lib/protocol";
@@ -69,7 +69,7 @@ function JoinDialog({ what, onClose, links }: { what: string | null; onClose: ()
   return (
     <Modal open={what !== null} onClose={onClose} labelledBy="join-title">
       <div className="flex items-start justify-between gap-4">
-        <h2 id="join-title" className="lp-display text-2xl font-bold leading-tight">Try the whole Hoffle</h2>
+        <h2 id="join-title" className="lp-display text-2xl font-normal leading-tight">Try the whole Hoffle</h2>
         <CloseButton onClick={onClose} />
       </div>
       <p className="mt-2 leading-relaxed text-(--ink-2)">
@@ -78,7 +78,7 @@ function JoinDialog({ what, onClose, links }: { what: string | null; onClose: ()
       </p>
 
       <div className="mt-5 rounded-xl border border-(--line) bg-(--paper-2) p-4">
-        <h3 className="font-bold">Get an invite code</h3>
+        <h3 className="font-normal">Get an invite code</h3>
         <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">
           chat.hoffle.online is invite-only. Support Hoffle with $5 and you'll get an invite code: leave your email in the
           message and the code comes by email. Know someone who's already on it? They can invite you too. Don't know
@@ -101,7 +101,7 @@ function JoinDialog({ what, onClose, links }: { what: string | null; onClose: ()
       </div>
 
       <div className="mt-3 rounded-xl border border-(--line) p-4">
-        <h3 className="font-bold">Host your own</h3>
+        <h3 className="font-normal">Host your own</h3>
         <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">
           Free, with Docker, on a spare PC or a small server. The first account becomes the owner and invites everyone else.
         </p>
@@ -157,7 +157,7 @@ function NameDialog({
     <Modal open={text !== null} onClose={onCancel} labelledBy="name-title">
       <form onSubmit={submit}>
         <div className="flex items-start justify-between gap-4">
-          <h2 id="name-title" className="lp-display text-2xl font-bold leading-tight">
+          <h2 id="name-title" className="lp-display text-2xl font-normal leading-tight">
             {roll ? "What name should we roll this under?" : "What name should we send this with?"}
           </h2>
           <CloseButton onClick={onCancel} />
@@ -387,7 +387,7 @@ export function ThemeTour({ slides }: { slides: TourSlide[] }) {
         <p className="text-[13px] font-bold uppercase tracking-[.14em] text-white/85 [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">
           Theme tour · {index + 1} of {count}
         </p>
-        <div className="flex items-center gap-2 rounded-full bg-black/30 p-1 backdrop-blur-sm">
+        <div className="flex items-center gap-2 rounded-full bg-black/30 p-1">
           <button type="button" onClick={() => go(index - 1)} aria-label="Previous theme" className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/15">
             <ChevronLeft aria-hidden className="h-5 w-5 text-white" />
           </button>

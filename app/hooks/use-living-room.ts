@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, Initiative, TableCard, TableCharacter, WatchState } from "@/lib/lounge-shared";
+import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, WatchState } from "@/lib/lounge-shared";
 import {
   FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -80,10 +80,12 @@ export interface LoungeShared {
   card: TableCard | null;
   /** By user id. */
   characters: Record<string, TableCharacter>;
+  /** The cinema's house lights, as set from the projection booth; null: automatic. */
+  house: HouseLights | null;
 }
-const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {} };
+const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null };
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house";
 
 export interface LivingRoom {
   open: boolean;
@@ -221,7 +223,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
       const read = (raw: unknown): { pose: LoungePose; venue: VenueId } | null => {
         const sent = (raw as { venue?: unknown } | null)?.venue;
         const room = isVenueId(sent) ? sent : "lounge";
-        const pose = clampPose(raw, venueById(room));
+        const pose = clampPose(raw, venueById(room), true); // whoever is in the booth is shown there
         return pose ? { pose, venue: room } : null;
       };
       if (detail.t === "lounge-state") {

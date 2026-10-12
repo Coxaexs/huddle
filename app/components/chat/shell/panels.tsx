@@ -6,7 +6,7 @@ import type { PlayerState } from "@/lib/protocol";
 import { MessageAttachmentFiles } from "../../message-file-card";
 import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
-import { PRESENCE, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
+import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
 import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays } from "lucide-react";
 import { Avatar } from "../../avatar";
@@ -1560,6 +1560,7 @@ export function MemberPanel({
             </div>
             <span>
               <StyledText text={(member.id === user.id ? myCustomStatus : member.customStatus) ||
+                memberActivityLine(member) ||
                 (member.id === user.id
                   ? "Here now"
                   : prefFor(member.id).muted

@@ -580,9 +580,9 @@ export class HuddleHub extends DurableObject {
         if (!room) return;
         const num = (value: unknown, limit: number) =>
           typeof value === "number" && Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : null;
-        // Wide enough for the biggest room (the cinema is 14 by 16 metres).
+        // Wide enough for the biggest room (the cinema is 14 by 16 metres, plus its projection booth behind the back wall).
         const x = num(event.x, 8);
-        const z = num(event.z, 9);
+        const z = num(event.z, 12);
         const facing = num(event.facing, 7);
         if (x === null || z === null || facing === null) return;
         const seat = typeof event.seat === "string" && /^[a-z0-9-]{1,24}$/.test(event.seat) ? event.seat : null;
@@ -658,14 +658,14 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll") return;
+        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house") return;
         const now = Date.now();
         if (now - (this.sharedAt.get(attachment.connectionId) ?? 0) < 120) return;
         this.sharedAt.set(attachment.connectionId, now);
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll", value: unknown, includeSender: boolean) => {
+        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house", value: unknown, includeSender: boolean) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;

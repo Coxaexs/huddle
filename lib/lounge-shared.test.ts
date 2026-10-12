@@ -5,6 +5,8 @@ describe("safeMediaUrl", () => {
   it("allows https links and this server's own uploads, and nothing else", () => {
     expect(safeMediaUrl("https://cdn.example.com/film.mp4")).toBe("https://cdn.example.com/film.mp4");
     expect(safeMediaUrl("/hangout/api/uploads/abc123.mp4")).toBe("/hangout/api/uploads/abc123.mp4");
+    expect(safeMediaUrl("/hangout/api/youtube/stream/dQw4w9WgXcQ.mp4")).toBe("/hangout/api/youtube/stream/dQw4w9WgXcQ.mp4");
+    expect(safeMediaUrl("/hangout/api/youtube/stream/../x.mp4")).toBeNull();
     expect(safeMediaUrl("http://example.com/film.mp4")).toBeNull();
     expect(safeMediaUrl("javascript:alert(1)")).toBeNull();
     expect(safeMediaUrl("https://localhost/x")).toBeNull();
@@ -104,5 +106,13 @@ describe("initiative order", () => {
     init = removeInitiative(init, "a")!;
     expect(currentEntry(init)?.id).toBe("c");
     expect(removeInitiative(build(e("solo", 1)), "solo")).toBeNull();
+  });
+});
+
+describe("house lights", () => {
+  it("keeps a level between 0 and 1 and defaults to automatic", () => {
+    expect(sanitizeShared("house", { level: 7, auto: false }, "Mod", 5)).toEqual({ level: 1, auto: false, at: 5, by: "Mod" });
+    expect(sanitizeShared("house", { level: -2 }, "Mod", 5)).toEqual({ level: 0, auto: true, at: 5, by: "Mod" });
+    expect(sanitizeShared("house", null, "Mod", 5)).toBeNull();
   });
 });

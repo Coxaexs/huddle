@@ -823,6 +823,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["pronouns", "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''"],
     ["pride_badges", "ALTER TABLE users ADD COLUMN pride_badges TEXT NOT NULL DEFAULT '[]'"],
     ["spotify_activity", "ALTER TABLE users ADD COLUMN spotify_activity TEXT"],
+    ["activity", "ALTER TABLE users ADD COLUMN activity TEXT"],
+    ["lastfm_username", "ALTER TABLE users ADD COLUMN lastfm_username TEXT"],
     ["can_invite", "ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0"],
     ["custom_css", "ALTER TABLE users ADD COLUMN custom_css TEXT"],
     ["custom_theme", "ALTER TABLE users ADD COLUMN custom_theme TEXT"],

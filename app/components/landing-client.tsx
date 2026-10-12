@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
 
 /**
  * The few interactive bits of hoffle.online. Everything else on the landing
@@ -40,13 +39,13 @@ export function SiteThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      aria-label="Dark mode"
+      aria-label="Colour scheme"
       aria-pressed={dark ?? undefined}
-      title="Switch light or dark mode"
-      className="group grid h-10 w-10 place-items-center rounded-full hover:bg-(--paper-2)"
+      title="Switch light or dark"
+      className="h-10 px-3 text-sm text-(--ink-2) underline-offset-4 hover:text-(--ink) hover:underline"
     >
-      <Moon aria-hidden className="lp-if-light h-5 w-5 text-(--ink-2) group-hover:text-(--ink)" />
-      <Sun aria-hidden className="lp-if-dark h-5 w-5 text-(--ink-2) group-hover:text-(--ink)" />
+      <span aria-hidden className="lp-if-light">Dark</span>
+      <span aria-hidden className="lp-if-dark">Light</span>
     </button>
   );
 }

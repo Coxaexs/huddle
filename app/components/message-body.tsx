@@ -4,6 +4,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Check, Volume2 } from "lucide-react";
 import { highlight } from "../lib/highlight";
 import { LinkPreviewCard } from "./link-preview";
+import { extractInviteCodes } from "../lib/chat/invites";
 import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { TAG_PATTERN, TAG_SOURCE, describeTag, PER_LETTER_EFFECTS } from "@/lib/text-style";
@@ -553,7 +554,10 @@ export function MessageBody({
           onClick={() => onImage?.(proxiedImage(url))}
         />
       ))}
-      {links.slice(0, MAX_PREVIEWS).map((url) => (
+      {links
+        .filter((url) => extractInviteCodes(url).length === 0)
+        .slice(0, MAX_PREVIEWS)
+        .map((url) => (
         <LinkPreviewCard key={url} url={url} />
       ))}
     </>

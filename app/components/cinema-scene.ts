@@ -10,6 +10,7 @@ import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { CINEMA, CINEMA_FIRST_ROW_Z, CINEMA_RISE, CINEMA_ROWS, CINEMA_ROW_PITCH } from "../lib/living-room";
+import { buildBooth } from "./cinema-booth";
 import { LOOKS, box, canvasTexture, codeRain, glowTexture, mat, wallTexture, type BuiltRoom } from "./living-room-scene";
 
 export interface CinemaLights {
@@ -242,6 +243,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     [W, 0, -CINEMA.halfZ, 0], [W, 0, CINEMA.halfZ, Math.PI], [D, -CINEMA.halfX, 0, Math.PI / 2], [D, CINEMA.halfX, 0, -Math.PI / 2],
   ];
   for (const [width, x, z, ry] of walls) {
+    if (z === CINEMA.halfZ) continue; // the back wall is the booth's: it has a door and windows cut out of it
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, H), wallMaterial);
     wall.position.set(x, H / 2, z);
     wall.rotation.y = ry;
@@ -276,7 +278,14 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), screenMaterial);
   screen.position.set(0, SY, -CINEMA.halfZ + 0.15);
   root.add(frame, screen);
-  addGlow("#9fb4ff", 11, new THREE.Vector3(0, SY, -CINEMA.halfZ + 1.2), 0.1);
+  // The screen's soft spill, as a flat panel on the wall: a camera-facing sprite floating in the hall gets sliced
+  // by the speakers and curtains when seen from a side seat, leaving a hard-edged dark wedge across the screen.
+  const spill = new THREE.Mesh(
+    new THREE.PlaneGeometry(SW * 1.45, SH * 1.6),
+    new THREE.MeshBasicMaterial({ map: glow, color: "#9fb4ff", transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false }),
+  );
+  spill.position.set(0, SY, -CINEMA.halfZ + 0.16);
+  root.add(spill);
 
   // Curtains with pleats and tiebacks
   const curtain = mat(look.rug[0], 1);
@@ -404,15 +413,6 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     }
   }
 
-  // Projector booth on the back wall
-  const booth = box(1.2, 0.7, 1.0, mat("#222", 0.6), false);
-  booth.position.set(0, backTop + 3.0, CINEMA.halfZ - 0.6);
-  ceiling.add(booth);
-  // Projector lens
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.3, 16), new THREE.MeshBasicMaterial({ color: "#111", toneMapped: false }));
-  lens.position.set(0, backTop + 3.0, CINEMA.halfZ - 1.0);
-  lens.rotation.x = -Math.PI / 2;
-  ceiling.add(lens);
   // Sound system speakers on stage left/right
   for (const side of [-1, 1]) {
     const speaker = box(0.8, 1.8, 0.5, mat("#1a1a1a", 0.3), false);
@@ -434,10 +434,16 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   // Create controllable lights
   const cinemaLights = createCinemaLights(root, ceiling, look, H, W, D, backTop, sconceMats, sconceLamps, cinemaGlows, striplight);
 
+  // The projection booth behind the back wall, which runs whenever the screen is playing something.
+  const booth = buildBooth({ root, ceiling, look, floorY: backTop, hallHeight: H, screen: { y: SY, width: SW, material: screenMaterial }, wallMaterial, glow });
+  const setScreenActive = cinemaLights.setScreenActive;
+  cinemaLights.setScreenActive = (active: boolean) => { setScreenActive(active); booth.setLive(active); };
+
   let codeNext = 0;
   const update = (t: number, dt: number = 1/60) => {
     if (code && t > codeNext) { codeNext = t + 0.08; code.step(); }
     cinemaLights.update(dt);
+    booth.update(t, dt);
   };
 
   return {
@@ -448,7 +454,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     fog: new THREE.Fog(look.fog, 16, 34),
     exposure: look.exposure,
     update,
-    dispose: () => { glow.dispose(); },
+    dispose: () => { glow.dispose(); booth.dispose(); },
     cinemaLights,
   };
 }

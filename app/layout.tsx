@@ -49,7 +49,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       metadataBase: new URL(`${protocol}://${host}`),
       title: { default: "Hoffle", template: "%s · Hoffle" },
-      description: "Voice and chat for your friends.",
+      description: "Hoffle: open-source voice channels, screen sharing and text chat with servers, DMs and friends.",
       icons,
       robots: { index: false, follow: false },
     };

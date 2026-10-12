@@ -283,7 +283,7 @@
   --on-accent: #07070b;
   --cp-cyan: #00f0ff;
   --cp-red: #ff2a6d;
-  --font-ui: "Rajdhani", "Geist", sans-serif;
+  --font-ui: "Rajdhani", "Instrument Sans", sans-serif;
   --font-display: "Rajdhani", sans-serif;
   --font-mono: "Share Tech Mono", ui-monospace, monospace;
   --ring: 0 0 0 2px #00f0ff;
@@ -682,7 +682,7 @@
   --accent-strong: #00ff66;
   --accent-hi: #7dffae;
   --on-accent: #001a09;
-  --font-ui: "Geist Mono", ui-monospace, monospace;
+  --font-ui: "JetBrains Mono", ui-monospace, monospace;
   --font-display: "Share Tech Mono", ui-monospace, monospace;
   --font-mono: "Share Tech Mono", ui-monospace, monospace;
   --ring: 0 0 0 2px rgba(0, 255, 102, 0.6);
@@ -895,3 +895,61 @@
 :root[data-custom-theme-id="msn"] .space-header .icon-button {
   color: #34507f;
 }
+
+/* Server invite card per theme ------------------------------------------- */
+:root[data-custom-theme-id="matrix"] .server-invite-card {
+  --invite-accent: #00ff66;
+  border-radius: 2px;
+  background: rgba(0, 10, 4, 0.92);
+  border: 1px solid rgba(0, 255, 102, 0.4);
+  box-shadow: var(--matrix-glow), inset 0 0 24px rgba(0, 255, 102, 0.05);
+  font-family: var(--font-mono);
+}
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-banner {
+  filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(3);
+  background-blend-mode: multiply;
+}
+:root[data-custom-theme-id="matrix"] .server-invite-eyebrow::before { content: "> "; }
+:root[data-custom-theme-id="matrix"] .server-invite-eyebrow { color: #4f9466; text-transform: lowercase; letter-spacing: 0.1em; }
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-icon,
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-btn { border-radius: 2px; }
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-icon { color: #001a09; background: #00ff66 !important; text-shadow: none; }
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-btn { text-transform: uppercase; letter-spacing: 0.08em; box-shadow: var(--matrix-glow); }
+:root[data-custom-theme-id="matrix"] .server-invite-card .server-invite-name { color: #7dffae; text-shadow: var(--matrix-glow); }
+
+:root[data-custom-theme-id="vampire"] .server-invite-card {
+  --invite-accent: #c8102e;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1d0e12, #0e080a);
+  border: 1px solid rgba(200, 16, 46, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 90, 110, 0.12);
+}
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-banner {
+  filter: saturate(0.6) contrast(1.1) sepia(0.4) hue-rotate(-30deg);
+}
+:root[data-custom-theme-id="vampire"] .server-invite-eyebrow { font-family: var(--font-display); font-size: 14px; letter-spacing: 0.08em; text-transform: none; color: #ff5a6e; }
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-name { font-size: 20px; letter-spacing: 0.02em; }
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-icon { border-radius: 50% 50% 50% 8px; }
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-btn { border-radius: 4px; background: linear-gradient(180deg, #e0183a, #8f0a20); font-family: var(--font-display); font-size: 15px; letter-spacing: 0.05em; }
+
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card {
+  --invite-accent: #fcee0a;
+  border-radius: 2px;
+  background: #0b0b12;
+  border: 1px solid #00f0ff;
+  box-shadow: 4px 4px 0 rgba(255, 42, 109, 0.8);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+:root[data-custom-theme-id="cyberpunk"] .server-invite-eyebrow { color: #00f0ff; }
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-icon,
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-btn { border-radius: 2px; }
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-btn { text-transform: uppercase; font-weight: 700; }
+
+:root[data-custom-theme-id="dark-academia"] .server-invite-card {
+  --invite-accent: #c9a45c;
+  border-radius: 4px;
+  border: 1px solid var(--gilt, rgba(201, 164, 92, 0.38));
+  background: linear-gradient(180deg, #2a2219, #1f1913);
+}
+:root[data-custom-theme-id="dark-academia"] .server-invite-eyebrow { font-style: italic; text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
+:root[data-custom-theme-id="dark-academia"] .server-invite-card .server-invite-btn { border-radius: 3px; }

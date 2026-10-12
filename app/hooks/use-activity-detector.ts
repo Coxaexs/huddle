@@ -1,137 +1,292 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
-import type { PublicUser, SpotifyActivity } from "@/lib/users";
-
-export interface ActivityApp {
-  id: string;
-  name: string;
-  type: "music" | "game" | "coding" | "browser";
-  details?: string;
-  enabled: boolean;
-}
+import {
+  ACTIVITY_HEARTBEAT_MS,
+  type ProfileActivity,
+  type PublicUser,
+  type SpotifyActivity,
+} from "@/lib/users";
 
 interface UseActivityDetectorOptions {
   user: PublicUser | null;
   onUpdateSpotify?: (activity: SpotifyActivity | null) => void;
+  onUpdateActivity?: (activity: ProfileActivity | null) => void;
 }
 
-const SHARE_KEY = "huddle-share-listening";
+interface DesktopScan {
+  activity: { name: string; kind: ProfileActivity["kind"] } | null;
+  music: { song: string; artist: string; albumArt?: string; url?: string } | null;
+}
 
-/** Whether this device shares what you are listening to (Settings → Activities). */
-export function activitySharingEnabled(): boolean {
+type DesktopShell = { scanActivity?: () => Promise<DesktopScan | null> };
+
+const SHARE_KEY = "huddle-share-listening";
+const SHARE_APPS_KEY = "huddle-share-apps";
+const LASTFM_KEY = "huddle-spotify-username";
+const POLL_MS = 15_000;
+
+function readFlag(key: string): boolean {
   try {
-    return window.localStorage.getItem(SHARE_KEY) !== "off";
+    return window.localStorage.getItem(key) !== "off";
   } catch {
     return true;
   }
 }
 
-export function setActivitySharing(enabled: boolean): void {
+function writeFlag(key: string, enabled: boolean): void {
   try {
-    window.localStorage.setItem(SHARE_KEY, enabled ? "on" : "off");
+    window.localStorage.setItem(key, enabled ? "on" : "off");
   } catch {
     // Session only.
   }
 }
 
-export function useActivityDetector({ user, onUpdateSpotify }: UseActivityDetectorOptions) {
+/** Whether this device shares what you are listening to (Settings → Activities). */
+export function activitySharingEnabled(): boolean {
+  return readFlag(SHARE_KEY);
+}
+
+export function setActivitySharing(enabled: boolean): void {
+  writeFlag(SHARE_KEY, enabled);
+}
+
+/** Whether this device shares the game/app it detects running. */
+export function appSharingEnabled(): boolean {
+  return readFlag(SHARE_APPS_KEY);
+}
+
+export function setAppSharing(enabled: boolean): void {
+  writeFlag(SHARE_APPS_KEY, enabled);
+}
+
+/** The desktop shell's scanner, if this is the desktop app. */
+export function desktopScanner(): (() => Promise<DesktopScan | null>) | null {
+  if (typeof window === "undefined") return null;
+  const shell = (window as unknown as { huddle?: DesktopShell }).huddle;
+  return shell?.scanActivity ? shell.scanActivity : null;
+}
+
+async function lastFmNowPlaying(username: string): Promise<SpotifyActivity | null | undefined> {
+  const response = await fetch(
+    `/hangout/api/integrations/spotify?username=${encodeURIComponent(username)}`,
+    { cache: "no-store" },
+  );
+  const latest = (await response.json()) as {
+    song?: string | null;
+    artist?: string;
+    albumArt?: string;
+    isPlaying?: boolean;
+    error?: string;
+  };
+  // Last.fm hiccups (rate limit, 5xx, "user not found") say nothing about the
+  // music: undefined keeps whatever is already shown.
+  if (!response.ok || latest.error) return undefined;
+  if (latest.song && latest.isPlaying) {
+    return {
+      song: latest.song,
+      artist: latest.artist || "Spotify",
+      albumArt: latest.albumArt || "",
+      isPlaying: true,
+    };
+  }
+  return null;
+}
+
+export function useActivityDetector({
+  user,
+  onUpdateSpotify,
+  onUpdateActivity,
+}: UseActivityDetectorOptions) {
   const [masterEnabled, setMasterEnabled] = useState(true);
   const [spotifyEnabled, setSpotifyEnabled] = useState(true);
   const [appsEnabled, setAppsEnabled] = useState(true);
   const [spotifyUsername, setSpotifyUsername] = useState<string>(() => {
     if (typeof window === "undefined") return "";
-    return window.localStorage.getItem("huddle-spotify-username") || "";
+    try {
+      return window.localStorage.getItem(LASTFM_KEY) || "";
+    } catch {
+      return "";
+    }
   });
 
+  // Callbacks go through refs so a new closure never restarts the poll.
+  const onSpotifyRef = useRef(onUpdateSpotify);
+  onSpotifyRef.current = onUpdateSpotify;
+  const onActivityRef = useRef(onUpdateActivity);
+  onActivityRef.current = onUpdateActivity;
 
-  // Use refs to avoid re-render loops — callbacks and user identity are stable
-  const onUpdateRef = useRef(onUpdateSpotify);
-  onUpdateRef.current = onUpdateSpotify;
-
-  const userIdRef = useRef(user?.id);
-  userIdRef.current = user?.id;
-
-  const lastActivityKeyRef = useRef<string | null>(null);
-  const isSyncingRef = useRef(false);
+  // The username lives on the account so it follows you across devices; the
+  // localStorage copy is only what older versions saved, moved up once below.
+  const accountLastfm = user?.lastfmUsername || "";
+  const lastfmRef = useRef("");
+  lastfmRef.current = accountLastfm || spotifyUsername.trim();
 
   const saveSpotifyUsername = (username: string) => {
     setSpotifyUsername(username);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("huddle-spotify-username", username);
+    try {
+      if (username) window.localStorage.setItem(LASTFM_KEY, username);
+      else window.localStorage.removeItem(LASTFM_KEY);
+    } catch {
+      // Session only.
     }
   };
 
-  // Stable media session check — runs on a long interval, uses refs to avoid dep churn
   useEffect(() => {
-    if (!user || !masterEnabled || !spotifyEnabled) return;
+    if (!user || accountLastfm || !spotifyUsername.trim()) return;
+    apiFetch("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ lastfmUsername: spotifyUsername.trim() }),
+    }).catch(() => undefined);
+  }, [user?.id, accountLastfm, spotifyUsername]);
 
-    const publishSpotify = async (spotifyAct: SpotifyActivity | null) => {
-      const activityKey = spotifyAct
-        ? `${spotifyAct.song}\u0000${spotifyAct.artist}\u0000${spotifyAct.isPlaying !== false}`
-        : "";
-      // Nothing detected and nothing published by us yet: leave the profile
-      // alone. Clearing here wiped a song people had set by hand, on every
-      // page load, and told every client to reload.
-      if (!spotifyAct && lastActivityKeyRef.current === null) return;
-      if (activityKey === lastActivityKeyRef.current) return;
-      lastActivityKeyRef.current = activityKey;
-      onUpdateRef.current?.(spotifyAct);
+  useEffect(() => {
+    if (!user || !masterEnabled) return;
+
+    // What we last told the server, so unchanged results only send a
+    // heartbeat now and then instead of a profile write every poll.
+    const sent = {
+      spotifyKey: null as string | null,
+      spotifyAt: 0,
+      activityKey: null as string | null,
+      activityAt: 0,
+      activityStartedAt: 0,
+    };
+    let running = false;
+    let cancelled = false;
+
+    const publishSpotify = async (song: SpotifyActivity | null) => {
+      const key = song ? `${song.song}\u0000${song.artist}` : "";
+      // Nothing detected and nothing published by us: leave a hand-set song alone.
+      if (!song && sent.spotifyKey === null) return;
+      const fresh = Date.now() - sent.spotifyAt < ACTIVITY_HEARTBEAT_MS;
+      if (key === sent.spotifyKey && fresh) return;
+      const previous = sent.spotifyKey;
+      const previousAt = sent.spotifyAt;
+      sent.spotifyKey = key;
+      sent.spotifyAt = Date.now();
+      if (key !== previous) onSpotifyRef.current?.(song);
       try {
         await apiFetch("/api/settings/profile", {
           method: "PATCH",
-          body: JSON.stringify({ spotifyActivity: spotifyAct }),
+          body: JSON.stringify({ spotifyActivity: song }),
         });
       } catch {
-        // Try again on the next poll.
-        lastActivityKeyRef.current = null;
+        sent.spotifyKey = previous;
+        sent.spotifyAt = previousAt;
       }
     };
 
-    const checkSpotifyActivity = async () => {
-      if (isSyncingRef.current) return;
-      isSyncingRef.current = true;
+    const publishActivity = async (
+      found: { name: string; kind: ProfileActivity["kind"] } | null,
+    ) => {
+      const key = found ? `${found.kind}\u0000${found.name}` : "";
+      if (!found && sent.activityKey === null) return;
+      const fresh = Date.now() - sent.activityAt < ACTIVITY_HEARTBEAT_MS;
+      if (key === sent.activityKey && fresh) return;
+      const previous = sent.activityKey;
+      const previousAt = sent.activityAt;
+      if (key !== previous) sent.activityStartedAt = Date.now();
+      sent.activityKey = key;
+      sent.activityAt = Date.now();
+      const payload: ProfileActivity | null = found
+        ? {
+            kind: found.kind,
+            name: found.name,
+            startedAt: sent.activityStartedAt,
+            updatedAt: Date.now(),
+          }
+        : null;
+      if (key !== previous) onActivityRef.current?.(payload);
       try {
-        // Only a linked Last.fm account counts. This page's own media session
-        // is Hoffle's own players (the music bot, voice messages), which used
-        // to show up as "Listening to Spotify".
-        const savedUsername =
-          window.localStorage.getItem("huddle-spotify-username")?.trim() || "";
-        if (!savedUsername || !activitySharingEnabled()) return;
-        const response = await fetch(
-          `/hangout/api/integrations/spotify?username=${encodeURIComponent(savedUsername)}`,
-          { cache: "no-store" },
-        );
-        const latest = (await response.json()) as {
-          song?: string | null;
-          artist?: string;
-          albumArt?: string;
-          isPlaying?: boolean;
-          error?: string;
-        };
-        if (response.ok && !latest.error && latest.song && latest.isPlaying) {
-          await publishSpotify({
-            song: latest.song,
-            artist: latest.artist || "Spotify",
-            albumArt: latest.albumArt || "",
-            isPlaying: true,
-          });
-        } else if (response.ok) {
+        await apiFetch("/api/settings/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ activity: payload }),
+        });
+      } catch {
+        sent.activityKey = previous;
+        sent.activityAt = previousAt;
+      }
+    };
+
+    const tick = async () => {
+      if (running || cancelled) return;
+      running = true;
+      try {
+        const scan = desktopScanner();
+        const desktop = scan ? await scan().catch(() => null) : null;
+
+        if (spotifyEnabled && activitySharingEnabled()) {
+          // The Spotify app itself beats a Last.fm account: it is instant and
+          // needs no setup. Last.fm covers phones, the web player and other
+          // computers.
+          let song: SpotifyActivity | null | undefined;
+          if (desktop?.music) {
+            song = { ...desktop.music, isPlaying: true };
+          } else {
+            const username = lastfmRef.current;
+            if (username) {
+              song = await lastFmNowPlaying(username).catch(() => undefined);
+            } else if (scan) {
+              song = null;
+            }
+          }
+          if (song !== undefined) await publishSpotify(song);
+        } else {
           await publishSpotify(null);
         }
-      } catch {
-        // Offline or the lookup failed: try again next time.
+
+        // Games and apps need the desktop shell to see them; the web app has
+        // no way to know what else is running.
+        if (scan) {
+          if (appsEnabled && appSharingEnabled()) {
+            await publishActivity(desktop?.activity ?? null);
+          } else {
+            await publishActivity(null);
+          }
+        }
       } finally {
-        isSyncingRef.current = false;
+        running = false;
       }
     };
 
-    const interval = window.setInterval(checkSpotifyActivity, 10_000);
-    void checkSpotifyActivity();
-    return () => clearInterval(interval);
-    // Only re-subscribe when these booleans change — NOT on callback/user object changes
-  }, [!!user, masterEnabled, spotifyEnabled]);
+    // Closing the window should not leave a song or game on your profile
+    // until it times out. keepalive lets the request outlive the page.
+    const clearOnExit = () => {
+      const body: Record<string, null> = {};
+      if (sent.spotifyKey) body.spotifyActivity = null;
+      if (sent.activityKey) body.activity = null;
+      if (!Object.keys(body).length) return;
+      try {
+        void fetch("/hangout/api/settings/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          credentials: "include",
+          keepalive: true,
+        });
+      } catch {
+        // The server-side stale timeout covers it.
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+
+    const interval = window.setInterval(() => void tick(), POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pagehide", clearOnExit);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pagehide", clearOnExit);
+    };
+    // Only restart when the switches change, not on callback or user object churn.
+  }, [!!user, masterEnabled, spotifyEnabled, appsEnabled]);
 
   return {
     masterEnabled,

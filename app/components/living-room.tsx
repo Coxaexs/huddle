@@ -4,16 +4,16 @@ import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Clapperboard, Dices, Eye, EyeOff, Flame, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, Swords, UserRound, Users, X } from "lucide-react";
+import { Armchair, Clapperboard, DoorOpen, Dices, Eye, EyeOff, Flame, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
-import { LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, headingTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, headingTo, inAnnex, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { buildRoom, roomAmbience, type BuiltRoom } from "./living-room-scene";
 import { buildCinema } from "./cinema-scene";
 import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec } from "./tabletop-extras";
-import { CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { BoothPanel, CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { addInitiative, currentEntry, watchPosition, type TableCard, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
@@ -42,6 +42,8 @@ interface Props {
   onDiceRollDone?: () => void;
   /** Runs a slash command as you (/roll 2d6, /spell fireball): the tabletop's dice tray. */
   onCommand?: (command: string) => void;
+  /** May walk into the cinema's projection booth and run the show from it (those who can create channels). */
+  canProject?: boolean;
 }
 
 const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices };
@@ -73,6 +75,13 @@ const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: st
 };
 
 /** The TV's "now playing" screen: cover, title, artist, a progress bar and the time. */
+/** The cinema's house lights follow what the projection booth set for the room (nothing set: they dim by themselves). */
+function applyHouse(lights: { setAutoDim: (on: boolean) => void; setLevel: (level: number) => void; setScreenActive: (active: boolean) => void; screenActive: boolean }, house: { level: number; auto: boolean } | null) {
+  lights.setAutoDim(house ? house.auto : true);
+  if (house && !house.auto) lights.setLevel(house.level);
+  else lights.setScreenActive(lights.screenActive); // automatic: dim if something is playing, up if not
+}
+
 function drawNowPlaying(ctx: CanvasRenderingContext2D, state: PlayerState, now: number, art: HTMLImageElement | null, theme: RoomTheme) {
   const { width: W, height: H } = ctx.canvas;
   const c = TV_COLOURS[theme];
@@ -396,7 +405,7 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
-export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand }: Props) {
+export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
   const theme = room.theme;
@@ -423,15 +432,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, []);
   // Falls back to filling the window (and the window itself) where the webview has no Fullscreen API.
   const toggleFullscreen = () => void toggleElementFullscreen(shellRef.current);
-  const [hint, setHint] = useState<string | null>(VENUE_HINTS[venueId]);
+  const venueHint = VENUE_HINTS[venueId] + (venueId === "cinema" && canProject ? " You can run the show from the projection booth: the door at the back of the hall, on the left." : "");
+  const [hint, setHint] = useState<string | null>(venueHint);
   useEffect(() => {
-    setHint(VENUE_HINTS[venueId]);
+    setHint(venueHint);
     const t = setTimeout(() => setHint(null), 9000);
     return () => clearTimeout(t);
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | null>(null);
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | null>(null);
   const [watchVolume, setWatchVolume] = useState(0.8);
   const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null });
   /** Lets the panel's button start a film the browser would not start by itself. */
@@ -444,8 +454,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   useEffect(() => { setPanel(null); setHoverSeat(null); }, [venueId]);
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened });
-  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened };
+  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject });
+  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -475,8 +485,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const house = new THREE.Group();
     scene.add(house);
     const parts: BuiltRoom & { cinemaLights?: any } = venueId === "cinema" ? buildCinema(theme) : venueId === "tabletop" ? buildTabletop(theme) : buildRoom(theme);
-    if (parts.cinemaLights) cinemaLightsRef.current = parts.cinemaLights;
+    if (parts.cinemaLights) { cinemaLightsRef.current = parts.cinemaLights; applyHouse(parts.cinemaLights, live.current.room.shared.house); }
     house.add(parts.root);
+    // Apple's WebKit (the Mac app, Safari) renders point-light cube shadow maps as speckle across every lit surface; skip them there.
+    if (/Mac/i.test(navigator.platform) && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)) {
+      parts.root.traverse((object) => { if ((object as THREE.PointLight).isPointLight) object.castShadow = false; });
+    }
     if (venueId === "lounge") for (const light of roomAmbience(theme)) house.add(light);
     // At the tabletop, dice are thrown onto the map.
     const dice = venueId === "tabletop"
@@ -1076,7 +1090,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         const fx = Math.sin(basis) * forward + Math.cos(basis) * strafe;
         const fz = -Math.cos(basis) * forward + Math.sin(basis) * strafe;
         const to = { x: pose.x + fx * step, z: pose.z + fz * step };
-        next = { ...stepTo(pose, to, venue), facing: live.current.view === "overhead" ? headingTo(pose, to) : facing };
+        next = { ...stepTo(pose, to, venue, live.current.canProject), facing: live.current.view === "overhead" ? headingTo(pose, to) : facing };
       } else if (walkTarget) {
         const dx = walkTarget.x - pose.x;
         const dz = walkTarget.z - pose.z;
@@ -1085,7 +1099,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         else {
           const step = Math.min(distance, WALK_SPEED * dt);
           const to = { x: pose.x + (dx / distance) * step, z: pose.z + (dz / distance) * step };
-          const moved = stepTo(pose, to, venue);
+          const moved = stepTo(pose, to, venue, live.current.canProject);
           if (moved.x === pose.x && moved.z === pose.z) walkTarget = null;
           next = { ...moved, facing: headingTo(pose, walkTarget ?? to) };
         }
@@ -1310,6 +1324,23 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   };
 
   const me = connectionId ? room.poses.get(connectionId) : null;
+  const inBooth = canProject && venueId === "cinema" && !!me && inAnnex(me, venue);
+  // Whatever the booth set for the house lights is what everyone's cinema shows.
+  const house = room.shared.house;
+  useEffect(() => {
+    if (venueId === "cinema" && cinemaLightsRef.current) applyHouse(cinemaLightsRef.current, house);
+  }, [house, venueId]);
+  // Walking into the booth brings its desk up; walking out puts it away.
+  const wasInBooth = useRef(false);
+  useEffect(() => {
+    if (inBooth && !wasInBooth.current) setPanel("booth");
+    if (!inBooth && wasInBooth.current) setPanel((current) => (current === "booth" ? null : current));
+    wasInBooth.current = inBooth;
+  }, [inBooth]);
+  const goToBooth = () => {
+    const a = venue.annex;
+    if (a && me) room.move({ x: a.doorX, z: a.z0 - 0.9, facing: 0, seat: null });
+  };
   const seatName = me?.seat ? seatById(me.seat, venue)?.label : null;
   const tvShowing = screens[0]?.name ?? (nowPlaying?.track ? `♫ ${nowPlaying.track.title}` : null);
 
@@ -1339,6 +1370,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <span className="living-room-sep" aria-hidden="true" />
           {/* A film plays on whichever screen the room is in, so anyone can start or stop it from any room. */}
           <button type="button" className={panel === "watch" || room.shared.watch ? "active" : ""} onClick={() => setPanel(panel === "watch" ? null : "watch")} title="Watch together" aria-label="Watch together" aria-expanded={panel === "watch"}><Film size={16} /></button>
+          {venueId === "cinema" && canProject && (inBooth
+            ? <button type="button" className={panel === "booth" ? "active" : ""} onClick={() => setPanel(panel === "booth" ? null : "booth")} title="Projection booth controls" aria-label="Projection booth controls" aria-expanded={panel === "booth"}><SlidersHorizontal size={16} /></button>
+            : <button type="button" onClick={goToBooth} title="Go to the projection booth (the door at the back of the hall)" aria-label="Go to the projection booth"><DoorOpen size={16} /></button>)}
           {venueId === "cinema" && (
             <button type="button" className={panel === "seats" ? "active" : ""} onClick={() => setPanel(panel === "seats" ? null : "seats")} title="Who is where" aria-label="Who is where" aria-expanded={panel === "seats"}><Users size={16} /></button>
           )}
@@ -1364,6 +1398,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               watch={room.shared.watch} hubNow={() => (serverNow ?? Date.now)()} info={watchInfo} volume={watchVolume} onVolume={setWatchVolume}
               setWatch={(value) => room.setShared("watch", value)} onStartSound={() => watchApi.current.start()}
               onYoutube={onCommand ? () => { onCommand("/watch"); setPanel(null); } : undefined} onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === "booth" && inBooth && (
+            <BoothPanel
+              watch={room.shared.watch} hubNow={() => (serverNow ?? Date.now)()} info={watchInfo} house={house}
+              setWatch={(value) => room.setShared("watch", value)} setHouse={(value) => room.setShared("house", value)}
+              onPick={() => { if (room.shared.watch) room.setShared("watch", null); setPanel("watch"); }} onClose={() => setPanel(null)}
             />
           )}
           {panel === "seats" && <SeatFinder participants={participants} poses={room.poses} myId={connectionId} onSitNear={sitNear} onClose={() => setPanel(null)} />}
@@ -1447,7 +1488,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
         ))}
         {me && (me.seat && me.seat !== "floor" ? (
-          <button type="button" className="living-room-stand" onClick={() => room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }), facing: me.facing })}>Stand up</button>
+          <button type="button" className="living-room-stand" onClick={() => room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing })}>Stand up</button>
         ) : (
           <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
         ))}
@@ -1497,6 +1538,9 @@ const LIVING_ROOM_CSS = `
 .living-room-dice-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .living-room-dice button { min-width: 38px; height: 32px; padding: 0 8px; border-radius: 10px; font-size: 13px; font-weight: 700; color: inherit; background: rgba(255, 220, 170, 0.1); }
 .living-room-dice button:hover:not(:disabled) { background: rgba(255, 220, 170, 0.22); }
+.living-room-panel button.active { background: var(--lr-accent) !important; color: #1b1530 !important; }
+.lr-onair { margin-left: 6px; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #fff; background: #d62a2a; box-shadow: 0 0 10px rgba(255, 59, 59, 0.7); animation: lr-onair-pulse 1.6s ease-in-out infinite; }
+@keyframes lr-onair-pulse { 50% { opacity: 0.55; } }
 .living-room-dice button.active { background: var(--lr-accent); color: #1b1530; }
 .living-room-dice button:disabled { opacity: 0.4; }
 .living-room-dice-note { opacity: 0.8; max-width: 320px; line-height: 1.3; }

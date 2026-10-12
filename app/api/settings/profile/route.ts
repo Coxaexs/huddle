@@ -8,7 +8,7 @@ import { publishMemberUpdate } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
 import { normalizeProfileImage } from "@/lib/profile-media";
 import { checkProfileCss } from "@/lib/themes";
-import { normalizePrideBadges, normalizeSocialLinks } from "@/lib/users";
+import { normalizePrideBadges, normalizeLastfmUsername, normalizeProfileActivity, normalizeSocialLinks } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,9 @@ export async function PATCH(request: Request) {
     tagline?: string;
     customStatus?: string | null;
     prideBadges?: unknown;
-    spotifyActivity?: { song: string; artist: string; albumArt?: string; isPlaying?: boolean } | null;
+    spotifyActivity?: { song: string; artist: string; albumArt?: string; isPlaying?: boolean; url?: string } | null;
+    activity?: unknown;
+    lastfmUsername?: string | null;
     socialLinks?: unknown;
     avatarFrame?: string;
     customCss?: string | null;
@@ -139,8 +141,28 @@ export async function PATCH(request: Request) {
         artist: activity.artist.slice(0, 200),
         ...(art.url ? { albumArt: art.url } : {}),
         ...(typeof activity.isPlaying === "boolean" ? { isPlaying: activity.isPlaying } : {}),
+        ...(typeof activity.url === "string" && /^https:\/\//i.test(activity.url)
+          ? { url: activity.url.slice(0, 300) }
+          : {}),
+        // Stamped here, not trusted from the client: the heartbeat that keeps
+        // a song fresh must come from a real request.
+        updatedAt: Date.now(),
       });
     }
+  }
+
+  let lastfmUsername = user.lastfm_username || null;
+  if (body.lastfmUsername !== undefined) {
+    lastfmUsername = normalizeLastfmUsername(body.lastfmUsername);
+    if (body.lastfmUsername && !lastfmUsername) {
+      return Response.json({ error: "That is not a valid Last.fm username." }, { status: 400 });
+    }
+  }
+
+  let activity = user.activity || null;
+  if (body.activity !== undefined) {
+    const parsed = normalizeProfileActivity(body.activity);
+    activity = parsed ? JSON.stringify({ ...parsed, updatedAt: Date.now() }) : null;
   }
 
   const socialLinks =
@@ -183,7 +205,7 @@ export async function PATCH(request: Request) {
 
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, social_links = ?, avatar_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
     )
     .bind(
       displayName,
@@ -197,6 +219,8 @@ export async function PATCH(request: Request) {
       customStatus,
       JSON.stringify(prideBadges),
       spotifyActivity,
+      activity,
+      lastfmUsername,
       socialLinks,
       avatarFrame,
       customCss,
@@ -223,6 +247,8 @@ export async function PATCH(request: Request) {
       custom_status: customStatus,
       pride_badges: JSON.stringify(prideBadges),
       spotify_activity: spotifyActivity,
+      activity,
+      lastfm_username: lastfmUsername,
       social_links: socialLinks,
       avatar_frame: avatarFrame,
       color,

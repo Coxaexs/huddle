@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("huddle", {
     }),
   /** Tells the shell whether a call is live, so it throttles the window only when idle. */
   setInCall: (on) => ipcRenderer.send("set-in-call", Boolean(on)),
+  /** What is running here: { activity: {name, kind}|null, music: {song, artist, albumArt}|null }. */
+  scanActivity: () => ipcRenderer.invoke("activity:scan"),
   /** Trigger native OS push notification */
   notify: (title, body) =>
     ipcRenderer.send("desktop-notification", { title, body }),

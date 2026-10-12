@@ -43,6 +43,8 @@ interface VoiceStageProps {
   /** Server the room belongs to, for its soundboard. */
   serverId: string | null;
   canManageSounds: boolean;
+  /** May walk into the cinema's projection booth and run the show from it. */
+  canProject?: boolean;
   /**
    * This room is a stage: it has an audience, so participants are split into
    * those whose mic is live and those watching, and the watchers can ask for
@@ -125,6 +127,7 @@ export function VoiceStage({
   voice,
   serverId,
   canManageSounds,
+  canProject = false,
   stageMode = false,
   soundboardEnabled = true,
   captions,
@@ -683,6 +686,7 @@ export function VoiceStage({
           diceRoll={diceRoll}
           onDiceRollDone={onDiceRollDone}
           onCommand={onRollCommand}
+          canProject={canProject}
         />
       )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}
