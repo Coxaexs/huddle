@@ -21,12 +21,16 @@ export interface HuddleBindings {
   RECORDER_SERVICE_TOKEN?: string;
   /** Set to "0"/"false"/"off" to disable the D&D session recorder feature. */
   FEATURE_RECORD_SESSIONS?: string;
+  /** Comma-separated side features to switch off, e.g. "games,battlemap" (lib/features.ts). */
+  FEATURES_DISABLED?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
   /** "1" lets users point phone notifications at LAN/compose-network ntfy servers. */
   HUDDLE_PUSH_ALLOW_PRIVATE?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */
   KLIPY_API_KEY?: string;
+  /** Optional: Turkish /tts and /say through PatientDesk Alania-2 instead of the in-browser model. */
+  SPEECH_API_KEY?: string;
   /** Optional: answers /ask with Claude, falling back to Gemini when that is set too. */
   ANTHROPIC_API_KEY?: string;
   /** Claude model for /ask. Default claude-haiku-5-5. */
@@ -56,6 +60,14 @@ export interface HuddleBindings {
   MAIL_FROM?: string;
   /** Comma-separated developer usernames who receive dev logs (e.g. "kiwi,flo"). */
   DEV_USERS?: string;
+  /** Comma-separated user ids (besides site admins) who may open /admin and /admin/media. */
+  ADMIN_IDS?: string;
+  /** Older name for ADMIN_IDS, still read as a fallback. */
+  MEDIA_ADMIN_IDS?: string;
+  /** Bearer token for the host ops agent behind /admin's Infrastructure tab. */
+  ADMIN_AGENT_TOKEN?: string;
+  /** Where that agent listens. Default http://127.0.0.1:8735. */
+  ADMIN_AGENT_URL?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

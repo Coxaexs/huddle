@@ -30,6 +30,7 @@ import {
   playbackPosition,
   type ClientEvent,
   type LoungeVenue,
+  isLoungeVenue,
   type LoungeWirePose,
   type PlayerAction,
   type PlayerState,
@@ -580,9 +581,9 @@ export class HuddleHub extends DurableObject {
         if (!room) return;
         const num = (value: unknown, limit: number) =>
           typeof value === "number" && Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : null;
-        // Wide enough for the biggest room (the cinema is 14 by 16 metres, plus its projection booth behind the back wall).
-        const x = num(event.x, 8);
-        const z = num(event.z, 12);
+        // Wide enough for the biggest room (the meadow is 50 metres across; the cinema's booth sits past its back wall).
+        const x = num(event.x, 26);
+        const z = num(event.z, 26);
         const facing = num(event.facing, 7);
         if (x === null || z === null || facing === null) return;
         const seat = typeof event.seat === "string" && /^[a-z0-9-]{1,24}$/.test(event.seat) ? event.seat : null;
@@ -595,7 +596,7 @@ export class HuddleHub extends DurableObject {
         } else {
           this.loungeBudget.set(attachment.connectionId, { second, count: 1 });
         }
-        const venue = event.venue === "cinema" || event.venue === "tabletop" ? event.venue : undefined;
+        const venue = isLoungeVenue(event.venue) && event.venue !== "lounge" ? event.venue : undefined;
         const pose: LoungeWirePose = { x, z, facing, seat, ...(venue ? { venue } : {}) };
         attachment.lounge = pose;
         socket.serializeAttachment(attachment);
@@ -636,7 +637,7 @@ export class HuddleHub extends DurableObject {
       case "lounge-venue": {
         const room = attachment.voiceChannelId;
         if (!room) return;
-        const venue: LoungeVenue | null = event.venue === "lounge" || event.venue === "cinema" || event.venue === "tabletop" ? event.venue : null;
+        const venue: LoungeVenue | null = isLoungeVenue(event.venue) ? event.venue : null;
         if (!venue) return;
         // Changing rooms moves everyone, so it cannot be spammed.
         const now = Date.now();

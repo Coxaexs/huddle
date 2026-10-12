@@ -10,6 +10,9 @@ export type RoomActivityKind =
 
 /** Where the DeepPixel board game is served; each room gets its own game code there. */
 export const DEEPPIXEL_URL = "https://deeppixel.online/monogame/";
+/** Window events the board hall and the game's iframe talk through (see room-activities and board-game). */
+export const DEEPPIXEL_FROM_GAME = "huddle:deeppixel";
+export const DEEPPIXEL_TO_GAME = "huddle:deeppixel-send";
 
 /** Richup.io lobby; rooms are created there, so the activity just shares a room link. */
 export const RICHUP_URL = "https://richup.io/";

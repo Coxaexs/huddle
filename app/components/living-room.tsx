@@ -4,14 +4,20 @@ import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Clapperboard, DoorOpen, Dices, Eye, EyeOff, Flame, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, UserRound, Users, X } from "lucide-react";
+import { Armchair, Clapperboard, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
-import { LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, headingTo, inAnnex, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, roomAmbience, type BuiltRoom } from "./living-room-scene";
 import { buildCinema } from "./cinema-scene";
 import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
+import { buildBoardHall, type FloorBoard } from "./board-hall-scene";
+import { buildMeadow } from "./meadow-scene";
+import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from "../lib/board-game";
+import { BoardHallMenu } from "./board-hall-menu";
+import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec } from "./tabletop-extras";
 import { BoothPanel, CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
@@ -20,7 +26,8 @@ import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
 
-type CameraView = "overhead" | "eyes";
+/** Overhead, through your eyes, or (in the board hall) riding behind your pawn. */
+type CameraView = "overhead" | "eyes" | "pawn";
 
 interface Props {
   room: LivingRoom;
@@ -44,14 +51,20 @@ interface Props {
   onCommand?: (command: string) => void;
   /** May walk into the cinema's projection booth and run the show from it (those who can create channels). */
   canProject?: boolean;
+  /** The room's DeepPixel game code, when one is open: the board hall shows it live. */
+  boardGameId?: string | null;
+  /** Opens the room's DeepPixel game to play (starting one if there is none). */
+  onPlayBoardGame?: () => void;
 }
 
-const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices };
-const VENUE_NAMES: Record<VenueId, string> = { lounge: "Living room", cinema: "Cinema", tabletop: "Tabletop" };
+const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices, boardhall: Landmark, meadow: Trees };
+const VENUE_NAMES: Record<VenueId, string> = { lounge: "Living room", cinema: "Cinema", tabletop: "Tabletop", boardhall: "Board hall", meadow: "Meadow" };
 const VENUE_HINTS: Record<VenueId, string> = {
   lounge: "Click or tap the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits. Scroll or pinch to zoom.",
   cinema: "Pick any seat (up to 150) and watch what is shared or played on the big screen. Voices are one volume here; turn on Spatial voices in settings to hear the room. WASD walks, X sits.",
   tabletop: "Take a chair at the table (ten fit), others can stand around it. Roll from the dice tray and the dice are thrown onto the map for everyone at the table.",
+  boardhall: "DeepPixel, life size: the room's game is laid out on the floor and the pawns hop round it as you play. Press Play to open the game; walk the board, or sit on a bench to watch.",
+  meadow: "A little world outside. Walk anywhere (WASD, Shift or double-tap W to hurry, Space to jump), sit by the campfire, go home to the cabin, or fish off the jetty (F).",
 };
 /** A spell or monster card floats over the table this long, unless someone clicks it away first. */
 const CARD_SECONDS = 20;
@@ -165,6 +178,16 @@ const EYE_FOV_MIN = 20;
 const EYE_FOV_MAX = 100;
 const OVERHEAD_FOV = 52;
 const WALK_SPEED = 1.6; // m/s
+/** Shift+W, or W tapped twice: a brisk walk, 30% faster. */
+const SPRINT = 1.3;
+/** A jump: how high (metres) and how long it is in the air (seconds). */
+const JUMP_HEIGHT = 0.45;
+const JUMP_SECONDS = 0.55;
+/** Height of a jump `ms` milliseconds after it started. */
+const jumpLift = (ms: number) => {
+  const k = ms / 1000 / JUMP_SECONDS;
+  return k > 0 && k < 1 ? JUMP_HEIGHT * 4 * k * (1 - k) : 0;
+};
 
 function labelTexture(text: string, colour = "#ffffff", background = "rgba(20,16,30,0.72)"): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -405,7 +428,7 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
-export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false }: Props) {
+export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false, boardGameId = null, onPlayBoardGame }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
   const theme = room.theme;
@@ -449,13 +472,39 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [hoverSeat, setHoverSeat] = useState<{ id: string; x: number; y: number } | null>(null);
   const [rollNote, setRollNote] = useState<string | null>(null);
   const [hiddenMode, setHiddenMode] = useState(false);
+  /** Fishing in the meadow: what the line is doing, the last catch, and the tackle box. */
+  const [fishing, setFishing] = useState<FishingPhase>({ phase: "idle" });
+  const [canFish, setCanFish] = useState(false);
+  const [tackle, setTackle] = useState<Record<string, TackleEntry> | null>(null);
+  const [lastCatch, setLastCatch] = useState<{ name: string; emoji: string; weight: number; rarity: string; record: boolean } | null>(null);
+  const rodRef = useRef<{ cast: () => void; reel: () => void } | null>(null);
+  useEffect(() => { setFishing({ phase: "idle" }); setLastCatch(null); }, [venueId]);
+  /** The room's DeepPixel game as the board hall last heard it, and whether my body walks to my pawn. */
+  const [boardGame, setBoardGame] = useState<BoardGameState | null>(null);
+  const [followPawn, setFollowPawn] = useState(true);
+  const boardFeed = useRef<{ game: BoardGameState | null; version: number }>({ game: null, version: 0 });
+  const bridge = useDeepPixelBridge(venueId === "boardhall" && Boolean(boardGameId));
+  /** A tile clicked on the floor board: its card shows in the game menu. */
+  const [pickedTile, setPickedTile] = useState<number | null>(null);
+  useEffect(() => { if (venueId !== "boardhall") setPickedTile(null); }, [venueId]);
+  useEffect(() => { if (venueId !== "boardhall" && view === "pawn") setView("overhead"); }, [venueId, view]);
+  useEffect(() => {
+    boardFeed.current = { game: null, version: boardFeed.current.version + 1 };
+    setBoardGame(null);
+    if (venueId !== "boardhall" || !boardGameId) return;
+    const watcher = new DeepPixelWatcher(boardGameId, (game) => {
+      boardFeed.current = { game, version: boardFeed.current.version + 1 };
+      setBoardGame(game);
+    });
+    return () => watcher.close();
+  }, [venueId, boardGameId]);
   /** Set when I press "Roll my initiative": the next roll of mine goes into the order. */
   const pendingInitiative = useRef(false);
   useEffect(() => { setPanel(null); setHoverSeat(null); }, [venueId]);
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject });
-  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject };
+  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn });
+  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -484,7 +533,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const scene = new THREE.Scene();
     const house = new THREE.Group();
     scene.add(house);
-    const parts: BuiltRoom & { cinemaLights?: any } = venueId === "cinema" ? buildCinema(theme) : venueId === "tabletop" ? buildTabletop(theme) : buildRoom(theme);
+    const parts: BuiltRoom & { cinemaLights?: any; board?: FloorBoard } = venueId === "cinema" ? buildCinema(theme)
+      : venueId === "tabletop" ? buildTabletop(theme)
+        : venueId === "boardhall" ? buildBoardHall(theme)
+          : venueId === "meadow" ? buildMeadow(theme)
+            : buildRoom(theme);
     if (parts.cinemaLights) { cinemaLightsRef.current = parts.cinemaLights; applyHouse(parts.cinemaLights, live.current.room.shared.house); }
     house.add(parts.root);
     // Apple's WebKit (the Mac app, Safari) renders point-light cube shadow maps as speckle across every lit surface; skip them there.
@@ -516,7 +569,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     scene.background = background;
     scene.fog = parts.fog;
     renderer.toneMappingExposure = parts.exposure;
-    const camera = new THREE.PerspectiveCamera(52, 1, 0.05, 60);
+    // Outdoors the sky is far away; indoors 60 m is plenty.
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.05, venueId === "meadow" ? 260 : 60);
     scene.add(camera);
 
     const bodies = new Map<string, Body>();
@@ -526,11 +580,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let videoStream: MediaStream | null = null;
 
     // Overhead orbit.
-    const orbit = { yaw: 0.0, pitch: 0.82, distance: venueId === "cinema" ? 12 : venueId === "tabletop" ? 5.6 : 6.2 };
-    const maxDistance = venueId === "cinema" ? 26 : 15;
+    const orbit = { yaw: 0.0, pitch: 0.82, distance: venueId === "cinema" ? 12 : venueId === "tabletop" ? 5.6 : venueId === "boardhall" ? 13 : venueId === "meadow" ? 9 : 6.2 };
+    const maxDistance = venueId === "cinema" || venueId === "boardhall" ? 26 : venueId === "meadow" ? 32 : 15;
     // First-person look offset, added to body heading.
     const look = { yaw: 0, pitch: venueId === "tabletop" ? -0.38 : -0.08 };
     let eyeFov = EYE_FOV;
+    // The pawn camera: how far behind, turned how far from the way play runs, and how high.
+    let pawnDistance = 3.6;
+    let pawnYaw = 0;
+    let pawnPitch = 0.42;
+    let pawnBasis = 0;
+    const pawnEye = { position: new THREE.Vector3(0, 6, 12), target: new THREE.Vector3(), ready: false };
     // The room draws at half rate once nothing has moved for a moment (or behind other windows).
     let lastActive = performance.now();
     const poke = () => { lastActive = performance.now(); };
@@ -555,11 +615,54 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const touches = new Map<number, { x: number; y: number }>();
     let pinch: number | null = null;
     const zoom = (factor: number) => {
-      if (live.current.view === "overhead") orbit.distance = Math.max(2.2, Math.min(maxDistance, orbit.distance * factor));
+      if (live.current.view === "pawn") pawnDistance = Math.max(1.8, Math.min(10, pawnDistance * factor));
+      else if (live.current.view === "overhead") orbit.distance = Math.max(2.2, Math.min(maxDistance, orbit.distance * factor));
       else eyeFov = Math.max(EYE_FOV_MIN, Math.min(EYE_FOV_MAX, eyeFov * factor));
     };
     let walkTarget: { x: number; z: number } | null = null;
+    /** Further stops after walkTarget: into or out of the cabin goes through its door. */
+    let walkQueue: Array<{ x: number; z: number }> = [];
     const keys = new Set<string>();
+    let shiftDown = false;
+    let doubleTap = false;
+    let lastForwardUp = 0;
+    /** When I last jumped (performance.now), for my own eyes; everyone else sees the jump signal. */
+    let jumpedAt = -10_000;
+    const jump = () => {
+      const now = performance.now();
+      if (now - jumpedAt < JUMP_SECONDS * 1000) return;
+      jumpedAt = now;
+      poke();
+      live.current.room.emote(JUMP_SIGNAL);
+    };
+
+    // Fishing, in the meadow: the rod's end is just in front of me, at hand height.
+    const rodTip = (pose: LoungePose) => new THREE.Vector3(
+      pose.x + Math.sin(pose.facing) * 1.3,
+      venue.floorY(pose.x, pose.z) + (pose.seat ? 1.3 : 1.75),
+      pose.z - Math.cos(pose.facing) * 1.3,
+    );
+    let canFishNow = false;
+    const rod = venueId === "meadow"
+      ? new FishingRod(house, (phase) => {
+          setFishing(phase);
+          if (phase.phase === "caught") {
+            const { log, record } = recordCatch(phase.fish);
+            setTackle(log);
+            setLastCatch({ ...phase.fish, record });
+            // The room sees a fish over your head.
+            live.current.room.emote("🐟");
+          }
+        })
+      : null;
+    const castNow = () => {
+      const pose = myPose();
+      if (!rod || !pose || !canFishNow) return;
+      setLastCatch(null);
+      rod.cast(rodTip(pose), pose.facing);
+      poke();
+    };
+    rodRef.current = rod ? { cast: castNow, reel: () => rod.reel() } : null;
 
     // Frames come faster than React re-renders, so walking builds on the last
     // pose this tab asked for rather than the last one React has shown.
@@ -626,7 +729,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           return;
         }
         if (object.userData.floor) {
-          walkTarget = { x: hit.point.x / house.scale.x, z: hit.point.z / house.scale.z };
+          const goal = { x: hit.point.x / house.scale.x, z: hit.point.z / house.scale.z };
+          const start = myPose();
+          walkQueue = start ? routeTo(venue, start, goal) : [goal];
+          walkTarget = walkQueue.shift() ?? goal;
+          // On the board hall's floor board, a tile you walk to shows its card.
+          if (parts.board) setPickedTile(tileAt(goal.x, goal.z, parts.board.tileCount()));
           return;
         }
       }
@@ -665,7 +773,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (!drag.moved) return;
       drag.x = event.clientX;
       drag.y = event.clientY;
-      if (live.current.view === "overhead") {
+      if (live.current.view === "pawn") {
+        // Behind the pawn, dragging looks around it.
+        pawnYaw -= dx * 0.006;
+        pawnPitch = Math.max(0.15, Math.min(1.2, pawnPitch + dy * 0.004));
+      } else if (live.current.view === "overhead") {
         orbit.yaw -= dx * 0.006;
         orbit.pitch = Math.max(0.25, Math.min(1.45, orbit.pitch + dy * 0.004));
       } else {
@@ -693,8 +805,25 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       poke();
       const key = event.key.toLowerCase();
       if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
+      if (key === "shift") { shiftDown = event.type === "keydown"; return; }
+      if (key === " " && event.type === "keydown") {
+        event.preventDefault();
+        if (!event.repeat) jump();
+        return;
+      }
+      if (key === "f" && event.type === "keydown" && !event.repeat && venueId === "meadow") {
+        if (rod?.busy()) rod.reel();
+        else if (canFishNow) castNow();
+        return;
+      }
+      if ((key === "w" || key === "arrowup") && event.type === "keydown" && !event.repeat) {
+        // A second tap of W within a moment breaks into a brisk walk until it is let go.
+        const now = performance.now();
+        if (now - lastForwardUp < 280) doubleTap = true;
+      }
+      if ((key === "w" || key === "arrowup") && event.type === "keyup") { lastForwardUp = performance.now(); doubleTap = false; }
       if (!["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) return;
-      if (event.type === "keydown") { keys.add(key); walkTarget = null; } else keys.delete(key);
+      if (event.type === "keydown") { keys.add(key); walkTarget = null; walkQueue = []; } else keys.delete(key);
     };
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", onDown);
@@ -788,7 +917,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         s.facing += wrapHeading(pose.facing - s.facing) * 0.2;
         s.lift += (height - s.lift) * 0.2;
         s.floor += (venue.floorY(pose.x, pose.z) - s.floor) * 0.3;
-        body.group.position.set(s.x, s.floor, s.z);
+        // A jump lifts the whole token for a moment (everyone hears of it as a signal).
+        let jumpAt = 0;
+        for (const e of r.emotes) if (e.emoji === JUMP_SIGNAL && e.connectionId === person.connectionId && e.at > jumpAt) jumpAt = e.at;
+        const hop = jumpAt ? jumpLift(Date.now() - jumpAt) : 0;
+        if (hop) poke();
+        body.group.position.set(s.x, s.floor + hop, s.z);
         body.pointer.rotation.z = -s.facing;
         // A walking token bobs; a talking one pulses.
         const moving = Math.hypot(pose.x - s.x, pose.z - s.z) > 0.02;
@@ -822,6 +956,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const now = Date.now();
       const active = new Set<number>();
       for (const emote of r.emotes) {
+        if (emote.emoji === JUMP_SIGNAL) continue;
         const age = (now - emote.at) / 3000;
         if (age >= 1) continue;
         active.add(emote.id);
@@ -1070,6 +1205,32 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       extras.update(t);
     };
 
+    // The board hall: feed the floor board the latest game, and walk me over to my pawn when it moves.
+    let boardVersion = -1;
+    let myTile: number | null = null;
+    const syncBoard = () => {
+      const board = parts.board;
+      if (!board) return;
+      const feed = boardFeed.current;
+      if (feed.version !== boardVersion) {
+        boardVersion = feed.version;
+        board.setGame(feed.game);
+      }
+      const me = live.current.participants.find((p) => p.connectionId === live.current.connectionId);
+      const spot = me ? board.pawnTile(deepPixelPlayerId(me.id)) : null;
+      if (!spot) { myTile = null; return; }
+      if (spot.tile === myTile) return;
+      const first = myTile === null;
+      myTile = spot.tile;
+      if (!first && live.current.followPawn) {
+        local = null;
+        const pose = myPose();
+        if (pose?.seat) moveTo({ ...pose, seat: null });
+        walkTarget = { x: spot.x, z: spot.z };
+        poke();
+      }
+    };
+
     const walk = (dt: number) => {
       const pose = myPose();
       if (!pose) return;
@@ -1083,24 +1244,24 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (keys.has("q") || keys.has("arrowleft")) facing -= dt * 2;
       if (keys.has("e") || keys.has("arrowright")) facing += dt * 2;
       // Overhead, keys move relative to the camera, not your body.
-      const basis = live.current.view === "overhead" ? -orbit.yaw : facing;
+      const basis = live.current.view === "overhead" ? -orbit.yaw : live.current.view === "pawn" ? pawnBasis : facing;
       let next: LoungePose | null = null;
       if (forward || strafe) {
-        const step = WALK_SPEED * dt;
+        const step = WALK_SPEED * dt * (shiftDown || doubleTap ? SPRINT : 1);
         const fx = Math.sin(basis) * forward + Math.cos(basis) * strafe;
         const fz = -Math.cos(basis) * forward + Math.sin(basis) * strafe;
         const to = { x: pose.x + fx * step, z: pose.z + fz * step };
-        next = { ...stepTo(pose, to, venue, live.current.canProject), facing: live.current.view === "overhead" ? headingTo(pose, to) : facing };
+        next = { ...stepTo(pose, to, venue, live.current.canProject), facing: live.current.view !== "eyes" ? headingTo(pose, to) : facing };
       } else if (walkTarget) {
         const dx = walkTarget.x - pose.x;
         const dz = walkTarget.z - pose.z;
         const distance = Math.hypot(dx, dz);
-        if (distance < 0.05) walkTarget = null;
+        if (distance < 0.05) walkTarget = walkQueue.shift() ?? null;
         else {
           const step = Math.min(distance, WALK_SPEED * dt);
           const to = { x: pose.x + (dx / distance) * step, z: pose.z + (dz / distance) * step };
           const moved = stepTo(pose, to, venue, live.current.canProject);
-          if (moved.x === pose.x && moved.z === pose.z) walkTarget = null;
+          if (moved.x === pose.x && moved.z === pose.z) { walkTarget = null; walkQueue = []; }
           next = { ...moved, facing: headingTo(pose, walkTarget ?? to) };
         }
       } else if (facing !== pose.facing) {
@@ -1116,8 +1277,29 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     };
     const placeCamera = () => {
       const pose = myPose();
+      const me = live.current.participants.find((p) => p.connectionId === live.current.connectionId);
+      const pawn = live.current.view === "pawn" && parts.board && me ? parts.board.pawnView(deepPixelPlayerId(me.id)) : null;
+      if (pawn) {
+        // Riding along behind my pawn, looking the way it travels round the board.
+        const heading = Math.atan2(pawn.dir.x, pawn.dir.z) + pawnYaw;
+        pawnBasis = Math.atan2(Math.sin(heading), -Math.cos(heading));
+        const back = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
+        const wantPosition = pawn.position.clone()
+          .addScaledVector(back, pawnDistance * Math.cos(pawnPitch))
+          .add(new THREE.Vector3(0, 1.1 + pawnDistance * Math.sin(pawnPitch), 0));
+        const wantTarget = pawn.position.clone().addScaledVector(back, -2.4).add(new THREE.Vector3(0, 0.75, 0));
+        const k = pawnEye.ready ? 0.09 : 1;
+        pawnEye.position.lerp(wantPosition, k);
+        pawnEye.target.lerp(wantTarget, k);
+        pawnEye.ready = true;
+        camera.position.copy(pawnEye.position);
+        camera.lookAt(pawnEye.target);
+        setFov(OVERHEAD_FOV);
+        return;
+      }
+      pawnEye.ready = false;
       if (live.current.view === "eyes" && pose) {
-        const eye = eyeAt(pose);
+        const eye = eyeAt(pose) + jumpLift(performance.now() - jumpedAt);
         const yaw = pose.facing;
         const pitch = look.pitch;
         camera.position.set(pose.x, eye, pose.z);
@@ -1131,7 +1313,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         ? pose ? new THREE.Vector3(pose.x * 0.5, venue.floorY(pose.x, pose.z) * 0.6 + 0.8, pose.z * 0.5 - 1.2) : new THREE.Vector3(0, 0.8, -2)
         : venueId === "tabletop"
           ? pose ? new THREE.Vector3(pose.x * 0.3, 0.6, pose.z * 0.3 + TABLE_CENTRE.z * 0.7) : new THREE.Vector3(0, 0.6, TABLE_CENTRE.z)
-          : pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
+          : venueId === "boardhall"
+            ? pose ? new THREE.Vector3(pose.x * 0.45, 0.4, pose.z * 0.45) : new THREE.Vector3(0, 0.4, 0)
+            : venueId === "meadow"
+              ? pose ? new THREE.Vector3(pose.x, venue.floorY(pose.x, pose.z) + 0.8, pose.z) : new THREE.Vector3(venue.focus.x, 0.8, venue.focus.z)
+              : pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
       const yaw = orbit.yaw;
       camera.position.set(
         centre.x + Math.sin(yaw) * Math.cos(orbit.pitch) * orbit.distance,
@@ -1147,7 +1333,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       sinceFrame += dt;
-      if (walkTarget || keys.size || dice?.busy() || live.current.room.emotes.length) poke();
+      if (walkTarget || keys.size || performance.now() - jumpedAt < 1000 || dice?.busy() || parts.board?.busy() || live.current.view === "pawn" || live.current.room.emotes.length) poke();
       // Nothing moving for a couple of seconds, or behind another window: 30 frames a second is plenty.
       const calm = !document.hasFocus() || performance.now() - lastActive > 2500;
       if (calm && sinceFrame < 1 / 30) return;
@@ -1159,6 +1345,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       syncWatch();
       syncMusicTv();
       syncExtras(t);
+      syncBoard();
+      if (rod) {
+        const pose = myPose();
+        const here = Boolean(pose && fishingSpot(pose));
+        if (here !== canFishNow) { canFishNow = here; setCanFish(here); }
+        rod.update(t, pose ? rodTip(pose) : null);
+        if (rod.busy()) poke();
+      }
+      const viewer = myPose();
+      if (viewer) parts.viewer?.(viewer.x, viewer.z, live.current.view);
       parts.update(t, dt);
       dice?.update();
       if (parts.shark) {
@@ -1191,6 +1387,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       disposeTree(scene);
       dice?.dispose();
       extras?.dispose();
+      rod?.dispose();
+      if (rodRef.current) rodRef.current = null;
       dropWatch();
       if (diceRef.current === dice) diceRef.current = null;
       crowd.dispose();
@@ -1382,15 +1580,35 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title="My character" aria-label="My character" aria-expanded={panel === "character"}><UserRound size={16} /></button>
             </>
           )}
+          {venueId === "boardhall" && (
+            <>
+              <button type="button" className="living-room-play" onClick={() => onPlayBoardGame?.()} disabled={!onPlayBoardGame} title={boardGameId ? "Open the game to play" : "Start a DeepPixel game for the room"} aria-label={boardGameId ? "Open the game" : "Start a game"}><Gamepad2 size={16} /><span>Play</span></button>
+              <button type="button" className={followPawn ? "active" : ""} onClick={() => setFollowPawn((on) => !on)} title="Walk with my pawn: when it moves, you walk over to it" aria-label="Walk with my pawn" aria-pressed={followPawn}><Footprints size={16} /></button>
+            </>
+          )}
           <span className="living-room-sep" aria-hidden="true" />
           <button type="button" className={view === "overhead" ? "active" : ""} onClick={() => setView("overhead")} title="Overhead view" aria-label="Overhead view"><MapIcon size={16} /></button>
           <button type="button" className={view === "eyes" ? "active" : ""} onClick={() => setView("eyes")} title="Through your eyes" aria-label="First-person view"><Eye size={16} /></button>
+          {venueId === "boardhall" && <button type="button" className={view === "pawn" ? "active" : ""} onClick={() => setView("pawn")} title="Behind my pawn" aria-label="Pawn view"><Navigation size={16} /></button>}
           {venueId === "lounge" && <button type="button" className={room.settings.ambience ? "active" : ""} onClick={() => room.setSettings({ ambience: !room.settings.ambience })} title="Room sounds (only you hear them)" aria-label="Room sounds" aria-pressed={room.settings.ambience}><Flame size={16} /></button>}
           <button type="button" className={settingsOpen ? "active" : ""} onClick={() => setSettingsOpen((open) => !open)} title="Living Room settings" aria-label="Living Room settings" aria-expanded={settingsOpen}><Settings2 size={16} /></button>
           <button type="button" onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title="Hide controls (H)" aria-label="Hide controls"><EyeOff size={16} /></button>
         </div>
       </div>}
+      {!controlsHidden && venueId === "meadow" && (canFish || fishing.phase !== "idle" || lastCatch) && (
+        <FishingPanel
+          phase={fishing} canFish={canFish} lastCatch={lastCatch} tackle={tackle}
+          onCast={() => rodRef.current?.cast()} onReel={() => rodRef.current?.reel()}
+          onTackle={() => setTackle((open) => (open ? null : readTackle()))}
+        />
+      )}
+      {!controlsHidden && venueId === "boardhall" && (
+        <BoardHallMenu
+          game={boardGame} gameId={boardGameId} bridge={bridge.state} toasts={bridge.toasts} send={bridge.send}
+          userId={myPerson?.id ?? null} onPlay={onPlayBoardGame} tile={pickedTile} onCloseTile={() => setPickedTile(null)}
+        />
+      )}
       {!controlsHidden && panel && (
         <div className="living-room-panels">
           {panel === "watch" && (
@@ -1437,6 +1655,19 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <label className="living-room-switch">
             <span><strong>Spatial voices</strong><small>{venueId === "cinema" ? "Hear people from where they sit. Off by default here, so everyone is one volume while you watch." : "Hear people from where they are in the room. Off: everyone sounds like a normal call."}</small></span>
             <input type="checkbox" checked={room.settings.spatial} onChange={(event) => room.setSettings({ spatial: event.target.checked })} />
+          </label>
+          <label className="living-room-slider">
+            <span>Room echo: {Math.round((room.settings.echo ?? 0.5) * 100)}%</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={room.settings.echo ?? 0.5}
+              disabled={!room.settings.spatial}
+              aria-label="Room echo"
+              onChange={(event) => room.setSettings({ echo: Number(event.target.value) })}
+            />
           </label>
           <label className="living-room-switch">
             <span><strong>Music from the TV</strong><small>{venueId === "lounge" ? "The music bot plays from the TV over the fireplace." : "The music bot plays from the screen."}</small></span>
@@ -1497,6 +1728,62 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   );
 }
 
+const RARITY_LABEL: Record<string, string> = { junk: "Junk", common: "Common", uncommon: "Uncommon", rare: "Rare", legendary: "Legendary" };
+const RARITY_ORDER = ["legendary", "rare", "uncommon", "common", "junk"];
+
+/** The meadow's fishing: cast, wait, reel in when it bites; the last catch and the tackle box. */
+function FishingPanel({ phase, canFish, lastCatch, tackle, onCast, onReel, onTackle }: {
+  phase: FishingPhase;
+  canFish: boolean;
+  lastCatch: { name: string; emoji: string; weight: number; rarity: string; record: boolean } | null;
+  tackle: Record<string, TackleEntry> | null;
+  onCast: () => void;
+  onReel: () => void;
+  onTackle: () => void;
+}) {
+  const entries = tackle ? Object.values(tackle).sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity) || b.best - a.best) : [];
+  return (
+    <div className="lr-fish" role="group" aria-label="Fishing">
+      {phase.phase === "bite" ? (
+        <button type="button" className="lr-fish-reel bite" onClick={onReel}>🎣 Reel in! <kbd>F</kbd></button>
+      ) : phase.phase === "waiting" ? (
+        <>
+          <span className="lr-fish-note">Line's out. Wait for the float to dip…</span>
+          <button type="button" className="lr-fish-reel" onClick={onReel}>Reel in <kbd>F</kbd></button>
+        </>
+      ) : (
+        <>
+          {lastCatch && phase.phase === "caught" && (
+            <div className={`lr-fish-catch ${lastCatch.rarity}`}>
+              <span className="lr-fish-emoji">{lastCatch.emoji}</span>
+              <span>
+                <strong>{lastCatch.name}</strong>
+                <small>{lastCatch.rarity === "junk" ? "Not a fish." : `${lastCatch.weight.toFixed(2)} kg`} · {RARITY_LABEL[lastCatch.rarity]}{lastCatch.record ? " · new best!" : ""}</small>
+              </span>
+            </div>
+          )}
+          {phase.phase === "lost" && <span className="lr-fish-note">{phase.reason}</span>}
+          {canFish
+            ? <button type="button" className="lr-fish-reel" onClick={onCast}>🎣 Cast <kbd>F</kbd></button>
+            : <span className="lr-fish-note">Fish from the jetty or the pond's edge.</span>}
+        </>
+      )}
+      <button type="button" className="lr-fish-box" onClick={onTackle} aria-expanded={Boolean(tackle)}>{tackle ? "Close tackle box" : "Tackle box"}</button>
+      {tackle && (
+        <ul className="lr-fish-log">
+          {entries.length === 0 && <li>Nothing yet. Go catch something!</li>}
+          {entries.map((entry) => (
+            <li key={entry.name} className={entry.rarity}>
+              <span>{entry.emoji} {entry.name}</span>
+              <small>×{entry.count}{entry.rarity !== "junk" ? ` · best ${entry.best.toFixed(2)} kg` : ""}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 const LIVING_ROOM_CSS = `
 .voice-stage-bottom-bar { position: relative; z-index: 6; }
 .living-room { --lr-accent: #ffd27a; --lr-ink: #fff4e3; --lr-panel: rgba(28, 18, 12, 0.72); --lr-edge: rgba(255, 210, 160, 0.2); position: absolute; inset: 0; z-index: 5; background: #1a110c; overflow: hidden; border-radius: inherit; }
@@ -1528,6 +1815,7 @@ const LIVING_ROOM_CSS = `
 .living-room-switch input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--lr-accent); flex: none; }
 .living-room-slider { display: grid; gap: 6px; }
 .living-room-slider input { width: 100%; accent-color: var(--lr-accent); }
+.living-room-slider input:disabled { opacity: 0.4; cursor: not-allowed; }
 .living-room-emotes { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; background: var(--lr-panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid var(--lr-edge); border-radius: 999px; padding: 4px 6px; max-width: calc(100% - 32px); overflow-x: auto; }
 .living-room-emotes button { font-size: 20px; width: 36px; height: 36px; border-radius: 999px; transition: transform 0.12s; flex: none; }
 .living-room-emotes button:hover { transform: scale(1.2); background: rgba(255, 220, 170, 0.12); }
@@ -1544,6 +1832,28 @@ const LIVING_ROOM_CSS = `
 .living-room-dice button.active { background: var(--lr-accent); color: #1b1530; }
 .living-room-dice button:disabled { opacity: 0.4; }
 .living-room-dice-note { opacity: 0.8; max-width: 320px; line-height: 1.3; }
+.living-room-tools .living-room-play { background: var(--lr-accent); color: #1b1530; padding: 0 12px; }
+.living-room-tools .living-room-play:hover { background: var(--lr-accent); filter: brightness(1.08); }
+.lr-fish { position: absolute; left: 10px; bottom: 84px; width: min(280px, calc(100% - 20px)); display: grid; gap: 8px; padding: 10px 12px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 16px; font-size: 13px; z-index: 3; }
+.lr-fish-reel { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border-radius: 12px; font-size: 14px; font-weight: 800; color: #1b1530; background: var(--lr-accent); }
+.lr-fish-reel kbd { font: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: rgba(0, 0, 0, 0.15); }
+.lr-fish-reel.bite { height: 48px; font-size: 16px; animation: lr-bite 0.35s ease-in-out infinite alternate; }
+@keyframes lr-bite { to { transform: scale(1.04); filter: brightness(1.15); } }
+.lr-fish-note { opacity: 0.85; line-height: 1.35; }
+.lr-fish-catch { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); animation: lr-catch 0.35s ease-out; }
+@keyframes lr-catch { from { transform: scale(0.85); opacity: 0; } }
+.lr-fish-catch span { display: grid; }
+.lr-fish-catch small { opacity: 0.75; }
+.lr-fish-catch.rare { box-shadow: inset 0 0 0 1px #4dabf7; }
+.lr-fish-catch.legendary { box-shadow: inset 0 0 0 1px #ffd43b, 0 0 18px rgba(255, 212, 59, 0.35); }
+.lr-fish-emoji { font-size: 28px; }
+.lr-fish-box { height: 26px; border-radius: 8px; font-size: 11px; font-weight: 700; color: inherit; background: rgba(255, 255, 255, 0.06); }
+.lr-fish-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 200px; overflow-y: auto; }
+.lr-fish-log li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+.lr-fish-log li small { opacity: 0.7; white-space: nowrap; }
+.lr-fish-log li.rare { color: #74c0fc; }
+.lr-fish-log li.legendary { color: #ffd43b; }
+.lr-fish-log li.junk { opacity: 0.6; }
 .living-room-panels { position: absolute; top: 58px; left: 10px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 200px); overflow-y: auto; z-index: 3; }
 .living-room-panel { display: grid; gap: 8px; padding: 10px 12px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; }
 .living-room-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

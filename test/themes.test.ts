@@ -108,6 +108,14 @@ describe("Theme System & Serialization", () => {
     }
   });
 
+  it("uses an instance admin's profile CSS exactly as written", () => {
+    const css = `@import url("https://fonts.example/x.css");
+body::before { content: ""; position: fixed; inset: 0; }
+} html { filter: hue-rotate(90deg) }`;
+    expect(scopeProfileCss(css, "u1")).toBe("");
+    expect(scopeProfileCss(css, "u1", true)).toBe(css);
+  });
+
   it("keeps safe profile CSS working", () => {
     const css = `@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
 @media (max-width: 500px) { .profile-banner { height: 40px } }

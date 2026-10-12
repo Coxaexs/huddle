@@ -62,6 +62,17 @@ describe("living room geometry", () => {
     expect(far.wet).toBeGreaterThan(near.wet);
   });
 
+  it("scales room echo with the echo setting and completely silences it at 0", () => {
+    const listener = at(0, 0);
+    const speaker = at(0, -2, 0);
+    const dry = hearFrom(listener, speaker, undefined, LOUNGE, 0);
+    expect(dry.wet).toBe(0);
+    const half = hearFrom(listener, speaker, undefined, LOUNGE, 0.5);
+    const full = hearFrom(listener, speaker, undefined, LOUNGE, 1);
+    expect(half.wet).toBeGreaterThan(0);
+    expect(full.wet).toBeGreaterThan(half.wet);
+  });
+
   it("headingTo agrees with hearFrom's frame", () => {
     const from = at(1, 1);
     const to = at(-2, 0.5);

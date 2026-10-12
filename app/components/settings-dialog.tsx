@@ -1027,7 +1027,7 @@ export function SettingsDialog({
         { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
         { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
         { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
-        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, and hearing /tts messages" },
+        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
         { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
       ],
     },
@@ -1046,6 +1046,7 @@ export function SettingsDialog({
           },
         ]
       : []),
+
     {
       title: "COMMUNITY & SUPPORT",
       items: [
@@ -1124,6 +1125,10 @@ export function SettingsDialog({
                         type="button"
                         className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
                         onClick={() => {
+                          if ("href" in item && typeof item.href === "string") {
+                            window.open(item.href, "_blank", "noopener");
+                            return;
+                          }
                           setTab(item.id);
                           setMobilePage(true);
                           setError("");

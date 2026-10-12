@@ -52,7 +52,7 @@ export function MiniVoiceBar({
           >
             <Radio size={16} />
             <div className={`mini-voice-ping-bubble ${connectionModalOpen ? "visible" : ""}`}>
-              <span>{Math.max(1, Math.round(voice.latency?.rttMs || 42))} ms</span>
+              <span>{voice.latency?.rttMs ? `${Math.round(voice.latency.rttMs)} ms` : "—"}</span>
               <div className="mini-voice-ping-bubble-arrow" />
             </div>
           </button>

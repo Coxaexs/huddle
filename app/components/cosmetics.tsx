@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, type CSSProperties, type ReactNode } from "react";
+import { CANVAS_SCENES, CanvasScene } from "./particle-scenes";
 
 /*
  * Drawn profile cosmetics: avatar decorations, profile effects, profile
@@ -1803,6 +1804,7 @@ export function ProfileEffect({ id, density = 1 }: { id?: string | null; density
       </div>
     );
   }
+  if (CANVAS_SCENES[id]) return <CanvasScene id={id} density={density} />;
   if (SCENES[id]) {
     return (
       <>

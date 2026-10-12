@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ALANIA_VOICES } from "@/lib/speech";
+import { duyuAvailable, getCaptionPrefs, setCaptionPrefs, type CaptionPrefs } from "../../lib/stt/duyu";
 import {
   clampTtsVoice,
   DEFAULT_TTS_VOICE,
@@ -25,6 +27,7 @@ const SAMPLE: Record<TtsLanguage, string> = {
  * Settings → Text-to-speech: whether /tts messages are read aloud here, and
  * the voice your own /tts and /say use (tempo, pitch, effect), with a preview.
  * The same values as /tts on|off and /ttsvoice, saved on every change.
+ * Also which recognizer live captions use (Duyu or the browser's own).
  */
 export function TtsSettings() {
   const [voice, setVoice] = useState<TtsVoice>(() => getTtsVoice());
@@ -33,6 +36,21 @@ export function TtsSettings() {
   const [text, setText] = useState(SAMPLE.en);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
+  const [captionPrefs, setCaptionPrefsState] = useState<CaptionPrefs>(() => getCaptionPrefs());
+  /** null while asking the server whether it has a speech key. */
+  const [speechServer, setSpeechServer] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void duyuAvailable().then((ok) => live && setSpeechServer(ok));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const updateCaptions = (patch: Partial<CaptionPrefs>) => {
+    const next = { ...captionPrefs, ...patch };
+    setCaptionPrefsState(next);
+    setCaptionPrefs(next);
+  };
 
   const update = (patch: Partial<TtsVoice>) => {
     const next = clampTtsVoice({ ...voice, ...patch });
@@ -58,8 +76,9 @@ export function TtsSettings() {
   return (
     <div className="tts-settings">
       <p className="modal-hint">
-        Speech is made on your device: Turkish with EMA Lightning, English with
-        Paradee (or Piper for the male voice). The first use downloads the
+        Turkish is spoken by Alania (on the server) when it is available, else
+        EMA Lightning on your device. English is made on your device with
+        Paradee (or Piper for the male voice); the first use downloads the
         voice once. These are the same
         settings as <code>/tts on|off</code> and <code>/ttsvoice</code>.
       </p>
@@ -88,7 +107,27 @@ export function TtsSettings() {
         <option value="default">Female</option>
         <option value="male">Male</option>
       </select>
-      <p className="modal-hint">Turkish has one voice for now.</p>
+
+      <label htmlFor="tts-turkish-voice">Turkish voice</label>
+      <select
+        id="tts-turkish-voice"
+        value={voice.turkish}
+        onChange={(event) => update({ turkish: event.target.value as TtsVoice["turkish"] })}
+        disabled={speechServer === false}
+      >
+        {(["female", "male"] as const).map((gender) => (
+          <optgroup key={gender} label={gender === "female" ? "Female" : "Male"}>
+            {ALANIA_VOICES.filter((option) => option.gender === gender).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name} — {option.description.toLowerCase()}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      {speechServer === false && (
+        <p className="modal-hint">This server has no Alania key, so Turkish uses the one on-device voice.</p>
+      )}
 
       <label htmlFor="tts-tempo">
         Tempo <span className="tts-settings-value">{voice.tempo.toFixed(2)}× · {describeTempo(voice.tempo)}</span>
@@ -151,6 +190,39 @@ export function TtsSettings() {
         </button>
       </div>
       {status === "error" && <p className="modal-hint tts-settings-error" role="alert">{error}</p>}
+
+      <h3 className="tts-settings-heading">Live captions</h3>
+      <p className="modal-hint">
+        What turns your speech into text when you caption your voice in a call. Duyu is Turkish speech
+        recognition run by this server; the browser&apos;s own works in Chrome, Edge and Safari.
+      </p>
+      <label htmlFor="stt-engine">Recognizer</label>
+      <select
+        id="stt-engine"
+        value={captionPrefs.engine}
+        onChange={(event) => {
+          const value = event.target.value;
+          updateCaptions({ engine: value === "duyu" || value === "browser" ? value : "auto" });
+        }}
+      >
+        <option value="auto">Automatic (Duyu when available)</option>
+        <option value="duyu" disabled={speechServer === false}>Duyu</option>
+        <option value="browser">Browser</option>
+      </select>
+      {captionPrefs.engine !== "browser" && speechServer !== false && (
+        <>
+          <label htmlFor="stt-language">Duyu language</label>
+          <select
+            id="stt-language"
+            value={captionPrefs.language}
+            onChange={(event) => updateCaptions({ language: event.target.value === "auto" ? "auto" : "tr" })}
+          >
+            <option value="tr">Turkish</option>
+            <option value="auto">Detect</option>
+          </select>
+        </>
+      )}
+      {speechServer === false && <p className="modal-hint">This server has no Duyu key, so captions use the browser.</p>}
 
       <button
         type="button"

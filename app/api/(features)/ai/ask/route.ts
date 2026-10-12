@@ -27,7 +27,7 @@ import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
-import { publicMessage } from "../../messages/route";
+import { publicMessage } from "@/app/api/messages/route";
 
 export const dynamic = "force-dynamic";
 

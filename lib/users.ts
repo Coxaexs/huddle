@@ -139,6 +139,8 @@ export interface PublicUser {
   isAdmin: boolean;
   canInvite: boolean;
   customCss?: string | null;
+  /** Instance admin: customCss is used as written, unchecked and unscoped. */
+  unrestrictedCss?: boolean;
   customTheme?: string | null;
   quickReactions?: string[];
   hiddenEmojis?: string[];
@@ -147,6 +149,10 @@ export interface PublicUser {
   email?: string | null;
   emailPromptSkipped?: boolean;
   isDev?: boolean;
+  /** Only on the signed-in user's own account: may open the media admin panel. */
+  canManageMedia?: boolean;
+  /** Only on the signed-in user's own account: may open /admin. */
+  isInstanceAdmin?: boolean;
 }
 
 export interface Member {
@@ -176,6 +182,8 @@ export interface Member {
   profileFrame?: string;
   color: string;
   customCss?: string | null;
+  /** Instance admin: customCss is used as written, unchecked and unscoped. */
+  unrestrictedCss?: boolean;
   customTheme?: string | null;
   lastSeenAt: string;
   createdAt?: string;

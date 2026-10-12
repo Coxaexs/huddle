@@ -1,7 +1,9 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
 /** Which room a lounge pose is in; absent means the living room, as before venues existed. */
-export type LoungeVenue = "lounge" | "cinema" | "tabletop";
+export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
+export const LOUNGE_VENUES: readonly LoungeVenue[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow"];
+export const isLoungeVenue = (value: unknown): value is LoungeVenue => typeof value === "string" && (LOUNGE_VENUES as readonly string[]).includes(value);
 export interface LoungeWirePose { x: number; z: number; facing: number; seat: string | null; venue?: LoungeVenue }
 
 export interface PresenceUser {

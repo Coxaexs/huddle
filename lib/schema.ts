@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -835,6 +835,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["profile_effect", "ALTER TABLE users ADD COLUMN profile_effect TEXT NOT NULL DEFAULT 'none'"],
     ["nameplate", "ALTER TABLE users ADD COLUMN nameplate TEXT NOT NULL DEFAULT 'none'"],
     ["profile_frame", "ALTER TABLE users ADD COLUMN profile_frame TEXT NOT NULL DEFAULT 'none'"],
+    // Set by an instance admin in /admin: the account cannot sign in or act.
+    ["suspended_at", "ALTER TABLE users ADD COLUMN suspended_at TEXT"],
     ["quick_reactions", "ALTER TABLE users ADD COLUMN quick_reactions TEXT NOT NULL DEFAULT '[]'"],
     ["hidden_emojis", "ALTER TABLE users ADD COLUMN hidden_emojis TEXT NOT NULL DEFAULT '[]'"],
     // Optional recovery address (lower-cased), used for password resets.

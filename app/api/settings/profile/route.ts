@@ -1,6 +1,7 @@
 import {
   AVATAR_COLORS,
   currentUser,
+  isInstanceAdmin,
   publicUser,
   unauthorized,
 } from "@/lib/auth";
@@ -108,7 +109,8 @@ export async function PATCH(request: Request) {
   let customCss = user.custom_css || null;
   if (body.customCss !== undefined) {
     customCss = body.customCss || null;
-    if (customCss) {
+    // Instance admins' CSS is stored and used as written (see scopeProfileCss).
+    if (customCss && !(isInstanceAdmin(user) && typeof customCss === "string")) {
       const checked = checkProfileCss(customCss);
       if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
     }

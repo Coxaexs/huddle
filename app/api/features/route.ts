@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { featureFlags } from "@/lib/features";
+import { allDisabledFeatures, featureFlags } from "@/lib/features";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -8,5 +8,6 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
-  return Response.json(featureFlags(bindings()));
+  const env = bindings();
+  return Response.json({ ...featureFlags(env), disabled: await allDisabledFeatures(env) });
 }
