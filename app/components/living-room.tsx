@@ -1008,14 +1008,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
       return art.image;
     };
+    /** Nothing on the screen: the venue's idle picture, or dark glass. */
+    const blankScreen = () => {
+      parts.screenMaterial.map = parts.idleScreen ?? null;
+      parts.screenMaterial.color.set(parts.idleScreen ? "#ffffff" : "#0f0c16");
+      parts.screenMaterial.needsUpdate = true;
+    };
     const syncMusicTv = () => {
       const state = live.current.nowPlaying;
       const showing = Boolean(state?.track) && !videoStream && !watchShowing;
       if (!showing) {
         if (parts.screenMaterial.map === tvTexture) {
-          parts.screenMaterial.map = null;
-          parts.screenMaterial.color.set("#0f0c16");
-          parts.screenMaterial.needsUpdate = true;
+          blankScreen();
         }
         return;
       }
@@ -1045,9 +1049,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       videoTexture = null;
       if (!stream) {
         if (!watchShowing) {
-          parts.screenMaterial.map = null;
-          parts.screenMaterial.color.set("#0f0c16");
-          parts.screenMaterial.needsUpdate = true;
+          blankScreen();
           parts.cinemaLights?.setScreenActive(false);
         }
         return;
@@ -1082,9 +1084,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (watchVideo) { watchVideo.pause(); watchVideo.removeAttribute("src"); watchVideo.load(); }
       watchTexture?.dispose();
       if (parts.screenMaterial.map === watchTexture) {
-        parts.screenMaterial.map = null;
-        parts.screenMaterial.color.set("#0f0c16");
-        parts.screenMaterial.needsUpdate = true;
+        blankScreen();
       }
       watchVideo = null; watchTexture = null; watchUrl = ""; watchShowing = false; watchBlocked = false; watchError = null;
       if (!videoStream) parts.cinemaLights?.setScreenActive(false);
@@ -1450,7 +1450,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       dice: hidden.dice.map((die) => ({ sides: die.sides, sign: 1 as const, rolls: Array.from({ length: die.count }, () => ({ value: 1 + Math.floor(Math.random() * die.sides), kept: true })) })),
       roller: { id: "", displayName: "Game master" }, themeColor: "#444a5a",
     };
-    void dice.roll(fake, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), { at: behindScreen(seat), radius: 0.3, spacing: 0.2, label: "Rolled behind the screen" });
+    void dice.roll(fake, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), { ...behindScreen(seat), label: "Rolled behind the screen" });
     void playDiceRollSound({ theme: "default", diceCount: hidden.dice.reduce((sum, die) => sum + die.count, 0), material: "plastic" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.hiddenRoll?.id, venueId]);
@@ -1470,7 +1470,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const roll = data.roll;
       const pose = connectionId ? room.poses.get(connectionId) : null;
       void diceRef.current?.roll(roll, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), {
-        at: behindScreen(seatOf(connectionId)), radius: 0.3, spacing: 0.2, label: `Hidden · ${roll.expression} = ${roll.total}`,
+        ...behindScreen(seatOf(connectionId)), label: `Hidden · ${roll.expression} = ${roll.total}`,
       });
       void playDiceRollSound({ theme: "default", diceCount: roll.dice.reduce((sum, term) => sum + term.rolls.length, 0), material: roll.material ?? "plastic" });
       room.setShared("hiddenroll", { dice: roll.dice.map((term) => ({ sides: term.sides, count: term.rolls.length })), seed: roll.animationSeed });

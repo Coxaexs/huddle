@@ -514,6 +514,8 @@ export interface BuiltRoom {
   /** Things above head height, hidden in the overhead view so they never block it. */
   ceiling: THREE.Group;
   screenMaterial: THREE.MeshBasicMaterial;
+  /** What the screen shows when nothing is on it (null: dark glass). */
+  idleScreen?: THREE.Texture | null;
   /** The living room's Blåhaj; other rooms have none. */
   shark?: THREE.Group;
   background: THREE.Color;
