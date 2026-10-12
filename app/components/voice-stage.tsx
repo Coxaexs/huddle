@@ -1,5 +1,6 @@
 "use client";
 
+import { useSpeaking } from "../lib/speaking-store";
 import { setWindowFullscreen } from "../lib/fullscreen";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Megaphone, Volume2, Volume1, VolumeX, Play, Search, Users, X, ChevronUp as PeopleUp, ChevronDown as PeopleDown } from "lucide-react";
@@ -155,6 +156,7 @@ export function VoiceStage({
   onSetStreamVolume,
   onToggleStreamMute,
 }: VoiceStageProps) {
+  const speakingIds = useSpeaking(voice.speakingStore);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [qaOpen, setQaOpen] = useState(false);
@@ -561,7 +563,7 @@ export function VoiceStage({
 
   function selfSpeaking(person: VoiceParticipant): boolean {
     const key = person.connectionId === connectionId ? "self" : person.connectionId;
-    return voice.speaking.has(key);
+    return speakingIds.has(key);
   }
 
   return (
@@ -629,6 +631,7 @@ export function VoiceStage({
         viewMode={viewMode}
         participants={participants}
         selfSpeaking={selfSpeaking}
+        speakingIds={speakingIds}
         connectionId={connectionId}
         seatTime={seatTime}
         focused={focused}
@@ -668,7 +671,7 @@ export function VoiceStage({
           room={livingRoom}
           participants={participants}
           connectionId={connectionId}
-          speaking={voice.speaking}
+          speaking={speakingIds}
           deafened={voice.deafened}
           nowPlaying={nowPlaying}
           cameras={videoTiles

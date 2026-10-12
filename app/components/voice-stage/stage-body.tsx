@@ -15,6 +15,7 @@ export function StageBody({
   viewMode,
   participants,
   selfSpeaking,
+  speakingIds,
   connectionId,
   seatTime,
   focused,
@@ -55,6 +56,7 @@ export function StageBody({
   viewMode: "grid" | "table" | "map";
   participants: VoiceParticipant[];
   selfSpeaking: (person: VoiceParticipant) => boolean;
+  speakingIds: Set<string>;
   connectionId: string | null;
   seatTime: (person: VoiceParticipant, className: string) => React.JSX.Element | null;
   focused: VideoTile | null;
@@ -405,7 +407,7 @@ export function StageBody({
           {/* Bottom filmstrip with participant tiles and active screenshare (Screenshot 3) */}
           <div className="voice-filmstrip">
             {videoTiles.map((tile) => {
-              const isStreamerSpeaking = tile.remoteId ? voice.speaking.has(tile.remoteId) : voice.speaking.has("self");
+              const isStreamerSpeaking = tile.remoteId ? speakingIds.has(tile.remoteId) : speakingIds.has("self");
               const tilePerson = tile.remoteId ? participants.find((p) => p.connectionId === tile.remoteId) : self;
               const tileName = tilePerson?.displayName || (tile.self ? "You" : tile.label);
               return (

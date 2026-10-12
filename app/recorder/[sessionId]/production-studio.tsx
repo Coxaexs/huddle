@@ -1,5 +1,6 @@
 "use client";
 
+import { useSpeaking } from "@/app/lib/speaking-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Battlemap, MapStroke, MapToken } from "@/lib/battlemap";
 import type {
@@ -195,6 +196,7 @@ export function ProductionStudio() {
     send: hub.send,
     enableClips: false,
   });
+  const voiceSpeaking = useSpeaking(voice.speakingStore);
   signalRef.current = voice.handleSignal;
 
   useEffect(() => {
@@ -267,7 +269,7 @@ export function ProductionStudio() {
   // silence so normal cross-talk does not cause rapid cuts.
   useEffect(() => {
     const speakingNow = participants.find((person) =>
-      voice.speaking.has(person.connectionId),
+      voiceSpeaking.has(person.connectionId),
     );
     if (!speakingNow) return;
     const timer = window.setTimeout(
@@ -275,7 +277,7 @@ export function ProductionStudio() {
       activeSpeakerId ? 550 : 180,
     );
     return () => window.clearTimeout(timer);
-  }, [activeSpeakerId, participants, voice.speaking]);
+  }, [activeSpeakerId, participants, voiceSpeaking]);
 
   useEffect(() => {
     if (!config?.state.automaticDirection || captureStatus !== "recording") {
@@ -314,7 +316,7 @@ export function ProductionStudio() {
         config.state,
         participants,
         presentations,
-        voice.speaking,
+        voiceSpeaking,
         config.state.lockedSpeakerId || activeSpeakerId,
         battlemap,
         reveal,
@@ -354,7 +356,7 @@ export function ProductionStudio() {
     participants,
     presentations,
     reveal,
-    voice.speaking,
+    voiceSpeaking,
   ]);
 
   // Live preview: while recording, periodically upload a JPEG frame so the
