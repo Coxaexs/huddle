@@ -312,8 +312,9 @@ function chair(wood: THREE.Material, pad: THREE.Material) {
 function pendant(look: Look, scale: number, drop: number) {
   const group = new THREE.Group();
   const profile = [[0.05, 0], [0.09, -0.02], [0.24, -0.1], [0.42, -0.25], [0.52, -0.36], [0.53, -0.38]].map(([x, y]) => new THREE.Vector2(x, y));
-  const outer = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), new THREE.MeshStandardMaterial({ color: look.woodDark, roughness: 0.45, metalness: 0.3, side: THREE.FrontSide }));
-  const inner = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), new THREE.MeshBasicMaterial({ color: look.lamp, side: THREE.BackSide, toneMapped: false }));
+  // The profile runs top to bottom, so the lathe's front faces are the inside of the dome.
+  const outer = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), new THREE.MeshStandardMaterial({ color: look.woodDark, roughness: 0.45, metalness: 0.3, side: THREE.BackSide }));
+  const inner = new THREE.Mesh(new THREE.LatheGeometry(profile, 32), new THREE.MeshBasicMaterial({ color: look.lamp, side: THREE.FrontSide, toneMapped: false }));
   inner.scale.setScalar(0.985);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(0.53, 0.012, 6, 40), mat("#c9a45c", 0.35, { metalness: 0.8 }));
   rim.rotation.x = Math.PI / 2;
@@ -535,7 +536,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   root.add(new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2] * (dark ? 1 : 0.75)));
 
   // Wall sconces: pools of light on the walls, so the room has edges.
-  for (const [x, z, ry] of [[-TABLETOP.halfX, 1.7, Math.PI / 2], [TABLETOP.halfX, 2.0, -Math.PI / 2], [-2.9, -TABLETOP.halfZ, 0], [2.9, -TABLETOP.halfZ, 0]] as const) {
+  for (const [x, z, ry] of [[-TABLETOP.halfX, 1.7, Math.PI / 2], [TABLETOP.halfX, 2.0, -Math.PI / 2], [-1.85, -TABLETOP.halfZ, 0], [1.85, -TABLETOP.halfZ, 0]] as const) {
     const sconce = new THREE.Group();
     const plate = box(0.12, 0.2, 0.025, mat("#b08a3e", 0.35, { metalness: 0.75 }), false);
     plate.position.z = 0.012;
@@ -581,6 +582,16 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     knob.position.set(x + 0.3, 0.36, sideZ + 0.245);
     root.add(door, knob);
   }
+  // A brass picture light under the screen, so what stands on the sideboard can be seen.
+  const barY = TABLETOP.tv.height - SHt / 2 - 0.12;
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 12), mat("#b08a3e", 0.35, { metalness: 0.75 }));
+  bar.rotation.z = Math.PI / 2;
+  bar.position.set(0, barY, -TABLETOP.halfZ + 0.12);
+  const barGlow = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.012, 0.03), new THREE.MeshBasicMaterial({ color: look.lamp, toneMapped: false }));
+  barGlow.position.set(0, barY - 0.035, -TABLETOP.halfZ + 0.12);
+  const sideLight = new THREE.PointLight(look.lamp, dark ? 2.2 : 1.6, 2.4, 1.6);
+  sideLight.position.set(0, barY - 0.15, -TABLETOP.halfZ + 0.45);
+  root.add(bar, barGlow, sideLight);
   const topY = 0.7;
   const bookColours = [look.rug[0], look.pillows[1], "#2a3a5e", look.rug[2]];
   for (let i = 0; i < 4; i++) {
