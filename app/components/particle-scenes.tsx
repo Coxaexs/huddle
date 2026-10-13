@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { crimsonRonin, REAPER } from "./profile-fx-ronin";
+import { ANTI_VENOM, CARNAGE, symbiote } from "./profile-fx-symbiote";
+import { warpDisc } from "./profile-fx-warp";
+import { bloodfall } from "./profile-fx-blood";
+import { nightwing } from "./profile-fx-bats";
 
 /*
  * Canvas-driven particle scenes for profile effects. These are too dense
@@ -10,7 +15,7 @@ import { useEffect, useRef } from "react";
 
 type Ctx = CanvasRenderingContext2D;
 
-interface Scene {
+export interface Scene {
   /** Called on size change; (re)build particles for a W x H canvas in CSS px. */
   init(w: number, h: number, density: number): void;
   /** Advance and draw. t = seconds since start, dt = seconds since last frame. */
@@ -470,243 +475,6 @@ function strokeShine(ctx: Ctx, pts: Pt[], w0: number, color: string, side = -0.2
 }
 
 /* ------------------------------------------------------------------ */
-/* Venomous Maw: a symbiote that lurks, emerges, roars and lunges      */
-/* ------------------------------------------------------------------ */
-
-function venomMaw(): Scene {
-  let W = 0, H = 0, U = 0;
-  let tendrils: Tendril[] = [];
-  let drops: { x: number; y: number; vy: number; r: number }[] = [];
-  let blobs: { x: number; y: number; vx: number; vy: number; r: number; life: number }[] = [];
-  let lastSnap = -1, flash = 0, shake = 0;
-  const CYC = 5.6;
-  const M = 0.48; // half mouth width (head units)
-  const yU = (x: number) => -0.1 * (x / M) ** 2 + 0.02;
-
-  return {
-    init(w, h) {
-      W = w; H = h;
-      U = Math.min(w, h * 0.8) * 0.5;
-      tendrils = [];
-      const edge = (bx: number, by: number, ang: number) =>
-        tendrils.push({ bx, by, ang: ang + rand(-0.35, 0.35), len: rand(0.35, 0.6) * Math.min(w, h), w: rand(7, 14), ph: rand(0, 6), sp: rand(1.2, 2.4), amp: rand(0.8, 1.6), curl: rand(-1.8, 1.8) });
-      for (let i = 0; i < 3; i++) edge(-6, h * rand(0.15, 0.95), 0);
-      for (let i = 0; i < 3; i++) edge(w + 6, h * rand(0.15, 0.95), Math.PI);
-      for (let i = 0; i < 3; i++) edge(w * rand(0.05, 0.95), h + 6, -Math.PI / 2);
-      for (let i = 0; i < 2; i++) edge(w * rand(0.05, 0.3) + (i ? w * 0.65 : 0), -6, Math.PI / 2);
-      drops = []; blobs = []; lastSnap = -1;
-    },
-
-    frame(ctx, t, dt) {
-      const c = t % CYC, idx = Math.floor(t / CYC);
-      let emerge = 0, open = 0, scale = 1, roar = 0;
-      if (c < 1.2) { emerge = 0; }
-      else if (c < 2.0) { const k = easeOutCubic((c - 1.2) / 0.8); emerge = k; open = 0.35 * k; }
-      else if (c < 2.5) { emerge = 1; open = 0.35 + 0.65 * easeOutCubic((c - 2) / 0.5); roar = 1; }
-      else if (c < 2.8) { emerge = 1; open = 1; scale = 1 + 0.85 * easeInQuart((c - 2.5) / 0.3); roar = 1; }
-      else if (c < 2.9) { emerge = 1; open = 1 - (c - 2.8) / 0.1; scale = 1.85; }
-      else if (c < 3.6) { emerge = 1; scale = 1.85 - 0.85 * easeInOut((c - 2.9) / 0.7); }
-      else if (c < 4.6) { emerge = 1 - easeInOut((c - 3.6) / 1); }
-      const lunge = scale - 1;
-
-      if (idx !== lastSnap && c >= 2.88) {
-        lastSnap = idx;
-        flash = 1; shake = 1;
-        for (let i = 0; i < 22; i++) {
-          const a = rand(0, Math.PI * 2), sp = rand(150, 600);
-          blobs.push({ x: W / 2, y: H * 0.45, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 80, r: rand(4, 14), life: 1 });
-        }
-      }
-      shake = Math.max(0, shake - dt * 3);
-      const jitter = (roar * 0.35 + shake) * 7;
-
-      ctx.globalCompositeOperation = "source-over";
-      ctx.clearRect(0, 0, W, H);
-      ctx.save();
-      ctx.translate(rand(-1, 1) * jitter, rand(-1, 1) * jitter);
-
-      // Darkness creeping in from the edges, thicker as it lunges
-      const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * (0.35 - lunge * 0.15), W / 2, H / 2, Math.hypot(W, H) * 0.6);
-      vg.addColorStop(0, "rgba(0,0,0,0)");
-      vg.addColorStop(1, `rgba(2,2,6,${0.75 + lunge * 0.2})`);
-      ctx.fillStyle = vg;
-      ctx.fillRect(-20, -20, W + 40, H + 40);
-
-      // Tendrils lash harder while it roars
-      for (const td of tendrils) {
-        const pts = tendrilPts({ ...td, amp: td.amp * (1 + roar * 0.6), sp: td.sp * (1 + roar) }, t, 0.75 + 0.25 * Math.sin(t * 0.8 + td.ph) + lunge * 0.4);
-        strokeTaper(ctx, pts, td.w + 3, "#000");
-        strokeTaper(ctx, pts, td.w, "#0b0b12");
-        strokeShine(ctx, pts, td.w, "rgba(190,200,255,.35)");
-      }
-
-      // ---- the head ----
-      const hy = U * 0.4 + (H * 0.44 - U * 0.4) * emerge;
-      ctx.save();
-      ctx.translate(W / 2, hy);
-      ctx.rotate(Math.sin(t * 1.3) * 0.04 + roar * Math.sin(t * 40) * 0.015);
-      ctx.scale(U * scale, U * scale);
-      const g = open * 0.5;
-      const yL = (x: number) => yU(x) + g * (1 - (x / M) ** 2);
-
-      // Mouth cavity
-      ctx.beginPath();
-      for (let i = 0; i <= 24; i++) { const x = -M + (2 * M * i) / 24; i ? ctx.lineTo(x, yU(x)) : ctx.moveTo(x, yU(x)); }
-      for (let i = 24; i >= 0; i--) { const x = -M + (2 * M * i) / 24; ctx.lineTo(x, yL(x)); }
-      const mg = ctx.createRadialGradient(0, g * 0.4, 0, 0, g * 0.4, 0.5);
-      mg.addColorStop(0, "#2a0006");
-      mg.addColorStop(1, "#6e0a1c");
-      ctx.fillStyle = mg;
-      ctx.fill();
-
-      // Teeth: upper row hangs down, lower row interlocks
-      const teeth = (upper: boolean) => {
-        const n = upper ? 13 : 12;
-        const sp = (2 * M) / n;
-        for (let i = 0; i < n; i++) {
-          const x = -M + (i + 0.5) * sp + (upper ? 0 : sp * 0.0);
-          const hw = sp * 0.46;
-          const len = (0.07 + 0.08 * (1 - Math.abs(x / M))) * (upper ? 1 : 0.85);
-          const base = upper ? yU : yL;
-          ctx.beginPath();
-          ctx.moveTo(x - hw, base(x - hw));
-          ctx.quadraticCurveTo(x - hw * 0.2, base(x) + (upper ? len * 0.6 : -len * 0.6), x, base(x) + (upper ? len : -len));
-          ctx.quadraticCurveTo(x + hw * 0.2, base(x) + (upper ? len * 0.6 : -len * 0.6), x + hw, base(x + hw));
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      };
-      ctx.fillStyle = "#f4f1e6";
-      ctx.strokeStyle = "rgba(90,70,60,.6)";
-      ctx.lineWidth = 0.006;
-      teeth(true);
-      teeth(false);
-
-      // Drool strands between the jaws
-      if (g > 0.04) {
-        ctx.strokeStyle = "rgba(210,240,215,.45)";
-        ctx.lineWidth = 0.008;
-        for (const x of [-0.32, -0.12, 0.18, 0.36]) {
-          const y0 = yU(x) + 0.06, y1 = yL(x + 0.04) - 0.05;
-          ctx.beginPath();
-          ctx.moveTo(x, y0);
-          ctx.quadraticCurveTo(x + 0.03, (y0 + y1) / 2 + g * 0.25, x + 0.04, y1);
-          ctx.stroke();
-        }
-        if (Math.random() < open * 0.5 * dt * 30) {
-          const x = rand(-0.35, 0.35);
-          drops.push({ x: W / 2 + x * U * scale, y: hy + yL(x) * U * scale, vy: 20, r: rand(1.5, 3.5) });
-        }
-      }
-
-      // Tongue: a lashing, tapering whip
-      if (open > 0.15) {
-        const n = 18, len = (0.15 + open * 0.85) / n;
-        const pts: Pt[] = [[0, yU(0) + g * 0.55]];
-        let x = 0, y = pts[0][1];
-        for (let i = 1; i <= n; i++) {
-          const s = i / n;
-          const a = Math.PI / 2 + Math.sin(t * 7 - s * 5) * (0.35 + s * 0.9) * open;
-          x += Math.cos(a) * len;
-          y += Math.sin(a) * len;
-          pts.push([x, y]);
-        }
-        strokeTaper(ctx, pts, 0.14, "#4a0014", 0.7);
-        strokeTaper(ctx, pts, 0.11, "#d23a62", 0.7);
-        strokeShine(ctx, pts, 0.11, "rgba(255,190,210,.6)");
-      }
-
-      // Skull
-      const skull = ctx.createLinearGradient(0, -0.8, 0, 0.1);
-      skull.addColorStop(0, "#1c1c2a");
-      skull.addColorStop(1, "#040407");
-      ctx.fillStyle = skull;
-      ctx.beginPath();
-      ctx.moveTo(-0.6, 0.06);
-      ctx.bezierCurveTo(-0.7, -0.55, -0.3, -0.84, 0, -0.82);
-      ctx.bezierCurveTo(0.3, -0.84, 0.7, -0.55, 0.6, 0.06);
-      for (let i = 24; i >= 0; i--) { const x = -M + (2 * M * i) / 24; ctx.lineTo(x, yU(x)); }
-      ctx.closePath();
-      ctx.fill();
-      // Jaw
-      ctx.fillStyle = "#06060a";
-      ctx.beginPath();
-      ctx.moveTo(-0.6, 0.06);
-      for (let i = 0; i <= 24; i++) { const x = -M + (2 * M * i) / 24; ctx.lineTo(x, yL(x)); }
-      ctx.lineTo(0.6, 0.06);
-      ctx.bezierCurveTo(0.56, g + 0.3, 0.25, g + 0.46, 0, g + 0.46);
-      ctx.bezierCurveTo(-0.25, g + 0.46, -0.56, g + 0.3, -0.6, 0.06);
-      ctx.fill();
-      // Gloss
-      ctx.strokeStyle = "rgba(200,210,255,.28)";
-      ctx.lineWidth = 0.03;
-      ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(-0.34, -0.68); ctx.quadraticCurveTo(0, -0.8, 0.26, -0.72); ctx.stroke();
-      ctx.lineWidth = 0.015;
-      ctx.beginPath(); ctx.moveTo(0.18, g + 0.4); ctx.quadraticCurveTo(0.4, g + 0.3, 0.5, g + 0.12); ctx.stroke();
-
-      // Eyes: jagged white teardrops that narrow as it roars, with a blink
-      const blink = (c > 0.55 && c < 0.7) || (c > 4.9 && c < 5.0) ? 0.08 : 1;
-      const squint = 1 - roar * 0.25;
-      for (const side of [-1, 1]) {
-        ctx.save();
-        ctx.scale(side, 1);
-        ctx.translate(0, -0.42);
-        ctx.scale(1, blink * squint);
-        ctx.translate(0, 0.42);
-        ctx.shadowColor = "rgba(190,220,255,.9)";
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = "#f6f8ff";
-        ctx.beginPath();
-        ctx.moveTo(-0.05, -0.28);
-        ctx.bezierCurveTo(-0.1, -0.5, -0.34, -0.6, -0.52, -0.52);
-        ctx.lineTo(-0.47, -0.47);
-        ctx.bezierCurveTo(-0.42, -0.36, -0.28, -0.26, -0.05, -0.28);
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.restore();
-
-      // Falling drool
-      ctx.fillStyle = "rgba(200,235,210,.7)";
-      for (let i = drops.length - 1; i >= 0; i--) {
-        const d = drops[i];
-        d.vy += 600 * dt;
-        d.y += d.vy * dt;
-        if (d.y > H + 10) { drops.splice(i, 1); continue; }
-        ctx.beginPath();
-        ctx.ellipse(d.x, d.y, d.r, d.r * 1.6, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Goo splatter from the bite
-      for (let i = blobs.length - 1; i >= 0; i--) {
-        const b = blobs[i];
-        b.life -= dt * 0.8;
-        if (b.life <= 0) { blobs.splice(i, 1); continue; }
-        b.vx *= 1 - dt * 2;
-        b.vy = b.vy * (1 - dt * 2) + 300 * dt;
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
-        const r = b.r * (0.6 + b.life * 0.6);
-        ctx.fillStyle = `rgba(4,4,8,${Math.min(1, b.life * 1.5)})`;
-        ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = `rgba(190,200,255,${b.life * 0.35})`;
-        ctx.beginPath(); ctx.arc(b.x - r * 0.35, b.y - r * 0.35, r * 0.3, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.restore();
-
-      if (flash > 0) {
-        ctx.fillStyle = `rgba(255,255,255,${flash * 0.25})`;
-        ctx.fillRect(0, 0, W, H);
-        flash = Math.max(0, flash - dt * 4);
-      }
-    },
-  };
-}
-
-/* ------------------------------------------------------------------ */
 /* Kraken: tentacles curling up the sides and a giant eye from below   */
 /* ------------------------------------------------------------------ */
 
@@ -932,10 +700,17 @@ function stormSerpent(): Scene {
 }
 
 export const CANVAS_SCENES: Record<string, () => Scene> = {
+  "crimson-ronin": () => crimsonRonin(),
+  "soul-reaper": () => crimsonRonin("card", REAPER),
+  "warp-disc": warpDisc,
   "crimson-blade": crimsonBlade,
   hyperdrive,
   "astral-vortex": astralVortex,
-  symbiote: venomMaw,
+  symbiote: () => symbiote(),
+  carnage: () => symbiote(CARNAGE),
+  "anti-venom": () => symbiote(ANTI_VENOM),
+  bloodfall,
+  nightwing,
   kraken,
   "storm-serpent": stormSerpent,
 };
