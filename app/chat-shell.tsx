@@ -135,6 +135,8 @@ import { DmCallView } from "./components/chat/shell/dm-call-view";
 import { MessageList } from "./components/chat/shell/message-list";
 import { Composer } from "./components/chat/shell/composer";
 import { ChatHeader } from "./components/chat/shell/chat-header";
+import { registerProfileStyles, ringColor } from "./lib/profile-style";
+import { StyledName, VoiceAura } from "./components/profile-style-parts";
 
 
 
@@ -172,6 +174,10 @@ export function ChatShell() {
 
   const [servers, setServers] = useState<PublicServer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  // Voice tiles and anything else without the full Member read styles from here.
+  useEffect(() => {
+    registerProfileStyles(user ? [...members, user] : members);
+  }, [members, user]);
   const [memberFilterQuery, setMemberFilterQuery] = useState("");
   const [dms, setDms] = useState<DmSummary[]>([]);
   /** The friend picker for starting a group DM, or adding people to one. */
@@ -6576,18 +6582,24 @@ export function ChatShell() {
                       if (member) openUserMenu(event, member);
                     }}
                   >
-                    <div className={`relative flex items-center justify-center ${isSpeaking ? "ring-2 ring-emerald-500/80 rounded-full" : ""}`}>
-                      <Avatar
-                        className="tiny-avatar"
-                        avatar={person.avatar}
-                        avatarUrl={person.avatarUrl}
-                        color={person.color}
-                      />
+                    <div className={`relative flex items-center justify-center ${isSpeaking && !membersById.get(person.id)?.profileStyle?.ring ? "ring-2 ring-emerald-500/80 rounded-full" : ""}`}>
+                      <VoiceAura
+                        ring={membersById.get(person.id)?.profileStyle?.ring}
+                        color={ringColor(membersById.get(person.id)?.profileStyle, person.color)}
+                        speaking={isSpeaking}
+                      >
+                        <Avatar
+                          className="tiny-avatar"
+                          avatar={person.avatar}
+                          avatarUrl={person.avatarUrl}
+                          color={person.color}
+                        />
+                      </VoiceAura>
                     </div>
                     <span className={isSpeaking ? "font-medium text-[var(--ink)]" : ""}>
                       {person.connectionId === hub.connectionId
                         ? "You"
-                        : person.displayName}
+                        : <StyledName name={person.displayName} style={membersById.get(person.id)?.profileStyle} />}
                       {isSpeaking && isConnectedVoice ? " (speaking)" : ""}
                     </span>
                     <VoiceDuration

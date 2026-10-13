@@ -1,5 +1,10 @@
 /** Shapes and constants shared by the browser and the worker. */
 
+import type { ProfileStyle } from "./profile-style";
+
+export type { ProfileStyle } from "./profile-style";
+export { normalizeProfileStyle } from "./profile-style";
+
 export interface SpotifyActivity {
   song: string;
   artist: string;
@@ -135,6 +140,7 @@ export interface PublicUser {
   profileEffect?: string;
   nameplate?: string;
   profileFrame?: string;
+  profileStyle?: ProfileStyle;
   color: string;
   isAdmin: boolean;
   canInvite: boolean;
@@ -180,6 +186,7 @@ export interface Member {
   profileEffect?: string;
   nameplate?: string;
   profileFrame?: string;
+  profileStyle?: ProfileStyle;
   color: string;
   customCss?: string | null;
   /** Instance admin: customCss is used as written, unchecked and unscoped. */

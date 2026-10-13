@@ -6,6 +6,9 @@ import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
 import { VoiceApi, VideoTile } from "./types";
 import { TileVideo, VideoSurface } from "./tiles";
+import { useRef } from "react";
+import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-style";
+import { StyledName, VoiceAura } from "../profile-style-parts";
 
 export function StageBody({
   joined,
@@ -90,6 +93,22 @@ export function StageBody({
   onOpenParticipantMenu: ((event: React.MouseEvent, participant: VoiceParticipant) => void) | undefined;
   wrapperRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const styleOf = useProfileStyles();
+  // Join flourishes are for people arriving while you watch, not for everyone
+  // already seated when the stage opens.
+  const seated = useRef<Set<string> | null>(null);
+  if (seated.current === null) seated.current = new Set(participants.map((p) => p.connectionId));
+  const voiceLook = (person: VoiceParticipant) => {
+    const style = styleOf(person.id);
+    const tile = voiceTileLook(style, person.color);
+    return {
+      style,
+      tile,
+      ring: style?.ring,
+      color: ringColor(style, person.color),
+      join: style?.join && !seated.current!.has(person.connectionId) ? style.join : null,
+    };
+  };
   return (
     <div className="voice-stage-body">
       {!joined ? (
@@ -437,9 +456,11 @@ export function StageBody({
 
             {participants.map((person) => {
               const isSpeaking = selfSpeaking(person);
+              const look = voiceLook(person);
               return (
                 <div
-                  className={`film-tile avatar-film ${isSpeaking ? "is-speaking" : ""}`}
+                  className={`film-tile avatar-film ${isSpeaking ? "is-speaking" : ""} ${look.tile.className}`}
+                  style={look.tile.style}
                   key={`a:${person.connectionId}`}
                   onContextMenu={(event) => {
                     if (person.connectionId === connectionId) return;
@@ -447,19 +468,21 @@ export function StageBody({
                   }}
                 >
                   <div className="avatar-film-center">
-                    <Avatar
-                      className={`film-avatar ${isSpeaking ? "is-speaking" : ""}`}
-                      avatar={person.avatar}
-                      avatarUrl={person.avatarUrl}
-                      color={person.color}
-                    />
+                    <VoiceAura ring={look.ring} color={look.color} speaking={isSpeaking} join={look.join}>
+                      <Avatar
+                        className={`film-avatar ${isSpeaking ? "is-speaking" : ""}`}
+                        avatar={person.avatar}
+                        avatarUrl={person.avatarUrl}
+                        color={person.color}
+                      />
+                    </VoiceAura>
                   </div>
                   <div className="film-person-footer">
                     {person.muted && !person.bot && (
                       <MicOff size={11} className="film-person-muted-icon" />
                     )}
                     <span className="film-person-name truncate">
-                      {person.connectionId === connectionId ? "You" : person.displayName}
+                      {person.connectionId === connectionId ? "You" : <StyledName name={person.displayName} style={look.style} live />}
                     </span>
                   </div>
                   {seatTime(person, "film-voice-time")}
@@ -500,28 +523,32 @@ export function StageBody({
 
           {participants.map((person) => {
             const speaking = selfSpeaking(person);
+            const look = voiceLook(person);
             return (
               <figure
                 key={person.connectionId}
-                className={`stage-tile avatar-tile ${speaking ? "is-speaking" : ""}`}
+                className={`stage-tile avatar-tile ${speaking ? "is-speaking" : ""} ${look.tile.className}`}
+                style={look.tile.style}
                 onContextMenu={(event) => {
                   if (person.connectionId === connectionId) return;
                   onOpenParticipantMenu?.(event, person);
                 }}
               >
                 <div className="avatar-tile-inner">
-                  <Avatar
-                    className="stage-avatar"
-                    avatar={person.avatar}
-                    avatarUrl={person.avatarUrl}
-                    color={person.color}
-                  />
+                  <VoiceAura ring={look.ring} color={look.color} speaking={speaking} join={look.join}>
+                    <Avatar
+                      className="stage-avatar"
+                      avatar={person.avatar}
+                      avatarUrl={person.avatarUrl}
+                      color={person.color}
+                    />
+                  </VoiceAura>
                 </div>
                 <figcaption>
                   <span>
                     {person.connectionId === connectionId
                       ? "You"
-                      : person.displayName}
+                      : <StyledName name={person.displayName} style={look.style} live />}
                   </span>
                   {seatTime(person, "tile-voice-time")}
                   {person.important && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Speaking important"><Megaphone size={13} /> Important</span>}

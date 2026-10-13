@@ -26,7 +26,7 @@ import { isThemeFxEnabled } from "../lib/theme-fx";
 
 
 import type { PublicServer } from "@/lib/servers";
-import { type Member, type PrideBadgeId, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
+import { type Member, type PrideBadgeId, type ProfileStyle, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
 import { activitySharingEnabled } from "../hooks/use-activity-detector";
 import { apiFetch } from "../lib/client";
 import { DEVICE_SAVED_EVENT, listDevices, primeDeviceLabels, savedDevice, type DeviceLists } from "../lib/devices";
@@ -243,6 +243,7 @@ export function SettingsDialog({
   const [profileEffect, setProfileEffect] = useState(user.profileEffect || "none");
   const [nameplate, setNameplate] = useState(user.nameplate || "none");
   const [profileFrame, setProfileFrame] = useState(user.profileFrame || "none");
+  const [profileStyle, setProfileStyle] = useState<ProfileStyle>(user.profileStyle || {});
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(user.socialLinks || []);
   const [newPlatform, setNewPlatform] = useState("github");
   const [newUrl, setNewUrl] = useState("");
@@ -566,6 +567,7 @@ export function SettingsDialog({
     setProfileEffect(from.profileEffect || "none");
     setNameplate(from.nameplate || "none");
     setProfileFrame(from.profileFrame || "none");
+    setProfileStyle(from.profileStyle || {});
     setSocialLinks(from.socialLinks || []);
     setSpotifySong(from.spotifyActivity?.song || "");
     setSpotifyArtist(from.spotifyActivity?.artist || "");
@@ -592,6 +594,7 @@ export function SettingsDialog({
           profileEffect,
           nameplate,
           profileFrame,
+          profileStyle,
           socialLinks,
           spotifyActivity: spotifySong.trim()
             ? {
@@ -1463,6 +1466,8 @@ export function SettingsDialog({
       {profileEditor && (
         <ProfileEditorShell>
           <ProfileTab
+        profileStyle={profileStyle}
+        setProfileStyle={setProfileStyle}
         displayName={displayName}
         setDisplayName={setDisplayName}
         pronouns={pronouns}

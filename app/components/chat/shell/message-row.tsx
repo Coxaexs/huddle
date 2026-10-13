@@ -14,6 +14,7 @@ import { type Member, type PublicUser } from "@/lib/users";
 import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
+import { StyledName } from "../../profile-style-parts";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
@@ -514,7 +515,7 @@ function MessageRowImpl({
                                 if (author) openProfile(author, event);
                               }}
                             >
-                              <StyledText text={author?.displayName || message.author} />
+                              <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
                             </strong>
                             {!inDmHome && activeServer && author && (
                               <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />

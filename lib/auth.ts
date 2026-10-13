@@ -19,6 +19,7 @@ import {
   type ProfileActivity,
   type SpotifyActivity,
   normalizeProfileActivity,
+  normalizeProfileStyle,
 } from "./users";
 
 export { AVATAR_COLORS } from "./users";
@@ -48,6 +49,7 @@ export interface User {
   profile_effect?: string | null;
   nameplate?: string | null;
   profile_frame?: string | null;
+  profile_style?: string | null;
   color: string;
   is_admin: number;
   can_invite?: number;
@@ -68,7 +70,7 @@ export interface User {
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
-  "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "color", "is_admin", "can_invite", "status",
+  "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
   "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at",
 ] as const;
@@ -134,6 +136,7 @@ function profileFields(user: User) {
     profileEffect: user.profile_effect || "none",
     nameplate: user.nameplate || "none",
     profileFrame: user.profile_frame || "none",
+    profileStyle: normalizeProfileStyle(parseJson(user.profile_style)),
     color: user.color,
     customCss: user.custom_css || null,
     // Instance admins' profile CSS is used as written (see scopeProfileCss).

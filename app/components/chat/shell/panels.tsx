@@ -11,6 +11,7 @@ import { activeUntil } from "@/lib/timeouts";
 import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
+import { StyledName } from "../../profile-style-parts";
 import { MessageBody, StyledText, type MentionChannel } from "../../message-body";
 import { eventIsOpen, eventWhen } from "../../events-panel";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
@@ -1499,7 +1500,7 @@ export function MemberPanel({
           <div>
             <div className="member-name-line">
               <strong style={{ color: roleColorFor(member) || undefined }}>
-                <StyledText text={member.displayName} />
+                <StyledName name={member.displayName} style={member.profileStyle} />
               </strong>
               <PrideBadges badges={member.prideBadges} mini />
               {activeUntil(member.timeoutUntil) && (
@@ -1551,7 +1552,7 @@ export function MemberPanel({
           <div>
             <div className="member-name-line">
               <strong style={{ color: roleColorFor(member) || undefined }}>
-                <StyledText text={member.displayName} />
+                <StyledName name={member.displayName} style={member.profileStyle} />
               </strong>
               <PrideBadges badges={member.prideBadges} mini />
               {activeUntil(member.timeoutUntil) && (

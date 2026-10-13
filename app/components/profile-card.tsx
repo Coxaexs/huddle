@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { PublicRole } from "@/lib/servers";
 import { bannerBackground, type Member } from "@/lib/users";
 import { Avatar } from "./avatar";
@@ -8,6 +8,8 @@ import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
+import { cardLook, useCardPointer } from "../lib/profile-style";
+import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";
 
 interface ProfileCardProps {
   member: Member;
@@ -50,6 +52,9 @@ export function ProfileCard({
   const nameColor = roles[0]?.color;
   const since = memberSince(member.createdAt);
   const safeScopeId = member.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const hostRef = useRef<HTMLDivElement>(null);
+  const look = cardLook(member.profileStyle, member.color);
+  useCardPointer(hostRef, member.profileStyle?.motion || (look.themed ? "tilt" : "still"));
 
   return (
     <div
@@ -58,9 +63,9 @@ export function ProfileCard({
       aria-modal="true"
       onClick={onClose}
     >
-      <div className="pframe-host">
+      <div ref={hostRef} className={`pframe-host ${look.host}`} style={look.style}>
       <div
-        className={`profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}`}
+        className={`profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
         data-user-profile={member.id}
         data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
         onClick={(event) => event.stopPropagation()}
@@ -72,6 +77,7 @@ export function ProfileCard({
             }}
           />
         )}
+        <CardBackdrop themed={look.themed} />
         <ProfileEffect id={member.profileEffect} />
         <div
           className="profile-banner"
@@ -101,7 +107,7 @@ export function ProfileCard({
         <div className="profile-body">
           <div className="profile-name">
             <strong style={{ color: nameColor || undefined }}>
-              <StyledText text={member.displayName} />
+              <StyledName name={member.displayName} style={member.profileStyle} live />
             </strong>
             {member.isAdmin && <span className="profile-badge owner">OWNER</span>}
             <PrideBadges badges={member.prideBadges} compact />
@@ -156,6 +162,7 @@ export function ProfileCard({
         </div>
       </div>
       <ProfileFrameArt id={member.profileFrame} />
+      <CardChrome themed={look.themed} />
       </div>
     </div>
   );
