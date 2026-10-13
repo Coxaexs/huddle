@@ -114,6 +114,34 @@ export function chordFor(degree: number, key: SynthKey, mode: SynthMode): Chord 
   return { degree: d, root, third, fifth, quality, name, numeral, label: `${name} (${numeral})` };
 }
 
+/** Diatonic pitch letter names A–G. */
+export const DIATONIC_LETTERS = ["A", "B", "C", "D", "E", "F", "G"] as const;
+
+/** Base letter 'A'..'G' for a chord (e.g. "C" from "C#m" or "B" from "B♭"). */
+export function chordLetter(chord: Chord, key?: SynthKey): string {
+  if (key) {
+    const tonic = key.charAt(0).toUpperCase();
+    const tonicIdx = DIATONIC_LETTERS.indexOf(tonic as (typeof DIATONIC_LETTERS)[number]);
+    if (tonicIdx >= 0) {
+      return DIATONIC_LETTERS[(tonicIdx + chord.degree) % 7];
+    }
+  }
+  return chord.name.charAt(0).toUpperCase();
+}
+
+/**
+ * Finds the degree (0–6) for a given note/chord letter ('A'..'G') in the given key.
+ */
+export function degreeForLetter(letter: string, key: SynthKey, _mode?: SynthMode): number | null {
+  const target = letter.trim().charAt(0).toUpperCase();
+  const targetIdx = DIATONIC_LETTERS.indexOf(target as (typeof DIATONIC_LETTERS)[number]);
+  if (targetIdx < 0) return null;
+  const tonic = key.charAt(0).toUpperCase();
+  const tonicIdx = DIATONIC_LETTERS.indexOf(tonic as (typeof DIATONIC_LETTERS)[number]);
+  if (tonicIdx < 0) return null;
+  return ((targetIdx - tonicIdx) % 7 + 7) % 7;
+}
+
 /** Lowest and highest note the upper three voices may start on. */
 const UPPER_LOW = 52;
 const UPPER_HIGH = 67;
@@ -145,6 +173,126 @@ export function voiceChord(chord: Chord, previous: readonly number[] | null = nu
     }
   }
   return [bass, ...best];
+}
+
+/**
+ * Layers two chord voicings together (dual hands / compound chord),
+ * keeping the lower bass and up to MAX_SYNTH_NOTES distinct notes.
+ */
+export function voiceDualChords(
+  chordA: Chord,
+  chordB: Chord,
+  previous: readonly number[] | null = null,
+): number[] {
+  const notesA = voiceChord(chordA, previous);
+  if (chordA.degree === chordB.degree) return notesA;
+  const notesB = voiceChord(chordB, previous);
+  const bass = Math.min(notesA[0], notesB[0]);
+  const upper = new Set<number>();
+  for (const n of notesA.slice(1)) upper.add(n);
+  for (const n of notesB.slice(1)) upper.add(n);
+  const sortedUpper = [...upper].sort((a, b) => a - b).slice(0, MAX_SYNTH_NOTES - 1);
+  return [bass, ...sortedUpper];
+}
+
+export interface SynthSong {
+  id: string;
+  name: string;
+  key: SynthKey;
+  mode: SynthMode;
+  bpm: number;
+  sequence: number[]; // 1-indexed for chords (1-7)
+  description: string;
+}
+
+export const SYNTH_SONGS: SynthSong[] = [
+  {
+    id: "user-seq",
+    name: "Melody Sequence (1 2 3 5...)",
+    key: "A",
+    mode: "major",
+    bpm: 110,
+    sequence: [1, 2, 3, 5, 2, 1, 4, 5, 2, 6, 5, 7],
+    description: "Custom progression: 1 2 3 5 2 1 4 5 2 6 5 7",
+  },
+  {
+    id: "pop-4",
+    name: "Pop Hits (I - V - vi - IV)",
+    key: "C",
+    mode: "major",
+    bpm: 105,
+    sequence: [1, 5, 6, 4],
+    description: "Don't Stop Believin', Let It Be, Someone Like You",
+  },
+  {
+    id: "canon",
+    name: "Pachelbel's Canon",
+    key: "D",
+    mode: "major",
+    bpm: 80,
+    sequence: [1, 5, 6, 3, 4, 1, 4, 5],
+    description: "I - V - vi - iii - IV - I - IV - V",
+  },
+  {
+    id: "stand-by-me",
+    name: "Stand By Me (50s Doo-Wop)",
+    key: "A",
+    mode: "major",
+    bpm: 96,
+    sequence: [1, 6, 4, 5],
+    description: "I - vi - IV - V classic progression",
+  },
+  {
+    id: "sad-pop",
+    name: "Melancholy (vi - IV - I - V)",
+    key: "C",
+    mode: "major",
+    bpm: 88,
+    sequence: [6, 4, 1, 5],
+    description: "Faded, Numb, Apologize",
+  },
+  {
+    id: "blues",
+    name: "12-Bar Blues",
+    key: "E",
+    mode: "major",
+    bpm: 110,
+    sequence: [1, 1, 1, 1, 4, 4, 1, 1, 5, 4, 1, 5],
+    description: "Classic 12-bar blues groove",
+  },
+  {
+    id: "lofi",
+    name: "Lo-Fi Chill",
+    key: "F",
+    mode: "major",
+    bpm: 82,
+    sequence: [4, 3, 6, 1],
+    description: "IV - iii - vi - I warm study chords",
+  },
+];
+
+/**
+ * Parses chord sequences from text. Supports:
+ * - Digits 1–7 (e.g. "1 2 3 5 2 1 4 5 2 6 5 7", "1,4,5,1")
+ * - Note/chord letters A–G (e.g. "C G Am F", "A B C") if key and mode are provided.
+ */
+export function parseSequence(text: string, key?: SynthKey, mode?: SynthMode): number[] {
+  if (!text) return [];
+  const tokens = text.match(/[A-Ga-g][#♯b♭]?(?:m|dim|aug|°|\+)?|[1-7]/g);
+  if (!tokens) return [];
+  const result: number[] = [];
+  for (const token of tokens) {
+    if (/^[1-7]$/.test(token)) {
+      result.push(Number(token));
+    } else if (key && mode) {
+      const letter = token.charAt(0).toUpperCase();
+      const deg = degreeForLetter(letter, key, mode);
+      if (deg !== null) {
+        result.push(deg + 1);
+      }
+    }
+  }
+  return result;
 }
 
 /** Steps the melody hand spans: two octaves and the top tonic. */

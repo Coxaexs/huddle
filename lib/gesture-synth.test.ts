@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   SHAPE_DEGREE,
+  SYNTH_KEYS,
   chordFor,
   cleanSynthPlay,
   handShape,
@@ -12,6 +13,10 @@ import {
   samePlay,
   synthSettings,
   voiceChord,
+  voiceDualChords,
+  parseSequence,
+  chordLetter,
+  degreeForLetter,
   type HandPoint,
   type HandShape,
 } from "./gesture-synth";
@@ -57,6 +62,67 @@ describe("voiceChord", () => {
         expect(moved).toBeLessThanOrEqual(6);
       }
       previous = notes;
+    }
+  });
+});
+
+describe("voiceDualChords and parseSequence", () => {
+  it("combines two chords into a compound voicing within MAX_SYNTH_NOTES", () => {
+    const chord1 = chordFor(0, "A", "major");
+    const chord2 = chordFor(4, "A", "major");
+    const dual = voiceDualChords(chord1, chord2);
+    expect(dual.length).toBeGreaterThanOrEqual(4);
+    expect(dual.length).toBeLessThanOrEqual(6);
+    expect(dual[0]).toBeLessThan(52); // Bass root
+  });
+
+  it("returns normal voicing if both degrees are identical", () => {
+    const chord1 = chordFor(0, "A", "major");
+    const dual = voiceDualChords(chord1, chord1);
+    expect(dual).toEqual(voiceChord(chord1));
+  });
+
+  it("parses sequence strings into degree arrays", () => {
+    const parsed = parseSequence("1 2 3 5 2 1 4 5 2 6 5 7");
+    expect(parsed).toEqual([1, 2, 3, 5, 2, 1, 4, 5, 2, 6, 5, 7]);
+    expect(parseSequence("I - V - vi - IV")).toEqual([]);
+    expect(parseSequence("1,4,5,1")).toEqual([1, 4, 5, 1]);
+    expect(parseSequence("C G Am F", "C", "major")).toEqual([1, 5, 6, 4]);
+    expect(parseSequence("A B C", "C", "major")).toEqual([6, 7, 1]);
+    expect(parseSequence("A B C", "A", "major")).toEqual([1, 2, 3]);
+  });
+
+  it("maps letters A–G to unique chord degrees in any scale", () => {
+    // In C major: C is I (0), D is ii (1), E is iii (2), F is IV (3), G is V (4), A is vi (5), B is vii° (6)
+    expect(degreeForLetter("C", "C", "major")).toBe(0);
+    expect(degreeForLetter("D", "C", "major")).toBe(1);
+    expect(degreeForLetter("E", "C", "major")).toBe(2);
+    expect(degreeForLetter("F", "C", "major")).toBe(3);
+    expect(degreeForLetter("G", "C", "major")).toBe(4);
+    expect(degreeForLetter("A", "C", "major")).toBe(5);
+    expect(degreeForLetter("B", "C", "major")).toBe(6);
+
+    // In A major: A is I (0), B is ii (1), C is iii (2), etc.
+    expect(degreeForLetter("A", "A", "major")).toBe(0);
+    expect(degreeForLetter("B", "A", "major")).toBe(1);
+    expect(degreeForLetter("C", "A", "major")).toBe(2);
+
+    // Case insensitivity
+    expect(degreeForLetter("a", "C", "major")).toBe(5);
+    expect(degreeForLetter("c", "C", "major")).toBe(0);
+
+    // Non-note letter returns null
+    expect(degreeForLetter("Z", "C", "major")).toBeNull();
+
+    // Verify 1-to-1 bijection for all 12 keys in both modes
+    const modes = ["major", "minor"] as const;
+    const letters = ["A", "B", "C", "D", "E", "F", "G"];
+    for (const k of SYNTH_KEYS) {
+      for (const m of modes) {
+        const degrees = letters.map((l) => degreeForLetter(l, k, m));
+        expect(degrees).not.toContain(null);
+        expect(new Set(degrees).size).toBe(7);
+      }
     }
   });
 });
