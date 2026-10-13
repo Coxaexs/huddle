@@ -3692,6 +3692,7 @@ export function ChatShell() {
       window.localStorage.getItem("huddle_underline_links") === "true" ? "on" : "off";
     root.dataset.displayNameStyles =
       window.localStorage.getItem("huddle_display_names_styles") !== "false" ? "on" : "off";
+    root.dataset.nameMotion = window.localStorage.getItem("huddle_name_motion") || "hover";
 
     // Apply client-side custom UI CSS if enabled
     applyClientUiCss();

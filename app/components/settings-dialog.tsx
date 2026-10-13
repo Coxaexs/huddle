@@ -43,7 +43,7 @@ import { AppearanceTab } from "./settings/appearance-tab";
 import { DiceTab } from "./settings/dice-tab";
 import { ActivitiesTab } from "./settings/activities-tab";
 import { CustomCssTab } from "./settings/custom-css-tab";
-import { AccessibilityTab } from "./settings/accessibility-tab";
+import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
 
 
 
@@ -417,6 +417,12 @@ export function SettingsDialog({
     return window.localStorage.getItem("huddle_display_names_styles") !== "false";
   });
 
+  const [nameMotion, setNameMotion] = useState<NameMotion>(() => {
+    if (typeof window === "undefined") return "hover";
+    const saved = window.localStorage.getItem("huddle_name_motion");
+    return saved === "always" || saved === "still" ? saved : "hover";
+  });
+
   // Settings search
   const [settingsSearch, setSettingsSearch] = useState<string>("");
 
@@ -435,6 +441,11 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle_display_names_styles", displayNameStyles ? "true" : "false");
     document.documentElement.dataset.displayNameStyles = displayNameStyles ? "on" : "off";
   }, [displayNameStyles]);
+
+  useEffect(() => {
+    window.localStorage.setItem("huddle_name_motion", nameMotion);
+    document.documentElement.dataset.nameMotion = nameMotion;
+  }, [nameMotion]);
 
   const handleSaveClientUiCss = (css: string, enabled: boolean) => {
     setLocalClientUiCss(css);
@@ -1429,6 +1440,8 @@ export function SettingsDialog({
         setAlwaysUnderlineLinks={setAlwaysUnderlineLinks}
         displayNameStyles={displayNameStyles}
         setDisplayNameStyles={setDisplayNameStyles}
+        nameMotion={nameMotion}
+        setNameMotion={setNameMotion}
         motion={motion}
         setMotion={setMotion}
       />

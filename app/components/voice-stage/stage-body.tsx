@@ -10,6 +10,9 @@ import { useRef } from "react";
 import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-style";
 import { StyledName, VoiceAura } from "../profile-style-parts";
 
+/** A seat younger than this still gets its join flourish when the stage opens. */
+const JOIN_FRESH_MS = 6000;
+
 export function StageBody({
   joined,
   channelName,
@@ -51,6 +54,7 @@ export function StageBody({
   focusedKey,
   onOpenParticipantMenu,
   wrapperRef,
+  serverNow,
 }: {
   joined: boolean | undefined;
   channelName: string;
@@ -92,6 +96,8 @@ export function StageBody({
   focusedKey: string | null;
   onOpenParticipantMenu: ((event: React.MouseEvent, participant: VoiceParticipant) => void) | undefined;
   wrapperRef: React.RefObject<HTMLDivElement | null>;
+  /** Hub clock, to tell who (yourself included) only just sat down. */
+  serverNow?: () => number;
 }) {
   const styleOf = useProfileStyles();
   // Join flourishes are for people arriving while you watch, not for everyone
@@ -106,7 +112,12 @@ export function StageBody({
       tile,
       ring: style?.ring,
       color: ringColor(style, person.color),
-      join: style?.join && !seated.current!.has(person.connectionId) ? style.join : null,
+      // Someone arriving while you watch, or anyone (you too) whose seat is
+      // only seconds old when the stage opens.
+      join:
+        style?.join && (!seated.current!.has(person.connectionId) || (serverNow && serverNow() - person.joinedAt < JOIN_FRESH_MS))
+          ? style.join
+          : null,
     };
   };
   return (
@@ -468,7 +479,7 @@ export function StageBody({
                   }}
                 >
                   <div className="avatar-film-center">
-                    <VoiceAura ring={look.ring} color={look.color} speaking={isSpeaking} join={look.join}>
+                    <VoiceAura ring={look.ring} color={look.color} speaking={isSpeaking} join={look.join} joinKey={`${person.connectionId}:${person.joinedAt}`}>
                       <Avatar
                         className={`film-avatar ${isSpeaking ? "is-speaking" : ""}`}
                         avatar={person.avatar}
@@ -535,7 +546,7 @@ export function StageBody({
                 }}
               >
                 <div className="avatar-tile-inner">
-                  <VoiceAura ring={look.ring} color={look.color} speaking={speaking} join={look.join}>
+                  <VoiceAura ring={look.ring} color={look.color} speaking={speaking} join={look.join} joinKey={`${person.connectionId}:${person.joinedAt}`}>
                     <Avatar
                       className="stage-avatar"
                       avatar={person.avatar}

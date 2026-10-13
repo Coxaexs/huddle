@@ -535,6 +535,13 @@ export function ProfileTab({
             <>
               <Field label="Display Name" htmlFor="pe-name" count={`${displayName.length}/40`}>
                 <input id="pe-name" className="pe-input" value={displayName} maxLength={40} placeholder={user.username} onChange={(event) => setDisplayName(event.target.value)} />
+                <button type="button" className="pe-style-link ps-hover" onClick={() => setStudio("name")}>
+                  <Sparkles size={14} />
+                  <span>{profileStyle.font || profileStyle.effect ? "Change your name style" : "Style your name"}</span>
+                  <span className="pe-style-link-name">
+                    <StyledName name={displayName || user.username} style={profileStyle} />
+                  </span>
+                </button>
               </Field>
               <Field label="Pronouns" htmlFor="pe-pronouns">
                 <input id="pe-pronouns" className="pe-input" value={pronouns} maxLength={30} placeholder="Add your pronouns" onChange={(event) => setPronouns(event.target.value)} />

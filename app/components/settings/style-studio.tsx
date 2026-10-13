@@ -552,7 +552,7 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
             <span className="ps-msg-avatar ps-ghost-avatar" />
             <div>
               <div className="ps-msg-meta">
-                <strong style={{ color: "#c9cdfb" }}>a friend</strong>
+                <strong style={{ color: "var(--lavender, #8b9cff)" }}>a friend</strong>
                 <time>Today at 21:08</time>
               </div>
               <p>hover it, it moves</p>

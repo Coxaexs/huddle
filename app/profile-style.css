@@ -27,7 +27,7 @@
 
 /* Paint text with its background (gradients, foils, flames...). */
 .pn-fx-gradient, .pn-fx-outline, .pn-fx-fire, .pn-fx-frost, .pn-fx-galaxy, .pn-fx-shimmer,
-.pn-fx-chrome, .pn-fx-holo, .pn-fx-rainbow, .pn-fx-sparkle, .pn-fx-candy, .pn-fx-retro, .pn-fx-liquid {
+.pn-fx-chrome, .pn-fx-holo, .pn-fx-rainbow, .pn-fx-sparkle, .pn-fx-candy, .pn-fx-retro {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -290,26 +290,46 @@
   90% { clip-path: inset(100% 0 0 0); transform: none; }
 }
 
+/* Liquid: hollow letters, with a copy of the name clipped below a sloshing waterline. */
 .pn-fx-liquid {
-  background-image:
-    radial-gradient(0.36em 0.22em at 50% 100%, var(--n1) 96%, transparent 100%),
-    radial-gradient(0.36em 0.22em at 50% 0%, transparent 96%, var(--n1) 100%),
-    linear-gradient(180deg, var(--n1), var(--n2)),
-    linear-gradient(180deg, color-mix(in srgb, var(--n1) 30%, rgba(255, 255, 255, 0.55)), color-mix(in srgb, var(--n1) 30%, rgba(255, 255, 255, 0.55)));
-  background-size: 0.72em 0.22em, 0.72em 0.22em, 100% 52%, 100% 100%;
-  background-repeat: repeat-x, repeat-x, no-repeat, no-repeat;
-  background-position: 0 calc(48% - 0.2em), 0.36em calc(48% - 0.2em), 0 100%, 0 0;
-  filter: drop-shadow(0 0 0.06em color-mix(in srgb, var(--n1) 60%, transparent));
-  animation: pnSlosh 2.4s linear infinite;
+  color: color-mix(in srgb, var(--n1) 16%, transparent);
+  -webkit-text-stroke: max(1px, 0.035em) color-mix(in srgb, var(--n1) 70%, #fff);
 }
-@keyframes pnSlosh {
-  to { background-position: 0.72em calc(48% - 0.2em), 1.08em calc(48% - 0.2em), 0 100%, 0 0; }
+.pn-fx-liquid::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: pre;
+  pointer-events: none;
+  -webkit-text-stroke: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--n1) 55%, #fff) 0%, var(--n1) 45%, var(--n2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 0.08em color-mix(in srgb, var(--n1) 55%, transparent));
+  clip-path: polygon(0% 50%, 12.5% 41%, 25% 46%, 37.5% 56%, 50% 50%, 62.5% 41%, 75% 46%, 87.5% 56%, 100% 50%, 100% 100%, 0% 100%);
+  animation: pnLiquid 2.4s ease-in-out infinite;
+}
+@keyframes pnLiquid {
+  0%, 100% { clip-path: polygon(0% 50%, 12.5% 41%, 25% 46%, 37.5% 56%, 50% 50%, 62.5% 41%, 75% 46%, 87.5% 56%, 100% 50%, 100% 100%, 0% 100%); }
+  50% { clip-path: polygon(0% 43%, 12.5% 53%, 25% 51%, 37.5% 42%, 50% 39%, 62.5% 50%, 75% 55%, 87.5% 45%, 100% 39%, 100% 100%, 0% 100%); }
 }
 
 /* Letter by letter: each letter blends from the first colour to the second. */
 .pn-fx-wave .pn-l,
 .pn-fx-jelly .pn-l { color: color-mix(in oklab, var(--n1) calc(100% - var(--p, 0%)), var(--n2)); }
 .pn-fx-wave .pn-letters { text-shadow: 0 0 0.3em color-mix(in srgb, var(--n1) 35%, transparent); }
+/* Names with [c=...] markup aren't split into letters; they get the colours as a gradient. */
+.pn-fx-wave:not(:has(> .pn-letters)),
+.pn-fx-jelly:not(:has(> .pn-letters)) {
+  background-image: linear-gradient(90deg, var(--n1), var(--n2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
 @keyframes pnWave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.2em); } }
 @keyframes pnJelly {
   0%, 52%, 100% { transform: none; }
@@ -332,6 +352,17 @@
 .pn-live.pn-fx-jelly .pn-l,
 :is(.message, .member, .voice-member, .user-footer-profile, .dp-member, .ps-hover):hover .pn-fx-jelly .pn-l { animation: pnJelly 2.6s ease-in-out infinite; animation-delay: calc(var(--i) * 0.07s); }
 
+/* Settings → Accessibility → Animate name effects: "always" or "still" (never) in chat. */
+html[data-name-motion="always"] .pn,
+html[data-name-motion="always"] .pn::before,
+html[data-name-motion="always"] .pn::after { animation-play-state: running; }
+html[data-name-motion="always"] .pn-fx-wave .pn-l { animation: pnWave 1.5s ease-in-out infinite; animation-delay: calc(var(--i) * -0.11s); }
+html[data-name-motion="always"] .pn-fx-jelly .pn-l { animation: pnJelly 2.6s ease-in-out infinite; animation-delay: calc(var(--i) * 0.07s); }
+html[data-name-motion="still"] .pn:not(.pn-live),
+html[data-name-motion="still"] .pn:not(.pn-live)::before,
+html[data-name-motion="still"] .pn:not(.pn-live)::after,
+html[data-name-motion="still"] .pn:not(.pn-live) .pn-l { animation: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .pn, .pn *, .pn::before, .pn::after { animation: none !important; }
 }
@@ -341,10 +372,10 @@ html[data-motion="reduced"] .pn::before,
 html[data-motion="reduced"] .pn::after { animation: none !important; }
 
 /* Pale effects need an edge on light backgrounds (light theme, pale cards). */
-:is([data-theme="light"] :is(.messages, .member-panel, .user-footer, .voice-members, .dp-stage, .ps-preview-chat), .pst-light) .pn:is(.pn-fx-neon, .pn-fx-aura, .pn-fx-frost, .pn-fx-holo, .pn-fx-chrome, .pn-fx-pop, .pn-fx-candy, .pn-fx-anaglyph, .pn-fx-glitch, .pn-fx-sparkle, .pn-fx-shimmer, .pn-fx-outline) {
+:is([data-theme="light"] :is(.messages, .member-panel, .user-footer, .voice-members, .dp-stage, .ps-preview-chat, .ps-preview-members, .ps-voice-list, .ps-tile-art, .pe-tile-style), .pst-light) .pn:is(.pn-fx-neon, .pn-fx-aura, .pn-fx-frost, .pn-fx-holo, .pn-fx-chrome, .pn-fx-pop, .pn-fx-candy, .pn-fx-anaglyph, .pn-fx-glitch, .pn-fx-sparkle, .pn-fx-shimmer, .pn-fx-outline) {
   filter: drop-shadow(0 0 0.6px rgba(20, 14, 40, 0.85)) drop-shadow(0 1px 1px rgba(20, 14, 40, 0.3));
 }
-:is([data-theme="light"] :is(.messages, .member-panel, .user-footer, .voice-members), .pst-light) .pn:is(.pn-fx-neon, .pn-fx-aura) { color: color-mix(in srgb, var(--n1) 70%, #1a1030); }
+:is([data-theme="light"] :is(.messages, .member-panel, .user-footer, .voice-members, .ps-preview-chat, .ps-preview-members, .ps-voice-list, .ps-tile-art, .pe-tile-style), .pst-light) .pn:is(.pn-fx-neon, .pn-fx-aura) { color: color-mix(in srgb, var(--n1) 70%, #1a1030); }
 
 /* On pale cards, the pale effects get darker ink of their own. */
 .pst-light .pn-fx-frost { background-image: linear-gradient(110deg, transparent 38%, rgba(255, 255, 255, 0.95) 48%, transparent 58%), linear-gradient(180deg, #4f9fdc 0%, #2c6fb3 55%, #173f73 100%); }
@@ -376,6 +407,8 @@ html[data-motion="reduced"] .pn::after { animation: none !important; }
 
 /* Roomier names on cards and in the editor get a little breathing space for glows. */
 .pn-live { padding-inline: 0.04em; }
+/* These lay a copy of the name over itself, so the copy must line up with the text. */
+.pn-live:is(.pn-fx-glitch, .pn-fx-liquid) { padding-inline: 0; }
 
 /* ================================================================== */
 /* Profile cards                                                       */
@@ -1122,6 +1155,27 @@ html[data-motion="reduced"] .jf-layer { display: none; }
 .pe-style-name { max-width: 100%; overflow: hidden; font-size: 22px; font-weight: 800; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
 .pe-style-sub { font-size: 12px; color: var(--muted, #b5bac1); }
 
+.pe-style-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px dashed color-mix(in srgb, var(--ink, #fff) 16%, transparent);
+  border-radius: 10px;
+  background: none;
+  color: var(--muted, #b5bac1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.pe-style-link:hover { border-color: var(--pe-accent); color: var(--ink, #fff); background: color-mix(in srgb, var(--pe-accent) 8%, transparent); }
+.pe-style-link-name { margin-left: auto; min-width: 0; overflow: hidden; font-size: 16px; font-weight: 700; color: var(--ink, #fff); white-space: nowrap; text-overflow: ellipsis; }
+
 .pe-tile-card,
 .pe-tile-voice { height: 84px; padding: 0; }
 .pe-card-strip {
@@ -1213,11 +1267,11 @@ html[data-motion="reduced"] .jf-layer { display: none; }
 .ps-tile:hover { background: color-mix(in srgb, var(--ink, #fff) 9%, transparent); transform: translateY(-2px); }
 .ps-tile:focus-visible { outline: 2px solid var(--lavender, #5865f2); outline-offset: 2px; }
 .ps-tile.chosen { border-color: var(--lavender, #5865f2); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lavender, #5865f2) 20%, transparent); }
-.ps-tile-art { position: relative; display: grid; place-items: center; min-height: 58px; overflow: hidden; border-radius: 9px; background: rgba(0, 0, 0, 0.22); }
+.ps-tile-art { position: relative; display: grid; place-items: center; min-height: 58px; overflow: hidden; border-radius: 9px; background: color-mix(in srgb, var(--paper, #111214) 82%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink, #fff) 6%, transparent); }
 .ps-tile-label { font-size: 12px; font-weight: 600; color: var(--muted, #b5bac1); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ps-tile.chosen .ps-tile-label { color: var(--ink, #fff); }
 .ps-check { position: absolute; top: -6px; right: -6px; z-index: 3; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--lavender, #5865f2); color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); }
-.ps-name-sample { display: block; max-width: 100%; padding: 6px 8px; overflow: hidden; font-size: 17px; font-weight: 700; color: #f2f3f5; white-space: nowrap; text-overflow: ellipsis; }
+.ps-name-sample { display: block; max-width: 100%; padding: 6px 8px; overflow: hidden; font-size: 17px; font-weight: 700; color: var(--ink, #f2f3f5); white-space: nowrap; text-overflow: ellipsis; }
 
 .ps-mini-card { position: relative; display: block; width: 74px; height: 56px; margin: 6px auto; overflow: hidden; isolation: isolate; border-radius: 9px; background: var(--pst-bg, #2b2d31); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 .ps-mini-card .pst-backdrop { border-radius: 9px; }
@@ -1331,20 +1385,20 @@ html[data-motion="reduced"] .jf-layer { display: none; }
 .ps-hero-name { max-width: 100%; font-size: 40px; font-weight: 800; line-height: 1.2; color: #f2f3f5; text-align: center; overflow-wrap: anywhere; }
 .ps-preview-chat,
 .ps-preview-members,
-.ps-voice-list { padding: 12px 14px; border-radius: 14px; background: #1e1f24; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); color: #dbdee1; }
+.ps-voice-list { padding: 12px 14px; border-radius: 14px; background: var(--paper, #1e1f24); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink, #fff) 7%, transparent); color: var(--ink, #dbdee1); }
 .ps-msg { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 6px 4px; border-radius: 8px; }
-.ps-msg:hover { background: rgba(255, 255, 255, 0.03); }
+.ps-msg:hover { background: color-mix(in srgb, var(--ink, #fff) 4%, transparent); }
 .ps-msg-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-weight: 700; color: #fff; }
 .ps-msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.ps-ghost-avatar { display: block; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); }
+.ps-ghost-avatar { display: block; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: color-mix(in srgb, var(--ink, #fff) 10%, transparent); }
 .ps-msg .ps-ghost-avatar { width: 40px; height: 40px; }
 .ps-msg-meta { display: flex; align-items: baseline; gap: 8px; }
-.ps-msg-meta strong { font-size: 16px; font-weight: 600; color: #f2f3f5; }
-.ps-msg-meta time { font-size: 11.5px; color: #949ba4; }
+.ps-msg-meta strong { font-size: 16px; font-weight: 600; color: var(--ink, #f2f3f5); }
+.ps-msg-meta time { font-size: 11.5px; color: var(--muted, #949ba4); }
 .ps-msg p { margin: 2px 0 0; font-size: 15px; }
 .ps-member { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; }
-.ps-member:hover { background: rgba(255, 255, 255, 0.05); }
-.ps-member strong { min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; color: #f2f3f5; white-space: nowrap; text-overflow: ellipsis; }
+.ps-member:hover { background: color-mix(in srgb, var(--ink, #fff) 5%, transparent); }
+.ps-member strong { min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; color: var(--ink, #f2f3f5); white-space: nowrap; text-overflow: ellipsis; }
 .ps-member-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-weight: 700; color: #fff; }
 .ps-member-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .ps-member-ghost .dp-skel { flex: 0 0 90px; }
@@ -1359,7 +1413,7 @@ html[data-motion="reduced"] .jf-layer { display: none; }
 .ps-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, #b5bac1); cursor: pointer; }
 .ps-toggle input { accent-color: var(--lavender, #5865f2); width: 16px; height: 16px; }
 .ps-voice-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; font-size: 14px; }
-.ps-voice-row.is-speaking { color: #fff; }
+.ps-voice-row.is-speaking { color: var(--ink, #fff); }
 
 /* --- Looks ------------------------------------------------------------- */
 .ps-looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }

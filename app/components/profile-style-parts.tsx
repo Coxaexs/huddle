@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ProfileStyle } from "@/lib/profile-style";
 import { stripTextStyle } from "@/lib/text-style";
 import { StyledText } from "./message-body";
@@ -233,16 +233,20 @@ function joinPart(kind: string, i: number): ReactNode {
   return <span key={i} className="jf-p" style={style} />;
 }
 
+/** Seats whose join flourish already played, so a re-layout doesn't replay it. */
+const playedJoins = new Set<string>();
+
 /**
  * Wraps a voice avatar with its owner's speaking aura and, when `join` is set,
- * plays their join flourish once. Without a ring or join it renders the
- * avatar untouched.
+ * plays their join flourish once (once per `joinKey` for the whole page, when
+ * given). Without a ring or join it renders the avatar untouched.
  */
 export function VoiceAura({
   ring,
   color,
   speaking,
   join,
+  joinKey,
   children,
   className = "",
 }: {
@@ -250,17 +254,29 @@ export function VoiceAura({
   color?: string;
   speaking: boolean;
   join?: string | null;
+  joinKey?: string;
   children: ReactNode;
   className?: string;
 }) {
-  const [playing, setPlaying] = useState(join || null);
-  useEffect(() => {
+  const [playing, setPlaying] = useState<string | null>(null);
+  // Once wrapped, stay wrapped: unwrapping would remount the avatar mid-call.
+  const wrapped = useRef(false);
+  if (ring || join) wrapped.current = true;
+  // Before paint, so the avatar never shows for a frame ahead of its entrance.
+  useLayoutEffect(() => {
     if (!join) return;
+    if (joinKey) {
+      if (playedJoins.has(joinKey)) return;
+      playedJoins.add(joinKey);
+    }
     setPlaying(join);
+  }, [join, joinKey]);
+  useEffect(() => {
+    if (!playing) return;
     const timer = window.setTimeout(() => setPlaying(null), 1900);
     return () => window.clearTimeout(timer);
-  }, [join]);
-  if (!ring && !playing) return <>{children}</>;
+  }, [playing]);
+  if (!wrapped.current) return <>{children}</>;
   const parts = ring ? RING_PARTS[ring] || 0 : 0;
   return (
     <span

@@ -670,6 +670,7 @@ export function VoiceStage({
         speakingIds={speakingIds}
         connectionId={connectionId}
         seatTime={seatTime}
+        serverNow={serverNow}
         focused={focused}
         theater={theater}
         windowFull={windowFull}
