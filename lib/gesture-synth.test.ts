@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   SHAPE_DEGREE,
   SYNTH_KEYS,
+  SYNTH_SONGS,
   chordFor,
   cleanSynthPlay,
   handShape,
@@ -122,6 +123,20 @@ describe("voiceDualChords and parseSequence", () => {
         const degrees = letters.map((l) => degreeForLetter(l, k, m));
         expect(degrees).not.toContain(null);
         expect(new Set(degrees).size).toBe(7);
+      }
+    }
+  });
+
+  it("includes Daft Punk and classic song presets with valid sequences", () => {
+    expect(SYNTH_SONGS.some((s) => s.id === "instant-crush")).toBe(true);
+    expect(SYNTH_SONGS.some((s) => s.id === "get-lucky")).toBe(true);
+    for (const song of SYNTH_SONGS) {
+      expect(SYNTH_KEYS).toContain(song.key);
+      expect(["major", "minor"]).toContain(song.mode);
+      expect(song.sequence.length).toBeGreaterThan(0);
+      for (const step of song.sequence) {
+        expect(step).toBeGreaterThanOrEqual(1);
+        expect(step).toBeLessThanOrEqual(7);
       }
     }
   });
