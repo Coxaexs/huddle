@@ -6,7 +6,8 @@ export type RoomActivityKind =
   | "timer"
   | "initiative"
   | "deeppixel"
-  | "richup";
+  | "richup"
+  | "synth";
 
 /** Where the DeepPixel board game is served; each room gets its own game code there. */
 export const DEEPPIXEL_URL = "https://deeppixel.online/monogame/";
@@ -70,6 +71,7 @@ export const ACTIVITY_KINDS: RoomActivityKind[] = [
   "initiative",
   "deeppixel",
   "richup",
+  "synth",
 ];
 
 export function isActivityKind(value: unknown): value is RoomActivityKind {

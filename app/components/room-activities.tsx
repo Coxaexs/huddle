@@ -43,8 +43,10 @@ import {
   Gamepad2,
   Maximize2,
   Landmark,
+  Hand,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { GestureSynth } from "./gesture-synth";
 
 interface RoomActivitiesProps {
   channelId: string;
@@ -110,6 +112,12 @@ const ACTIVITY_CHOICES: Array<{
     icon: <Landmark size={20} />,
     name: "Richup",
     description: "Play Richup.io together in one shared room",
+  },
+  {
+    kind: "synth",
+    icon: <Hand size={20} />,
+    name: "Gesture Synth",
+    description: "Jam together: hand signs on camera play chords",
   },
 ];
 
@@ -907,7 +915,9 @@ export function RoomActivities({
               }
             : kind === "initiative"
               ? { round: 1, turnIndex: 0, entries: [] }
-              : {};
+              : kind === "synth"
+                ? { key: "A", mode: "major" }
+                : {};
     // deeppixel: the server picks the shared game code
     await action({ action: "open", kind, state });
   }
@@ -923,9 +933,10 @@ export function RoomActivities({
     void action({ action: "update", state: nextState });
   }
 
-  // Embedded games stay mounted while collapsed so players don't drop out
+  // Embedded games stay mounted while collapsed so players don't drop out,
+  // and so does the synth, so a collapsed panel doesn't cut your chord off.
   const isGame = activity?.kind === "deeppixel" || activity?.kind === "richup";
-  if (!open && !isGame) return null;
+  if (!open && !isGame && activity?.kind !== "synth") return null;
 
   const deepPixelSrc =
     activity?.kind === "deeppixel"
@@ -1070,6 +1081,12 @@ export function RoomActivities({
         <SyncedTimer activity={activity} update={optimistic} />
       ) : activity.kind === "initiative" ? (
         <InitiativeTracker activity={activity} update={optimistic} />
+      ) : activity.kind === "synth" ? (
+        <GestureSynth
+          activity={activity}
+          update={optimistic}
+          joined={Boolean(channelId) && activity.channelId === channelId}
+        />
       ) : (
         <div className="draw-guess">
           <div className="draw-guess-status">

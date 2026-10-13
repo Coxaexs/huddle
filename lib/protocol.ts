@@ -1,5 +1,7 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
+import type { SynthPlay } from "./gesture-synth";
+
 /** Which room a lounge pose is in; absent means the living room, as before venues existed. */
 export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
 export const LOUNGE_VENUES: readonly LoungeVenue[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow"];
@@ -325,6 +327,8 @@ export type ClientEvent =
   | { t: "typing"; channelId: string }
   /** Live captions: what this seat's own browser heard it say. */
   | { t: "caption"; text: string; final: boolean }
+  /** Gesture Synth: the chord and melody this seat's hands are playing now (see gesture-synth.ts). */
+  | { t: "synth"; notes: number[]; lead: number | null; sound: string; bright: number; label: string }
   /** Living room: where this seat is standing or sitting, and an optional emote. */
   | { t: "lounge"; x: number; z: number; facing: number; seat: string | null; venue?: LoungeVenue; emote?: string }
   /** Living room: ask the hub where everyone in your voice room is. */
@@ -412,6 +416,16 @@ export type ServerEvent =
       t: "lounge-venue";
       channelId: string;
       venue: LoungeVenue;
+      serverNow: number;
+    }
+  | {
+      /** Gesture Synth: what one seat in your voice room is playing (no notes: stopped). */
+      t: "synth";
+      channelId: string;
+      connectionId: string;
+      userId: string;
+      displayName: string;
+      play: SynthPlay;
       serverNow: number;
     }
   | {

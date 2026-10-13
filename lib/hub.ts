@@ -13,6 +13,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { sanitizeShared } from "./lounge-shared";
+import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
@@ -130,6 +131,7 @@ export class HuddleHub extends DurableObject {
   private readonly captionBudget = new Map<string, { second: number; count: number }>();
   /** connectionId -> living room poses relayed this second. */
   private readonly loungeBudget = new Map<string, { second: number; count: number }>();
+  private readonly synthBudget = new Map<string, { second: number; count: number }>();
   /** voice room -> its shared living room state; persisted, since the object may sleep mid-call. */
   private loungeShared: Record<string, Record<string, unknown>> | null = null;
   /** connectionId -> when they last changed shared state, to keep it from being spammed. */
@@ -576,10 +578,45 @@ export class HuddleHub extends DurableObject {
         return;
       }
 
+      case "synth": {
+        // Notes, not audio: everyone in the room plays them on their own
+        // machine. Like a voice, a server-muted seat or a stage seat without
+        // the floor stays silent; a stop always gets through.
+        const room = attachment.voiceChannelId;
+        const play = cleanSynthPlay(event);
+        if (!room || !play) return;
+        const sounding = play.notes.length > 0 || play.lead !== null;
+        if (sounding) {
+          if (this.forcedMutes.has(attachment.userId)) return;
+          if ((await this.channelInfo(room)).kind === "stage" && attachment.speakAllowed !== true) return;
+          const second = Math.floor(Date.now() / 1000);
+          const budget = this.synthBudget.get(attachment.connectionId);
+          if (budget?.second === second) {
+            if (budget.count >= SYNTH_HUB_BUDGET) return;
+            budget.count += 1;
+          } else {
+            this.synthBudget.set(attachment.connectionId, { second, count: 1 });
+          }
+        }
+        const payload = JSON.stringify({
+          t: "synth",
+          channelId: room,
+          connectionId: attachment.connectionId,
+          userId: attachment.userId,
+          displayName: attachment.displayName,
+          play,
+          serverNow: Date.now(),
+        } satisfies ServerEvent);
+        for (const { socket: other, attachment: peer } of this.sockets()) {
+          if (peer.voiceChannelId === room && peer.connectionId !== attachment.connectionId) other.send(payload);
+        }
+        return;
+      }
+
       case "lounge": {
         const room = attachment.voiceChannelId;
         if (!room) return;
-        const num = (value: unknown, limit: number) =>
+        const num =(value: unknown, limit: number) =>
           typeof value === "number" && Number.isFinite(value) ? Math.max(-limit, Math.min(limit, value)) : null;
         // Wide enough for the biggest room (the meadow is 50 metres across; the cinema's booth sits past its back wall).
         const x = num(event.x, 26);
@@ -1000,6 +1037,7 @@ export class HuddleHub extends DurableObject {
     if (attachment) this.markSeen(attachment);
     if (attachment) this.captionBudget.delete(attachment.connectionId);
     if (attachment) this.loungeBudget.delete(attachment.connectionId);
+    if (attachment) this.synthBudget.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.
