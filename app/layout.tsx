@@ -7,6 +7,7 @@ import "./theme-flavors.css";
 import "./refresh.css";
 import "./theme-fx.css";
 import "./cosmetics.css";
+import "./cosmetics-extra.css";
 import "./profile-style.css";
 import { isLandingHost } from "./lib/landing-host";
 

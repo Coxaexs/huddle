@@ -1,0 +1,395 @@
+/*
+ * Second wave of cosmetics (app/components/cosmetics-extra.tsx).
+ * Every class here starts with cx- or names a cosmetic id.
+ */
+
+/* ================================================================== */
+/* Nameplates                                                          */
+/* ================================================================== */
+
+.nameplate-rainy-night { --np-base: #12112a; --np-art: radial-gradient(60% 120% at 85% 120%, rgba(92, 200, 255, 0.22), transparent 60%), linear-gradient(100deg, #0d0f24, #1c1840 55%, #2a1d4f); }
+.nameplate-campfire { --np-base: #0b1020; --np-art: radial-gradient(60% 130% at 82% 115%, rgba(255, 120, 40, 0.5), transparent 60%), linear-gradient(100deg, #0b1020, #141a33 60%, #241a2e); }
+.nameplate-winter-cabin { --np-base: #1b2a4a; --np-art: linear-gradient(180deg, #16254a, #36507e 80%, #4a6694); }
+.nameplate-lofi { --np-base: #2a1f4a; --np-art: radial-gradient(50% 120% at 40% 120%, rgba(255, 211, 107, 0.18), transparent 70%), linear-gradient(100deg, #231a42, #3f2864 55%, #5e3874); }
+.nameplate-lava-lamp { --np-base: #3a0a2a; --np-art: linear-gradient(100deg, #2a0820, #6e0e42 55%, #a8205a); }
+.nameplate-arcade { --np-base: #05050c; --np-art: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px), radial-gradient(70% 120% at 80% 50%, rgba(92, 255, 176, 0.12), transparent 70%), linear-gradient(100deg, #05050c, #0d0b1f); box-shadow: inset 0 0 0 1px rgba(92, 255, 176, 0.3); }
+.nameplate-cyber-city { --np-base: #0a0618; --np-art: radial-gradient(50% 100% at 85% 20%, rgba(255, 60, 172, 0.35), transparent 70%), linear-gradient(100deg, #0a0618, #1d0b3a 60%, #3a0f55); }
+.nameplate-deep-sea { --np-base: #062a4a; --np-art: radial-gradient(80% 90% at 70% 0%, rgba(120, 220, 255, 0.35), transparent 70%), linear-gradient(180deg, #0b4f7a, #062a4a); }
+.nameplate-dunes { --np-base: #b8487a; --np-art: linear-gradient(180deg, #ffa36b 0%, #ff6f7a 55%, #b8487a 100%); }
+.nameplate-sakura-night { --np-base: #10163a; --np-art: radial-gradient(40% 100% at 80% 30%, rgba(255, 246, 224, 0.18), transparent 70%), linear-gradient(100deg, #10163a, #2a2050 60%, #4a2a5e); }
+.nameplate-meadow { --np-base: #13284a; --np-art: linear-gradient(180deg, #13284a 0%, #1f4a5a 70%, #2a5a4a); }
+.nameplate-boba { --np-base: #ffc2c8; --np-art: radial-gradient(circle at 3px 3px, rgba(255, 255, 255, 0.4) 1.2px, transparent 1.7px) 0 0 / 10px 10px, linear-gradient(100deg, #ffb6c8, #ffd6b8); }
+.nameplate-strawberry { --np-base: #ffb3c4; --np-art: linear-gradient(90deg, rgba(255, 255, 255, 0.32) 50%, transparent 50%) 0 0 / 12px 12px, linear-gradient(rgba(255, 255, 255, 0.32) 50%, transparent 50%) 0 0 / 12px 12px, linear-gradient(100deg, #ff9fb8, #ffc2d1); }
+.nameplate-holo { --np-base: #e8dcff; --np-art: linear-gradient(100deg, #ffd1f0, #c8d8ff 20%, #c8fff0 40%, #fff3c8 60%, #ffd1f0 80%, #c8d8ff); background-size: 300% 100% !important; animation: cxHoloPlate 8s linear infinite; }
+@keyframes cxHoloPlate { to { background-position: 300% 0; } }
+.nameplate-mainframe { --np-base: #020a05; --np-art: radial-gradient(60% 120% at 80% 50%, rgba(92, 255, 138, 0.14), transparent 70%), linear-gradient(100deg, #020a05, #04170c 60%, #072615); box-shadow: inset 0 0 0 1px rgba(92, 255, 138, 0.25); }
+.nameplate-embers { --np-base: #1a0503; --np-art: radial-gradient(80% 140% at 80% 120%, rgba(255, 90, 20, 0.55), transparent 60%), linear-gradient(100deg, #1a0503, #3a0a05 60%, #5a1206); }
+.nameplate-storm { --np-base: #1a1d2e; --np-art: linear-gradient(180deg, #161a2a, #262d4a); }
+.nameplate-pride { --np-base: #17121f; --np-art: linear-gradient(100deg, rgba(228, 3, 3, 0.2), rgba(255, 140, 0, 0.2) 20%, rgba(255, 237, 0, 0.14) 40%, rgba(0, 128, 38, 0.2) 60%, rgba(0, 77, 255, 0.22) 80%, rgba(117, 7, 135, 0.28)), linear-gradient(#17121f, #17121f); }
+.nameplate-trans-pride { --np-base: #161a26; --np-art: linear-gradient(100deg, rgba(91, 206, 250, 0.28), rgba(245, 169, 184, 0.28) 50%, rgba(255, 255, 255, 0.1)), linear-gradient(#161a26, #161a26); }
+.nameplate-bi-pride { --np-base: #140f22; --np-art: linear-gradient(100deg, rgba(214, 2, 112, 0.32), rgba(155, 79, 150, 0.32) 50%, rgba(0, 56, 168, 0.38)), linear-gradient(#140f22, #140f22); }
+
+/* Pale plates take dark text, like the gilded one. */
+:is(.nameplate-boba, .nameplate-strawberry, .nameplate-holo) :is(strong, .profile-display-name, .profile-username, .profile-pronouns-tag, .profile-global-name, .profile-tagline, .frame-name, .frame-desc, .user-footer-name, .user-footer-status) {
+  color: #3a1830 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+/* --- Nameplate motion -------------------------------------------------- */
+.cx-twinkle { transform-box: fill-box; transform-origin: center; animation: cxTwinkle 2.4s ease-in-out var(--d, 0s) infinite; }
+@keyframes cxTwinkle { 0%, 100% { opacity: 0.3; transform: scale(0.55); } 50% { opacity: 1; transform: scale(1); } }
+.cx-glow { animation: cxGlow 2.2s ease-in-out infinite alternate; }
+@keyframes cxGlow { from { opacity: 0.18; } to { opacity: 0.4; } }
+.cx-bokeh { transform-box: fill-box; transform-origin: center; animation: cxBokeh 5s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxBokeh { from { opacity: 0.25; transform: scale(0.85); } to { opacity: 0.6; transform: scale(1.1); } }
+.cx-rain path { animation: cxRain 0.8s linear var(--d, 0s) infinite; }
+@keyframes cxRain { from { transform: translate(4px, -26px); } to { transform: translate(-8px, 30px); } }
+.cx-fire { transform-box: fill-box; transform-origin: 50% 100%; animation: cxFlicker 0.35s ease-in-out infinite alternate; }
+@keyframes cxFlicker { from { transform: scale(0.94, 0.88) skewX(-3deg); } to { transform: scale(1.04, 1.08) skewX(3deg); } }
+.cx-spark { animation: cxSpark 1.8s ease-out var(--d, 0s) infinite; }
+@keyframes cxSpark { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(var(--dx, 0px), -26px); opacity: 0; } }
+.cx-window { animation: cxWindow 3s ease-in-out infinite alternate; }
+@keyframes cxWindow { from { fill: #ffcf6b; } to { fill: #ffe39a; filter: drop-shadow(0 0 3px #ffcf6b); } }
+.cx-smoke { transform-box: fill-box; transform-origin: center; animation: cxSmoke 3.6s ease-out var(--d, 0s) infinite; }
+@keyframes cxSmoke { from { transform: translate(0, 0) scale(0.5); opacity: 0.6; } to { transform: translate(8px, -14px) scale(1.6); opacity: 0; } }
+.cx-snow { animation: cxSnow var(--t, 5s) linear var(--d, 0s) infinite; }
+@keyframes cxSnow { from { transform: translate(0, -10px); } 50% { transform: translate(3px, 20px); } to { transform: translate(-2px, 52px); } }
+.cx-moon-glow { filter: drop-shadow(0 0 3px rgba(255, 244, 207, 0.9)); }
+.cx-steam { animation: cxSteam 2.6s ease-out var(--d, 0s) infinite; }
+@keyframes cxSteam { from { transform: translateY(2px); opacity: 0; } 30% { opacity: 0.7; } to { transform: translateY(-6px); opacity: 0; } }
+.cx-sway { transform-box: fill-box; transform-origin: 50% 100%; animation: cxSway 3s ease-in-out infinite alternate; }
+@keyframes cxSway { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+.cx-blob { animation: cxBlob var(--t, 9s) ease-in-out var(--d, 0s) infinite; }
+.cx-blob ellipse { transform-box: fill-box; transform-origin: center; animation: cxBlobSquish 3s ease-in-out infinite alternate; filter: blur(0.4px); }
+@keyframes cxBlob { 0% { transform: translateY(0); } 50% { transform: translateY(-62px); } 100% { transform: translateY(0); } }
+@keyframes cxBlobSquish { from { transform: scale(1.12, 0.88); } to { transform: scale(0.9, 1.12); } }
+.cx-invaders { animation: cxMarch 2.4s steps(1) infinite; }
+@keyframes cxMarch { 0% { transform: translate(0, 0); } 25% { transform: translate(4px, 0); } 50% { transform: translate(8px, 1px); } 75% { transform: translate(4px, 1px); } }
+.cx-shot { animation: cxShot 1.2s linear infinite; }
+@keyframes cxShot { from { transform: translateY(0); opacity: 1; } 80% { opacity: 1; } to { transform: translateY(-34px); opacity: 0; } }
+.cx-flicker { animation: cxOnOff 4s steps(1) var(--d, 0s) infinite; }
+@keyframes cxOnOff { 0%, 70%, 100% { opacity: 0.9; } 72%, 80% { opacity: 0.1; } }
+.cx-neon { filter: drop-shadow(0 0 2px #ff3cac); animation: cxOnOff 5s steps(1) -2s infinite; }
+.cx-car { animation: cxCar 7s linear infinite; }
+@keyframes cxCar { from { transform: translate(168px, 7px); } to { transform: translate(52px, 11px); } }
+.cx-ray { transform-box: fill-box; transform-origin: 50% 0; animation: cxRay 6s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxRay { from { transform: skewX(-8deg); opacity: 0.04; } to { transform: skewX(8deg); opacity: 0.14; } }
+.cx-kelp { transform-box: fill-box; transform-origin: 50% 100%; animation: cxSway 3.4s ease-in-out var(--d, 0s) infinite alternate; }
+.cx-fish { animation: cxFish 9s linear infinite; }
+@keyframes cxFish { 0% { transform: translate(168px, 26px); } 50% { transform: translate(110px, 30px); } 100% { transform: translate(48px, 24px); } }
+.cx-bubble { animation: cxBubble var(--t, 4s) ease-in var(--d, 0s) infinite; }
+@keyframes cxBubble { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 50% { transform: translate(2px, -24px); } 100% { transform: translate(-1px, -52px); opacity: 0; } }
+.cx-birds { animation: cxBirds 3s ease-in-out infinite alternate; }
+@keyframes cxBirds { to { transform: translate(-4px, -1px); } }
+.cx-petal { transform-box: fill-box; transform-origin: center; animation: cxPetal var(--t, 6s) linear var(--d, 0s) infinite; }
+@keyframes cxPetal { from { transform: translate(0, 0) rotate(0deg); opacity: 0; } 10% { opacity: 1; } to { transform: translate(-22px, 56px) rotate(540deg); opacity: 0.8; } }
+.cx-firefly { animation: cxFirefly 4s ease-in-out var(--d, 0s) infinite alternate; filter: drop-shadow(0 0 2px #fff59a) drop-shadow(0 0 4px #e8ff6b); }
+@keyframes cxFirefly { 0% { transform: translate(0, 0); opacity: 0.2; } 50% { opacity: 1; } 100% { transform: translate(var(--dx, 4px), var(--dy, -4px)); opacity: 0.35; } }
+.cx-float { animation: cxFloat 2.6s ease-in-out infinite alternate; }
+@keyframes cxFloat { to { transform: translate(92px, 23px) scale(0.5); } }
+.cx-bob { animation: cxBob 2.8s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxBob { to { translate: 0 -2px; } }
+.cx-code { animation: cxCode var(--t, 3s) linear var(--d, 0s) infinite; }
+@keyframes cxCode { from { transform: translateY(-52px); } to { transform: translateY(52px); } }
+.cx-ember { animation: cxEmber var(--t, 3s) ease-out var(--d, 0s) infinite; filter: drop-shadow(0 0 2px #ff7a1a); }
+@keyframes cxEmber { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--dx, 0px), -50px); opacity: 0; } }
+.cx-bolt { filter: drop-shadow(0 0 3px #fff8b0); animation: cxBolt 4.2s steps(1) infinite; }
+@keyframes cxBolt { 0%, 100% { opacity: 0; } 60% { opacity: 1; } 63% { opacity: 0.2; } 66% { opacity: 1; } 72% { opacity: 0; } }
+.cx-flag-wave { animation: cxFlagWave 2.4s ease-in-out infinite alternate; }
+@keyframes cxFlagWave {
+  from { d: path("M96 8 C108 4 120 12 132 8 C144 4 152 10 160 7 V41 C152 44 144 38 132 42 C120 46 108 38 96 42Z"); }
+  to { d: path("M96 8 C108 12 120 4 132 9 C144 13 152 5 160 9 V43 C152 38 144 46 132 43 C120 39 108 46 96 42Z"); }
+}
+.cx-flag-shade { animation: cxFlagShade 2.4s ease-in-out infinite alternate; }
+@keyframes cxFlagShade { from { transform: translateX(-10px); } to { transform: translateX(10px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-art *, .has-nameplate { animation-play-state: paused !important; }
+}
+html[data-motion="reduced"] .np-art *,
+html[data-motion="reduced"] .has-nameplate { animation-play-state: paused !important; }
+
+/* ================================================================== */
+/* Avatar decorations                                                  */
+/* ================================================================== */
+
+.cx-d-pulse { animation: cxDPulse 1.6s ease-in-out infinite alternate; }
+@keyframes cxDPulse { from { opacity: 0.35; } to { opacity: 0.75; } }
+.cx-d-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: cxDFlame 0.42s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxDFlame { from { transform: scale(0.92, 0.78) skewX(-4deg); } to { transform: scale(1.06, 1.12) skewX(4deg); } }
+.cx-d-orbit-x { animation: cxDOrbitX calc(var(--t, 8s) / 2) cubic-bezier(0.37, 0, 0.63, 1) var(--d, 0s) infinite alternate; }
+.cx-d-orbit-y { transform-box: fill-box; transform-origin: center; animation: cxDOrbitY calc(var(--t, 8s) / 2) cubic-bezier(0.37, 0, 0.63, 1) var(--d, 0s) infinite alternate; }
+@keyframes cxDOrbitX { from { transform: translateX(-58px); } to { transform: translateX(58px); } }
+@keyframes cxDOrbitY { from { transform: translateY(-15px) scale(0.6); opacity: 0.25; } to { transform: translateY(15px) scale(1.05); opacity: 1; } }
+.cx-d-zap { transform-box: view-box; transform-origin: 60px 60px; animation: cxDZap 1.5s steps(1) var(--d, 0s) infinite; }
+@keyframes cxDZap {
+  0% { opacity: 1; transform: rotate(0deg); }
+  20% { opacity: 0.2; transform: rotate(18deg); }
+  35% { opacity: 1; transform: rotate(-12deg); }
+  55% { opacity: 0; transform: rotate(30deg); }
+  70% { opacity: 1; transform: rotate(6deg); }
+  85% { opacity: 0.5; transform: rotate(-20deg); }
+}
+.cx-d-bolt { filter: drop-shadow(0 0 4px #5cc8ff); animation: cxBolt 3.4s steps(1) infinite; }
+.cx-d-petal { transform-box: fill-box; transform-origin: center; animation: cxDPetal var(--t, 6s) linear var(--d, 0s) infinite; }
+@keyframes cxDPetal { from { transform: translate(0, 0) rotate(0deg); opacity: 0; } 10% { opacity: 1; } 85% { opacity: 1; } to { transform: translate(-14px, 118px) rotate(420deg); opacity: 0; } }
+.cx-d-rgb { animation: cxDHue 4s linear infinite; }
+@keyframes cxDHue { to { filter: hue-rotate(360deg); } }
+.cx-d-blink { animation: cxDBlink 1.2s ease-in-out infinite; }
+@keyframes cxDBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.cx-d-bounce { animation: cxDBounce 1.8s cubic-bezier(0.3, 1.6, 0.5, 1) infinite alternate; }
+@keyframes cxDBounce { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+.cx-d-drift { transform-box: fill-box; transform-origin: center; animation: cxDDrift 4s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxDDrift { from { transform: translate(0, 0) rotate(0deg); opacity: 0.5; } to { transform: translate(-3px, 6px) rotate(60deg); opacity: 1; } }
+.cx-d-candle { animation: cxDCandle 0.9s ease-in-out infinite alternate; }
+@keyframes cxDCandle { from { opacity: 0.75; filter: drop-shadow(0 0 2px #ffb347); } to { opacity: 1; filter: drop-shadow(0 0 6px #ffcf4a); } }
+.cx-d-batfly { animation: cxDBat 5s ease-in-out infinite alternate; }
+@keyframes cxDBat { 0% { transform: translate(0, 0); } 50% { transform: translate(10px, -6px); } 100% { transform: translate(4px, 4px); } }
+.cx-d-tail { transform-box: fill-box; transform-origin: 100% 100%; animation: cxDTail 2.2s ease-in-out infinite alternate; }
+@keyframes cxDTail { from { transform: rotate(-12deg); } to { transform: rotate(14deg); } }
+.cx-d-zzz { animation: cxDZzz 3s ease-out var(--d, 0s) infinite; }
+@keyframes cxDZzz { from { transform: translate(0, 0); opacity: 0; } 20% { opacity: 1; } to { transform: translate(10px, -18px); opacity: 0; } }
+.cx-d-rise { animation: cxDRise 4.2s ease-in var(--d, 0s) infinite; }
+@keyframes cxDRise {
+  0% { transform: translate(0, 0); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translate(var(--dx, 6px), -60px); }
+  85% { opacity: 1; }
+  100% { transform: translate(0, -128px); opacity: 0; }
+}
+.cx-d-flutter { animation: cxDFlutter 8s ease-in-out var(--d, 0s) infinite; }
+@keyframes cxDFlutter {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-6px, -8px); }
+  50% { transform: translate(4px, -4px); }
+  75% { transform: translate(2px, 6px); }
+}
+.cx-d-wing { animation: cxDWing 0.22s ease-in-out infinite alternate; }
+@keyframes cxDWing { from { transform: scaleX(1); } to { transform: scaleX(0.35); } }
+.cx-d-ghost { animation: cxDGhost 3s ease-in-out infinite alternate; }
+@keyframes cxDGhost { from { transform: translate(0, 0) rotate(0deg); } to { transform: translate(-2px, -5px) rotate(-3deg); } }
+.cx-d-wave { transform-box: fill-box; transform-origin: 100% 0; animation: cxDWave 1s ease-in-out infinite alternate; }
+@keyframes cxDWave { from { transform: rotate(-10deg); } to { transform: rotate(18deg); } }
+.cx-d-live-ring { animation: cxDLive 1.4s ease-in-out infinite; }
+@keyframes cxDLive { 0%, 100% { filter: drop-shadow(0 0 2px #ff2e4d); opacity: 0.85; } 50% { filter: drop-shadow(0 0 7px #ff2e4d); opacity: 1; } }
+.cx-d-spin-slow { transform-box: view-box; transform-origin: 60px 60px; animation: decoSpin 30s linear infinite; }
+.cx-d-beat { transform-box: fill-box; transform-origin: center; animation: cxDBeat 1.1s ease-in-out var(--d, 0s) infinite; }
+@keyframes cxDBeat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.25); } 30% { transform: scale(0.95); } 45% { transform: scale(1.12); } }
+
+/* ================================================================== */
+/* Profile frames                                                      */
+/* ================================================================== */
+
+.profile-frame-dragon { --pf-grad: linear-gradient(135deg, #0f3d2a, #5fbf7a 35%, #e9c65a 65%, #0f3d2a); box-shadow: 0 0 18px rgba(95, 191, 122, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-arcade { --pf-grad: linear-gradient(135deg, #ff3cac, #5cf3ff 50%, #ff3cac); box-shadow: 0 0 16px rgba(255, 60, 172, 0.4), 0 0 16px rgba(92, 243, 255, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-tide { --pf-grad: linear-gradient(180deg, #a5f3fc, #0891b2 55%, #164e63); box-shadow: 0 0 16px rgba(8, 145, 178, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-cobwebs { --pf-grad: linear-gradient(135deg, #2a2633, #b8b2cc 50%, #2a2633); }
+.profile-frame-autumn { --pf-grad: linear-gradient(135deg, #7a2e0e, #f2a33a 50%, #c23b1e); box-shadow: 0 0 14px rgba(242, 163, 58, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-storm { --pf-grad: linear-gradient(180deg, #cbd5ff, #3a4a7a 50%, #1a2240); animation: cxStormGlow 4.2s steps(1) infinite !important; }
+@keyframes cxStormGlow {
+  0%, 59%, 69%, 100% { box-shadow: 0 0 10px rgba(120, 140, 220, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6); }
+  60%, 66% { box-shadow: 0 0 34px rgba(255, 248, 176, 0.55), 0 12px 32px rgba(0, 0, 0, 0.6); }
+  63% { box-shadow: 0 0 14px rgba(255, 248, 176, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6); }
+}
+.profile-frame-mushrooms { --pf-grad: linear-gradient(135deg, #2f5a34, #8ad06a 40%, #6b4a2a 70%, #2f5a34); box-shadow: 0 0 14px rgba(92, 200, 255, 0.2), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-pumpkins { --pf-grad: linear-gradient(135deg, #3b1a6e, #ff8a1a 50%, #3b1a6e); box-shadow: 0 0 16px rgba(255, 138, 26, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+@property --cx-holo { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+.profile-frame-holo-card {
+  --pf-grad: conic-gradient(from var(--cx-holo), #ff9ad5, #ffe29a, #9affc8, #9ad8ff, #c79aff, #ff9ad5);
+  animation: cxHoloSpin 6s linear infinite !important;
+  box-shadow: 0 0 18px rgba(200, 160, 255, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+}
+@keyframes cxHoloSpin { to { --cx-holo: 360deg; } }
+
+.cx-f-wing { transform-box: fill-box; transform-origin: 100% 100%; animation: cxFWing 2.4s ease-in-out infinite alternate; }
+@keyframes cxFWing { from { transform: rotate(0deg) scaleY(1); } to { transform: rotate(-8deg) scaleY(1.08); } }
+.cx-f-eye { animation: cxFEye 2s ease-in-out infinite alternate; }
+@keyframes cxFEye { from { filter: drop-shadow(0 0 1px #ffd34d); } to { filter: drop-shadow(0 0 5px #ffb000); } }
+.cx-f-puff { animation: cxFPuff 3s ease-out infinite; }
+@keyframes cxFPuff { 0%, 40% { transform: translate(0, 0) scale(0.4); opacity: 0; } 55% { opacity: 1; } 100% { transform: translate(14px, -8px) scale(1.4); opacity: 0; } }
+.cx-f-marquee { animation: cxFMarquee 3s steps(1) infinite; filter: drop-shadow(0 0 3px #5cf3ff); }
+@keyframes cxFMarquee { 0%, 100% { opacity: 1; } 80% { opacity: 0.35; } 83% { opacity: 1; } 86% { opacity: 0.5; } }
+.cx-f-chase { animation: cxFChase 1.44s steps(1) var(--d, 0s) infinite; }
+@keyframes cxFChase { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px currentColor); } 50% { opacity: 0.25; filter: none; } }
+.cx-f-stick { transform-box: fill-box; transform-origin: 50% 100%; animation: cxFStick 2.2s ease-in-out infinite; }
+@keyframes cxFStick { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(-16deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-4deg); } 80% { transform: rotate(14deg); } }
+.cx-f-press { animation: cxFPress 1.8s ease-in-out var(--d, 0s) infinite; }
+@keyframes cxFPress { 0%, 70%, 100% { transform: translateY(0); } 78% { transform: translateY(2.4px); } }
+.cx-f-wave { animation: cxFWave 5s ease-in-out infinite alternate; }
+.cx-f-wave-b { animation-duration: 4s; animation-direction: alternate-reverse; }
+.cx-f-wave-c { animation-duration: 6s; }
+@keyframes cxFWave { from { transform: translate(-10px, 0); } to { transform: translate(10px, -3px); } }
+.cx-f-gull { animation: cxFGull 6s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxFGull { from { transform: translate(0, 0) scaleY(1); } 50% { transform: translate(-6px, -3px) scaleY(0.7); } to { transform: translate(-12px, 2px) scaleY(1); } }
+.cx-f-spider { animation: cxFSpider 4s ease-in-out infinite alternate; }
+@keyframes cxFSpider { from { transform: translateY(-6px); } to { transform: translateY(18px); } }
+.cx-f-fall { animation: cxFFall 8s linear var(--d, 0s) infinite; }
+@keyframes cxFFall { 0% { transform: translate(0, 0) rotate(0deg); opacity: 0; } 8% { opacity: 1; } 70% { opacity: 0.9; } 100% { transform: translate(-30px, 240px) rotate(300deg); opacity: 0; } }
+.cx-f-rain { animation: cxFRain 0.7s linear var(--d, 0s) infinite; }
+@keyframes cxFRain { from { transform: translate(3px, -10px); opacity: 0; } 30% { opacity: 1; } to { transform: translate(-6px, 22px); opacity: 0; } }
+.cx-f-flash { opacity: 0; animation: cxFFlash 4.2s steps(1) infinite; }
+.cx-f-flash-b { animation-delay: -1.9s; }
+.cx-f-bolt { opacity: 0; filter: drop-shadow(0 0 4px #fff8b0) drop-shadow(0 0 10px #a8b8ff); animation: cxFFlash 4.2s steps(1) infinite; }
+.cx-f-bolt-b { animation-delay: -1.9s; }
+@keyframes cxFFlash { 0%, 59%, 69%, 100% { opacity: 0; } 60%, 66% { opacity: 1; } 63% { opacity: 0.25; } }
+.cx-f-glow { animation: cxFGlow 2.4s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes cxFGlow { from { filter: drop-shadow(0 0 2px #5cc8ff); opacity: 0.8; } to { filter: drop-shadow(0 0 8px #5cc8ff) drop-shadow(0 0 14px #38bdf8); opacity: 1; } }
+.cx-f-gem-shine { animation: cxFShine 3s ease-in-out infinite; }
+@keyframes cxFShine { 0%, 60%, 100% { opacity: 0; } 75% { opacity: 1; } }
+
+/* ================================================================== */
+/* Profile effects                                                     */
+/* ================================================================== */
+
+/* Particles */
+.cx-e-lantern { filter: drop-shadow(0 0 4px rgba(255, 170, 60, 0.9)) drop-shadow(0 0 12px rgba(255, 120, 40, 0.45)); }
+.cx-e-flame { transform-box: fill-box; transform-origin: 50% 100%; animation: cxEFlame 0.7s ease-in-out infinite alternate; }
+@keyframes cxEFlame { from { opacity: 0.75; transform: scale(0.85, 0.8); } to { opacity: 1; transform: scale(1.05, 1.1); } }
+.pfx-p > b > span.cx-e-streak {
+  width: 2px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, transparent, var(--c));
+  box-shadow: 0 0 6px var(--c), 0 0 12px var(--c);
+  opacity: 0.85;
+  rotate: 12deg;
+}
+
+/* Rainy window */
+.cx-e-fog,
+.cx-e-caustics,
+.cx-e-scan,
+.cx-e-noise,
+.cx-e-split,
+.cx-e-stars { position: absolute; inset: 0; display: block; pointer-events: none; }
+.cx-e-fog { background: linear-gradient(180deg, rgba(170, 190, 230, 0.05), rgba(170, 190, 230, 0.16)); }
+.cx-e-bokeh {
+  position: absolute;
+  display: block;
+  width: calc(var(--r) * 2);
+  height: calc(var(--r) * 2);
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--c) 0%, transparent 70%);
+  filter: blur(3px);
+  opacity: 0.35;
+  animation: cxEBokeh 6s ease-in-out var(--d, 0s) infinite alternate;
+}
+@keyframes cxEBokeh { from { opacity: 0.18; scale: 0.9; } to { opacity: 0.45; scale: 1.08; } }
+.cx-e-drop {
+  position: absolute;
+  display: block;
+  width: var(--r);
+  height: calc(var(--r) * 1.18);
+  border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%;
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.85) 0 11%, rgba(255, 255, 255, 0.06) 28%, rgba(200, 220, 255, 0.1) 62%, rgba(255, 255, 255, 0.4) 100%);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.3), inset 0 -1px 2px rgba(255, 255, 255, 0.35);
+}
+.cx-e-slide { animation: cxESlide var(--t, 6s) cubic-bezier(0.6, 0, 0.9, 0.6) var(--d, 0s) infinite; }
+.cx-e-slide::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 70%;
+  width: 34%;
+  height: 0;
+  translate: -50% 0;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, transparent, rgba(220, 235, 255, 0.35));
+  animation: cxETrail var(--t, 6s) cubic-bezier(0.6, 0, 0.9, 0.6) var(--d, 0s) infinite;
+}
+@keyframes cxESlide { 0%, 35% { translate: 0 0; opacity: 0.9; } 92% { opacity: 0.9; } 100% { translate: 0 105cqh; opacity: 0; } }
+@keyframes cxETrail { 0%, 35% { height: 0; } 100% { height: 40cqh; } }
+
+/* Aquarium */
+.cx-e-caustics {
+  inset: -30%;
+  background:
+    radial-gradient(ellipse 9% 7% at 50% 50%, transparent 55%, rgba(170, 245, 255, 0.22) 68%, transparent 80%) 0 0 / 22% 18%,
+    radial-gradient(ellipse 7% 9% at 50% 50%, transparent 55%, rgba(170, 245, 255, 0.18) 68%, transparent 80%) 11% 9% / 19% 21%;
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: cxECaustics 14s linear infinite;
+}
+@keyframes cxECaustics { from { transform: translate(0, 0) rotate(0deg); } to { transform: translate(6%, 4%) rotate(8deg); } }
+.cx-e-ray {
+  position: absolute;
+  top: -10%;
+  display: block;
+  width: 16%;
+  height: 85%;
+  background: linear-gradient(180deg, rgba(200, 250, 255, 0.28), transparent);
+  filter: blur(5px);
+  transform: skewX(-14deg);
+  transform-origin: top;
+  animation: cxERay 7s ease-in-out var(--d, 0s) infinite alternate;
+}
+@keyframes cxERay { from { opacity: 0.25; transform: skewX(-18deg); } to { opacity: 0.7; transform: skewX(-6deg); } }
+.cx-e-fish { position: absolute; left: 0; display: block; width: 16cqw; overflow: visible; scale: -1 1; animation: cxEFishR var(--t, 14s) linear var(--d, 0s) infinite; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3)); }
+.cx-e-fish-rev { scale: 1 1; animation-name: cxEFishL; }
+.cx-e-fish-small { width: 10cqw; }
+@keyframes cxEFishR { 0% { translate: -25cqw 0; } 50% { translate: 50cqw -3cqh; } 100% { translate: 125cqw 1cqh; } }
+@keyframes cxEFishL { 0% { translate: 125cqw 0; } 50% { translate: 50cqw 3cqh; } 100% { translate: -25cqw -1cqh; } }
+.cx-e-wiggle { transform-box: fill-box; transform-origin: 0% 50%; animation: cxEWiggle 0.5s ease-in-out infinite alternate; }
+@keyframes cxEWiggle { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+.cx-e-bubble {
+  position: absolute;
+  bottom: -4%;
+  display: block;
+  width: var(--r);
+  height: var(--r);
+  border-radius: 50%;
+  border: 1px solid rgba(220, 250, 255, 0.7);
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85) 0 16%, transparent 32%);
+  animation: cxEBubble var(--t, 5s) ease-in var(--d, 0s) infinite;
+}
+@keyframes cxEBubble {
+  0% { translate: 0 0; opacity: 0; }
+  10% { opacity: 1; }
+  50% { translate: 2cqw -55cqh; }
+  100% { translate: -1cqw -112cqh; opacity: 0; }
+}
+
+/* Signal lost */
+.cx-e-scan { background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px); opacity: 0.55; }
+.cx-e-noise {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: cxENoise 4s steps(1) infinite;
+}
+@keyframes cxENoise { 0%, 100% { opacity: 0; } 62% { opacity: 0.3; background-position: 0 0; } 64% { opacity: 0.18; background-position: 40px 20px; } 66% { opacity: 0.3; background-position: 10px 60px; } 68% { opacity: 0; } }
+.cx-e-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: block;
+  height: var(--h);
+  background: linear-gradient(90deg, transparent, rgba(255, 43, 214, 0.55) 20%, rgba(0, 229, 255, 0.55) 60%, rgba(255, 255, 255, 0.4) 75%, transparent);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: cxEBar 4s steps(1) var(--d, 0s) infinite;
+}
+@keyframes cxEBar { 0%, 100% { opacity: 0; translate: 0 0; } 62% { opacity: 1; translate: var(--x) 0; } 64% { opacity: 0.4; translate: calc(var(--x) * -0.6) 0; } 66% { opacity: 1; translate: calc(var(--x) * 0.3) 0; } 68% { opacity: 0; } }
+.cx-e-split { background: linear-gradient(90deg, rgba(255, 0, 80, 0.16), transparent 9%, transparent 91%, rgba(0, 229, 255, 0.16)); opacity: 0; animation: cxENoise 4s steps(1) -0.1s infinite; }
+
+/* Comet */
+.cx-e-stars {
+  background:
+    radial-gradient(1px 1px at 8% 18%, #fff, transparent), radial-gradient(1px 1px at 22% 64%, #fff, transparent), radial-gradient(1.5px 1.5px at 38% 30%, #dfe8ff, transparent),
+    radial-gradient(1px 1px at 54% 82%, #fff, transparent), radial-gradient(1px 1px at 66% 12%, #fff, transparent), radial-gradient(1.5px 1.5px at 78% 48%, #fff6d6, transparent),
+    radial-gradient(1px 1px at 90% 26%, #fff, transparent), radial-gradient(1px 1px at 14% 90%, #dfe8ff, transparent), radial-gradient(1px 1px at 46% 54%, #fff, transparent);
+  animation: cxETwinkle 3.2s ease-in-out infinite alternate;
+}
+.cx-e-stars-b { transform: scale(-1, 1) translateY(6%); animation-delay: -1.6s; }
+@keyframes cxETwinkle { from { opacity: 0.35; } to { opacity: 1; } }
+.cx-e-comet { position: absolute; left: -55cqw; top: 6%; display: block; width: 50cqw; height: 2.6cqw; rotate: 24deg; opacity: 0; animation: cxEComet 8s cubic-bezier(0.3, 0, 0.7, 1) infinite; }
+.cx-e-comet-b { top: -14%; width: 34cqw; height: 1.8cqw; animation-delay: -4.2s; animation-duration: 11s; }
+.cx-e-comet b { position: absolute; inset: 0; border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(150, 210, 255, 0.35) 55%, rgba(220, 240, 255, 0.9)); filter: blur(0.6px); }
+.cx-e-comet b::after { content: ""; position: absolute; right: -1cqw; top: 50%; width: 3.4cqw; height: 3.4cqw; translate: 0 -50%; border-radius: 50%; background: #fff; box-shadow: 0 0 6px 2px #bfe4ff, 0 0 18px 6px rgba(120, 190, 255, 0.6); }
+@keyframes cxEComet { 0% { translate: 0 0; opacity: 0; } 4% { opacity: 1; } 42% { opacity: 1; } 50% { translate: 170cqw 76cqw; opacity: 0; } 100% { translate: 170cqw 76cqw; opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.cx-e-fog, .cx-e-bokeh, .cx-e-drop, .cx-e-caustics, .cx-e-ray, .cx-e-fish, .cx-e-bubble, .cx-e-bar, .cx-e-noise, .cx-e-split, .cx-e-stars, .cx-e-comet, .cx-e-comet b) { animation-play-state: paused !important; }
+}

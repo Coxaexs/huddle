@@ -2,6 +2,7 @@
 
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { CANVAS_SCENES, CanvasScene } from "./particle-scenes";
+import { EXTRA_DECORATIONS, EXTRA_EFFECTS, EXTRA_FRAME_ART, EXTRA_NAMEPLATE_ART, EXTRA_SCENES, NAMEPLATE_FIT_WHOLE } from "./cosmetics-extra";
 
 /*
  * Drawn profile cosmetics: avatar decorations, profile effects, profile
@@ -385,6 +386,9 @@ const DECORATIONS: Record<string, (u: string) => ReactNode> = {
     </g>
   ),
 };
+
+// The second wave (cosmetics-extra.tsx) joins the same registries.
+Object.assign(DECORATIONS, EXTRA_DECORATIONS);
 
 /** Ring-style decorations drawn by CSS box-shadow on the avatar itself. */
 export const RING_DECORATIONS = new Set(["neon", "rainbow", "cyber", "gold", "sakura", "diamond"]);
@@ -1784,6 +1788,9 @@ const SCENE_EXTRA: Record<string, string> = {
   "black-hole": "sparkles",
 };
 
+Object.assign(EFFECTS, EXTRA_EFFECTS);
+Object.assign(SCENES, EXTRA_SCENES);
+
 /** CSS-only effects that predate the particle system. */
 const LEGACY_EFFECTS = new Set(["matrix", "aurora", "lightning"]);
 
@@ -2246,6 +2253,8 @@ const FRAME_ART: Record<string, (u: string) => ReactNode> = {
   ),
 };
 
+Object.assign(FRAME_ART, EXTRA_FRAME_ART);
+
 /** A frame's art around a card. Render it as a sibling of the card inside a .pframe-host. */
 export function ProfileFrameArt({ id }: { id?: string | null }) {
   const u = useId().replace(/:/g, "");
@@ -2433,13 +2442,15 @@ const NAMEPLATE_ART: Record<string, (u: string) => ReactNode> = {
   ),
 };
 
+Object.assign(NAMEPLATE_ART, EXTRA_NAMEPLATE_ART);
+
 /** Illustration on the right of a nameplate. Parent must be .has-nameplate. */
 export function NameplateArt({ id }: { id?: string | null }) {
   const u = useId().replace(/:/g, "");
   const draw = id ? NAMEPLATE_ART[id] : undefined;
   if (!draw) return null;
   return (
-    <svg className="np-art" viewBox="60 0 100 48" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+    <svg className="np-art" viewBox="60 0 100 48" preserveAspectRatio={`xMaxYMid ${id && NAMEPLATE_FIT_WHOLE.has(id) ? "meet" : "slice"}`} aria-hidden="true">
       {draw(u)}
     </svg>
   );
