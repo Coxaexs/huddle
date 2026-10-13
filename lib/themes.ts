@@ -885,9 +885,14 @@ function prefixCssBlocks(css: string, scope: string): string {
 /**
  * Scopes user-written profile CSS so it only targets their specific profile card.
  * CSS that fails {@link checkProfileCss} renders nothing at all.
+ *
+ * `unrestricted` is for instance admins: their CSS is used exactly as written,
+ * neither checked nor scoped, so it can restyle the whole app while their
+ * profile is open.
  */
-export function scopeProfileCss(rawCss: string, userId: string): string {
+export function scopeProfileCss(rawCss: string, userId: string, unrestricted = false): string {
   if (!rawCss || typeof rawCss !== "string") return "";
+  if (unrestricted) return rawCss;
   const checked = checkProfileCss(rawCss);
   if (!checked.ok || !checked.css) return "";
 

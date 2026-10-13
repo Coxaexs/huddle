@@ -56,6 +56,10 @@ export interface HuddleBindings {
   MAIL_FROM?: string;
   /** Comma-separated developer usernames who receive dev logs (e.g. "kiwi,flo"). */
   DEV_USERS?: string;
+  /** Comma-separated user ids (besides site admins) who may open /admin and /admin/media. */
+  ADMIN_IDS?: string;
+  /** Older name for ADMIN_IDS, still read as a fallback. */
+  MEDIA_ADMIN_IDS?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

@@ -47,6 +47,9 @@
     "DND_PUBLIC_URL": "https://dnd.deeppixel.online",
     // The consent-gated D&D session recorder is disabled; set to "1" to
     // re-enable it without deleting any code or data.
-    "FEATURE_RECORD_SESSIONS": "0"
+    "FEATURE_RECORD_SESSIONS": "0",
+    // Who may open /hangout/admin (and /admin/media) besides site admins: flo
+    // and kiwi. Account ids, not usernames, since a username can be changed and reused.
+    "ADMIN_IDS": "ac9e8e27-6cd9-4df1-af7a-afd85a59caa0,b4203f0e-38a7-43f1-b1b5-374116afb49d"
   }
 }

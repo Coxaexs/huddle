@@ -134,6 +134,8 @@ function profileFields(user: User) {
     profileFrame: user.profile_frame || "none",
     color: user.color,
     customCss: user.custom_css || null,
+    // Instance admins' profile CSS is used as written (see scopeProfileCss).
+    ...(isInstanceAdmin(user) ? { unrestrictedCss: true } : {}),
     customTheme: user.custom_theme || null,
   };
 }
@@ -147,6 +149,28 @@ export function isDevUsername(username: string): boolean {
   } catch {
     return ["kiwi", "flo"].includes(username.toLowerCase());
   }
+}
+
+/**
+ * Instance admins run /admin and /admin/media: site admins plus the account
+ * ids listed in ADMIN_IDS. Ids rather than usernames, because a username can
+ * be changed and then claimed by someone else.
+ */
+export function isInstanceAdmin(user: Pick<User, "id" | "is_admin">): boolean {
+  if (user.is_admin) return true;
+  let raw = "";
+  try {
+    const env = bindings();
+    // MEDIA_ADMIN_IDS was the first name for this list.
+    raw = env.ADMIN_IDS || env.MEDIA_ADMIN_IDS || "";
+  } catch {
+    return false;
+  }
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .includes(user.id);
 }
 
 /** The signed-in user's own account, including their private preferences. */

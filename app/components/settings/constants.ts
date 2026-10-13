@@ -52,9 +52,23 @@ export const PROFILE_EFFECTS: CosmeticItem[] = [
   // Discord-inspired Anime & Dark marquee effects
   { id: "always-watching", name: "Always Watching", desc: "Blinking demon eyes peering from shadows and a sinister grin", group: "Anime & Dark" },
   { id: "manga-hand", name: "Cursed Grasp", desc: "A giant manga ink hand clutching your card with cursed spirit aura", group: "Anime & Dark" },
-  { id: "symbiote", name: "Venomous Maw", desc: "A giant symbiote beast lunging in with razor fangs and lashing tongue", group: "Anime & Dark" },
+  { id: "symbiote", name: "Venom", desc: "A glossy black symbiote rises from the goo, roars with a lashing tongue and lunges to bite", group: "Anime & Dark" },
+  { id: "carnage", name: "Carnage", desc: "The blood-red symbiote: veined, grinning and hungry", group: "Anime & Dark" },
+  { id: "bloodfall", name: "Bloodfall", desc: "Glossy blood seeps over your card, drips down and splashes into a pool", group: "Anime & Dark" },
+  { id: "nightwing", name: "Nightwing", desc: "Bats swarm a blood moon, sweep your card and gather where a vampire's red eyes open", group: "Anime & Dark" },
+  { id: "anti-venom", name: "Anti-Venom", desc: "A pearl-white symbiote with black markings and void eyes", group: "Anime & Dark" },
   { id: "oni-mask", name: "Oni Spirit", desc: "A fierce Japanese demon mask with flaming horns and spirit smoke", group: "Anime & Dark" },
   { id: "soul-flame", name: "Soul Inferno", desc: "Roaring violet and cyan demonic flames with rising embers", group: "Anime & Dark" },
+
+  // Dense canvas particle scenes
+  { id: "crimson-ronin", name: "Crimson Ronin", desc: "A hooded swordsman of streaming red embers holds his guard, then cuts across your card", group: "Particle Scenes" },
+  { id: "soul-reaper", name: "Soul Reaper", desc: "A spectral reaper of ghost-green embers sweeps its scythe across your card", group: "Particle Scenes" },
+  { id: "warp-disc", name: "Warp Disc", desc: "A disc of light streaks tilts toward you, bursts past and collapses into a line", group: "Particle Scenes" },
+  { id: "crimson-blade", name: "Crimson Blade", desc: "A cloaked swordsman of red embers who winds up and cuts across your card", group: "Particle Scenes" },
+  { id: "hyperdrive", name: "Hyperdrive", desc: "A disc of white light streaks rushing toward you and bursting past", group: "Particle Scenes" },
+  { id: "astral-vortex", name: "Astral Vortex", desc: "Thousands of violet motes spiralling into a glowing core", group: "Particle Scenes" },
+  { id: "kraken", name: "Release the Kraken", desc: "Sucker-lined tentacles curl up from the deep as a giant eye rises to stare", group: "Particle Scenes" },
+  { id: "storm-serpent", name: "Storm Serpent", desc: "A glowing lightning dragon slithers around your card, crackling with electricity", group: "Particle Scenes" },
 
   // Celestial & Arcane
   { id: "starfall-rings", name: "Starfall Rings", desc: "Concentric rotating golden astrolabe rings and celestial stardust", group: "Celestial & Arcane" },

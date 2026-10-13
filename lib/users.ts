@@ -139,6 +139,8 @@ export interface PublicUser {
   isAdmin: boolean;
   canInvite: boolean;
   customCss?: string | null;
+  /** Instance admin: customCss is used as written, unchecked and unscoped. */
+  unrestrictedCss?: boolean;
   customTheme?: string | null;
   quickReactions?: string[];
   hiddenEmojis?: string[];
@@ -176,6 +178,8 @@ export interface Member {
   profileFrame?: string;
   color: string;
   customCss?: string | null;
+  /** Instance admin: customCss is used as written, unchecked and unscoped. */
+  unrestrictedCss?: boolean;
   customTheme?: string | null;
   lastSeenAt: string;
   createdAt?: string;
