@@ -95,6 +95,15 @@ export function RecordingsPortal() {
   }
 
   useEffect(() => {
+    document.documentElement.classList.add("portal-page-active");
+    document.body.classList.add("portal-page-active");
+    return () => {
+      document.documentElement.classList.remove("portal-page-active");
+      document.body.classList.remove("portal-page-active");
+    };
+  }, []);
+
+  useEffect(() => {
     Promise.all([
       apiFetch<{ user: PublicUser | null }>("/api/auth/session"),
       apiFetch<{ servers: PublicServer[] }>("/api/servers"),

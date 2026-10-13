@@ -152,19 +152,19 @@ describe("/ttsvoice", () => {
   it("saves tempo and pitch, clamped to their ranges", async () => {
     const { ctx } = context();
     await runSpeechCommand("ttsvoice", "tempo 0.1 pitch 0.9", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 0.6, pitch: 0.9, effect: "none", speaker: "default" });
+    expect(getTtsVoice()).toEqual({ tempo: 0.6, pitch: 0.9, effect: "none", speaker: "default", turkish: "alania2-f1" });
     await runSpeechCommand("ttsvoice", "reset", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default" });
+    expect(getTtsVoice()).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default", turkish: "alania2-f1" });
   });
 
   it("turns the robot voice on and off, keeping tempo and pitch", async () => {
     const { ctx, notices } = context();
     await runSpeechCommand("ttsvoice", "tempo 0.9", ctx);
     await runSpeechCommand("ttsvoice", "robot", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "robot", speaker: "default" });
+    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "robot", speaker: "default", turkish: "alania2-f1" });
     expect(notices.at(-1)).toMatch(/robot/);
     await runSpeechCommand("ttsvoice", "effect none", ctx);
-    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "none", speaker: "default" });
+    expect(getTtsVoice()).toEqual({ tempo: 0.9, pitch: 1, effect: "none", speaker: "default", turkish: "alania2-f1" });
   });
 
   it("switches the English voice to male and back", async () => {

@@ -2,6 +2,14 @@
 
 import { Tab } from "./types";
 
+export type NameMotion = "hover" | "always" | "still";
+
+const NAME_MOTION_OPTIONS: { id: NameMotion; label: string }[] = [
+  { id: "hover", label: "On hover" },
+  { id: "always", label: "Always" },
+  { id: "still", label: "Never" },
+];
+
 export function AccessibilityTab({
   tab,
   avatar,
@@ -14,6 +22,8 @@ export function AccessibilityTab({
   setDisplayNameStyles,
   motion,
   setMotion,
+  nameMotion = "hover",
+  setNameMotion,
 }: {
   tab: Tab;
   avatar: string;
@@ -26,6 +36,9 @@ export function AccessibilityTab({
   setDisplayNameStyles: React.Dispatch<React.SetStateAction<boolean>>;
   motion: boolean;
   setMotion: React.Dispatch<React.SetStateAction<boolean>>;
+  /** When animated name effects play in chat and the member list. */
+  nameMotion?: NameMotion;
+  setNameMotion?: (value: NameMotion) => void;
 }) {
   return (
     <>
@@ -170,6 +183,29 @@ export function AccessibilityTab({
                     <span className="toggle-slider" />
                   </label>
                 </div>
+
+                {setNameMotion && (
+                  <div className="flex items-center justify-between gap-4 py-3 border-t border-white/10">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Animate name effects</div>
+                      <div className="text-xs text-gray-400">When styled names move in chat and the member list. Cards and voice tiles always animate.</div>
+                    </div>
+                    <div className="flex shrink-0 rounded-lg bg-white/5 p-1" role="radiogroup" aria-label="Animate name effects">
+                      {NAME_MOTION_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={nameMotion === option.id}
+                          className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${nameMotion === option.id ? "bg-white/15 text-white" : "text-gray-400 hover:text-white"}`}
+                          onClick={() => setNameMotion(option.id)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between py-3 border-t border-white/10">
                   <div>

@@ -79,7 +79,7 @@ export function StageBottomBar({
   soundboardOpen: boolean;
   setQaOpen: React.Dispatch<React.SetStateAction<boolean>>;
   qa: { questions: QaQuestion[]; voted: Set<string>; canHost: boolean; loaded: boolean; pinned: QaQuestion | null; open: number; ask: (text: string) => Promise<void>; vote: (id: string) => Promise<void>; host: (action: "pin" | "answer" | "hide", id: string) => Promise<void>; };
-  captions: { supported: boolean; sharing: boolean; showing: boolean; listening: boolean; lines: CaptionLine[]; receive: (event: { channelId: string; connectionId: string; displayName: string; text: string; final: boolean; }) => void; toggleShowing: () => void; toggleSharing: () => void; } | undefined;
+  captions: { supported: boolean; engine?: "duyu" | "browser" | null; sharing: boolean; showing: boolean; listening: boolean; lines: CaptionLine[]; receive: (event: { channelId: string; connectionId: string; displayName: string; text: string; final: boolean; }) => void; toggleShowing: () => void; toggleSharing: () => void; } | undefined;
   handleViewModeChange: (mode: "grid" | "table" | "map") => void;
   viewMode: "grid" | "table" | "map";
   onToggleBattlemap: (() => void) | undefined;
@@ -574,7 +574,11 @@ export function StageBottomBar({
                 <button
                   type="button"
                   className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
-                  title="Your browser turns your speech into captions for the room. Off while you are muted."
+                  title={
+                    captions.engine === "duyu"
+                      ? "Duyu turns your speech into captions for the room. Off while you are muted."
+                      : "Your browser turns your speech into captions for the room. Off while you are muted."
+                  }
                   onClick={() => {
                     captions.toggleSharing();
                     setMoreMenuOpen(false);

@@ -215,9 +215,10 @@ export class TableDice {
    * Throws a roll's dice onto the table from `from` (a point in the room, about
    * chest height). `at` and `radius` pick where they land (the game master's
    * screen), `label` replaces the result caption (null: none), `spacing` packs
-   * them closer.
+   * them closer, and `squash` flattens the spread along a direction (by its
+   * factor) so a throw can fill a strip, like the one behind the GM's screen.
    */
-  async roll(roll: DiceRollEvent, from: THREE.Vector3, opts: { at?: { x: number; z: number }; radius?: number; spacing?: number; label?: string | null } = {}) {
+  async roll(roll: DiceRollEvent, from: THREE.Vector3, opts: { at?: { x: number; z: number }; radius?: number; spacing?: number; squash?: { x: number; z: number; by: number }; label?: string | null } = {}) {
     const image = await loadAtlas();
     if (this.disposed) return;
     const { surfaceY } = this.opts;
@@ -245,7 +246,14 @@ export class TableDice {
       // Landing spots spiral out from the middle so dice never land on each other.
       const angle = i * 2.4 + random() * 0.6;
       const reach = Math.min(radius, i === 0 ? 0.1 : spacing * Math.sqrt(i) * 1.05);
-      const land = new THREE.Vector3(centre.x + Math.cos(angle) * reach, surfaceY, centre.z + Math.sin(angle) * reach);
+      let ox = Math.cos(angle) * reach;
+      let oz = Math.sin(angle) * reach;
+      if (opts.squash) {
+        const along = (ox * opts.squash.x + oz * opts.squash.z) * (1 - opts.squash.by);
+        ox -= along * opts.squash.x;
+        oz -= along * opts.squash.z;
+      }
+      const land = new THREE.Vector3(centre.x + ox, surfaceY, centre.z + oz);
       // A little roll-out beyond where it first touches.
       const away = new THREE.Vector3(land.x - from.x, 0, land.z - from.z).normalize();
       const touch = land.clone().addScaledVector(away, -0.18 - random() * 0.12);

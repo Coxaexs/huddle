@@ -117,6 +117,8 @@ export async function POST(request: Request) {
   const contentType = sniffed.contentType;
   await bucket.put(key, bytes, {
     httpMetadata: { contentType },
+    // Read back by the media admin panel to show who posted a file.
+    customMetadata: { uploader: user.id },
   });
 
   const url = `/hangout/api/uploads/${encodeURIComponent(key)}`;

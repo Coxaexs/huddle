@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * Text-to-speech, entirely in the browser: Turkish with EMA Lightning,
- * English with Paradee-8M (or Piper's hfc_male for the male voice). The models run in a worker
- * (public/assets/tts/tts-worker.js, built from ./worker) and download once
- * per browser; nothing is sent anywhere to be spoken.
+ * Text-to-speech. Turkish goes through the server to PatientDesk's Alania-2
+ * when SPEECH_API_KEY is set (api/tts/speak), falling back to EMA Lightning in
+ * the browser. English is Paradee-8M (or Piper's hfc_male for the male voice).
+ * The local models run in a worker (public/assets/tts/tts-worker.js, built
+ * from ./worker) and download once per browser.
  */
 import { basePath } from "../client";
+import { DEFAULT_ALANIA_MALE_VOICE, DEFAULT_ALANIA_VOICE, isAlaniaVoice, type AlaniaVoiceId } from "@/lib/speech";
 /** /tts: the sender picks (a "tr"/"en" prefix, or the dialog). /say also guesses first. */
 export type TtsLanguage = "tr" | "en";
 
@@ -71,7 +73,7 @@ export function speakableText(text: string): string {
 /** "robot": ring-modulated, a machine voice that suits the Matrix theme. */
 export type TtsEffect = "none" | "robot";
 
-/** "male": English in a male voice (Piper hfc_male). Turkish has one voice. */
+/** "male": English in a male voice (Piper hfc_male). */
 export type TtsSpeaker = "default" | "male";
 
 export interface TtsVoice {
@@ -79,9 +81,17 @@ export interface TtsVoice {
   pitch: number;
   effect?: TtsEffect;
   speaker?: TtsSpeaker;
+  /** The Alania-2 voice for Turkish (when the server has a speech key). */
+  turkish?: AlaniaVoiceId;
 }
 
-export const DEFAULT_TTS_VOICE: TtsVoice = { tempo: 1, pitch: 1, effect: "none", speaker: "default" };
+export const DEFAULT_TTS_VOICE: TtsVoice = {
+  tempo: 1,
+  pitch: 1,
+  effect: "none",
+  speaker: "default",
+  turkish: DEFAULT_ALANIA_VOICE,
+};
 export const TTS_TEMPO_RANGE = [0.6, 1.3] as const;
 export const TTS_PITCH_RANGE = [0.75, 1.15] as const;
 
@@ -95,6 +105,12 @@ export function clampTtsVoice(voice: unknown): TtsVoice {
     pitch: clamp(v.pitch, TTS_PITCH_RANGE),
     effect: v.effect === "robot" ? "robot" : "none",
     speaker: v.speaker === "male" ? "male" : "default",
+    // Voices saved before Alania had a choice: the male setting carries over.
+    turkish: isAlaniaVoice(v.turkish)
+      ? v.turkish
+      : v.speaker === "male"
+        ? DEFAULT_ALANIA_MALE_VOICE
+        : DEFAULT_ALANIA_VOICE,
   };
 }
 
@@ -142,13 +158,67 @@ export function setTtsVoice(voice: TtsVoice) {
   }
 }
 
-export function synthesize(text: string, lang: TtsLanguage, voice: TtsVoice = DEFAULT_TTS_VOICE): Promise<TtsAudio> {
-  const { tempo, pitch, effect, speaker } = clampTtsVoice(voice);
+// ---------- Turkish through the server (PatientDesk Alania-2) ----------
+
+/** Off for this page once the server says it has no key, so we stop asking. */
+let remoteTurkish = true;
+
+/** 16-bit PCM samples out of a WAV file, as floats. */
+function decodeWav(bytes: ArrayBuffer): TtsAudio {
+  const view = new DataView(bytes);
+  let sampleRate = 24000;
+  let channels = 1;
+  let offset = 12;
+  while (offset + 8 <= view.byteLength) {
+    const id = String.fromCharCode(...new Uint8Array(bytes, offset, 4));
+    const size = view.getUint32(offset + 4, true);
+    if (id === "fmt ") {
+      channels = view.getUint16(offset + 10, true);
+      sampleRate = view.getUint32(offset + 12, true);
+    } else if (id === "data") {
+      // Streamed WAVs may leave the data size as 0 or 0xffffffff: read to the end.
+      const end = size && offset + 8 + size <= view.byteLength ? offset + 8 + size : view.byteLength;
+      const frames = Math.floor((end - offset - 8) / (2 * channels));
+      const audio = new Float32Array(frames);
+      for (let i = 0; i < frames; i++) audio[i] = view.getInt16(offset + 8 + i * 2 * channels, true) / 32768;
+      return { audio, sampleRate };
+    }
+    offset += 8 + size + (size & 1);
+  }
+  throw new Error("The speech service sent no audio.");
+}
+
+/** Alania-2 audio, or null to fall back to the in-browser model. */
+async function synthesizeRemote(text: string, tempo: number, voice: AlaniaVoiceId | undefined): Promise<TtsAudio | null> {
+  if (!remoteTurkish) return null;
+  try {
+    // The API has no speaking rate, only style presets.
+    const style = tempo <= 0.85 ? "slow" : tempo >= 1.15 ? "fast" : undefined;
+    const response = await fetch(`${basePath}/api/tts/speak`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, voice, style }),
+    });
+    if (response.status === 501) remoteTurkish = false;
+    if (!response.ok) return null;
+    return decodeWav(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export async function synthesize(text: string, lang: TtsLanguage, voice: TtsVoice = DEFAULT_TTS_VOICE): Promise<TtsAudio> {
+  const { tempo, pitch, effect, speaker, turkish } = clampTtsVoice(voice);
+  const remote = lang === "tr" ? await synthesizeRemote(text, tempo, turkish) : null;
   const id = nextId++;
-  return new Promise<TtsAudio>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    getWorker().postMessage({ type: "speak", id, text, lang, speed: tempo / pitch, speaker });
-  }).then(({ audio, sampleRate }) => ({
+  return (
+    remote
+      ? Promise.resolve(remote)
+      : new Promise<TtsAudio>((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          getWorker().postMessage({ type: "speak", id, text, lang, speed: tempo / pitch, speaker });
+        })
+  ).then(({ audio, sampleRate }) => ({
     audio: applyTtsEffect(audio, sampleRate, effect),
     sampleRate: Math.round(sampleRate * pitch),
   }));

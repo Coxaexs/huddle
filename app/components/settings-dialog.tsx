@@ -26,7 +26,7 @@ import { isThemeFxEnabled } from "../lib/theme-fx";
 
 
 import type { PublicServer } from "@/lib/servers";
-import { type Member, type PrideBadgeId, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
+import { type Member, type PrideBadgeId, type ProfileStyle, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
 import { activitySharingEnabled } from "../hooks/use-activity-detector";
 import { apiFetch } from "../lib/client";
 import { DEVICE_SAVED_EVENT, listDevices, primeDeviceLabels, savedDevice, type DeviceLists } from "../lib/devices";
@@ -43,7 +43,7 @@ import { AppearanceTab } from "./settings/appearance-tab";
 import { DiceTab } from "./settings/dice-tab";
 import { ActivitiesTab } from "./settings/activities-tab";
 import { CustomCssTab } from "./settings/custom-css-tab";
-import { AccessibilityTab } from "./settings/accessibility-tab";
+import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
 
 
 
@@ -243,6 +243,7 @@ export function SettingsDialog({
   const [profileEffect, setProfileEffect] = useState(user.profileEffect || "none");
   const [nameplate, setNameplate] = useState(user.nameplate || "none");
   const [profileFrame, setProfileFrame] = useState(user.profileFrame || "none");
+  const [profileStyle, setProfileStyle] = useState<ProfileStyle>(user.profileStyle || {});
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(user.socialLinks || []);
   const [newPlatform, setNewPlatform] = useState("github");
   const [newUrl, setNewUrl] = useState("");
@@ -416,6 +417,12 @@ export function SettingsDialog({
     return window.localStorage.getItem("huddle_display_names_styles") !== "false";
   });
 
+  const [nameMotion, setNameMotion] = useState<NameMotion>(() => {
+    if (typeof window === "undefined") return "hover";
+    const saved = window.localStorage.getItem("huddle_name_motion");
+    return saved === "always" || saved === "still" ? saved : "hover";
+  });
+
   // Settings search
   const [settingsSearch, setSettingsSearch] = useState<string>("");
 
@@ -434,6 +441,11 @@ export function SettingsDialog({
     window.localStorage.setItem("huddle_display_names_styles", displayNameStyles ? "true" : "false");
     document.documentElement.dataset.displayNameStyles = displayNameStyles ? "on" : "off";
   }, [displayNameStyles]);
+
+  useEffect(() => {
+    window.localStorage.setItem("huddle_name_motion", nameMotion);
+    document.documentElement.dataset.nameMotion = nameMotion;
+  }, [nameMotion]);
 
   const handleSaveClientUiCss = (css: string, enabled: boolean) => {
     setLocalClientUiCss(css);
@@ -566,6 +578,7 @@ export function SettingsDialog({
     setProfileEffect(from.profileEffect || "none");
     setNameplate(from.nameplate || "none");
     setProfileFrame(from.profileFrame || "none");
+    setProfileStyle(from.profileStyle || {});
     setSocialLinks(from.socialLinks || []);
     setSpotifySong(from.spotifyActivity?.song || "");
     setSpotifyArtist(from.spotifyActivity?.artist || "");
@@ -592,6 +605,7 @@ export function SettingsDialog({
           profileEffect,
           nameplate,
           profileFrame,
+          profileStyle,
           socialLinks,
           spotifyActivity: spotifySong.trim()
             ? {
@@ -1027,7 +1041,7 @@ export function SettingsDialog({
         { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
         { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
         { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
-        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, and hearing /tts messages" },
+        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
         { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
       ],
     },
@@ -1046,6 +1060,7 @@ export function SettingsDialog({
           },
         ]
       : []),
+
     {
       title: "COMMUNITY & SUPPORT",
       items: [
@@ -1124,6 +1139,10 @@ export function SettingsDialog({
                         type="button"
                         className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
                         onClick={() => {
+                          if ("href" in item && typeof item.href === "string") {
+                            window.open(item.href, "_blank", "noopener");
+                            return;
+                          }
                           setTab(item.id);
                           setMobilePage(true);
                           setError("");
@@ -1421,6 +1440,8 @@ export function SettingsDialog({
         setAlwaysUnderlineLinks={setAlwaysUnderlineLinks}
         displayNameStyles={displayNameStyles}
         setDisplayNameStyles={setDisplayNameStyles}
+        nameMotion={nameMotion}
+        setNameMotion={setNameMotion}
         motion={motion}
         setMotion={setMotion}
       />
@@ -1458,6 +1479,8 @@ export function SettingsDialog({
       {profileEditor && (
         <ProfileEditorShell>
           <ProfileTab
+        profileStyle={profileStyle}
+        setProfileStyle={setProfileStyle}
         displayName={displayName}
         setDisplayName={setDisplayName}
         pronouns={pronouns}

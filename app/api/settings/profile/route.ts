@@ -9,7 +9,7 @@ import { publishMemberUpdate } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
 import { normalizeProfileImage } from "@/lib/profile-media";
 import { checkProfileCss } from "@/lib/themes";
-import { normalizePrideBadges, normalizeLastfmUsername, normalizeProfileActivity, normalizeSocialLinks } from "@/lib/users";
+import { normalizePrideBadges, normalizeLastfmUsername, normalizeProfileActivity, normalizeProfileStyle, normalizeSocialLinks } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +45,7 @@ export async function PATCH(request: Request) {
     profileEffect?: string;
     nameplate?: string;
     profileFrame?: string;
+    profileStyle?: unknown;
     customCss?: string | null;
     customTheme?: string | null;
     quickReactions?: unknown;
@@ -193,6 +194,18 @@ export async function PATCH(request: Request) {
   const profileFrame = cosmetic(body.profileFrame, (user as { profile_frame?: string | null }).profile_frame);
   const nameplate = cosmetic(body.nameplate, (user as { nameplate?: string | null }).nameplate);
 
+  const profileStyle = JSON.stringify(
+    body.profileStyle !== undefined
+      ? normalizeProfileStyle(body.profileStyle)
+      : normalizeProfileStyle((() => {
+          try {
+            return JSON.parse((user as { profile_style?: string | null }).profile_style || "{}");
+          } catch {
+            return {};
+          }
+        })()),
+  );
+
   let quickReactions: string = (user as { quick_reactions?: string | null }).quick_reactions || "[]";
   if (body.quickReactions !== undefined) {
     if (Array.isArray(body.quickReactions)) {
@@ -223,7 +236,7 @@ export async function PATCH(request: Request) {
 
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, profile_effect = ?, nameplate = ?, profile_frame = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, profile_effect = ?, nameplate = ?, profile_frame = ?, profile_style = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
     )
     .bind(
       displayName,
@@ -244,6 +257,7 @@ export async function PATCH(request: Request) {
       profileEffect,
       nameplate,
       profileFrame,
+      profileStyle,
       customCss,
       customTheme,
       quickReactions,
@@ -275,6 +289,7 @@ export async function PATCH(request: Request) {
       profile_effect: profileEffect,
       nameplate,
       profile_frame: profileFrame,
+      profile_style: profileStyle,
       color,
       custom_css: customCss,
       custom_theme: customTheme,

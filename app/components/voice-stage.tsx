@@ -8,7 +8,7 @@ import { SOUNDBOARD_PRESETS, playPresetSound } from "@/lib/soundboard-presets";
 import { loadCustomBackgrounds, saveCustomBackground, deleteCustomBackground, type CustomBackgroundItem } from "../lib/virtual-background";
 import type { PlayerState, VoiceParticipant } from "@/lib/protocol";
 import type { DiceRollEvent } from "@/lib/protocol";
-import type { RoomActivity } from "@/lib/activities";
+import { DEEPPIXEL_FROM_GAME, type RoomActivity } from "@/lib/activities";
 import { videoAllowedFrom } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { TableAudioMenu } from "./table-audio-menu";
@@ -187,6 +187,39 @@ export function VoiceStage({
   // A running activity takes over the stage like a Discord Activity; the
   // people grid folds away behind a pill above the call controls.
   const activityTakeover = activitiesOpen && Boolean(activity);
+  // In the living room's board hall the game docks beside the 3D board instead of taking the stage over.
+  const boardHall = Boolean(livingRoom?.open && livingRoom.venue === "boardhall" && joined && !stageMode && activity?.kind === "deeppixel");
+  const boardDock = boardHall && activitiesOpen;
+  // In the board hall the game is played from the hall's own menu: once the lobby turns into a game, fold the panel away.
+  const boardHallRef = useRef(boardHall);
+  boardHallRef.current = boardHall;
+  useEffect(() => {
+    let lastState: string | null = null;
+    const onGame = (event: Event) => {
+      const data = (event as CustomEvent<{ type?: string; state?: string | null }>).detail;
+      if (data?.type !== "state") return;
+      if (boardHallRef.current && lastState === "lobby" && data.state === "playing") setActivitiesOpen(false);
+      lastState = data.state ?? null;
+    };
+    window.addEventListener(DEEPPIXEL_FROM_GAME, onGame);
+    return () => window.removeEventListener(DEEPPIXEL_FROM_GAME, onGame);
+  }, []);
+  const playBoardGame = useCallback(async () => {
+    if (activity) { setActivitiesOpen(true); return; }
+    const channelId = voice.channelId;
+    if (!channelId) return;
+    try {
+      const data = await apiFetch<{ activity: RoomActivity | null }>("/api/activities", {
+        method: "POST",
+        body: JSON.stringify({ channelId, action: "open", kind: "deeppixel", state: {} }),
+      });
+      onActivity(data.activity);
+      setActivitiesOpen(true);
+    } catch {
+      // The activities panel says why; open it so it can.
+      setActivitiesOpen(true);
+    }
+  }, [activity, voice.channelId, onActivity]);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const [cameraBgMenuOpen, setCameraBgMenuOpen] = useState(false);
@@ -577,7 +610,7 @@ export function VoiceStage({
           : ""
       }${
         activityTakeover && peopleOpen ? " show-people" : ""
-      }`}
+      }${boardHall ? " board-hall" : ""}${boardDock ? " board-dock" : ""}`}
     >
       {tableMenuOpen && <TableAudioMenu participants={participants} listenerId={connectionId} controls={voice} onClose={() => setTableMenuOpen(false)} />}
       {recording}
@@ -637,6 +670,7 @@ export function VoiceStage({
         speakingIds={speakingIds}
         connectionId={connectionId}
         seatTime={seatTime}
+        serverNow={serverNow}
         focused={focused}
         theater={theater}
         windowFull={windowFull}
@@ -687,6 +721,8 @@ export function VoiceStage({
           onDiceRollDone={onDiceRollDone}
           onCommand={onRollCommand}
           canProject={canProject}
+          boardGameId={activity?.kind === "deeppixel" ? String(activity.state.gameId || "") || null : null}
+          onPlayBoardGame={() => void playBoardGame()}
         />
       )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}

@@ -1,4 +1,4 @@
-import { resolveRoll } from "@/app/api/integrations/dnd/roll/route";
+import { resolveRoll } from "@/app/api/(features)/integrations/dnd/roll/route";
 import { publicMessage } from "@/app/api/messages/route";
 import {
   checkGuestName,

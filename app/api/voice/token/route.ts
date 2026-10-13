@@ -110,14 +110,15 @@ export async function GET(request: Request) {
 
   // Ensure graceful fallback if one region's URL is missing
   let livekitUrl = "";
+  let effectiveRegion: "nl" | "de" = targetRegion;
   if (targetRegion === "de" && livekitUrlDe) {
     livekitUrl = livekitUrlDe;
   } else if (targetRegion === "nl" && livekitUrlNl) {
     livekitUrl = livekitUrlNl;
   } else {
     livekitUrl = livekitUrlNl || livekitUrlDe || "";
+    effectiveRegion = livekitUrlNl ? "nl" : "de";
   }
-  const effectiveRegion: "nl" | "de" = livekitUrl === livekitUrlDe ? "de" : "nl";
 
   // A timed-out member may listen but not speak or share.
   const timedOut = db && user ? await timeoutInChannel(db, channelId, user.id) : null;

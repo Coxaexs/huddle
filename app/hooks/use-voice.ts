@@ -940,39 +940,48 @@ export function useVoice({
       let totalLost = 0;
       let totalRecv = 0;
 
+      // In SFU mode the call runs over LiveKit's own connections to the
+      // server; the mesh peers (if any) are only the stragglers.
+      const statSets: RTCStatsReport[] = [];
+      if (sfuMode && sfuRef.current) {
+        statSets.push(...(await sfuRef.current.stats().catch(() => [])));
+      }
       for (const peer of peersRef.current.values()) {
         if (peer.connectionState !== "connected") continue;
         try {
-          const stats = await peer.getStats();
-          for (const report of stats.values()) {
-            if (report.type === "candidate-pair" && (report.state === "succeeded" || report.nominated)) {
-              const rtt =
-                typeof report.currentRoundTripTime === "number"
-                  ? report.currentRoundTripTime * 1000
-                  : typeof report.roundTripTime === "number"
-                    ? report.roundTripTime * 1000
-                    : null;
-              if (rtt !== null && rtt > 0) {
-                totalRtt += rtt;
-                rttCount++;
-              }
-            }
-            if (report.type === "inbound-rtp") {
-              if (typeof report.jitter === "number") {
-                maxJitter = Math.max(maxJitter, report.jitter * 1000);
-              }
-              if (typeof report.packetsLost === "number" && typeof report.packetsReceived === "number") {
-                totalLost += report.packetsLost;
-                totalRecv += report.packetsReceived;
-              }
-            }
-          }
+          statSets.push(await peer.getStats());
         } catch {
           // Closed peer
         }
       }
 
-      const rttMs = rttCount > 0 ? Math.round(totalRtt / rttCount) : (sfuMode ? 32 : 18);
+      for (const stats of statSets) {
+        for (const report of stats.values()) {
+          if (report.type === "candidate-pair" && (report.state === "succeeded" || report.nominated)) {
+            const rtt =
+              typeof report.currentRoundTripTime === "number"
+                ? report.currentRoundTripTime * 1000
+                : typeof report.roundTripTime === "number"
+                  ? report.roundTripTime * 1000
+                  : null;
+            if (rtt !== null && rtt > 0) {
+              totalRtt += rtt;
+              rttCount++;
+            }
+          }
+          if (report.type === "inbound-rtp") {
+            if (typeof report.jitter === "number") {
+              maxJitter = Math.max(maxJitter, report.jitter * 1000);
+            }
+            if (typeof report.packetsLost === "number" && typeof report.packetsReceived === "number") {
+              totalLost += report.packetsLost;
+              totalRecv += report.packetsReceived;
+            }
+          }
+        }
+      }
+
+      const rttMs = rttCount > 0 ? Math.round(totalRtt / rttCount) : 0;
       const jitterMs = Math.round(maxJitter);
       const packetLoss = totalRecv > 0 ? Math.round((totalLost / (totalLost + totalRecv)) * 100) : 0;
       const quality = rttMs < 75 && packetLoss < 2 ? "excellent" : rttMs < 160 && packetLoss < 5 ? "good" : "poor";

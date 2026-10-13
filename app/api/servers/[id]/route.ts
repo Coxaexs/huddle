@@ -3,7 +3,7 @@ import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
-import { listServers } from "@/lib/servers";
+import { deleteServerData, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -94,31 +94,7 @@ export async function DELETE(
   }
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
-  const channels = await db
-    .prepare("SELECT id FROM channels WHERE server_id = ?")
-    .bind(id)
-    .all();
-  const channelIds = ((channels.results || []) as Array<{ id: string }>).map(
-    (row) => row.id,
-  );
-
-  const statements = [
-    db.prepare("DELETE FROM channels WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM categories WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM roles WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM member_roles WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM server_members WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM bans WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM stickers WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM audit_log WHERE server_id = ?").bind(id),
-    db.prepare("DELETE FROM servers WHERE id = ?").bind(id),
-  ];
-  for (const channelId of channelIds) {
-    statements.push(
-      db.prepare("DELETE FROM messages WHERE channel_id = ?").bind(channelId),
-    );
-  }
-  await db.batch(statements);
+  await deleteServerData(db, id);
 
   await publishStructureChange(id);
   return Response.json({ servers: await listServers(db, user.id) });

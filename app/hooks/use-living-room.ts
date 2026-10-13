@@ -47,10 +47,12 @@ export interface LoungeSettings {
   ambience: boolean;
   /** 0..1 */
   ambienceVolume: number;
+  /** Room echo / reverb send level: 0 (dry) to 1. */
+  echo: number;
 }
 
 const SETTINGS_KEY = "huddle-living-room-settings";
-const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5 };
+const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5, echo: 0.5 };
 /** What is stored: one spatial choice for the lounge and tabletop, and the cinema's own (off). */
 interface StoredSettings extends LoungeSettings { spatialCinema: boolean }
 
@@ -64,6 +66,8 @@ function readStored(): StoredSettings {
       ambience: typeof raw.ambience === "boolean" ? raw.ambience : DEFAULT_SETTINGS.ambience,
       ambienceVolume: typeof raw.ambienceVolume === "number" && Number.isFinite(raw.ambienceVolume)
         ? Math.max(0, Math.min(1, raw.ambienceVolume)) : DEFAULT_SETTINGS.ambienceVolume,
+      echo: typeof raw.echo === "number" && Number.isFinite(raw.echo)
+        ? Math.max(0, Math.min(1, raw.echo)) : DEFAULT_SETTINGS.echo,
     };
   } catch {
     return { ...DEFAULT_SETTINGS, spatialCinema: false };
@@ -353,12 +357,12 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const heard = useMemo(() => {
     if (!live || !settings.spatial || !self || !connectionId) return null;
     const map = new Map<string, HeardFrom>();
-    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose, undefined, venue));
+    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose, undefined, venue, settings.echo));
     return map;
-  }, [live, settings.spatial, self, poses, connectionId, venue]);
+  }, [live, settings.spatial, settings.echo, self, poses, connectionId, venue]);
   const tv = useMemo(
-    () => (live && settings.tvMusic && self ? hearFrom(self, tvPoseFor(venue), venue.tv.height, venue) : null),
-    [live, settings.tvMusic, self, venue],
+    () => (live && settings.tvMusic && self ? hearFrom(self, tvPoseFor(venue), venue.tv.height, venue, settings.echo) : null),
+    [live, settings.tvMusic, settings.echo, self, venue],
   );
 
   return {

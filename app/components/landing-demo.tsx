@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Coffee, Heart, Mail, Server, X } from "./site-icons";
 import type { EmbedToParent, ParentToEmbed } from "../landing/say-hi/say-hi-embed";
-import type { GuestbookMessage } from "../api/guestbook/route";
+import type { GuestbookMessage } from "@/app/api/(features)/guestbook/route";
 import type { DiceRollEvent } from "../../lib/protocol";
 import { checkGuestName, MAX_GUEST_NAME } from "../../lib/guestbook";
 import { BUILTIN_THEMES } from "../../lib/themes";

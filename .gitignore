@@ -15,10 +15,14 @@ state.*/
 
 # Secrets
 .dev.vars
+.dev.vars*
+*.dev.vars*
+
 # Holds the LiveKit API secret; livekit.yaml.example is the template.
 livekit.yaml
 .env
 .env.*
+*.env.*
 
 # macOS AppleDouble junk that breaks wrangler's asset scan
 ._*

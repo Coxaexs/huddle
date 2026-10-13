@@ -44,6 +44,29 @@ export function buildDiceBoxNotation(roll: DiceRollEvent): string {
 }
 
 /**
+ * dice-box-threejs looks down through a wide 20° lens from close by, so dice
+ * away from the middle are seen from the side and never look like they lie
+ * flat. Same framing through a long lens from far above: they read flat.
+ */
+export function flattenDiceCamera(box: { setDimensions: (dimensions?: unknown) => unknown; camera?: any; cameraHeight: { max: number } }) {
+  const placeCamera = box.setDimensions.bind(box);
+  box.setDimensions = (dimensions?: unknown) => {
+    const result = placeCamera(dimensions);
+    const camera = box.camera;
+    if (camera) {
+      const distance = (box.cameraHeight.max * Math.tan((10 * Math.PI) / 180)) / Math.tan((2.5 * Math.PI) / 180);
+      camera.fov = 5;
+      camera.position.z = distance;
+      camera.near = distance * 0.5;
+      camera.far = distance * 1.5;
+      camera.updateProjectionMatrix();
+      camera.lookAt(0, 0, 0);
+    }
+    return result;
+  };
+}
+
+/**
  * 3D dice roll overlay powered by `@3d-dice/dice-box-threejs` (Three.js + Cannon-es).
  * Uses predetermined `@` notation so the physical tumble is mathematically guaranteed
  * to land on the server's authoritative value across all viewers.
@@ -240,6 +263,7 @@ export function DiceOverlay({
         strength: 1.2,
       });
       boxRef.current = box;
+      flattenDiceCamera(box);
 
       let initOk = false;
       try {

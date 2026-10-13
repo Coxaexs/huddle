@@ -22,7 +22,7 @@ import { isServerMember } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { stripTextStyle } from "@/lib/text-style";
 import { blockIfTimedOut } from "@/lib/timeouts";
-import { publicMessage } from "../messages/route";
+import { publicMessage } from "@/app/api/messages/route";
 
 export const dynamic = "force-dynamic";
 

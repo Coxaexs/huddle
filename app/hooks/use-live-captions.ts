@@ -2,14 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientEvent } from "@/lib/protocol";
+import {
+  duyuAvailable,
+  getCaptionPrefs,
+  onCaptionPrefsChange,
+  startDuyuCaptions,
+  type CaptionPrefs,
+} from "../lib/stt/duyu";
 
 /**
  * Live captions for voice rooms.
  *
- * Each speaker's own browser does the listening (the Web Speech API: Chrome,
- * Edge and Safari), so the server never handles audio; the hub only relays a
- * few short lines of text to the people in the same room. Sharing is opt-in
- * per person, and stops whenever their mic is muted.
+ * Each speaker's own speech is turned into text either by Duyu (PatientDesk's
+ * Turkish speech-to-text, streamed through the worker when the server has a
+ * SPEECH_API_KEY) or by the browser's Web Speech API (Chrome, Edge, Safari);
+ * Settings → Text-to-speech picks which. The hub only relays a few short lines
+ * of text to the people in the same room. Sharing is opt-in per person, and
+ * stops whenever their mic is muted.
  */
 
 export interface CaptionLine {
@@ -62,7 +71,24 @@ export function useLiveCaptions(options: {
   onError?: (message: string) => void;
 }) {
   const { roomId, muted, send, selfConnectionId, onError } = options;
-  const [supported] = useState(() => recognizerClass() !== null);
+  const [browserSupported] = useState(() => recognizerClass() !== null);
+  const [prefs, setPrefs] = useState<CaptionPrefs>(() =>
+    typeof window === "undefined" ? { engine: "auto", language: "tr" } : getCaptionPrefs(),
+  );
+  const [duyuReady, setDuyuReady] = useState(false);
+  useEffect(() => onCaptionPrefsChange(() => setPrefs(getCaptionPrefs())), []);
+  useEffect(() => {
+    if (!roomId || prefs.engine === "browser") return;
+    let live = true;
+    void duyuAvailable().then((ok) => live && setDuyuReady(ok));
+    return () => {
+      live = false;
+    };
+  }, [roomId, prefs.engine]);
+  // Duyu when chosen (or on auto) and the server has it; otherwise the browser.
+  const engine: "duyu" | "browser" | null =
+    prefs.engine !== "browser" && duyuReady ? "duyu" : browserSupported ? "browser" : null;
+  const supported = engine !== null;
   const [sharing, setSharing] = useState(false);
   const [showing, setShowing] = useState(() => {
     try {
@@ -126,10 +152,38 @@ export function useLiveCaptions(options: {
   const listening = sharing && Boolean(roomId) && !muted && supported;
   useEffect(() => {
     if (!listening) return;
+    let lastInterim = 0;
+    const emit = (text: string, final: boolean) => {
+      const now = Date.now();
+      if (!final && now - lastInterim < INTERIM_EVERY_MS) return;
+      if (!final) lastInterim = now;
+      // Keep the tail of a long run-on sentence; that is what is being said.
+      const clipped = text.length > 220 ? `…${text.slice(-220)}` : text;
+      sendRef.current({ t: "caption", text: clipped, final });
+      upsert({
+        connectionId: selfConnectionId || "self",
+        name: "You",
+        text: clipped,
+        final,
+        at: now,
+        self: true,
+      });
+    };
+
+    if (engine === "duyu") {
+      return startDuyuCaptions({
+        language: prefs.language,
+        onText: emit,
+        onFatal: (message) => {
+          setSharing(false);
+          onErrorRef.current?.(message);
+        },
+      });
+    }
+
     const Recognition = recognizerClass();
     if (!Recognition) return;
     let stopped = false;
-    let lastInterim = 0;
     const recognizer = new Recognition();
     recognizer.lang = navigator.language || "en-US";
     recognizer.continuous = true;
@@ -138,21 +192,7 @@ export function useLiveCaptions(options: {
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
         const text = result[0].transcript.trim();
-        if (!text) continue;
-        const now = Date.now();
-        if (!result.isFinal && now - lastInterim < INTERIM_EVERY_MS) continue;
-        if (!result.isFinal) lastInterim = now;
-        // Keep the tail of a long run-on sentence; that is what is being said.
-        const clipped = text.length > 220 ? `…${text.slice(-220)}` : text;
-        sendRef.current({ t: "caption", text: clipped, final: result.isFinal });
-        upsert({
-          connectionId: selfConnectionId || "self",
-          name: "You",
-          text: clipped,
-          final: result.isFinal,
-          at: now,
-          self: true,
-        });
+        if (text) emit(text, result.isFinal);
       }
     };
     recognizer.onerror = (event) => {
@@ -193,7 +233,7 @@ export function useLiveCaptions(options: {
         /* not running */
       }
     };
-  }, [listening, selfConnectionId, upsert]);
+  }, [listening, engine, prefs.language, selfConnectionId, upsert]);
 
   const toggleShowing = useCallback(() => {
     setShowing((current) => {
@@ -223,7 +263,7 @@ export function useLiveCaptions(options: {
     });
   }, []);
 
-  return { supported, sharing, showing, listening, lines, receive, toggleShowing, toggleSharing };
+  return { supported, engine, sharing, showing, listening, lines, receive, toggleShowing, toggleSharing };
 }
 
 export type LiveCaptions = ReturnType<typeof useLiveCaptions>;
