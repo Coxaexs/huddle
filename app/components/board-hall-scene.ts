@@ -318,8 +318,20 @@ export class FloorBoard {
       cz -= spot.inZ * spot.depth * 0.08;
     }
     if (of <= 1) return new THREE.Vector3(cx, BOARD_Y, cz);
-    // A small grid across the tile.
-    const cols = of <= 4 ? 2 : 3;
+    // Up to four: staggered corners of the tile, so no pawn hides behind another from any side.
+    const STAGGER: Record<number, Array<[number, number]>> = {
+      2: [[-0.5, -0.5], [0.5, 0.5]],
+      3: [[-0.5, -0.5], [0.5, -0.3], [-0.1, 0.5]],
+      4: [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]],
+    };
+    const place = STAGGER[of]?.[slot];
+    if (place) {
+      const u = place[0] * reach;
+      const v = place[1] * spot.depth * 0.5;
+      return new THREE.Vector3(cx + along.x * u - spot.inX * v, BOARD_Y, cz + along.z * u - spot.inZ * v);
+    }
+    // More: a small grid across the tile.
+    const cols = 3;
     const row = Math.floor(slot / cols);
     const col = slot % cols;
     const rows = Math.ceil(of / cols);
@@ -717,8 +729,157 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
     ceiling.add(beam);
   }
 
-  // The screen on the north wall (shares and the music bot play here).
-  const screenMaterial = new THREE.MeshBasicMaterial({ color: "#0f0c16", toneMapped: false });
+  // A carpet runner framing the board, inside the benches.
+  const runner = canvasTexture(512, 128, (ctx) => {
+    ctx.fillStyle = look.rug[0];
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = look.rug[1];
+    ctx.fillRect(0, 10, 512, 8);
+    ctx.fillRect(0, 110, 512, 8);
+    ctx.fillStyle = look.rug[2];
+    for (let x = 32; x < 512; x += 64) {
+      ctx.beginPath(); ctx.moveTo(x, 34); ctx.lineTo(x + 26, 64); ctx.lineTo(x, 94); ctx.lineTo(x - 26, 64); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = look.rug[1];
+    for (let x = 32; x < 512; x += 64) { ctx.beginPath(); ctx.arc(x, 64, 7, 0, Math.PI * 2); ctx.fill(); }
+  });
+  const RUN_IN = FLOOR_BOARD_SIZE / 2 + 0.75;
+  const RUN_W = 0.95;
+  for (let side = 0; side < 4; side++) {
+    const length = 2 * (RUN_IN + RUN_W);
+    const map = runner.clone();
+    map.wrapS = THREE.RepeatWrapping;
+    map.repeat.set(length / (RUN_W * 4), 1);
+    map.needsUpdate = true;
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(length, RUN_W), mat("#ffffff", 0.95, { map }));
+    strip.rotation.set(-Math.PI / 2, 0, (side * Math.PI) / 2);
+    const out = RUN_IN + RUN_W / 2;
+    strip.position.set(side === 1 ? -out : side === 3 ? out : 0, 0.004 + side * 0.0005, side === 0 ? out : side === 2 ? -out : 0);
+    strip.receiveShadow = true;
+    strip.userData.floor = true;
+    root.add(strip);
+  }
+
+  // Pilasters along every wall, a sconce glow on each, and framed posters of the board between them.
+  const pilaster = mat(look.trim, 0.55);
+  const posterSpaces = [
+    { title: "GO", sub: "Collect $200 as you pass", band: "#2f9e44", glyph: "➜" },
+    { title: "JAIL", sub: "Just visiting", band: "#f08c00", glyph: "⛓" },
+    { title: "VACATION", sub: "Free parking", band: "#1971c2", glyph: "☀" },
+    { title: "GO TO PRISON", sub: "Do not pass GO", band: "#c92a2a", glyph: "👮" },
+    { title: "SURPRISE", sub: "Take a card", band: "#f76707", glyph: "?" },
+    { title: "TREASURE", sub: "Take a card", band: "#1c7ed6", glyph: "💰" },
+    { title: "AIRPORTS", sub: "Four to collect", band: "#495057", glyph: "✈" },
+    { title: "UTILITIES", sub: "Power and water", band: "#fab005", glyph: "⚡" },
+  ];
+  const posterTexture = (p: (typeof posterSpaces)[number]) => canvasTexture(320, 440, (ctx) => {
+    ctx.fillStyle = "#f4ecd8";
+    ctx.fillRect(0, 0, 320, 440);
+    ctx.fillStyle = p.band;
+    ctx.fillRect(0, 0, 320, 92);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "900 40px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(p.title, 160, 48, 296);
+    ctx.font = "150px system-ui, sans-serif";
+    ctx.fillStyle = p.band;
+    ctx.fillText(p.glyph, 160, 230);
+    ctx.fillStyle = "#3a3a3a";
+    ctx.font = "italic 26px Georgia, serif";
+    ctx.fillText(p.sub, 160, 370, 296);
+    ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 314, 434);
+  });
+  let posterIndex = 0;
+  for (const [x, z, ry] of [[0, -half, 0], [0, half, Math.PI], [-half, 0, Math.PI / 2], [half, 0, -Math.PI / 2]] as const) {
+    const inward = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+    const along = new THREE.Vector3(Math.cos(ry), 0, -Math.sin(ry));
+    const at = (u: number, out: number, y: number) => new THREE.Vector3(x, y, z).addScaledVector(along, u).addScaledVector(inward, out);
+    for (const u of [-10.9, -7.3, -3.7, 3.7, 7.3, 10.9]) {
+      const column = box(0.42, H, 0.14, pilaster, false);
+      column.position.copy(at(u, 0.07, H / 2));
+      column.rotation.y = ry;
+      const capital = box(0.6, 0.22, 0.24, pilaster, false);
+      capital.position.copy(at(u, 0.12, H - 0.75));
+      capital.rotation.y = ry;
+      const foot = box(0.56, 0.32, 0.22, pilaster, false);
+      foot.position.copy(at(u, 0.11, 0.16));
+      foot.rotation.y = ry;
+      root.add(column, capital, foot);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.06, 0.16, 14, 1, true), new THREE.MeshStandardMaterial({ color: look.lamp, emissive: look.lamp, emissiveIntensity: 0.9, side: THREE.DoubleSide }));
+      cup.position.copy(at(u, 0.26, 2.55));
+      root.add(cup);
+      addGlow(look.lamp, 1.3, at(u, 0.3, 2.7), 0.3);
+    }
+    for (const u of [-9.1, -5.5, 5.5, 9.1]) {
+      const p = posterSpaces[posterIndex++ % posterSpaces.length];
+      const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 2.0), new THREE.MeshStandardMaterial({ map: posterTexture(p), roughness: 0.8 }));
+      poster.position.copy(at(u, 0.06, 2.65));
+      poster.rotation.y = ry;
+      const posterFrame = box(1.6, 2.15, 0.05, mat(look.woodDark, 0.5), false);
+      posterFrame.position.copy(at(u, 0.03, 2.65));
+      posterFrame.rotation.y = ry;
+      root.add(posterFrame, poster);
+    }
+  }
+
+  // Bunting in the players' colours, wall to wall between the chandeliers.
+  const flag = new THREE.Shape();
+  flag.moveTo(-0.17, 0); flag.lineTo(0.17, 0); flag.lineTo(0, -0.34); flag.closePath();
+  const FLAGS_PER_LINE = 44;
+  const flags = new THREE.InstancedMesh(new THREE.ShapeGeometry(flag), new THREE.MeshStandardMaterial({ roughness: 0.8, side: THREE.DoubleSide }), FLAGS_PER_LINE * 2);
+  const place = new THREE.Object3D();
+  let flagIndex = 0;
+  for (const [ax, az, bx, bz] of [[-half + 0.2, -1.8, half - 0.2, -1.8], [-half + 0.2, 1.8, half - 0.2, 1.8]] as const) {
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i <= FLAGS_PER_LINE; i++) {
+      const k = i / FLAGS_PER_LINE;
+      points.push(new THREE.Vector3(ax + (bx - ax) * k, H - 0.4 - Math.sin(Math.PI * k) * 0.9, az + (bz - az) * k));
+    }
+    ceiling.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: "#3a2a14" })));
+    const heading = Math.atan2(bx - ax, bz - az);
+    for (let i = 0; i < FLAGS_PER_LINE; i++) {
+      const p = points[i].clone().lerp(points[i + 1], 0.5);
+      place.position.copy(p);
+      place.rotation.set(0, heading - Math.PI / 2, 0);
+      place.updateMatrix();
+      flags.setMatrixAt(flagIndex, place.matrix);
+      flags.setColorAt(flagIndex, new THREE.Color(FALLBACK_COLOURS[flagIndex % FALLBACK_COLOURS.length]));
+      flagIndex++;
+    }
+  }
+  flags.instanceMatrix.needsUpdate = true;
+  if (flags.instanceColor) flags.instanceColor.needsUpdate = true;
+  ceiling.add(flags);
+
+  // The screen on the north wall (shares and the music bot play here); until then, a title card.
+  const idleScreen = canvasTexture(1280, 720, (ctx) => {
+    const g = ctx.createRadialGradient(640, 330, 60, 640, 360, 760);
+    g.addColorStop(0, "#1f5a35"); g.addColorStop(1, "#0b2414");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 8;
+    ctx.strokeRect(28, 28, 1224, 664);
+    // Two dice, mid-tumble.
+    const die = (cx: number, cy: number, turn: number, pips: Array<[number, number]>) => {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(turn);
+      ctx.fillStyle = "#fbf7ee"; ctx.strokeStyle = "#0b2414"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.roundRect(-70, -70, 140, 140, 22); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#c92a2a";
+      for (const [px, py] of pips) { ctx.beginPath(); ctx.arc(px * 38, py * 38, 13, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    };
+    die(540, 230, -0.25, [[-1, -1], [0, 0], [1, 1]]);
+    die(740, 250, 0.2, [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffd166"; ctx.font = "900 120px system-ui, sans-serif";
+    ctx.fillText("DEEPPIXEL", 640, 440);
+    ctx.fillStyle = "#e9f5ec"; ctx.font = "500 40px system-ui, sans-serif";
+    ctx.fillText("Press Play at the top of the hall to start a game", 640, 540);
+    ctx.fillStyle = "#9fc2aa"; ctx.font = "400 30px system-ui, sans-serif";
+    ctx.fillText("Your pawn walks the board as you play", 640, 600);
+  });
+  const screenMaterial = new THREE.MeshBasicMaterial({ map: idleScreen, toneMapped: false });
   const SW = 5.4;
   const SH = SW * 9 / 16;
   const frame = box(SW + 0.2, SH + 0.2, 0.08, mat(look.woodDark, 0.5), false);
@@ -835,6 +996,7 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
     root,
     ceiling,
     screenMaterial,
+    idleScreen,
     board,
     background: new THREE.Color(look.background),
     fog: new THREE.Fog(look.fog, 22, 44),
