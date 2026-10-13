@@ -9,7 +9,8 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { NEUTRAL_POSE, POSE_TIMEOUT_MS, relativePose, type HeadPose, type HeadTrackingStatus } from "./head-tracking";
 
 const VISION_VERSION = "1.0.1";
-const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VISION_VERSION}/wasm`;
+/** MediaPipe's wasm runtime, pinned to the version the JS was built against (hand tracking shares it). */
+export const VISION_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VISION_VERSION}/wasm`;
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
 /** ~20 checks a second is plenty for a head; the audio graph glides between them. */
@@ -48,7 +49,7 @@ function loadLandmarker(): Promise<FaceLandmarker | null> {
   landmarker ??= (async () => {
     try {
       const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-      const files = await FilesetResolver.forVisionTasks(WASM_URL);
+      const files = await FilesetResolver.forVisionTasks(VISION_WASM_URL);
       const options = {
         runningMode: "VIDEO" as const,
         numFaces: 1,

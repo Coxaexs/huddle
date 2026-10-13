@@ -8,6 +8,7 @@ import {
   type RoomActivityKind,
   type TierRow,
 } from "@/lib/activities";
+import { synthSettings } from "@/lib/gesture-synth";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
@@ -246,6 +247,10 @@ function cleanState(
   }
   if (kind === "richup") {
     return { roomUrl: richupRoomUrl(String(input.roomUrl || "")) };
+  }
+  if (kind === "synth") {
+    // Only the key is shared; notes go through the hub, never this table.
+    return synthSettings(input);
   }
   if (kind === "initiative") {
     const round = Math.max(0, Math.min(9999, Number(input.round) || 1));

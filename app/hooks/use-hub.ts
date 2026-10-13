@@ -381,6 +381,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
           case "caption":
             handlersRef.current.onCaption?.(payload);
             break;
+          case "synth":
+            // Played by SynthJamAudio (see synth-jam.ts).
+            window.dispatchEvent(new CustomEvent("huddle-synth", { detail: payload }));
+            break;
           case "lounge":
           case "lounge-state":
           case "lounge-venue":

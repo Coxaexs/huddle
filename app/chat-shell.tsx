@@ -56,6 +56,7 @@ import { PdfViewer } from "./components/pdf-viewer";
 import { ProfileCard } from "./components/profile-card";
 import type { MusicSettings } from "./components/music-cards";
 import { RemoteVoiceAudio } from "./components/remote-voice-audio";
+import { SynthJamAudio } from "./components/synth-jam-audio";
 import { requestProfileEditor } from "@/lib/profile-editor-request";
 import { SettingsDialog } from "./components/settings-dialog";
 import { CustomDialog, type DialogOptions } from "./components/custom-dialog";
@@ -7517,6 +7518,19 @@ export function ChatShell() {
         whatsNewPeople={whatsNewPeople}
         setGlobalSearchOpen={setGlobalSearchOpen}
       />
+
+      {/* Everyone's Gesture Synth in your voice room, played on this machine. */}
+      {voice.channelId && (
+        <SynthJamAudio
+          channelId={voice.channelId}
+          send={hub.send}
+          deafened={voice.deafened}
+          preferenceFor={(id) => {
+            const pref = prefFor(id);
+            return { volume: volumeGain(pref.volume), muted: pref.muted };
+          }}
+        />
+      )}
 
       {/* Remote voice audio. Hidden, but this is what you actually hear. */}
       {voice.channelId && (
