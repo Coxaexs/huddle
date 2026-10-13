@@ -85,6 +85,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (row.suspended_at) {
+    return Response.json(
+      { error: "This account has been suspended. Ask an admin if you think that's a mistake." },
+      { status: 403 },
+    );
+  }
+
   await touchUser(db, row.id);
   const token = await createSession(db, row.id);
   return Response.json(

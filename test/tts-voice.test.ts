@@ -28,6 +28,13 @@ describe("TTS voice effects", () => {
     expect(clampTtsVoice({ effect: "<script>" }).effect).toBe("none");
     expect(clampTtsVoice({ speaker: "male" }).speaker).toBe("male");
     expect(clampTtsVoice({ speaker: "bass" }).speaker).toBe("default");
-    expect(clampTtsVoice(null)).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default" });
+    expect(clampTtsVoice(null)).toEqual({ tempo: 1, pitch: 1, effect: "none", speaker: "default", turkish: "alania2-f1" });
+  });
+
+  it("only accepts Alania voices it knows, carrying the old male choice over", () => {
+    expect(clampTtsVoice({ turkish: "alania2-sezgin" }).turkish).toBe("alania2-sezgin");
+    expect(clampTtsVoice({ turkish: "alania2-m2" }).turkish).toBe("alania2-f1");
+    expect(clampTtsVoice({ speaker: "male" }).turkish).toBe("alania2-oncel");
+    expect(clampTtsVoice({ speaker: "male", turkish: "alania2-nil" }).turkish).toBe("alania2-nil");
   });
 });

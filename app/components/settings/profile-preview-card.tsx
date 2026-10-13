@@ -6,7 +6,10 @@ import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "../cosmetics";
 import { PrideBadges } from "../pride-badges";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { scopeProfileCss } from "@/lib/themes";
-import type { PrideBadgeId, SocialLink } from "@/lib/users";
+import type { PrideBadgeId, ProfileStyle, SocialLink } from "@/lib/users";
+import { useRef } from "react";
+import { cardLook, useCardPointer } from "../../lib/profile-style";
+import { CardBackdrop, CardChrome, StyledName } from "../profile-style-parts";
 
 export interface Cosmetics {
   avatarFrame: string;
@@ -33,6 +36,7 @@ export interface PreviewProfile {
   unrestrictedCss?: boolean;
   createdAt?: string;
   song?: { title: string; artist: string; cover?: string } | null;
+  profileStyle?: ProfileStyle;
 }
 
 /** The CSS background for a banner value: an image URL, a gradient, or the profile color. */
@@ -53,6 +57,7 @@ export function ProfilePreviewCard({
   size = "md",
   customCss,
   bioLines,
+  interactive = false,
 }: {
   profile: PreviewProfile;
   cosmetics: Cosmetics;
@@ -60,19 +65,25 @@ export function ProfilePreviewCard({
   customCss?: string;
   /** Clamp the bio to this many lines (the pickers show a short card). */
   bioLines?: number;
+  /** Tilts toward the pointer and plays the entrance, like the real card. */
+  interactive?: boolean;
 }) {
   const lg = size === "lg";
   const since = profile.createdAt
     ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
   const frame = cosmetics.profileFrame !== "none" ? ` profile-frame-${cosmetics.profileFrame}` : "";
+  const look = cardLook(profile.profileStyle, profile.color);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useCardPointer(hostRef, profile.profileStyle?.motion || (look.themed ? "tilt" : "still"), interactive);
   return (
-    <div className={`pframe-host pv-host-${size}`}>
+    <div ref={hostRef} className={`pframe-host pv-host-${size}${interactive || look.themed ? ` ${look.host}` : ""}`} style={look.style}>
     <div
-      className={`pv-card pv-${size} profile-card user-profile-scoped-live_preview${frame}`}
+      className={`pv-card pv-${size} profile-card user-profile-scoped-live_preview${frame}${look.card ? ` ${look.card}` : ""}`}
       style={{ "--pv-accent": profile.color || "#5865f2" } as React.CSSProperties}
       data-has-custom-css={Boolean(customCss?.trim())}
     >
+      <CardBackdrop themed={look.themed} />
       {customCss?.trim() && <style dangerouslySetInnerHTML={{ __html: scopeProfileCss(customCss, "live_preview", profile.unrestrictedCss) }} />}
       <div className="pv-banner profile-banner" style={{ background: profile.bannerBackground }} />
       <div className="pv-head">
@@ -88,7 +99,7 @@ export function ProfilePreviewCard({
         )}
       </div>
       <div className="pv-body">
-        <h2 className="pv-name profile-name">{profile.displayName || profile.username}</h2>
+        <h2 className="pv-name profile-name"><StyledName name={profile.displayName || profile.username} style={profile.profileStyle} live /></h2>
         <div className="pv-sub">
           <span className="profile-username">{profile.username}</span>
           {profile.pronouns && (
@@ -168,6 +179,7 @@ export function ProfilePreviewCard({
       <ProfileEffect id={cosmetics.profileEffect} />
     </div>
     <ProfileFrameArt id={cosmetics.profileFrame} />
+    <CardChrome themed={look.themed} />
     </div>
   );
 }

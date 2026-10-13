@@ -40,6 +40,8 @@ import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
 import { stripTextStyle } from "@/lib/text-style";
+import { cardLook, useCardPointer } from "../lib/profile-style";
+import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";
 
 const CARD_WIDTH = 300;
 const CARD_GAP = 14;
@@ -165,6 +167,9 @@ export function UserProfileCard({
   onToggleRole,
 }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const look = cardLook(member.profileStyle, member.color);
+  useCardPointer(hostRef, member.profileStyle?.motion || (look.themed ? "tilt" : "still"));
   const [currentFriendStatus, setCurrentFriendStatus] =
     useState<FriendRelationshipStatus>(friendStatus);
   const [friendLoading, setFriendLoading] = useState(false);
@@ -322,7 +327,8 @@ export function UserProfileCard({
       position: "fixed",
       top: "50%",
       left: "50%",
-      transform: "translate(-50%, -50%)",
+      // `translate`, not `transform`: the card's tilt and entrance use transform.
+      translate: "-50% -50%",
       zIndex: 9999,
     };
   }
@@ -338,10 +344,10 @@ export function UserProfileCard({
   const hasLongBio = (member.bio || "").length > 130;
 
   return (
-    <div className="pframe-host profile-popover-host" style={stylePosition}>
+    <div ref={hostRef} className={`pframe-host profile-popover-host ${look.host}`} style={{ ...stylePosition, ...look.style }}>
     <div
       ref={cardRef}
-      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}`}
+      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
       data-user-profile={member.id}
       data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
       style={{
@@ -358,6 +364,7 @@ export function UserProfileCard({
           }}
         />
       )}
+      <CardBackdrop themed={look.themed} />
       <ProfileEffect id={member.profileEffect} />
       <div
         className="profile-card-banner profile-banner"
@@ -414,7 +421,7 @@ export function UserProfileCard({
       <div className="profile-card-body">
         <div className="profile-card-header">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="profile-display-name"><StyledText text={member.displayName} /></h2>
+            <h2 className="profile-display-name"><StyledName name={member.displayName} style={member.profileStyle} live /></h2>
             {server && <MemberTag tag={getMemberTagInfo(member, server)} />}
           </div>
           <div className="profile-identity-sub">
@@ -893,6 +900,7 @@ export function UserProfileCard({
       </div>
     </div>
     <ProfileFrameArt id={member.profileFrame} />
+    <CardChrome themed={look.themed} />
     </div>
   );
 }

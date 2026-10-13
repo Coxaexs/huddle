@@ -1,0 +1,648 @@
+/* Instance admin panel (/admin). Builds on .recordings-portal and .portal-*
+   in globals.css. */
+
+html:has(.admin-panel),
+body:has(.admin-panel),
+html.portal-page-active,
+body.portal-page-active {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  overscroll-behavior: auto !important;
+}
+
+.admin-panel {
+  /* The portal paints only its centred column; this carries its background
+     to the window edges and past the first screen on long pages. */
+  box-shadow: 0 0 0 100vmax var(--paper);
+  clip-path: inset(0 -100vmax);
+  max-width: 1200px;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.admin-tab.active {
+  background: var(--lavender);
+  border-color: var(--lavender);
+  color: var(--on-accent, #fff);
+}
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+}
+
+.admin-stat span,
+.admin-stat small,
+.admin-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-stat strong {
+  font-size: 26px;
+  letter-spacing: -.02em;
+}
+
+.admin-section {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.admin-section h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.admin-section h2:not(:first-child) {
+  margin-top: 18px;
+}
+
+.admin-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.admin-split > .admin-section {
+  margin-bottom: 14px;
+}
+
+.admin-bars {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  align-items: end;
+  gap: 6px;
+  height: 140px;
+}
+
+.admin-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+}
+
+.admin-bar span {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--lavender);
+}
+
+.admin-bar small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.admin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-chips li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mint) 16%, var(--paper));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-list,
+.admin-rows,
+.admin-audit,
+.admin-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.admin-row {
+  display: grid;
+  grid-template-columns: 12px minmax(130px, 210px) 1fr;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.admin-row-label {
+  font-weight: 700;
+}
+
+.admin-row-value {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.admin-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--coral);
+}
+
+.admin-dot.ok {
+  background: var(--mint);
+}
+
+.admin-dot.warn {
+  background: var(--sun, #e8b44c);
+}
+
+.admin-serving {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-width: 2px;
+}
+
+.admin-serving.ok {
+  border-color: color-mix(in srgb, var(--mint) 60%, var(--line));
+}
+
+.admin-serving.warn {
+  border-color: var(--coral);
+}
+
+.admin-serving > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-serving span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-toolbar select {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.admin-search {
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.admin-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.admin-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.admin-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lavender) 18%, var(--paper));
+  color: var(--lavender);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-badge.warn {
+  background: color-mix(in srgb, var(--coral) 16%, var(--paper));
+  color: var(--coral);
+}
+
+.portal-btn.admin-small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.admin-audit li {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.admin-audit time {
+  color: var(--muted);
+}
+
+.admin-audit code,
+.admin-features code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ink) 7%, var(--paper));
+  font-size: 11px;
+}
+
+.admin-features li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.admin-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 22%, var(--paper));
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.admin-switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .15s ease;
+}
+
+.admin-switch.on {
+  background: var(--mint);
+}
+
+.admin-switch.on span {
+  transform: translateX(18px);
+}
+
+.admin-switch:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.admin-switch:focus-visible,
+.admin-tab:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .recordings-portal.admin-panel {
+    padding: 18px 16px 48px;
+  }
+
+  .admin-panel .portal-head {
+    flex-wrap: wrap;
+  }
+
+  .admin-row {
+    grid-template-columns: 12px 1fr;
+  }
+
+  .admin-row-value {
+    grid-column: 2;
+  }
+
+  .admin-audit li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .admin-serving {
+    flex-wrap: wrap;
+  }
+}
+
+/* Confirmation dialog (shares markup with the media panel's). */
+.admin-panel .media-admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, .55);
+}
+
+.admin-panel .media-admin-dialog {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 22px;
+}
+
+.admin-panel .media-admin-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+}
+
+.admin-panel .media-admin-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-panel .portal-btn.danger-fill {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+.admin-confirm-body p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.admin-type-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.admin-type-confirm strong {
+  font-family: ui-monospace, monospace;
+}
+
+.admin-type-confirm input,
+.admin-input,
+.admin-action,
+.admin-panel select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.admin-number {
+  width: 76px;
+}
+
+.admin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  width: 100%;
+}
+
+.admin-error {
+  margin: 8px 0;
+  color: var(--coral);
+  font-size: 13px;
+}
+
+.admin-grow {
+  flex: 1;
+  margin: 0;
+}
+
+.admin-dim td {
+  opacity: .55;
+}
+
+.admin-wrap {
+  max-width: 260px;
+  white-space: normal !important;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-created {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mint) 14%, var(--paper));
+}
+
+.admin-created code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+/* Message search results and the invisible server view */
+.admin-messages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-messages li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-messages li.deleted {
+  opacity: .5;
+}
+
+.admin-messages p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.admin-message-head .portal-btn {
+  margin-left: auto;
+}
+
+.admin-peek-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-peek {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  min-height: 420px;
+}
+
+.admin-peek-channels {
+  margin: 0;
+  padding: 0 12px 0 0;
+  border-right: 1px solid var(--line);
+  list-style: none;
+}
+
+.admin-peek-channels button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-peek-channels button.active {
+  background: color-mix(in srgb, var(--lavender) 18%, var(--paper));
+  font-weight: 700;
+}
+
+.admin-peek-channels button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.admin-peek-messages {
+  min-width: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .admin-peek {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-peek-channels {
+    padding: 0 0 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

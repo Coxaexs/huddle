@@ -247,6 +247,17 @@ export class SfuVoice {
     return this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.sender;
   }
 
+  /** WebRTC stats for our connections to the server, for the ping readout. */
+  async stats(): Promise<RTCStatsReport[]> {
+    const manager = this.room.engine.pcManager;
+    if (!manager) return [];
+    const reports = await Promise.all(
+      [manager.publisher, manager.subscriber].map((transport) =>
+        transport?.getStats()?.catch(() => undefined)),
+    );
+    return reports.filter((report): report is RTCStatsReport => !!report);
+  }
+
   /**
    * Stops (or resumes) the server forwarding someone's camera or screen to
    * us. The subscription stays, so the tile and its "show" button stay too.

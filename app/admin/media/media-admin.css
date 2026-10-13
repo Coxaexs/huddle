@@ -1,0 +1,327 @@
+/* Media admin panel (/admin/media). Builds on the .recordings-portal and
+   .portal-* styles in globals.css. */
+
+html:has(.media-admin),
+body:has(.media-admin),
+html.portal-page-active,
+body.portal-page-active {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  overscroll-behavior: auto !important;
+}
+
+.media-admin {
+  /* The portal paints only its centred column; this carries its background
+     to the window edges and past the first screen on long pages. */
+  box-shadow: 0 0 0 100vmax var(--paper);
+  clip-path: inset(0 -100vmax);
+  max-width: 1280px;
+}
+
+.media-admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.media-admin-search {
+  flex: 1 1 280px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.media-admin-search:focus-within {
+  border-color: var(--lavender);
+}
+
+.media-admin-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.media-admin-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.media-admin-sort select {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.media-admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.media-admin-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.media-admin-chip.active {
+  background: var(--lavender);
+  border-color: var(--lavender);
+  color: var(--on-accent, #fff);
+}
+
+.media-admin-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.media-admin-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.media-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.media-admin-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.media-admin-card.picked {
+  border-color: var(--lavender);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lavender) 45%, transparent);
+}
+
+.media-admin-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 6%, var(--paper));
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.media-admin-thumb img,
+.media-admin-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.media-admin-icon {
+  color: var(--muted);
+}
+
+.media-admin-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .35);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+
+.media-admin-card.picked .media-admin-check {
+  background: var(--lavender);
+  border-color: var(--lavender);
+}
+
+.media-admin-size {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.media-admin-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.media-admin-meta strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.media-admin-usage {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.media-admin-usage.unused {
+  color: var(--mint);
+  font-weight: 700;
+}
+
+.media-admin-card-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  margin-top: auto;
+}
+
+.media-admin-card-actions .portal-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.media-admin-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.media-admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, .5);
+}
+
+.media-admin-dialog {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 22px;
+}
+
+.media-admin-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+
+.media-admin-dialog p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.media-admin-warning {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--coral) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--coral) 10%, var(--paper));
+  font-size: 13px;
+}
+
+.media-admin-warning ul {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+}
+
+.media-admin-warning li span {
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.media-admin-warning p {
+  margin: 0;
+}
+
+.media-admin-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.portal-btn.danger-fill {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .recordings-portal.media-admin {
+    padding: 18px 16px 48px;
+  }
+
+  .media-admin .portal-head {
+    flex-wrap: wrap;
+  }
+
+  .media-admin-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .media-admin-card-actions {
+    flex-direction: column;
+  }
+}

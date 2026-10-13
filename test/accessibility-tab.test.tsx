@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { AccessibilityTab } from "@/app/components/settings/accessibility-tab";
+import { AccessibilityTab, type NameMotion } from "@/app/components/settings/accessibility-tab";
 import { expectNoA11yViolations } from "./a11y";
 
 afterEach(cleanup);
@@ -18,6 +18,7 @@ function AccessibilityHarness({ initialSize = 16 }: { initialSize?: number }) {
   const [alwaysUnderlineLinks, setAlwaysUnderlineLinks] = useState(false);
   const [displayNameStyles, setDisplayNameStyles] = useState(true);
   const [motion, setMotion] = useState(true);
+  const [nameMotion, setNameMotion] = useState<NameMotion>("hover");
 
   return (
     <AccessibilityTab
@@ -32,6 +33,8 @@ function AccessibilityHarness({ initialSize = 16 }: { initialSize?: number }) {
       setDisplayNameStyles={setDisplayNameStyles}
       motion={motion}
       setMotion={setMotion}
+      nameMotion={nameMotion}
+      setNameMotion={setNameMotion}
     />
   );
 }
@@ -55,6 +58,15 @@ describe("AccessibilityTab", () => {
     const button24 = screen.getByRole("button", { name: "24px" });
     fireEvent.click(button24);
     expect(screen.getByTestId("chat-font-size-value").textContent).toBe("24px");
+  });
+
+  it("picks when name effects animate, one choice at a time", () => {
+    render(<AccessibilityHarness />);
+    const group = screen.getByRole("radiogroup", { name: "Animate name effects" });
+    expect(group.querySelector('[aria-checked="true"]')?.textContent).toBe("On hover");
+    fireEvent.click(screen.getByRole("radio", { name: "Always" }));
+    expect(screen.getByRole("radio", { name: "Always" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "On hover" }).getAttribute("aria-checked")).toBe("false");
   });
 
   it("has no accessibility violations", async () => {

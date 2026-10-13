@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ellipsis } from "lucide-react";
-import type { GuestbookMessage } from "@/app/api/guestbook/route";
+import type { GuestbookMessage } from "@/app/api/(features)/guestbook/route";
 import { Avatar } from "@/app/components/avatar";
 import { DiceOverlay } from "@/app/components/dice-overlay";
 import { DndCard, type DndCardProps } from "@/app/components/dnd-card";

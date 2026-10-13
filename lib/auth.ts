@@ -19,6 +19,7 @@ import {
   type ProfileActivity,
   type SpotifyActivity,
   normalizeProfileActivity,
+  normalizeProfileStyle,
 } from "./users";
 
 export { AVATAR_COLORS } from "./users";
@@ -48,6 +49,7 @@ export interface User {
   profile_effect?: string | null;
   nameplate?: string | null;
   profile_frame?: string | null;
+  profile_style?: string | null;
   color: string;
   is_admin: number;
   can_invite?: number;
@@ -61,14 +63,16 @@ export interface User {
   hidden_emojis?: string | null;
   email?: string | null;
   email_prompt_skipped?: number;
+  /** When an instance admin suspended the account; null while it is in good standing. */
+  suspended_at?: string | null;
 }
 
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
-  "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "color", "is_admin", "can_invite", "status",
+  "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
-  "email_prompt_skipped", "created_at", "last_seen_at",
+  "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
@@ -132,6 +136,7 @@ function profileFields(user: User) {
     profileEffect: user.profile_effect || "none",
     nameplate: user.nameplate || "none",
     profileFrame: user.profile_frame || "none",
+    profileStyle: normalizeProfileStyle(parseJson(user.profile_style)),
     color: user.color,
     customCss: user.custom_css || null,
     // Instance admins' profile CSS is used as written (see scopeProfileCss).
@@ -173,6 +178,9 @@ export function isInstanceAdmin(user: Pick<User, "id" | "is_admin">): boolean {
     .includes(user.id);
 }
 
+/** Media moderation is part of instance admin. */
+export const canManageMedia = isInstanceAdmin;
+
 /** The signed-in user's own account, including their private preferences. */
 export function publicUser(user: User): PublicUser {
   return {
@@ -180,6 +188,8 @@ export function publicUser(user: User): PublicUser {
     isAdmin: Boolean(user.is_admin),
     canInvite: Boolean(user.is_admin || user.can_invite),
     isDev: isDevUsername(user.username),
+    canManageMedia: canManageMedia(user),
+    isInstanceAdmin: isInstanceAdmin(user),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
     lastfmUsername: user.lastfm_username || null,
@@ -387,6 +397,8 @@ export async function currentUser(request: Request): Promise<User | null> {
     await destroySession(db, token);
     return null;
   }
+  // A suspended account is treated as signed out everywhere, sockets included.
+  if (row.suspended_at) return null;
   return row;
 }
 
