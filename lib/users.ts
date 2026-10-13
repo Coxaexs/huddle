@@ -1,5 +1,10 @@
 /** Shapes and constants shared by the browser and the worker. */
 
+import type { ProfileStyle } from "./profile-style";
+
+export type { ProfileStyle } from "./profile-style";
+export { normalizeProfileStyle } from "./profile-style";
+
 export interface SpotifyActivity {
   song: string;
   artist: string;
@@ -341,61 +346,4 @@ export function memberActivityLine(member: Pick<Member, "activity" | "spotifyAct
   if (activity) return activityLabel(activity);
   const song = liveSpotify(member.spotifyActivity);
   return song ? `🎵 ${song.song} · ${song.artist}` : "";
-}
-
-/*
- * Profile style: how a member's name, card and voice tile look everywhere
- * they appear, not just on the profile card. Stored as one JSON column so new
- * knobs don't need a migration each.
- */
-export const NAME_FX = ["shimmer", "glow", "wave", "rainbow", "glitch", "neon", "fire", "frost"] as const;
-export const NAME_FONTS = ["serif", "elegant", "mono", "rounded", "display", "gothic", "pixel", "script", "tech"] as const;
-export const VOICE_RINGS = ["pulse", "rainbow", "soundwave", "flame", "sparkle", "glitch", "hearts", "orbit"] as const;
-export const ENTRANCES = ["pop", "sparkle", "shockwave", "glitch", "petals", "bats", "portal", "drop"] as const;
-export const CARD_MOTIONS = ["tilt", "float", "still"] as const;
-
-export type NameFx = (typeof NAME_FX)[number];
-export type NameFont = (typeof NAME_FONTS)[number];
-export type VoiceRing = (typeof VOICE_RINGS)[number];
-export type Entrance = (typeof ENTRANCES)[number];
-export type CardMotion = (typeof CARD_MOTIONS)[number];
-
-export interface ProfileStyle {
-  /** One solid color or a 2–3 stop gradient for the display name. */
-  nameColors?: string[];
-  nameFx?: NameFx;
-  nameFont?: NameFont;
-  /** Primary and accent color the whole card is tinted with. */
-  themeColors?: [string, string];
-  voiceRing?: VoiceRing;
-  entrance?: Entrance;
-  cardMotion?: CardMotion;
-}
-
-const HEX = /^#[0-9a-fA-F]{6}$/;
-const pick = <T extends string>(list: readonly T[], value: unknown): T | undefined =>
-  typeof value === "string" && (list as readonly string[]).includes(value) ? (value as T) : undefined;
-
-export function normalizeProfileStyle(value: unknown): ProfileStyle {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const raw = value as Record<string, unknown>;
-  const style: ProfileStyle = {};
-  if (Array.isArray(raw.nameColors)) {
-    const colors = raw.nameColors.filter((c): c is string => typeof c === "string" && HEX.test(c)).slice(0, 3);
-    if (colors.length) style.nameColors = colors;
-  }
-  if (Array.isArray(raw.themeColors) && raw.themeColors.length === 2 && raw.themeColors.every((c) => typeof c === "string" && HEX.test(c))) {
-    style.themeColors = [raw.themeColors[0] as string, raw.themeColors[1] as string];
-  }
-  const nameFx = pick(NAME_FX, raw.nameFx);
-  if (nameFx) style.nameFx = nameFx;
-  const nameFont = pick(NAME_FONTS, raw.nameFont);
-  if (nameFont) style.nameFont = nameFont;
-  const voiceRing = pick(VOICE_RINGS, raw.voiceRing);
-  if (voiceRing) style.voiceRing = voiceRing;
-  const entrance = pick(ENTRANCES, raw.entrance);
-  if (entrance) style.entrance = entrance;
-  const cardMotion = pick(CARD_MOTIONS, raw.cardMotion);
-  if (cardMotion) style.cardMotion = cardMotion;
-  return style;
 }

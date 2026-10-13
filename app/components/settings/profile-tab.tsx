@@ -5,17 +5,19 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "../avatar";
 import { checkProfileCss, PROFILE_CSS_PRESETS } from "@/lib/themes";
 import { PRIDE_BADGES, type PrideBadgeId, type ProfileStyle, type PublicUser, type SocialLink } from "@/lib/users";
-import { StyleTab } from "./style-tab";
+import { StyleStudio, type StudioKind } from "./style-studio";
+import { StyledName, VoiceAura } from "../profile-style-parts";
+import { cardLook, ringColor } from "../../lib/profile-style";
+import { NAME_EFFECTS, NAME_FONTS, CARD_FINISHES, VOICE_RINGS, JOIN_FLOURISHES } from "@/lib/profile-style";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { BANNER_PRESETS, COLOR_SWATCHES, STATUS_EMOJIS, PROFILE_CSS_SNIPPETS } from "./constants";
 import { DecorationPicker, DecorationSwatch, DecoratedAvatar, cosmeticName, type DecorationKind } from "./decoration-picker";
 import { ProfilePreviewCard, bannerBackground, type PreviewProfile } from "./profile-preview-card";
 
-type DetailsTab = "identity" | "style" | "about" | "links" | "music" | "css";
+type DetailsTab = "identity" | "about" | "links" | "music" | "css";
 
 const DETAILS_TABS: { id: DetailsTab; label: string; icon: typeof UserRound }[] = [
   { id: "identity", label: "Identity", icon: UserRound },
-  { id: "style", label: "Style", icon: Palette },
   { id: "about", label: "About", icon: Sparkles },
   { id: "links", label: "Connections", icon: Link2 },
   { id: "music", label: "Music", icon: Music },
@@ -162,6 +164,7 @@ export function ProfileTab({
   user: PublicUser;
 }) {
   const [picker, setPicker] = useState<DecorationKind | null>(null);
+  const [studio, setStudio] = useState<StudioKind | null>(null);
   const [panel, setPanel] = useState<"color" | "banner" | null>(null);
   const [details, setDetails] = useState<DetailsTab>("identity");
   const [saving, setSaving] = useState(false);
@@ -215,7 +218,7 @@ export function ProfileTab({
     !same(prideBadges, user.prideBadges || []);
 
   function requestClose() {
-    if (picker) return;
+    if (picker || studio) return;
     if (dirty && !warned) {
       setWarned(Date.now());
       window.clearTimeout(warnTimer.current);
@@ -296,7 +299,23 @@ export function ProfileTab({
         <div className="pe-rail-head">
           <h2>Main Profile</h2>
           <p>Changes show up on the right as you make them.</p>
+          <button type="button" className="pe-looks-btn" onClick={() => setStudio("looks")}>
+            <Sparkles size={15} /> Browse looks
+          </button>
         </div>
+
+        <section className="pe-group">
+          <h4>Display Name Style</h4>
+          <button type="button" className="pe-tile pe-tile-wide pe-tile-style ps-hover" onClick={() => setStudio("name")} aria-label="Change display name style">
+            <span className="pe-style-name">
+              <StyledName name={displayName || user.username} style={profileStyle} live />
+            </span>
+            <span className="pe-style-sub">
+              {[NAME_FONTS.find((f) => f.id === profileStyle.font)?.name, NAME_EFFECTS.find((f) => f.id === profileStyle.effect)?.name].filter(Boolean).join(" · ") || "Font, effect and colours"}
+            </span>
+            <span className="pe-tile-hover"><Pencil size={14} /> {profileStyle.font || profileStyle.effect ? "Change" : "Add"}</span>
+          </button>
+        </section>
 
         <section className="pe-group">
           <h4>Nameplate</h4>
@@ -446,17 +465,52 @@ export function ProfileTab({
         </section>
 
         <section className="pe-group">
+          <h4>Card Theme</h4>
+          <button type="button" className="pe-tile pe-tile-wide pe-tile-card" onClick={() => setStudio("card")} aria-label="Change card theme">
+            {(() => {
+              const look = cardLook({ ...profileStyle, motion: "still", entrance: undefined }, color);
+              return (
+                <span className={`pe-card-strip ${look.card || "pe-card-strip-empty"}`} style={look.style}>
+                  <span className="pst-backdrop">
+                    <span className="pst-lights" />
+                    <span className="pst-pattern" />
+                  </span>
+                  <span className="pe-card-strip-text">
+                    <strong>{profileStyle.theme ? CARD_FINISHES.find((f) => f.id === (profileStyle.finish || "gradient"))?.name : "No theme"}</strong>
+                    <small>{profileStyle.theme ? "Colours, finish, pattern, motion" : "Two colours across your whole card"}</small>
+                  </span>
+                </span>
+              );
+            })()}
+            <span className="pe-tile-hover"><Palette size={14} /> {profileStyle.theme ? "Change" : "Add"}</span>
+          </button>
+        </section>
+
+        <section className="pe-group">
           <h4>Profile Effect &amp; Frame</h4>
           <div className="pe-pair">
             {cosmeticTile("effect", profileEffect, "Profile effect")}
             {cosmeticTile("pframe", profileFrame, "Profile frame")}
           </div>
         </section>
+        <section className="pe-group">
+          <h4>Voice</h4>
+          <button type="button" className="pe-tile pe-tile-wide pe-tile-voice" onClick={() => setStudio("voice")} aria-label="Change voice style">
+            <VoiceAura ring={profileStyle.ring || "classic"} color={ringColor(profileStyle, color)} speaking>
+              <Avatar className="pe-voice-avatar" avatar={avatar} avatarUrl={avatarUrl} color={color} size={44} />
+            </VoiceAura>
+            <span className="pe-card-strip-text">
+              <strong>{VOICE_RINGS.find((r) => r.id === profileStyle.ring)?.name || "Default ring"}</strong>
+              <small>{profileStyle.join ? `Joins with ${JOIN_FLOURISHES.find((j) => j.id === profileStyle.join)?.name}` : "Speaking ring and join flourish"}</small>
+            </span>
+            <span className="pe-tile-hover"><Pencil size={14} /> Change</span>
+          </button>
+        </section>
       </aside>
 
       <main className="pe-stage" aria-label="Live preview">
         <div className="pe-stage-inner">
-          <ProfilePreviewCard profile={profile} cosmetics={cosmetics} size="lg" customCss={profileCustomCss} />
+          <ProfilePreviewCard profile={profile} cosmetics={cosmetics} size="lg" customCss={profileCustomCss} interactive />
         </div>
       </main>
 
@@ -516,17 +570,6 @@ export function ProfileTab({
                 <input id="pe-letters" className="pe-input pe-input-short" value={avatar} maxLength={2} onChange={(event) => setAvatar(event.target.value)} />
               </Field>
             </>
-          )}
-
-          {details === "style" && (
-            <StyleTab
-              style={profileStyle}
-              setStyle={setProfileStyle}
-              displayName={displayName || user.username}
-              avatar={avatar}
-              avatarUrl={avatarUrl}
-              color={color}
-            />
           )}
 
           {details === "about" && (
@@ -722,6 +765,7 @@ export function ProfileTab({
       )}
 
       {picker && <DecorationPicker kind={picker} profile={profile} cosmetics={cosmetics} onApply={applyPicker} onClose={() => setPicker(null)} />}
+      {studio && <StyleStudio kind={studio} profile={profile} cosmetics={cosmetics} style={profileStyle} onApply={setProfileStyle} onClose={() => setStudio(null)} />}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { type Member, type PublicUser } from "@/lib/users";
 import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
-import { nameStyleProps } from "../../../lib/profile-style";
+import { StyledName } from "../../profile-style-parts";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
@@ -506,12 +506,8 @@ function MessageRowImpl({
                         {!continuation && (
                           <div className="message-meta">
                             <strong
-                              {...nameStyleProps(
-                                author?.profileStyle,
-                                stripTextStyle(author?.displayName || message.author),
-                                roleColorFor(author),
-                                author ? "clickable-name" : "",
-                              )}
+                              className={author ? "clickable-name" : ""}
+                              style={{ color: roleColorFor(author) || undefined }}
                               onContextMenu={(event) => {
                                 if (author) openUserMenu(event, author);
                               }}
@@ -519,7 +515,7 @@ function MessageRowImpl({
                                 if (author) openProfile(author, event);
                               }}
                             >
-                              <StyledText text={author?.displayName || message.author} />
+                              <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
                             </strong>
                             {!inDmHome && activeServer && author && (
                               <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
