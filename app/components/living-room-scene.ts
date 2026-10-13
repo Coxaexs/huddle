@@ -290,6 +290,33 @@ export function glowTexture() {
   return texture;
 }
 
+/**
+ * A flame's shape: a teardrop, brightest at the root. Grey on black for
+ * additive sprites (like the glow texture); layered, so the edge is soft.
+ */
+export function flameTexture() {
+  const texture = canvasTexture(128, 256, (ctx) => {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, 128, 256);
+    for (let i = 0; i < 16; i++) {
+      const s = 1 - i / 24;
+      ctx.save();
+      ctx.translate(64, 240);
+      ctx.scale(s, s * (0.9 + i * 0.006));
+      ctx.fillStyle = "rgba(255,255,255,0.17)";
+      ctx.beginPath();
+      ctx.moveTo(0, -232);
+      ctx.bezierCurveTo(22, -160, 58, -110, 52, -54);
+      ctx.bezierCurveTo(46, 0, -46, 0, -52, -54);
+      ctx.bezierCurveTo(-58, -110, -22, -160, 0, -232);
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
 /** Warm by evening, blue at night, bright by day: the cosy window follows the viewer's own clock. */
 export function skyColour(date = new Date()): THREE.Color {
   const h = date.getHours() + date.getMinutes() / 60;
@@ -661,13 +688,40 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       fireGroup.add(log);
     }
   }
-  const flameMaterial = (colour: string, opacity: number) => new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: theme === "cyberpunk" });
-  for (let i = 0; i < 9; i++) {
-    const outer = i % 3 !== 0;
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(outer ? 0.1 : 0.06, outer ? 0.45 : 0.3, 10, 1, true), flameMaterial(outer ? look.fire[1] : look.fire[0], outer ? 0.55 : 0.9));
-    flame.position.set(-0.36 + (i % 7) * 0.12, outer ? 0.36 : 0.3, (i % 2) * 0.06 - 0.03);
-    flickers.push({ mesh: flame, phase: i * 1.7, base: 1 });
-    fireGroup.add(flame);
+  if (theme === "cyberpunk") {
+    // The holo-fireplace: wireframe cones.
+    const flameMaterial = (colour: string, opacity: number) => new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: true });
+    for (let i = 0; i < 9; i++) {
+      const outer = i % 3 !== 0;
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(outer ? 0.1 : 0.06, outer ? 0.45 : 0.3, 10, 1, true), flameMaterial(outer ? look.fire[1] : look.fire[0], outer ? 0.55 : 0.9));
+      flame.position.set(-0.36 + (i % 7) * 0.12, outer ? 0.36 : 0.3, (i % 2) * 0.06 - 0.03);
+      flickers.push({ mesh: flame, phase: i * 1.7, base: 1 });
+      fireGroup.add(flame);
+    }
+  } else {
+    // Tongues of flame along the logs: a solid outer flame shaped by the texture, a brighter core added over it.
+    const flame = flameTexture();
+    const tongues: Array<{ sprite: THREE.Sprite; w: number; h: number; phase: number; base: number }> = [];
+    for (const [i, x] of [-0.26, -0.09, 0.08, 0.25].entries()) {
+      const tall = i === 1 || i === 2 ? 0.66 : 0.5;
+      for (const core of [false, true]) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial(core
+          ? { map: flame, color: look.fire[0], transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }
+          : { alphaMap: flame, color: look.fire[1], transparent: true, opacity: 0.8, depthWrite: false }));
+        sprite.center.set(0.5, 0.04);
+        // Rooted on the back log, just in front of it so the front log does not hide them.
+        sprite.position.set(x, 0.16, 0.08);
+        sprite.renderOrder = 2;
+        tongues.push({ sprite, w: core ? 0.16 : 0.26, h: core ? tall * 0.6 : tall, phase: i * 1.9 + (core ? 0.7 : 0), base: core ? 0.85 : 0.8 });
+        fireGroup.add(sprite);
+      }
+    }
+    animated.push((t) => {
+      for (const tongue of tongues) {
+        tongue.sprite.scale.set(tongue.w * (0.92 + Math.sin(t * 6.3 + tongue.phase) * 0.08), tongue.h * (0.84 + Math.sin(t * 9 + tongue.phase) * 0.12 + Math.sin(t * 17 + tongue.phase * 2) * 0.06), 1);
+        tongue.sprite.material.opacity = tongue.base * (0.88 + Math.sin(t * 13 + tongue.phase) * 0.12);
+      }
+    });
   }
   addGlow(look.fire[1], 2.2, new THREE.Vector3(0, 0.45, 0.1), 0.6, fireGroup);
   addGlow(look.fire[0], 0.9, new THREE.Vector3(0, 0.3, 0.12), 0.7, fireGroup);
@@ -695,7 +749,26 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   // TV / screen over the mantel. In Matrix it is a big CRT-green monitor wall.
   const tvFrame = box(2.0, 1.16, 0.07, mat("#0b0b0e", 0.4, { metalness: 0.4 }));
   tvFrame.position.set(0, 2.15, hearthZ + 0.44);
-  const screenMaterial = new THREE.MeshBasicMaterial({ color: "#0f0c16", toneMapped: false });
+  // Until a share or the music is on it: a dim picture of the room's own sky, so it is not a black hole over the fire.
+  const idleScreen = canvasTexture(768, 432, (ctx) => {
+    const g = ctx.createLinearGradient(0, 0, 0, 432);
+    const [top, bottom, ink] = theme === "vampire" ? ["#1a0509", "#3a0b16", "#b08a3e"] : theme === "matrix" ? ["#010603", "#03140a", "#00c853"]
+      : theme === "cyberpunk" ? ["#0b0620", "#2a0f45", "#00f0ff"] : theme === "academia" ? ["#0d1210", "#2a2016", "#c9a45c"] : ["#14100c", "#3a2416", "#ffcf8a"];
+    g.addColorStop(0, top); g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 768, 432);
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = ink;
+    for (let i = 0; i < 40; i++) { const x = (i * 197) % 768; const y = (i * 89) % 300; ctx.fillRect(x, y, 2, 2); }
+    ctx.globalAlpha = 0.75;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "italic 34px Georgia, serif";
+    ctx.fillText("Share a screen or play some music", 384, 300);
+    ctx.globalAlpha = 0.4;
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillText("it shows up here", 384, 344);
+  });
+  const screenMaterial = new THREE.MeshBasicMaterial({ map: idleScreen, toneMapped: false });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.07), screenMaterial);
   screen.position.set(0, 2.15, hearthZ + 0.48);
   root.add(tvFrame, screen);
@@ -800,8 +873,11 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     root.add(cup);
     // Steam: a few soft sprites drifting up and fading.
     for (let i = 0; i < 3; i++) {
+      // The glow is grey on black for adding light; as steam it is an alpha mask, or it draws its whole square.
       const puff = addGlow("#ffffff", 0.08, new THREE.Vector3(x, y + 0.12, z), 0);
       puff.material.blending = THREE.NormalBlending;
+      puff.material.alphaMap = glow;
+      puff.material.map = null;
       animated.push((t) => {
         const l = (t * 0.35 + i / 3) % 1;
         puff.position.set(x + Math.sin(t * 2 + i) * 0.02, y + 0.12 + l * 0.3, z);
@@ -1450,6 +1526,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     root,
     ceiling,
     screenMaterial,
+    idleScreen,
     shark,
     background,
     fog: new THREE.Fog(look.fog, 12, 26),

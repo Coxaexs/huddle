@@ -13,7 +13,7 @@ import type { RoomTheme } from "../hooks/use-living-room";
 import {
   CABIN, CABIN_DOOR_HALF, CABIN_FLOOR_Y, CAMPFIRE, JETTY, LOOKOUT, MEADOW, MEADOW_HALF, MEADOW_TREES, PICNIC, POND, WATER_Y, inCabin, meadowHeight,
 } from "../lib/living-room";
-import { LOOKS, box, canvasTexture, cushion, floorTexture, glowTexture, isNight, mat, plant, seeded, tagSeat, type BuiltRoom, type Look } from "./living-room-scene";
+import { LOOKS, box, canvasTexture, cushion, floorTexture, flameTexture, glowTexture, isNight, mat, plant, seeded, tagSeat, type BuiltRoom, type Look } from "./living-room-scene";
 
 const GROUND_EXTENT = MEADOW_HALF + 20;
 
@@ -58,33 +58,6 @@ function groundColour(x: number, z: number, h: number, rand: () => number, night
   if (path < 0.9) out.lerp(new THREE.Color(night ? "#4d3f2c" : "#a7865a"), (1 - path / 0.9) * 0.85);
   const fire = Math.hypot(x - CAMPFIRE.x, z - CAMPFIRE.z);
   if (fire < 1.5) out.lerp(new THREE.Color("#3a2c22"), 1 - fire / 1.5);
-}
-
-/**
- * A flame's shape: a teardrop, brightest at the root. Grey on black for
- * additive sprites (like the glow texture); layered, so the edge is soft.
- */
-function flameTexture() {
-  const texture = canvasTexture(128, 256, (ctx) => {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, 128, 256);
-    for (let i = 0; i < 16; i++) {
-      const s = 1 - i / 24;
-      ctx.save();
-      ctx.translate(64, 240);
-      ctx.scale(s, s * (0.9 + i * 0.006));
-      ctx.fillStyle = "rgba(255,255,255,0.17)";
-      ctx.beginPath();
-      ctx.moveTo(0, -232);
-      ctx.bezierCurveTo(22, -160, 58, -110, 52, -54);
-      ctx.bezierCurveTo(46, 0, -46, 0, -52, -54);
-      ctx.bezierCurveTo(-58, -110, -22, -160, 0, -232);
-      ctx.fill();
-      ctx.restore();
-    }
-  });
-  texture.colorSpace = THREE.NoColorSpace;
-  return texture;
 }
 
 /**
