@@ -338,6 +338,29 @@ function roomImpulse(context: AudioContext): AudioBuffer {
   return buffer;
 }
 
+const VOLUME_STORE = "huddle-synth-volume";
+const MUTE_STORE = "huddle-synth-muted";
+
+function readStoredVolume(): number {
+  if (typeof window === "undefined") return 0.8;
+  try {
+    const raw = localStorage.getItem(VOLUME_STORE);
+    if (raw !== null) {
+      const val = parseFloat(raw);
+      if (Number.isFinite(val)) return Math.max(0, Math.min(1, val));
+    }
+  } catch {}
+  return 0.8;
+}
+
+function readStoredMuted(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(MUTE_STORE) === "true";
+  } catch {}
+  return false;
+}
+
 type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
 
 class JamEngine {
@@ -348,6 +371,11 @@ class JamEngine {
   private meter: AnalyserNode | null = null;
   private readonly players = new Map<string, Player>();
   private deafened = false;
+  private volume = readStoredVolume();
+  private muted = readStoredMuted();
+  private readonly seatMutes = new Set<string>();
+  private readonly seatVolumes = new Map<string, number>();
+  private readonly volumeListeners = new Set<() => void>();
 
   private ensure(): SinkContext | null {
     if (this.context) return this.context;
@@ -363,7 +391,8 @@ class JamEngine {
     reverb.buffer = roomImpulse(context);
     reverb.connect(bus);
     const master = context.createGain();
-    master.gain.value = this.deafened ? 0 : 0.9;
+    const effective = this.deafened || this.muted ? 0 : this.volume * 0.9;
+    master.gain.value = effective;
     const meter = context.createAnalyser();
     meter.fftSize = 2048;
     bus.connect(master).connect(meter).connect(context.destination);
@@ -410,11 +439,16 @@ class JamEngine {
       player = new Player(context, this.bus, this.reverb, play.sound);
       this.players.set(id, player);
     }
-    player.set(play, volume);
+    const seatMuted = this.seatMutes.has(id);
+    const seatVol = this.seatVolumes.get(id) ?? 1;
+    const effectiveVol = seatMuted ? 0 : volume * seatVol;
+    player.set(play, effectiveVol);
   }
 
   /** Lets one seat's notes go and forgets it. */
   drop(id: string) {
+    this.seatMutes.delete(id);
+    this.seatVolumes.delete(id);
     const player = this.players.get(id);
     if (!player) return;
     this.players.delete(id);
@@ -425,11 +459,82 @@ class JamEngine {
     for (const id of [...this.players.keys()]) if (id !== keep) this.drop(id);
   }
 
+  setVolume(volume: number) {
+    this.volume = Math.max(0, Math.min(1, volume));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(VOLUME_STORE, String(this.volume));
+      } catch {}
+    }
+    this.applyMasterGain();
+    this.notifyVolume();
+  }
+
+  getVolume(): number {
+    return this.volume;
+  }
+
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(MUTE_STORE, muted ? "true" : "false");
+      } catch {}
+    }
+    this.applyMasterGain();
+    this.notifyVolume();
+  }
+
+  isMuted(): boolean {
+    return this.muted;
+  }
+
   setDeafened(deafened: boolean) {
     this.deafened = deafened;
+    this.applyMasterGain();
+  }
+
+  private applyMasterGain() {
     if (this.master && this.context) {
-      this.master.gain.setTargetAtTime(deafened ? 0 : 0.9, this.context.currentTime, 0.03);
+      const target = this.deafened || this.muted ? 0 : this.volume * 0.9;
+      this.master.gain.setTargetAtTime(target, this.context.currentTime, 0.03);
     }
+  }
+
+  subscribeVolume(listener: () => void): () => void {
+    this.volumeListeners.add(listener);
+    return () => this.volumeListeners.delete(listener);
+  }
+
+  private notifyVolume() {
+    for (const listener of this.volumeListeners) listener();
+  }
+
+  setSeatMuted(seatId: string, muted: boolean) {
+    if (muted) this.seatMutes.add(seatId);
+    else this.seatMutes.delete(seatId);
+    this.refreshSeatAudio(seatId);
+    this.notifyVolume();
+  }
+
+  isSeatMuted(seatId: string): boolean {
+    return this.seatMutes.has(seatId);
+  }
+
+  setSeatVolume(seatId: string, volume: number) {
+    this.seatVolumes.set(seatId, Math.max(0, Math.min(2, volume)));
+    this.refreshSeatAudio(seatId);
+    this.notifyVolume();
+  }
+
+  getSeatVolume(seatId: string): number {
+    return this.seatVolumes.get(seatId) ?? 1;
+  }
+
+  private refreshSeatAudio(seatId: string) {
+    const seat = seats.get(seatId);
+    if (!seat) return;
+    this.set(seatId, seat.play, seat.volume);
   }
 
   /** The mix on its way to the speakers, for drawing; null until anything has played. */
@@ -448,6 +553,8 @@ export interface JamSeat {
   userId: string;
   name: string;
   play: SynthPlay;
+  /** Last requested seat volume (from user preference). */
+  volume: number;
   /** Last time this seat was heard from. */
   at: number;
 }
@@ -471,9 +578,9 @@ export function jamSeats(): JamSeat[] {
 }
 
 /** Plays and records what another seat sent. */
-export function hearSeat(seat: Omit<JamSeat, "at">, volume: number) {
+export function hearSeat(seat: Omit<JamSeat, "at" | "volume">, volume: number) {
   jamEngine.set(seat.connectionId, seat.play, volume);
-  seats.set(seat.connectionId, { ...seat, at: Date.now() });
+  seats.set(seat.connectionId, { ...seat, volume, at: Date.now() });
   seatsChanged();
 }
 
@@ -486,7 +593,7 @@ export function sweepSeats(now = Date.now()) {
   for (const [id, seat] of seats) {
     if (!isSilent(seat.play) && now - seat.at > SYNTH_STALE_MS) {
       seats.set(id, { ...seat, play: { ...seat.play, notes: [], lead: null, label: "" } });
-      jamEngine.set(id, { ...seat.play, notes: [], lead: null });
+      jamEngine.set(id, { ...seat.play, notes: [], lead: null }, seat.volume);
       changed = true;
     } else if (isSilent(seat.play) && now - seat.at > 30_000) {
       seats.delete(id);

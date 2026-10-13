@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cleanSynthPlay } from "@/lib/gesture-synth";
 import type { ClientEvent } from "@/lib/protocol";
-import { attachJamSender, clearSeats, hearSeat, jamEngine, sweepSeats } from "../lib/synth-jam";
+import { attachJamSender, clearSeats, hearSeat, jamEngine, jamSeats, sweepSeats } from "../lib/synth-jam";
 
 /**
  * Plays everyone's Gesture Synth while you are in a voice room, whichever
@@ -28,6 +28,14 @@ export function SynthJamAudio({
   useEffect(() => {
     jamEngine.setDeafened(deafened);
   }, [deafened]);
+
+  useEffect(() => {
+    for (const seat of jamSeats()) {
+      if (!seat.userId) continue;
+      const pref = preferenceFor(seat.userId);
+      hearSeat(seat, pref.muted ? 0 : pref.volume);
+    }
+  }, [preferenceFor]);
 
   useEffect(() => {
     attachJamSender((play) => send({ t: "synth", ...play }));

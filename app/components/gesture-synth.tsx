@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { ArrowLeftRight, Camera, CameraOff, CircleHelp, X } from "lucide-react";
+import { ArrowLeftRight, Camera, CameraOff, CircleHelp, Volume1, Volume2, VolumeX, X } from "lucide-react";
 import type { RoomActivity } from "@/lib/activities";
 import {
   DEGREE_SIGNS,
@@ -147,6 +147,16 @@ export function GestureSynth({
   const [help, setHelp] = useState(false);
   const [shown, setShown] = useState<{ degree: number | null; lead: number | null }>({ degree: null, lead: null });
   const seats = useSyncExternalStore(subscribeJamSeats, jamSeats, () => NO_SEATS);
+  const synthVolume = useSyncExternalStore(
+    (onStoreChange) => jamEngine.subscribeVolume(onStoreChange),
+    () => jamEngine.getVolume(),
+    () => 0.8,
+  );
+  const synthMuted = useSyncExternalStore(
+    (onStoreChange) => jamEngine.subscribeVolume(onStoreChange),
+    () => jamEngine.isMuted(),
+    () => false,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -560,6 +570,45 @@ export function GestureSynth({
         <button type="button" onClick={swapHands} title="Swap which hand plays chords">
           <ArrowLeftRight size={14} /> Chords: {chordHandName} hand
         </button>
+        <div
+          className="gesture-synth-volume"
+          title={`Synth volume: ${synthMuted ? 0 : Math.round(synthVolume * 100)}%`}
+        >
+          <button
+            type="button"
+            className="gesture-synth-vol-btn"
+            onClick={() => {
+              jamEngine.warm();
+              jamEngine.setMuted(!synthMuted);
+            }}
+            aria-label={synthMuted ? "Unmute synth" : "Mute synth"}
+            title={synthMuted ? "Unmute synth" : "Mute synth"}
+          >
+            {synthMuted || synthVolume === 0 ? (
+              <VolumeX size={15} />
+            ) : synthVolume < 0.5 ? (
+              <Volume1 size={15} />
+            ) : (
+              <Volume2 size={15} />
+            )}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={synthMuted ? 0 : Math.round(synthVolume * 100)}
+            onChange={(event) => {
+              jamEngine.warm();
+              const next = Number(event.target.value) / 100;
+              jamEngine.setVolume(next);
+              if (synthMuted && next > 0) jamEngine.setMuted(false);
+            }}
+            aria-label="Synth volume"
+          />
+          <span className="gesture-synth-vol-num" aria-hidden="true">
+            {synthMuted ? "0%" : `${Math.round(synthVolume * 100)}%`}
+          </span>
+        </div>
         <span className="gesture-synth-spacer" />
         <button
           type="button"
@@ -607,13 +656,31 @@ export function GestureSynth({
         )}
         {others.length > 0 && (
           <ul className="gesture-synth-seats" aria-label="Also playing">
-            {others.map((seat) => (
-              <li key={seat.connectionId} className={isSilent(seat.play) ? "" : "on"}>
-                <strong>{seat.name}</strong>
-                <span>{seat.play.label || (seat.play.lead !== null ? "melody" : "…")}</span>
-                <small>{SOUND_NAMES[seat.play.sound]}</small>
-              </li>
-            ))}
+            {others.map((seat) => {
+              const isSeatMuted = jamEngine.isSeatMuted(seat.connectionId);
+              return (
+                <li key={seat.connectionId} className={isSilent(seat.play) ? "" : "on"}>
+                  <strong>{seat.name}</strong>
+                  <div className="gesture-synth-seat-meta">
+                    <span>{seat.play.label || (seat.play.lead !== null ? "melody" : "…")}</span>
+                    <button
+                      type="button"
+                      className="gesture-synth-seat-mute"
+                      onClick={() => {
+                        jamEngine.warm();
+                        jamEngine.setSeatMuted(seat.connectionId, !isSeatMuted);
+                      }}
+                      aria-pressed={isSeatMuted}
+                      aria-label={isSeatMuted ? `Unmute ${seat.name}'s synth` : `Mute ${seat.name}'s synth`}
+                      title={isSeatMuted ? `Unmute ${seat.name}'s synth` : `Mute ${seat.name}'s synth`}
+                    >
+                      {isSeatMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    </button>
+                  </div>
+                  <small>{SOUND_NAMES[seat.play.sound]}</small>
+                </li>
+              );
+            })}
           </ul>
         )}
         {!joined && (

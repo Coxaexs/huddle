@@ -7741,6 +7741,52 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   justify-content: center;
 }
 
+.gesture-synth-volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: 700 12px/1 inherit;
+}
+
+.gesture-synth-vol-btn {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  min-height: auto !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  transition: color .15s ease;
+}
+
+.gesture-synth-vol-btn:hover {
+  color: var(--ink);
+}
+
+.gesture-synth-volume input[type="range"] {
+  width: 68px;
+  accent-color: var(--lavender);
+  cursor: pointer;
+  height: 4px;
+}
+
+.gesture-synth-vol-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+}
+
 .gesture-synth-stage {
   position: relative;
   flex: 1;
@@ -7839,6 +7885,34 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   color: #fff;
   font-weight: 800;
   text-align: right;
+}
+
+.gesture-synth-seat-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+}
+
+.gesture-synth-seat-mute {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  border-radius: 4px;
+  color: #9d94b8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s;
+}
+
+.gesture-synth-seat-mute:hover {
+  color: #fff;
+}
+
+.gesture-synth-seat-mute[aria-pressed="true"] {
+  color: var(--coral, #f87171);
 }
 
 .gesture-synth-seats small {
@@ -7993,6 +8067,10 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 @media (max-width: 640px) {
   .gesture-synth-bar label span {
     display: none;
+  }
+
+  .gesture-synth-volume input[type="range"] {
+    width: 48px;
   }
 
   .gesture-synth-pads {
