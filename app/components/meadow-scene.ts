@@ -69,11 +69,11 @@ function flameTexture() {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, 128, 256);
     for (let i = 0; i < 16; i++) {
-      const s = 1 - i / 18;
+      const s = 1 - i / 24;
       ctx.save();
       ctx.translate(64, 240);
       ctx.scale(s, s * (0.9 + i * 0.006));
-      ctx.fillStyle = "rgba(255,255,255,0.075)";
+      ctx.fillStyle = "rgba(255,255,255,0.17)";
       ctx.beginPath();
       ctx.moveTo(0, -232);
       ctx.bezierCurveTo(22, -160, 58, -110, 52, -54);
@@ -95,11 +95,15 @@ function buildFire(look: Look, flame: THREE.Texture, glow: THREE.Texture, puff: 
   const group = new THREE.Group();
   const tongues: Array<{ sprite: THREE.Sprite; w: number; h: number; phase: number; x: number; z: number; base: number }> = [];
   const layers: Array<[string, number, number, number]> = [
-    [look.fire[1], 0.75, 1.0, 0.75], [look.fire[1], 0.5, 0.78, 0.6], [look.fire[1], 0.45, 0.7, 0.6],
+    [look.fire[1], 0.7, 1.1, 0.8], [look.fire[1], 0.46, 0.85, 0.7], [look.fire[1], 0.42, 0.78, 0.7],
     [look.fire[0], 0.48, 0.72, 0.85], [look.fire[0], 0.32, 0.55, 0.8], ["#fff6d8", 0.22, 0.36, 0.9],
   ];
   layers.forEach(([colour, w, h, opacity], i) => {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flame, color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+    // The outer tongues are solid colour shaped by the flame (they show against a bright day); the inner ones add light.
+    const solid = i < 3;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial(solid
+      ? { alphaMap: flame, color: colour, transparent: true, opacity, depthWrite: false }
+      : { map: flame, color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
     sprite.center.set(0.5, 0.04);
     const a = i * 2.1;
     const off = i === 0 || i >= 3 ? 0 : 0.12 * size;
@@ -348,15 +352,15 @@ export function buildMeadow(theme: RoomTheme, night = isNight()): BuiltRoom {
   // The firewood, stacked in a cone, charred where it burns.
   const charred = mat("#2a1d14", 0.95);
   for (let i = 0; i < 6; i++) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 0.95, 8), i % 2 ? charred : mat("#4a3020", 0.9));
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.75, 8), i % 2 ? charred : mat("#4a3020", 0.9));
     const a = (i / 6) * Math.PI * 2;
-    log.position.set(CAMPFIRE.x + Math.cos(a) * 0.18, fireY + 0.42, CAMPFIRE.z + Math.sin(a) * 0.18);
-    log.lookAt(CAMPFIRE.x, fireY + 0.95, CAMPFIRE.z);
+    log.position.set(CAMPFIRE.x + Math.cos(a) * 0.24, fireY + 0.3, CAMPFIRE.z + Math.sin(a) * 0.24);
+    log.lookAt(CAMPFIRE.x, fireY + 0.72, CAMPFIRE.z);
     log.rotateX(Math.PI / 2);
     log.castShadow = true;
     root.add(log);
   }
-  const campfire = buildFire(look, flame, glow, puffTexture, 1.15, true, night);
+  const campfire = buildFire(look, flame, glow, puffTexture, 1.35, true, night);
   campfire.group.position.set(CAMPFIRE.x, fireY + 0.08, CAMPFIRE.z);
   root.add(campfire.group);
   animated.push(campfire.update);
@@ -584,7 +588,8 @@ export function buildMeadow(theme: RoomTheme, night = isNight()): BuiltRoom {
   const tufts = new THREE.InstancedMesh(tuftShape, new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, side: THREE.DoubleSide }), TUFTS);
   const stemGeometry = new THREE.CylinderGeometry(0.008, 0.01, 0.3, 3);
   stemGeometry.translate(0, 0.15, 0);
-  const bloomGeometry = new THREE.IcosahedronGeometry(0.045, 0);
+  const bloomGeometry = new THREE.IcosahedronGeometry(0.036, 0);
+  bloomGeometry.scale(1, 0.45, 1);
   bloomGeometry.translate(0, 0.31, 0);
   const FLOWERS = 260;
   const stems = new THREE.InstancedMesh(stemGeometry, mat(night ? "#2f5530" : "#4f8a3a", 1), FLOWERS);
@@ -818,7 +823,7 @@ function buildCabin(look: Look, night: boolean, glow: THREE.Texture, flame: THRE
     const frame = box(1.05, 0.9, 0.06, frameMaterial, false);
     frame.position.copy(pane.position);
     frame.rotation.y = ry;
-    frame.position.addScaledVector(new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)), -0.02);
+    frame.position.addScaledVector(new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)), -0.05);
     group.add(frame, pane);
   }
 
@@ -853,16 +858,34 @@ function buildCabin(look: Look, night: boolean, glow: THREE.Texture, flame: THRE
   group.add(roof);
 
   // Inside: the fireplace on the north wall.
+  // Stone pillars and a lintel round an open firebox, sooty inside.
   const stone = mat("#8a867c", 0.95);
-  const hearth = box(2.2, 1.4, 0.6, stone);
-  hearth.position.set(0, F + 0.7, -D / 2 + 0.3);
-  const opening = box(1.1, 0.75, 0.2, mat("#1a1210", 1), false);
-  opening.position.set(0, F + 0.45, -D / 2 + 0.52);
+  const soot = mat("#1a1210", 1);
+  const DEEP = 0.6;
+  for (const side of [-1, 1]) {
+    const pillar = box(0.55, 1.4, DEEP, stone);
+    pillar.position.set(side * 0.825, F + 0.7, -D / 2 + DEEP / 2);
+    group.add(pillar);
+  }
+  const lintelStone = box(1.1, 0.65, DEEP, stone);
+  lintelStone.position.set(0, F + 1.075, -D / 2 + DEEP / 2);
+  const fireback = box(1.1, 0.75, 0.06, soot, false);
+  // In front of the wall's logs, which bulge into the room.
+  fireback.position.set(0, F + 0.375, -D / 2 + 0.2);
+  const bed = box(1.1, 0.04, DEEP, soot, false);
+  bed.position.set(0, F + 0.02, -D / 2 + DEEP / 2);
   const mantel = box(2.4, 0.1, 0.4, mat(look.wood, 0.6));
   mantel.position.set(0, F + 1.45, -D / 2 + 0.4);
-  group.add(hearth, opening, mantel);
-  const hearthFire = buildFire(look, flame, glow, puff, 0.55, false, night);
-  hearthFire.group.position.set(0, F + 0.1, -D / 2 + 0.5);
+  group.add(lintelStone, fireback, bed, mantel);
+  for (let k = 0; k < 3; k++) {
+    const firewood = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.7, 8), mat(k % 2 ? "#2a1d14" : "#4a3020", 0.9));
+    firewood.rotation.set(0, 0, Math.PI / 2);
+    firewood.rotation.y = (k - 1) * 0.35;
+    firewood.position.set(0, F + 0.09 + (k === 1 ? 0.08 : 0), -D / 2 + 0.4);
+    group.add(firewood);
+  }
+  const hearthFire = buildFire(look, flame, glow, puff, 0.68, false, night);
+  hearthFire.group.position.set(0, F + 0.08, -D / 2 + 0.42);
   group.add(hearthFire.group);
   const fireGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: look.fireLight, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
   fireGlow.scale.setScalar(1.6);
