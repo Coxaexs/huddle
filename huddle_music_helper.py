@@ -1,6 +1,9 @@
 import asyncio
+import importlib.metadata
 import json
 import os
+import sys
+import time
 import shutil
 import tempfile
 from aiohttp import web
@@ -212,8 +215,65 @@ async def watch_stream(request: web.Request):
     return web.FileResponse(target)
 
 
+# YouTube breaks yt-dlp's extractors every few weeks, so a helper built once
+# would quietly stop playing. Once a day (YTDLP_UPDATE_HOURS, 0 turns it off)
+# yt-dlp is upgraded with pip in the interpreter running this file. A loaded
+# module cannot be swapped in place, so when the version changes the helper
+# exits and its supervisor (systemd Restart=always, Docker's restart policy)
+# starts it again on the new one.
+YTDLP_UPDATE_HOURS = float(os.environ.get("YTDLP_UPDATE_HOURS", "24") or 0)
+_ytdlp_status = {"running": yt_dlp.version.__version__, "checked_at": None, "result": "not checked yet"}
+
+
+def _installed_ytdlp_version() -> str:
+    try:
+        return importlib.metadata.version("yt-dlp")
+    except importlib.metadata.PackageNotFoundError:
+        return yt_dlp.version.__version__
+
+
+async def update_ytdlp() -> dict:
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "pip", "install", "--quiet", "--no-cache-dir", "--upgrade", "yt-dlp",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    installed = _installed_ytdlp_version()
+    _ytdlp_status.update(
+        checked_at=int(time.time()),
+        installed=installed,
+        result="ok" if proc.returncode == 0 else "pip failed: " + stderr.decode(errors="replace").strip()[-200:],
+    )
+    if proc.returncode == 0 and installed != yt_dlp.version.__version__:
+        print(f"[music-helper] yt-dlp {yt_dlp.version.__version__} -> {installed}; restarting onto it", flush=True)
+        asyncio.get_running_loop().call_later(1, os._exit, 0)
+    return dict(_ytdlp_status)
+
+
+async def ytdlp_updater():
+    await asyncio.sleep(60)
+    while True:
+        try:
+            await update_ytdlp()
+        except Exception as error:  # a failed check must not take the helper down
+            _ytdlp_status.update(checked_at=int(time.time()), result=f"check failed: {error}")
+        await asyncio.sleep(YTDLP_UPDATE_HOURS * 3600)
+
+
+async def status(_request: web.Request):
+    return web.json_response({"ok": True, "ytdlp": _ytdlp_status, "autoUpdate": YTDLP_UPDATE_HOURS > 0})
+
+
+async def start_updater(app_instance: web.Application):
+    if YTDLP_UPDATE_HOURS > 0:
+        app_instance["ytdlp_updater"] = asyncio.create_task(ytdlp_updater())
+
+
 app = web.Application(client_max_size=1024 * 1024)
+app.on_startup.append(start_updater)
 app.router.add_get("/health", health)
+app.router.add_get("/status", status)
 app.router.add_post("/resolve", resolve)
 app.router.add_post("/watch/download", watch_download)
 app.router.add_get("/watch/stream/{id}", watch_stream)
@@ -229,4 +289,3 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", "8731")),
         print=None,
     )
-

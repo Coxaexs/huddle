@@ -68,6 +68,13 @@ interface HostStatus {
     coturn?: string;
   };
   services?: Record<string, { unit?: string; http: number }>;
+  /** This Hoffle process's in-memory rate-limit buckets. */
+  rateLimits?: { totalBuckets: number; topBuckets: Array<{ key: string; count: number }> };
+  /** The music helper's yt-dlp (it upgrades itself daily). */
+  musicHelper?: {
+    autoUpdate?: boolean;
+    ytdlp?: { running: string; installed?: string; checked_at: number | null; result: string };
+  } | null;
   error?: string;
 }
 
@@ -346,6 +353,28 @@ function Hosts({
           </button>
         </div>
         <p className="admin-muted">Checked {ago(status.checkedAt)}. An archive backup takes about a minute and runs in the background.</p>
+      </section>
+
+      <section className="portal-card admin-section">
+        <h2>Runtime</h2>
+        <ul className="admin-rows">
+          <Row label="Music helper's yt-dlp" ok={status.musicHelper?.ytdlp?.result === "ok"} warn={!status.musicHelper}>
+            {status.musicHelper?.ytdlp
+              ? `${status.musicHelper.ytdlp.running}${status.musicHelper.autoUpdate ? "" : " · auto-update off"} · ${
+                  status.musicHelper.ytdlp.checked_at
+                    ? `checked ${ago(new Date(status.musicHelper.ytdlp.checked_at * 1000).toISOString())}: ${status.musicHelper.ytdlp.result}`
+                    : status.musicHelper.ytdlp.result
+                }`
+              : "not answering"}
+          </Row>
+          <Row label="Rate limits" ok>
+            {status.rateLimits
+              ? `${status.rateLimits.totalBuckets} active bucket${status.rateLimits.totalBuckets === 1 ? "" : "s"}${
+                  status.rateLimits.topBuckets[0] ? ` · busiest ${status.rateLimits.topBuckets[0].key} (${status.rateLimits.topBuckets[0].count})` : ""
+                }`
+              : "unknown"}
+          </Row>
+        </ul>
       </section>
     </>
   );
