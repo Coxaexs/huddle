@@ -15,10 +15,13 @@ export function SynthJamAudio({
   send,
   deafened,
   preferenceFor,
+  serverNow,
 }: {
   channelId: string;
   send: (event: ClientEvent) => boolean;
   deafened: boolean;
+  /** The hub's clock: everyone's rhythm runs on a beat grid laid on it. */
+  serverNow: () => number;
   /** The listener's own volume and mute for that person, as for their voice. */
   preferenceFor: (userId: string) => { volume: number; muted: boolean };
 }) {
@@ -28,6 +31,11 @@ export function SynthJamAudio({
   useEffect(() => {
     jamEngine.setDeafened(deafened);
   }, [deafened]);
+
+  useEffect(() => {
+    jamEngine.setClock(serverNow);
+    return () => jamEngine.setClock(null);
+  }, [serverNow]);
 
   useEffect(() => {
     for (const seat of jamSeats()) {

@@ -7,12 +7,19 @@
  * as soon as the hub passes their chord along. One AudioContext, one Player per
  * seat, all through a shared reverb and limiter. The analyser on the way out
  * draws the waveform in the activity panel.
+ *
+ * A play with a rhythm (pulse, arpeggio) is struck note by note on the audio
+ * clock, a little ahead of time, at the steps of a beat grid laid on the hub's
+ * clock (setClock), so every listener hears everyone on the same beats.
  */
 import { savedDevice } from "./devices";
 import {
+  BEATS_PER_BAR,
   SILENCE,
   SYNTH_STALE_MS,
+  beatMs,
   isSilent,
+  rhythmHits,
   type SynthPlay,
   type SynthSound,
 } from "@/lib/gesture-synth";
@@ -135,6 +142,21 @@ const PRESETS: Record<SynthSound, Preset> = {
 
 const CHORD_LEVEL = 0.11;
 const LEAD_LEVEL = 0.17;
+/** A single arpeggio note stands alone, so it sits between a chord note and the melody. */
+const ARP_LEVEL = 0.15;
+/** How far ahead rhythm notes are put on the audio clock; a hidden tab's timers only fire every second. */
+const LOOKAHEAD_MS = 140;
+const HIDDEN_LOOKAHEAD_MS = 1300;
+
+/** A preset's envelope made short enough to strike notes `gate` seconds long. */
+function struck(preset: Preset, gate: number): Preset {
+  return {
+    ...preset,
+    attack: Math.min(preset.attack, 0.012),
+    decay: Math.min(preset.decay, Math.max(0.05, gate)),
+    release: Math.min(preset.release, 0.3),
+  };
+}
 
 const frequency = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
@@ -185,6 +207,19 @@ class Voice {
     }
   }
 
+  /** Stops a note that has not started yet (its chord changed before it sounded). */
+  cancel() {
+    this.released = true;
+    for (const { osc } of this.oscillators) {
+      try {
+        osc.stop();
+      } catch {
+        // Already stopped.
+      }
+    }
+    this.envelope.disconnect();
+  }
+
   release(at: number) {
     if (this.released) return;
     this.released = true;
@@ -212,6 +247,10 @@ class Player {
   private vibrato: { lfo: OscillatorNode; depth: GainNode } | null = null;
   private readonly chord = new Map<number, Voice>();
   private lead: Voice | null = null;
+  /** Rhythm notes already put on the audio clock, with when they start. */
+  private queued: Array<{ voice: Voice; start: number }> = [];
+  /** Up to where (shared clock, ms) this player's rhythm has been scheduled. */
+  scheduledTo = 0;
   play: SynthPlay = SILENCE;
 
   constructor(private readonly context: AudioContext, bus: AudioNode, reverb: AudioNode, sound: SynthSound) {
@@ -272,9 +311,23 @@ class Player {
     const [shut, open] = this.preset.cutoff;
     this.filter.frequency.setTargetAtTime(shut * (open / shut) ** next.bright, now, 0.05);
 
-    const changed =
-      next.notes.length !== this.chord.size || next.notes.some((note) => !this.chord.has(note));
-    if (changed && this.preset.retrigger) {
+    if (next.rhythm !== "hold") {
+      // The rhythm strikes the notes (see schedule); nothing is held.
+      this.releaseChord(now);
+      const before = this.rhythmic;
+      if (!before || before.rhythm !== next.rhythm || before.bpm !== next.bpm || before.notes.join() !== next.notes.join()) {
+        this.cancelQueued();
+      }
+      this.rhythmic = next;
+    } else {
+      if (this.rhythmic) this.cancelQueued();
+      this.rhythmic = null;
+    }
+    const held = next.rhythm === "hold" ? next.notes : [];
+    const changed = held.length !== this.chord.size || held.some((note) => !this.chord.has(note));
+    if (next.rhythm !== "hold") {
+      // Handled above.
+    } else if (changed && this.preset.retrigger) {
       this.releaseChord(now);
       next.notes.forEach((note, index) => {
         const at = now + index * (this.preset.strum ?? 0);
@@ -309,8 +362,51 @@ class Player {
     }
   }
 
+  private rhythmic: SynthPlay | null = null;
+
+  /** Queued rhythm notes that have not started are dropped and the grid is scheduled again from now. */
+  private cancelQueued() {
+    const now = this.context.currentTime;
+    this.queued = this.queued.filter(({ voice, start }) => {
+      if (start > now + 0.005) {
+        voice.cancel();
+        return false;
+      }
+      return true;
+    });
+    this.scheduledTo = 0;
+  }
+
+  /**
+   * Puts this player's rhythm notes between `from` and `to` (shared clock, ms)
+   * on the audio clock. `clockNow` is the shared clock at `audioNow`.
+   */
+  schedule(from: number, to: number, clockNow: number, audioNow: number) {
+    const play = this.rhythmic;
+    if (!play || play.notes.length === 0) return;
+    const start = Math.max(from, this.scheduledTo);
+    for (const hit of rhythmHits(play, start, to)) {
+      const at = audioNow + (hit.at - clockNow) / 1000;
+      if (at < audioNow - 0.005) continue;
+      const gate = hit.gate / 1000;
+      const preset = struck(this.preset, gate);
+      const single = hit.notes.length === 1;
+      hit.notes.forEach((note, index) => {
+        const level =
+          (single ? ARP_LEVEL : CHORD_LEVEL * (index === 0 ? 0.8 : 1)) * this.preset.level * (hit.accent ? 1 : 0.78);
+        const voice = new Voice(this.context, this.filter, note, preset, level, at, this.vibrato?.depth ?? null);
+        voice.release(at + gate);
+        this.queued.push({ voice, start: at });
+      });
+    }
+    this.scheduledTo = Math.max(this.scheduledTo, to);
+    this.queued = this.queued.filter(({ start }) => start > audioNow - 2);
+  }
+
   dispose() {
     const now = this.context.currentTime;
+    this.cancelQueued();
+    this.rhythmic = null;
     this.releaseChord(now);
     this.lead?.release(now);
     this.lead = null;
@@ -376,6 +472,72 @@ class JamEngine {
   private readonly seatMutes = new Set<string>();
   private readonly seatVolumes = new Map<string, number>();
   private readonly volumeListeners = new Set<() => void>();
+  /** The hub's clock while in a voice room, so the beat grid is the same for everyone. */
+  private clock: () => number = () => Date.now();
+  private ticker = 0;
+  private metronomeBpm: number | null = null;
+  private clickTo = 0;
+
+  setClock(clock: (() => number) | null) {
+    this.clock = clock ?? (() => Date.now());
+  }
+
+  /** The shared clock, in ms: what the beat grid is laid on. */
+  now(): number {
+    return this.clock();
+  }
+
+  /** A click on every beat at `bpm` (louder on the bar), or null for none. Only you hear it. */
+  setMetronome(bpm: number | null) {
+    this.metronomeBpm = bpm;
+    this.clickTo = 0;
+    if (bpm) this.ensure();
+    this.syncTicker();
+  }
+
+  private syncTicker() {
+    const needed =
+      this.metronomeBpm !== null || [...this.players.values()].some((player) => player.play.rhythm !== "hold" && !isSilent(player.play));
+    if (needed && !this.ticker && typeof window !== "undefined") {
+      this.ticker = window.setInterval(() => this.tick(), 25);
+      this.tick();
+    } else if (!needed && this.ticker) {
+      window.clearInterval(this.ticker);
+      this.ticker = 0;
+    }
+  }
+
+  private tick() {
+    const context = this.context;
+    if (!context || context.state !== "running") return;
+    const clockNow = this.clock();
+    const audioNow = context.currentTime;
+    const ahead = typeof document !== "undefined" && document.hidden ? HIDDEN_LOOKAHEAD_MS : LOOKAHEAD_MS;
+    for (const player of this.players.values()) player.schedule(clockNow, clockNow + ahead, clockNow, audioNow);
+    if (this.metronomeBpm && this.bus) {
+      const beat = beatMs(this.metronomeBpm);
+      const to = clockNow + ahead;
+      for (let k = Math.ceil(Math.max(clockNow, this.clickTo) / beat); k * beat < to; k += 1) {
+        this.click(audioNow + (k * beat - clockNow) / 1000, k % BEATS_PER_BAR === 0);
+      }
+      this.clickTo = to;
+    }
+  }
+
+  private click(at: number, bar: boolean) {
+    const context = this.context;
+    if (!context || !this.bus || at < context.currentTime) return;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.frequency.value = bar ? 1760 : 1320;
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(bar ? 0.16 : 0.09, at + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+    osc.connect(gain).connect(this.bus);
+    osc.start(at);
+    osc.stop(at + 0.06);
+    osc.onended = () => gain.disconnect();
+  }
 
   private ensure(): SinkContext | null {
     if (this.context) return this.context;
@@ -443,6 +605,9 @@ class JamEngine {
     const seatVol = this.seatVolumes.get(id) ?? 1;
     const effectiveVol = seatMuted ? 0 : volume * seatVol;
     player.set(play, effectiveVol);
+    this.syncTicker();
+    // A new rhythm starts on the next step, not a tick later.
+    if (play.rhythm !== "hold" && this.ticker) this.tick();
   }
 
   /** Lets one seat's notes go and forgets it. */
@@ -453,6 +618,7 @@ class JamEngine {
     if (!player) return;
     this.players.delete(id);
     player.dispose();
+    this.syncTicker();
   }
 
   dropAll(keep?: string) {

@@ -46,9 +46,16 @@ it("passes a play to the rest of the voice room only, cleaned", async () => {
   await play({ ...chord, notes: [...chord.notes, 999], label: "A (I)\u0000" });
   const [event] = heard(listener);
   expect(event).toMatchObject({ channelId: "room", connectionId: "c-player", userId: "u-player", displayName: "u-player" });
-  expect(event.play).toEqual({ ...chord });
+  // A play without a rhythm (an older client) is relayed as holding, at the default tempo.
+  expect(event.play).toEqual({ ...chord, rhythm: "hold", bpm: 100 });
   expect(heard(player)).toEqual([]);
   expect(heard(bystander)).toEqual([]);
+});
+
+it("passes the rhythm and tempo along", async () => {
+  const { play, listener, heard } = rooms();
+  await play({ ...chord, rhythm: "arp", bpm: 116 });
+  expect(heard(listener)[0].play).toMatchObject({ rhythm: "arp", bpm: 116 });
 });
 
 it("keeps a server-muted player silent but still lets their stop through", async () => {

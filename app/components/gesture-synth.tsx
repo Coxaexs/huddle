@@ -18,9 +18,9 @@ import {
   Music,
   Pause,
   Play,
-  RotateCcw,
   Sparkles,
   Square,
+  Timer,
   Trash2,
   Volume1,
   Volume2,
@@ -29,37 +29,49 @@ import {
 } from "lucide-react";
 import type { RoomActivity } from "@/lib/activities";
 import {
+  BEATS_PER_BAR,
   DEGREE_SIGNS,
+  RHYTHM_NAMES,
   SHAPE_DEGREE,
   SILENCE,
   SOUND_NAMES,
   SYNTH_KEEPALIVE_MS,
   SYNTH_KEYS,
+  SYNTH_RHYTHMS,
   SYNTH_SENDS_PER_SECOND,
-  SYNTH_SONGS,
   SYNTH_SOUNDS,
+  beatMs,
   chordFor,
   chordLetter,
+  chordTones,
+  cleanBpm,
   degreeForLetter,
+  degreeOfTones,
   fingersUp,
   handShape,
   isSilent,
+  isSynthRhythm,
   isSynthSound,
   keyName,
   leadNote,
   leadStep,
+  mergeNotes,
   noteName,
-  parseSequence,
+  parseProgression,
   samePlay,
   synthSettings,
-  voiceChord,
-  voiceDualChords,
+  voiceDualTones,
+  voiceTones,
+  type ChordTones,
   type HandPoint,
   type HandShape,
+  type ProgressionStep,
   type SynthMode,
   type SynthPlay,
+  type SynthRhythm,
   type SynthSound,
 } from "@/lib/gesture-synth";
+import { SYNTH_SONGS } from "@/lib/synth-songs";
 import { HandTracker, type HandTrackingStatus } from "../lib/hand-tracking";
 import { jamEngine, jamSeats, sendJamPlay, subscribeJamSeats, type JamSeat } from "../lib/synth-jam";
 
@@ -77,7 +89,10 @@ const DEGREE_HUES = [262, 205, 170, 135, 42, 328, 12];
 const LEAD_HUE = 318;
 const SIGN_NAMES = ["point", "peace", "three fingers", "four fingers, thumb in", "open hand", "horns", "love-you"];
 const SOUND_STORE = "huddle-synth-sound";
+const RHYTHM_STORE = "huddle-synth-rhythm";
 const HAND_STORE = "huddle-synth-chord-hand";
+/** Chord changes from the sequencer and the looper are made this early, so rhythm notes already queued for the new step are struck with the new chord. */
+const CHANGE_EARLY_MS = 40;
 const NO_SEATS: JamSeat[] = [];
 
 function stored(key: string): string | null {
@@ -104,6 +119,36 @@ interface Particle {
   life: number;
   hue: number;
   size: number;
+}
+
+/**
+ * Where to start something "on the beat": the bar line just passed if it was
+ * less than half a beat ago, otherwise the next one.
+ */
+function barLine(now: number, bpm: number): number {
+  const beat = beatMs(bpm);
+  const bar = beat * BEATS_PER_BAR;
+  const previous = Math.floor(now / bar) * bar;
+  return now - previous < beat / 2 ? previous : previous + bar;
+}
+
+/** The step of a looping progression at `beatsIn` beats from its start, and the beat that step ends on. */
+function stepAt(steps: ProgressionStep[], beatsIn: number): { index: number; endBeat: number } {
+  let start = 0;
+  for (let index = 0; index < steps.length; index += 1) {
+    const end = start + steps[index].beats;
+    if (beatsIn < end - 1e-6) return { index, endBeat: end };
+    start = end;
+  }
+  return { index: steps.length - 1, endBeat: start };
+}
+
+interface LoopTake {
+  /** On the shared clock, a bar line. */
+  start: number;
+  /** Whole bars, in ms. */
+  length: number;
+  events: Array<{ offset: number; play: SynthPlay }>;
 }
 
 interface Settling {
@@ -139,7 +184,11 @@ interface Live {
   camSecondDegree: number | null;
   heldDegree: number | null;
   heldSecondDegree: number | null;
-  seqDegree: number | null;
+  /** The sequencer's chord, or a chord tapped in the progression strip. */
+  seqTones: ChordTones | null;
+  tapTones: ChordTones | null;
+  /** What the loop is playing now; merged into what you send, so everyone hears it. */
+  loopPlay: SynthPlay | null;
   leadStep: number | null;
   bright: number;
   voicing: number[] | null;
@@ -162,11 +211,16 @@ export function GestureSynth({
   /** False while looking at a voice room you aren't in: you can practise, but nobody hears it. */
   joined: boolean;
 }) {
-  const { key, mode } = synthSettings(activity.state);
+  const { key, mode, bpm } = synthSettings(activity.state);
   const [sound, setSound] = useState<SynthSound>(() => {
     const saved = stored(SOUND_STORE);
     return isSynthSound(saved) ? saved : "warm";
   });
+  const [rhythm, setRhythm] = useState<SynthRhythm>(() => {
+    const saved = stored(RHYTHM_STORE);
+    return isSynthRhythm(saved) ? saved : "hold";
+  });
+  const [metronome, setMetronome] = useState(false);
   const [chordsLeft, setChordsLeft] = useState(() => stored(HAND_STORE) === "left");
   const [camera, setCamera] = useState<"off" | HandTrackingStatus>("off");
   const [help, setHelp] = useState(false);
@@ -174,7 +228,9 @@ export function GestureSynth({
     degree: number | null;
     secondDegree: number | null;
     lead: number | null;
-  }>({ degree: null, secondDegree: null, lead: null });
+    /** The chord sounding, by name, whether or not it is one of the seven pads. */
+    chord: ChordTones | null;
+  }>({ degree: null, secondDegree: null, lead: null, chord: null });
   const seats = useSyncExternalStore(subscribeJamSeats, jamSeats, () => NO_SEATS);
   const synthVolume = useSyncExternalStore(
     (onStoreChange) => jamEngine.subscribeVolume(onStoreChange),
@@ -187,24 +243,27 @@ export function GestureSynth({
     () => false,
   );
 
-  // Sequencer, Songbook & Looper State
-  const [sequenceText, setSequenceText] = useState("1 2 3 5 2 1 4 5 2 6 5 7");
-  const [selectedSongId, setSelectedSongId] = useState("user-seq");
-  const [seqBpm, setSeqBpm] = useState(110);
+  // Songbook and sequencer: a song's chart, or a progression you type.
+  const [songId, setSongId] = useState<string>(SYNTH_SONGS[0].id);
+  const [customText, setCustomText] = useState("1 5 6 4");
   const [seqPlaying, setSeqPlaying] = useState(false);
   const [seqStep, setSeqStep] = useState(0);
   const [guideMode, setGuideMode] = useState(false);
+  const song = SYNTH_SONGS.find((entry) => entry.id === songId) ?? null;
+  const parts = useMemo(
+    () =>
+      song
+        ? song.parts.map((part) => ({ name: part.name, steps: parseProgression(part.chords, key, mode) }))
+        : [{ name: "Your progression", steps: parseProgression(customText, key, mode) }],
+    [song, customText, key, mode],
+  );
+  const steps = useMemo(() => parts.flatMap((part) => part.steps), [parts]);
 
-  // Looper State
+  // Looper: takes are whole bars on the beat grid, and play for everyone.
   const [loopState, setLoopState] = useState<"idle" | "recording" | "playing">("idle");
   const [hasLoop, setHasLoop] = useState(false);
-  const loopEventsRef = useRef<Array<{ delay: number; play: SynthPlay }>>([]);
-  const loopRecStartRef = useRef<number>(0);
-  const loopTotalDurationRef = useRef<number>(0);
-  const loopStateRef = useRef(loopState);
-  loopStateRef.current = loopState;
-
-  const sequence = useMemo(() => parseSequence(sequenceText, key, mode), [sequenceText, key, mode]);
+  const takeRef = useRef<LoopTake | null>(null);
+  const recordingRef = useRef<{ start: number; events: LoopTake["events"] } | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -219,7 +278,9 @@ export function GestureSynth({
     camSecondDegree: null,
     heldDegree: null,
     heldSecondDegree: null,
-    seqDegree: null,
+    seqTones: null,
+    tapTones: null,
+    loopPlay: null,
     leadStep: null,
     bright: 0.55,
     voicing: null,
@@ -231,8 +292,8 @@ export function GestureSynth({
     sendTimer: 0,
     particles: [],
   }));
-  const config = useRef({ key, mode, sound, chordsLeft, joined });
-  config.current = { key, mode, sound, chordsLeft, joined };
+  const config = useRef({ key, mode, bpm, sound, rhythm, chordsLeft, joined });
+  config.current = { key, mode, bpm, sound, rhythm, chordsLeft, joined };
   const chords = useMemo(() => [0, 1, 2, 3, 4, 5, 6].map((degree) => chordFor(degree, key, mode)), [key, mode]);
 
   const flush = useCallback(() => {
@@ -242,51 +303,66 @@ export function GestureSynth({
     if (config.current.joined) sendJamPlay(live.current);
   }, [live]);
 
-  /** Works out what your hands, keys and pads are playing now; sounds it and tells the room if it changed. */
+  /**
+   * Works out what your hands, keys, pads, the sequencer and your loop are
+   * playing now; sounds it and tells the room if it changed.
+   */
   const refresh = useCallback(() => {
-    const { key, mode, sound, joined } = config.current;
+    const { key, mode, bpm, sound, rhythm, joined } = config.current;
     const hidden = typeof document !== "undefined" && document.hidden;
-    const primary = hidden ? null : (live.heldDegree ?? (live.seqDegree ?? live.camDegree));
-    const secondary = hidden ? null : (live.heldSecondDegree ?? live.camSecondDegree);
+    const degreeTones = (degree: number | null) => (degree === null ? null : chordTones(chordFor(degree, key, mode)));
+    // Keys and pads win over the sequencer, which wins over the camera.
+    const primary = hidden
+      ? null
+      : (degreeTones(live.heldDegree) ?? live.tapTones ?? live.seqTones ?? degreeTones(live.camDegree));
+    const secondary = hidden ? null : degreeTones(live.heldSecondDegree ?? live.camSecondDegree);
     let notes: number[] = [];
     let label = "";
-
-    if (primary !== null && secondary !== null && primary !== secondary) {
-      const chordA = chordFor(primary, key, mode);
-      const chordB = chordFor(secondary, key, mode);
-      live.voicing = voiceDualChords(chordA, chordB, live.voicing);
+    if (primary && secondary && primary.name !== secondary.name) {
+      live.voicing = voiceDualTones(primary, secondary, live.voicing);
       notes = live.voicing;
-      label = `${chordA.name} + ${chordB.name}`;
-    } else if (primary !== null) {
-      const chord = chordFor(primary, key, mode);
-      live.voicing = voiceChord(chord, live.voicing);
+      label = `${primary.name} + ${secondary.name}`;
+    } else if (primary ?? secondary) {
+      const tones = (primary ?? secondary)!;
+      live.voicing = voiceTones(tones, live.voicing);
       notes = live.voicing;
-      label = chord.label;
-    } else if (secondary !== null) {
-      const chord = chordFor(secondary, key, mode);
-      live.voicing = voiceChord(chord, live.voicing);
-      notes = live.voicing;
-      label = chord.label;
+      const degree = degreeOfTones(tones, key, mode);
+      // "Bm7 (ii)": the chord as written, with its place in the key when it has one.
+      label = degree === null ? tones.name : `${tones.name} (${chordFor(degree, key, mode).numeral})`;
     }
     const lead = hidden || live.leadStep === null ? null : leadNote(live.leadStep, key, mode);
+    const chord = primary ?? secondary;
+    const degree = chord ? degreeOfTones(chord, key, mode) : null;
+    const second = primary && secondary ? degreeOfTones(secondary, key, mode) : null;
     setShown((before) =>
-      before.degree === primary && before.secondDegree === secondary && before.lead === lead
+      before.degree === degree && before.secondDegree === second && before.lead === lead && before.chord?.name === chord?.name
         ? before
-        : { degree: primary, secondDegree: secondary, lead },
+        : { degree, secondDegree: second, lead, chord },
     );
-    const play: SynthPlay = { notes, lead, sound, bright: Math.round(live.bright * 100) / 100, label };
+    const own: SynthPlay = { notes, rhythm, bpm, lead, sound, bright: Math.round(live.bright * 100) / 100, label };
+
+    // What you play now goes into a loop being recorded; the loop itself does not.
+    const recording = recordingRef.current;
+    if (recording) {
+      const last = recording.events[recording.events.length - 1];
+      if ((last || !isSilent(own)) && !(last && samePlay(last.play, own))) {
+        recording.events.push({ offset: Math.max(0, jamEngine.now() - recording.start), play: own });
+      }
+    }
+
+    const loop = hidden ? null : live.loopPlay;
+    const play: SynthPlay =
+      loop && !isSilent(loop)
+        ? {
+            ...own,
+            notes: mergeNotes(own.notes, loop.notes),
+            lead: own.lead ?? loop.lead,
+            label: own.label && loop.label ? `${own.label} + loop` : own.label || loop.label,
+          }
+        : own;
     if (samePlay(play, live.current)) return;
     live.current = play;
     jamEngine.set("self", play, 1);
-
-    // Releases are kept too (once the loop has started), or every chord would
-    // ring on until the next one.
-    if (loopStateRef.current === "recording" && (loopEventsRef.current.length > 0 || !isSilent(play))) {
-      loopEventsRef.current.push({
-        delay: performance.now() - loopRecStartRef.current,
-        play,
-      });
-    }
 
     if (!joined || live.sendTimer) return;
     // At most a dozen sends a second; the last change always goes out.
@@ -355,10 +431,16 @@ export function GestureSynth({
     [live, refresh],
   );
 
-  // A new key, scale or sound re-voices whatever is held.
+  // A new key, scale, tempo, sound or rhythm changes whatever is sounding.
   useEffect(() => {
     refresh();
-  }, [key, mode, sound, refresh]);
+  }, [key, mode, bpm, sound, rhythm, refresh]);
+
+  // The click follows the room's tempo, on the same grid as everyone's rhythm.
+  useEffect(() => {
+    jamEngine.setMetronome(metronome ? bpm : null);
+    return () => jamEngine.setMetronome(null);
+  }, [metronome, bpm]);
 
   useEffect(() => {
     if (joined && !isSilent(live.current)) flush();
@@ -681,108 +763,116 @@ export function GestureSynth({
     });
   }
 
-  // Sequencer auto-player effect
+  function chooseRhythm(next: SynthRhythm) {
+    setRhythm(next);
+    store(RHYTHM_STORE, next);
+  }
+
+  function setBpm(value: number) {
+    update({ ...activity.state, key, mode, bpm: cleanBpm(value) });
+  }
+
+  // The sequencer: chord changes land on the beat grid, starting on a bar line,
+  // so a chart plays in time with the metronome and with anyone else's rhythm.
   useEffect(() => {
-    if (!seqPlaying || sequence.length === 0) {
-      if (live.seqDegree !== null) {
-        live.seqDegree = null;
-        refresh();
+    if (!seqPlaying || steps.length === 0) return;
+    const beat = beatMs(bpm);
+    const total = steps.reduce((sum, step) => sum + step.beats, 0);
+    const start = barLine(jamEngine.now(), bpm);
+    let timer = 0;
+    const advance = () => {
+      const now = jamEngine.now() + CHANGE_EARLY_MS;
+      if (now < start) {
+        timer = window.setTimeout(advance, start - now);
+        return;
       }
-      return;
-    }
-    const stepDuration = Math.max(120, (60 / seqBpm) * 1000);
-    const initialDegree = sequence[seqStep % sequence.length] - 1;
-    live.seqDegree = initialDegree;
-    refresh();
-
-    const interval = window.setInterval(() => {
-      setSeqStep((curr) => {
-        const next = (curr + 1) % sequence.length;
-        live.seqDegree = sequence[next] - 1;
-        refresh();
-        return next;
-      });
-    }, stepDuration);
-
+      const elapsed = (now - start) / beat;
+      const lap = Math.floor(elapsed / total);
+      const { index, endBeat } = stepAt(steps, elapsed - lap * total);
+      live.seqTones = steps[index].tones;
+      setSeqStep(index);
+      refresh();
+      timer = window.setTimeout(advance, Math.max(5, start + (lap * total + endBeat) * beat - now));
+    };
+    advance();
     return () => {
-      window.clearInterval(interval);
-      live.seqDegree = null;
+      window.clearTimeout(timer);
+      live.seqTones = null;
       refresh();
     };
-  }, [seqPlaying, seqBpm, sequence, live, refresh]);
+  }, [seqPlaying, steps, bpm, live, refresh]);
 
-  // Guide mode advance when player matches the target chord
+  // Guide: the next chord of the chart lights up and moves on once you play it.
+  const target = steps.length ? steps[seqStep % steps.length]?.tones ?? null : null;
   useEffect(() => {
-    if (!guideMode || sequence.length === 0 || seqPlaying) return;
-    const targetDegree = sequence[seqStep % sequence.length] - 1;
-    if (shown.degree === targetDegree || shown.secondDegree === targetDegree) {
-      const timer = window.setTimeout(() => {
-        setSeqStep((curr) => (curr + 1) % sequence.length);
-      }, 450);
-      return () => window.clearTimeout(timer);
-    }
-  }, [guideMode, shown.degree, shown.secondDegree, seqStep, sequence, seqPlaying]);
+    if (!guideMode || seqPlaying || !target || !shown.chord) return;
+    const third = (tones: ChordTones) => tones.intervals.find((i) => i === 3 || i === 4) ?? null;
+    if (shown.chord.root !== target.root || third(shown.chord) !== third(target)) return;
+    const timer = window.setTimeout(() => setSeqStep((step) => (step + 1) % steps.length), 450);
+    return () => window.clearTimeout(timer);
+  }, [guideMode, seqPlaying, target, shown.chord, steps.length]);
 
-  // Looper playback engine
+  // Loop playback: the take's events at their place in the bar, lap after lap.
   useEffect(() => {
-    if (loopState !== "playing" || loopEventsRef.current.length === 0) {
-      jamEngine.drop("loop");
-      return;
-    }
-    const events = loopEventsRef.current;
-    const duration = loopTotalDurationRef.current;
-    let cancelled = false;
-    let timeouts: number[] = [];
-
-    const scheduleCycle = () => {
-      if (cancelled) return;
-      timeouts = [];
-      for (const ev of events) {
-        const t = window.setTimeout(() => {
-          if (!cancelled) jamEngine.set("loop", ev.play, 0.95);
-        }, ev.delay);
-        timeouts.push(t);
+    const take = takeRef.current;
+    if (loopState !== "playing" || !take || take.events.length === 0) return;
+    let timer = 0;
+    const advance = () => {
+      const now = jamEngine.now() + CHANGE_EARLY_MS;
+      const position = (((now - take.start) % take.length) + take.length) % take.length;
+      // The last event at or before here; before the first, the end of the lap is still sounding.
+      let current = take.events[take.events.length - 1];
+      let next = take.events[0].offset + take.length;
+      for (const event of take.events) {
+        if (event.offset <= position) current = event;
+        else {
+          next = event.offset;
+          break;
+        }
       }
-      const cycleEnd = window.setTimeout(() => {
-        scheduleCycle();
-      }, duration);
-      timeouts.push(cycleEnd);
+      if (live.loopPlay !== current.play) {
+        live.loopPlay = current.play;
+        refresh();
+      }
+      timer = window.setTimeout(advance, Math.max(5, next - position));
     };
-
-    scheduleCycle();
-
+    advance();
     return () => {
-      cancelled = true;
-      for (const t of timeouts) window.clearTimeout(t);
-      jamEngine.drop("loop");
+      window.clearTimeout(timer);
+      live.loopPlay = null;
+      refresh();
     };
-  }, [loopState]);
+  }, [loopState, live, refresh]);
 
-  function chooseSong(songId: string) {
-    setSelectedSongId(songId);
-    const song = SYNTH_SONGS.find((s) => s.id === songId);
-    if (!song) return;
-    setSequenceText(song.sequence.join(" "));
-    setSeqBpm(song.bpm);
+  function chooseSong(id: string) {
+    setSongId(id);
     setSeqStep(0);
-    update({ ...activity.state, key: song.key, mode: song.mode });
+    const next = SYNTH_SONGS.find((entry) => entry.id === id);
+    if (!next) return;
+    update({ ...activity.state, key: next.key, mode: next.mode, bpm: next.bpm });
+    chooseSound(next.sound);
+    chooseRhythm(next.rhythm);
   }
 
   function startRecordLoop() {
     jamEngine.warm();
-    loopEventsRef.current = [];
-    loopRecStartRef.current = performance.now();
+    recordingRef.current = { start: barLine(jamEngine.now(), bpm), events: [] };
     setLoopState("recording");
     setHasLoop(false);
+    refresh();
   }
 
   function finishRecordLoop() {
-    const duration = performance.now() - loopRecStartRef.current;
-    if (loopEventsRef.current.length === 0 || duration < 500) {
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    const bar = beatMs(bpm) * BEATS_PER_BAR;
+    const bars = recording ? Math.max(1, Math.round((jamEngine.now() - recording.start) / bar)) : 0;
+    const events = (recording?.events ?? []).filter((event) => event.offset < bars * bar);
+    if (!recording || !events.some((event) => !isSilent(event.play))) {
       setLoopState("idle");
       return;
     }
-    loopTotalDurationRef.current = Math.max(1000, duration);
+    takeRef.current = { start: recording.start, length: bars * bar, events };
     setHasLoop(true);
     setLoopState("playing");
   }
@@ -793,8 +883,25 @@ export function GestureSynth({
 
   function clearLoop() {
     stopLoop();
-    loopEventsRef.current = [];
+    takeRef.current = null;
     setHasLoop(false);
+  }
+
+  /** Sounds one chord of the strip for a moment (when the sequencer isn't playing). */
+  function tapChord(index: number) {
+    setSeqStep(index);
+    if (seqPlaying) return;
+    const tones = steps[index]?.tones;
+    if (!tones) return;
+    jamEngine.warm();
+    live.tapTones = tones;
+    refresh();
+    window.setTimeout(() => {
+      if (live.tapTones === tones) {
+        live.tapTones = null;
+        refresh();
+      }
+    }, Math.min(1500, beatMs(bpm) * steps[index].beats));
   }
 
   const others = seats.filter((seat) => !isSilent(seat.play) || Date.now() - seat.at < 15_000);
@@ -822,6 +929,16 @@ export function GestureSynth({
           <option value="major">Major</option>
           <option value="minor">Minor</option>
         </select>
+        <label className="gesture-synth-bpm-pill" title="The room's tempo: everyone's rhythm, the sequencer and loops follow it">
+          <span>BPM</span>
+          <input
+            type="number"
+            min="40"
+            max="240"
+            value={bpm}
+            onChange={(event) => setBpm(Number(event.target.value) || bpm)}
+          />
+        </label>
         <label>
           <span>Your sound</span>
           <select value={sound} onChange={(event) => chooseSound(event.target.value as SynthSound)}>
@@ -832,6 +949,28 @@ export function GestureSynth({
             ))}
           </select>
         </label>
+        <label>
+          <span>Rhythm</span>
+          <select value={rhythm} onChange={(event) => chooseRhythm(event.target.value as SynthRhythm)}>
+            {SYNTH_RHYTHMS.map((option) => (
+              <option key={option} value={option}>
+                {RHYTHM_NAMES[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className={metronome ? "active" : ""}
+          onClick={() => {
+            jamEngine.warm();
+            setMetronome((on) => !on);
+          }}
+          aria-pressed={metronome}
+          title="Metronome: a click on every beat, only for you"
+        >
+          <Timer size={14} /> Click
+        </button>
         <button type="button" onClick={swapHands} title="Swap which hand plays chords">
           <ArrowLeftRight size={14} /> Chords: {chordHandName} hand
         </button>
@@ -902,60 +1041,46 @@ export function GestureSynth({
           <label className="gesture-synth-subbar-label">
             <Music size={13} />
             <span>Song</span>
-            <select
-              value={selectedSongId}
-              onChange={(e) => chooseSong(e.target.value)}
-              aria-label="Preset song progression"
-            >
-              {SYNTH_SONGS.map((song) => (
-                <option key={song.id} value={song.id}>
-                  {song.name}
+            <select value={songId} onChange={(event) => chooseSong(event.target.value)} aria-label="Song">
+              {SYNTH_SONGS.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name} · {entry.artist}
                 </option>
               ))}
-              <option value="custom">Custom Sequence</option>
+              <option value="custom">Your own progression…</option>
             </select>
           </label>
-          <input
-            type="text"
-            className="gesture-synth-seq-input"
-            value={sequenceText}
-            onChange={(e) => {
-              setSequenceText(e.target.value);
-              setSelectedSongId("custom");
-            }}
-            placeholder="e.g. 1 2 3 5 2 1 4 5 2 6 5 7"
-            aria-label="Chord sequence (digits 1-7)"
-            title="Type or paste digits 1-7 to play chord sequence"
-          />
+          {!song && (
+            <input
+              type="text"
+              className="gesture-synth-seq-input"
+              value={customText}
+              onChange={(event) => setCustomText(event.target.value)}
+              placeholder="1 5 6 4, or Am:2 F:2 C G"
+              aria-label="Your progression: chord numbers or names, :beats for a length"
+              title="Chord numbers 1–7 in the room's key, or chord names (Bbm, F#m7, Ab/C). Add :2 for two beats; a chord lasts a bar otherwise."
+            />
+          )}
           <button
             type="button"
             className={`gesture-synth-subbar-btn ${seqPlaying ? "playing" : ""}`}
             onClick={() => {
               jamEngine.warm();
-              setSeqPlaying((p) => !p);
+              setSeqPlaying((playing) => !playing);
             }}
-            aria-label={seqPlaying ? "Pause sequence" : "Auto-play sequence"}
-            title={seqPlaying ? "Pause sequence" : "Auto-play sequence"}
+            disabled={steps.length === 0}
+            aria-pressed={seqPlaying}
+            title={seqPlaying ? "Stop the progression" : "Play the progression at the room's tempo, from the next bar"}
           >
-            {seqPlaying ? <Pause size={13} /> : <Play size={13} />}
-            <span>{seqPlaying ? "Pause" : "Play"}</span>
+            {seqPlaying ? <Square size={13} /> : <Play size={13} />}
+            <span>{seqPlaying ? "Stop" : "Play"}</span>
           </button>
-          <label className="gesture-synth-bpm-pill" title="Playback speed (BPM)">
-            <span>BPM</span>
-            <input
-              type="number"
-              min="40"
-              max="240"
-              value={seqBpm}
-              onChange={(e) => setSeqBpm(Math.max(40, Math.min(240, Number(e.target.value) || 100)))}
-            />
-          </label>
           <button
             type="button"
             className={`gesture-synth-subbar-btn guide ${guideMode ? "active" : ""}`}
-            onClick={() => setGuideMode((g) => !g)}
+            onClick={() => setGuideMode((on) => !on)}
             aria-pressed={guideMode}
-            title="Follow-along guide mode: highlights each chord in order"
+            title="Guide: lights up the next chord and moves on when you play it"
           >
             <Sparkles size={13} />
             <span>Guide</span>
@@ -968,7 +1093,7 @@ export function GestureSynth({
               type="button"
               className="gesture-synth-subbar-btn rec"
               onClick={startRecordLoop}
-              title="Record a live loop of your chords"
+              title="Record a loop from the next bar line; it plays for everyone, in whole bars"
             >
               <Disc size={13} />
               <span>Record Loop</span>
@@ -1024,45 +1149,39 @@ export function GestureSynth({
         </div>
       </div>
 
-      {sequence.length > 0 && (
-        <div className="gesture-synth-sequence-strip" role="region" aria-label="Chord progression strip">
-          <span className="gesture-synth-strip-title">
-            {guideMode ? "🎯 Next:" : "Progression:"}
-          </span>
-          <div className="gesture-synth-strip-steps">
-            {sequence.map((degNum, idx) => {
-              const deg = degNum - 1;
-              const chord = chords[deg];
-              const isCurrent = (seqPlaying || guideMode) && idx === (seqStep % sequence.length);
-              return (
-                <button
-                  type="button"
-                  key={idx}
-                  className={`gesture-synth-step-chip ${isCurrent ? "active" : ""}`}
-                  style={{ "--step-hue": DEGREE_HUES[deg] } as CSSProperties}
-                  onClick={() => {
-                    setSeqStep(idx);
-                    if (!seqPlaying) {
-                      jamEngine.warm();
-                      live.heldDegree = deg;
-                      refresh();
-                      window.setTimeout(() => {
-                        if (live.heldDegree === deg) {
-                          live.heldDegree = null;
-                          refresh();
-                        }
-                      }, 400);
-                    }
-                  }}
-                  title={`Step ${idx + 1}: Chord ${degNum} (${chord?.name})`}
-                >
-                  <span className="sign-icon">{DEGREE_SIGNS[deg]}</span>
-                  <strong>{degNum}</strong>
-                  <small>{chord?.name}</small>
-                </button>
-              );
-            })}
-          </div>
+      {steps.length > 0 && (
+        <div className="gesture-synth-sequence-strip" role="region" aria-label="Progression">
+          {parts.map((part, partIndex) => {
+            const offset = parts.slice(0, partIndex).reduce((sum, previous) => sum + previous.steps.length, 0);
+            return (
+              <div className="gesture-synth-strip-part" key={`${part.name}-${partIndex}`}>
+                <span className="gesture-synth-strip-title">{part.name}</span>
+                <div className="gesture-synth-strip-steps">
+                  {part.steps.map((step, stepIndex) => {
+                    const index = offset + stepIndex;
+                    const degree = degreeOfTones(step.tones, key, mode);
+                    const isCurrent = (seqPlaying || guideMode) && index === seqStep % steps.length;
+                    return (
+                      <button
+                        type="button"
+                        key={index}
+                        className={`gesture-synth-step-chip ${isCurrent ? "active" : ""} ${degree === null ? "outside" : ""}`}
+                        style={{ "--step-hue": degree === null ? 0 : DEGREE_HUES[degree], flexGrow: step.beats } as CSSProperties}
+                        onClick={() => tapChord(index)}
+                        title={`${step.tones.name}, ${step.beats} beat${step.beats === 1 ? "" : "s"}${
+                          degree === null ? " (not one of the seven pads: the sequencer plays it)" : `: pad ${degree + 1}`
+                        }`}
+                      >
+                        {step.beats > 2 && <span className="sign-icon">{degree === null ? "♪" : DEGREE_SIGNS[degree]}</span>}
+                        <strong>{step.tones.name}</strong>
+                        {step.beats !== BEATS_PER_BAR && <small>{step.beats}</small>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1154,13 +1273,22 @@ export function GestureSynth({
             <strong>Your {melodyHandName} hand</strong>
             <p>☝️ Point and move it up and down to play a melody over your chords.</p>
             <p>🖐️ Open it and raise it to brighten the sound, lower it to soften.</p>
-            <strong>Sequencer & Songbook</strong>
+            <strong>Tempo and rhythm</strong>
             <p>
-              Type any number or letter progression (e.g. <code>1 2 3 5 2 1 4 5 2 6 5 7</code> or <code>C G Am F</code>) or choose a song preset like Pop Hits or Pachelbel&apos;s Canon.
-              Click <strong>Play</strong> for auto-playback, or <strong>Guide</strong> to highlight each chord in order as you play!
+              The room shares one tempo. Pick a rhythm (pulse, arpeggio) and your chords are played in time with everyone
+              else&apos;s, on the same beats. <strong>Click</strong> turns on a metronome only you hear.
             </p>
-            <strong>Loop Recorder</strong>
-            <p>Click <strong>Record Loop</strong>, jam a progression, then hit <strong>Loop It!</strong> to keep it looping in the background.</p>
+            <strong>Songs</strong>
+            <p>
+              A song sets the key, tempo, sound and rhythm, and <strong>Play</strong> runs its chords from the next bar.{" "}
+              <strong>Guide</strong> lights up the next chord and waits for you to play it. Or pick{" "}
+              <em>Your own progression</em> and type chord numbers or names: <code>1 5 6 4</code>, <code>Am:2 F:2 C G</code>.
+            </p>
+            <strong>Loops</strong>
+            <p>
+              <strong>Record Loop</strong> starts on the bar line; <strong>Loop It!</strong> rounds the take to whole bars
+              and keeps it playing under whatever you play next. Everyone hears it.
+            </p>
             <p className="gesture-synth-privacy">
               Everyone in the voice room hears what you play, each in their own sound. Your camera picture never leaves this
               computer.
@@ -1173,8 +1301,7 @@ export function GestureSynth({
         {chords.map((chord, degree) => {
           const isPrimary = shown.degree === degree;
           const isSecondary = shown.secondDegree === degree;
-          const targetDegree = sequence.length > 0 ? sequence[seqStep % sequence.length] - 1 : null;
-          const isTargetGuide = guideMode && targetDegree === degree;
+          const isTargetGuide = guideMode && target !== null && degreeOfTones(target, key, mode) === degree;
           const letter = chordLetter(chord, key);
           return (
             <button

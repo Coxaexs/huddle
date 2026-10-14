@@ -7529,6 +7529,7 @@ export function ChatShell() {
         <SynthJamAudio
           channelId={voice.channelId}
           send={hub.send}
+          serverNow={hub.serverNow}
           deafened={voice.deafened}
           preferenceFor={(id) => {
             const pref = prefFor(id);

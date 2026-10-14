@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   SHAPE_DEGREE,
   SYNTH_KEYS,
-  SYNTH_SONGS,
   chordFor,
+  degreeOfTones,
+  mergeNotes,
+  parseChordName,
+  parseProgression,
+  rhythmHits,
+  voiceTones,
   cleanSynthPlay,
   handShape,
   keyName,
@@ -21,6 +26,7 @@ import {
   type HandPoint,
   type HandShape,
 } from "./gesture-synth";
+import { SYNTH_SONGS, songChords } from "./synth-songs";
 
 describe("chordFor", () => {
   it("names every chord of a major key with its numeral", () => {
@@ -127,18 +133,94 @@ describe("voiceDualChords and parseSequence", () => {
     }
   });
 
-  it("includes Daft Punk and classic song presets with valid sequences", () => {
-    expect(SYNTH_SONGS.some((s) => s.id === "instant-crush")).toBe(true);
-    expect(SYNTH_SONGS.some((s) => s.id === "get-lucky")).toBe(true);
+  it("charts every song with chords that parse, in whole bars", () => {
+    expect(SYNTH_SONGS.map((song) => song.id)).toEqual(expect.arrayContaining(["instant-crush", "get-lucky", "one-more-time"]));
     for (const song of SYNTH_SONGS) {
       expect(SYNTH_KEYS).toContain(song.key);
-      expect(["major", "minor"]).toContain(song.mode);
-      expect(song.sequence.length).toBeGreaterThan(0);
-      for (const step of song.sequence) {
-        expect(step).toBeGreaterThanOrEqual(1);
-        expect(step).toBeLessThanOrEqual(7);
+      for (const part of song.parts) {
+        const tokens = part.chords.split(/\s+/);
+        const steps = parseProgression(part.chords, song.key, song.mode);
+        expect(steps.length, `${song.id} ${part.name}`).toBe(tokens.length);
+        expect(steps.reduce((sum, step) => sum + step.beats, 0) % 4, `${song.id} ${part.name}`).toBe(0);
       }
+      expect(songChords(song).length).toBeGreaterThan(0);
     }
+  });
+
+  it("plays Instant Crush in B♭ minor, as the record does", () => {
+    const song = SYNTH_SONGS.find((entry) => entry.id === "instant-crush")!;
+    expect([song.key, song.mode, song.bpm]).toEqual(["Bb", "minor", 110]);
+    const chorus = parseProgression(song.parts[1].chords, song.key, song.mode).map((step) => step.tones.name);
+    expect(chorus).toEqual(["B♭m", "B♭m", "A♭", "G♭", "G♭", "Fm", "E♭m", "E♭m", "B♭m/D♭", "A♭/C", "Fm"]);
+  });
+});
+
+describe("chord names and progressions", () => {
+  it("reads chord names with their quality and bass", () => {
+    expect(parseChordName("Bbm/Db")).toEqual({ root: 10, intervals: [0, 3, 7], bass: 1, name: "B♭m/D♭" });
+    expect(parseChordName("F#m7")!.intervals).toEqual([0, 3, 7, 10]);
+    expect(parseChordName("E7sus4")!.intervals).toEqual([0, 5, 7, 10]);
+    expect(parseChordName("F#msus2")!.intervals).toEqual([0, 2, 7]);
+    expect(parseChordName("Gadd9")!.intervals).toEqual([0, 4, 7, 14]);
+    expect(parseChordName("C/C")!.bass).toBeNull();
+    expect(parseChordName("H7")).toBeNull();
+    expect(parseChordName("Cwhatever")).toBeNull();
+  });
+
+  it("voices a slash chord over its bass, and big chords within the note limit", () => {
+    const [bass, ...upper] = voiceTones(parseChordName("Ab/C")!);
+    expect(bass % 12).toBe(0);
+    expect(upper.map((note) => note % 12).sort((a, b) => a - b)).toEqual([0, 3, 8]);
+    expect(voiceTones(parseChordName("Dm11")!).length).toBeLessThanOrEqual(6);
+  });
+
+  it("knows which named chords are the key's own pads", () => {
+    expect(degreeOfTones(parseChordName("F#m")!, "A", "major")).toBe(5);
+    expect(degreeOfTones(parseChordName("F#m7")!, "A", "major")).toBe(5);
+    expect(degreeOfTones(parseChordName("C#")!, "A", "major")).toBeNull();
+  });
+
+  it("parses numbers, names and lengths, skipping what it cannot read", () => {
+    const steps = parseProgression("1 5:2 Am:2 F#m7 nope 9", "C", "major");
+    expect(steps.map((step) => [step.tones.name, step.beats])).toEqual([
+      ["C", 4],
+      ["G", 2],
+      ["Am", 2],
+      ["F♯m7", 4],
+    ]);
+  });
+
+  it("merges two plays under the lower bass", () => {
+    expect(mergeNotes([45, 61, 64], [40, 59, 64])).toEqual([40, 59, 61, 64]);
+    expect(mergeNotes([], [40, 59])).toEqual([40, 59]);
+  });
+});
+
+describe("rhythm", () => {
+  const play = { notes: [45, 57, 61, 64], rhythm: "pulse" as const, bpm: 120 };
+
+  it("strikes on a grid every listener shares", () => {
+    // 120 BPM: a beat is 500 ms, eighths every 250 ms, counted from zero on the shared clock.
+    const hits = rhythmHits(play, 1000, 2000);
+    expect(hits.map((hit) => hit.at)).toEqual([1000, 1250, 1500, 1750]);
+    expect(hits[0].notes).toEqual([45, 57, 61, 64]);
+    expect(hits[1].notes).toEqual([57, 61, 64]);
+    // 2000 ms is beat 4, the start of bar 2: accented.
+    expect(rhythmHits(play, 2000, 2001)[0].accent).toBe(true);
+    expect(rhythmHits(play, 1500, 1501)[0].accent).toBe(false);
+  });
+
+  it("gives the same hits however the time is cut up", () => {
+    const whole = rhythmHits({ ...play, rhythm: "updown" }, 0, 4000);
+    const pieces = [0, 900, 1777, 3000].flatMap((from, index, all) =>
+      rhythmHits({ ...play, rhythm: "updown" }, from, all[index + 1] ?? 4000),
+    );
+    expect(pieces).toEqual(whole);
+  });
+
+  it("climbs through the chord for an arpeggio and holds nothing for hold", () => {
+    expect(rhythmHits({ ...play, rhythm: "arp" }, 0, 1000).map((hit) => hit.notes[0])).toEqual([45, 57, 61, 64]);
+    expect(rhythmHits({ ...play, rhythm: "hold" }, 0, 1000)).toEqual([]);
   });
 });
 
@@ -162,9 +244,9 @@ describe("lead", () => {
 
 describe("settings and wire format", () => {
   it("defaults to A major and rejects unknown keys", () => {
-    expect(synthSettings({})).toEqual({ key: "A", mode: "major" });
-    expect(synthSettings({ key: "F#", mode: "minor" })).toEqual({ key: "F#", mode: "minor" });
-    expect(synthSettings({ key: "H", mode: "dorian" })).toEqual({ key: "A", mode: "major" });
+    expect(synthSettings({})).toEqual({ key: "A", mode: "major", bpm: 100 });
+    expect(synthSettings({ key: "F#", mode: "minor", bpm: 116 })).toEqual({ key: "F#", mode: "minor", bpm: 116 });
+    expect(synthSettings({ key: "H", mode: "dorian", bpm: 999 })).toEqual({ key: "A", mode: "major", bpm: 240 });
     expect(keyName("Bb")).toBe("B♭");
     expect(keyName("F#")).toBe("F♯");
   });
@@ -180,6 +262,11 @@ describe("settings and wire format", () => {
       label: "  A (I)\u0007 and a very long tail that goes on  ",
     })!;
     expect(play.notes).toEqual([45, 61, 64, 69, 70, 71]);
+    // An older client sends no rhythm or tempo: it is heard holding, at the default.
+    expect(play.rhythm).toBe("hold");
+    expect(play.bpm).toBe(100);
+    expect(cleanSynthPlay({ notes: [45], rhythm: "arp", bpm: 116 })).toMatchObject({ rhythm: "arp", bpm: 116 });
+    expect(cleanSynthPlay({ notes: [45], rhythm: "dubstep" })!.rhythm).toBe("hold");
     expect(play.lead).toBeNull();
     expect(play.sound).toBe("warm");
     expect(play.bright).toBe(1);
@@ -187,10 +274,11 @@ describe("settings and wire format", () => {
   });
 
   it("treats a tiny brightness drift as the same play", () => {
-    const a = { notes: [45, 61], lead: null, sound: "warm" as const, bright: 0.5, label: "A (I)" };
+    const a = { notes: [45, 61], rhythm: "hold" as const, bpm: 100, lead: null, sound: "warm" as const, bright: 0.5, label: "A (I)" };
     expect(samePlay(a, { ...a, bright: 0.52 })).toBe(true);
     expect(samePlay(a, { ...a, bright: 0.6 })).toBe(false);
     expect(samePlay(a, { ...a, notes: [45, 62] })).toBe(false);
+    expect(samePlay(a, { ...a, rhythm: "pulse" })).toBe(false);
   });
 });
 

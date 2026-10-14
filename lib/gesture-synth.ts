@@ -23,6 +23,31 @@ export const SOUND_NAMES: Record<SynthSound, string> = {
   chip: "8-bit",
 };
 
+/**
+ * How a player's chord is played. Every listener renders the rhythm on their
+ * own audio clock, on a beat grid shared through the hub's clock, so two
+ * people pulsing at the room's tempo land on the same beats.
+ */
+export const SYNTH_RHYTHMS = ["hold", "pulse", "arp", "updown"] as const;
+export type SynthRhythm = (typeof SYNTH_RHYTHMS)[number];
+export const RHYTHM_NAMES: Record<SynthRhythm, string> = {
+  hold: "Hold",
+  pulse: "Pulse (8ths)",
+  arp: "Arpeggio",
+  updown: "Arp up-down (16ths)",
+};
+
+export function isSynthRhythm(value: unknown): value is SynthRhythm {
+  return SYNTH_RHYTHMS.includes(value as SynthRhythm);
+}
+
+export const DEFAULT_BPM = 100;
+export const BEATS_PER_BAR = 4;
+
+export function cleanBpm(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(40, Math.min(240, Math.round(value))) : DEFAULT_BPM;
+}
+
 export function isSynthKey(value: unknown): value is SynthKey {
   return SYNTH_KEYS.includes(value as SynthKey);
 }
@@ -31,11 +56,16 @@ export function isSynthSound(value: unknown): value is SynthSound {
   return SYNTH_SOUNDS.includes(value as SynthSound);
 }
 
-/** The room's key from an activity state; A major (the reel this came from) when unset. */
-export function synthSettings(state: Record<string, unknown> | null | undefined): { key: SynthKey; mode: SynthMode } {
+/** The room's key and tempo from an activity state; A major (the reel this came from) when unset. */
+export function synthSettings(state: Record<string, unknown> | null | undefined): {
+  key: SynthKey;
+  mode: SynthMode;
+  bpm: number;
+} {
   return {
     key: isSynthKey(state?.key) ? state.key : "A",
     mode: state?.mode === "minor" ? "minor" : "major",
+    bpm: cleanBpm(state?.bpm),
   };
 }
 
@@ -142,31 +172,58 @@ export function degreeForLetter(letter: string, key: SynthKey, _mode?: SynthMode
   return ((targetIdx - tonicIdx) % 7 + 7) % 7;
 }
 
-/** Lowest and highest note the upper three voices may start on. */
+/** Lowest and highest note the upper voices may start on. */
 const UPPER_LOW = 52;
 const UPPER_HIGH = 67;
 const UPPER_CENTRE = 64;
 
 /**
- * A bass root plus a close-position triad, voiced as near as possible to the
- * previous chord so changing chords glides instead of jumping around.
+ * Any chord as pitch classes: a root, the intervals above it (root first) and
+ * an optional bass note for slash chords. Degree chords and named chords
+ * ("B♭m/D♭", "E7sus4") both become one of these before they are voiced.
  */
-export function voiceChord(chord: Chord, previous: readonly number[] | null = null): number[] {
-  const bass = 40 + ((((chord.root - 40) % 12) + 12) % 12);
-  const pcs = [chord.root, (chord.root + chord.third) % 12, (chord.root + chord.fifth) % 12];
+export interface ChordTones {
+  root: number;
+  intervals: number[];
+  /** Pitch class in the bass when it isn't the root (slash chords). */
+  bass: number | null;
+  name: string;
+}
+
+export function chordTones(chord: Chord): ChordTones {
+  return { root: chord.root, intervals: [0, chord.third, chord.fifth], bass: null, name: chord.name };
+}
+
+/**
+ * A bass note plus the chord in close position above it, voiced as near as
+ * possible to the previous chord so changing chords glides instead of jumping.
+ */
+export function voiceTones(tones: ChordTones, previous: readonly number[] | null = null): number[] {
+  const bassPc = tones.bass ?? tones.root;
+  const bass = 40 + ((((bassPc - 40) % 12) + 12) % 12);
+  const pcs: number[] = [];
+  for (const interval of tones.intervals) {
+    const pc = (tones.root + interval) % 12;
+    if (!pcs.includes(pc)) pcs.push(pc);
+  }
+  // Big chords keep their colour notes and drop the fifth first, so the upper
+  // voices still fit (MAX_SYNTH_NOTES counts the bass).
+  while (pcs.length > MAX_SYNTH_NOTES - 1) {
+    const fifth = pcs.indexOf((tones.root + 7) % 12);
+    pcs.splice(fifth > 0 ? fifth : pcs.length - 1, 1);
+  }
   const above = (from: number, pc: number) => from + ((((pc - from) % 12) + 12) % 12 || 12);
-  const before = previous && previous.length >= 4 ? [...previous].slice(1).sort((a, b) => a - b) : null;
+  const before = previous && previous.length >= 2 ? [...previous].slice(1).sort((a, b) => a - b) : null;
   let best: number[] = [];
   let bestCost = Infinity;
   for (let start = UPPER_LOW; start <= UPPER_HIGH; start += 1) {
     const inversion = pcs.indexOf(start % 12);
     if (inversion < 0) continue;
-    const second = above(start, pcs[(inversion + 1) % 3]);
-    const third = above(second, pcs[(inversion + 2) % 3]);
-    const notes = [start, second, third];
+    const notes = [start];
+    for (let step = 1; step < pcs.length; step += 1) notes.push(above(notes[step - 1], pcs[(inversion + step) % pcs.length]));
     const cost = before
-      ? notes.reduce((sum, note, index) => sum + Math.abs(note - before[index]), 0)
-      : Math.abs((start + second + third) / 3 - UPPER_CENTRE);
+      ? notes.reduce((sum, note, index) => sum + Math.abs(note - before[Math.min(index, before.length - 1)]), 0)
+      : Math.abs(notes.reduce((sum, note) => sum + note, 0) / notes.length - UPPER_CENTRE);
     if (cost < bestCost) {
       bestCost = cost;
       best = notes;
@@ -175,164 +232,123 @@ export function voiceChord(chord: Chord, previous: readonly number[] | null = nu
   return [bass, ...best];
 }
 
+/** A degree chord's bass root and close triad (see voiceTones). */
+export function voiceChord(chord: Chord, previous: readonly number[] | null = null): number[] {
+  return voiceTones(chordTones(chord), previous);
+}
+
+const QUALITIES: Record<string, number[]> = {
+  "": [0, 4, 7],
+  maj: [0, 4, 7],
+  m: [0, 3, 7],
+  min: [0, 3, 7],
+  dim: [0, 3, 6],
+  "°": [0, 3, 6],
+  aug: [0, 4, 8],
+  "+": [0, 4, 8],
+  "5": [0, 7],
+  "6": [0, 4, 7, 9],
+  m6: [0, 3, 7, 9],
+  "7": [0, 4, 7, 10],
+  maj7: [0, 4, 7, 11],
+  m7: [0, 3, 7, 10],
+  mmaj7: [0, 3, 7, 11],
+  m7b5: [0, 3, 6, 10],
+  "ø": [0, 3, 6, 10],
+  dim7: [0, 3, 6, 9],
+  "°7": [0, 3, 6, 9],
+  sus2: [0, 2, 7],
+  sus4: [0, 5, 7],
+  sus: [0, 5, 7],
+  "7sus4": [0, 5, 7, 10],
+  add9: [0, 4, 7, 14],
+  madd9: [0, 3, 7, 14],
+  "9": [0, 4, 7, 10, 14],
+  m9: [0, 3, 7, 10, 14],
+  maj9: [0, 4, 7, 11, 14],
+  "11": [0, 7, 10, 14, 17],
+  m11: [0, 3, 7, 10, 17],
+};
+
+function letterPc(letter: string, accidental: string): number {
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[letter.toUpperCase() as "C"]!;
+  return (base + (/[#♯]/.test(accidental) ? 1 : /[b♭]/.test(accidental) ? 11 : 0)) % 12;
+}
+
+const CHORD_NAME = /^([A-Ga-g])([#♯b♭]?)([^/]*)(?:\/([A-Ga-g])([#♯b♭]?))?$/;
+
+/** "B♭m/D♭", "F#m7", "E7sus4", "Gadd9": its tones, or null when it isn't a chord name. */
+export function parseChordName(text: string): ChordTones | null {
+  const match = text.trim().match(CHORD_NAME);
+  if (!match) return null;
+  const [, letter, accidental, rawQuality, bassLetter, bassAccidental] = match;
+  const quality = rawQuality.replace(/^M7$/, "maj7").replace(/^(m?)sus$/, "sus4").replace(/^msus/, "sus").replace(/^-/, "m");
+  const intervals = QUALITIES[quality];
+  if (!intervals) return null;
+  const root = letterPc(letter, accidental);
+  const bass = bassLetter ? letterPc(bassLetter, bassAccidental) : null;
+  const pretty = (value: string) => value.replace("#", "♯").replace(/^([A-G])b/, "$1♭");
+  const name = pretty(letter.toUpperCase() + accidental) + rawQuality + (bassLetter ? `/${pretty(bassLetter.toUpperCase() + bassAccidental)}` : "");
+  return { root, intervals, bass: bass === root ? null : bass, name };
+}
+
+/** The degree a named chord is in the key, when it is that degree's own triad. */
+export function degreeOfTones(tones: ChordTones, key: SynthKey, mode: SynthMode): number | null {
+  for (let degree = 0; degree < 7; degree += 1) {
+    const chord = chordFor(degree, key, mode);
+    if (chord.root !== tones.root) continue;
+    const has = (interval: number) => tones.intervals.some((i) => i % 12 === interval);
+    return has(chord.third) && has(chord.fifth) ? degree : null;
+  }
+  return null;
+}
+
+export interface ProgressionStep {
+  tones: ChordTones;
+  beats: number;
+}
+
 /**
- * Layers two chord voicings together (dual hands / compound chord),
- * keeping the lower bass and up to MAX_SYNTH_NOTES distinct notes.
+ * A typed progression: chord numbers 1–7 in the room's key or chord names, each
+ * optionally with its length in beats ("Bbm:2 Ab:2 Gb Fm", "1 5 6 4"). Without
+ * one a chord lasts `beats`, a bar by default.
  */
-export function voiceDualChords(
-  chordA: Chord,
-  chordB: Chord,
-  previous: readonly number[] | null = null,
-): number[] {
-  const notesA = voiceChord(chordA, previous);
-  if (chordA.degree === chordB.degree) return notesA;
-  const notesB = voiceChord(chordB, previous);
-  const bass = Math.min(notesA[0], notesB[0]);
-  const upper = new Set<number>();
-  for (const n of notesA.slice(1)) upper.add(n);
-  for (const n of notesB.slice(1)) upper.add(n);
-  const sortedUpper = [...upper].sort((a, b) => a - b).slice(0, MAX_SYNTH_NOTES - 1);
-  return [bass, ...sortedUpper];
+export function parseProgression(text: string, key: SynthKey, mode: SynthMode, beats = BEATS_PER_BAR): ProgressionStep[] {
+  const steps: ProgressionStep[] = [];
+  for (const token of text.split(/[\s,|]+/)) {
+    if (!token) continue;
+    const [chordText, lengthText] = token.split(":");
+    const length = lengthText ? Number(lengthText) : beats;
+    if (!Number.isFinite(length) || length <= 0 || length > 32) continue;
+    const tones = /^[1-7]$/.test(chordText) ? chordTones(chordFor(Number(chordText) - 1, key, mode)) : parseChordName(chordText);
+    if (tones) steps.push({ tones, beats: length });
+  }
+  return steps;
 }
 
-export interface SynthSong {
-  id: string;
-  name: string;
-  key: SynthKey;
-  mode: SynthMode;
-  bpm: number;
-  sequence: number[]; // 1-indexed for chords (1-7)
-  description: string;
+/**
+ * Layers two chords (both hands, or two keys held): the lower bass and the
+ * upper voices of both, up to MAX_SYNTH_NOTES notes.
+ */
+export function voiceDualTones(a: ChordTones, b: ChordTones, previous: readonly number[] | null = null): number[] {
+  const notesA = voiceTones(a, previous);
+  if (a.root === b.root && a.intervals.join() === b.intervals.join() && a.bass === b.bass) return notesA;
+  const notesB = voiceTones(b, previous);
+  const upper = [...new Set([...notesA.slice(1), ...notesB.slice(1)])].sort((x, y) => x - y);
+  return [Math.min(notesA[0], notesB[0]), ...upper.slice(0, MAX_SYNTH_NOTES - 1)];
 }
 
-export const SYNTH_SONGS: SynthSong[] = [
-  {
-    id: "instant-crush",
-    name: "Instant Crush — Daft Punk",
-    key: "Ab",
-    mode: "major",
-    bpm: 110,
-    sequence: [1, 2, 6, 5],
-    description: "A♭ - B♭m - Fm - E♭ (Julian Casablancas synth magic)",
-  },
-  {
-    id: "get-lucky",
-    name: "Get Lucky — Daft Punk",
-    key: "A",
-    mode: "major",
-    bpm: 116,
-    sequence: [2, 4, 6, 5],
-    description: "Bm - D - F♯m - E (Pharrell funk groove)",
-  },
-  {
-    id: "one-more-time",
-    name: "One More Time — Daft Punk",
-    key: "D",
-    mode: "major",
-    bpm: 123,
-    sequence: [1, 5, 6, 4],
-    description: "D - A - Bm - G (French house anthem)",
-  },
-  {
-    id: "around-the-world",
-    name: "Around The World — Daft Punk",
-    key: "G",
-    mode: "major",
-    bpm: 121,
-    sequence: [6, 1, 2, 4],
-    description: "Em - G - Am - C (Iconic dance bassline)",
-  },
-  {
-    id: "digital-love",
-    name: "Digital Love — Daft Punk",
-    key: "A",
-    mode: "major",
-    bpm: 125,
-    sequence: [6, 2, 4, 5],
-    description: "F♯m - Bm - D - E (Discovery synth classic)",
-  },
-  {
-    id: "user-seq",
-    name: "Melody Sequence (1 2 3 5...)",
-    key: "A",
-    mode: "major",
-    bpm: 110,
-    sequence: [1, 2, 3, 5, 2, 1, 4, 5, 2, 6, 5, 7],
-    description: "Custom progression: 1 2 3 5 2 1 4 5 2 6 5 7",
-  },
-  {
-    id: "pop-4",
-    name: "Pop Hits (I - V - vi - IV)",
-    key: "C",
-    mode: "major",
-    bpm: 105,
-    sequence: [1, 5, 6, 4],
-    description: "Don't Stop Believin', Let It Be, Someone Like You",
-  },
-  {
-    id: "take-on-me",
-    name: "Take On Me — a-ha",
-    key: "A",
-    mode: "major",
-    bpm: 168,
-    sequence: [2, 5, 1, 4],
-    description: "Bm - E - A - D (80s synth-pop staple)",
-  },
-  {
-    id: "blinding-lights",
-    name: "Blinding Lights — The Weeknd",
-    key: "Eb",
-    mode: "major",
-    bpm: 171,
-    sequence: [2, 6, 1, 5],
-    description: "Fm - Cm - E♭ - B♭ (Synthwave drive)",
-  },
-  {
-    id: "canon",
-    name: "Pachelbel's Canon",
-    key: "D",
-    mode: "major",
-    bpm: 80,
-    sequence: [1, 5, 6, 3, 4, 1, 4, 5],
-    description: "I - V - vi - iii - IV - I - IV - V",
-  },
-  {
-    id: "stand-by-me",
-    name: "Stand By Me (50s Doo-Wop)",
-    key: "A",
-    mode: "major",
-    bpm: 96,
-    sequence: [1, 6, 4, 5],
-    description: "I - vi - IV - V classic progression",
-  },
-  {
-    id: "sad-pop",
-    name: "Melancholy (vi - IV - I - V)",
-    key: "C",
-    mode: "major",
-    bpm: 88,
-    sequence: [6, 4, 1, 5],
-    description: "Faded, Numb, Apologize",
-  },
-  {
-    id: "blues",
-    name: "12-Bar Blues",
-    key: "E",
-    mode: "major",
-    bpm: 110,
-    sequence: [1, 1, 1, 1, 4, 4, 1, 1, 5, 4, 1, 5],
-    description: "Classic 12-bar blues groove",
-  },
-  {
-    id: "lofi",
-    name: "Lo-Fi Chill",
-    key: "F",
-    mode: "major",
-    bpm: 82,
-    sequence: [4, 3, 6, 1],
-    description: "IV - iii - vi - I warm study chords",
-  },
-];
+export function voiceDualChords(chordA: Chord, chordB: Chord, previous: readonly number[] | null = null): number[] {
+  return voiceDualTones(chordTones(chordA), chordTones(chordB), previous);
+}
+
+/** Two plays sounding at once (your hands over your loop): the lower bass, both chords' upper notes. */
+export function mergeNotes(a: readonly number[], b: readonly number[]): number[] {
+  if (!a.length) return [...b];
+  if (!b.length) return [...a];
+  const upper = [...new Set([...a.slice(1), ...b.slice(1)])].sort((x, y) => x - y);
+  return [Math.min(a[0], b[0]), ...upper.slice(0, MAX_SYNTH_NOTES - 1)];
+}
 
 /**
  * Parses chord sequences from text. Supports:
@@ -484,6 +500,10 @@ export function handShape(points: readonly HandPoint[], aspect = 1): HandShape {
 export interface SynthPlay {
   /** MIDI notes of the chord, bass first. */
   notes: number[];
+  /** How the chord is played; older players send none and are heard holding. */
+  rhythm: SynthRhythm;
+  /** The tempo the rhythm runs at. */
+  bpm: number;
   /** MIDI note of the melody hand, if it is pointing. */
   lead: number | null;
   sound: SynthSound;
@@ -493,7 +513,7 @@ export interface SynthPlay {
   label: string;
 }
 
-export const SILENCE: SynthPlay = { notes: [], lead: null, sound: "warm", bright: 0.5, label: "" };
+export const SILENCE: SynthPlay = { notes: [], rhythm: "hold", bpm: DEFAULT_BPM, lead: null, sound: "warm", bright: 0.5, label: "" };
 
 /** Most chord notes one play may hold. */
 export const MAX_SYNTH_NOTES = 6;
@@ -521,6 +541,8 @@ export function cleanSynthPlay(value: unknown): SynthPlay | null {
   const bright = typeof input.bright === "number" && Number.isFinite(input.bright) ? input.bright : 0.5;
   return {
     notes: notes.slice(0, MAX_SYNTH_NOTES),
+    rhythm: isSynthRhythm(input.rhythm) ? input.rhythm : "hold",
+    bpm: cleanBpm(input.bpm),
     lead: midi(input.lead),
     sound: isSynthSound(input.sound) ? input.sound : "warm",
     bright: Math.round(Math.max(0, Math.min(1, bright)) * 100) / 100,
@@ -536,10 +558,59 @@ export function isSilent(play: SynthPlay): boolean {
 export function samePlay(a: SynthPlay, b: SynthPlay): boolean {
   return (
     a.lead === b.lead &&
+    a.rhythm === b.rhythm &&
+    a.bpm === b.bpm &&
     a.sound === b.sound &&
     a.label === b.label &&
     Math.abs(a.bright - b.bright) < 0.04 &&
     a.notes.length === b.notes.length &&
     a.notes.every((note, index) => note === b.notes[index])
   );
+}
+
+// ---------------------------------------------------------------------------
+// Rhythm on the shared beat grid
+
+export function beatMs(bpm: number): number {
+  return 60_000 / cleanBpm(bpm);
+}
+
+export interface RhythmHit {
+  /** On the shared clock, in ms. */
+  at: number;
+  notes: number[];
+  /** How long the notes sound, in ms. */
+  gate: number;
+  accent: boolean;
+}
+
+/**
+ * The notes a rhythmic play strikes between `from` (inclusive) and `to`, on the
+ * grid every listener shares: step k falls at k × step length on the hub's
+ * clock, so the same play sounds on the same beats everywhere.
+ */
+export function rhythmHits(play: Pick<SynthPlay, "notes" | "rhythm" | "bpm">, from: number, to: number): RhythmHit[] {
+  if (play.rhythm === "hold" || play.notes.length === 0 || to <= from) return [];
+  const beat = beatMs(play.bpm);
+  const step = play.rhythm === "updown" ? beat / 4 : beat / 2;
+  const sorted = [...play.notes].sort((a, b) => a - b);
+  const [bass, ...upper] = sorted;
+  const climb = upper.length ? [...upper, upper[0] + 12] : [bass];
+  const cycle = climb.length > 2 ? [...climb, ...climb.slice(1, -1).reverse()] : climb;
+  const hits: RhythmHit[] = [];
+  for (let k = Math.ceil(from / step); k * step < to; k += 1) {
+    const at = k * step;
+    const onBeat = play.rhythm === "updown" ? k % 4 === 0 : k % 2 === 0;
+    const accent = Math.round(at / beat) % BEATS_PER_BAR === 0 && onBeat;
+    if (play.rhythm === "pulse") {
+      hits.push({ at, notes: onBeat ? sorted : upper.length ? upper : sorted, gate: step * 0.55, accent });
+    } else if (play.rhythm === "arp") {
+      hits.push({ at, notes: [sorted[k % sorted.length]], gate: step * 0.9, accent });
+    } else {
+      const notes = [cycle[k % cycle.length]];
+      if (onBeat) notes.unshift(bass);
+      hits.push({ at, notes, gate: step * 0.85, accent });
+    }
+  }
+  return hits;
 }

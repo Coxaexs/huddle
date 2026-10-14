@@ -7726,6 +7726,12 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   border-color: color-mix(in srgb, var(--lavender) 50%, var(--line));
 }
 
+.gesture-synth-bar button.active {
+  color: var(--on-accent, #fff);
+  background: var(--lavender);
+  border-color: var(--lavender);
+}
+
 .gesture-synth-spacer {
   flex: 1;
 }
@@ -7954,8 +7960,9 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 .gesture-synth-sequence-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 14px;
   padding: 6px 10px;
   background: rgba(12, 10, 20, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -7970,11 +7977,52 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   white-space: nowrap;
 }
 
+.gesture-synth-strip-part {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.gesture-synth-strip-part .gesture-synth-strip-title {
+  flex: 0 0 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .gesture-synth-strip-steps {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
+}
+
+.gesture-synth-step-chip {
+  justify-content: center;
+  flex-basis: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gesture-synth-step-chip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gesture-synth-step-chip .sign-icon {
+  flex: none;
+}
+
+.gesture-synth-step-chip small {
+  opacity: 0.7;
+}
+
+/* Chords outside the seven pads (B♭m/D♭, E7sus4): neutral, the sequencer plays them. */
+.gesture-synth-step-chip.outside {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .gesture-synth-step-chip {
