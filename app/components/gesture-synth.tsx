@@ -279,7 +279,9 @@ export function GestureSynth({
     live.current = play;
     jamEngine.set("self", play, 1);
 
-    if (loopStateRef.current === "recording" && !isSilent(play)) {
+    // Releases are kept too (once the loop has started), or every chord would
+    // ring on until the next one.
+    if (loopStateRef.current === "recording" && (loopEventsRef.current.length > 0 || !isSilent(play))) {
       loopEventsRef.current.push({
         delay: performance.now() - loopRecStartRef.current,
         play,
@@ -334,7 +336,9 @@ export function GestureSynth({
       } else if (leadSign === "one") {
         live.camSecondDegree = null;
         live.leadStep = leadHand ? leadStep(leadHand[8].y, live.leadStep) : null;
-      } else if (leadSign && SHAPE_DEGREE[leadSign] !== undefined) {
+      } else if (leadSign && leadSign !== "five" && leadSign !== "four" && SHAPE_DEGREE[leadSign] !== undefined) {
+        // An open hand (four or five fingers) brightens the sound below; any
+        // other chord sign on this hand adds a second chord.
         live.camSecondDegree = SHAPE_DEGREE[leadSign]!;
         live.leadStep = null;
       } else {
