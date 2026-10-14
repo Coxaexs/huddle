@@ -6,7 +6,7 @@
   "author": "coxaexs <coxaexs@gmail.com>",
   "scripts": {
     "dev": "vinext dev --port 3001",
-    "prebuild": "node scripts/build-tts-worker.mjs",
+    "prebuild": "node scripts/guard-live-build.mjs && node scripts/build-tts-worker.mjs",
     "build": "vinext build",
     "start": "vinext start",
     "test": "vitest run",

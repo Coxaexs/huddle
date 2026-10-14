@@ -2,8 +2,11 @@
 #
 # Deploy the working tree to the running Hoffle without taking it down.
 #
-#   scripts/deploy.sh             build, then swap the new build in
-#   scripts/deploy.sh --rollback  put the previous build back
+#   scripts/deploy.sh               build, then swap the new build in
+#   scripts/deploy.sh --build-only  build in the staging copy and stop (a safe
+#                                   "does it build?"; `npm run build` refuses
+#                                   to run in the live checkout)
+#   scripts/deploy.sh --rollback    put the previous build back
 #
 # Building in place (npm run build inside this checkout) rewrote dist/ while
 # `wrangler dev` was serving it. Wrangler reloaded halfway through and died
@@ -12,7 +15,9 @@
 # rsync --delay-updates: every file is staged first and renamed into place at
 # the end, and wrangler's watcher reloads once, onto a complete build.
 #
-# The build that was live is kept in dist-prev/ for --rollback.
+# The build that was live is kept in dist-prev/ for --rollback, and
+# dist/DEPLOYED.txt says what each build was made from: the commit, and any
+# uncommitted files that went into it.
 
 set -euo pipefail
 
@@ -53,6 +58,18 @@ ln -sfn "$ROOT/node_modules" "$STAGE/node_modules"
 echo "Building ..."
 (cd "$STAGE" && npm run build)
 [[ -f "$STAGE/dist/server/wrangler.json" ]] || { echo "The build produced no dist/server/wrangler.json; nothing deployed." >&2; exit 1; }
+if [[ "${1:-}" == "--build-only" ]]; then
+  echo "Build OK in $STAGE; nothing deployed."
+  exit 0
+fi
+{
+  echo "built $(date -Is) from $(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo "an unknown commit")"
+  changes="$(git -C "$ROOT" status --porcelain 2>/dev/null | head -100)"
+  if [[ -n "$changes" ]]; then
+    echo "uncommitted changes in the build:"
+    echo "$changes"
+  fi
+} > "$STAGE/dist/DEPLOYED.txt"
 # The generated config records where it was built; point it at this checkout,
 # exactly as an in-place build would have.
 sed -i "s#$STAGE/#$ROOT/#g" "$STAGE/dist/server/wrangler.json"
