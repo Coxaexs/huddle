@@ -1,8 +1,12 @@
 name: Build and Publish Docker Image
 
+# Publishes ghcr.io/coxaexs/huddle (the repository name, lowercased) for
+# linux/amd64 and linux/arm64: `latest` and the commit sha from main, and
+# 1.2.3 / 1.2 from a v1.2.3 tag. A newer push cancels a build still running.
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
     paths:
       - "Dockerfile"
       - ".dockerignore"
@@ -20,6 +24,10 @@ on:
       - "huddle_music_helper.py"
   workflow_dispatch:
 
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
@@ -31,6 +39,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up QEMU (arm64 builds)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -41,18 +52,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase repository name
-        id: repo
-        run: echo "NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ steps.repo.outputs.NAME }}:latest
-            ghcr.io/${{ steps.repo.outputs.NAME }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

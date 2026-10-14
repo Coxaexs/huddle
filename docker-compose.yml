@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile
     # `docker compose up` pulls the multi-arch image CI publishes to GHCR;
     # `docker compose up --build` builds this checkout under the same name.
-    image: ${HOFFLE_IMAGE:-ghcr.io/coxaexs/hoffle:latest}
+    image: ${HOFFLE_IMAGE:-ghcr.io/coxaexs/huddle:latest}
     container_name: hoffle
     restart: unless-stopped
     ports:
