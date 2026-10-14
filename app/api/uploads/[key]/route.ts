@@ -1,16 +1,21 @@
+import { isBigUploadKey } from "@/lib/big-upload-key";
+import { servableBigUpload } from "@/lib/big-uploads";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { isInlineSafe } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ key: string }> },
 ) {
+  const { key } = await context.params;
+  if (isBigUploadKey(key)) return serveBigUpload(request, key);
+
   const bucket = bindings().UPLOADS;
   if (!bucket) return new Response("Not found", { status: 404 });
 
-  const { key } = await context.params;
   const object = await bucket.get(key);
   if (!object) return new Response("Not found", { status: 404 });
 
@@ -31,9 +36,14 @@ export async function GET(
     else if (ext === "ogg") contentType = "audio/ogg";
     else if (ext === "m4a") contentType = "audio/mp4";
   }
+  const headers = servingHeaders(contentType, filename);
+  headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  return new Response(object.body, { headers });
+}
+
+function servingHeaders(contentType: string, filename: string): Record<string, string> {
   const inline = isInlineSafe(contentType);
   const headers: Record<string, string> = {
-    "Cache-Control": "public, max-age=31536000, immutable",
     "Content-Type": inline ? contentType : "application/octet-stream",
     "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename.replace(/["\\\r\n]/g, "_")}"`,
     "X-Content-Type-Options": "nosniff",
@@ -44,5 +54,37 @@ export async function GET(
     headers["Content-Security-Policy"] =
       "sandbox; default-src 'none'; img-src 'self'; media-src 'self'";
   }
+  return headers;
+}
+
+/**
+ * A big temporary upload (lib/big-uploads.ts). Gone after its 12 hours even if
+ * the sweep has not run yet, cached privately only until then (so Cloudflare
+ * never keeps a copy), and served in ranges so a 2 GB download can resume and
+ * a video can seek.
+ */
+async function serveBigUpload(request: Request, key: string): Promise<Response> {
+  const db = bindings().DB;
+  const bucket = bindings().BIG_UPLOADS;
+  if (!db || !bucket) return new Response("Not found", { status: 404 });
+  await ensureSchema(db);
+  const row = await servableBigUpload(db, key);
+  if (!row) return new Response("This file was deleted after 12 hours.", { status: 410 });
+  const object = await bucket.get(key, { range: request.headers });
+  if (!object) return new Response("Not found", { status: 404 });
+
+  const headers = servingHeaders(row.content_type || "application/octet-stream", row.name);
+  const left = Math.max(0, Math.floor((row.expires_at - Date.now()) / 1000));
+  headers["Cache-Control"] = `private, max-age=${left}`;
+  headers["Accept-Ranges"] = "bytes";
+  const range = object.range as { offset?: number; length?: number; suffix?: number } | undefined;
+  if (range && request.headers.has("range")) {
+    const offset = range.suffix !== undefined ? object.size - range.suffix : range.offset ?? 0;
+    const length = range.suffix !== undefined ? range.suffix : range.length ?? object.size - offset;
+    headers["Content-Range"] = `bytes ${offset}-${offset + length - 1}/${object.size}`;
+    headers["Content-Length"] = String(length);
+    return new Response(object.body, { status: 206, headers });
+  }
+  headers["Content-Length"] = String(object.size);
   return new Response(object.body, { headers });
 }

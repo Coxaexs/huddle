@@ -103,6 +103,8 @@ import { useLivingRoom } from "./hooks/use-living-room";
 import { usePlayer } from "./hooks/use-player";
 import { useVoice } from "./hooks/use-voice";
 import { apiFetch, apiUrl } from "./lib/client";
+import { bigUploadStatus, uploadBigFile } from "./lib/big-upload";
+import { NORMAL_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
 import { useMessageSearch } from "./hooks/use-message-search";
 import { useSavedMessages } from "./hooks/use-saved-messages";
 import { useDmCalls } from "./hooks/use-dm-calls";
@@ -5292,6 +5294,16 @@ export function ChatShell() {
       // Upload every staged file, then send one message carrying them all.
       const keys: string[] = [];
       for (const entry of files) {
+        if (entry.file.size > NORMAL_UPLOAD_MAX_BYTES) {
+          const name = entry.file.name;
+          keys.push(
+            await uploadBigFile(entry.file, (sent, total) =>
+              setNotice(`Uploading ${name}… ${Math.floor((sent / total) * 100)}% — keep this tab open.`),
+            ),
+          );
+          setNotice("");
+          continue;
+        }
         const form = new FormData();
         form.append("file", entry.file);
         const upload = await apiFetch<{ key: string }>("/api/uploads", {
@@ -5649,11 +5661,25 @@ export function ChatShell() {
         setNotice("For security, HTML and SVG files cannot be attached.");
         continue;
       }
-      if (file.size > 40 * 1024 * 1024) {
-        setNotice(`${file.name} is larger than 40 MB.`);
+      if (file.size > NORMAL_UPLOAD_MAX_BYTES) {
+        // Up to 2 GB for people an admin picked; deleted 12 hours after sending.
+        void bigUploadStatus()
+          .then((big) => {
+            if (!big.allowed) setNotice(`${file.name} is larger than 40 MB.`);
+            else if (file.size > big.maxBytes) setNotice(`${file.name} is larger than 2 GB.`);
+            else {
+              stage(file, false);
+              setNotice(`${file.name} is a big file: it is deleted 12 hours after you send it.`);
+            }
+          })
+          .catch(() => setNotice(`${file.name} is larger than 40 MB.`));
         continue;
       }
-      const isImage = file.type.startsWith("image/");
+      stage(file, file.type.startsWith("image/"));
+    }
+    composerRef.current?.focus();
+
+    function stage(file: File, isImage: boolean) {
       const id = `${file.name}:${file.size}:${crypto.randomUUID()}`;
       setPendingFiles((current) =>
         current.length >= MAX ? current : [...current, { id, file, preview: null }],
@@ -5671,7 +5697,6 @@ export function ChatShell() {
         reader.readAsDataURL(file);
       }
     }
-    composerRef.current?.focus();
   }
 
   function chooseAttachment(event: ChangeEvent<HTMLInputElement>) {

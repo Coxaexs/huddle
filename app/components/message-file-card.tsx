@@ -7,6 +7,7 @@ import {
   getFileDescription,
   getFileExtensionBadge,
 } from "@/lib/upload-sniff";
+import { bigUploadExpiryFromUrl, describeBigUploadExpiry } from "@/lib/big-upload-key";
 
 export interface MessageFileItem {
   url: string;
@@ -290,6 +291,35 @@ export function MessageAttachmentFiles({
               </span>
               <b aria-hidden="true" className="text-amber-300">Reveal</b>
             </button>
+          );
+        }
+
+        // Big temporary files (over 40 MB) are a download with a countdown.
+        const expiresAt = bigUploadExpiryFromUrl(f.url);
+        if (expiresAt !== null) {
+          const gone = expiresAt <= Date.now();
+          const body = (
+            <>
+              <span className={`message-file-icon file-badge-${getFileBadgeColor(f.name)}`}>
+                {getFileExtensionBadge(f.name)}
+              </span>
+              <span>
+                <strong>{f.name}</strong>
+                <small>
+                  {gone ? "Deleted after 12 hours" : `Big file · ${describeBigUploadExpiry(expiresAt)}`}
+                </small>
+              </span>
+              {!gone && <b aria-hidden="true">Download</b>}
+            </>
+          );
+          return gone ? (
+            <div key={fileKey} className="message-file-card" aria-disabled="true" style={{ opacity: 0.6 }}>
+              {body}
+            </div>
+          ) : (
+            <a key={fileKey} href={f.url} download={f.name} className="message-file-card" target="_blank" rel="noopener noreferrer">
+              {body}
+            </a>
           );
         }
 

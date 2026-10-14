@@ -19,6 +19,7 @@ import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
+import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
 import {
@@ -1941,7 +1942,11 @@ export class HuddleHub extends DurableObject {
     const nextReminder = await nextReminderAlarm(this.db).catch(() => null);
     const nextScheduled = await nextScheduledAlarm(this.db).catch(() => null);
     const nextRecap = await nextRecapAlarm(this.db).catch(() => null);
-    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap].filter((at): at is number => at !== null);
+    // Big uploads are deleted 12 hours after they were sent.
+    const bigUploads = (this.bindingsEnv as { BIG_UPLOADS?: R2Bucket }).BIG_UPLOADS;
+    if (bigUploads) await sweepBigUploads(this.db, bigUploads).catch(() => undefined);
+    const nextBigUpload = bigUploads ? await nextBigUploadAlarm(this.db).catch(() => null) : null;
+    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload].filter((at): at is number => at !== null);
     if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
   }
 

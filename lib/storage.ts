@@ -3,6 +3,10 @@ import { env } from "cloudflare:workers";
 export interface HuddleBindings {
   DB?: D1Database;
   UPLOADS?: R2Bucket;
+  /** Big temporary uploads (lib/big-uploads.ts). */
+  BIG_UPLOADS?: R2Bucket;
+  /** How many MB of big uploads may exist at once. Default 20480. */
+  BIG_UPLOAD_BUDGET_MB?: string;
   HUB?: DurableObjectNamespace;
   /** Durable Object holding connected Discord-compatible bot sockets. */
   DISCORD_GATEWAY?: DurableObjectNamespace;

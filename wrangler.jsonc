@@ -36,6 +36,12 @@
     {
       "binding": "UPLOADS",
       "bucket_name": "site-creator-r2"
+    },
+    {
+      // Files up to 2 GB from people an admin picked, deleted after 12 hours
+      // (lib/big-uploads.ts). Its own bucket so the backups can skip it.
+      "binding": "BIG_UPLOADS",
+      "bucket_name": "hoffle-big-uploads"
     }
   ],
   "vars": {

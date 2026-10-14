@@ -350,6 +350,25 @@ body.portal-page-active {
   font-size: 13px;
 }
 
+.admin-meter {
+  height: 10px;
+  margin: 12px 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.admin-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lavender);
+}
+
+.admin-meter span.warn {
+  background: #e0a03a;
+}
+
 .admin-switch {
   position: relative;
   flex-shrink: 0;

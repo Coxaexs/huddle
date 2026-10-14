@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowLeft,
+  FileUp,
   Database,
   HardDrive,
   Image as ImageIcon,
@@ -25,10 +26,11 @@ import {
 import type { AdminAuditEntry, AdminFeature, AdminOverview, AdminServer, AdminUser } from "@/lib/admin";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
+import { BigFilesTab } from "./big-files-tab";
 import { ConfirmDialog, InvitesTab, MessagesTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
-type Tab = "overview" | "hosts" | "users" | "servers" | "messages" | "invites" | "voice" | "songs" | "audit" | "features";
+type Tab = "overview" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "invites" | "voice" | "songs" | "audit" | "features";
 
 interface AdminData {
   overview: AdminOverview;
@@ -83,6 +85,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: "overview", label: "Overview", icon: Activity },
   { id: "hosts", label: "Hosts & backups", icon: HardDrive },
   { id: "users", label: "Users", icon: Users },
+  { id: "bigfiles", label: "Big files", icon: FileUp },
   { id: "servers", label: "Servers", icon: Server },
   { id: "messages", label: "Messages", icon: MessageSquare },
   { id: "invites", label: "Invites", icon: Ticket },
@@ -874,6 +877,8 @@ export function AdminPanel() {
         <Overview data={data} />
       ) : tab === "users" ? (
         <UsersTab users={data.users} me={user.id} onAction={userAction} />
+      ) : tab === "bigfiles" ? (
+        <BigFilesTab users={data.users} confirm={setConfirming} />
       ) : tab === "servers" ? (
         peeking ? (
           <ServerPeek server={peeking} onBack={() => setPeeking(null)} confirm={setConfirming} />
