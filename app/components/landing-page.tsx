@@ -640,6 +640,23 @@ export function LandingPage() {
                   </li>
                 ))}
               </ul>
+              <details className="mt-4 rounded-xl border border-(--line) bg-(--paper-2) px-4 py-3 text-xs leading-relaxed text-(--ink-2)">
+                <summary className="cursor-pointer font-medium text-(--ink) hover:underline select-none">
+                  Windows or macOS blocked the installer?
+                </summary>
+                <div className="mt-2 space-y-1.5 pt-1 text-(--muted)">
+                  <p>
+                    <b className="text-(--ink)">Windows SmartScreen:</b> Click <span className="font-semibold text-(--ink)">More info</span> → <span className="font-semibold text-(--ink)">Run anyway</span>.
+                  </p>
+                  <p>
+                    <b className="text-(--ink)">macOS Gatekeeper:</b> Right-click the app in Applications → click <span className="font-semibold text-(--ink)">Open</span> (or go to <span className="font-semibold text-(--ink)">System Settings → Privacy & Security</span> and click <span className="font-semibold text-(--ink)">Open Anyway</span>).
+                  </p>
+                  <p className="pt-1 text-[11px] opacity-75">
+                    Hoffle is open source and reproducible. Official code-signing certs will be added as project sponsorships grow.
+                  </p>
+                </div>
+              </details>
+
               <p className="mt-6 max-w-xl text-sm leading-relaxed text-(--ink-2)">
                 <b className="text-(--ink)">Phone notifications without a Google or Apple account:</b> install the free{" "}
                 <a href="https://ntfy.sh" className={link}>ntfy</a>{" "}
