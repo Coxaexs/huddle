@@ -5,7 +5,7 @@
  *
  * Every value is an id from the catalogs below or a #rrggbb colour; nothing a
  * user types ever reaches CSS. The visuals live in app/profile-style.css and
- * the client helpers in app/lib/profile-style.ts.
+ * the client helpers in app/lib/profile-look.ts.
  */
 
 export interface StyleOption {

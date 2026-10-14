@@ -7,7 +7,7 @@ import { VoiceConnectionModal } from "../chat/voice-connection-modal";
 import { VoiceApi, VideoTile } from "./types";
 import { TileVideo, VideoSurface } from "./tiles";
 import { useRef } from "react";
-import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-style";
+import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-look";
 import { StyledName, VoiceAura } from "../profile-style-parts";
 
 /** A seat younger than this still gets its join flourish when the stage opens. */

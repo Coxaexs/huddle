@@ -137,7 +137,7 @@ import { DmCallView } from "./components/chat/shell/dm-call-view";
 import { MessageList } from "./components/chat/shell/message-list";
 import { Composer } from "./components/chat/shell/composer";
 import { ChatHeader } from "./components/chat/shell/chat-header";
-import { registerProfileStyles, ringColor } from "./lib/profile-style";
+import { registerProfileStyles, ringColor } from "./lib/profile-look";
 import { StyledName, VoiceAura } from "./components/profile-style-parts";
 
 

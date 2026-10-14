@@ -8,7 +8,7 @@ import { SocialPlatformIcon } from "../user-profile-card";
 import { scopeProfileCss } from "@/lib/themes";
 import type { PrideBadgeId, ProfileStyle, SocialLink } from "@/lib/users";
 import { useRef } from "react";
-import { cardLook, useCardPointer } from "../../lib/profile-style";
+import { cardLook, useCardPointer } from "../../lib/profile-look";
 import { CardBackdrop, CardChrome, StyledName } from "../profile-style-parts";
 
 export interface Cosmetics {

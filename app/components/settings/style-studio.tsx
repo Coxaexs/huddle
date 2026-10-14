@@ -24,7 +24,7 @@ import {
 } from "@/lib/profile-style";
 import { Avatar } from "../avatar";
 import { StyledName, VoiceAura } from "../profile-style-parts";
-import { cardLook, colorsFromImage, loadAllNameFonts, ringColor, voiceTileLook } from "../../lib/profile-style";
+import { cardLook, colorsFromImage, loadAllNameFonts, ringColor, voiceTileLook } from "../../lib/profile-look";
 import { ProfilePreviewCard, type Cosmetics, type PreviewProfile } from "./profile-preview-card";
 
 /*

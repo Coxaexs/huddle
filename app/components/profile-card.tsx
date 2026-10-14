@@ -8,7 +8,7 @@ import { PrideBadges } from "./pride-badges";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
-import { cardLook, useCardPointer } from "../lib/profile-style";
+import { cardLook, useCardPointer } from "../lib/profile-look";
 import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";
 
 interface ProfileCardProps {

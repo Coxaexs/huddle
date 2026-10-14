@@ -1,6 +1,6 @@
 /*
  * Profile styles: display names, profile card themes and voice tiles.
- * Catalog: lib/profile-style.ts. Class names come from app/lib/profile-style.ts
+ * Catalog: lib/profile-style.ts. Class names come from app/lib/profile-look.ts
  * and app/components/profile-style-parts.tsx.
  *
  * Names animate only where it is calm to do so: always on cards and voice

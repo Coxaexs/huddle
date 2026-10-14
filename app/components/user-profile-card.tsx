@@ -40,7 +40,7 @@ import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
 import { stripTextStyle } from "@/lib/text-style";
-import { cardLook, useCardPointer } from "../lib/profile-style";
+import { cardLook, useCardPointer } from "../lib/profile-look";
 import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";
 
 const CARD_WIDTH = 300;

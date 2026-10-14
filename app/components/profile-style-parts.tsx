@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { ProfileStyle } from "@/lib/profile-style";
 import { stripTextStyle } from "@/lib/text-style";
 import { StyledText } from "./message-body";
-import { loadNameFont, nameLook, splitGraphemes } from "../lib/profile-style";
+import { loadNameFont, nameLook, splitGraphemes } from "../lib/profile-look";
 
 /*
  * The pieces that put a profile style on screen: names, the overlays around

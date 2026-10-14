@@ -7,7 +7,7 @@ import { checkProfileCss, PROFILE_CSS_PRESETS } from "@/lib/themes";
 import { PRIDE_BADGES, type PrideBadgeId, type ProfileStyle, type PublicUser, type SocialLink } from "@/lib/users";
 import { StyleStudio, type StudioKind } from "./style-studio";
 import { StyledName, VoiceAura } from "../profile-style-parts";
-import { cardLook, ringColor } from "../../lib/profile-style";
+import { cardLook, ringColor } from "../../lib/profile-look";
 import { NAME_EFFECTS, NAME_FONTS, CARD_FINISHES, VOICE_RINGS, JOIN_FLOURISHES } from "@/lib/profile-style";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { BANNER_PRESETS, COLOR_SWATCHES, STATUS_EMOJIS, PROFILE_CSS_SNIPPETS } from "./constants";
