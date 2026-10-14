@@ -10804,8 +10804,10 @@ html[data-motion="reduced"] .typing-dots i {
   position: relative;
 }
 
+/* Fixed, not absolute: it is rendered inside the rail, which scrolls (and so
+   clips anything that pokes out of its 60px) when there are many servers. */
 .status-menu {
-  position: absolute;
+  position: fixed;
   bottom: 74px;
   left: 66px;
   z-index: 60;
