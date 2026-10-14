@@ -37,6 +37,7 @@ import {
   BotMenu,
   type BotMenuAction,
 } from "./components/bot-menu";
+import { SessionNotesBanner } from "./components/session-notes-banner";
 import { DiceOverlay } from "./components/dice-overlay";
 import { StyledText, isImageUrl, type MentionChannel } from "./components/message-body";
 import { EditHistoryDialog } from "./components/edit-history";
@@ -4439,6 +4440,25 @@ export function ChatShell() {
       return;
     }
 
+    if (name === "recap" && /^(start|stop|end)\b/i.test(value.trim())) {
+      pendingCommandRef.current = null;
+      const start = /^start\b/i.test(value.trim());
+      try {
+        await apiFetch("/api/recap", {
+          method: "POST",
+          body: JSON.stringify({ channelId: activeChannelId, voiceChannelId: voice.channelId, action: start ? "start" : "stop" }),
+        });
+        setNotice(
+          start
+            ? "📜 Session notes on. Captions people share in the call are kept, and the recap lands here when you /recap stop or everyone leaves."
+            : "📜 Session notes stopped; the recap is on its way.",
+        );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Session notes did not start.");
+      }
+      return;
+    }
+
     if (name === "recap") {
       pendingCommandRef.current = null;
       const weekly = /^weekly\b/i.test(value);
@@ -7070,17 +7090,26 @@ export function ChatShell() {
                   if (member) openUserMenu(event, member);
                 }}
                 recording={
-                  features.recordSessions ? (
-                    <LiveRecordingDirector
-                      channelId={stageChannel.id}
-                      recording={hub.recordings[stageChannel.id] || null}
-                      participants={voiceParticipants}
-                      currentUserId={user.id}
-                      canControl={canRecordSessions}
-                      speakingStore={voice.speakingStore}
-                      onNotice={setNotice}
-                    />
-                  ) : null
+                  <>
+                    {features.recordSessions ? (
+                      <LiveRecordingDirector
+                        channelId={stageChannel.id}
+                        recording={hub.recordings[stageChannel.id] || null}
+                        participants={voiceParticipants}
+                        currentUserId={user.id}
+                        canControl={canRecordSessions}
+                        speakingStore={voice.speakingStore}
+                        onNotice={setNotice}
+                      />
+                    ) : null}
+                    {hub.sessionNotes[stageChannel.id] ? (
+                      <SessionNotesBanner
+                        channelId={stageChannel.id}
+                        notes={hub.sessionNotes[stageChannel.id]}
+                        onNotice={setNotice}
+                      />
+                    ) : null}
+                  </>
                 }
                 battlemapOpen={Boolean(battlemap) && !battlemapHidden}
                 onToggleBattlemap={() => {

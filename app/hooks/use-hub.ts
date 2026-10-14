@@ -13,6 +13,7 @@ import {
   type VoiceParticipant,
 } from "@/lib/protocol";
 import { basePath } from "../lib/client";
+import type { SessionNotesState } from "@/lib/session-notes";
 import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
 
 export interface HubState {
@@ -24,6 +25,8 @@ export interface HubState {
   voice: Record<string, VoiceParticipant[]>;
   players: Record<string, PlayerState>;
   recordings: Record<string, RecordingState>;
+  /** Calls keeping session notes for a recap (/recap start). */
+  sessionNotes: Record<string, SessionNotesState>;
   /** People muted for everyone. */
   forcedMutes: Set<string>;
 }
@@ -129,6 +132,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     voice: {},
     players: {},
     recordings: {},
+    sessionNotes: {},
     forcedMutes: new Set(),
   });
 
@@ -240,6 +244,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
                 Object.entries(payload.players).map(([id, player]) => [id, heard(player)]),
               ),
               recordings: payload.recordings || {},
+              sessionNotes: payload.sessionNotes || {},
               forcedMutes: new Set(payload.forcedMutes || []),
             }));
             break;
@@ -277,6 +282,14 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               if (payload.state) recordings[payload.channelId] = payload.state;
               else delete recordings[payload.channelId];
               return { ...current, recordings };
+            });
+            break;
+          case "session-notes":
+            setState((current) => {
+              const sessionNotes = { ...current.sessionNotes };
+              if (payload.state) sessionNotes[payload.channelId] = payload.state;
+              else delete sessionNotes[payload.channelId];
+              return { ...current, sessionNotes };
             });
             break;
           case "recording-consent":

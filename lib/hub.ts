@@ -21,6 +21,15 @@ import { sendPushNotifications } from "./push";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
+import {
+  NOTES_CHUNK,
+  NOTES_GRACE_MS,
+  NOTES_MAX_LINES,
+  postSessionRecap,
+  type NoteLine,
+  type SessionNotesState,
+} from "./session-notes";
+import { publicMessage } from "../app/api/messages/route";
 import { isBlockedBetween } from "./friends";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
@@ -98,6 +107,11 @@ export class HuddleHub extends DurableObject {
   private forcedMutes = new Set<string>();
   /** One public active/finalizing recording snapshot per voice channel. */
   private recordings = new Map<string, RecordingState>();
+  /** Voice room -> its session notes (/recap start); persisted, the call may outlive a sleep. */
+  private sessionNotes = new Map<string, SessionNotesState>();
+  /** Voice room -> its note lines, read back from storage on first use after a wake. */
+  private readonly noteLines = new Map<string, NoteLine[]>();
+  private readonly bindingsEnv: Record<string, unknown>;
   private loaded: Promise<void> | null = null;
   /** Signs resume tickets; kept in storage so it outlives a restart. */
   private resumeKey = "";
@@ -141,6 +155,7 @@ export class HuddleHub extends DurableObject {
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
+    this.bindingsEnv = (env as Record<string, unknown> | null) ?? {};
     this.db = (env as { DB?: D1Database } | null)?.DB ?? null;
     // Answer the client keepalive ping in the runtime itself, so an idle tab's
     // ping never wakes this object from hibernation to run JS. The pong carries
@@ -168,6 +183,10 @@ export class HuddleHub extends DurableObject {
           await this.ctx.storage.get<Record<string, RecordingState>>("recordings");
         for (const [channelId, state] of Object.entries(recordings || {})) {
           this.recordings.set(channelId, state);
+        }
+        const notes = await this.ctx.storage.get<Record<string, SessionNotesState>>("sessionNotes");
+        for (const [channelId, state] of Object.entries(notes || {})) {
+          this.sessionNotes.set(channelId, state);
         }
         let resumeKey = await this.ctx.storage.get<string>("resumeKey");
         if (!resumeKey) {
@@ -374,6 +393,16 @@ export class HuddleHub extends DurableObject {
       });
       return Response.json({ ok: true });
     }
+    if (url.pathname === "/session-notes" && request.method === "POST") {
+      const body = (await request.json()) as {
+        channelId: string;
+        action: "start" | "stop";
+        userId: string;
+        userName: string;
+        postChannelId?: string;
+      };
+      return Response.json(await this.toggleSessionNotes(body));
+    }
     if (url.pathname === "/state") {
       return Response.json({
         online: this.onlineUserIds(),
@@ -456,6 +485,7 @@ export class HuddleHub extends DurableObject {
       players: await this.visibleRecord(attachment, Object.fromEntries(this.players.entries())),
       forcedMutes: [...this.forcedMutes],
       recordings: await this.visibleRecord(attachment, Object.fromEntries(this.recordings.entries())),
+      sessionNotes: await this.visibleRecord(attachment, Object.fromEntries(this.sessionNotes.entries())),
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
@@ -574,6 +604,10 @@ export class HuddleHub extends DurableObject {
           if (other.voiceChannelId === room && other.connectionId !== attachment.connectionId) {
             socket.send(payload);
           }
+        }
+        // Finished lines go into the session notes, if the room is keeping them.
+        if (event.final && this.sessionNotes.has(room)) {
+          await this.addNoteLine(room, { at: Date.now(), name: attachment.displayName, text });
         }
         return;
       }
@@ -1395,12 +1429,115 @@ export class HuddleHub extends DurableObject {
   }
 
   private broadcastVoice(channelId: string): void {
+    const participants = this.participantsIn(channelId);
     void this.broadcastTo(channelId, {
       t: "voice",
       channelId,
-      participants: this.participantsIn(channelId),
+      participants,
       serverNow: Date.now(),
     });
+    // An emptied room's notes end after a grace period (see alarm()).
+    const notes = this.sessionNotes.get(channelId);
+    const empty = participants.length === 0;
+    if (notes && empty !== Boolean(notes.emptySince)) {
+      notes.emptySince = empty ? Date.now() : null;
+      void this.persistSessionNotes();
+      if (empty) void this.armAlarm(Date.now() + NOTES_GRACE_MS + 1000);
+    }
+  }
+
+  // ---------------------------------------------------------- session notes
+
+  private async persistSessionNotes(): Promise<void> {
+    await this.ctx.storage.put("sessionNotes", Object.fromEntries(this.sessionNotes.entries()));
+  }
+
+  private async notesFor(room: string): Promise<NoteLine[]> {
+    let lines = this.noteLines.get(room);
+    if (!lines) {
+      const chunks = await this.ctx.storage.list<NoteLine[]>({ prefix: `notes:${room}:` });
+      lines = [...chunks.entries()]
+        .sort(([a], [b]) => Number(a.split(":").pop()) - Number(b.split(":").pop()))
+        .flatMap(([, chunk]) => chunk);
+      this.noteLines.set(room, lines);
+    }
+    return lines;
+  }
+
+  private async addNoteLine(room: string, line: NoteLine): Promise<void> {
+    const lines = await this.notesFor(room);
+    if (lines.length >= NOTES_MAX_LINES) return;
+    lines.push(line);
+    const chunk = Math.floor((lines.length - 1) / NOTES_CHUNK);
+    await this.ctx.storage.put(`notes:${room}:${chunk}`, lines.slice(chunk * NOTES_CHUNK, (chunk + 1) * NOTES_CHUNK));
+  }
+
+  /** /recap start and stop, from the API route; only someone seated in the room may do either. */
+  private async toggleSessionNotes(body: {
+    channelId: string;
+    action: "start" | "stop";
+    userId: string;
+    userName: string;
+    postChannelId?: string;
+  }): Promise<{ ok: true; state: SessionNotesState | null } | { ok: false; error: string }> {
+    const room = body.channelId;
+    const seated = this.participantsIn(room).some((person) => person.id === body.userId);
+    if (!seated) return { ok: false, error: "Join the call first; notes are kept for the room you are in." };
+    const current = this.sessionNotes.get(room);
+    if (body.action === "start") {
+      if (current) return { ok: false, error: "This call is already keeping notes. /recap stop ends them." };
+      if (!body.postChannelId) return { ok: false, error: "Start the notes from the text channel the recap should go to." };
+      const state: SessionNotesState = {
+        startedAt: Date.now(),
+        startedBy: body.userId,
+        startedByName: body.userName,
+        postChannelId: body.postChannelId,
+        emptySince: null,
+      };
+      this.sessionNotes.set(room, state);
+      this.noteLines.set(room, []);
+      await this.persistSessionNotes();
+      await this.broadcastTo(room, { t: "session-notes", channelId: room, state, serverNow: Date.now() });
+      return { ok: true, state };
+    }
+    if (!current) return { ok: false, error: "This call is not keeping notes." };
+    await this.finishSessionNotes(room);
+    return { ok: true, state: null };
+  }
+
+  /** Ends a room's notes and posts the recap. */
+  private async finishSessionNotes(room: string): Promise<void> {
+    const state = this.sessionNotes.get(room);
+    if (!state) return;
+    const lines = await this.notesFor(room);
+    this.sessionNotes.delete(room);
+    this.noteLines.delete(room);
+    await this.persistSessionNotes();
+    const chunks = await this.ctx.storage.list({ prefix: `notes:${room}:` });
+    if (chunks.size) await this.ctx.storage.delete([...chunks.keys()]);
+    await this.broadcastTo(room, { t: "session-notes", channelId: room, state: null, serverNow: Date.now() });
+    if (!this.db) return;
+    const env = this.bindingsEnv as Record<string, string | undefined> & { UPLOADS?: R2Bucket };
+    const roomName =
+      (await this.db.prepare("SELECT name FROM channels WHERE id = ?").bind(room).first<{ name: string }>().catch(() => null))
+        ?.name || "the call";
+    await postSessionRecap(
+      {
+        db: this.db,
+        uploads: env.UPLOADS,
+        keys: {
+          anthropicKey: env.ANTHROPIC_API_KEY,
+          anthropicModel: env.ANTHROPIC_MODEL,
+          geminiKey: env.GEMINI_API_KEY,
+          geminiModels: env.GEMINI_MODEL,
+        },
+        publish: (channelId, message) => this.publishChannelMessage(channelId, message, null),
+        toPublic: publicMessage,
+      },
+      state,
+      lines,
+      roomName,
+    ).catch((error) => console.warn("session recap failed", error));
   }
 
   private broadcastPlayer(state: PlayerState): void {
@@ -1727,6 +1864,18 @@ export class HuddleHub extends DurableObject {
     await this.load();
     await this.runEvents();
     const now = Date.now();
+    // Calls that stayed empty past the grace period: their notes become a recap.
+    for (const [room, notes] of [...this.sessionNotes.entries()]) {
+      if (!notes.emptySince) continue;
+      if (this.participantsIn(room).length) {
+        notes.emptySince = null;
+        await this.persistSessionNotes();
+      } else if (now - notes.emptySince >= NOTES_GRACE_MS) {
+        await this.finishSessionNotes(room);
+      } else {
+        await this.armAlarm(notes.emptySince + NOTES_GRACE_MS + 1000);
+      }
+    }
     for (const state of this.players.values()) {
       if (!state.track || state.paused) continue;
       const durationMs = state.track.duration ? state.track.duration * 1000 : 0;

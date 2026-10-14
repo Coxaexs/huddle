@@ -246,8 +246,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "recap",
-    args: "[weekly]",
-    description: "Post this server's week in numbers here; /recap weekly does it every week (managers)",
+    args: "[weekly|start|stop]",
+    description: "This server's week in numbers; /recap start keeps notes of your call and posts a recap here when it ends",
     group: "Huddle",
   },
   {

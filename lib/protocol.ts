@@ -1,6 +1,7 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
 import type { SynthPlay } from "./gesture-synth";
+import type { SessionNotesState } from "./session-notes";
 
 /** Which room a lounge pose is in; absent means the living room, as before venues existed. */
 export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
@@ -455,6 +456,8 @@ export type ServerEvent =
       players: Record<string, PlayerState>;
       forcedMutes: string[];
       recordings: Record<string, RecordingState>;
+      /** Calls keeping session notes (/recap start). */
+      sessionNotes?: Record<string, SessionNotesState>;
     }
   | { t: "presence"; online: string[]; serverNow: number }
   | { t: "message"; channelId: string; message: unknown; serverNow: number }
@@ -468,6 +471,12 @@ export type ServerEvent =
       t: "recording-state";
       channelId: string;
       state: RecordingState | null;
+      serverNow: number;
+    }
+  | {
+      t: "session-notes";
+      channelId: string;
+      state: SessionNotesState | null;
       serverNow: number;
     }
   | {

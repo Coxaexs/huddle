@@ -209,6 +209,28 @@ export async function hubState(): Promise<{
   }
 }
 
+/** /recap start and stop: the hub checks the person is seated in the call. */
+export async function sessionNotesCommand(body: {
+  channelId: string;
+  action: "start" | "stop";
+  userId: string;
+  userName: string;
+  postChannelId?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const stub = hub();
+  if (!stub) return { ok: false, error: "The realtime hub is not connected." };
+  try {
+    const response = await stub.fetch(`${INTERNAL}/session-notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return (await response.json()) as { ok: true } | { ok: false; error: string };
+  } catch {
+    return { ok: false, error: "The realtime hub did not answer." };
+  }
+}
+
 export async function playerCommand(
   channelId: string,
   action: PlayerAction,

@@ -1,6 +1,8 @@
 import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
-import { publishEventsChanged } from "@/lib/hub-client";
+import { publishEventsChanged, sessionNotesCommand } from "@/lib/hub-client";
+import { findChannel } from "@/lib/servers";
+import { channelKindInfo } from "@/lib/channel-kinds";
 import { can, Permission } from "@/lib/permissions";
 import { limitUser } from "@/lib/rate-limit";
 import { RECAP_WEEK_MS, ensureRecapTable, postRecap } from "@/lib/recap";
@@ -16,6 +18,10 @@ const RECAP_LIMIT = { action: "recap", limit: 2, windowSeconds: 600 };
  * { channelId, action: "weekly" }  Manage Server: turns the weekly recap on
  *                                  (in this channel, starting a week from now)
  *                                  or off
+ * { channelId, voiceChannelId, action: "start" | "stop" }
+ *                                  session notes for the call you are in; the
+ *                                  recap of the call is posted to channelId
+ *                                  (see lib/session-notes.ts)
  */
 export async function POST(request: Request) {
   const db = bindings().DB;
@@ -24,13 +30,36 @@ export async function POST(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
   await ensureRecapTable(db);
-  const body = (await request.json().catch(() => ({}))) as { channelId?: string; action?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    channelId?: string;
+    action?: string;
+    voiceChannelId?: string;
+  };
   const access = await channelAccess(db, String(body.channelId || ""), user);
   if (!access.ok) return access.response;
   if (access.channel.isDm) {
     return Response.json({ error: "Recaps are for servers." }, { status: 400 });
   }
   const serverId = access.channel.serverId;
+
+  if (body.action === "start" || body.action === "stop") {
+    const room = await findChannel(db, String(body.voiceChannelId || "").slice(0, 64));
+    if (!room || !channelKindInfo(room.kind).voice || room.server_id !== serverId) {
+      return Response.json({ error: "Join a call in this server first." }, { status: 400 });
+    }
+    if (body.action === "start" && !channelKindInfo(access.channel.kind).text) {
+      return Response.json({ error: "Start the notes from a text channel; the recap is posted there." }, { status: 400 });
+    }
+    const result = await sessionNotesCommand({
+      channelId: room.id,
+      action: body.action,
+      userId: user.id,
+      userName: user.display_name,
+      postChannelId: access.channel.id,
+    });
+    if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
+    return Response.json({ notes: body.action === "start" });
+  }
 
   if (body.action === "weekly") {
     const allowed =

@@ -22419,6 +22419,36 @@ input:checked+.toggle-slider:before {
   cursor: pointer;
 }
 
+.session-notes-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lavender) 14%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.session-notes-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-notes-banner button {
+  flex: none;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lavender);
+  color: var(--on-accent, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .voice-message-cc {
   display: grid;
   place-items: center;
