@@ -1,5 +1,6 @@
 "use client";
 
+import { GameServerWidget } from "../../game-server-widget";
 import type { SpeakingStore } from "../../../lib/speaking-store";
 import { type DragEvent, type MouseEvent, type ReactNode } from "react";
 import type { PlayerState } from "@/lib/protocol";
@@ -861,6 +862,8 @@ export function ChannelSidebar({
           }
         />
       )}
+
+      {activeServer && !inDmHome && <GameServerWidget serverId={activeServer.id} />}
 
       {/* Mini voice bar - seamless top extension of discord-user-footer */}
       {voice.channelId && (

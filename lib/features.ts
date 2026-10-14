@@ -39,6 +39,7 @@ export const SIDE_FEATURES = {
   battlemap: "Battlemaps",
   emoticons: "Custom emoticons",
   events: "Server events",
+  "game-servers": "Game server status and RCON",
   games: "Chat games",
   gifs: "GIF search",
   guestbook: "Landing page guestbook",

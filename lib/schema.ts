@@ -1071,6 +1071,19 @@ async function migrate(db: D1Database): Promise<void> {
       )`,
     )
     .run();
+  // A server's Minecraft server for the sidebar status and RCON (lib/game-server).
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS server_game_servers (
+        server_id TEXT PRIMARY KEY,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL DEFAULT 25565,
+        rcon_port INTEGER,
+        rcon_password TEXT,
+        updated_at INTEGER NOT NULL
+      )`,
+    )
+    .run();
   const dndColumns = await columnNames(db, "server_dnd_settings");
   for (const column of ["combat_music", "explore_music"]) {
     if (!dndColumns.has(column)) {
