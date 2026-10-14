@@ -213,6 +213,10 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+if [ $# -gt 0 ]; then
+  exec "$@"
+fi
+
 echo "Starting Hoffle on port 8730"
 npx wrangler dev \
   --config /app/dist/server/wrangler.json \

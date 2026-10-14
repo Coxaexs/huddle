@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>Hoffle</Name>
+  <Repository>ghcr.io/coxaexs/hoffle:latest</Repository>
+  <Registry>https://ghcr.io/coxaexs/hoffle</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Coxaexs/huddle/issues</Support>
+  <Project>https://hoffle.online</Project>
+  <Overview>Hoffle is a self-hosted voice and text chat for friend groups: voice and video rooms, 3D dice and D&amp;D tools, a music DJ booth and a Discord bridge, in a single container. Voice needs a LiveKit server; see the self-hosting docs.</Overview>
+  <Category>Network:Voip Productivity: MediaApp:Video</Category>
+  <WebUI>http://[IP]:[PORT:8730]/hangout/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Coxaexs/huddle/main/deploy/unraid/hoffle.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Coxaexs/huddle/main/public/favicon.ico</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Date>2026-10-14</Date>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Self-hosted group chat and voice rooms for friends and game nights. Everything it stores lives in /app/state.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8730</HostPort>
+        <ContainerPort>8730</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/hoffle</HostDir>
+      <ContainerDir>/app/state</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value>8730</Value>
+      <Name>HOFFLE_PORT</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Labels/>
+  <Config Name="WebUI Port" Target="8730" Default="8730" Mode="tcp" Description="Port for Hoffle Web UI and Realtime server" Type="Port" Display="always" Required="true" Mask="false">8730</Config>
+  <Config Name="Appdata Storage" Target="/app/state" Default="/mnt/user/appdata/hoffle" Mode="rw" Description="Location for SQLite database, secrets, and attachments" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/hoffle</Config>
+</Container>

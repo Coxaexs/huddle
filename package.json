@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test",
     "admin": "node scripts/admin.mjs",
+    "backup": "sh scripts/backup.sh",
     "check:turn": "node scripts/check-turn.mjs",
     "serve": "wrangler dev --config dist/server/wrangler.json --env-file .dev.vars --ip 127.0.0.1 --port 8730 --persist-to state",
     "deploy": "bash scripts/deploy.sh"

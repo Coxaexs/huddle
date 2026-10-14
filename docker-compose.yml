@@ -18,7 +18,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: hoffle:local
+    # `docker compose up` pulls the multi-arch image CI publishes to GHCR;
+    # `docker compose up --build` builds this checkout under the same name.
+    image: ${HOFFLE_IMAGE:-ghcr.io/coxaexs/hoffle:latest}
     container_name: hoffle
     restart: unless-stopped
     ports:
@@ -99,8 +101,10 @@ services:
       MUSIC_HELPER_URL: http://music-bot:8731
       WEB_SERVER_URL: ${MUSICWATCH_PUBLIC_URL:-http://localhost:8722}
     depends_on:
-      - hoffle
-      - music-bot
+      hoffle:
+        condition: service_healthy
+      music-bot:
+        condition: service_started
 
   # Discord bridge. Needs discord-bridge/.env (see discord-bridge/.env.example).
   discord-bridge:
@@ -117,7 +121,8 @@ services:
       HUDDLE_URL: http://hoffle:8730
       HUDDLE_BASE_PATH: ${BASE_PATH:-/hangout}
     depends_on:
-      - hoffle
+      hoffle:
+        condition: service_healthy
 
   # LiveKit SFU, always on. Hoffle generates its key into state/livekit.yaml on
   # start. Browsers use it once LIVEKIT_URL is set in .env; until then voice
