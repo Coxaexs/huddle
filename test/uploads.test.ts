@@ -61,10 +61,13 @@ function upload(bytes: ArrayLike<number>, name: string, type: string, purpose?: 
   return POST(new Request("http://x/api/uploads", { method: "POST", body: form }));
 }
 
+import { resetMemoryRateLimits } from "@/lib/rate-limit";
+
 beforeEach(() => {
   state.user = { id: "u1" };
   state.objects.clear();
   state.counts.clear();
+  resetMemoryRateLimits();
 });
 
 describe("sniffUpload", () => {

@@ -173,16 +173,73 @@ export const WRITE_RATE_LIMITS = {
 } satisfies Record<string, RateLimitRule>;
 
 /**
+ * Per-user limits live in this process's memory rather than in SQLite: they
+ * sit on the hottest paths (every message, upload, roll), and a write per
+ * request there was lock contention for nothing. Hoffle is one process, so
+ * one map is the whole picture; a restart forgets the counts, which only
+ * ever errs towards letting someone through.
+ */
+const memoryRateLimits = new Map<string, { windowEnd: number; count: number }>();
+let lastMemorySweep = 0;
+
+export function checkMemoryRateLimit(
+  rule: RateLimitRule,
+  key: string,
+  now: number = Date.now(),
+): RateLimitResult {
+  const windowMs = rule.windowSeconds * 1000;
+  const windowEnd = (Math.floor(now / windowMs) + 1) * windowMs;
+  const bucket = `${rule.action}:${key}`;
+
+  // Drop finished windows once a minute, so the map only holds live buckets.
+  if (now - lastMemorySweep > 60_000) {
+    lastMemorySweep = now;
+    for (const [name, entry] of memoryRateLimits) {
+      if (entry.windowEnd <= now) memoryRateLimits.delete(name);
+    }
+  }
+
+  const existing = memoryRateLimits.get(bucket);
+  const count = existing && existing.windowEnd === windowEnd ? existing.count + 1 : 1;
+  memoryRateLimits.set(bucket, { windowEnd, count });
+
+  if (count > rule.limit) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfter: Math.max(1, Math.ceil((windowEnd - now) / 1000)),
+      limit: rule.limit,
+    };
+  }
+  return { allowed: true, remaining: rule.limit - count, retryAfter: 0, limit: rule.limit };
+}
+
+/**
  * Counts one request for a signed-in user and returns a ready 429 when they are
  * over budget, or null to carry on. Keyed by user rather than IP so people
- * sharing a network do not share a budget.
+ * sharing a network do not share a budget. Counted in memory (see above);
+ * `db` stays in the signature for the callers that already pass it.
  */
 export async function limitUser(
-  db: D1Database | undefined,
+  _db: D1Database | undefined,
   rule: RateLimitRule,
   userId: string,
 ): Promise<Response | null> {
-  if (!db) return null;
-  const result = await checkRateLimit({ db, key: userId, ...rule });
+  const result = checkMemoryRateLimit(rule, userId);
   return result.allowed ? null : new RateLimitError(result.retryAfter).response();
+}
+
+export function resetMemoryRateLimits(): void {
+  memoryRateLimits.clear();
+}
+
+export function getMemoryRateLimitStats(): { totalBuckets: number; topBuckets: Array<{ key: string; count: number }> } {
+  const top = [...memoryRateLimits.entries()]
+    .map(([key, data]) => ({ key, count: data.count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  return {
+    totalBuckets: memoryRateLimits.size,
+    topBuckets: top,
+  };
 }
