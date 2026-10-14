@@ -152,8 +152,8 @@ session.
 10. Failure tests: missing track, full disk, missing Chromium, FFmpeg failure and
     recorder disconnect produce visible health/error state without losing
     chunks.
-11. Regression test voice, camera, screen sharing, battlemap, music and
-    “Clip that!” unchanged.
+11. Regression test voice, camera, screen sharing, battlemap and music
+    unchanged.
 
 ## Phase 1 acceptance criteria
 

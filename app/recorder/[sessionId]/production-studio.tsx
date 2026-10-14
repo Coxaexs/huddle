@@ -194,7 +194,6 @@ export function ProductionStudio() {
     connectionId: hub.connectionId,
     rooms: hub.voice,
     send: hub.send,
-    enableClips: false,
   });
   const voiceSpeaking = useSpeaking(voice.speakingStore);
   signalRef.current = voice.handleSignal;

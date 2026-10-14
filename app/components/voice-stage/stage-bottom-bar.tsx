@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Megaphone, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Scissors, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
+import { Mic, Megaphone, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
 import { BUILTIN_BACKGROUND_IMAGES, type CustomBackgroundItem } from "../../lib/virtual-background";
 import { ScreenShareSetup } from "../screen-share-setup";
 import type { LivingRoom } from "../../hooks/use-living-room";
@@ -41,9 +41,6 @@ export function StageBottomBar({
   handleViewModeChange,
   viewMode,
   onToggleBattlemap,
-  onClip,
-  clipping,
-  setClipping,
   qaOpen,
   onExit,
   onPopout,
@@ -83,9 +80,6 @@ export function StageBottomBar({
   handleViewModeChange: (mode: "grid" | "table" | "map") => void;
   viewMode: "grid" | "table" | "map";
   onToggleBattlemap: (() => void) | undefined;
-  onClip: ((clip: Blob) => Promise<void>) | undefined;
-  clipping: "idle" | "working" | "done";
-  setClipping: React.Dispatch<React.SetStateAction<"idle" | "working" | "done">>;
   qaOpen: boolean;
   onExit: (() => void) | undefined;
   onPopout: (() => void) | undefined;
@@ -614,32 +608,6 @@ export function StageBottomBar({
                   <span>Battlemap</span>
                 </button>
               )}
-              {onClip && (
-                <button
-                  type="button"
-                  className="vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
-                  disabled={clipping === "working"}
-                  onClick={async () => {
-                    setMoreMenuOpen(false);
-                    setClipping("working");
-                    try {
-                      const clip = await voice.takeClip();
-                      if (clip && onClip) {
-                        await onClip(clip);
-                        setClipping("done");
-                        window.setTimeout(() => setClipping("idle"), 2500);
-                      } else {
-                        setClipping("idle");
-                      }
-                    } catch {
-                      setClipping("idle");
-                    }
-                  }}
-                >
-                  <Scissors size={15} className="text-amber-400" />
-                  <span>Clip Last {voice.clipSeconds}s</span>
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -691,9 +659,6 @@ export function StageBottomBar({
           {isFullscreen || windowFull ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </button>
       </div>
-      {clipping === "done" && (
-        <p className="voice-clip-saved-toast animate-pulse">✂ clip saved!</p>
-      )}
     </div>
   );
 }

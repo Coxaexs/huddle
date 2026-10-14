@@ -57,8 +57,6 @@ export interface VoiceApi extends TableControls {
   toggleMute: () => void;
   toggleDeafen: () => void;
   leave: () => void;
-  takeClip: () => Promise<Blob | null>;
-  clipSeconds: number;
   streamViewers?: string[];
   signalStreamWatch?: (streamerConnectionId: string, watching: boolean) => void;
   latency?: {

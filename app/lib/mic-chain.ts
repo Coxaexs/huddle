@@ -4,8 +4,8 @@
  * The microphone, with everything that happens to it before anyone hears you.
  *
  * A Huddle room is a full mesh with no server in the audio path, so the mic is
- * processed once here and every peer — plus "Clip that!" and the session
- * recorder, which read the same track — gets the result for free.
+ * processed once here and every peer — plus the session recorder, which
+ * reads the same track — gets the result for free.
  *
  * The chain is an AudioWorklet (see `public/mic-worklet.js`) between the raw
  * capture and a destination node whose stream is what actually goes on the

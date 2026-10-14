@@ -13,9 +13,9 @@ the decisions that are not obvious from the code.
 ## Why the processing is client-side
 
 A Huddle room is a full mesh with no SFU, so there is no server in the audio
-path to do this in. Processing the microphone once locally reaches every peer,
-the "Clip that!" buffer and the session recorder, all of which read the same
-track, and costs nothing per additional person in the room.
+path to do this in. Processing the microphone once locally reaches every peer
+and the session recorder, which read the same track, and costs nothing per
+additional person in the room.
 
 ## Why RNNoise, and what it does not do
 

@@ -43,7 +43,6 @@ const FEATURES: { title: string; items: ReactNode[] }[] = [
       "Noise suppression (RNNoise) runs on your own device, so fans, keyboards and the TV stay out of the call.",
       "Screen share up to 1080p at 60 fps with the game or film audio, plus 24 fps film modes that stay smooth.",
       "Push-to-talk that keeps working while a game has focus (desktop app).",
-      "Clip saves the last 30 seconds of the call.",
       "Spatial audio seating and virtual backgrounds.",
     ],
   },

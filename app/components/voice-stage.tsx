@@ -65,8 +65,6 @@ interface VoiceStageProps {
   userName: string;
   activity: RoomActivity | null;
   onActivity: (activity: RoomActivity | null) => void;
-  /** Posts a captured clip into the active text channel. */
-  onClip?: (clip: Blob) => Promise<void>;
   /** Whether the viewer is actually connected to this room's voice. */
   joined?: boolean;
   /** Join this room's voice (needs a real gesture for the microphone). */
@@ -138,7 +136,6 @@ export function VoiceStage({
   userName,
   activity,
   onActivity,
-  onClip,
   joined,
   onJoin,
   onExit,
@@ -221,7 +218,6 @@ export function VoiceStage({
     }
   }, [activity, voice.channelId, onActivity]);
   const [peopleOpen, setPeopleOpen] = useState(false);
-  const [clipping, setClipping] = useState<"idle" | "working" | "done">("idle");
   const [cameraBgMenuOpen, setCameraBgMenuOpen] = useState(false);
   const [cameraTab, setCameraTab] = useState<"blur" | "images" | "fx">("blur");
   const [customBgs, setCustomBgs] = useState<CustomBackgroundItem[]>(() => loadCustomBackgrounds());
@@ -785,9 +781,6 @@ export function VoiceStage({
         handleViewModeChange={handleViewModeChange}
         viewMode={viewMode}
         onToggleBattlemap={onToggleBattlemap}
-        onClip={onClip}
-        clipping={clipping}
-        setClipping={setClipping}
         qaOpen={qaOpen}
         onExit={onExit}
         onPopout={onPopout}

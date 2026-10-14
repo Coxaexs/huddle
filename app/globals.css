@@ -19049,26 +19049,6 @@ html[data-motion="reduced"] .bat-wing {
   margin: 0 4px;
 }
 
-.voice-clip-saved-toast {
-  position: absolute;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface-2);
-  border: 1px solid color-mix(in srgb, var(--lavender) 30%, transparent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  border-radius: 12px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #4ade80;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  animation: fadeIn 0.2s ease-out;
-  z-index: 50;
-}
-
 /* Channel intro cozy pill vs legacy */
 .channel-intro .cozy-intro-pill {
   display: inline-flex;

@@ -146,8 +146,6 @@ interface UseVoiceOptions {
   /** Every live voice room, keyed by channel id, as the hub sees them. */
   rooms: Record<string, VoiceParticipant[]>;
   send: (event: ClientEvent) => boolean;
-  /** Recorder capture pages disable the unrelated rolling "Clip that!" buffer. */
-  enableClips?: boolean;
   /** Each voice channel's bitrate ceiling, keyed by channel id. */
   roomBitrates?: Record<string, number>;
   /** Whether the active user is a developer who sees verbose LiveKit logs. */
@@ -312,8 +310,6 @@ async function sfuGrant(
   }
 }
 
-/** How much of the room "Clip that!" keeps buffered. */
-const CLIP_SECONDS = 30;
 
 /** Signals held for a seat the roster has not shown yet; older ones are dropped. */
 const EARLY_SIGNAL_LIMIT = 50;
@@ -400,7 +396,6 @@ export function useVoice({
   session = 0,
   rooms,
   send,
-  enableClips = true,
   roomBitrates,
   isDev,
 }: UseVoiceOptions) {
@@ -575,8 +570,6 @@ export function useVoice({
     ];
   }, [remoteStreams, sfuStreams, roster]);
   const [screenSharing, setScreenSharing] = useState(false);
-  const clipRemoteStreamsRef = useRef(allRemoteStreams);
-  clipRemoteStreamsRef.current = allRemoteStreams;
   const [screenShareAudio, setScreenShareAudioState] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("huddle:screenshare-audio") !== "false";
@@ -772,14 +765,6 @@ export function useVoice({
   const handleSignalRef = useRef<(from: string, raw: unknown) => void>(() => {});
   /** Bumped by every join and leave; a join that is no longer the latest bails. */
   const joinSeqRef = useRef(0);
-  // "Clip that!": a rolling buffer of the last CLIP_SECONDS of the room.
-  const clipRecorderRef = useRef<MediaRecorder | null>(null);
-  const clipChunksRef = useRef<Array<{ at: number; data: Blob }>>([]);
-  const clipMixRef = useRef<{
-    context: AudioContext;
-    destination: MediaStreamAudioDestinationNode;
-    sources: Map<string, MediaStreamAudioSourceNode>;
-  } | null>(null);
   channelIdRef.current = channelId;
 
   // Central mic gate: the track is live only when not force-muted and either
@@ -1004,121 +989,6 @@ export function useVoice({
 
     return () => clearInterval(timer);
   }, [channelId, sfuMode]);
-
-  /**
-   * Keeps a rolling recording of the room so "Clip that!" can hand back the
-   * last half-minute. Everyone's audio is mixed through one AudioContext; when
-   * someone is sharing a screen, that video rides along too.
-   */
-  useEffect(() => {
-    if (!channelId || !enableClips) return;
-    let cancelled = false;
-
-    const start = () => {
-      try {
-        const context = new AudioContext();
-        const destination = context.createMediaStreamDestination();
-        const sources = new Map<string, MediaStreamAudioSourceNode>();
-        clipMixRef.current = { context, destination, sources };
-
-        const attach = (id: string, stream: MediaStream) => {
-          if (sources.has(id) || !stream.getAudioTracks().length) return;
-          try {
-            const source = context.createMediaStreamSource(stream);
-            source.connect(destination);
-            sources.set(id, source);
-          } catch {
-            // A stream that refuses to connect just misses the clip.
-          }
-        };
-        if (localStreamRef.current) attach("self", localStreamRef.current);
-        // Everyone already in the room, too: the effect below only adds
-        // streams that arrive later.
-        for (const { connectionId: id, stream, kind } of clipRemoteStreamsRef.current) {
-          attach(kind ? `${id}:${kind}` : id, stream);
-        }
-
-        const tracks: MediaStreamTrack[] = [...destination.stream.getAudioTracks()];
-        const screenVideo = screenStreamRef.current?.getVideoTracks()[0];
-        if (screenVideo) tracks.push(screenVideo);
-
-        const recorder = new MediaRecorder(new MediaStream(tracks), {
-          mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-            ? "video/webm;codecs=vp8,opus"
-            : "audio/webm",
-          bitsPerSecond: 1_500_000,
-        });
-        recorder.ondataavailable = (event) => {
-          if (!event.data.size) return;
-          const now = Date.now();
-          clipChunksRef.current.push({ at: now, data: event.data });
-          // Drop anything older than the window.
-          const cutoff = now - CLIP_SECONDS * 1000;
-          while (
-            clipChunksRef.current.length > 1 &&
-            clipChunksRef.current[0].at < cutoff
-          ) {
-            clipChunksRef.current.shift();
-          }
-        };
-        recorder.start(1000);
-        clipRecorderRef.current = recorder;
-      } catch {
-        // Clipping is a nicety; a browser that refuses just does not offer it.
-      }
-    };
-
-    // Give the mic a moment to exist before wiring the mix.
-    const timer = window.setTimeout(() => !cancelled && start(), 800);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      try {
-        clipRecorderRef.current?.stop();
-      } catch {
-        // Already stopped.
-      }
-      clipRecorderRef.current = null;
-      clipChunksRef.current = [];
-      void clipMixRef.current?.context.close().catch(() => undefined);
-      clipMixRef.current = null;
-    };
-  }, [channelId, enableClips, screenSharing]);
-
-  // Remote people joining mid-call get folded into the clip mix.
-  useEffect(() => {
-    if (!enableClips) return;
-    const mix = clipMixRef.current;
-    if (!mix) return;
-    for (const { connectionId: id, stream, kind } of allRemoteStreams) {
-      const key = kind ? `${id}:${kind}` : id;
-      if (mix.sources.has(key) || !stream.getAudioTracks().length) continue;
-      try {
-        const source = mix.context.createMediaStreamSource(stream);
-        source.connect(mix.destination);
-        mix.sources.set(key, source);
-      } catch {
-        // Skip a stream the context will not take.
-      }
-    }
-  }, [enableClips, allRemoteStreams]);
-
-  /** Hands back the buffered clip as a file, or null when there is nothing. */
-  const takeClip = useCallback(async (): Promise<Blob | null> => {
-    const recorder = clipRecorderRef.current;
-    if (!recorder) return null;
-    // Flush whatever is pending so the clip ends at "now".
-    try {
-      recorder.requestData();
-    } catch {
-      // Some browsers only emit on the timeslice; the buffer still works.
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-    const chunks = clipChunksRef.current.map((entry) => entry.data);
-    if (!chunks.length) return null;
-    return new Blob(chunks, { type: recorder.mimeType || "video/webm" });
-  }, []);
 
   const setPushToTalk = useCallback((enabled: boolean) => {
     setPushToTalkState(enabled);
@@ -2383,7 +2253,6 @@ export function useVoice({
     const wakeAudio = () => {
       micChainRef.current?.resume();
       void audioContextRef.current?.resume().catch(() => undefined);
-      void clipMixRef.current?.context.resume().catch(() => undefined);
       unlockAudio();
       toProcessedMic();
       // resume() settles asynchronously; look again once it has had a moment.
@@ -2935,8 +2804,6 @@ export function useVoice({
     toggleMute,
     toggleDeafen,
     handleSignal,
-    takeClip,
-    clipSeconds: CLIP_SECONDS,
     pushToTalk,
     pttKey,
     pttHeld,

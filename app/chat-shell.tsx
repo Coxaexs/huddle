@@ -7134,30 +7134,6 @@ export function ChatShell() {
                     />
                   ) : null
                 }
-                onClip={async (clip) => {
-                  if (!activeChannelId) {
-                    setNotice("Open a text channel to post the clip into.");
-                    return;
-                  }
-                  const form = new FormData();
-                  form.append(
-                    "file",
-                    new File([clip], `clip-${Date.now()}.webm`, { type: clip.type }),
-                  );
-                  const upload = await apiFetch<{ key: string }>("/api/uploads", {
-                    method: "POST",
-                    body: form,
-                  });
-                  await apiFetch("/api/messages", {
-                    method: "POST",
-                    body: JSON.stringify({
-                      channelId: activeChannelId,
-                      content: `Clipped the last ${voice.clipSeconds}s of ${stageChannel.name}`,
-                      audio: `/hangout/api/uploads/${encodeURIComponent(upload.key)}`,
-                    }),
-                  });
-                  setNotice("Clip posted.");
-                }}
               />
             ) : (
               <>
