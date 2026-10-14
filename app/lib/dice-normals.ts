@@ -147,9 +147,10 @@ export function getRotationForValue(
 }
 
 /**
- * The outward normal, in the die model's own frame, of the face carrying
- * `value`; null for a die or value the default theme has no face for. A d4 is
- * read from the face it lands on, so callers turn that one downwards.
+ * The normal, in the die model's own frame, of the face a die lies on when it
+ * shows `value`; null for a die or value the default theme has no face for.
+ * The model is wound for a left-handed engine, so this points into the die:
+ * turned to face up, it puts that face on the table and `value` on top.
  */
 export function faceNormal(dieType: string, value: number): [number, number, number] | null {
   const type = dieType.startsWith("d") ? dieType : `d${dieType}`;
@@ -161,3 +162,17 @@ export function faceNormal(dieType: string, value: number): [number, number, num
 
 /** The die models the default theme can draw. */
 export const DIE_TYPES = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"] as const;
+
+/**
+ * The model(s) a rolled value is shown with. A d100 is a pair, as at a real
+ * table: the tens die (00-90) and a d10, whose faces run 1-10, so the two
+ * simply add up (50 + 7 = 57, 90 + 10 = 100). Odd sizes borrow the next die up.
+ */
+export function dieFaces(sides: number, value: number, kept: boolean): Array<{ type: string; value: number; kept: boolean }> {
+  if (sides === 100) {
+    const tens = Math.floor((Math.max(1, Math.min(100, value)) - 1) / 10) * 10;
+    return [{ type: "d100", value: tens, kept }, { type: "d10", value: value - tens, kept }];
+  }
+  const type = DIE_TYPES.find((t) => t !== "d100" && Number(t.slice(1)) >= sides) ?? "d20";
+  return [{ type, value, kept }];
+}

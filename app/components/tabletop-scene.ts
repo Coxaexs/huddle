@@ -24,7 +24,8 @@ const RAIL_MID = (MAP_RADIUS + TABLE_RADIUS) / 2;
 /** A point at heading `angle` (0 north, clockwise) and `r` from the table's centre, as the seats are laid out. */
 const around = (angle: number, r: number) => ({ x: TABLE_CENTRE.x + Math.sin(angle) * r, z: TABLE_CENTRE.z - Math.cos(angle) * r });
 const SEAT_STEP = (Math.PI * 2) / TABLETOP.seats.length;
-const seatAngle = (i: number) => i * SEAT_STEP + SEAT_STEP / 2;
+/** Chair 0, at the head of the table, is the game master's. */
+const seatAngle = (i: number) => i * SEAT_STEP;
 
 interface MapInk { paper: [string, string]; ink: string; wall: string; floor: string; water: [string, string]; wood: string; tree: [string, string]; grass: string; accent: string; label: string }
 
@@ -308,6 +309,43 @@ function chair(wood: THREE.Material, pad: THREE.Material) {
   return group;
 }
 
+/**
+ * The game master's chair: the tavern chair under a tall carved back with a
+ * gold crest, arms, a deep red cushion and a round rug, so the head of the
+ * table reads as theirs from across the room. Front faces -Z like `chair`.
+ */
+function gmThrone(wood: THREE.Material, accent: string) {
+  const group = chair(wood, mat(accent, 0.85));
+  const gold = mat("#c9a45c", 0.35, { metalness: 0.75 });
+  const panel = box(0.52, 0.86, 0.05, wood);
+  panel.position.set(0, 0.98, 0.24);
+  panel.rotation.x = 0.1;
+  const crest = new THREE.Mesh(new THREE.CircleGeometry(0.1, 24), gold);
+  crest.position.set(0, 1.22, 0.208);
+  crest.rotation.set(0.1, Math.PI, 0);
+  const top = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 4), gold);
+  top.position.set(0, 1.47, 0.27);
+  group.add(panel, crest, top);
+  for (const s of [-1, 1]) {
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), gold);
+    finial.position.set(s * 0.26, 1.42, 0.27);
+    const arm = box(0.06, 0.05, 0.44, wood);
+    arm.position.set(s * 0.27, 0.66, 0.0);
+    const post = box(0.05, 0.22, 0.05, wood);
+    post.position.set(s * 0.27, 0.54, -0.19);
+    group.add(finial, arm, post);
+  }
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(0.72, 40), mat(accent, 0.95));
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(0, 0.004, -0.05);
+  rug.receiveShadow = true;
+  const trim = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 40), gold);
+  trim.rotation.x = -Math.PI / 2;
+  trim.position.set(0, 0.006, -0.05);
+  group.add(rug, trim);
+  return group;
+}
+
 /** A hanging dome lamp: shade, bright inside, on a cord from the ceiling. */
 function pendant(look: Look, scale: number, drop: number) {
   const group = new THREE.Group();
@@ -438,6 +476,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   inlay.rotation.x = -Math.PI / 2;
   inlay.position.set(TABLE_CENTRE.x, RAIL_TOP + 0.001, TABLE_CENTRE.z);
   const mapMaterial = mat("#ffffff", 0.9, { map: mapTexture(theme) });
+  const drawnMap = mapMaterial.map;
   const surface = new THREE.Mesh(new THREE.CircleGeometry(MAP_RADIUS, 96), mapMaterial);
   surface.rotation.x = -Math.PI / 2;
   surface.position.set(TABLE_CENTRE.x, TABLE_SURFACE_Y - 0.008, TABLE_CENTRE.z);
@@ -469,7 +508,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   // On the rail: a candle between every other pair of chairs, drinks and dice pouches by the seats.
   const candleColour = theme === "vampire" ? "#2a0a10" : theme === "matrix" ? "#cfe8d6" : "#f5e6c8";
   for (let k = 0; k < TABLETOP.seats.length; k += 2) {
-    const at = around(k * SEAT_STEP, RAIL_MID);
+    const at = around(k * SEAT_STEP + SEAT_STEP / 2, RAIL_MID);
     const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.012, 16), mat("#b08a3e", 0.35, { metalness: 0.75 }));
     dish.position.set(at.x, RAIL_TOP + 0.006, at.z);
     const c = candle(0.11, candleColour);
@@ -493,11 +532,12 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     root.add(pouch);
   }
 
-  // Ten chairs, each clickable to sit in
+  // Ten chairs, each clickable to sit in; the game master's at the head.
   const chairWood = mat(look.woodDark, 0.55);
   const chairPad = mat(look.sofaCushion, 0.9);
+  const throneRed = theme === "matrix" ? "#0b5d2a" : theme === "cyberpunk" ? "#6a1b9a" : "#7a1622";
   for (const seat of TABLETOP.seats) {
-    const c = chair(chairWood, chairPad);
+    const c = seat.reserved ? gmThrone(chairWood, throneRed) : chair(chairWood, chairPad);
     c.position.set(seat.x, 0, seat.z);
     c.rotation.y = -seat.facing;
     tagSeat(c, seat.id);
@@ -748,15 +788,46 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     fillLight.intensity = 2.4 * (1 + Math.sin(t * 7.3) * 0.05 + Math.sin(t * 13.1) * 0.03);
   };
 
+  /**
+   * Puts an uploaded battle map on the table (null: the drawn one back). The
+   * image is cropped to fill the round map, turned in quarter turns and zoomed.
+   */
+  let uploaded: THREE.Texture | null = null;
+  const setTableMap = (image: HTMLImageElement | null, turns = 0, zoom = 1) => {
+    uploaded?.dispose();
+    uploaded = null;
+    if (!image) {
+      mapMaterial.map = drawnMap;
+      mapMaterial.needsUpdate = true;
+      return;
+    }
+    const texture = new THREE.Texture(image);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    const aspect = image.naturalWidth / Math.max(1, image.naturalHeight);
+    // Fill the circle's square: crop the long side, then zoom in about the middle.
+    const sx = (aspect > 1 ? 1 / aspect : 1) / zoom;
+    const sy = (aspect > 1 ? 1 : aspect) / zoom;
+    // Scaling and turning are about the centre, so the crop stays in the middle with no offset.
+    texture.repeat.set(sx, sy);
+    texture.center.set(0.5, 0.5);
+    texture.rotation = -turns * (Math.PI / 2);
+    texture.needsUpdate = true;
+    uploaded = texture;
+    mapMaterial.map = texture;
+    mapMaterial.needsUpdate = true;
+  };
+
   return {
     root,
     ceiling,
     screenMaterial,
     idleScreen,
+    setTableMap,
     background: new THREE.Color(look.background),
     fog: new THREE.Fog(look.fog, 12, 26),
     exposure: look.exposure,
     update,
-    dispose: () => { stopProps(); glow.dispose(); },
+    dispose: () => { stopProps(); glow.dispose(); uploaded?.dispose(); },
   };
 }

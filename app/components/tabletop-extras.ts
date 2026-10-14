@@ -155,6 +155,52 @@ const screenTexture = (() => {
   };
 })();
 
+/** One panel of the inside of the game master's screen: what they chose to keep there. */
+export interface ScreenPage { title: string; lines: string[] }
+
+/** A screen panel's inside: parchment, a heading, and lines wrapped to fit. */
+function drawScreenPage(page: ScreenPage): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 672;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 672);
+  g.addColorStop(0, "#f1e4c4"); g.addColorStop(1, "#ddc89c");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 672);
+  ctx.strokeStyle = "#8a5a2b"; ctx.lineWidth = 6; ctx.strokeRect(10, 10, 492, 652);
+  ctx.fillStyle = "#4a1f12"; ctx.font = "700 40px Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(page.title, 256, 62, 470);
+  ctx.fillStyle = "#8a5a2b"; ctx.fillRect(40, 78, 432, 3);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#2a1a0e";
+  let y = 118;
+  // The largest type that fits the panel: it is read from across the table.
+  let size = 30;
+  let lines: string[] = [];
+  for (; size >= 16; size -= 2) {
+    ctx.font = `${size}px system-ui, sans-serif`;
+    lines = page.lines.flatMap((line) => wrap(ctx, line, 456, 3).map((part, i) => (i ? "   " + part : part)));
+    if (lines.length * (size + 8) <= 540) break;
+  }
+  for (const line of lines) {
+    if (y > 650) break;
+    const bold = /^[^:]{1,28}:/.exec(line);
+    if (bold) {
+      ctx.font = `700 ${size}px system-ui, sans-serif`;
+      ctx.fillText(bold[0], 28, y);
+      const w = ctx.measureText(bold[0] + " ").width;
+      ctx.font = `${size}px system-ui, sans-serif`;
+      ctx.fillText(line.slice(bold[0].length).trim(), 28 + w, y, 460 - w);
+    } else ctx.fillText(line, 28, y, 460);
+    y += size + 8;
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
 export interface CharacterTokenSpec {
   id: string;
   seat: LoungeSeat;
@@ -354,6 +400,11 @@ export class TableExtras {
   private tents = new Map<string, Tent>();
   private screen: THREE.Group | null = null;
   private screenSeat: string | null = null;
+  /** The screen's three panels, left to right as the game master sees them. */
+  private screenPanels: THREE.Mesh[] = [];
+  private screenBack: THREE.Material | null = null;
+  private pagesKey = "";
+  private pages: ScreenPage[] | null = null;
   private card: THREE.Sprite | null = null;
   private cardKey = "";
   private readonly marker = new THREE.Group();
@@ -430,14 +481,19 @@ export class TableExtras {
   setScreen(seat: LoungeSeat | null) {
     if ((seat?.id ?? null) === this.screenSeat) return;
     if (this.screen) { this.root.remove(this.screen); dispose(this.screen); this.screen = null; }
+    this.screenPanels = [];
+    this.pagesKey = "";
     this.screenSeat = seat?.id ?? null;
     if (!seat) return;
     const edge = this.edge(seat, 1.0);
     const group = new THREE.Group();
     const material = new THREE.MeshBasicMaterial({ map: screenTexture(), toneMapped: false });
     const back = new THREE.MeshStandardMaterial({ color: "#2a1a0e", roughness: 0.8 });
-    for (const [offset, turn] of [[-0.38, 0.5], [0, 0], [0.38, -0.5]] as const) {
+    this.screenBack = back;
+    // The game master sits on the -Z side looking along +Z, so +X is their left.
+    for (const [offset, turn] of [[0.38, -0.5], [0, 0], [-0.38, 0.5]] as const) {
       const panel = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.03), [back, back, back, back, material, back]);
+      this.screenPanels.push(panel);
       panel.position.set(offset * Math.cos(turn * 0.5), 0.25, -Math.abs(offset) * 0.35 * (turn ? 1 : 0));
       panel.rotation.y = turn;
       panel.castShadow = true;
@@ -447,6 +503,30 @@ export class TableExtras {
     group.rotation.y = edge.angle + Math.PI;
     this.root.add(group);
     this.screen = group;
+    this.paintPages();
+  }
+
+  /**
+   * What the inside of the screen shows, panel by panel (null: plain wood).
+   * Only the game master's own view is given pages; everyone else sees the back.
+   */
+  setScreenPages(pages: ScreenPage[] | null) {
+    const key = pages ? JSON.stringify(pages) : "";
+    if (key === this.pagesKey) return;
+    this.pages = pages;
+    this.paintPages();
+  }
+
+  private paintPages() {
+    const pages = this.pages;
+    this.pagesKey = pages && this.screenPanels.length ? JSON.stringify(pages) : "";
+    this.screenPanels.forEach((panel, i) => {
+      const materials = panel.material as THREE.Material[];
+      const old = materials[5];
+      if (old !== this.screenBack) { (old as THREE.MeshBasicMaterial).map?.dispose(); old.dispose(); }
+      const page = pages?.[i];
+      materials[5] = page ? new THREE.MeshBasicMaterial({ map: drawScreenPage(page), toneMapped: false }) : this.screenBack!;
+    });
   }
 
   /** Where the turn marker floats (null: hidden). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIE_TYPES, faceNormal } from "../app/lib/dice-normals";
+import { DIE_TYPES, dieFaces, faceNormal } from "../app/lib/dice-normals";
 
 describe("faceNormal", () => {
   it("knows every face of every die the table can throw", () => {
@@ -21,5 +21,27 @@ describe("faceNormal", () => {
   it("has no face for a value the die does not carry", () => {
     expect(faceNormal("d6", 7)).toBeNull();
     expect(faceNormal("d3", 1)).toBeNull();
+  });
+});
+
+describe("dieFaces", () => {
+  it("shows a d100 as a tens die and a d10 that add up", () => {
+    const shown = (value: number) => dieFaces(100, value, true).map((face) => `${face.type}:${face.value}`);
+    expect(shown(57)).toEqual(["d100:50", "d10:7"]);
+    expect(shown(5)).toEqual(["d100:0", "d10:5"]);
+    expect(shown(10)).toEqual(["d100:0", "d10:10"]);
+    expect(shown(60)).toEqual(["d100:50", "d10:10"]);
+    expect(shown(100)).toEqual(["d100:90", "d10:10"]);
+    for (let value = 1; value <= 100; value++) {
+      const [tens, units] = dieFaces(100, value, true);
+      expect(tens.value + units.value).toBe(value);
+      expect(faceNormal("d100", tens.value)).not.toBeNull();
+      expect(faceNormal("d10", units.value)).not.toBeNull();
+    }
+  });
+
+  it("uses the die with that many sides, or the next one up", () => {
+    expect(dieFaces(20, 13, true)).toEqual([{ type: "d20", value: 13, kept: true }]);
+    expect(dieFaces(3, 2, false)).toEqual([{ type: "d4", value: 2, kept: false }]);
   });
 });

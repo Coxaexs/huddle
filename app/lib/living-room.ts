@@ -26,6 +26,8 @@ export interface LoungeSeat {
   height: number;
   /** Height of the floor under it, where the room has tiers. */
   y?: number;
+  /** Never handed out automatically: someone has to choose it (the game master's chair). */
+  reserved?: boolean;
 }
 
 /** Half extents of the floor. */
@@ -257,11 +259,18 @@ export const inAnnex = (pose: { z: number }, venue: Venue): boolean => !!venue.a
 export const TABLE_CENTRE = { x: 0, z: 0.3 };
 export const TABLE_RADIUS = 1.5;
 const TABLE_CHAIRS = 10;
+/** The game master's chair, at the head of the table under the wall screen. */
+export const GM_SEAT_ID = "tab-gm";
+/** Chair 0 is the game master's, at the head (north); nine players sit round the rest. */
 const TABLETOP_SEATS: LoungeSeat[] = Array.from({ length: TABLE_CHAIRS }, (_, i) => {
-  const angle = (i / TABLE_CHAIRS) * Math.PI * 2 + Math.PI / TABLE_CHAIRS;
-  const x = Math.round((TABLE_CENTRE.x + Math.sin(angle) * 2.1) * 100) / 100;
-  const z = Math.round((TABLE_CENTRE.z - Math.cos(angle) * 2.1) * 100) / 100;
-  return { id: `tab-${i}`, label: "Table seat", x, z, facing: headingTo({ x, z }, TABLE_CENTRE), height: 0.45 };
+  const angle = (i / TABLE_CHAIRS) * Math.PI * 2;
+  const reach = i === 0 ? 2.2 : 2.1;
+  const x = Math.round((TABLE_CENTRE.x + Math.sin(angle) * reach) * 100) / 100;
+  const z = Math.round((TABLE_CENTRE.z - Math.cos(angle) * reach) * 100) / 100;
+  const facing = headingTo({ x, z }, TABLE_CENTRE);
+  return i === 0
+    ? { id: GM_SEAT_ID, label: "Game master's chair", x, z, facing, height: 0.45, reserved: true }
+    : { id: `tab-${i}`, label: "Table seat", x, z, facing, height: 0.45 };
 });
 const TABLETOP_SOLIDS: Box[] = [{ x0: -1.6, x1: 1.6, z0: TABLE_CENTRE.z - 1.6, z1: TABLE_CENTRE.z + 1.6 }];
 
@@ -543,6 +552,7 @@ export const ROOM_COMFORT = LOUNGE.seats.length + LOUNGE.crowd.length;
 export function defaultPoses(ids: string[], taken: Map<string, LoungePose>, venue: Venue = LOUNGE): Map<string, LoungePose> {
   const result = new Map(taken);
   const busy = new Set([...taken.values()].map((pose) => pose.seat).filter((seat) => seat && seat !== FLOOR_SEAT));
+  for (const seat of venue.seats) if (seat.reserved) busy.add(seat.id);
   const standing = [...taken.values()].filter((pose) => !pose.seat || pose.seat === FLOOR_SEAT);
   const free = (spot: Spot) => !standing.some((pose) => Math.hypot(pose.x - spot.x, pose.z - spot.z) < 0.5);
   const { crowd, focus } = venue;
@@ -577,7 +587,7 @@ export function defaultPoses(ids: string[], taken: Map<string, LoungePose>, venu
 /** The first free seat, for someone walking in. */
 export function freeSeat(others: Iterable<LoungePose>, venue: Venue = LOUNGE): LoungeSeat | null {
   const busy = new Set([...others].map((pose) => pose.seat));
-  return venue.seats.find((seat) => !busy.has(seat.id)) ?? null;
+  return venue.seats.find((seat) => !seat.reserved && !busy.has(seat.id)) ?? null;
 }
 
 export const inNook = (pose: LoungePose, venue: Venue = LOUNGE) =>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, WatchState } from "@/lib/lounge-shared";
+import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, TableMap, WatchState } from "@/lib/lounge-shared";
 import {
   FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -86,10 +86,12 @@ export interface LoungeShared {
   characters: Record<string, TableCharacter>;
   /** The cinema's house lights, as set from the projection booth; null: automatic. */
   house: HouseLights | null;
+  /** The tabletop's uploaded battle map; null: the drawn one. */
+  tablemap: TableMap | null;
 }
-const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null };
+const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null };
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap";
 
 export interface LivingRoom {
   open: boolean;
@@ -107,7 +109,11 @@ export interface LivingRoom {
   self: LoungePose | null;
   emotes: LoungeEmote[];
   move: (pose: LoungePose) => void;
-  sit: (seatId: string) => void;
+  /**
+   * Sit down there. The game master's chair makes you the game master if
+   * nobody in the call is; while someone else is, it answers why not.
+   */
+  sit: (seatId: string) => string | null;
   /** Sit (or stand back up) right where you are. */
   toggleFloor: () => void;
   emote: (emoji: string) => void;
@@ -312,13 +318,25 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  const sit = useCallback((seatId: string) => {
+  const sharedRef = useRef(shared);
+  sharedRef.current = shared;
+  const sit = useCallback((seatId: string): string | null => {
     const seat = seatById(seatId, venue);
-    if (!seat || !connectionId) return;
+    if (!seat || !connectionId) return null;
     const takenBy = [...poses].find(([id, pose]) => pose.seat === seatId && id !== connectionId);
-    if (takenBy) return;
+    if (takenBy) return null;
+    if (seat.reserved) {
+      const gm = sharedRef.current.gm;
+      const gmHere = gm ? participants.find((p) => p.connectionId === gm.connectionId) : undefined;
+      if (gm && gmHere && gm.connectionId !== connectionId) return `${gm.name || gmHere.displayName} is the game master: that chair is theirs.`;
+      if (!gm || gm.connectionId !== connectionId) {
+        const me = participants.find((p) => p.connectionId === connectionId);
+        sendRef.current({ t: "lounge-set", key: "gm", value: { connectionId, name: me?.displayName || "Game master" } });
+      }
+    }
     move({ x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id });
-  }, [connectionId, poses, move, venue]);
+    return null;
+  }, [connectionId, poses, move, venue, participants]);
 
   const toggleFloor = useCallback(() => {
     const pose = connectionId ? poses.get(connectionId) : null;

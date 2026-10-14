@@ -4,10 +4,10 @@ import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Clapperboard, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
+import { Armchair, Clapperboard, Crown, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
-import { JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, roomAmbience, type BuiltRoom } from "./living-room-scene";
 import { buildCinema } from "./cinema-scene";
@@ -18,8 +18,9 @@ import { buildMeadow } from "./meadow-scene";
 import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from "../lib/board-game";
 import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
-import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec } from "./tabletop-extras";
-import { BoothPanel, CharacterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type ScreenPage } from "./tabletop-extras";
+import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { buildScreenPage, readNotes, readScreenChoice, saveNotes, saveScreenChoice, type ScreenPageId } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { addInitiative, currentEntry, watchPosition, type TableCard, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
@@ -464,7 +465,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | null>(null);
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | null>(null);
+  // The game master's screen: which page each panel shows, their notes, and their hidden rolls this visit.
+  const [screenChoice, setScreenChoiceState] = useState<ScreenPageId[]>(() => (typeof window === "undefined" ? ["initiative", "conditions", "notes"] : readScreenChoice()));
+  const setScreenChoice = (value: ScreenPageId[]) => { setScreenChoiceState(value); saveScreenChoice(value); };
+  const [gmNotes, setGmNotesState] = useState(() => (typeof window === "undefined" ? "" : readNotes()));
+  const setGmNotes = (value: string) => { setGmNotesState(value); saveNotes(value); };
+  const [hiddenLog, setHiddenLog] = useState<string[]>([]);
   const [watchVolume, setWatchVolume] = useState(0.8);
   const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null });
   /** Lets the panel's button start a film the browser would not start by itself. */
@@ -503,8 +510,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   useEffect(() => { setPanel(null); setHoverSeat(null); }, [venueId]);
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn });
-  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn };
+  // What the inside of my screen shows, if I am the game master (built further down).
+  const screenPagesRef = useRef<ScreenPage[] | null>(null);
+  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef });
+  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -724,7 +733,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
         if (object.userData.seat) {
           local = null;
-          live.current.room.sit(object.userData.seat);
+          const refused = live.current.room.sit(object.userData.seat);
+          if (refused) setHint(refused);
           walkTarget = null;
           return;
         }
@@ -1153,6 +1163,22 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
 
+    // The battle map the game master uploaded, in place of the drawn one.
+    let mapKey = "";
+    let mapImage: HTMLImageElement | null = null;
+    const syncMap = (map: { url: string; turns: number; zoom: number } | null) => {
+      const key = map ? `${map.url}|${map.turns}|${map.zoom}` : "";
+      if (key === mapKey || !parts.setTableMap) return;
+      mapKey = key;
+      if (!map) { mapImage = null; parts.setTableMap(null); return; }
+      const apply = (image: HTMLImageElement) => { if (mapKey === key) parts.setTableMap?.(image, map.turns, map.zoom); };
+      if (mapImage && mapImage.dataset.url === map.url) { apply(mapImage); return; }
+      const image = new Image();
+      image.dataset.url = map.url;
+      image.onload = () => { mapImage = image; apply(image); };
+      image.src = map.url;
+    };
+
     // The tabletop's D&D dressing: tents, the GM's screen, the turn marker, the floating card, and 3D character tokens.
     let tentsAt = 0;
     const syncExtras = (t: number) => {
@@ -1168,7 +1194,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         for (const p of live.current.participants) {
           if (p.bot || p.recorder) continue;
           const seat = seatById(r.poses.get(p.connectionId)?.seat, venue);
-          if (!seat || !seat.id.startsWith("tab-")) continue;
+          // The game master's place holds their screen, not a tent and a token.
+          if (!seat || !seat.id.startsWith("tab-") || seat.reserved) continue;
           // Only people who made a character get a card; nobody's profile picture is put on the table for them.
           const character = shared.characters[p.id];
           if (!character) continue;
@@ -1191,6 +1218,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         extras.setCharacterTokens(tokenSpecs);
         const gmSeat = seatById(shared.gm ? r.poses.get(shared.gm.connectionId)?.seat : null, venue);
         extras.setScreen(gmSeat && gmSeat.id.startsWith("tab-") ? gmSeat : null);
+        extras.setScreenPages(live.current.screenPagesRef.current);
+        syncMap(shared.tablemap);
         const hubNow = (live.current.serverNow ?? Date.now)();
         extras.setCard(shared.card, Boolean(shared.card) && hubNow - shared.card!.at > CARD_SECONDS * 1000);
       }
@@ -1436,6 +1465,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const myPerson = participants.find((p) => p.connectionId === connectionId);
   const myName = myPerson?.displayName || "Me";
   const isGm = Boolean(connectionId && room.shared.gm?.connectionId === connectionId);
+  // The game master changes the map; with nobody (still) in that role, anyone may.
+  const gmPresent = Boolean(room.shared.gm && participants.some((p) => p.connectionId === room.shared.gm?.connectionId));
+  const canEditMap = isGm || !gmPresent;
+  const inGmChair = Boolean(connectionId && room.poses.get(connectionId)?.seat === GM_SEAT_ID);
+  const party = participants.flatMap((p) => {
+    const character = room.shared.characters[p.id];
+    return character && !p.bot && !p.recorder ? [{ character: character.name, player: p.displayName }] : [];
+  });
+  const screenData = { initiative: room.shared.initiative, party, notes: gmNotes, rolls: hiddenLog };
+  screenPagesRef.current = isGm && venueId === "tabletop"
+    ? screenChoice.map((id) => buildScreenPage(id, screenData) ?? { title: "", lines: [] })
+    : null;
   /** The chair a seat belongs to, as a point on the table edge: where a game master's hidden dice land. */
   const seatOf = (id: string | null | undefined) => seatById(id ? room.poses.get(id)?.seat : null, venue);
 
@@ -1475,6 +1516,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       });
       void playDiceRollSound({ theme: "default", diceCount: roll.dice.reduce((sum, term) => sum + term.rolls.length, 0), material: roll.material ?? "plastic" });
       room.setShared("hiddenroll", { dice: roll.dice.map((term) => ({ sides: term.sides, count: term.rolls.length })), seed: roll.animationSeed });
+      const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setHiddenLog((log) => [`${roll.expression} = ${roll.total} (${at})`, ...log].slice(0, 20));
       setRollNote(null);
     } catch (error) {
       setRollNote(error instanceof Error ? error.message : "That roll did not work.");
@@ -1517,7 +1560,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const target = room.poses.get(targetId);
     if (!target) return;
     const taken = new Set([...room.poses.values()].map((pose) => pose.seat));
-    const free = venue.seats.filter((seat) => !taken.has(seat.id))
+    const free = venue.seats.filter((seat) => !seat.reserved && !taken.has(seat.id))
       .sort((a, b) => Math.hypot(a.x - target.x, a.z - target.z) - Math.hypot(b.x - target.x, b.z - target.z))[0];
     if (free) room.sit(free.id);
   };
@@ -1579,6 +1622,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             <>
               <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title="Initiative" aria-label="Initiative" aria-expanded={panel === "initiative"}><Swords size={16} /></button>
               <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title="My character" aria-label="My character" aria-expanded={panel === "character"}><UserRound size={16} /></button>
+              <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label="Game master" aria-expanded={panel === "gm"}><Crown size={16} /></button>
             </>
           )}
           {venueId === "boardhall" && (
@@ -1632,6 +1676,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               initiative={room.shared.initiative} gm={room.shared.gm} myId={connectionId} myName={myName}
               setInitiative={(value) => room.setShared("initiative", value)} setGm={(value) => room.setShared("gm", value)}
               onRollMine={() => { pendingInitiative.current = true; onCommand?.("/roll 1d20"); }} onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === "gm" && (
+            <GameMasterPanel
+              gm={room.shared.gm} myId={connectionId} myName={myName} inGmChair={inGmChair}
+              onTakeChair={() => { const refused = room.sit(GM_SEAT_ID); if (refused) setHint(refused); }}
+              setGm={(value) => room.setShared("gm", value)}
+              map={room.shared.tablemap} canEditMap={canEditMap} setMap={(value) => room.setShared("tablemap", value)}
+              choice={screenChoice} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes}
+              onClose={() => setPanel(null)}
             />
           )}
           {panel === "character" && (
@@ -1872,6 +1926,11 @@ const LIVING_ROOM_CSS = `
 .lr-note { margin: 0; opacity: 0.75; line-height: 1.4; font-size: 12px; }
 .lr-wide { width: 100%; justify-content: center; background: var(--lr-accent) !important; color: #1b1530 !important; }
 .lr-field { display: grid; gap: 3px; }
+.lr-inline { grid-template-columns: 56px 1fr; align-items: center; }
+.lr-heading { margin-top: 4px; font-weight: 700; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+.living-room-panel select, .living-room-panel textarea { min-width: 0; padding: 5px 8px; border-radius: 9px; font: inherit; font-size: 13px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
+.living-room-panel select option { color: #1b1530; }
+.living-room-panel textarea { resize: vertical; min-height: 64px; }
 .lr-narrow { flex: 0 0 56px !important; }
 .lr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .lr-list li { display: flex; gap: 8px; align-items: center; }

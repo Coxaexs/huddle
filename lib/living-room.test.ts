@@ -3,7 +3,7 @@ import {
   LOUNGE_SEATS, NOOK, clampPose, inAnnex, defaultPoses, freeSeat, headingTo, hearFrom, stepTo, wrapHeading,
   type LoungePose,
 } from "../app/lib/living-room";
-import { CINEMA, TABLETOP, LOUNGE, clampPose as clampIn } from "../app/lib/living-room";
+import { CINEMA, GM_SEAT_ID, TABLETOP, LOUNGE, clampPose as clampIn } from "../app/lib/living-room";
 
 const at = (x: number, z: number, facing = 0, seat: string | null = null): LoungePose => ({ x, z, facing, seat });
 
@@ -166,7 +166,14 @@ describe("venues", () => {
     expect(TABLETOP.seats).toHaveLength(10);
     const ids = Array.from({ length: 14 }, (_, i) => `p${i}`);
     const poses = defaultPoses(ids, new Map(), TABLETOP);
-    expect([...poses.values()].filter((pose) => pose.seat).length).toBe(10);
+    // Nine players are seated by themselves; the game master's chair waits to be chosen.
+    expect([...poses.values()].filter((pose) => pose.seat).length).toBe(9);
+    expect([...poses.values()].some((pose) => pose.seat === GM_SEAT_ID)).toBe(false);
+    expect(freeSeat([], TABLETOP)?.id).not.toBe(GM_SEAT_ID);
+    // Whoever picked it keeps it.
+    const gm = defaultPoses(["gm", "p1"], new Map([["gm", { x: 0, z: -1.9, facing: 0, seat: GM_SEAT_ID }]]), TABLETOP);
+    expect(gm.get("gm")?.seat).toBe(GM_SEAT_ID);
+    expect(gm.get("p1")?.seat).not.toBe(GM_SEAT_ID);
     for (const pose of [...poses.values()].filter((p) => !p.seat)) {
       expect(Math.hypot(pose.x - 0, pose.z - 0.3)).toBeGreaterThan(2.5);
     }

@@ -733,14 +733,14 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house") return;
+        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap") return;
         const now = Date.now();
         if (now - (this.sharedAt.get(attachment.connectionId) ?? 0) < 120) return;
         this.sharedAt.set(attachment.connectionId, now);
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house", value: unknown, includeSender: boolean) => {
+        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap", value: unknown, includeSender: boolean) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;
@@ -755,6 +755,12 @@ export class HuddleHub extends DurableObject {
         }
         const all = await this.loadLoungeShared();
         const bag = (all[room] ??= {});
+        if (key === "tablemap") {
+          // The game master's table: while one is in the room, only they change the map.
+          const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
+          const gmHere = gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room);
+          if (gmHere && gm !== attachment.connectionId) return;
+        }
         if (key === "character") {
           const characters = { ...((bag.characters as Record<string, unknown> | undefined) ?? {}) };
           if (clean) characters[attachment.userId] = clean; else delete characters[attachment.userId];

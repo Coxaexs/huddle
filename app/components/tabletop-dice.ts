@@ -9,7 +9,7 @@ import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
-import { DIE_TYPES, faceNormal } from "../lib/dice-normals";
+import { dieFaces, faceNormal } from "../lib/dice-normals";
 import normalsData from "@/public/assets/themes/default/default.json";
 
 /** How many dice are drawn for one roll; the total still counts them all. */
@@ -199,6 +199,7 @@ function glowTexture(): THREE.CanvasTexture {
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+
 export class TableDice {
   private sets: Set[] = [];
   private readonly glow = glowTexture();
@@ -231,12 +232,12 @@ export class TableDice {
     this.root.add(group);
 
     const colour = roll.themeColor || "#2563eb";
-    const faces = roll.dice.flatMap((term) => term.rolls.map((entry) => ({ sides: term.sides, value: entry.value, kept: entry.kept !== false })));
+    const faces = roll.dice.flatMap((term) => term.rolls.flatMap((entry) => dieFaces(term.sides, entry.value, entry.kept !== false)));
     const shown = faces.slice(0, MAX_DICE);
     const throws: Throw[] = [];
     const spacing = opts.spacing ?? 0.27;
     shown.forEach((face, i) => {
-      const type = DIE_TYPES.find((t) => Number(t.slice(1)) >= face.sides) ?? "d20";
+      const type = face.type;
       const geometry = dieGeometry(type);
       const map = image ? dieTexture(colour, image) : null;
       const mesh = new THREE.Mesh(geometry, dieMaterial(roll.material, map, colour, !face.kept));
@@ -285,14 +286,18 @@ export class TableDice {
     this.sets.push({ at: performance.now(), group, throws, label, fx: [], roll, announced: false, settledFor: 0 });
   }
 
-  /** The turn that leaves `value` facing up (a d4's value face goes down), at a random heading. */
+  /**
+   * The turn that leaves `value` showing, at a random heading. The face map
+   * names the face a die lies on, and its normal (as the model is wound)
+   * points into the die: turned up, that face is on the table and the value
+   * reads on top. That holds for the d4 too, whose number sits at its peak.
+   */
   private restingOrientation(type: string, value: number, random: () => number): THREE.Quaternion {
     const normal = faceNormal(type, value);
     const yaw = new THREE.Quaternion().setFromAxisAngle(UP, random() * Math.PI * 2);
     if (!normal) return yaw;
     const n = new THREE.Vector3(normal[0], normal[1], normal[2]).normalize();
-    const to = type === "d4" ? UP.clone().negate() : UP;
-    return yaw.multiply(new THREE.Quaternion().setFromUnitVectors(n, to));
+    return yaw.multiply(new THREE.Quaternion().setFromUnitVectors(n, UP));
   }
 
   private lowestPoint(geometry: THREE.BufferGeometry, quaternion: THREE.Quaternion): number {

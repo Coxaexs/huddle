@@ -5,7 +5,7 @@
  * checks its shape (sanitize), so a client can only ever store these.
  */
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -58,6 +58,22 @@ export interface TableCard {
 }
 
 export interface TableCharacter { name: string; portraitUrl: string | null }
+
+/**
+ * The battle map on the tabletop, in place of the drawn one: an image uploaded
+ * to this server, turned in quarter turns and zoomed into the round table.
+ * Only the game master may change it while there is one (the hub checks).
+ */
+export interface TableMap {
+  url: string;
+  /** Quarter turns clockwise, 0-3. */
+  turns: number;
+  /** 1 fills the table; more shows less of the image, larger. */
+  zoom: number;
+  by: string;
+  /** Hub clock (ms) when it was put up; the hub stamps it. */
+  at: number;
+}
 
 /** Someone rolled behind the screen: everyone sees dice land there, but never the faces. */
 export interface HiddenRoll { by: string; dice: Array<{ sides: number; count: number }>; seed: string }
@@ -139,6 +155,18 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       const name = str(value.name, 40).trim();
       if (!name) return null;
       return { name, portraitUrl: safeMediaUrl(value.portraitUrl) } satisfies TableCharacter;
+    }
+    case "tablemap": {
+      // Only this server's own uploads: an image from elsewhere would taint the table's WebGL texture.
+      const url = safeMediaUrl(value.url);
+      if (!url || !url.startsWith("/hangout/api/uploads/")) return null;
+      return {
+        url,
+        turns: Math.floor(num(value.turns, 0, 3)),
+        zoom: Math.round(num(value.zoom, 1, 4, 1) * 100) / 100,
+        by,
+        at: now,
+      } satisfies TableMap;
     }
     case "hiddenroll": {
       const dice = (Array.isArray(value.dice) ? value.dice : []).slice(0, 12).flatMap((die) => {

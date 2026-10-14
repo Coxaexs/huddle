@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Clapperboard, Crown, Film, Plus, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
   addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
-  type GameMaster, type HouseLights, type Initiative, type TableCharacter, type WatchState,
+  type GameMaster, type HouseLights, type Initiative, type TableCharacter, type TableMap, type WatchState,
 } from "@/lib/lounge-shared";
+import { SCREEN_PAGES, type ScreenPageId } from "../lib/gm-screen";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
@@ -456,6 +457,100 @@ export function CharacterPanel({ mine, fallbackName, setMine, onClose }: {
         <button type="button" className="primary" onClick={() => { save(); onClose(); }}>Save</button>
         {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>Clear</button>}
       </div>
+    </div>
+  );
+}
+/**
+ * The tabletop's game master: who it is and their chair, the battle map on
+ * the table, and what the inside of their screen shows.
+ */
+export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, choice, setChoice, notes, setNotes, onClose }: {
+  gm: GameMaster | null;
+  myId: string | null;
+  myName: string;
+  inGmChair: boolean;
+  onTakeChair: () => void;
+  setGm: (value: GameMaster | null) => void;
+  map: TableMap | null;
+  canEditMap: boolean;
+  setMap: (value: { url: string; turns: number; zoom: number } | null) => void;
+  choice: ScreenPageId[];
+  setChoice: (value: ScreenPageId[]) => void;
+  notes: string;
+  setNotes: (value: string) => void;
+  onClose: () => void;
+}) {
+  const isGm = Boolean(gm && gm.connectionId === myId);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(map?.zoom ?? 1);
+  const file = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { setZoom(map?.zoom ?? 1); }, [map?.zoom]);
+  // A slider sends many values; the room only needs the one it settles on.
+  useEffect(() => {
+    if (!map || zoom === map.zoom) return;
+    const later = setTimeout(() => setMap({ url: map.url, turns: map.turns, zoom }), 250);
+    return () => clearTimeout(later);
+  }, [zoom, map, setMap]);
+  const chooseFile = async (chosen: File | undefined) => {
+    if (!chosen) return;
+    setBusy(true); setProblem(null);
+    try { setMap({ url: await upload(chosen), turns: 0, zoom: 1 }); }
+    catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
+    finally { setBusy(false); if (file.current) file.current.value = ""; }
+  };
+  const positions = ["Left", "Middle", "Right"];
+  return (
+    <div className="living-room-panel" role="dialog" aria-label="Game master">
+      <div className="living-room-panel-head"><strong>Game master</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
+      <div className="lr-row">
+        {gm ? <small><Crown size={12} /> GM: {isGm ? "you" : gm.name}</small> : <small>No game master yet.</small>}
+        {!inGmChair && (!gm || isGm) && <button type="button" onClick={onTakeChair}>Sit in the GM&apos;s chair</button>}
+        {isGm ? <button type="button" onClick={() => setGm(null)}>Hand over</button>
+          : !gm && myId ? <button type="button" onClick={() => setGm({ connectionId: myId, name: myName })}>I&apos;m the GM</button> : null}
+      </div>
+
+      <small className="lr-heading">Battle map</small>
+      {canEditMap ? (
+        <>
+          <div className="lr-row">
+            <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : map ? "Change the map" : "Upload a map"}</button>
+            <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
+            {map && <button type="button" onClick={() => setMap({ url: map.url, turns: (map.turns + 1) % 4, zoom: map.zoom })} title="Turn the map a quarter"><RotateCw size={14} /> Turn</button>}
+            {map && <button type="button" onClick={() => setMap(null)}>Use the drawn map</button>}
+          </div>
+          {map && (
+            <label className="lr-field">
+              <small>Zoom: {zoom.toFixed(1)}×</small>
+              <input type="range" min={1} max={4} step={0.1} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Map zoom" />
+            </label>
+          )}
+          {problem && <p className="lr-note">{problem}</p>}
+          <p className="lr-note">Everyone at the table sees it. The middle of the picture fills the round table.</p>
+        </>
+      ) : (
+        <p className="lr-note">{map ? `The map is ${map.by}'s upload. ` : ""}Only the game master changes the map.</p>
+      )}
+
+      {isGm ? (
+        <>
+          <small className="lr-heading">Inside your screen (only you see it)</small>
+          {positions.map((label, index) => (
+            <label key={label} className="lr-field lr-inline">
+              <small>{label}</small>
+              <select value={choice[index]} onChange={(event) => setChoice(choice.map((id, i) => (i === index ? (event.target.value as ScreenPageId) : id)))}>
+                {SCREEN_PAGES.map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
+              </select>
+            </label>
+          ))}
+          <label className="lr-field">
+            <small>My notes</small>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={2000} placeholder="Ogre in the cellar. Map hidden in the third book." />
+          </label>
+        </>
+      ) : (
+        <p className="lr-note">The game master&apos;s screen shows them the order, rules and notes they pick.</p>
+      )}
     </div>
   );
 }

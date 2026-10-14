@@ -543,6 +543,8 @@ export interface BuiltRoom {
   screenMaterial: THREE.MeshBasicMaterial;
   /** What the screen shows when nothing is on it (null: dark glass). */
   idleScreen?: THREE.Texture | null;
+  /** The tabletop's battle map: an uploaded image in place of the drawn one (null: back to it). */
+  setTableMap?: (image: HTMLImageElement | null, turns?: number, zoom?: number) => void;
   /** The living room's Blåhaj; other rooms have none. */
   shark?: THREE.Group;
   background: THREE.Color;
