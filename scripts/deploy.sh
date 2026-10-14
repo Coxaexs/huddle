@@ -11,9 +11,17 @@
 # Building in place (npm run build inside this checkout) rewrote dist/ while
 # `wrangler dev` was serving it. Wrangler reloaded halfway through and died
 # with 'No such module "__vite_rsc_assets_manifest.js"' until systemd restarted
-# it. So this builds in a separate copy, then lands the finished files with
-# rsync --delay-updates: every file is staged first and renamed into place at
-# the end, and wrangler's watcher reloads once, onto a complete build.
+# it. So this builds in a separate copy, then swaps the finished build in with
+# the service stopped and starts it again: a few seconds of restart, the same
+# every time. Letting wrangler's file watcher reload instead was not reliable:
+# rsync --delay-updates stages files in .~tmp~ folders inside dist/, the
+# watcher stats one just as it is renamed away and wrangler exits (every
+# deploy on 2026-10-14). Stopping the unit takes the polkit rule in
+# deploy/huddle-service/50-huddle-deploy.rules; without it this falls back to
+# the watcher.
+#
+# While this runs, ROOT/.deploying exists, and the healthcheck leaves the
+# service alone.
 #
 # The build that was live is kept in dist-prev/ for --rollback, and
 # dist/DEPLOYED.txt says what each build was made from: the commit, and any
@@ -24,6 +32,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="${HUDDLE_BUILD_DIR:-$HOME/.cache/huddle-build}"
 HEALTH_URL="${HUDDLE_HEALTH_URL:-http://127.0.0.1:8730/hangout/}"
+UNIT="${HUDDLE_UNIT:-huddle.service}"
+
+touch "$ROOT/.deploying"
+trap 'rm -f "$ROOT/.deploying"' EXIT
 
 healthy() {
   # Up to two minutes: the reload takes a few seconds, a cold start longer.
@@ -35,7 +47,13 @@ healthy() {
 }
 
 land() {
-  rsync -a --delete --delay-updates "$1/" "$ROOT/dist/"
+  if systemctl --no-ask-password stop "$UNIT" 2>/dev/null; then
+    rsync -a --delete "$1/" "$ROOT/dist/"
+    systemctl --no-ask-password start "$UNIT" || { echo "$UNIT did not start again; see: journalctl -u $UNIT" >&2; exit 1; }
+  else
+    echo "(Cannot stop $UNIT without a password, so the running server reloads onto the new files.)"
+    rsync -a --delete --delay-updates "$1/" "$ROOT/dist/"
+  fi
 }
 
 if [[ "${1:-}" == "--rollback" ]]; then
@@ -51,7 +69,7 @@ rsync -a --delete \
   --exclude=/.git/ --exclude=/node_modules/ --exclude=/dist/ --exclude='/dist-*/' \
   --exclude=/state/ --exclude='/state.*/' --exclude=/backups/ --exclude=/.wrangler/ \
   --exclude=/.vinext/ --exclude=/mobile/ --exclude=/desktop/ --exclude=/desktop-tauri/ \
-  --exclude=/native-qt/ --exclude='*/node_modules/' \
+  --exclude=/native-qt/ --exclude='*/node_modules/' --exclude=/.deploying \
   "$ROOT/" "$STAGE/"
 ln -sfn "$ROOT/node_modules" "$STAGE/node_modules"
 
