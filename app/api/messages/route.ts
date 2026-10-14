@@ -2,7 +2,7 @@ import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
 import { canSeeServer, channelAccess, messageAccess } from "@/lib/access";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
-import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
+import { channelKindInfo, postableChannelKindsSql } from "@/lib/channel-kinds";
 import { isBlockedBetween } from "@/lib/friends";
 import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
 import { dispatchMessage } from "@/lib/discord/dispatch";
@@ -561,7 +561,7 @@ export async function postMessageAs(
   if (channelId) {
     const channel = await db
       .prepare(
-        `SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN (${textChannelKindsSql()})`,
+        `SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN (${postableChannelKindsSql()})`,
       )
       .bind(channelId)
       .first<{ name: string; kind: string; server_id: string }>();

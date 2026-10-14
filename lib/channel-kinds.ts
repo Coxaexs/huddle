@@ -143,6 +143,20 @@ export function textChannelKindsSql(): string {
     .join(", ");
 }
 
+/**
+ * SQL fragment listing the kinds a message can be posted to, for `kind IN (…)`.
+ *
+ * Wider than `textChannelKindsSql`: a voice room carries its own side chat, as
+ * Discord's do, so voice and stage rooms take messages too. They stay `text:
+ * false` because they are not text channels anywhere else (sidebar, recaps,
+ * polls, games).
+ */
+export function postableChannelKindsSql(): string {
+  return CHANNEL_KINDS.filter((kind) => KINDS[kind].text || KINDS[kind].voice)
+    .map((kind) => `'${kind}'`)
+    .join(", ");
+}
+
 /** SQL fragment listing the kinds that hold a voice call (voice and stage), for `kind IN (…)`. */
 export function voiceChannelKindsSql(): string {
   return CHANNEL_KINDS.filter((kind) => KINDS[kind].voice)

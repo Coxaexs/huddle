@@ -86,6 +86,7 @@ import {
 } from "./lib/tts/client";
 import { ServerSettingsDialog } from "./components/server-settings-dialog";
 import { VoiceStage } from "./components/voice-stage";
+import { VoiceChatPanel, type VoiceChatEvent } from "./components/voice-chat-panel";
 import { hasLiveVideo } from "./components/voice-stage/tiles";
 import {
   replaceEmojiShortcodes,
@@ -191,6 +192,44 @@ export function ChatShell() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
   const [stageChannelId, setStageChannelId] = useState<string | null>(null);
+  /** The voice room's side chat, docked beside its stage. Remembered per browser. */
+  const [voiceChatOpen, setVoiceChatOpenState] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = window.localStorage.getItem("huddle-voice-chat");
+      if (saved) return saved === "1";
+    } catch {
+      // Storage blocked: fall through to the default.
+    }
+    // On a phone the panel covers the stage, so it starts closed there.
+    return window.innerWidth > 900;
+  });
+  const setVoiceChatOpen = useCallback((open: boolean) => {
+    setVoiceChatOpenState(open);
+    try {
+      window.localStorage.setItem("huddle-voice-chat", open ? "1" : "0");
+    } catch {
+      // Not remembered, which is fine.
+    }
+  }, []);
+  /** Live sinks of open voice chat panels, by channel. */
+  const voiceChatSinksRef = useRef(new Map<string, Set<(event: VoiceChatEvent) => void>>());
+  const subscribeVoiceChat = useCallback((channelId: string, sink: (event: VoiceChatEvent) => void) => {
+    const sinks = voiceChatSinksRef.current;
+    const set = sinks.get(channelId) || new Set();
+    set.add(sink);
+    sinks.set(channelId, set);
+    return () => {
+      set.delete(sink);
+      if (!set.size) sinks.delete(channelId);
+    };
+  }, []);
+  const emitVoiceChat = useCallback((channelId: string, event: VoiceChatEvent) => {
+    const set = voiceChatSinksRef.current.get(channelId);
+    if (!set?.size) return false;
+    for (const sink of set) sink(event);
+    return true;
+  }, []);
   const [pipDismissed, setPipDismissed] = useState(false);
   const [voiceViewMode, setVoiceViewMode] = useState<"grid" | "table" | "map">("grid");
   const [focusedStreamInfo, setFocusedStreamInfo] = useState<{
@@ -2207,6 +2246,10 @@ export function ChatShell() {
       ) {
         flashTitle(`${stripTextStyle(incoming.author)} says…`);
       }
+      // A voice room's chat open beside its stage is being read, so it is not unread.
+      if (emitVoiceChat(channelId, { type: "message", message: incoming }) && channelId !== activeChannelRef.current) {
+        return;
+      }
       if (channelId !== activeChannelRef.current) {
         const serverId = channelServerRef.current.get(channelId);
         // A DM you are not looking at still deserves to bubble up the list.
@@ -2280,7 +2323,7 @@ export function ChatShell() {
         return next;
       });
     },
-    [loadDms, user],
+    [loadDms, user, emitVoiceChat],
   );
 
   /** Whom each text whisper we sent was to, for our own copy of the line. */
@@ -2443,6 +2486,7 @@ export function ChatShell() {
       reloadMemberSoon(userId);
     },
     onMessageDeleted: (channelId, id) => {
+      emitVoiceChat(channelId, { type: "deleted", id: String(id) });
       if (channelId !== activeChannelRef.current) return;
       setMessages((current) => current.filter((message) => message.id !== id));
       setPins((current) => current.filter((message) => message.id !== id));
@@ -2457,6 +2501,12 @@ export function ChatShell() {
       void refreshPins(channelId);
     },
     onMessageEdited: (channelId, id, content, editedAt, payload) => {
+      emitVoiceChat(channelId, {
+        type: "edited",
+        id: String(id),
+        content: typeof content === "string" ? content : undefined,
+        editedAt,
+      });
       if (channelId !== activeChannelRef.current) return;
       setMessages((current) =>
         current.map((message) =>
@@ -7111,9 +7161,12 @@ export function ChatShell() {
         setSettingsOpen={setSettingsOpen}
         membersOpen={membersOpen}
         setMembersOpen={setMembersOpen}
+        voiceChatOpen={voiceChatOpen}
+        setVoiceChatOpen={setVoiceChatOpen}
       />
 
             {stageChannel ? (
+              <div className={`voice-stage-split ${voiceChatOpen && stageChannel.serverId ? "chat-open" : ""}`}>
               <VoiceStage
                 channelName={stageChannel.name}
                 participants={voiceParticipants}
@@ -7208,6 +7261,22 @@ export function ChatShell() {
                   ) : null
                 }
               />
+              {voiceChatOpen && stageChannel.serverId && (
+                <VoiceChatPanel
+                  channelId={stageChannel.id}
+                  channelName={stageChannel.name}
+                  userId={user.id}
+                  selfHandle={user.username}
+                  canModerate={canModerate}
+                  membersById={membersById}
+                  emojis={emojiMap}
+                  subscribe={subscribeVoiceChat}
+                  onClose={() => setVoiceChatOpen(false)}
+                  onImage={setLightboxImage}
+                  onNotice={setNotice}
+                />
+              )}
+              </div>
             ) : (
               <>
                 <SearchPanel

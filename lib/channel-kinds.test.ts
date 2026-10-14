@@ -8,6 +8,7 @@ import {
   isCreatableKind,
   mayPostInKind,
   normalizeChannelName,
+  postableChannelKindsSql,
   textChannelKindsSql,
   voiceChannelKindsSql,
 } from "@/lib/channel-kinds";
@@ -110,15 +111,22 @@ describe("mayPostInKind", () => {
 });
 
 describe("textChannelKindsSql", () => {
-  it("lists exactly the kinds that accept messages", () => {
+  it("lists exactly the text channel kinds", () => {
     const sql = textChannelKindsSql();
     expect(sql).toContain("'text'");
     expect(sql).toContain("'dm'");
     expect(sql).toContain("'announcement'");
     expect(sql).toContain("'forum'");
-    // Voice rooms cannot take messages, so they must not be accepted here.
+    // Voice rooms hold a side chat, but they are not text channels.
     expect(sql).not.toContain("'voice'");
     expect(sql).not.toContain("'stage'");
+  });
+});
+
+describe("postableChannelKindsSql", () => {
+  it("adds voice rooms and stages, for their side chat", () => {
+    const sql = postableChannelKindsSql();
+    for (const kind of CHANNEL_KINDS) expect(sql).toContain(`'${kind}'`);
   });
 });
 

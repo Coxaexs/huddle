@@ -6956,6 +6956,289 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   color: var(--ink);
 }
 
+.voice-stage-topbar-btn.active {
+  background: color-mix(in srgb, var(--lavender) 28%, var(--line));
+  color: var(--ink);
+}
+
+/* A voice room's side chat, docked to the right of its stage (Discord-style). */
+.voice-stage-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.voice-stage-split > .voice-stage {
+  min-width: 0;
+}
+
+.voice-chat-panel {
+  display: flex;
+  flex-direction: column;
+  width: clamp(300px, 30%, 440px);
+  flex-shrink: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.voice-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.voice-chat-header strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.voice-chat-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.voice-chat-close:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.voice-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0 8px;
+}
+
+.voice-chat-day {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 16px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.voice-chat-day::before,
+.voice-chat-day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.voice-chat-msg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 6px 16px 2px;
+  margin-top: 8px;
+}
+
+.voice-chat-msg.grouped {
+  margin-top: 0;
+  padding-top: 1px;
+}
+
+.voice-chat-msg:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.voice-chat-gutter {
+  width: 36px;
+}
+
+.voice-chat-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  line-height: 1.3;
+}
+
+.voice-chat-meta strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.voice-chat-meta time {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.voice-chat-bot {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--lavender);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.voice-chat-text {
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.voice-chat-edited {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.voice-chat-text .message-image,
+.voice-chat-image {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  margin-top: 4px;
+  border-radius: 8px;
+  cursor: zoom-in;
+  object-fit: contain;
+}
+
+.voice-chat-file {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.voice-chat-audio {
+  display: block;
+  max-width: 100%;
+  margin-top: 4px;
+}
+
+.voice-chat-delete {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.voice-chat-msg:hover .voice-chat-delete,
+.voice-chat-delete:focus-visible {
+  display: grid;
+}
+
+.voice-chat-delete:hover {
+  color: #ed4245;
+}
+
+.voice-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.voice-chat-empty strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.voice-chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0 12px 12px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 6%, var(--panel));
+  flex-shrink: 0;
+}
+
+.voice-chat-attach {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.voice-chat-attach:hover {
+  color: var(--ink);
+}
+
+.voice-chat-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  max-height: 160px;
+  padding: 6px 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  field-sizing: content;
+}
+
+/* The ring goes on the whole composer, not the bare textarea inside it. */
+:root .app-shell .voice-chat-panel .voice-chat-composer textarea:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+.voice-chat-composer:focus-within {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lavender) 45%, transparent);
+}
+
+/* On narrow screens the chat slides over the stage instead of squeezing it. */
+@media (max-width: 900px) {
+  .voice-chat-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(100%, 420px);
+    z-index: 30;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.35);
+  }
+}
+
 /* Unified header voice & screenshare controls */
 .voice-stage-header-controls {
   display: flex;

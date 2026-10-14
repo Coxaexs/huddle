@@ -2,7 +2,7 @@
 
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut } from "lucide-react";
+import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle } from "lucide-react";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
@@ -56,6 +56,8 @@ export function ChatHeader({
   setSettingsOpen,
   membersOpen,
   setMembersOpen,
+  voiceChatOpen,
+  setVoiceChatOpen,
 }: {
   setMobileNav: Dispatch<SetStateAction<boolean>>;
   stageChannel: PublicChannel | null;
@@ -101,6 +103,8 @@ export function ChatHeader({
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
   membersOpen: boolean;
   setMembersOpen: Dispatch<SetStateAction<boolean>>;
+  voiceChatOpen: boolean;
+  setVoiceChatOpen: (open: boolean) => void;
 }) {
   return (
     <header className="chat-header">
@@ -259,6 +263,19 @@ export function ChatHeader({
                       </button>
                     ))}
                   </div>
+
+                  {stageChannel.serverId && (
+                    <button
+                      type="button"
+                      className={`voice-stage-topbar-btn ${voiceChatOpen ? "active" : ""}`}
+                      onClick={() => setVoiceChatOpen(!voiceChatOpen)}
+                      title={voiceChatOpen ? "Hide chat" : "Show chat"}
+                      aria-label={voiceChatOpen ? "Hide chat" : "Show chat"}
+                      aria-pressed={voiceChatOpen}
+                    >
+                      <MessageCircle size={16} />
+                    </button>
+                  )}
 
                   <div className="w-[1px] h-5 bg-[var(--line)] mx-1 opacity-60 flex-shrink-0" />
                 </div>
