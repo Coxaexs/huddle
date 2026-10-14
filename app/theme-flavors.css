@@ -953,3 +953,136 @@
 }
 :root[data-custom-theme-id="dark-academia"] .server-invite-eyebrow { font-style: italic; text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
 :root[data-custom-theme-id="dark-academia"] .server-invite-card .server-invite-btn { border-radius: 3px; }
+
+/* Classic Winamp -----------------------------------------------------------
+   Brushed titanium frames, a black LCD with lime text, and the now-playing
+   card drawn as Winamp's main window (title bar, LED clock, analyser strip,
+   transport buttons). */
+:root[data-custom-theme-id="winamp"] {
+  --font-mono: "Courier New", Courier, monospace;
+}
+
+:root[data-custom-theme-id="winamp"] :is(.rail, .channel-nav, .member-panel) {
+  background: linear-gradient(180deg, #2b303a 0%, #1c1f26 100%) !important;
+}
+
+:root[data-custom-theme-id="winamp"] .channel.selected {
+  background: #0b0d10 !important;
+  box-shadow: inset 3px 0 0 #00ff00;
+  color: #00ff00 !important;
+  text-shadow: 0 0 4px rgba(0, 255, 0, 0.6);
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing {
+  position: relative;
+  max-width: 380px;
+  padding: 22px 10px 10px;
+  border: 2px solid #5a6270;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #3a3f49 0%, #262930 100%);
+  box-shadow: inset 1px 1px 0 #7b8596, inset -1px -1px 0 #181a1f, 0 6px 18px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-mono);
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing::before {
+  content: "WINAMP";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 16px;
+  padding-left: 6px;
+  background: linear-gradient(90deg, #101216, #2d3646 50%, #101216);
+  color: #b0b8c8;
+  font: bold 10px/16px var(--font-mono);
+  letter-spacing: 2px;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-head {
+  padding: 6px 8px;
+  background: #000;
+  border: 2px inset #1e2229;
+}
+
+:root[data-custom-theme-id="winamp"] :is(.now-playing-title, .now-playing-artist, .now-playing-sub, .now-playing-times) {
+  color: #00ff00 !important;
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.55);
+  font-family: var(--font-mono);
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-art {
+  border-radius: 0;
+  filter: saturate(0.6) contrast(1.1);
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-bar {
+  height: 8px;
+  border: 1px inset #1e2229;
+  border-radius: 0;
+  background: #0b0d10;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-fill {
+  border-radius: 0;
+  background: linear-gradient(90deg, #0a6b0a, #00ff00);
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-controls button {
+  border: 1px solid #6b7588;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #4a5160, #2a2f38);
+  box-shadow: inset 1px 1px 0 #8b95a8;
+  color: #dbe2ee;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-viz {
+  position: absolute;
+  top: 26px;
+  right: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-viz i {
+  width: 3px;
+  height: 2px;
+  background: linear-gradient(0deg, #00c800, #ffde00 70%, #ff3b00);
+  background-size: 100% 18px;
+  background-position: bottom;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing.is-playing .now-playing-viz i {
+  animation: winamp-viz 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes winamp-viz {
+  0% { height: 2px; }
+  40% { height: 14px; }
+  70% { height: 7px; }
+  100% { height: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="winamp"] .now-playing.is-playing .now-playing-viz i { animation: none; height: 8px; }
+}
+
+/* TeamSpeak 2 -------------------------------------------------------------
+   Windows 2000 grey, navy selection, inset borders, Tahoma. */
+:root[data-custom-theme-id="teamspeak"] {
+  --font-ui: Tahoma, "Segoe UI", Arial, sans-serif;
+}
+
+:root[data-custom-theme-id="teamspeak"] body {
+  font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+}
+
+:root[data-custom-theme-id="teamspeak"] :is(.rail, .channel-nav) {
+  background: #ece9d8 !important;
+  box-shadow: inset -2px 0 0 #7f9db9;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel.selected {
+  background: #0a246a !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+}

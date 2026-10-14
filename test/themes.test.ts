@@ -23,6 +23,8 @@ describe("Theme System & Serialization", () => {
     expect(ids).toContain("sunset");
     expect(ids).toContain("dark-academia");
     expect(ids).toContain("amber");
+    expect(ids).toContain("winamp");
+    expect(ids).toContain("teamspeak");
     expect(ids).not.toContain("catppuccin");
   });
 

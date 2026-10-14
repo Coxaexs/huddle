@@ -89,7 +89,14 @@ export function NowPlaying({
   }
 
   return (
-    <div className="now-playing">
+    <div className={`now-playing${state && !state.paused ? " is-playing" : ""}`}>
+      {/* Only the Winamp theme shows these: its analyser strip, which dances
+          while the room is playing (decoration; it does not read the audio). */}
+      <span className="now-playing-viz" aria-hidden="true">
+        {Array.from({ length: 14 }, (_, index) => (
+          <i key={index} style={{ animationDelay: `${(index * 137) % 600}ms` }} />
+        ))}
+      </span>
       <div className="now-playing-head">
         {track.thumbnail ? (
           <img className="now-playing-art" src={track.thumbnail} alt="" />

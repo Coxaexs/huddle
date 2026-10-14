@@ -4742,6 +4742,14 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 
 /* ---- now playing card ---- */
 
+.now-playing-viz {
+  display: none;
+}
+
+:root[data-custom-theme-id="winamp"] .now-playing-viz {
+  display: flex;
+}
+
 .now-playing {
   background: #00000014;
   border: 1px solid #0000001f;
