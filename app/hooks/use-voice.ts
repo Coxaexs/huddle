@@ -2826,3 +2826,6 @@ export function useVoice({
     },
   };
 }
+
+/** Everything useVoice hands back; the shell's panels take it as their `voice` prop. */
+export type VoiceApi = ReturnType<typeof useVoice>;
