@@ -2547,6 +2547,10 @@ button {
   --dnd-accent: #d9534f;
 }
 
+.dnd-roll-card.is-secret {
+  --dnd-accent: #7c6aa8;
+}
+
 .dnd-roll-total-box {
   color: var(--text);
   background: color-mix(in srgb, var(--dnd-accent) 14%, transparent);

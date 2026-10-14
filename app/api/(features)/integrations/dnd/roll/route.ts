@@ -12,6 +12,7 @@ import { ensureSchema } from "@/lib/schema";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import type { DiceRollEvent } from "@/lib/protocol";
+import { maskRoll } from "@/lib/secret-roll";
 
 export const dynamic = "force-dynamic";
 
@@ -219,10 +220,13 @@ export async function POST(request: Request) {
     material?: "plastic" | "metal" | "wood" | "glass";
     texture?: string;
   };
-  const rawInput = (body.command || "").replace(/^\/roll\s*/i, "").trim();
+  const isSecret = /^\/(?:gmroll|blindroll)\b/i.test(body.command || "");
+  const rawInput = (body.command || "")
+    .replace(/^\/(?:roll|gmroll|blindroll)\s*/i, "")
+    .trim();
   if (!rawInput) {
     return Response.json(
-      { error: "Use `/roll 2d20`, `/roll 4d6+2`, or `/roll d20 advantage`." },
+      { error: "Use `/roll 2d20`, `/gmroll d20 stealth`, or `/roll d20 advantage`." },
       { status: 400 },
     );
   }
@@ -359,6 +363,10 @@ export async function POST(request: Request) {
     return Response.json({ error: result.error }, { status: 400 });
   }
   const { roll, details, expression, label, mode, total, modifier } = result;
+  // A secret roll's faces and total leave this route only in the reply to the
+  // roller. Everyone else, the rooms and the stored card get a masked copy, so
+  // nothing in their browser (or the database) gives the result away.
+  const shared = isSecret ? maskRoll(roll) : roll;
 
 
 
@@ -378,8 +386,9 @@ export async function POST(request: Request) {
         voiceChannel?.kind === "voice" &&
         (await isServerMember(db, voiceChannel.server_id, user.id))
       ) {
-        await publishMessageEvent(voiceChannelId, { t: "dice-roll", roll });
-        const recording = await activeRecording(db, voiceChannelId);
+        await publishMessageEvent(voiceChannelId, { t: "dice-roll", roll: shared });
+        // A recording is played back to the whole table later; a secret roll stays out.
+        const recording = isSecret ? null : await activeRecording(db, voiceChannelId);
         if (recording) {
           const consent = await db
             .prepare(
@@ -428,24 +437,41 @@ export async function POST(request: Request) {
           : true) &&
         (await isServerMember(db, textChannel.server_id, user.id))
       ) {
-        await publishMessageEvent(textChannelId, { t: "dice-roll", roll });
+        await publishMessageEvent(textChannelId, { t: "dice-roll", roll: shared });
       }
     }
   }
 
-  const text = `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`;
-  const payload = {
+  const text = isSecret
+    ? `${label ? `${label}: ` : ""}rolled in secret, behind the DM screen.`
+    : `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`;
+  const fullCard = {
     type: "roll",
     name: "Dice result",
     expression,
     mode: mode.trim(),
     label: label || undefined,
     roller: user.display_name,
+    rollerId: user.id,
     total,
     modifier,
     details,
     dice: roll.dice,
   };
+  const payload = isSecret
+    ? {
+        type: "roll",
+        name: "Secret roll",
+        label: label || undefined,
+        roller: user.display_name,
+        rollerId: user.id,
+        secret: true,
+        // Lets the roller's own browser find the result it was sent below.
+        rollSeed: roll.animationSeed,
+      }
+    : fullCard;
+  // Only the roller gets this; their browser keeps it to show them their card.
+  const secretCard = isSecret ? { ...fullCard, verified: true } : undefined;
 
   // The card is written here, by the server that rolled, and marked verified.
   // A browser can still post a lookalike through /api/messages, but it can
@@ -454,14 +480,15 @@ export async function POST(request: Request) {
     const posted = await postVerifiedRoll(db, user, textChannelId, {
       text,
       payload: { ...payload, verified: true },
-      command: `/roll ${rawInput}`.slice(0, 200),
+      command: `${isSecret ? "/gmroll" : "/roll"} ${rawInput}`.slice(0, 200),
     });
     if (posted instanceof Response) return posted;
-    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, posted: true, message: posted });
+    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, secretCard, posted: true, message: posted });
   }
 
-  return Response.json({ text, kind: "dnd", payload, roll });
+  return Response.json({ text, kind: "dnd", payload, roll, secretCard });
 }
+
 
 /** Writes a server-rolled card into a channel the roller can post in. */
 async function postVerifiedRoll(

@@ -1,6 +1,7 @@
 /** /roll: the server parses the dice; this tab rolls them in 3D and posts the result. */
 import { apiFetch } from "../../client";
 import type { DiceRollEvent } from "@/lib/protocol";
+import { rememberSecretRoll } from "@/lib/secret-roll";
 import type { Message } from "../types";
 import type { PostBotMessage } from "./types";
 
@@ -58,6 +59,8 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
       error?: string;
       /** The server already wrote the (verified) card into the channel. */
       posted?: boolean;
+      /** /gmroll: the real card, sent to the roller only. */
+      secretCard?: Record<string, unknown>;
     }>("/api/integrations/dnd/roll", {
       method: "POST",
       body: JSON.stringify({
@@ -76,6 +79,9 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
         avatar: "⚔",
       });
       return;
+    }
+    if (data.roll && data.secretCard) {
+      rememberSecretRoll(data.roll.animationSeed, data.secretCard);
     }
     if (data.roll) {
       onRoll(data.roll);

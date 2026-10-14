@@ -140,6 +140,11 @@ export interface DiceRollEvent {
   themeColor?: string;
   material?: "plastic" | "metal" | "wood" | "glass";
   texture?: string;
+  /**
+   * A /gmroll as everyone but the roller gets it: the dice without their
+   * faces, and no total (see lib/secret-roll.ts).
+   */
+  masked?: boolean;
 }
 
 export interface CharacterPresentation {

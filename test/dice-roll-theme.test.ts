@@ -29,6 +29,10 @@ describe("Dice Roll & Theme Features", () => {
     // Sizes without a model borrow the next die up.
     const d3: any = { dice: [{ sides: 3, rolls: [{ value: 3, kept: true }] }] };
     expect(buildDiceBoxNotation(d3)).toBe("1d4@3");
+
+    // A secret roll's masked copy has no faces, so its dice just tumble.
+    const masked: any = { dice: [{ sides: 20, rolls: [{ value: 0, kept: true }] }], masked: true };
+    expect(buildDiceBoxNotation(masked)).toBe("1d20");
   });
 
   it("parses inline theme names and hex colors correctly", () => {

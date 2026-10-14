@@ -190,6 +190,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Roll dice: /roll d20+5 stealth adv, /roll 2d6+3 sword crit",
     group: "D&D",
   },
+  {
+    name: "gmroll",
+    args: "<d20+5> [label] [adv|dis|crit]",
+    description: "Roll in secret: only you see the result (/gmroll d20+4 perception)",
+    group: "D&D",
+  },
   { name: "coinflip", description: "Flip a coin", group: "D&D" },
   { name: "spell", args: "<fireball> [2024]", description: "Look up a spell", group: "D&D" },
   { name: "monster", args: "<goblin> [2024]", description: "Look up a monster's stat block", group: "D&D" },

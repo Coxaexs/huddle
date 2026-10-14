@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { BookOpen, Dices, Search, Sparkles, Swords } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { BookOpen, Dices, EyeOff, Search, Sparkles, Swords } from "lucide-react";
+import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
 
 export interface DndRollDie {
   sides: number;
@@ -33,6 +34,11 @@ export interface DndCardProps {
   label?: string;
   mode?: string;
   roller?: string;
+  /** /gmroll: the card everyone gets holds no result, only the roll's seed. */
+  secret?: boolean;
+  rollSeed?: string;
+  /** "gmroll" for a secret card's Roll again. */
+  rollCommand?: string;
   /** Set only by the server that rolled; a posted lookalike never has it. */
   verified?: boolean;
   /** Runs a slash command as the viewer: click-to-roll and suggestions. */
@@ -49,6 +55,7 @@ const KIND_ICON: Record<string, ReactNode> = {
 const FOLD_AT = 1100;
 
 export function DndCard(props: DndCardProps) {
+  if (props.type === "roll" && props.secret) return <SecretRollCard {...props} />;
   if (props.type === "roll") return <RollCard {...props} />;
   if (props.type === "suggest") return <SuggestCard {...props} />;
   return <EntryCard {...props} />;
@@ -211,6 +218,38 @@ function SuggestCard({ name, subtitle, lookupKind, suggestions = [], onCommand }
   );
 }
 
+/**
+ * A /gmroll. The roller's browser was sent the real card and kept it (see
+ * lib/secret-roll.ts); everyone else only ever has this face-down one.
+ */
+function SecretRollCard({ rollSeed, label, roller, onCommand }: DndCardProps) {
+  const [mine, setMine] = useState<DndCardProps | null>(() => recallSecretRoll(rollSeed) as DndCardProps | null);
+  // The card can arrive over the socket before the roller's own reply does.
+  useEffect(() => {
+    if (mine || !rollSeed) return;
+    return onSecretRoll(rollSeed, (card) => setMine(card as DndCardProps));
+  }, [mine, rollSeed]);
+
+  if (mine) {
+    return <RollCard {...mine} label={label} roller="only you can see this" rollCommand="gmroll" onCommand={onCommand} />;
+  }
+  return (
+    <section className="dnd-card dnd-roll-card is-secret">
+      <div className="dnd-roll-total-box">
+        <EyeOff size={18} aria-hidden="true" />
+        <strong className="dnd-roll-total">?</strong>
+      </div>
+      <div className="dnd-roll-body">
+        <span className="dnd-card-kicker">
+          {label || "Secret roll"}
+          {roller ? ` · ${roller}` : ""}
+        </span>
+        <span className="dnd-roll-expression">Rolled behind the DM screen</span>
+      </div>
+    </section>
+  );
+}
+
 function RollCard({
   total,
   expression,
@@ -221,6 +260,7 @@ function RollCard({
   mode,
   roller,
   verified,
+  rollCommand = "roll",
   onCommand,
 }: DndCardProps) {
   // A d20 whose kept face is 20 or 1 is what the table cares about.
@@ -289,7 +329,7 @@ function RollCard({
           type="button"
           className="dnd-roll-again"
           title="Roll the same thing yourself"
-          onClick={() => onCommand(`/roll ${rollCommandFor(expression, mode)}${label ? ` ${label}` : ""}`)}
+          onClick={() => onCommand(`/${rollCommand} ${rollCommandFor(expression, mode)}${label ? ` ${label}` : ""}`)}
         >
           Roll again
         </button>

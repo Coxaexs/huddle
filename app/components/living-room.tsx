@@ -1402,7 +1402,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
   // A roll in the call: at the tabletop it is thrown onto the table from the roller's seat.
   useEffect(() => {
-    if (!diceRoll || venueId !== "tabletop") return;
+    // A secret roll has no faces to land on; the call shows it as an overlay.
+    if (!diceRoll || venueId !== "tabletop" || diceRoll.masked) return;
     const dice = diceRef.current;
     if (!dice) return;
     const who = live.current.participants.find((p) => p.id === diceRoll.roller.id);

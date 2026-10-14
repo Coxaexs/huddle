@@ -616,7 +616,8 @@ export function VoiceStage({
       {recording}
       {battlemap}
       {/* At the tabletop the dice are thrown onto the table itself. */}
-      <DiceOverlay roll={livingRoom?.open && livingRoom.venue === "tabletop" && joined && !stageMode ? null : diceRoll || null} onDone={() => onDiceRollDone?.()} />
+      {/* A secret roll has no faces to land on the table, so it stays an overlay. */}
+      <DiceOverlay roll={livingRoom?.open && livingRoom.venue === "tabletop" && joined && !stageMode && !diceRoll?.masked ? null : diceRoll || null} onDone={() => onDiceRollDone?.()} />
       <RoomActivities
         channelId={voice.channelId || ""}
         channelName={channelName}

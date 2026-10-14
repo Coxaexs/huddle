@@ -22,7 +22,10 @@ function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number;
   return out;
 }
 
-/** Builds predetermined notation for @3d-dice/dice-box-threejs, e.g. "1d20@14" or "2d6@3,5". */
+/**
+ * Builds predetermined notation for @3d-dice/dice-box-threejs, e.g. "1d20@14"
+ * or "2d6@3,5". A masked (secret) roll has no faces, so its dice just tumble.
+ */
 export function buildDiceBoxNotation(roll: DiceRollEvent): string {
   const terms: string[] = [];
   const results: number[] = [];
@@ -39,7 +42,8 @@ export function buildDiceBoxNotation(roll: DiceRollEvent): string {
   }
 
   const baseNotation = terms.join("+");
-  if (!baseNotation) return "1d20@20";
+  if (!baseNotation) return roll.masked ? "1d20" : "1d20@20";
+  if (roll.masked) return baseNotation;
   return `${baseNotation}@${results.join(",")}`;
 }
 
@@ -93,7 +97,7 @@ export function DiceOverlay({
   useEffect(() => {
     setValues([]);
     setTotal("");
-  }, [roll?.animationSeed]);
+  }, [roll?.animationSeed, roll?.masked]);
 
   useEffect(() => {
     if (!roll) return;
@@ -251,6 +255,11 @@ export function DiceOverlay({
         };
       }
 
+      // A secret roll: blank faces, so the tumbling dice give nothing away.
+      if (roll.masked) {
+        customColorset = { ...customColorset, name: `${customColorset.name}-secret`, foreground: "rgba(0,0,0,0)", outline: "none" };
+      }
+
       const box = new DiceBox(`#${host.id}`, {
         assetPath: `${basePath}/assets/dice-box-threejs/`,
         sounds: false,
@@ -286,7 +295,7 @@ export function DiceOverlay({
         if (failsafeTimer) clearTimeout(failsafeTimer);
         const f = flattenDice(roll);
         setValues(f);
-        setTotal(`TOTAL ${roll.total}`);
+        setTotal(roll.masked ? "SECRET ROLL" : `TOTAL ${roll.total}`);
         dismissTimer = window.setTimeout(() => {
           onDoneRef.current();
         }, 1800);
@@ -313,7 +322,7 @@ export function DiceOverlay({
       const nat20 = natIndexes(20);
       const nat1 = natIndexes(1);
 
-      if (nat20.length || nat1.length) {
+      if (!roll.masked && (nat20.length || nat1.length)) {
         critFx = runCritFx(
           box,
           {
@@ -337,7 +346,7 @@ export function DiceOverlay({
             : roll.rollType === "critical-damage"
               ? "CRITICAL · "
               : "";
-      setTotal(`${mode}TOTAL ${roll.total}`);
+      setTotal(roll.masked ? "SECRET ROLL" : `${mode}TOTAL ${roll.total}`);
 
       const dismissDelay = Math.max(1600, critFx?.durationMs ?? 0);
       dismissTimer = window.setTimeout(() => {
@@ -362,7 +371,9 @@ export function DiceOverlay({
         hostRef.current.innerHTML = "";
       }
     };
-  }, [roll?.animationSeed]);
+    // The roller first hears the masked copy from the room, then their reply
+    // with the faces arrives under the same seed: that has to replay.
+  }, [roll?.animationSeed, roll?.masked]);
 
   if (!roll) return null;
 
@@ -394,7 +405,7 @@ export function DiceOverlay({
                       : ""
                 }`}
               >
-                {die.value}
+                {roll.masked ? "?" : die.value}
               </span>
             ))}
           </div>

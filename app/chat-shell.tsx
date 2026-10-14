@@ -4595,7 +4595,7 @@ export function ChatShell() {
       return;
     }
 
-    if (name === "roll") {
+    if (name === "roll" || name === "gmroll" || name === "blindroll") {
       await runRollCommand(raw, {
         voiceChannelId: voice.channelId,
         textChannelId: activeChannelRef.current,
