@@ -1,5 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
+import { channelAccess } from "@/lib/access";
+import { findHomebrew, getDndSettings, type DndSettings } from "@/lib/dnd-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,8 @@ export const dynamic = "force-dynamic";
 const KINDS: Record<string, string> = {
   spell: "spells",
   monster: "monsters",
+  condition: "conditions",
+  conditions: "conditions",
   item: "items",
   feat: "feats",
   race: "races",
@@ -115,29 +119,62 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     kind?: string;
     query?: string;
+    /** Where the command was typed: its server's rules edition and homebrew apply. */
+    channelId?: string;
   };
   const kind = (body.kind || "").toLowerCase();
   const path = KINDS[kind];
   let query = (body.query || "").trim().slice(0, 80);
   if (!path) {
     return Response.json(
-      { error: "I can look up spells, monsters, items, feats, races, classes and subclasses." },
+      { error: "I can look up spells, conditions, monsters, items, feats, races, classes and subclasses." },
       { status: 400 },
     );
   }
 
-  // `/spell fireball 2024` prefers the 2024 books; 2014 is the default.
-  let edition = "2014";
+  // The server's settings, when asked from one of its channels.
+  const db = bindings().DB;
+  let settings: DndSettings | null = null;
+  if (db && body.channelId) {
+    const access = await channelAccess(db, String(body.channelId).slice(0, 64), user);
+    if (access.ok && !access.channel.isDm) settings = await getDndSettings(db, access.channel.serverId);
+  }
+
+  // `/spell fireball 2024` picks the books for one lookup; otherwise the
+  // server's choice, and 2014 without one.
+  let edition = settings?.edition ?? "2014";
   const editionMatch = query.match(/\s+(2014|2024|5e|5\.5e)$/i);
   if (editionMatch) {
     edition = /2024|5\.5e/i.test(editionMatch[1]) ? "2024" : "2014";
     query = query.slice(0, editionMatch.index).trim();
   }
+
   if (!query) {
     return Response.json(
-      { error: `Try \`/${kind} ${kind === "spell" ? "fireball" : kind === "monster" ? "goblin" : "longsword"}\`.` },
+      { error: `Try \`/${kind} ${kind === "spell" ? "fireball" : kind === "condition" ? "grappled" : kind === "monster" ? "goblin" : "longsword"}\`.` },
       { status: 400 },
     );
+  }
+
+  // The server's own homebrew wins over the books.
+  const homebrew = settings ? findHomebrew(settings.homebrew, kind, query) : null;
+  if (homebrew) {
+    return Response.json({
+      text: `**${homebrew.name}** (homebrew)${homebrew.description ? ` — ${homebrew.description.split("\n")[0].slice(0, 400)}` : ""}`,
+      kind: "dnd",
+      payload: {
+        type: kind,
+        name: homebrew.name,
+        source: homebrew.source || "Homebrew",
+        tags: ["Homebrew"],
+        sections: homebrew.description ? [{ title: "", body: homebrew.description }] : [],
+        facts: [
+          ...(homebrew.level !== undefined ? [{ label: "Level", value: String(homebrew.level) }] : []),
+          ...(homebrew.school ? [{ label: "School", value: homebrew.school }] : []),
+          ...(homebrew.type ? [{ label: "Type", value: homebrew.type }] : []),
+        ],
+      },
+    });
   }
 
   const base = dndBaseUrl();

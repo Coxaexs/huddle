@@ -82,6 +82,7 @@ interface HubHandlers {
       stroke?: unknown;
       strokes?: unknown;
       fog?: unknown;
+      encounter?: "combat" | "exploration";
     },
   ) => void;
   onActivity?: (
@@ -428,6 +429,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               tokens: payload.tokens,
               stroke: payload.stroke,
               strokes: payload.strokes,
+              encounter: payload.encounter,
               // Without this, every fog edit cleared every player's fog.
               fog: (payload as { fog?: unknown }).fog,
             });

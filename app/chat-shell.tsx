@@ -4634,7 +4634,7 @@ export function ChatShell() {
     }
 
     if (LOOKUP_COMMANDS.has(name)) {
-      await runLookupCommand(name, value, { postBotMessage, notify: setNotice });
+      await runLookupCommand(name, value, { channelId: activeChannelRef.current, postBotMessage, notify: setNotice });
       return;
     }
 

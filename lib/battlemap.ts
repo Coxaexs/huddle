@@ -84,6 +84,8 @@ export interface Battlemap {
   fog: MapFog[];
   /** Grid overlay and snapping geometry. */
   gridType?: GridType;
+  /** Set by the GM; switching it can swap the call's music. */
+  encounter?: "combat" | "exploration";
 }
 
 export interface BattlemapRow {
@@ -96,6 +98,7 @@ export interface BattlemapRow {
   tokens: string;
   strokes: string;
   fog?: string;
+  encounter?: string | null;
   active: number;
 }
 
@@ -122,6 +125,7 @@ export function publicBattlemap(row: BattlemapRow): Battlemap {
     tokens: parseJson<MapToken[]>(row.tokens, []),
     strokes: parseJson<MapStroke[]>(row.strokes, []),
     fog: parseJson<MapFog[]>(row.fog, []),
+    encounter: row.encounter === "combat" ? "combat" : "exploration",
   };
 }
 

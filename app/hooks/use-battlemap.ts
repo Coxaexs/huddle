@@ -21,6 +21,7 @@ interface BattlemapSocketPayload {
   stroke?: unknown;
   strokes?: unknown;
   fog?: unknown;
+  encounter?: "combat" | "exploration";
 }
 
 interface UseBattlemapOptions {
@@ -114,6 +115,9 @@ export function useBattlemap({
         return current.strokes.some((s) => s.id === stroke.id)
           ? current
           : { ...current, strokes: [...current.strokes, stroke] };
+      }
+      if (payload.action === "encounter") {
+        return { ...current, encounter: payload.encounter === "combat" ? "combat" : "exploration" };
       }
       if (payload.action === "fog") {
         return { ...current, fog: (payload.fog as MapFog[]) || [] };

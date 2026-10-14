@@ -6,7 +6,9 @@ import {
   type MapFog,
   type MapToken,
 } from "@/lib/battlemap";
-import { publishMessageEvent } from "@/lib/hub-client";
+import { getDndSettings } from "@/lib/dnd-rules";
+import { playerCommand, publishMessageEvent } from "@/lib/hub-client";
+import { resolveTracks } from "@/lib/music";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -33,7 +35,7 @@ async function activeMap(
 ): Promise<BattlemapRow | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, name, image_key, grid, rows, tokens, strokes, fog, active
+      `SELECT id, channel_id, name, image_key, grid, rows, tokens, strokes, fog, encounter, active
          FROM battlemaps WHERE channel_id = ? AND active = 1
         ORDER BY created_at DESC LIMIT 1`,
     )
@@ -90,6 +92,7 @@ export async function POST(request: Request) {
     fog?: Partial<MapFog>;
     fogId?: string;
     what?: string;
+    state?: string;
   };
   const channelId = body.channelId?.slice(0, 64);
   if (!channelId) {
@@ -151,6 +154,32 @@ export async function POST(request: Request) {
       .run();
     await publishMessageEvent(channelId, { t: "battlemap", action: "close" });
     return Response.json({ ok: true });
+  }
+
+  // ---- combat / exploration (GM) ------------------------------------------
+  // The room sees the change; if the server has music set for it, the call's
+  // player switches to that (a playlist link or a search), shuffled.
+  if (body.action === "encounter") {
+    if (!(await gm())) return forbidden();
+    const encounter = body.state === "combat" ? "combat" : "exploration";
+    await db.prepare("UPDATE battlemaps SET encounter = ? WHERE id = ?").bind(encounter, row.id).run();
+    await publishMessageEvent(channelId, { t: "battlemap", action: "encounter", encounter });
+    const server = await db
+      .prepare("SELECT server_id FROM channels WHERE id = ?")
+      .bind(channelId)
+      .first<{ server_id: string }>();
+    const settings = server ? await getDndSettings(db, server.server_id) : null;
+    const query = encounter === "combat" ? settings?.combatMusic : settings?.exploreMusic;
+    let tracks = 0;
+    if (query) {
+      const found = await resolveTracks(query, user.display_name).catch(() => []);
+      if (found.length) {
+        await playerCommand(channelId, { name: "enqueueMany", tracks: found, startNow: true });
+        if (found.length > 1) await playerCommand(channelId, { name: "shuffle" });
+        tracks = found.length;
+      }
+    }
+    return Response.json({ encounter, tracks });
   }
 
   // ---- add / remove tokens (GM) -------------------------------------------

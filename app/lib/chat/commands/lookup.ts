@@ -4,6 +4,8 @@ import type { Message } from "../types";
 import type { PostBotMessage } from "./types";
 
 export interface LookupContext {
+  /** Where it was typed: that server's rules edition and homebrew apply. */
+  channelId?: string | null;
   postBotMessage: PostBotMessage;
   notify: (text: string) => void;
 }
@@ -22,7 +24,7 @@ export async function runLookupCommand(name: string, value: string, ctx: LookupC
       payload?: Message["payload"];
     }>(
       "/api/integrations/dnd/lookup",
-      { method: "POST", body: JSON.stringify({ kind: name, query: value }) },
+      { method: "POST", body: JSON.stringify({ kind: name, query: value, channelId: ctx.channelId || undefined }) },
     );
     await postBotMessage(data.text, {
       author: "D&D Bot",

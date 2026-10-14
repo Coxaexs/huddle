@@ -23,6 +23,7 @@ import {
   Dice5,
   ChevronRight,
   Check,
+  Music,
 } from "lucide-react";
 import {
   type Battlemap,
@@ -178,10 +179,21 @@ export function BattlemapBoard({
     }
   }
 
+  /**
+   * GM: combat or exploration. The server tells the room and, when the server
+   * has combat/exploration music set (Server Settings → Integrations), swaps
+   * the call's music to it.
+   */
+  function setEncounter(state: "combat" | "exploration") {
+    if (!gm || (map.encounter ?? "exploration") === state) return;
+    void act({ action: "encounter", state });
+  }
+
   function resetEncounter() {
     setCurrentTurnId(null);
     setRound(1);
     void act({ action: "reset-initiative" });
+    setEncounter("exploration");
   }
 
   function nextTurn() {
@@ -189,6 +201,8 @@ export function BattlemapBoard({
       .filter((t) => typeof t.initiative === "number")
       .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0));
     if (sorted.length === 0) return;
+    // The first turn starts the fight; later turns leave the music alone.
+    setEncounter("combat");
     if (!currentTurnId) {
       setCurrentTurnId(sorted[0].id);
       return;
@@ -1060,6 +1074,15 @@ function onBoardPointerDown(event: React.PointerEvent) {
           <div className="p-2.5 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-amber-400">Round {round}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                  map.encounter === "combat"
+                    ? "bg-red-500/20 text-red-300 border-red-500/30"
+                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                }`}
+              >
+                {map.encounter === "combat" ? "Combat" : "Exploration"}
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               <button
@@ -1088,6 +1111,15 @@ function onBoardPointerDown(event: React.PointerEvent) {
           {gm && (
             <div className="px-3 py-1.5 bg-black/20 border-b border-white/5 flex items-center justify-between text-[11px] text-white/60">
               <span>Quick actions:</span>
+              <button
+                type="button"
+                onClick={() => setEncounter(map.encounter === "combat" ? "exploration" : "combat")}
+                className="hover:text-amber-300 flex items-center gap-1"
+                title="Switches the call's music when the server has combat and exploration music set (Server Settings → Integrations)"
+              >
+                <Music size={12} />
+                <span>{map.encounter === "combat" ? "End combat" : "Start combat"}</span>
+              </button>
               <button
                 type="button"
                 onClick={rollAllInitiatives}

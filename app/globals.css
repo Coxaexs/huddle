@@ -22419,6 +22419,65 @@ input:checked+.toggle-slider:before {
   cursor: pointer;
 }
 
+.dnd-settings {
+  margin-top: 24px;
+  display: grid;
+  gap: 10px;
+}
+
+.dnd-settings h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.dnd-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.dnd-settings-row.stacked {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.dnd-settings-row p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.dnd-settings-row label {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dnd-settings-row input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.dnd-settings-toggle {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
 .session-notes-banner {
   display: flex;
   align-items: center;

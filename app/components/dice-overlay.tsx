@@ -336,6 +336,8 @@ export function DiceOverlay({
           { onFumbleHit: () => void playCriticalFumbleSound({ material: effectiveMaterial, theme }) },
         );
         if (nat20.length) void playCriticalSuccessSound({ theme });
+        // The room's music dips under the crit sound (use-player listens).
+        window.dispatchEvent(new CustomEvent("huddle-audio-duck", { detail: { durationMs: 1500, db: -6 } }));
       }
 
       const mode =

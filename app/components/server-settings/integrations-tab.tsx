@@ -3,6 +3,7 @@
 import { Trash2, Plus, Copy, Power, Terminal } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
 import { ServerBot, Tab } from "./types";
+import { DndSettingsPanel } from "./dnd-settings";
 
 export function ServerIntegrationsTab({
   tab,
@@ -127,6 +128,8 @@ export function ServerIntegrationsTab({
                 </button>
               </div>
             </div>
+
+            <DndSettingsPanel serverId={server.id} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
 
             {/* Active Bots List */}
             <h2 style={{ fontSize: 16, color: "#fff", marginTop: 24, marginBottom: 8 }}>Installed Bots ({bots.length})</h2>

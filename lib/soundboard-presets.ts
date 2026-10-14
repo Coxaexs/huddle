@@ -23,6 +23,8 @@ export const SOUNDBOARD_PRESETS: SoundPreset[] = [
   { id: "msn_nudge", name: "MSN Nudge", emoji: "📳", category: "reactions", description: "MSN Messenger window shake and rattle" },
   { id: "applause", name: "Applause", emoji: "👏", category: "reactions", description: "Enthusiastic audience clapping" },
   { id: "crickets", name: "Crickets", emoji: "🦗", category: "memes", description: "Awkward silence cricket chirps" },
+  { id: "nat20", name: "Nat 20 Chime", emoji: "✨", category: "reactions", description: "Celebratory critical hit victory chime" },
+  { id: "nat1", name: "Nat 1 Fumble", emoji: "🎺", category: "reactions", description: "Sad trombone critical fumble" },
 ];
 
 let audioCtx: AudioContext | null = null;
@@ -436,6 +438,76 @@ export function playPresetSound(presetId: string, volume = 0.7): void {
       osc1.stop(t + 0.52);
       osc2.stop(t + 0.52);
       lfo.stop(t + 0.52);
+      break;
+    }
+
+    case "nat20": {
+      // Celebratory magical chime arpeggio + shimmering major chord (C5, E5, G5, C6)
+      const freqs = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const harm = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        harm.type = "triangle";
+        const start = t + idx * 0.08;
+        const dur = 1.2;
+        osc.frequency.setValueAtTime(freq, start);
+        harm.frequency.setValueAtTime(freq * 2, start);
+
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.25, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+        osc.connect(gain);
+        harm.connect(gain);
+        gain.connect(master);
+
+        osc.start(start);
+        harm.start(start);
+        osc.stop(start + dur);
+        harm.stop(start + dur);
+      });
+      break;
+    }
+
+    case "nat1": {
+      // Sad trombone wah-wah-wah-waaaah (D4 -> C#4 -> C4 -> B3 downward slide)
+      const notes = [
+        { f: 293.66, start: 0, dur: 0.35, pitchDrop: false },     // D4
+        { f: 277.18, start: 0.38, dur: 0.35, pitchDrop: false },  // C#4
+        { f: 261.63, start: 0.76, dur: 0.35, pitchDrop: false },  // C4
+        { f: 246.94, start: 1.15, dur: 0.85, pitchDrop: true },   // B3 slide
+      ];
+
+      notes.forEach(({ f, start, dur, pitchDrop }) => {
+        const osc = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        const gain = ctx.createGain();
+
+        osc.type = "sawtooth";
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(550, t + start);
+        // Wah filter sweep
+        filter.frequency.exponentialRampToValueAtTime(1400, t + start + 0.08);
+        filter.frequency.exponentialRampToValueAtTime(450, t + start + dur);
+
+        osc.frequency.setValueAtTime(f, t + start);
+        if (pitchDrop) {
+          osc.frequency.linearRampToValueAtTime(f * 0.88, t + start + dur);
+        }
+
+        gain.gain.setValueAtTime(0, t + start);
+        gain.gain.linearRampToValueAtTime(0.3, t + start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + start + dur);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(master);
+
+        osc.start(t + start);
+        osc.stop(t + start + dur);
+      });
       break;
     }
   }

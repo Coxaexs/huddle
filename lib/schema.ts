@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -1051,6 +1051,31 @@ async function migrate(db: D1Database): Promise<void> {
     await db
       .prepare("ALTER TABLE battlemaps ADD COLUMN rows INTEGER")
       .run();
+  }
+  // Combat or exploration, set by the GM (and what the call's music follows).
+  if (!battlemapColumns.has("encounter")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN encounter TEXT NOT NULL DEFAULT 'exploration'")
+      .run();
+  }
+
+  // Per-server D&D settings: rules edition for lookups, homebrew, and the
+  // music a battlemap's combat and exploration switch to.
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS server_dnd_settings (
+        server_id TEXT PRIMARY KEY,
+        edition TEXT NOT NULL DEFAULT '2014',
+        homebrew_json TEXT,
+        updated_at INTEGER NOT NULL
+      )`,
+    )
+    .run();
+  const dndColumns = await columnNames(db, "server_dnd_settings");
+  for (const column of ["combat_music", "explore_music"]) {
+    if (!dndColumns.has(column)) {
+      await db.prepare(`ALTER TABLE server_dnd_settings ADD COLUMN ${column} TEXT`).run();
+    }
   }
 
   // Personal sound packs: a sound can be scoped to a server (shared) or to a

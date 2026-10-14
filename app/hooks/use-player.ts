@@ -97,20 +97,44 @@ export function usePlayer({
     }
   }, [state, serverNow, ensureAudio, attempt, streamed]);
 
+  const [duckingFactor, setDuckingFactor] = useState(1.0);
+  const duckTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleDuck = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const durationMs = detail.durationMs ?? 1500;
+      const db = detail.db ?? -6;
+      const factor = Math.pow(10, db / 20); // -6 dB is ~0.501
+      setDuckingFactor(factor);
+
+      if (duckTimerRef.current) window.clearTimeout(duckTimerRef.current);
+      duckTimerRef.current = window.setTimeout(() => {
+        setDuckingFactor(1.0);
+      }, durationMs);
+    };
+
+    window.addEventListener("huddle-audio-duck", handleDuck);
+    return () => {
+      window.removeEventListener("huddle-audio-duck", handleDuck);
+      if (duckTimerRef.current) window.clearTimeout(duckTimerRef.current);
+    };
+  }, []);
+
   // Pause/resume and volume follow the room and personal preferences.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !state?.track || streamed) return;
     const personal = personalMuted ? 0 : volumeGain(personalVolume ?? 100);
     const general = Math.max(0, Math.min(1, (state.volume ?? 100) / 100));
-    audio.volume = deafened ? 0 : Math.max(0, Math.min(1, general * personal));
+    audio.volume = deafened ? 0 : Math.max(0, Math.min(1, general * personal * duckingFactor));
     if (state.paused && !audio.paused) {
       audio.pause();
     } else if (!state.paused && audio.paused) {
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
       attempt(audio);
     }
-  }, [state, deafened, personalVolume, personalMuted, serverNow, attempt, streamed]);
+  }, [state, deafened, personalVolume, personalMuted, duckingFactor, serverNow, attempt, streamed]);
 
   // Ticks the visible position and corrects drift against the hub clock.
   useEffect(() => {

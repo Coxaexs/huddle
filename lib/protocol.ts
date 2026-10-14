@@ -593,7 +593,8 @@ export type ServerEvent =
       /** Shared battlemap: opened, closed, a token moved, paint added. */
       t: "battlemap";
       channelId: string;
-      action: "open" | "close" | "token" | "tokens" | "stroke" | "cleared";
+      action: "open" | "close" | "token" | "tokens" | "stroke" | "cleared" | "encounter";
+      encounter?: "combat" | "exploration";
       map?: unknown;
       token?: unknown;
       tokens?: unknown;
