@@ -581,3 +581,140 @@ export function VoiceTab() {
     </section>
   );
 }
+
+// ---- Songs ----
+
+interface LibrarySong {
+  id: string | null;
+  title: string;
+  artist: string | null;
+  file: string;
+  size: number;
+  stems: boolean;
+  analysed: boolean;
+  issues?: string[];
+}
+
+/** The music bot's downloaded songs. Deleting one wipes its file, stems and analysis so it starts over on the next play. */
+export function SongsTab({ confirm }: { confirm: (request: ConfirmRequest) => void }) {
+  const [query, setQuery] = useState("");
+  const [songs, setSongs] = useState<LibrarySong[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+
+  async function load(text: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await apiFetch<{ songs: LibrarySong[] }>(`/api/admin/songs?q=${encodeURIComponent(text)}`);
+      setSongs(data.songs);
+    } catch (cause) {
+      setError(errorText(cause, "Could not load the song library."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void load("");
+  }, []);
+
+  function reset(song: LibrarySong) {
+    const name = song.artist ? `${song.artist} - ${song.title}` : song.title;
+    confirm({
+      title: "Delete this song and start over?",
+      body: (
+        <p>
+          <strong>{name}</strong>
+          <br />
+          Its downloaded file, its stems and its analysis are deleted. The next time anyone plays it, the bot downloads it
+          again, analyses it again and splits it into stems again, which takes a little while.
+        </p>
+      ),
+      confirmLabel: "Delete song",
+      danger: true,
+      onConfirm: async () => {
+        await apiFetch("/api/admin/songs", { method: "POST", body: JSON.stringify({ id: song.id, title: name }) });
+        setSongs((current) => current && current.filter((row) => row.id !== song.id));
+        setNote(`${name} was deleted. It downloads and splits again the next time it is played.`);
+      },
+    });
+  }
+
+  return (
+    <section className="portal-card admin-section">
+      <p className="admin-muted">
+        Songs that play wrong or not at all are usually a corrupted download. Songs with a ⚠ were heard to have a problem
+        and are listed first. Delete one here and it is fetched and split into stems again from scratch the next time
+        it is played.
+      </p>
+      <form
+        className="admin-toolbar"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void load(query);
+        }}
+      >
+        <label className="admin-search">
+          <Search size={15} aria-hidden />
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Song or artist" aria-label="Search downloaded songs" />
+        </label>
+        <button type="submit" className="portal-btn" disabled={busy}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : "Search"}
+        </button>
+      </form>
+      {error && <p className="admin-error">{error}</p>}
+      {note && <p className="admin-muted">{note}</p>}
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Song</th>
+              <th>Size</th>
+              <th>Cached</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(songs ?? []).map((song) => (
+              <tr key={song.file}>
+                <td>
+                  <strong>{song.title}</strong>
+                  {song.artist && <div className="admin-muted">{song.artist}</div>}
+                  {song.issues && song.issues.length > 0 && (
+                    <div className="admin-error" title="Found by listening to the audio. Deleting the song downloads it fresh.">
+                      ⚠ {song.issues.join(" · ")}
+                    </div>
+                  )}
+                </td>
+                <td>{(song.size / 1048576).toFixed(1)} MB</td>
+                <td>
+                  {[song.stems && "stems", song.analysed && "analysis"].filter(Boolean).join(" · ") || "file only"}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="portal-btn danger admin-small"
+                    disabled={!song.id}
+                    title={song.id ? "Delete the file, stems and analysis" : "No YouTube id in the file name, so it cannot be reset from here"}
+                    onClick={() => reset(song)}
+                  >
+                    <Trash2 size={13} aria-hidden /> Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {songs && songs.length === 0 && (
+              <tr>
+                <td colSpan={4} className="admin-muted">
+                  No downloaded songs match.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}

@@ -18,16 +18,17 @@ import {
   Eye,
   MessageSquare,
   Mic,
+  Music,
   Ticket,
   Trash2,
 } from "lucide-react";
 import type { AdminAuditEntry, AdminFeature, AdminOverview, AdminServer, AdminUser } from "@/lib/admin";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
-import { ConfirmDialog, InvitesTab, MessagesTab, ServerPeek, VoiceTab, type ConfirmRequest } from "./admin-tools";
+import { ConfirmDialog, InvitesTab, MessagesTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
-type Tab = "overview" | "hosts" | "users" | "servers" | "messages" | "invites" | "voice" | "audit" | "features";
+type Tab = "overview" | "hosts" | "users" | "servers" | "messages" | "invites" | "voice" | "songs" | "audit" | "features";
 
 interface AdminData {
   overview: AdminOverview;
@@ -86,6 +87,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: "messages", label: "Messages", icon: MessageSquare },
   { id: "invites", label: "Invites", icon: Ticket },
   { id: "voice", label: "Voice rooms", icon: Mic },
+  { id: "songs", label: "Songs", icon: Music },
   { id: "audit", label: "Audit log", icon: ScrollText },
   { id: "features", label: "Features", icon: ToggleLeft },
 ];
@@ -884,6 +886,8 @@ export function AdminPanel() {
         <InvitesTab servers={data.servers} confirm={setConfirming} />
       ) : tab === "voice" ? (
         <VoiceTab />
+      ) : tab === "songs" ? (
+        <SongsTab confirm={setConfirming} />
       ) : tab === "audit" ? (
         <AuditTab audit={data.audit} />
       ) : (
