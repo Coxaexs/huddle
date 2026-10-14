@@ -37,6 +37,10 @@ UNIT="${HUDDLE_UNIT:-huddle.service}"
 touch "$ROOT/.deploying"
 trap 'rm -f "$ROOT/.deploying"' EXIT
 
+# Each step says how long it took, so a slow deploy shows where.
+lap_at=$SECONDS
+lap() { echo "  ($((SECONDS - lap_at))s: $1)"; lap_at=$SECONDS; }
+
 healthy() {
   # Up to two minutes: the reload takes a few seconds, a cold start longer.
   for _ in $(seq 1 60); do
@@ -72,9 +76,11 @@ rsync -a --delete \
   --exclude=/native-qt/ --exclude='*/node_modules/' --exclude=/.deploying \
   "$ROOT/" "$STAGE/"
 ln -sfn "$ROOT/node_modules" "$STAGE/node_modules"
+lap "copy"
 
 echo "Building ..."
 (cd "$STAGE" && npm run build)
+lap "build"
 [[ -f "$STAGE/dist/server/wrangler.json" ]] || { echo "The build produced no dist/server/wrangler.json; nothing deployed." >&2; exit 1; }
 if [[ "${1:-}" == "--build-only" ]]; then
   echo "Build OK in $STAGE; nothing deployed."
@@ -98,12 +104,19 @@ fi
 
 echo "Swapping the new build in ..."
 land "$STAGE/dist"
+lap "swap"
 sleep 3
 if healthy; then
+  lap "health check"
   echo "Deployed. (scripts/deploy.sh --rollback puts the previous build back.)"
+  # The standby copy (database snapshot plus code, pushed to Oracle and the
+  # ThinkPad) is what made a deploy take minutes. The site is already live and
+  # hoffle-backup.timer repeats this every five minutes anyway, so start it
+  # and carry on instead of waiting; its output goes to the log below.
   if [[ -x "$HOME/.local/bin/hoffle-backup.sh" ]]; then
-    echo "Syncing new build to Oracle standby..."
-    "$HOME/.local/bin/hoffle-backup.sh" || true
+    mkdir -p "$HOME/.cache"
+    nohup "$HOME/.local/bin/hoffle-backup.sh" >"$HOME/.cache/hoffle-deploy-sync.log" 2>&1 </dev/null &
+    echo "Syncing the standby in the background (log: ~/.cache/hoffle-deploy-sync.log)."
   fi
 else
   echo "Hoffle is not answering at $HEALTH_URL after the deploy." >&2
