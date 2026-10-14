@@ -993,11 +993,19 @@ function safeAudio(raw: string | undefined): string | null {
   return /^\/hangout\/api\/uploads\/[^/?#]+$/.test(value) ? value : null;
 }
 
-/** Drops payload fields only the server may set (the verified-roll mark). */
+/**
+ * Drops payload fields only the server may set: the verified-roll mark, and a
+ * voice message's transcript (written by /api/stt/transcribe).
+ */
 function stripServerOnly(payload: unknown): unknown {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const copy = { ...(payload as Record<string, unknown>) };
   delete copy.verified;
+  if (copy.voice && typeof copy.voice === "object" && !Array.isArray(copy.voice)) {
+    const voice = { ...(copy.voice as Record<string, unknown>) };
+    delete voice.transcript;
+    copy.voice = voice;
+  }
   return copy;
 }
 

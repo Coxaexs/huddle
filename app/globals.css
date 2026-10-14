@@ -22419,6 +22419,35 @@ input:checked+.toggle-slider:before {
   cursor: pointer;
 }
 
+.voice-message-cc {
+  display: grid;
+  place-items: center;
+}
+
+.voice-message-cc.active {
+  background: var(--lavender);
+  color: var(--on-accent, #fff);
+}
+
+.voice-message-with-transcript {
+  width: min(360px, 100%);
+}
+
+.voice-message-transcript {
+  margin: 6px 0 0;
+  padding: 6px 12px;
+  border-left: 2px solid var(--lavender);
+  color: var(--ink-2, var(--ink));
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.voice-message-transcript.error {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .link-preview-author {
   font-size: 13px;
   font-weight: 600;

@@ -608,6 +608,8 @@ function MessageRowImpl({
                             src={message.audio}
                             durationMs={message.payload?.voice?.durationMs}
                             waveform={message.payload?.voice?.waveform}
+                            transcript={message.payload?.voice?.transcript}
+                            messageId={String(message.id)}
                           />
                         ) : message.kind === "game" && message.payload?.game ? (
                           <GameCard

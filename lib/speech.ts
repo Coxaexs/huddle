@@ -32,3 +32,33 @@ export function isAlaniaVoice(value: unknown): value is AlaniaVoiceId {
 
 /** Duyu's language setting: Turkish, or let it guess. */
 export type DuyuLanguage = "tr" | "auto";
+
+/** Longest file Duyu is sent in one go; a five-minute voice message is far smaller. */
+export const MAX_TRANSCRIBE_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Duyu's file transcription (POST /v1/audio/transcriptions, OpenAI-style
+ * multipart). It takes the webm/opus voice messages as they are. Throws on
+ * anything but a clean answer; an empty `text` means it heard no speech.
+ */
+export async function transcribeWithDuyu(
+  key: string,
+  audio: ArrayBuffer,
+  options: { contentType?: string; language?: DuyuLanguage; timeoutMs?: number; fetchImpl?: typeof fetch } = {},
+): Promise<{ text: string; language: string | null }> {
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type: options.contentType || "audio/webm" }), "voice.webm");
+  form.append("language", options.language || "auto");
+  const response = await (options.fetchImpl || fetch)(`https://${SPEECH_HOST}/v1/audio/transcriptions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+    signal: AbortSignal.timeout(options.timeoutMs ?? 45_000),
+  });
+  if (!response.ok) throw new Error(`Duyu answered ${response.status}`);
+  const data = (await response.json()) as { text?: unknown; language?: unknown };
+  return {
+    text: typeof data.text === "string" ? data.text.trim() : "",
+    language: typeof data.language === "string" ? data.language : null,
+  };
+}

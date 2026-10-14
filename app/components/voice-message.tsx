@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Pause, Play, Send, Trash2 } from "lucide-react";
+import { Captions, Loader2, Mic, Pause, Play, Send, Trash2 } from "lucide-react";
+import { apiFetch } from "../lib/client";
 
 /** Longest voice message; recording stops and sends itself at this point. */
 export const MAX_VOICE_MS = 5 * 60 * 1000;
@@ -308,21 +309,33 @@ let nowPlaying: HTMLAudioElement | null = null;
 
 const SPEEDS = [1, 1.5, 2];
 
-/** Playback for a voice message: play/pause, a seekable waveform, and speed. */
+/**
+ * Playback for a voice message: play/pause, a seekable waveform, and speed.
+ * With a `messageId`, CC turns it into text (Duyu, on the server) for anyone
+ * who would rather read it.
+ */
 export function VoiceMessagePlayer({
   src,
   durationMs,
   waveform,
+  messageId,
+  transcript: storedTranscript,
 }: {
   src: string;
   durationMs?: number;
   waveform?: number[];
+  messageId?: string;
+  transcript?: string;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [mediaDuration, setMediaDuration] = useState(0);
+  const [transcript, setTranscript] = useState<string | null>(storedTranscript ?? null);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribeError, setTranscribeError] = useState("");
   // Recorded webm often reports an Infinity duration, so trust the sender's.
   const total =
     durationMs && durationMs > 0
@@ -365,13 +378,34 @@ export function VoiceMessagePlayer({
     setPosition(audio.currentTime);
   }
 
+  async function toggleTranscript() {
+    if (transcript !== null || !messageId) {
+      setShowTranscript((open) => !open);
+      return;
+    }
+    setTranscribing(true);
+    setTranscribeError("");
+    try {
+      const data = await apiFetch<{ text: string }>("/api/stt/transcribe", {
+        method: "POST",
+        body: JSON.stringify({ messageId }),
+      });
+      setTranscript(data.text);
+      setShowTranscript(true);
+    } catch (error) {
+      setTranscribeError(error instanceof Error ? error.message : "Could not transcribe that.");
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
   function cycleSpeed() {
     const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
     setSpeed(next);
     if (audioRef.current) audioRef.current.playbackRate = next;
   }
 
-  return (
+  const player = (
     <div className={`voice-message ${playing ? "playing" : ""}`}>
       <audio
         ref={audioRef}
@@ -429,6 +463,31 @@ export function VoiceMessagePlayer({
       >
         {speed}×
       </button>
+      {messageId && (
+        <button
+          type="button"
+          className={`voice-message-speed voice-message-cc ${showTranscript ? "active" : ""}`}
+          onClick={() => void toggleTranscript()}
+          disabled={transcribing}
+          aria-pressed={showTranscript}
+          aria-label={transcript === null ? "Transcribe voice message" : showTranscript ? "Hide transcript" : "Show transcript"}
+          title={transcript === null ? "Transcribe" : showTranscript ? "Hide transcript" : "Show transcript"}
+        >
+          {transcribing ? <Loader2 size={13} className="animate-spin" /> : <Captions size={13} />}
+        </button>
+      )}
+    </div>
+  );
+
+  if (!showTranscript && !transcribeError) return player;
+  return (
+    <div className="voice-message-with-transcript">
+      {player}
+      {transcribeError ? (
+        <p className="voice-message-transcript error" role="status">{transcribeError}</p>
+      ) : (
+        <p className="voice-message-transcript">{transcript || "No speech in this clip."}</p>
+      )}
     </div>
   );
 }
