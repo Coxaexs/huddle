@@ -34,6 +34,10 @@ export interface HubState {
 interface HubHandlers {
   onMessage?: (channelId: string, message: unknown) => void;
   onSignal?: (from: string, data: unknown) => void;
+  /** A seat in our voice room began or ended whispering to this tab. */
+  onVoiceWhisper?: (from: string, active: boolean) => void;
+  /** A text whisper to or from this account, to show and never store. */
+  onTextWhisper?: (whisper: Extract<ServerEvent, { t: "text-whisper" }>) => void;
   onStructureChange?: (serverId?: string) => void;
   /** One person's profile or presence changed. */
   onMember?: (userId: string) => void;
@@ -342,6 +346,12 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "signal":
             handlersRef.current.onSignal?.(payload.from, payload.data);
+            break;
+          case "voice-whisper":
+            handlersRef.current.onVoiceWhisper?.(payload.from, payload.active);
+            break;
+          case "text-whisper":
+            handlersRef.current.onTextWhisper?.(payload);
             break;
           case "structure":
             handlersRef.current.onStructureChange?.(payload.serverId);

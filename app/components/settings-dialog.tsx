@@ -88,6 +88,8 @@ interface SettingsDialogProps {
   pttKey?: string;
   onPushToTalk?: (enabled: boolean) => void;
   onPttKey?: (code: string) => void;
+  whisperKey?: string;
+  onWhisperKey?: (code: string) => void;
   /** Mute / deafen toggle shortcuts. */
   muteKey?: string;
   deafenKey?: string;
@@ -157,6 +159,8 @@ export function SettingsDialog({
   pttKey = "Space",
   onPushToTalk,
   onPttKey,
+  whisperKey = "",
+  onWhisperKey,
   muteKey = "Ctrl+Shift+KeyM",
   deafenKey = "Ctrl+Shift+KeyD",
   onMuteKey,
@@ -1277,6 +1281,8 @@ export function SettingsDialog({
         capturingKey={capturingKey}
         onPttKey={onPttKey}
         pttKey={pttKey}
+        whisperKey={whisperKey}
+        onWhisperKey={onWhisperKey}
         screenShareAudio={screenShareAudio}
         onScreenShareAudioChange={onScreenShareAudioChange}
         muteKey={muteKey}

@@ -318,6 +318,14 @@ export type ClientEvent =
       sfu?: boolean;
     }
   | { t: "signal"; to: string; data: unknown }
+  /**
+   * Whispering: this seat's microphone is going to these seats in the room
+   * and nobody else. Only a notice, so the listeners can say who is whispering;
+   * the audio itself is kept private by the media path (see lib/whisper.ts).
+   */
+  | { t: "voice-whisper"; to: string | string[]; active: boolean }
+  /** Text whisper: a line only the sender and the people named see, never stored. */
+  | { t: "text-whisper"; channelId: string; toUserId?: string; toUserIds?: string[]; text: string; id: string }
   | {
       /**
        * A moderator putting a stage seat on stage, or taking it off.
@@ -526,6 +534,25 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "signal"; from: string; data: unknown; serverNow: number }
+  | { t: "voice-whisper"; from: string; active: boolean; serverNow: number }
+  | {
+      t: "text-whisper";
+      channelId: string;
+      id: string;
+      fromUserId: string;
+      fromName: string;
+      /** The first person it reached (older clients read only this). */
+      toUserId: string;
+      /** Everyone it reached, with their names, so each sees who else heard it. */
+      toUserIds: string[];
+      toNames: string[];
+      text: string;
+      /** Nobody received it: the people are not here, or cannot see this channel. */
+      undelivered?: boolean;
+      /** Sent to the sender only: those it did not reach. */
+      missed?: string[];
+      serverNow: number;
+    }
   | { t: "player"; state: PlayerState; serverNow: number }
   /** Servers, channels or roles changed; `serverId` when it was one server. */
   | { t: "structure"; serverId?: string; serverNow: number }

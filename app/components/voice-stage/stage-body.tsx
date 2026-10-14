@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Megaphone, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity } from "lucide-react";
+import { Mic, Megaphone, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity, Ear } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
@@ -12,6 +12,11 @@ import { StyledName, VoiceAura } from "../profile-style-parts";
 
 /** A seat younger than this still gets its join flourish when the stage opens. */
 const JOIN_FRESH_MS = 6000;
+
+/** "Sam", "Sam and Kit", "Sam, Kit and Ana". */
+function listNames(names: string[]): string {
+  return names.length < 2 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
 
 export function StageBody({
   joined,
@@ -102,6 +107,9 @@ export function StageBody({
   const styleOf = useProfileStyles();
   // Join flourishes are for people arriving while you watch, not for everyone
   // already seated when the stage opens.
+  const whisperDownAt = useRef(0);
+  /** The press that began this gesture already ended a latched whisper. */
+  const whisperEndedOnDown = useRef(false);
   const seated = useRef<Set<string> | null>(null);
   if (seated.current === null) seated.current = new Set(participants.map((p) => p.connectionId));
   const voiceLook = (person: VoiceParticipant) => {
@@ -122,6 +130,25 @@ export function StageBody({
   };
   return (
     <div className="voice-stage-body">
+      {(voice.whisperRouted?.length || voice.whisperLatched?.length) && voice.whisperStop ? (
+        <div className="whisper-banner" role="status">
+          <Ear size={15} />
+          <span>
+            Whispering to{" "}
+            <b>
+              {listNames(
+                (voice.whisperRouted?.length ? voice.whisperRouted : voice.whisperLatched ?? []).map(
+                  (id) => participants.find((p) => p.connectionId === id)?.displayName ?? "someone",
+                ),
+              )}
+            </b>
+            : nobody else hears you.{(voice.whisperLatched?.length ?? 0) > 0 && " Tap more ears to add people."}
+          </span>
+          <button type="button" className="whisper-stop" onClick={() => voice.whisperStop?.()}>
+            Stop whispering
+          </button>
+        </div>
+      ) : null}
       {!joined ? (
         <div className="voice-join-prompt">
           <div className="voice-join-icon"><Volume2 size={30} /></div>
@@ -570,6 +597,45 @@ export function StageBody({
                     >
                       <MicOff size={14} />
                     </span>
+                  )}
+                  {voice.whisperedBy?.[person.connectionId] !== undefined && (
+                    <span className="table-dm-badge" title="Only you can hear this"><Ear size={13} /> Whispering to you</span>
+                  )}
+                  {voice.whisperStart && person.connectionId !== connectionId && !person.bot && !person.recorder && (
+                    <button
+                      type="button"
+                      className={`tile-whisper ${voice.whisperRouted?.includes(person.connectionId) ? "is-live" : ""} ${voice.whisperLatched?.includes(person.connectionId) ? "is-latched" : ""}`}
+                      title="Hold to whisper, or tap to keep whispering (tap more people to whisper to them together): only they hear you"
+                      aria-label={`Whisper to ${person.displayName}`}
+                      aria-pressed={Boolean(voice.whisperLatched?.includes(person.connectionId))}
+                      onPointerDown={(event) => {
+                        event.currentTarget.setPointerCapture?.(event.pointerId);
+                        whisperDownAt.current = Date.now();
+                        // Tapping the one you are already whispering to ends it.
+                        whisperEndedOnDown.current = Boolean(voice.whisperLatched?.includes(person.connectionId));
+                        if (whisperEndedOnDown.current) voice.whisperLatch?.(person.connectionId);
+                        else voice.whisperStart?.(person.connectionId);
+                      }}
+                      onPointerUp={() => {
+                        // A quick tap leaves the whisper running; a longer press is a hold.
+                        if (whisperEndedOnDown.current) {
+                          whisperEndedOnDown.current = false;
+                        } else if (Date.now() - whisperDownAt.current < 350) {
+                          voice.whisperLatch?.(person.connectionId);
+                        } else {
+                          voice.whisperEnd?.();
+                        }
+                      }}
+                      onPointerCancel={() => voice.whisperEnd?.()}
+                      onKeyDown={(event) => {
+                        if (event.key === " " || event.key === "Enter") {
+                          event.preventDefault();
+                          if (!event.repeat) voice.whisperLatch?.(person.connectionId);
+                        }
+                      }}
+                    >
+                      <Ear size={14} />
+                    </button>
                   )}
                   {person.handRaised && (
                     // Shown next to the mute badge rather than replacing it:

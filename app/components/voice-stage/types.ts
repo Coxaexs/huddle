@@ -55,6 +55,15 @@ export interface VoiceApi extends TableControls {
   stopCamera: () => void;
   localVideos: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
   toggleMute: () => void;
+  /** Whisper: hold a tile's button to send the mic to that seat only, or tap several. */
+  whisperTarget?: string | null;
+  whisperRouted?: string[] | null;
+  whisperedBy?: Record<string, number>;
+  whisperStart?: (connectionId: string) => void;
+  whisperEnd?: () => void;
+  whisperLatched?: string[];
+  whisperLatch?: (connectionId: string) => void;
+  whisperStop?: () => void;
   toggleDeafen: () => void;
   leave: () => void;
   streamViewers?: string[];

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ScreenShareQuality } from "../hooks/use-voice";
+import { whisperPermissions } from "@/lib/whisper";
 import {
   Room,
   RoomEvent,
@@ -118,6 +119,8 @@ export class SfuVoice {
   private readonly tracks = new Map<string, MediaStreamTrack[]>();
   private readonly streams = new Map<string, SfuRemoteStream>();
   private leaving = false;
+  /** Identities our microphone is currently restricted to, while whispering. */
+  private whispering: string[] | null = null;
 
   constructor(private readonly handlers: SfuHandlers) {
     try {
@@ -143,6 +146,8 @@ export class SfuVoice {
     room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) =>
       this.removed(track, publication, participant));
     room.on(RoomEvent.ParticipantDisconnected, (participant) => this.forget(participant.identity));
+    // Someone joining mid-whisper must not be handed the microphone.
+    room.on(RoomEvent.ParticipantConnected, () => this.applyWhisper());
     room.on(RoomEvent.Disconnected, (reason) => {
       this.tracks.clear();
       this.streams.clear();
@@ -240,6 +245,44 @@ export class SfuVoice {
     const track = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
     if (!track || track.isMuted === muted) return;
     await (muted ? track.mute() : track.unmute()).catch(() => undefined);
+  }
+
+  /**
+   * Restricts our microphone to these seats (or lifts the restriction with null).
+   *
+   * The server enforces it: anyone else is never sent the track, so nothing a
+   * modified client does could overhear. Returns whether the targets are here
+   * and the restriction is in place; the caller opens the mic only after that.
+   */
+  whisper(connectionIds: readonly string[] | null): boolean {
+    if (connectionIds === null) {
+      this.whispering = null;
+      this.room.localParticipant.setTrackSubscriptionPermissions(true);
+      return true;
+    }
+    const wanted = new Set(connectionIds);
+    const targets = [...this.room.remoteParticipants.values()].filter((participant) =>
+      wanted.has(parseSfuIdentity(participant.identity)?.connectionId ?? ""),
+    );
+    if (targets.length !== wanted.size || !this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.trackSid) return false;
+    this.whispering = targets.map((participant) => participant.identity);
+    this.applyWhisper();
+    return true;
+  }
+
+  private applyWhisper(): void {
+    if (!this.whispering) return;
+    const local = this.room.localParticipant;
+    const micSid = local.getTrackPublication(Track.Source.Microphone)?.trackSid ?? "";
+    local.setTrackSubscriptionPermissions(
+      false,
+      whisperPermissions(
+        [...this.room.remoteParticipants.values()].map((participant) => participant.identity),
+        this.whispering,
+        [...local.trackPublications.values()].map((publication) => publication.trackSid),
+        micSid,
+      ),
+    );
   }
 
   /** The RTCRtpSender carrying our microphone, for live bitrate changes. */

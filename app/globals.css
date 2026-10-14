@@ -30867,3 +30867,66 @@ a.link-preview-author:hover {
     height: 58%;
   }
 }
+
+/* Whisper: hold a participant's ear to talk to them alone. */
+.tile-whisper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  touch-action: none;
+  user-select: none;
+}
+.tile-whisper:hover,
+.tile-whisper:focus-visible { opacity: 1; }
+.tile-whisper.is-live {
+  opacity: 1;
+  background: #8b7aa8;
+  color: #fff;
+  border-color: #8b7aa8;
+}
+
+/* Latched whisper: the ear stays lit and a bar says who, with a way out. */
+.tile-whisper.is-latched { background: #8b7aa8; color: #fff; border-color: #8b7aa8; opacity: 1; }
+.whisper-banner {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: 8px auto 0;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  background: #8b7aa8;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+.whisper-stop {
+  flex: none;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.whisper-stop:hover,
+.whisper-stop:focus-visible { background: rgba(0, 0, 0, 0.5); }
+/* A finger needs a bigger target than a cursor. */
+@media (pointer: coarse) {
+  .tile-whisper { min-width: 40px; min-height: 40px; }
+  .whisper-stop { min-height: 36px; padding: 6px 14px; }
+}

@@ -12,6 +12,7 @@ import { HEAD_RECENTER_EVENT, headTrackingPossible, type HeadTrackingStatus } fr
 import { webcamHeadTrackingPossible } from "../lib/webcam-head-tracking";
 import { privateAddress, turnOnly } from "../lib/ice";
 import { SfuVoice, type SfuPublishKind, type SfuRemoteStream, type SfuStreamKind } from "../lib/sfu-voice";
+import { MAX_WHISPER_TARGETS } from "@/lib/whisper";
 
 export type HeadTrackingSource = "airpods" | "webcam";
 export type SpatialOutput = "headphones" | "speakers";
@@ -42,6 +43,9 @@ import {
 } from "../lib/virtual-background";
 
 export type { BackgroundMode };
+
+/** No seats latched for a whisper; one shared empty list keeps state updates stable. */
+const NO_SEATS: string[] = [];
 
 export interface VoiceLatencyStats {
   rttMs: number;
@@ -500,6 +504,29 @@ export function useVoice({
       "Space",
   );
   const [pttHeld, setPttHeld] = useState(false);
+  // Whispering: the mic goes to a few seats only. `whisperTarget` is the seat
+  // armed to be whispered to, `whisperHeld` whether the key or button is down,
+  // `whisperLatched` the seats a tap left whispering (several: a game master
+  // telling two players at once), and `whisperRouted` the seats the audio is
+  // confirmed restricted to. The mic opens only once the restriction is in
+  // place, never before.
+  const [whisperKey, setWhisperKeyState] = useState(() => {
+    try {
+      return (typeof window !== "undefined" && window.localStorage.getItem("huddle-whisper-key")) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [whisperTarget, setWhisperTarget] = useState<string | null>(null);
+  const [whisperHeld, setWhisperHeld] = useState(false);
+  /** Seats a whisper was left running to (a tap, not a hold) until stopped: the way it works on a phone. */
+  const [whisperLatched, setWhisperLatched] = useState<string[]>(NO_SEATS);
+  const [whisperRouted, setWhisperRouted] = useState<string[] | null>(null);
+  /** Seats whispering to us right now, by connection id, until the time given. */
+  const [whisperedBy, setWhisperedBy] = useState<Record<string, number>>({});
+  /** The mic each mesh sender carried before a whisper, to put back afterwards. */
+  const whisperSendersRef = useRef(new Map<RTCRtpSender, MediaStreamTrack>());
+  const whisperEpochRef = useRef(0);
   /** Toggle shortcuts, stored as `Ctrl+Shift+KeyM` style combos. */
   const [muteKey, setMuteKeyState] = useState(
     () =>
@@ -771,11 +798,127 @@ export function useVoice({
   // (push-to-talk held) or (not muted). Runs after any of those change so it
   // reconciles the direct track toggles elsewhere.
   useEffect(() => {
-    const on = !forcedMute && (pushToTalk ? pttHeld : !muted);
+    // A confirmed whisper opens the mic whatever mute or push-to-talk says;
+    // a server mute still wins.
+    const on = !forcedMute && (whisperRouted !== null || (pushToTalk ? pttHeld : !muted));
     micGateRef.current = on;
     micTracks().forEach((track) => (track.enabled = on));
     void sfuRef.current?.setMicMuted(!on);
-  }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks, sfuMode]);
+  }, [channelId, pushToTalk, pttHeld, muted, forcedMute, micTracks, sfuMode, whisperRouted]);
+
+  // The seats we should be whispering to right now, as a stable key ("" for
+  // none): the latched ones, plus the one a button is held on. Holding and
+  // latching are the same whisper, so passing from one to the other must not
+  // restart the routing below.
+  const whisperWanted = channelId
+    ? [...new Set([...whisperLatched, ...(whisperHeld && whisperTarget ? [whisperTarget] : [])])].sort().join(",")
+    : "";
+
+  // Whisper routing. Restrict where the microphone goes first, then open it
+  // (the gate above reads `whisperRouted`); on release close it first, then
+  // lift the restriction, so nothing is ever heard by the wrong ears.
+  useEffect(() => {
+    if (!whisperWanted) return;
+    const here = new Set((roomsRef.current[channelId || ""] || []).map((person) => person.connectionId));
+    const targets = whisperWanted.split(",").filter((id) => here.has(id));
+    if (!targets.length) return;
+    const chosen = new Set(targets);
+    let cancelled = false;
+    let routed = false;
+    const epoch = ++whisperEpochRef.current;
+    const sfu = sfuRef.current;
+    const restricted = sfu ? sfu.whisper(targets) : true;
+    if (!restricted) return;
+    // Peer-to-peer: every peer but the targets stops being sent the mic.
+    for (const [remoteId, peer] of peersRef.current) {
+      if (chosen.has(remoteId)) continue;
+      for (const sender of peer.getSenders()) {
+        const mic = sender.track;
+        if (mic?.kind !== "audio" || !micTracks().includes(mic)) continue;
+        whisperSendersRef.current.set(sender, mic);
+        void sender.replaceTrack(null).catch(() => undefined);
+      }
+    }
+    // Give the restriction a moment to reach the server before any sound leaves.
+    const open = window.setTimeout(() => {
+      if (cancelled) return;
+      routed = true;
+      setWhisperRouted(targets);
+      send({ t: "voice-whisper", to: targets, active: true });
+    }, sfu ? 120 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(open);
+      setWhisperRouted(null);
+      if (routed) send({ t: "voice-whisper", to: targets, active: false });
+      // The gate closes with the state change; lift the restriction after it.
+      window.setTimeout(() => {
+        // Pressed again in the meantime: that whisper owns the restriction now.
+        if (whisperEpochRef.current !== epoch) return;
+        sfuRef.current?.whisper(null);
+        for (const [sender, mic] of whisperSendersRef.current) {
+          if (!sender.track) void sender.replaceTrack(mic).catch(() => undefined);
+        }
+        whisperSendersRef.current.clear();
+      }, 200);
+    };
+  }, [channelId, whisperWanted, micTracks, send, sfuMode]);
+
+  // A whisper key (off until chosen) holds the whisper to the armed seat. Typing
+  // in a box never counts, so the key can be a letter.
+  useEffect(() => {
+    if (!whisperKey || !channelId) return;
+    const typing = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    };
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== whisperKey || event.repeat || typing(event.target)) return;
+      event.preventDefault();
+      setWhisperHeld(true);
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code === whisperKey) setWhisperHeld(false);
+    };
+    const blur = () => setWhisperHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+      setWhisperHeld(false);
+    };
+  }, [whisperKey, channelId]);
+
+  // Escape ends a latched whisper.
+  useEffect(() => {
+    if (!whisperLatched.length) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setWhisperLatched(NO_SEATS);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [whisperLatched]);
+
+  // Leaving the room, or the armed seat leaving it, ends the whisper.
+  useEffect(() => {
+    if (!channelId) {
+      setWhisperHeld(false);
+      setWhisperLatched(NO_SEATS);
+      setWhisperTarget(null);
+      setWhisperedBy({});
+      return;
+    }
+    const here = new Set((rooms[channelId] || []).map((person) => person.connectionId));
+    setWhisperTarget((current) => (current && !here.has(current) ? null : current));
+    setWhisperLatched((current) => (current.every((id) => here.has(id)) ? current : current.filter((id) => here.has(id))));
+    setWhisperedBy((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => here.has(id)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [channelId, rooms]);
 
   // Re-spend the uplink whenever the room or what we send changes: see
   // voiceBitrate. Encoder bitrate changes apply live, without renegotiating.
@@ -998,6 +1141,49 @@ export function useVoice({
   const setPttKey = useCallback((code: string) => {
     setPttKeyState(code);
     window.localStorage.setItem("huddle-ptt-key", code);
+  }, []);
+  const setWhisperKey = useCallback((code: string) => {
+    setWhisperKeyState(code);
+    try {
+      window.localStorage.setItem("huddle-whisper-key", code);
+    } catch {
+      // Not remembered across restarts.
+    }
+  }, []);
+  /** Starts whispering to one seat (a held button); `whisperEnd` stops it. */
+  const whisperStart = useCallback((connectionId: string) => {
+    setWhisperTarget(connectionId);
+    setWhisperHeld(true);
+  }, []);
+  const whisperEnd = useCallback(() => setWhisperHeld(false), []);
+  /**
+   * Keeps whispering to a seat after the finger lifts; the same call again
+   * takes it back out. Tapping more seats whispers to them all together.
+   */
+  const whisperLatch = useCallback((connectionId: string) => {
+    setWhisperHeld(false);
+    setWhisperTarget(connectionId);
+    setWhisperLatched((current) =>
+      current.includes(connectionId)
+        ? current.filter((id) => id !== connectionId)
+        : current.length >= MAX_WHISPER_TARGETS ? current : [...current, connectionId],
+    );
+  }, []);
+  /** Ends any whisper, held or latched. */
+  const whisperStop = useCallback(() => {
+    setWhisperHeld(false);
+    setWhisperLatched(NO_SEATS);
+  }, []);
+  /** The hub says a seat started or stopped whispering to us. */
+  const handleWhisper = useCallback((from: string, active: boolean) => {
+    setWhisperedBy((current) => {
+      if (!active) {
+        if (!(from in current)) return current;
+        const { [from]: _gone, ...rest } = current;
+        return rest;
+      }
+      return { ...current, [from]: Date.now() };
+    });
   }, []);
   const pttPress = useCallback(() => setPttHeld(true), []);
   const pttRelease = useCallback(() => setPttHeld(false), []);
@@ -2815,6 +3001,22 @@ export function useVoice({
     setPttKey,
     pttPress,
     pttRelease,
+    /** Whisper: hold to send the mic to one seat only (see lib/whisper.ts). */
+    whisperKey,
+    setWhisperKey,
+    whisperTarget,
+    whisperHeld,
+    /** The seats the audio is confirmed restricted to, while whispering. */
+    whisperRouted,
+    /** Seats whispering to this tab right now, by connection id. */
+    whisperedBy,
+    /** The seats taps left whispering, until `whisperStop`. */
+    whisperLatched,
+    whisperStart,
+    whisperEnd,
+    whisperLatch,
+    whisperStop,
+    handleWhisper,
     /** /say: speaks synthesized audio into the call as this seat. */
     speakIntoCall,
     /** Cuts off this seat's /say mid-sentence (an admin's /ttsstop). */

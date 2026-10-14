@@ -31,6 +31,7 @@ import {
 } from "./session-notes";
 import { publicMessage } from "../app/api/messages/route";
 import { isBlockedBetween } from "./friends";
+import { MAX_WHISPER_TARGETS } from "./whisper";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
 import {
@@ -134,6 +135,7 @@ export class HuddleHub extends DurableObject {
   private readonly memberships = new Map<string, Set<string>>();
   /** DM channelId -> its participants, cleared alongside memberships. */
   private readonly dmAudiences = new Map<string, Set<string>>();
+  private readonly whisperBudget = new Map<string, { second: number; count: number }>();
   /** userId -> when they last rang someone, to stop push-notification spam. */
   private readonly lastRing = new Map<string, number>();
   /**
@@ -970,6 +972,101 @@ export class HuddleHub extends DurableObject {
         return;
       }
 
+      case "voice-whisper": {
+        // A notice for each seat being whispered to, same room only. The
+        // audio's privacy does not depend on this; it only labels it.
+        const ids = (Array.isArray(event.to) ? event.to : [event.to])
+          .filter((id): id is string => typeof id === "string")
+          .slice(0, MAX_WHISPER_TARGETS);
+        const payload = JSON.stringify({
+          t: "voice-whisper",
+          from: attachment.connectionId,
+          active: event.active === true,
+          serverNow: Date.now(),
+        } satisfies ServerEvent);
+        for (const id of new Set(ids)) {
+          const target = this.seatFor(id);
+          if (
+            !target ||
+            target.attachment.connectionId === attachment.connectionId ||
+            !attachment.voiceChannelId ||
+            target.attachment.voiceChannelId !== attachment.voiceChannelId
+          ) {
+            continue;
+          }
+          target.socket.send(payload);
+        }
+        return;
+      }
+
+      case "text-whisper": {
+        // Delivered straight to the two people involved and never stored, so it
+        // cannot turn up in history, search, exports, bots or the bridge.
+        const wanted = [
+          ...new Set(
+            (Array.isArray(event.toUserIds) ? event.toUserIds : [event.toUserId]).filter(
+              (id): id is string => typeof id === "string" && id !== attachment.userId,
+            ),
+          ),
+        ].slice(0, MAX_WHISPER_TARGETS);
+        if (typeof event.channelId !== "string" || !wanted.length || typeof event.text !== "string" || typeof event.id !== "string") {
+          return;
+        }
+        const text = event.text.trim().slice(0, 2000);
+        if (!text || event.id.length > 64) return;
+        const second = Math.floor(Date.now() / 1000);
+        const budget = this.whisperBudget.get(attachment.connectionId);
+        if (budget?.second === second) {
+          if (budget.count >= 3) return;
+          budget.count += 1;
+        } else {
+          this.whisperBudget.set(attachment.connectionId, { second, count: 1 });
+        }
+        const allowed = await this.channelAudience(event.channelId);
+        const reaches = (seat: Attachment) => !seat.bot && allowed(seat);
+        const senderReaches = reaches(attachment);
+        // Whispering to someone who cannot see the channel, or who is not here,
+        // is refused rather than silently swallowed; so is someone either side blocked.
+        const reached: Array<{ userId: string; name: string; sockets: WebSocket[] }> = [];
+        const missed: string[] = [];
+        for (const userId of wanted) {
+          const seats = this.sockets().filter(({ attachment: seat }) => seat.userId === userId && reaches(seat));
+          const blocked =
+            seats.length > 0 && this.db
+              ? await isBlockedBetween(this.db, attachment.userId, userId).catch(() => true)
+              : false;
+          if (!senderReaches || !seats.length) missed.push(userId);
+          else if (!blocked) reached.push({ userId, name: seats[0].attachment.displayName, sockets: seats.map((seat) => seat.socket) });
+        }
+        if (!reached.length && !missed.length) return;
+        const whisper = {
+          t: "text-whisper",
+          channelId: event.channelId,
+          id: event.id,
+          fromUserId: attachment.userId,
+          fromName: attachment.displayName,
+          toUserId: reached[0]?.userId ?? wanted[0],
+          toUserIds: reached.map((person) => person.userId),
+          toNames: reached.map((person) => person.name),
+          text,
+          undelivered: reached.length ? undefined : true,
+          serverNow: Date.now(),
+        } satisfies ServerEvent;
+        const payload = JSON.stringify(whisper);
+        const mine = this.sockets().filter(({ attachment: seat }) => seat.userId === attachment.userId);
+        const send = (out: WebSocket, body: string) => {
+          try {
+            out.send(body);
+          } catch {
+            // Going away.
+          }
+        };
+        for (const person of reached) for (const out of person.sockets) send(out, payload);
+        const toSender = missed.length && reached.length ? JSON.stringify({ ...whisper, missed }) : payload;
+        for (const { socket: out } of mine) send(out, toSender);
+        return;
+      }
+
       case "dm-call": {
         // A call only goes between the people in that DM, and never to (or
         // from) someone who blocked the other.
@@ -1069,7 +1166,10 @@ export class HuddleHub extends DurableObject {
   async webSocketClose(socket: WebSocket) {
     const attachment = socket.deserializeAttachment() as Attachment | null;
     if (attachment) this.markSeen(attachment);
-    if (attachment) this.captionBudget.delete(attachment.connectionId);
+    if (attachment) {
+      this.captionBudget.delete(attachment.connectionId);
+      this.whisperBudget.delete(attachment.connectionId);
+    }
     if (attachment) this.loungeBudget.delete(attachment.connectionId);
     if (attachment) this.synthBudget.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {

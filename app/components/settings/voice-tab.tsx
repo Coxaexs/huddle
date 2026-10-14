@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { HeadTrackingStatus } from "../../lib/head-tracking";
 import type { RelayStatus } from "../../hooks/use-voice";
 import { headTrackingHint } from "../table-audio-menu";
@@ -46,6 +47,8 @@ export function VoiceTab({
   capturingKey,
   onPttKey,
   pttKey,
+  whisperKey,
+  onWhisperKey,
   screenShareAudio,
   onScreenShareAudioChange,
   muteKey,
@@ -89,6 +92,8 @@ export function VoiceTab({
   capturingKey: boolean;
   onPttKey: ((code: string) => void) | undefined;
   pttKey: string;
+  whisperKey: string;
+  onWhisperKey: ((code: string) => void) | undefined;
   screenShareAudio: boolean;
   onScreenShareAudioChange: ((enabled: boolean) => void) | undefined;
   muteKey: string;
@@ -96,6 +101,7 @@ export function VoiceTab({
   deafenKey: string;
   onDeafenKey: ((combo: string) => void) | undefined;
 }) {
+  const [capturingWhisper, setCapturingWhisper] = useState(false);
   return (
     <>
       {tab === "voice" && (
@@ -270,6 +276,25 @@ export function VoiceTab({
                     : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
                 </button>
               )}
+
+              <button
+                type="button"
+                className="ptt-key-button"
+                title="Hold this key to whisper to the person you last picked in the call"
+                onClick={() => setCapturingWhisper(true)}
+                onKeyDown={(event) => {
+                  if (!capturingWhisper) return;
+                  event.preventDefault();
+                  onWhisperKey?.(event.code === "Escape" ? "" : event.code);
+                  setCapturingWhisper(false);
+                }}
+              >
+                {capturingWhisper
+                  ? "Press a key… (Esc clears)"
+                  : whisperKey
+                    ? `Whisper key: ${whisperKey.replace(/^Key/, "")}`
+                    : "Set a whisper key"}
+              </button>
 
               <span className="field-label">Screen Share</span>
               <label className="flex items-center gap-2 cursor-pointer text-sm">

@@ -24,6 +24,7 @@ import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import { channelKindInfo, channelNameRules, CREATABLE_CHANNEL_KINDS, type ChannelKind } from "@/lib/channel-kinds";
 import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT, VOICE_BITRATE_MAX, VOICE_BITRATE_MIN } from "@/lib/voice-quality";
 import { shouldStartMuted } from "@/lib/stage";
+import { parseWhisper } from "@/lib/whisper";
 import { ALL_PERMISSIONS, hasPermission, Permission, canAccessServerSettings } from "@/lib/permissions";
 import { type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
@@ -2282,6 +2283,57 @@ export function ChatShell() {
     [loadDms, user],
   );
 
+  /** Whom each text whisper we sent was to, for our own copy of the line. */
+  const whisperNamesRef = useRef(new Map<string, string>());
+  /** A text whisper arrives only as a live event, so it is shown here and not kept. */
+  const handleTextWhisper = useCallback(
+    (whisper: {
+      channelId: string; id: string; fromUserId: string; fromName: string; toUserId: string;
+      toUserIds?: string[]; toNames?: string[]; text: string; undelivered?: boolean; missed?: string[];
+    }) => {
+      const mine = whisper.fromUserId === user?.id;
+      if (mine && whisper.undelivered) {
+        setNotice("They aren't here or can't see this channel, so your whisper wasn't delivered.");
+        return;
+      }
+      const nameList = (names: string[]) =>
+        names.length < 2 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+      if (mine && whisper.missed?.length) {
+        const missedNames = whisper.missed.map((id) => members.find((m) => m.id === id)?.displayName || "someone");
+        setNotice(`${nameList(missedNames)} isn't here or can't see this channel, so they didn't get your whisper.`);
+      }
+      if (!mine && blockedUserIdsRef.current.has(whisper.fromUserId)) return;
+      if (whisper.channelId !== activeChannelRef.current) {
+        if (!mine) setNotice(`${stripTextStyle(whisper.fromName)} whispered to you in another channel.`);
+        return;
+      }
+      // Each person is told who else heard it; the sender sees who it reached.
+      const reachedNames = (whisper.toNames ?? []).map((name) => stripTextStyle(name));
+      const toName = reachedNames.length ? nameList(reachedNames) : whisperNamesRef.current.get(whisper.id) || "them";
+      const alsoHeard = (whisper.toUserIds ?? []).flatMap((id, i) => (id === user?.id ? [] : [reachedNames[i] ?? "someone"]));
+      const now = new Date();
+      const line: Message = {
+        id: `whisper-${whisper.id}`,
+        channelId: whisper.channelId,
+        userId: whisper.fromUserId,
+        author: whisper.fromName,
+        avatar: "🤫",
+        color: "#8b7aa8",
+        time: now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        createdAt: now.toISOString(),
+        text: mine
+          ? `[i]You whisper to ${toName}:[/i] ${whisper.text}`
+          : `[i]whispers to you${alsoHeard.length ? ` and ${nameList(alsoHeard)}` : ""}:[/i] ${whisper.text}`,
+        kind: "whisper",
+        bot: true,
+      };
+      setMessages((current) => (current.some((m) => m.id === line.id) ? current : [...current, line]));
+      if (!mine && msnSoundsRef.current && !document.hasFocus()) playMessageChime();
+    },
+    [user, members],
+  );
+  const voiceWhisperRef = useRef<(from: string, active: boolean) => void>(() => { });
+
   const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => { });
   const forcedMuteRef = useRef<(userId: string, muted: boolean) => void>(
     () => { },
@@ -2383,6 +2435,8 @@ export function ChatShell() {
   const hub = useHub(Boolean(user), {
     onMessage: handleIncomingMessage,
     onSignal: (from, data) => voiceSignalRef.current(from, data),
+    onVoiceWhisper: (from, active) => voiceWhisperRef.current(from, active),
+    onTextWhisper: handleTextWhisper,
     onStructureChange: reloadStructureSoon,
     onMember: (userId) => {
       if (user && userId === user.id) return;
@@ -2561,6 +2615,7 @@ export function ChatShell() {
   voiceStopSpeakingRef.current = voice.stopSpeaking;
   forcedMutesRef.current = hub.forcedMutes;
   voiceSignalRef.current = voice.handleSignal;
+  voiceWhisperRef.current = voice.handleWhisper;
   voiceChannelRef.current = voice.channelId;
   voiceEvictedRef.current = () => {
     if (!voice.channelId) return;
@@ -4312,6 +4367,24 @@ export function ChatShell() {
     pendingCommandRef.current = user
       ? { text: raw.trim().slice(0, 200), by: user.displayName }
       : null;
+
+    if (name === "w") {
+      const channel = activeChannelRef.current;
+      if (!channel || !user) return;
+      const result = parseWhisper(
+        value,
+        members.map((member) => ({ id: member.id, username: member.username, displayName: member.displayName })),
+        user.id,
+      );
+      if (!result.ok) {
+        setNotice(result.error);
+        return;
+      }
+      const id = crypto.randomUUID();
+      whisperNamesRef.current.set(id, result.people.map((person) => person.displayName).join(", "));
+      hub.send({ t: "text-whisper", channelId: channel, toUserIds: result.people.map((person) => person.id), text: result.text, id });
+      return;
+    }
 
     if (name === "markdown") {
       setMarkdownModalOpen((prev) => !prev);
@@ -7807,6 +7880,8 @@ export function ChatShell() {
           pttKey={voice.pttKey}
           onPushToTalk={voice.setPushToTalk}
           onPttKey={voice.setPttKey}
+          whisperKey={voice.whisperKey}
+          onWhisperKey={voice.setWhisperKey}
           muteKey={voice.muteKey}
           deafenKey={voice.deafenKey}
           onMuteKey={voice.setMuteKey}
