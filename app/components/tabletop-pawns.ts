@@ -4,6 +4,8 @@
  * answers where it lands: a ripple and splash in water, sparks on fire, leaves
  * in the grass, a torch in the dark, and a puff of dust in the map's own
  * colour anywhere else. The glow under its base takes the colour beneath it.
+ * A pawn's base is its size in 5-foot squares at the map's scale, and its tag
+ * carries its hit points as the viewer may see them.
  */
 import * as THREE from "three";
 import type { TablePawn } from "@/lib/lounge-shared";
@@ -11,19 +13,34 @@ import { terrainOf, type Terrain } from "../lib/map-terrain";
 import { TABLE_CENTRE } from "../lib/living-room";
 import { miniFigure } from "./tabletop-extras";
 
-/** How tall each miniature stands on the table. */
+/** How tall each miniature is built (before it is scaled to the grid). */
 const HEIGHT: Record<TablePawn["kind"], number> = { fighter: 0.2, wizard: 0.2, rogue: 0.2, cleric: 0.2, beast: 0.24, dragon: 0.3 };
-/** Its base's radius (miniFigure's base is 0.3 of a hero's height, 0.62 of a big one's). */
+/** Its base's radius as built (miniFigure's base is 0.3 of a hero's height, 0.62 of a big one's). */
 const baseOf = (kind: TablePawn["kind"]) => HEIGHT[kind] * (kind === "beast" || kind === "dragon" ? 0.62 : 0.3);
+/** How many 5-foot squares it covers: Medium heroes 1, the ogre (Large) 2, the dragon (Huge) 3. */
+export const PAWN_SQUARES: Record<TablePawn["kind"], number> = { fighter: 1, wizard: 1, rogue: 1, cleric: 1, beast: 2, dragon: 3 };
+
+/** What a pawn's tag says to this viewer: its name, and its hit points as far as they may know them. */
+export interface PawnShow {
+  name: string;
+  hp?: number;
+  maxHp?: number;
+  /** Show the numbers (theirs, the party's, or the game master looking at a monster). */
+  numbers: boolean;
+}
 
 interface Piece {
   key: string;
   owner: string;
   group: THREE.Group;
+  /** Scaled to the grid: the figure, its glow and its ring. */
+  body: THREE.Group;
   figure: THREE.Group;
   glow: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
   ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   label: THREE.Sprite;
+  tagKey: string;
+  kind: TablePawn["kind"];
   base: number;
   from: THREE.Vector2;
   to: THREE.Vector2;
@@ -55,26 +72,53 @@ function spotTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 
-function nameTag(text: string): THREE.Sprite {
+/** The name over a pawn, with a bar under it for its hit points (or "Bloodied" when only that is known). */
+function nameTag(show: PawnShow): THREE.Sprite {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d")!;
-  ctx.font = "600 30px system-ui, sans-serif";
-  const width = Math.min(400, Math.ceil(ctx.measureText(text).width) + 28);
+  const font = "600 30px system-ui, sans-serif";
+  const max = show.maxHp ?? 0;
+  const hp = Math.max(0, Math.min(show.hp ?? max, max));
+  const hasHp = max > 0;
+  const down = hasHp && hp === 0;
+  const bloodied = hasHp && !down && hp <= max / 2;
+  const status = show.numbers ? `${hp}/${max}` : down ? "Down" : bloodied ? "Bloodied" : "";
+  ctx.font = font;
+  const width = Math.min(400, Math.max(Math.ceil(ctx.measureText(show.name).width) + 28, hasHp ? 150 : 0));
+  const bar = hasHp && (show.numbers || status);
   canvas.width = width;
-  canvas.height = 48;
-  ctx.font = "600 30px system-ui, sans-serif";
+  canvas.height = bar ? 84 : 48;
   ctx.fillStyle = "rgba(20,14,28,0.8)";
-  ctx.beginPath(); ctx.roundRect(0, 0, width, 48, 24); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(0, 0, width, canvas.height, 22); ctx.fill();
+  ctx.font = font;
   ctx.fillStyle = "#fff4e3";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(text, width / 2, 26, width - 18);
+  ctx.fillText(show.name, width / 2, 26, width - 18);
+  if (bar) {
+    const x = 14, y = 52, w = width - 28, h = 22;
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 11); ctx.fill();
+    if (show.numbers) {
+      const part = hp / max;
+      ctx.fillStyle = part > 0.5 ? "#4ade80" : part > 0.25 ? "#facc15" : "#f87171";
+      ctx.beginPath(); ctx.roundRect(x, y, Math.max(h, w * part), h, 11); ctx.fill();
+    } else {
+      ctx.fillStyle = down ? "#6b7280" : "#b91c1c";
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 11); ctx.fill();
+    }
+    ctx.font = "700 18px system-ui, sans-serif";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(status, width / 2, y + h / 2 + 1);
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  sprite.scale.set(0.045 * (width / 48), 0.045, 1);
+  sprite.scale.set(0.06 * (width / 48), 0.06 * (canvas.height / 48), 1);
   sprite.renderOrder = 20;
   return sprite;
 }
+
+const showKey = (show: PawnShow) => `${show.name}|${show.hp}|${show.maxHp}|${show.numbers}`;
 
 const disposeTree = (object: THREE.Object3D, keep: Set<unknown>) => {
   object.traverse((part) => {
@@ -90,6 +134,9 @@ const disposeTree = (object: THREE.Object3D, keep: Set<unknown>) => {
 /** Shortest turn from one heading to another. */
 const turnTo = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
+const NO_SHOW = new Map<string, PawnShow>();
+const NO_HITS = new Set<string>();
+
 export class TablePawns {
   private readonly pieces = new Map<string, Piece>();
   private readonly fx: Fx[] = [];
@@ -97,8 +144,12 @@ export class TablePawns {
   private readonly rippleGeometry = new THREE.RingGeometry(0.82, 1, 40);
   private readonly keep: Set<unknown>;
   private source: Record<string, TablePawn> | null = null;
+  private shows: Map<string, PawnShow> = NO_SHOW;
+  private hits: Set<string> = NO_HITS;
   private heldKey = "";
   private now = 0;
+  /** Metres to a 5-foot square. */
+  private cell = 0.12;
 
   constructor(
     private readonly root: THREE.Object3D,
@@ -116,21 +167,50 @@ export class TablePawns {
     return null;
   }
 
+  /** How big a 5-foot square is on the map, in metres: every base covers its squares. */
+  setCell(metres: number) {
+    if (Math.abs(metres - this.cell) < 1e-6) return;
+    this.cell = metres;
+    for (const piece of this.pieces.values()) this.fit(piece);
+  }
+
+  private factor(piece: Piece) {
+    return (PAWN_SQUARES[piece.kind] * this.cell) / (2 * baseOf(piece.kind));
+  }
+
+  private fit(piece: Piece) {
+    piece.body.scale.setScalar(this.factor(piece));
+  }
+
   /**
-   * The table as the hub has it. `held` is the pawn I am about to move, and
-   * `turnOwner` the user whose turn it is: their pawns wear a ring.
+   * The table as the hub has it. `held` is the pawn I am about to move,
+   * `turnOwner` the user whose turn it is (their pawns wear a gold ring),
+   * `shows` what each tag says, and `hits` the pawns inside a spell's area.
    */
-  set(pawns: Record<string, TablePawn>, held: string | null, turnOwner: string | null) {
+  set(pawns: Record<string, TablePawn>, held: string | null, turnOwner: string | null, shows: Map<string, PawnShow> = NO_SHOW, hits: Set<string> = NO_HITS) {
     const heldKey = `${held}|${turnOwner}`;
-    if (pawns === this.source && heldKey === this.heldKey) return;
+    if (pawns === this.source && heldKey === this.heldKey && shows === this.shows && hits === this.hits) return;
     if (pawns !== this.source) this.sync(pawns);
     this.source = pawns;
     this.heldKey = heldKey;
+    this.shows = shows;
+    this.hits = hits;
     for (const [id, piece] of this.pieces) {
       const turn = Boolean(turnOwner && piece.owner === turnOwner);
-      piece.ring.visible = id === held || turn;
-      piece.ring.material.color.set(id === held ? "#ffffff" : "#ffd23c");
+      const hit = hits.has(id);
+      piece.ring.visible = id === held || turn || hit;
+      piece.ring.material.color.set(id === held ? "#ffffff" : turn ? "#ffd23c" : "#ff4d4d");
+      const show = shows.get(id);
+      if (show && showKey(show) !== piece.tagKey) this.retag(piece, show);
     }
+  }
+
+  private retag(piece: Piece, show: PawnShow) {
+    piece.group.remove(piece.label);
+    disposeTree(piece.label, this.keep);
+    piece.label = nameTag(show);
+    piece.tagKey = showKey(show);
+    piece.group.add(piece.label);
   }
 
   private sync(pawns: Record<string, TablePawn>) {
@@ -143,10 +223,10 @@ export class TablePawns {
       this.pieces.delete(id);
     }
     for (const pawn of Object.values(pawns)) {
-      const key = `${pawn.kind}|${pawn.colour}|${pawn.label}|${pawn.ownerName}`;
+      const key = `${pawn.kind}|${pawn.colour}`;
       let piece = this.pieces.get(pawn.id);
       if (piece && piece.key !== key) {
-        // Repainted or renamed: build it again where it stands.
+        // Repainted: build it again where it stands.
         this.root.remove(piece.group);
         disposeTree(piece.group, this.keep);
         this.pieces.delete(pawn.id);
@@ -163,7 +243,7 @@ export class TablePawns {
         piece.duration = 0.45;
         piece.dropping = true;
         piece.landed = false;
-        piece.group.position.set(x, this.surfaceY + 0.4, z);
+        piece.group.position.set(x, this.surfaceY, z);
         this.pieces.set(pawn.id, piece);
         continue;
       }
@@ -184,11 +264,13 @@ export class TablePawns {
   private build(pawn: TablePawn, key: string): Piece {
     const group = new THREE.Group();
     group.userData.pawnId = pawn.id;
+    const body = new THREE.Group();
+    group.add(body);
     const base = baseOf(pawn.kind);
     const figure = miniFigure(pawn.kind, pawn.colour, HEIGHT[pawn.kind]);
     const holder = new THREE.Group();
     holder.add(figure);
-    group.add(holder);
+    body.add(holder);
     const glow = new THREE.Mesh(
       new THREE.CircleGeometry(base * 2.1, 28),
       new THREE.MeshBasicMaterial({ map: this.spot, color: "#fff2d0", transparent: true, opacity: 0.45, depthWrite: false, toneMapped: false }),
@@ -198,7 +280,7 @@ export class TablePawns {
     glow.renderOrder = 2;
     // Only the miniature itself is clicked; its light on the map is not.
     glow.raycast = () => undefined;
-    group.add(glow);
+    body.add(glow);
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(base * 1.3, base * 1.55, 36),
       new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
@@ -207,16 +289,18 @@ export class TablePawns {
     ring.position.y = 0.005;
     ring.visible = false;
     ring.raycast = () => undefined;
-    group.add(ring);
-    const label = nameTag(pawn.label || pawn.ownerName);
-    label.position.y = HEIGHT[pawn.kind] * 1.25 + 0.05;
+    body.add(ring);
+    const show = this.shows.get(pawn.id) ?? { name: pawn.label || pawn.ownerName, numbers: false };
+    const label = nameTag(show);
     group.add(label);
     this.root.add(group);
-    return {
-      key, owner: pawn.owner, group, figure: holder, glow, ring, label, base,
+    const piece: Piece = {
+      key, owner: pawn.owner, group, body, figure: holder, glow, ring, label, tagKey: showKey(show), kind: pawn.kind, base,
       from: new THREE.Vector2(), to: new THREE.Vector2(), start: 0, duration: 0.4, height: 0.08,
       dropping: true, landed: false, facing: pawn.facing, terrain: "ground", nextFx: 0, phase: Math.random() * 10,
     };
+    this.fit(piece);
+    return piece;
   }
 
   /** It came down: read the map under it and let the map answer. */
@@ -231,26 +315,27 @@ export class TablePawns {
     piece.glow.material.color.copy(terrain === "dark" ? new THREE.Color("#ffb347") : tint);
     piece.glow.material.opacity = terrain === "dark" ? 0.7 : 0.45;
     piece.nextFx = this.now + 0.4;
+    const r = piece.base * this.factor(piece);
     switch (terrain) {
       case "water":
-        this.ripple(x, z, new THREE.Color("#dff4ff"), piece.base * 1.2, piece.base * 5, 1.1);
-        this.ripple(x, z, tint, piece.base, piece.base * 3.4, 0.8);
+        this.ripple(x, z, new THREE.Color("#dff4ff"), r * 1.2, r * 5, 1.1);
+        this.ripple(x, z, tint, r, r * 3.4, 0.8);
         this.spray(x, z, new THREE.Color("#cfefff"), 16, 0.7, -2.2, 1.1);
         break;
       case "fire":
-        this.ripple(x, z, new THREE.Color("#ffb347"), piece.base, piece.base * 3.5, 0.6);
+        this.ripple(x, z, new THREE.Color("#ffb347"), r, r * 3.5, 0.6);
         this.spray(x, z, new THREE.Color("#ff8a2a"), 22, 0.9, 0.35, 1.2);
         break;
       case "green":
         this.spray(x, z, new THREE.Color("#7ccf5a"), 14, 0.45, -0.25, 1.6);
-        this.ripple(x, z, tint, piece.base, piece.base * 3, 0.6);
+        this.ripple(x, z, tint, r, r * 3, 0.6);
         break;
       case "dark":
         this.spray(x, z, new THREE.Color("#ffcf7a"), 8, 0.35, 0.2, 0.9);
         break;
       default:
         this.dust(x, z, tint, 14, 0.7);
-        this.ripple(x, z, tint, piece.base, piece.base * 3, 0.55);
+        this.ripple(x, z, tint, r, r * 3, 0.55);
     }
     this.onLand?.(id, terrain);
   }
@@ -334,10 +419,9 @@ export class TablePawns {
       const x = piece.from.x + (piece.to.x - piece.from.x) * ease;
       const z = piece.from.y + (piece.to.y - piece.from.y) * ease;
       const lift = piece.dropping ? 0.4 * (1 - p) ** 2 : 4 * piece.height * p * (1 - p);
-      piece.group.position.set(x, this.surfaceY + lift, z);
-      // Its light and ring stay on the map while it is in the air.
-      piece.glow.position.y = 0.003 - lift;
-      piece.ring.position.y = 0.005 - lift;
+      // The base, its light and its ring stay on the map; the figure hops.
+      piece.group.position.set(x, this.surfaceY, z);
+      const factor = this.factor(piece);
       // Facing +Z is turned to the pawn's heading (0 north, east positive).
       const want = Math.PI - piece.facing;
       piece.figure.rotation.y += turnTo(piece.figure.rotation.y, want) * Math.min(1, dt * 10);
@@ -349,10 +433,13 @@ export class TablePawns {
       const since = t - (piece.start + piece.duration);
       const squash = piece.landed && since < 0.25 ? 1 - Math.sin((since / 0.25) * Math.PI) * 0.12 : 1;
       piece.figure.scale.set(2 - squash, squash, 2 - squash);
+      let bob = 0;
       if (piece.landed && piece.terrain === "water") {
-        piece.figure.position.y = -0.012 + Math.sin(t * 2.4 + piece.phase) * 0.004;
-        if (t > piece.nextFx) { piece.nextFx = t + 2.2 + Math.random(); this.ripple(x, z, new THREE.Color("#dff4ff"), piece.base * 1.1, piece.base * 3.2, 1.4); }
-      } else piece.figure.position.y = 0;
+        bob = -0.012 + Math.sin(t * 2.4 + piece.phase) * 0.004;
+        if (t > piece.nextFx) { piece.nextFx = t + 2.2 + Math.random(); this.ripple(x, z, new THREE.Color("#dff4ff"), piece.base * factor * 1.1, piece.base * factor * 3.2, 1.4); }
+      }
+      piece.figure.position.y = (lift + bob) / factor;
+      piece.label.position.y = HEIGHT[piece.kind] * factor * 1.25 + 0.05 + lift;
       if (piece.landed && piece.terrain === "fire") {
         piece.glow.material.opacity = 0.45 + Math.sin(t * 17 + piece.phase) * 0.08 + Math.sin(t * 7) * 0.06;
         if (t > piece.nextFx) { piece.nextFx = t + 0.35 + Math.random() * 0.3; this.spray(x, z, new THREE.Color("#ff9a3c"), 3, 0.25, 0.3, 1.1, 0.08); }

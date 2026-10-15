@@ -12,7 +12,7 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { applyPawn, sanitizeShared, type PawnOp, type TablePawn } from "./lounge-shared";
+import { applyArea, applyPawn, sanitizeShared, type AreaOp, type PawnOp, type TableArea, type TablePawn } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
@@ -733,14 +733,16 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn") return;
+        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid") return;
         const now = Date.now();
-        if (now - (this.sharedAt.get(attachment.connectionId) ?? 0) < 120) return;
-        this.sharedAt.set(attachment.connectionId, now);
+        // Each piece on its own clock: casting sends the area and the spent slot together.
+        const clock = `${attachment.connectionId}|${key}`;
+        if (now - (this.sharedAt.get(clock) ?? 0) < 120) return;
+        this.sharedAt.set(clock, now);
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns", value: unknown, includeSender: boolean) => {
+        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid", value: unknown, includeSender: boolean) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;
@@ -753,13 +755,13 @@ export class HuddleHub extends DurableObject {
           if (clean) send("hiddenroll", { ...(clean as object), by: attachment.connectionId }, false);
           return;
         }
-        if (key === "pawn" && clean === null) return;
+        if ((key === "pawn" || key === "area") && clean === null) return;
         const all = await this.loadLoungeShared();
         const bag = (all[room] ??= {});
         const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
         const gmHere = Boolean(gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room));
-        if (key === "tablemap") {
-          // The game master's table: while one is in the room, only they change the map.
+        if (key === "tablemap" || key === "grid") {
+          // The game master's table: while one is in the room, only they change the map and its scale.
           if (gmHere && gm !== attachment.connectionId) return;
         }
         if (key === "pawn") {
@@ -770,6 +772,16 @@ export class HuddleHub extends DurableObject {
           if (Object.keys(next).length) bag.pawns = next; else delete bag.pawns;
           await this.saveLoungeShared();
           send("pawns", next, true);
+          return;
+        }
+        if (key === "area") {
+          // A spell's area is its caster's to take off, and the game master's.
+          const areas = (bag.areas as Record<string, TableArea> | undefined) ?? {};
+          const next = applyArea(areas, clean as AreaOp, { userId: attachment.userId, name: by, isGm: gmHere && gm === attachment.connectionId }, now);
+          if (!next) return;
+          if (Object.keys(next).length) bag.areas = next; else delete bag.areas;
+          await this.saveLoungeShared();
+          send("areas", next, true);
           return;
         }
         if (key === "character") {

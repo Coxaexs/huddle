@@ -3,9 +3,10 @@
  * five panels, each showing a page they picked; only their own view draws
  * them, and to everyone else that side is plain wood. Each player can keep a
  * little screen of their own (their character, notes, rolls), drawn in their
- * view only. The choices, notes and character sheet stay in this browser.
+ * view only. The choices and notes stay in this browser; the character is
+ * the table's (lounge-shared).
  */
-import type { Initiative } from "@/lib/lounge-shared";
+import type { Initiative, TableCharacter } from "@/lib/lounge-shared";
 import type { ScreenPage } from "../components/tabletop-extras";
 
 export type ScreenPageId = "character" | "initiative" | "party" | "conditions" | "rules" | "notes" | "rolls" | "blank";
@@ -100,8 +101,32 @@ export function readSheet(): CharacterSheet {
   return { ...EMPTY_SHEET, abilities: [...EMPTY_SHEET.abilities] };
 }
 
-export function saveSheet(sheet: CharacterSheet) {
-  try { localStorage.setItem(SHEET_KEY, JSON.stringify(sheet)); } catch { /* Session only. */ }
+/** The sheet this browser kept before characters lived at the table, or null when there was none. */
+export function readLegacySheet(): CharacterSheet | null {
+  const sheet = readSheet();
+  return sheet.level || sheet.hp || sheet.ac || sheet.speed || sheet.abilities.some(Boolean) ? sheet : null;
+}
+
+const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
+
+/** A character at the table, written out for the "My character" page. */
+export function sheetOf(character: TableCharacter): { sheet: CharacterSheet; extra: string[] } {
+  const slots = character.slots ?? [];
+  const used = character.used ?? [];
+  const left = slots.flatMap((n, i) => (n ? [`${ordinal(i + 1)} ${n - (used[i] ?? 0)}/${n}`] : []));
+  return {
+    sheet: {
+      level: [character.cls, character.level].filter(Boolean).join(" "),
+      hp: character.maxHp ? `${character.hp ?? character.maxHp}/${character.maxHp}` : "",
+      ac: character.ac !== undefined ? String(character.ac) : "",
+      speed: character.speed !== undefined ? `${character.speed} ft` : "",
+      abilities: (character.abilities ?? []).map((n) => (n ? String(n) : "")).concat(["", "", "", "", "", ""]).slice(0, 6),
+    },
+    extra: [
+      ...(left.length ? [`Slots: ${left.join(" · ")}`] : []),
+      ...(character.spells?.length ? [`Spells: ${character.spells.join(", ")}`] : []),
+    ],
+  };
 }
 
 /** "16 (+3)": a score with its modifier, or as written when it is not a number. */
@@ -146,7 +171,7 @@ const RULES = [
 
 export interface ScreenData {
   /** The player's own character and sheet (a player's screen only). */
-  character?: { name: string; portraitUrl: string | null; sheet: CharacterSheet } | null;
+  character?: { name: string; portraitUrl: string | null; sheet: CharacterSheet; extra?: string[] } | null;
   initiative: Initiative | null;
   /** Characters at the table: character name and who plays it. */
   party: Array<{ character: string; player: string }>;
@@ -159,7 +184,7 @@ export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage 
   switch (id) {
     case "character": {
       const me = data.character;
-      if (!me) return { title: "My character", lines: ["Make one with the person button: a name and a portrait.", "Fill in the sheet there too."] };
+      if (!me) return { title: "My character", lines: ["Make one with the person button: a name, class and level, and your spells."] };
       const sheet = me.sheet;
       const pairs = [0, 2, 4].map((i) => `${ABILITIES[i]} ${ability(sheet.abilities[i])} · ${ABILITIES[i + 1]} ${ability(sheet.abilities[i + 1])}`);
       const lines = [
@@ -168,6 +193,7 @@ export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage 
         sheet.ac && `AC: ${sheet.ac}`,
         sheet.speed && `Speed: ${sheet.speed}`,
         ...(sheet.abilities.some((a) => a.trim()) ? pairs : []),
+        ...(me.extra ?? []),
       ].filter((line): line is string => Boolean(line));
       return { title: me.name, image: me.portraitUrl, lines: lines.length ? lines : ["Your sheet is empty: fill it in with the person button."] };
     }

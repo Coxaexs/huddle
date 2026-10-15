@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, TableMap, TablePawn, WatchState } from "@/lib/lounge-shared";
+import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchState } from "@/lib/lounge-shared";
 import {
   FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -90,10 +90,14 @@ export interface LoungeShared {
   tablemap: TableMap | null;
   /** The miniatures stood on the tabletop's map, by pawn id. */
   pawns: Record<string, TablePawn>;
+  /** Spell areas standing on the map, by id. */
+  areas: Record<string, TableArea>;
+  /** The map's scale; null: DEFAULT_SQUARES. */
+  grid: TableGrid | null;
 }
-const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {} };
+const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null };
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid";
 
 export interface LivingRoom {
   open: boolean;
@@ -223,7 +227,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         if (detail.key === "hiddenroll") {
           if (detail.value && typeof detail.value === "object") setHiddenRoll({ ...(detail.value as HiddenRoll), id: ++emoteId.current });
         } else {
-          setSharedState((current) => ({ ...current, [detail.key]: detail.value ?? (detail.key === "characters" || detail.key === "pawns" ? {} : null) }));
+          setSharedState((current) => ({ ...current, [detail.key]: detail.value ?? (detail.key === "characters" || detail.key === "pawns" || detail.key === "areas" ? {} : null) }));
         }
         return;
       }

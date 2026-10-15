@@ -2,12 +2,12 @@
 
 import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Armchair, ChessPawn, Clapperboard, Crown, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
-import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, roomAmbience, type BuiltRoom } from "./living-room-scene";
 import { buildCinema } from "./cinema-scene";
@@ -20,14 +20,17 @@ import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type ScreenPage } from "./tabletop-extras";
 import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, PAWN_NAMES, PawnsPanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
-import { TablePawns } from "./tabletop-pawns";
+import { PAWN_SQUARES, TablePawns, type PawnShow } from "./tabletop-pawns";
+import { TableOverlay, type AreaPreview } from "./tabletop-overlay";
+import { HeldPawnCard, HeroCard, type CastResult } from "./table-hero";
+import { areaColour, castDice, inArea, rangeFeet, type SpellInfo } from "@/lib/dnd-spells";
 import type { Terrain } from "../lib/map-terrain";
 import {
-  SCREEN_SIZES, buildScreenPage, readNotes, readPlayerScreenOpen, readScreenChoice, readSheet, saveNotes, savePlayerScreenOpen, saveScreenChoice, saveSheet,
-  type CharacterSheet, type ScreenPageId, type ScreenRole,
+  SCREEN_SIZES, buildScreenPage, readLegacySheet, readNotes, readPlayerScreenOpen, readScreenChoice, saveNotes, savePlayerScreenOpen, saveScreenChoice, sheetOf,
+  type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
-import { addInitiative, clampPawnSpot, currentEntry, watchPosition, type PawnKind, type PawnOp, type TableCard, type WatchState } from "@/lib/lounge-shared";
+import { DEFAULT_SQUARES, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
@@ -501,8 +504,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [playerNotes, setPlayerNotes] = useScreenNotes("player");
   const [playerScreenOpen, setPlayerScreenOpenState] = useState(() => (typeof window === "undefined" ? true : readPlayerScreenOpen()));
   const setPlayerScreenOpen = (open: boolean) => { setPlayerScreenOpenState(open); savePlayerScreenOpen(open); };
-  const [sheet, setSheetState] = useState<CharacterSheet>(() => readSheet());
-  const setSheet = (value: CharacterSheet) => { setSheetState(value); saveSheet(value); };
+  /** The sheet this browser kept before characters lived at the table: the new one starts from it. */
+  const legacySheet = useMemo(() => (typeof window === "undefined" ? null : readLegacySheet()), []);
   // The game master's hidden rolls, and my own rolls at the table, this visit.
   const [hiddenLog, setHiddenLog] = useState<string[]>([]);
   const [myRolls, setMyRolls] = useState<string[]>([]);
@@ -548,6 +551,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const screenPagesRef = useRef<ScreenPage[] | null>(null);
   const playerPagesRef = useRef<ScreenPage[] | null>(null);
   // The pawns: which one I hold, and what a click on a pawn, the map or the cabinet does (set further down).
+  /** The table's sums for the render loop: scale, tags, who is in which area, and what is being aimed or measured. */
+  const tableRef = useRef<{
+    cell: number; metresPerFoot: number; shows: Map<string, PawnShow>; hits: Set<string>; areaHits: Map<string, string[]>;
+    spots: Array<{ name: string; x: number; z: number; pad: number }>;
+    aiming: AreaPreview | null; ruler: { from: { x: number; z: number }; limit: number | null } | null; ring: { at: { x: number; z: number }; feet: number } | null;
+    place: (x: number, z: number) => void; tapArea: (id: string) => void;
+  }>({
+    cell: 0.12, metresPerFoot: 0.024, shows: new Map(), hits: new Set(), areaHits: new Map(), spots: [], aiming: null, ruler: null, ring: null,
+    place: () => undefined, tapArea: () => undefined,
+  });
   const pawnRef = useRef<{ held: string | null; tap: (id: string) => void; moveTo: (x: number, z: number) => void; openCabinet: () => void; landed: (id: string, terrain: Terrain) => void }>({
     held: null, tap: () => undefined, moveTo: () => undefined, openCabinet: () => undefined, landed: () => undefined,
   });
@@ -609,6 +622,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     diceRef.current = dice;
     const extras = venueId === "tabletop" ? new TableExtras(house, TABLE_SURFACE_Y) : null;
     const pawns = venueId === "tabletop" ? new TablePawns(house, TABLE_SURFACE_Y, parts.mapColourAt, (id, terrain) => pawnRef.current.landed(id, terrain)) : null;
+    const overlay = venueId === "tabletop" ? new TableOverlay(house, TABLE_SURFACE_Y) : null;
+    // The map itself, for the pointer: a ruler or an area being aimed follows it.
+    let mapSurface: THREE.Object3D | null = null;
+    parts.root.traverse((object) => { if (object.userData.tableMap) mapSurface = object; });
     // Far people, past the nearest few, are small coloured dots: one draw call for a crowd of 150.
     const crowd = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false }), 160);
     crowd.count = 0;
@@ -763,6 +780,19 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           live.current.room.setShared("card", null);
           return;
         }
+        // Aiming a spell, only the map counts: the area goes where it was clicked.
+        if (tableRef.current.aiming) {
+          if (!hit.object.userData.tableMap) continue;
+          const at = house.worldToLocal(hit.point.clone());
+          tableRef.current.place(at.x - TABLE_CENTRE.x, at.z - TABLE_CENTRE.z);
+          return;
+        }
+        const areaId = overlay?.areaAt(hit.object);
+        if (areaId) {
+          if (pawnRef.current.held) continue;
+          tableRef.current.tapArea(areaId);
+          return;
+        }
         const pawnId = pawns?.pawnAt(hit.object);
         if (pawnId) {
           pawnRef.current.tap(pawnId);
@@ -820,9 +850,27 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
       drag = { x: event.clientX, y: event.clientY, moved: false };
     };
+    let aimAt = 0;
+    /** The pointer on the map, for the ruler and the area being aimed. */
+    const aim = (event: PointerEvent) => {
+      if (!overlay || !mapSurface) return;
+      const wanted = Boolean(tableRef.current.aiming || pawnRef.current.held);
+      if (!wanted) { overlay.setCursor(null); return; }
+      const now = performance.now();
+      if (now - aimAt < 40) return;
+      aimAt = now;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(mapSurface, false)[0];
+      if (!hit) { overlay.setCursor(null); return; }
+      const at = house.worldToLocal(hit.point.clone());
+      overlay.setCursor({ x: at.x - TABLE_CENTRE.x, z: at.z - TABLE_CENTRE.z });
+    };
     const onMove = (event: PointerEvent) => {
       poke();
       if (venueId === "cinema" && !drag && pinch === null) hover(event);
+      if (venueId === "tabletop" && !drag && pinch === null) aim(event);
       if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pinch !== null) {
         const now = spread();
@@ -869,6 +917,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       poke();
       const key = event.key.toLowerCase();
       if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
+      if (key === "escape" && event.type === "keydown" && tableRef.current.aiming) { setAimingState(null); return; }
       if (key === "escape" && event.type === "keydown" && pawnRef.current.held) { setHeldPawn(null); return; }
       if (key === "shift") { shiftDown = event.type === "keydown"; return; }
       if (key === " " && event.type === "keydown") {
@@ -1295,9 +1344,20 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       extras.update(t);
       if (pawns) {
         const turnOwner = turn?.connectionId ? live.current.participants.find((p) => p.connectionId === turn.connectionId)?.id ?? null : null;
-        pawns.set(shared.pawns, pawnRef.current.held, turnOwner);
+        const table = tableRef.current;
+        pawns.setCell(table.cell);
+        pawns.set(shared.pawns, pawnRef.current.held, turnOwner, table.shows, table.hits);
         pawns.update(t, dt);
         if (pawns.busy()) poke();
+        if (overlay) {
+          overlay.setScale(table.metresPerFoot);
+          overlay.setSpots(table.spots);
+          overlay.setAreas(shared.areas, table.areaHits);
+          overlay.setPreview(table.aiming);
+          overlay.setRuler(table.ruler?.from ?? null, table.ruler?.limit ?? null);
+          overlay.setMoveRing(table.ring?.at ?? null, table.ring?.feet ?? 0);
+          overlay.update();
+        }
       }
     };
 
@@ -1484,6 +1544,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       dice?.dispose();
       extras?.dispose();
       pawns?.dispose();
+      overlay?.dispose();
       rod?.dispose();
       if (rodRef.current) rodRef.current = null;
       dropWatch();
@@ -1608,6 +1669,131 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     else if (heldSeen.current) setHeldPawn(null);
   }, [heldPawn, room.shared.pawns]);
   useEffect(() => { if (venueId !== "tabletop") setHeldPawn(null); }, [venueId]);
+
+  // The table's scale: the map is so many 5-foot squares across.
+  const squares = room.shared.grid?.squares ?? DEFAULT_SQUARES;
+  const cell = ((TABLE_RADIUS - 0.17) * 2) / squares;
+  const metresPerFoot = cell / 5;
+  const gmUserId = participants.find((p) => p.connectionId === room.shared.gm?.connectionId)?.id ?? null;
+  const characters = room.shared.characters;
+  const tablePawns = room.shared.pawns;
+  /** A pawn's name: a hero is its character. */
+  const nameOf = (pawn: TablePawn) => (pawn.hero ? characters[pawn.owner]?.name : undefined) || pawn.label || pawn.ownerName;
+  /** Feet a turn: a hero's from its sheet, the big ones faster. */
+  const speedOf = (pawn: TablePawn) => (pawn.hero ? characters[pawn.owner]?.speed : undefined) ?? (pawn.kind === "beast" || pawn.kind === "dragon" ? 40 : 30);
+  /** What each tag says to me: the party's hit points in numbers; a monster's only to its game master, "Bloodied" to the rest. */
+  const pawnShows = useMemo(() => {
+    const shows = new Map<string, PawnShow>();
+    for (const pawn of Object.values(tablePawns)) {
+      const sheet = pawn.hero ? characters[pawn.owner] : undefined;
+      const monster = !pawn.hero && pawn.owner === gmUserId;
+      shows.set(pawn.id, {
+        name: (sheet?.name || pawn.label || pawn.ownerName).slice(0, 24),
+        hp: sheet ? sheet.hp ?? sheet.maxHp : pawn.hp,
+        maxHp: sheet ? sheet.maxHp : pawn.maxHp,
+        numbers: !monster || isGm,
+      });
+    }
+    return shows;
+  }, [tablePawns, characters, gmUserId, isGm]);
+  /** Who stands in each spell's area (a caster is not caught in their own cone or aura). */
+  const areaHits = useMemo(() => {
+    const byArea = new Map<string, string[]>();
+    const hit = new Set<string>();
+    for (const area of Object.values(room.shared.areas)) {
+      const names: string[] = [];
+      for (const pawn of Object.values(tablePawns)) {
+        if (area.fromSelf && Math.hypot(pawn.x - area.ox, pawn.z - area.oz) < 0.01) continue;
+        if (!inArea(area, metresPerFoot, pawn, (PAWN_SQUARES[pawn.kind] * cell) / 2 * 0.9)) continue;
+        names.push(pawnShows.get(pawn.id)?.name ?? pawn.ownerName);
+        hit.add(pawn.id);
+      }
+      byArea.set(area.id, names);
+    }
+    return { byArea, hit };
+  }, [room.shared.areas, tablePawns, metresPerFoot, cell, pawnShows]);
+  const pawnSpots = useMemo(() => Object.values(tablePawns).map((pawn) => ({
+    name: pawnShows.get(pawn.id)?.name ?? pawn.ownerName, x: pawn.x, z: pawn.z, pad: (PAWN_SQUARES[pawn.kind] * cell) / 2 * 0.9,
+  })), [tablePawns, pawnShows, cell]);
+
+  // A fight: where each pawn stood when this turn began, so the table can say how far it has gone.
+  const combat = room.shared.initiative;
+  const turnEntry = currentEntry(combat);
+  const turnKey = combat ? `${combat.round}|${combat.turn}` : "";
+  const turnStart = useRef<{ key: string; spots: Map<string, { x: number; z: number }> }>({ key: "", spots: new Map() });
+  if (turnStart.current.key !== turnKey) turnStart.current = { key: turnKey, spots: new Map() };
+  for (const pawn of Object.values(tablePawns)) if (!turnStart.current.spots.has(pawn.id)) turnStart.current.spots.set(pawn.id, { x: pawn.x, z: pawn.z });
+  const movedFeet = (pawn: TablePawn) => {
+    const from = turnStart.current.spots.get(pawn.id) ?? pawn;
+    return Math.round(Math.hypot(pawn.x - from.x, pawn.z - from.z) / metresPerFoot / 5) * 5;
+  };
+  const turnUserId = turnEntry?.connectionId ? participants.find((p) => p.connectionId === turnEntry.connectionId)?.id ?? null : null;
+  /** Whether it is this pawn's turn: its player's, or (a monster's turn) the game master's monsters. */
+  const onTurn = (pawn: TablePawn) => (turnEntry?.connectionId ? pawn.owner === turnUserId : !pawn.hero && pawn.owner === gmUserId);
+  const held = heldPawn ? tablePawns[heldPawn] : undefined;
+
+  // Casting: spells with an area are aimed at the map first; the slot is spent when it lands.
+  const myCharacterNow: TableCharacter | undefined = myUserId ? characters[myUserId] : undefined;
+  const [cast, setCast] = useState<CastResult | null>(null);
+  const [aiming, setAimingState] = useState<{ preview: AreaPreview; spell: SpellInfo; slotLevel: number; dice: string | null; note: string } | null>(null);
+  useEffect(() => { if (venueId !== "tabletop") { setAimingState(null); setCast(null); } }, [venueId]);
+  const myHero = Object.values(tablePawns).find((pawn) => pawn.owner === myUserId && pawn.hero);
+  /** Where my spells start: my hero on the map, or the map's edge in front of my chair. */
+  const castFrom = () => {
+    if (myHero) return { x: myHero.x, z: myHero.z };
+    const pose = connectionId ? room.poses.get(connectionId) : null;
+    const toward = Math.atan2((pose?.x ?? TABLE_CENTRE.x) - TABLE_CENTRE.x, (pose?.z ?? TABLE_CENTRE.z + 2) - TABLE_CENTRE.z);
+    return { x: Math.sin(toward) * 1.15, z: Math.cos(toward) * 1.15 };
+  };
+  const setMine = (value: TableCharacter | null) => room.setShared("character", value);
+  const spendSlot = (slotLevel: number) => {
+    if (!slotLevel || !myCharacterNow) return;
+    const used = Array.from({ length: 9 }, (_, i) => myCharacterNow.used?.[i] ?? 0);
+    used[slotLevel - 1] += 1;
+    setMine({ ...myCharacterNow, used });
+  };
+  const castSpell = (spell: SpellInfo, slotLevel: number) => {
+    const dice = castDice(spell.dice, spell, slotLevel, myCharacterNow?.level ?? 1);
+    const note = [spell.save && `${spell.save.slice(0, 3).toUpperCase()} save`, dice && `${dice}${spell.damageType ? ` ${spell.damageType.toLowerCase()}` : ""}`].filter(Boolean).join(" · ");
+    if (spell.area) {
+      const from = castFrom();
+      setCast(null);
+      setHeldPawn(null);
+      setAimingState({
+        preview: { ...spell.area, ox: from.x, oz: from.z, colour: areaColour(spell.damageType ?? undefined), label: `${spell.name} · ${spell.area.size} ft ${spell.area.shape}` },
+        spell, slotLevel, dice, note,
+      });
+      return;
+    }
+    spendSlot(slotLevel);
+    setCast({ spell, slotLevel, dice, areaId: null });
+  };
+  const sendArea = (op: AreaOp) => room.setShared("area", op);
+  tableRef.current = {
+    cell, metresPerFoot, shows: pawnShows, hits: areaHits.hit, areaHits: areaHits.byArea, spots: pawnSpots,
+    aiming: aiming?.preview ?? null,
+    ruler: held ? { from: { x: held.x, z: held.z }, limit: combat ? Math.max(0, speedOf(held) - movedFeet(held)) : null } : null,
+    ring: held && combat ? { at: turnStart.current.spots.get(held.id) ?? held, feet: speedOf(held) } : null,
+    place: (x, z) => {
+      if (!aiming) return;
+      const { preview, spell, slotLevel, dice, note } = aiming;
+      const id = `a${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-3)}`;
+      const reach = rangeFeet(spell.range);
+      const far = Math.hypot(x - preview.ox, z - preview.oz) / metresPerFoot;
+      const warning = !preview.fromSelf && reach !== null && far > reach + 2.5 ? `That point is about ${Math.round(far / 5) * 5} ft away; ${spell.name} reaches ${reach} ft.` : null;
+      sendArea({ op: "put", id, spell: spell.name, shape: preview.shape, size: preview.size, width: preview.width, fromSelf: preview.fromSelf, x, z, ox: preview.ox, oz: preview.oz, colour: preview.colour, note });
+      spendSlot(slotLevel);
+      setCast({ spell, slotLevel, dice, areaId: id, warning });
+      setAimingState(null);
+    },
+    tapArea: (id) => {
+      const area: TableArea | undefined = room.shared.areas[id];
+      if (!area) return;
+      if (!isGm && area.owner !== myUserId) { flashHint(`That ${area.spell} is ${area.ownerName}'s.`); return; }
+      sendArea({ op: "remove", id });
+      flashHint(`${area.spell} taken off the map.`);
+    },
+  };
   const party = participants.flatMap((p) => {
     const character = room.shared.characters[p.id];
     return character && !p.bot && !p.recorder ? [{ character: character.name, player: p.displayName }] : [];
@@ -1621,7 +1807,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const myCharacter = myPerson ? room.shared.characters[myPerson.id] : undefined;
   const playerData = {
     ...screenData,
-    character: myCharacter ? { name: myCharacter.name, portraitUrl: myCharacter.portraitUrl, sheet } : null,
+    character: myCharacter ? { name: myCharacter.name, portraitUrl: myCharacter.portraitUrl, ...sheetOf(myCharacter) } : null,
     notes: playerNotes,
     rolls: { title: "My rolls", lines: myRolls, empty: "Your rolls at the table land here." },
   };
@@ -1842,6 +2028,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               onTakeChair={() => { const refused = room.sit(GM_SEAT_ID); if (refused) setHint(refused); }}
               setGm={(value) => room.setShared("gm", value)}
               map={room.shared.tablemap} canEditMap={canEditMap} setMap={(value) => room.setShared("tablemap", value)}
+              squares={squares} setSquares={(value) => room.setShared("grid", { squares: value })}
               choice={screenChoice} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes}
               folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
@@ -1858,7 +2045,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             <CharacterPanel
               mine={myPerson ? room.shared.characters[myPerson.id] ?? null : null} fallbackName={myName}
               setMine={(value) => room.setShared("character", value)} onClose={() => setPanel(null)}
-              screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerChoice, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes, sheet, setSheet }}
+              legacy={legacySheet}
+              screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerChoice, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes }}
             />
           )}
         </div>
@@ -1869,6 +2057,33 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         const who = holder ? participants.find((p) => p.connectionId === holder)?.displayName : null;
         return seat ? <div className="living-room-tip" style={{ left: hoverSeat.x + 14, top: hoverSeat.y + 14 }}>{seat.label}{who ? ` · ${who}` : " · free"}</div> : null;
       })()}
+      {!controlsHidden && !settingsOpen && venueId === "tabletop" && <div className="lr-side">
+      {held && (() => {
+        const mine = held.owner === myUserId;
+        const heroSheet = held.hero ? characters[held.owner] : undefined;
+        return (
+          <HeldPawnCard
+            name={nameOf(held)}
+            hp={heroSheet ? heroSheet.hp ?? heroSheet.maxHp : held.hp} maxHp={heroSheet ? heroSheet.maxHp : held.maxHp}
+            canEditHp={held.hero ? mine : mine || isGm}
+            setHp={held.hero ? (hp) => heroSheet && setMine({ ...heroSheet, hp }) : (hp, maxHp) => sendPawn({ op: "hp", id: held.id, hp, maxHp })}
+            moved={combat ? movedFeet(held) : null} speed={speedOf(held)}
+            offTurn={combat && turnEntry && !onTurn(held) ? turnEntry.name : null}
+            onLetGo={() => setHeldPawn(null)}
+          />
+        );
+      })()}
+      {(myCharacterNow?.maxHp || myCharacterNow?.cls ? (
+        <HeroCard
+          character={myCharacterNow} onChange={setMine} onEdit={() => setPanel("character")}
+          onCast={castSpell} aiming={aiming?.spell.name ?? null} onStopAiming={() => setAimingState(null)}
+          cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
+          onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
+        />
+      ) : !isGm && panel !== "character" ? (
+        <button type="button" className="lr-hero-make" onClick={() => setPanel("character")}><UserRound size={14} /> Make my character</button>
+      ) : null)}
+      </div>}
       {hint && !settingsOpen && !controlsHidden && (
         <div className="living-room-hint" onClick={() => setHint(null)}>{hint}</div>
       )}
@@ -2097,7 +2312,59 @@ const LIVING_ROOM_CSS = `
 .living-room-panel button.active { background: var(--lr-accent); color: #1b1530; }
 .lr-panels small { width: 56px; }
 .lr-panels button { min-width: 34px; justify-content: center; }
-.lr-sheet { display: grid; grid-template-columns: 1.6fr 1fr 0.7fr 0.9fr; gap: 6px; }
+.lr-sheet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lr-sheet-2 { grid-template-columns: 1.6fr 1fr; }
+.lr-sheet select { width: 100%; height: 30px; }
+.lr-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.lr-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(255, 220, 170, 0.14); }
+.lr-chip button { min-height: 20px !important; padding: 0 4px !important; background: none !important; opacity: 0.7; }
+.living-room-panel button.lr-suggest { min-height: 24px; padding: 0 8px; font-weight: 600; }
+.lr-more summary { cursor: pointer; font-size: 12px; font-weight: 700; opacity: 0.8; padding: 2px 0; }
+.lr-more[open] { display: grid; gap: 8px; }
+.lr-slot-edit { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.lr-slot-edit input { width: 100%; padding: 0 2px !important; text-align: center; }
+.lr-slot-edit small { text-align: center; opacity: 0.75; }
+.lr-warn { color: #fca5a5; }
+/* The right-hand column at the table: the pawn I hold over my character's card. */
+.lr-side { position: absolute; right: 10px; top: 58px; width: min(290px, calc(100% - 20px)); max-height: calc(100% - 200px); overflow-y: auto; display: grid; gap: 8px; justify-items: stretch; z-index: 2; pointer-events: none; }
+.lr-side > * { pointer-events: auto; }
+.lr-hero, .lr-held { display: grid; gap: 7px; padding: 9px 11px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 12px; z-index: 2; }
+.lr-hero button, .lr-held button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 26px; padding: 0 8px; border-radius: 9px; font-size: 12px; font-weight: 700; color: inherit; background: rgba(255, 220, 170, 0.1); }
+.lr-hero button:hover:not(:disabled), .lr-held button:hover:not(:disabled) { background: rgba(255, 220, 170, 0.22); }
+.lr-hero button:disabled { opacity: 0.4; }
+.lr-hero button.active, .lr-hero button.primary { background: var(--lr-accent); color: #1b1530; }
+.lr-hero input, .lr-held input, .lr-hero select { min-width: 0; height: 26px; padding: 0 6px; border-radius: 8px; font: inherit; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
+.lr-hero select option { color: #1b1530; }
+.lr-held input { flex: 1; }
+.lr-held .lr-row { flex-wrap: nowrap; }
+.lr-held strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-hero-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lr-hero-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.lr-hero-head > small { opacity: 0.75; white-space: nowrap; }
+.lr-hero-stats { margin-left: auto; display: inline-flex; gap: 8px; opacity: 0.9; white-space: nowrap; }
+.lr-hero-stats span { display: inline-flex; align-items: center; gap: 3px; }
+.lr-hp { display: flex; align-items: center; gap: 4px; }
+.lr-hp-bar { position: relative; flex: 1; height: 22px; border-radius: 8px; overflow: hidden; background: rgba(255, 255, 255, 0.1); }
+.lr-hp-bar i { position: absolute; inset: 0 auto 0 0; transition: width 0.2s; }
+.lr-hp-bar span { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; height: 100%; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.lr-hp button { width: 26px; padding: 0 !important; }
+.lr-hp-amount { width: 42px; text-align: center; }
+.lr-slots { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.lr-slot-level { display: inline-flex; align-items: center; gap: 3px; }
+.lr-slot-level small { opacity: 0.7; font-weight: 700; margin-right: 1px; }
+.lr-slot-level button { width: 12px; min-height: 12px !important; height: 12px; padding: 0 !important; border-radius: 50% !important; border: 1.5px solid var(--lr-accent); background: transparent !important; }
+.lr-slot-level button.full { background: var(--lr-accent) !important; }
+.lr-spells { max-height: 190px; overflow-y: auto; }
+.lr-spells li { gap: 6px; }
+.lr-spells li small { opacity: 0.7; white-space: nowrap; }
+.lr-cast { display: grid; gap: 6px; padding: 7px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
+.lr-aim { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.lr-aim button { flex: none; }
+.lr-hero-make { justify-self: end; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--lr-ink); background: var(--lr-panel); border: 1px solid var(--lr-edge); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); z-index: 2; }
+@media (max-width: 640px) {
+  /* Below the panels' corner on a phone: the toolbar wraps there. */
+  .lr-side { top: 104px; }
+}
 .lr-abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
 .lr-sheet input, .lr-abilities input { width: 100%; }
 .lr-abilities input { padding: 0 4px !important; text-align: center; }

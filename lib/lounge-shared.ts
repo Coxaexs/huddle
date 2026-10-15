@@ -5,8 +5,9 @@
  * for the life of the call and checks its shape (sanitize), so a client can
  * only ever store these.
  */
+import { CLASSES, type AreaShape } from "./dnd-spells";
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -62,7 +63,29 @@ export interface TableCard {
   by: string;
 }
 
-export interface TableCharacter { name: string; portraitUrl: string | null }
+/**
+ * A player's character at the table: the name and portrait on their tent,
+ * and the few numbers play keeps touching. Everyone at the table sees them.
+ */
+export interface TableCharacter {
+  name: string;
+  portraitUrl: string | null;
+  /** One of CLASSES, or empty. */
+  cls?: string;
+  level?: number;
+  hp?: number;
+  maxHp?: number;
+  ac?: number;
+  /** Feet a turn. */
+  speed?: number;
+  /** STR, DEX, CON, INT, WIS, CHA; 0 when not filled in. */
+  abilities?: number[];
+  /** Spell slots by level (1st to 9th): how many, and how many are spent. */
+  slots?: number[];
+  used?: number[];
+  /** The spells they know or prepared, by name. */
+  spells?: string[];
+}
 
 /**
  * The battle map on the tabletop, in place of the drawn one: an image uploaded
@@ -93,6 +116,11 @@ export type PawnKind = (typeof PAWN_KINDS)[number];
  * the game master while they are in the room (the hub checks).
  */
 export interface TablePawn {
+  /** A player's own character (their first pawn): it shows their HP and moves at their speed. */
+  hero?: boolean;
+  /** Hit points the game master keeps on a monster (a hero's are on its character). */
+  hp?: number;
+  maxHp?: number;
   id: string;
   kind: PawnKind;
   colour: string;
@@ -113,6 +141,7 @@ export interface TablePawn {
 /** What a client asks of a pawn: stand it (somewhere new), put it back, or clear the table. */
 export type PawnOp =
   | { op: "put"; id: string; kind: PawnKind; colour: string; x: number; z: number; facing: number; label: string }
+  | { op: "hp"; id: string; hp: number; maxHp: number }
   | { op: "remove"; id: string }
   | { op: "clear" };
 
@@ -148,6 +177,10 @@ export function applyPawn(
     return Object.keys(next).length === Object.keys(pawns).length ? null : next;
   }
   const existing = pawns[op.id];
+  if (op.op === "hp") {
+    if (!existing || !mayTouch(existing)) return null;
+    return { ...pawns, [op.id]: { ...existing, hp: op.hp, maxHp: op.maxHp } };
+  }
   if (op.op === "remove") {
     if (!existing || !mayTouch(existing)) return null;
     const { [op.id]: _gone, ...rest } = pawns;
@@ -162,7 +195,9 @@ export function applyPawn(
   const all = Object.values(pawns);
   const held = all.filter((pawn) => pawn.owner === who.userId).length;
   if (held >= (who.isGm ? PAWNS_GM : PAWNS_EACH) || all.length >= PAWNS_MAX) return null;
-  return { ...pawns, [op.id]: { id: op.id, kind: op.kind, colour: op.colour, x: op.x, z: op.z, facing: op.facing, label: op.label, owner: who.userId, ownerName: who.name, at: now } };
+  // A player's first pawn is their character; the game master's are monsters.
+  const hero = !who.isGm && !all.some((pawn) => pawn.owner === who.userId && pawn.hero);
+  return { ...pawns, [op.id]: { id: op.id, kind: op.kind, colour: op.colour, x: op.x, z: op.z, facing: op.facing, label: op.label, owner: who.userId, ownerName: who.name, at: now, ...(hero ? { hero } : {}) } };
 }
 
 /** A pawn request as sent, cleaned into a PawnOp (null: not one). */
@@ -173,6 +208,10 @@ export function sanitizePawnOp(raw: unknown): PawnOp | null {
   const id = typeof value.id === "string" && /^[\w-]{4,24}$/.test(value.id) ? value.id : "";
   if (!id) return null;
   if (value.op === "remove") return { op: "remove", id };
+  if (value.op === "hp") {
+    const maxHp = Math.round(num(value.maxHp, 0, 9999));
+    return { op: "hp", id, hp: Math.round(num(value.hp, 0, maxHp)), maxHp };
+  }
   if (value.op !== "put") return null;
   const kind = PAWN_KINDS.find((k) => k === value.kind);
   if (!kind) return null;
@@ -260,7 +299,30 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
     case "character": {
       const name = str(value.name, 40).trim();
       if (!name) return null;
-      return { name, portraitUrl: safeMediaUrl(value.portraitUrl) } satisfies TableCharacter;
+      const whole = (v: unknown, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) ? Math.round(Math.max(min, Math.min(max, v))) : undefined);
+      const list = (v: unknown, length: number, max: number) => (Array.isArray(v) ? Array.from({ length }, (_, i) => whole(v[i], 0, max) ?? 0) : undefined);
+      const cls = CLASSES.find((c) => c === value.cls);
+      const maxHp = whole(value.maxHp, 0, 9999);
+      const slots = list(value.slots, 9, 9);
+      const spells = Array.isArray(value.spells)
+        ? [...new Set(value.spells.flatMap((spell) => (typeof spell === "string" && spell.trim() ? [spell.trim().slice(0, 60)] : [])))].slice(0, 40)
+        : undefined;
+      const sheet: TableCharacter = {
+        name,
+        portraitUrl: safeMediaUrl(value.portraitUrl),
+        ...(cls ? { cls } : {}),
+        level: whole(value.level, 1, 20),
+        maxHp,
+        hp: whole(value.hp, 0, maxHp ?? 9999),
+        ac: whole(value.ac, 0, 40),
+        speed: whole(value.speed, 0, 300),
+        abilities: list(value.abilities, 6, 30),
+        slots,
+        // Never more spent than there are.
+        used: slots ? list(value.used, 9, 9)?.map((n, i) => Math.min(n, slots[i])) : undefined,
+        spells,
+      };
+      return Object.fromEntries(Object.entries(sheet).filter(([, v]) => v !== undefined)) as unknown as TableCharacter;
     }
     case "tablemap": {
       // Only this server's own uploads: an image from elsewhere would taint the table's WebGL texture.
@@ -287,6 +349,12 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
     case "pawn":
       // A request, not a value: the hub applies it to the table with applyPawn.
       return sanitizePawnOp(value);
+    case "area":
+      return sanitizeAreaOp(value);
+    case "grid": {
+      const squares = num(value.squares, 10, 60, 0);
+      return squares ? ({ squares: Math.round(squares) } satisfies TableGrid) : null;
+    }
   }
 }
 
@@ -338,4 +406,96 @@ export function stepTurn(init: Initiative, direction: 1 | -1 = 1): Initiative {
   if (raw >= count) return { ...init, turn: 0, round: init.round + 1 };
   if (raw < 0) return { ...init, turn: count - 1, round: Math.max(1, init.round - 1) };
   return { ...init, turn: raw };
+}
+
+/* ---------- spell areas ---------- */
+
+/**
+ * How big the table's map is in 5-foot squares from edge to edge: the scale
+ * that pawns, rulers and spell areas use. The game master sets it to match
+ * an uploaded map's grid.
+ */
+export interface TableGrid { squares: number }
+export const DEFAULT_SQUARES = 22;
+
+/**
+ * A spell's area put on the map: its shape and size in feet, where it points
+ * (x, z) and where it starts (ox, oz), in metres from the table's centre. It
+ * stays until its caster or the game master takes it off.
+ */
+export interface TableArea {
+  id: string;
+  spell: string;
+  shape: AreaShape;
+  size: number;
+  width: number;
+  fromSelf: boolean;
+  x: number;
+  z: number;
+  ox: number;
+  oz: number;
+  colour: string;
+  /** What to say over it: "DEX save · 8d6 fire". */
+  note: string;
+  owner: string;
+  ownerName: string;
+  /** Hub clock (ms); the hub stamps it. */
+  at: number;
+}
+
+export type AreaOp =
+  | { op: "put"; id: string; spell: string; shape: AreaShape; size: number; width: number; fromSelf: boolean; x: number; z: number; ox: number; oz: number; colour: string; note: string }
+  | { op: "remove"; id: string }
+  | { op: "clear" };
+
+/** At most this many areas stand on the table; another takes the oldest off. */
+export const AREAS_MAX = 8;
+const AREA_SHAPES: AreaShape[] = ["sphere", "cone", "line", "cube"];
+
+export function sanitizeAreaOp(raw: unknown): AreaOp | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (value.op === "clear") return { op: "clear" };
+  const id = typeof value.id === "string" && /^[\w-]{4,24}$/.test(value.id) ? value.id : "";
+  if (!id) return null;
+  if (value.op === "remove") return { op: "remove", id };
+  if (value.op !== "put") return null;
+  const shape = AREA_SHAPES.find((s) => s === value.shape);
+  const spell = str(value.spell, 60).trim();
+  if (!shape || !spell) return null;
+  const spot = (v: unknown) => Math.round(num(v, -2, 2) * 1000) / 1000;
+  return {
+    op: "put", id, spell, shape,
+    size: Math.round(num(value.size, 5, 500, 5)),
+    width: Math.round(num(value.width, 0, 100)),
+    fromSelf: value.fromSelf === true,
+    x: spot(value.x), z: spot(value.z), ox: spot(value.ox), oz: spot(value.oz),
+    colour: typeof value.colour === "string" && /^#[0-9a-f]{6}$/i.test(value.colour) ? value.colour.toLowerCase() : "#ffd27a",
+    note: str(value.note, 60).trim(),
+  };
+}
+
+/** The table's areas after one request, or null when it is not `who`'s to make. */
+export function applyArea(
+  areas: Record<string, TableArea>,
+  op: AreaOp,
+  who: { userId: string; name: string; isGm: boolean },
+  now: number,
+): Record<string, TableArea> | null {
+  if (op.op === "clear") {
+    const next = Object.fromEntries(Object.entries(areas).filter(([, area]) => !(who.isGm || area.owner === who.userId)));
+    return Object.keys(next).length === Object.keys(areas).length ? null : next;
+  }
+  const existing = areas[op.id];
+  if (existing && !(who.isGm || existing.owner === who.userId)) return null;
+  if (op.op === "remove") {
+    if (!existing) return null;
+    const { [op.id]: _gone, ...rest } = areas;
+    return rest;
+  }
+  const { op: _op, ...spec } = op;
+  const next = { ...areas, [op.id]: { ...spec, owner: existing?.owner ?? who.userId, ownerName: existing?.ownerName ?? who.name, at: now } };
+  const all = Object.values(next).sort((a, b) => a.at - b.at);
+  for (const old of all.slice(0, Math.max(0, all.length - AREAS_MAX))) delete next[old.id];
+  return next;
 }

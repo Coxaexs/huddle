@@ -7,6 +7,8 @@ import {
   type GameMaster, type HouseLights, type Initiative, type PawnKind, type TableCharacter, type TableMap, type TablePawn, type WatchState,
 } from "@/lib/lounge-shared";
 import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
+import { CLASSES, slotsFor } from "@/lib/dnd-spells";
+import { searchSpells } from "../lib/spell-book";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
@@ -462,23 +464,107 @@ export interface PlayerScreenSettings {
   setChoice: (value: ScreenPageId[]) => void;
   notes: string;
   setNotes: (value: string) => void;
-  sheet: CharacterSheet;
-  setSheet: (value: CharacterSheet) => void;
 }
 
-export function CharacterPanel({ mine, fallbackName, setMine, screen, onClose }: {
+/** The old sheet this browser kept ("Rogue 3", "18/24"), read into numbers to start the new one with. */
+function fromLegacy(sheet: CharacterSheet | null): Partial<TableCharacter> {
+  if (!sheet) return {};
+  const int = (text: string) => { const n = parseInt(text, 10); return Number.isFinite(n) ? n : undefined; };
+  const cls = CLASSES.find((c) => sheet.level.toLowerCase().includes(c.toLowerCase()));
+  const hp = /(\d+)\s*\/\s*(\d+)/.exec(sheet.hp);
+  return {
+    ...(cls ? { cls } : {}),
+    level: int(sheet.level.replace(/\D+/g, " ").trim()),
+    ...(hp ? { hp: Number(hp[1]), maxHp: Number(hp[2]) } : { maxHp: int(sheet.hp) }),
+    ac: int(sheet.ac),
+    speed: int(sheet.speed),
+    abilities: sheet.abilities.map((a) => int(a) ?? 0),
+  };
+}
+
+/** Spells by name: type a few letters, pick one; each shows as a chip to take off again. */
+function SpellPicker({ spells, setSpells }: { spells: string[]; setSpells: (value: string[]) => void }) {
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<string[]>([]);
+  useEffect(() => {
+    if (query.trim().length < 2) { setFound([]); return; }
+    let live = true;
+    const later = setTimeout(() => { void searchSpells(query).then((names) => { if (live) setFound(names.filter((n) => !spells.includes(n))); }); }, 250);
+    return () => { live = false; clearTimeout(later); };
+  }, [query, spells]);
+  const add = (name: string) => { if (!spells.includes(name) && spells.length < 40) setSpells([...spells, name]); setQuery(""); setFound([]); };
+  return (
+    <div className="lr-field">
+      <small>Spells</small>
+      {spells.length > 0 && (
+        <div className="lr-chips">
+          {spells.map((name) => (
+            <span key={name} className="lr-chip">{name}<button type="button" onClick={() => setSpells(spells.filter((s) => s !== name))} aria-label={`Remove ${name}`}><X size={11} /></button></span>
+          ))}
+        </div>
+      )}
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Add a spell: fireball, cure wounds…" aria-label="Find a spell" maxLength={60}
+        onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); add(found[0]); } }} />
+      {found.length > 0 && (
+        <div className="lr-chips">
+          {found.map((name) => <button key={name} type="button" className="lr-suggest" onClick={() => add(name)}><Plus size={11} /> {name}</button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * My character: a name, class and level, the few numbers play uses, and my
+ * spells. Slots come from the class and level by themselves. The portrait,
+ * ability scores and my own screen fold away under "More".
+ */
+export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, onClose }: {
   mine: TableCharacter | null;
   fallbackName: string;
   setMine: (value: TableCharacter | null) => void;
+  /** What this browser's old sheet held, to start from when there is no sheet yet. */
+  legacy: CharacterSheet | null;
   screen: PlayerScreenSettings;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(mine?.name ?? "");
-  const [portrait, setPortrait] = useState(mine?.portraitUrl ?? "");
+  const start = { ...(mine?.maxHp === undefined && !mine?.cls ? fromLegacy(legacy) : {}), ...Object.fromEntries(Object.entries(mine ?? {}).filter(([, v]) => v !== undefined)) } as Partial<TableCharacter>;
+  const [name, setName] = useState(start.name ?? "");
+  const [portrait, setPortrait] = useState(start.portraitUrl ?? "");
+  const [cls, setCls] = useState(start.cls ?? "");
+  const [level, setLevel] = useState(String(start.level ?? 1));
+  const [maxHp, setMaxHp] = useState(start.maxHp !== undefined ? String(start.maxHp) : "");
+  const [ac, setAc] = useState(start.ac !== undefined ? String(start.ac) : "");
+  const [speed, setSpeed] = useState(String(start.speed ?? 30));
+  const [abilities, setAbilities] = useState<string[]>((start.abilities ?? [0, 0, 0, 0, 0, 0]).map((n) => (n ? String(n) : "")));
+  const [spells, setSpells] = useState<string[]>(start.spells ?? []);
+  const auto = slotsFor(cls, Number(level) || 1);
+  const [customSlots, setCustomSlots] = useState<string[] | null>(() =>
+    start.slots && start.slots.some((n, i) => n !== slotsFor(start.cls ?? "", start.level ?? 1)[i]) ? start.slots.map(String) : null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const file = useRef<HTMLInputElement | null>(null);
-  const save = () => setMine({ name: name.trim() || fallbackName, portraitUrl: portrait.trim() || null });
+  const num = (text: string) => { const n = Math.round(Number(text)); return text.trim() && Number.isFinite(n) ? n : undefined; };
+  const save = () => {
+    const slots = customSlots ? customSlots.map((n) => Math.max(0, num(n) ?? 0)) : auto;
+    const max = num(maxHp);
+    const oldMax = mine?.maxHp;
+    // A new maximum heals by the difference; a lower one caps what is left.
+    const hp = max === undefined ? undefined : mine?.hp === undefined ? max : Math.max(0, Math.min(max, mine.hp + (oldMax === undefined ? 0 : max - oldMax)));
+    setMine({
+      name: name.trim() || fallbackName,
+      portraitUrl: portrait.trim() || null,
+      ...(cls ? { cls } : {}),
+      level: num(level) ?? 1,
+      ...(max !== undefined ? { maxHp: max, hp } : {}),
+      ...(num(ac) !== undefined ? { ac: num(ac) } : {}),
+      speed: num(speed) ?? 30,
+      abilities: abilities.map((a) => num(a) ?? 0),
+      slots,
+      used: (mine?.used ?? Array(9).fill(0)).map((n, i) => Math.min(n, slots[i] ?? 0)),
+      spells,
+    });
+  };
   const chooseFile = async (chosen: File | undefined) => {
     if (!chosen) return;
     setBusy(true); setProblem(null);
@@ -486,53 +572,78 @@ export function CharacterPanel({ mine, fallbackName, setMine, screen, onClose }:
     catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
+  const caster = auto.some((n) => n > 0);
   return (
     <div className="living-room-panel" role="dialog" aria-label="My character">
       <div className="living-room-panel-head"><strong>My character</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
-      <label className="lr-field"><small>Name on my card</small><input value={name} onChange={(event) => setName(event.target.value)} placeholder={fallbackName} maxLength={40} /></label>
-      <label className="lr-field"><small>Portrait</small><input value={portrait} onChange={(event) => setPortrait(event.target.value)} placeholder="https://… or upload" maxLength={600} /></label>
-      <div className="lr-row">
-        <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a portrait"}</button>
-        <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
+      <label className="lr-field"><small>Name</small><input value={name} onChange={(event) => setName(event.target.value)} placeholder={fallbackName} maxLength={40} /></label>
+      <div className="lr-sheet lr-sheet-2">
+        <label className="lr-field"><small>Class</small>
+          <select value={cls} onChange={(event) => setCls(event.target.value)}>
+            <option value="">Choose…</option>
+            {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label className="lr-field"><small>Level</small><input value={level} onChange={(event) => setLevel(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" /></label>
       </div>
-      {problem && <p className="lr-note">{problem}</p>}
+      <div className="lr-sheet">
+        <label className="lr-field"><small>Max HP</small><input value={maxHp} onChange={(event) => setMaxHp(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="24" /></label>
+        <label className="lr-field"><small>AC</small><input value={ac} onChange={(event) => setAc(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="15" /></label>
+        <label className="lr-field"><small>Speed (ft)</small><input value={speed} onChange={(event) => setSpeed(event.target.value.replace(/\D/g, "").slice(0, 3))} inputMode="numeric" placeholder="30" /></label>
+      </div>
+      {caster && !customSlots && (
+        <p className="lr-note">Spell slots: {auto.map((n, i) => (n ? `${n}×${i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}` : "")).filter(Boolean).join(" · ")}</p>
+      )}
+      <SpellPicker spells={spells} setSpells={setSpells} />
       <div className="lr-row">
         <button type="button" className="primary" onClick={() => { save(); onClose(); }}>Save</button>
         {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>Clear</button>}
       </div>
 
-      <small className="lr-heading">My sheet</small>
-      <div className="lr-sheet">
-        <label className="lr-field"><small>Class &amp; level</small><input value={screen.sheet.level} onChange={(event) => screen.setSheet({ ...screen.sheet, level: event.target.value })} placeholder="Rogue 3" maxLength={40} /></label>
-        <label className="lr-field"><small>HP</small><input value={screen.sheet.hp} onChange={(event) => screen.setSheet({ ...screen.sheet, hp: event.target.value })} placeholder="18/24" maxLength={20} /></label>
-        <label className="lr-field"><small>AC</small><input value={screen.sheet.ac} onChange={(event) => screen.setSheet({ ...screen.sheet, ac: event.target.value })} placeholder="15" maxLength={20} /></label>
-        <label className="lr-field"><small>Speed</small><input value={screen.sheet.speed} onChange={(event) => screen.setSheet({ ...screen.sheet, speed: event.target.value })} placeholder="30 ft" maxLength={20} /></label>
-      </div>
-      <div className="lr-abilities">
-        {ABILITIES.map((name, i) => (
-          <label key={name} className="lr-field"><small>{name}</small>
-            <input value={screen.sheet.abilities[i]} inputMode="numeric" maxLength={3} placeholder="10"
-              onChange={(event) => screen.setSheet({ ...screen.sheet, abilities: screen.sheet.abilities.map((old, j) => (j === i ? event.target.value : old)) })} />
-          </label>
-        ))}
-      </div>
-
-      <small className="lr-heading">My screen (only you see it)</small>
-      <div className="lr-row">
-        <button type="button" className={screen.open ? "active" : ""} aria-pressed={screen.open} onClick={() => screen.setOpen(!screen.open)}>
-          {screen.open ? "Put my screen away" : "Stand my screen up"}
-        </button>
-      </div>
-      {screen.open && (
-        <>
-          <ScreenPagesPicker role="player" choice={screen.choice} setChoice={screen.setChoice} />
-          <label className="lr-field">
-            <small>My notes</small>
-            <textarea value={screen.notes} onChange={(event) => screen.setNotes(event.target.value)} rows={3} maxLength={2000} placeholder="Owe Brannigan 5 gold. The key fits the red door." />
-          </label>
-          <p className="lr-note">It stands in front of your chair at the table. Nobody else sees it.</p>
-        </>
-      )}
+      <details className="lr-more">
+        <summary>More: portrait, ability scores, slots, my screen</summary>
+        <label className="lr-field"><small>Portrait</small><input value={portrait} onChange={(event) => setPortrait(event.target.value)} placeholder="https://… or upload" maxLength={600} /></label>
+        <div className="lr-row">
+          <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a portrait"}</button>
+          <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
+        </div>
+        {problem && <p className="lr-note">{problem}</p>}
+        <div className="lr-abilities">
+          {ABILITIES.map((ability, i) => (
+            <label key={ability} className="lr-field"><small>{ability}</small>
+              <input value={abilities[i]} inputMode="numeric" maxLength={2} placeholder="10" onChange={(event) => setAbilities(abilities.map((old, j) => (j === i ? event.target.value.replace(/\D/g, "") : old)))} />
+            </label>
+          ))}
+        </div>
+        <label className="living-room-switch">
+          <span><strong>Set my own spell slots</strong><small>For multiclassing, or a subclass that casts. Off: from class and level.</small></span>
+          <input type="checkbox" checked={Boolean(customSlots)} onChange={(event) => setCustomSlots(event.target.checked ? auto.map(String) : null)} />
+        </label>
+        {customSlots && (
+          <div className="lr-slot-edit">
+            {customSlots.map((n, i) => (
+              <label key={i} className="lr-field"><small>{i + 1}</small>
+                <input value={n} inputMode="numeric" maxLength={1} onChange={(event) => setCustomSlots(customSlots.map((old, j) => (j === i ? event.target.value.replace(/\D/g, "").slice(0, 1) : old)))} />
+              </label>
+            ))}
+          </div>
+        )}
+        <small className="lr-heading">My screen (only you see it)</small>
+        <div className="lr-row">
+          <button type="button" className={screen.open ? "active" : ""} aria-pressed={screen.open} onClick={() => screen.setOpen(!screen.open)}>
+            {screen.open ? "Put my screen away" : "Stand my screen up"}
+          </button>
+        </div>
+        {screen.open && (
+          <>
+            <ScreenPagesPicker role="player" choice={screen.choice} setChoice={screen.setChoice} />
+            <label className="lr-field">
+              <small>My notes</small>
+              <textarea value={screen.notes} onChange={(event) => screen.setNotes(event.target.value)} rows={3} maxLength={2000} placeholder="Owe Brannigan 5 gold. The key fits the red door." />
+            </label>
+          </>
+        )}
+      </details>
     </div>
   );
 }
@@ -540,7 +651,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, screen, onClose }:
  * The tabletop's game master: who it is and their chair, the battle map on
  * the table, and what the inside of their screen shows.
  */
-export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, choice, setChoice, folded, setFolded, notes, setNotes, onClose }: {
+export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, squares, setSquares, choice, setChoice, folded, setFolded, notes, setNotes, onClose }: {
   gm: GameMaster | null;
   myId: string | null;
   myName: string;
@@ -550,6 +661,9 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   map: TableMap | null;
   canEditMap: boolean;
   setMap: (value: { url: string; turns: number; zoom: number } | null) => void;
+  /** The map's width in 5-foot squares: the scale of pawns, rulers and spells. */
+  squares: number;
+  setSquares: (squares: number) => void;
   choice: ScreenPageId[];
   setChoice: (value: ScreenPageId[]) => void;
   /** The screen folded flat on the table, for everyone. */
@@ -565,6 +679,13 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   const [zoom, setZoom] = useState(map?.zoom ?? 1);
   const file = useRef<HTMLInputElement | null>(null);
   useEffect(() => { setZoom(map?.zoom ?? 1); }, [map?.zoom]);
+  const [grid, setGrid] = useState(squares);
+  useEffect(() => { setGrid(squares); }, [squares]);
+  useEffect(() => {
+    if (grid === squares) return;
+    const later = setTimeout(() => setSquares(grid), 250);
+    return () => clearTimeout(later);
+  }, [grid, squares, setSquares]);
   // A slider sends many values; the room only needs the one it settles on.
   useEffect(() => {
     if (!map || zoom === map.zoom) return;
@@ -603,8 +724,12 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
               <input type="range" min={1} max={4} step={0.1} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Map zoom" />
             </label>
           )}
+          <label className="lr-field">
+            <small>Scale: {grid} squares across ({grid * 5} ft)</small>
+            <input type="range" min={10} max={60} step={1} value={grid} onChange={(event) => setGrid(Number(event.target.value))} aria-label="Squares across the map" />
+          </label>
           {problem && <p className="lr-note">{problem}</p>}
-          <p className="lr-note">Everyone at the table sees it. The middle of the picture fills the round table.</p>
+          <p className="lr-note">Everyone at the table sees it. The middle of the picture fills the round table. Match the scale to the map&apos;s grid: pawns, rulers and spells use it.</p>
         </>
       ) : (
         <p className="lr-note">{map ? `The map is ${map.by}'s upload. ` : ""}Only the game master changes the map.</p>

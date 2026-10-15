@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PAWNS_EACH, PAWN_REACH, addInitiative, applyPawn, cinemaSeatLabel, currentEntry, removeInitiative, safeMediaUrl, sanitizePawnOp, sanitizeShared, stepTurn, watchPosition, type Initiative, type PawnOp, type TablePawn, type WatchState } from "./lounge-shared";
+import { AREAS_MAX, PAWNS_EACH, PAWN_REACH, addInitiative, applyArea, applyPawn, sanitizeAreaOp, cinemaSeatLabel, currentEntry, removeInitiative, safeMediaUrl, sanitizePawnOp, sanitizeShared, stepTurn, watchPosition, type Initiative, type AreaOp, type PawnOp, type TableArea, type TableCharacter, type TablePawn, type WatchState } from "./lounge-shared";
 
 describe("safeMediaUrl", () => {
   it("allows https links and this server's own uploads, and nothing else", () => {
@@ -167,5 +167,73 @@ describe("pawns", () => {
     expect(Object.keys(applyPawn(table, { op: "clear" }, kit, 2)!)).toEqual(["sam-1"]);
     expect(applyPawn(table, { op: "clear" }, gm, 2)).toEqual({});
     expect(applyPawn({}, { op: "clear" }, sam, 2)).toBeNull();
+  });
+});
+
+describe("character sheet", () => {
+  it("keeps the numbers in bounds and drops what is not a class", () => {
+    const sheet = sanitizeShared("character", {
+      name: "Aria", cls: "Wizard", level: 25, maxHp: 31, hp: 99, ac: 15, speed: 30,
+      slots: [4, 3, 2], used: [5, 1], spells: ["Fireball", "Fireball", " Shield ", 7, ""], abilities: [8, 14, 12, 18, 10, 99],
+    }, "Aria", 1) as TableCharacter;
+    expect(sheet).toMatchObject({ cls: "Wizard", level: 20, maxHp: 31, hp: 31, ac: 15, speed: 30 });
+    expect(sheet.slots).toEqual([4, 3, 2, 0, 0, 0, 0, 0, 0]);
+    expect(sheet.used).toEqual([4, 1, 0, 0, 0, 0, 0, 0, 0]);
+    expect(sheet.spells).toEqual(["Fireball", "Shield"]);
+    expect(sheet.abilities).toEqual([8, 14, 12, 18, 10, 30]);
+    expect((sanitizeShared("character", { name: "Bo", cls: "Wizzard" }, "Bo", 1) as TableCharacter).cls).toBeUndefined();
+    // An old tab sends only the name and portrait.
+    expect(sanitizeShared("character", { name: "Bo", portraitUrl: null }, "Bo", 1)).toEqual({ name: "Bo", portraitUrl: null });
+  });
+});
+
+describe("pawn hit points", () => {
+  const put = (id: string): PawnOp => ({ op: "put", id, kind: "beast", colour: "#3b4fa8", x: 0, z: 0, facing: 0, label: "Ogre" });
+  it("makes a player's first pawn their hero, never the game master's", () => {
+    const sam = { userId: "u-sam", name: "Sam", isGm: false };
+    const gm = { userId: "u-gm", name: "Dee", isGm: true };
+    let table = applyPawn({}, put("sam-1"), sam, 1)!;
+    table = applyPawn(table, put("sam-2"), sam, 2)!;
+    table = applyPawn(table, put("ogre-1"), gm, 3)!;
+    expect([table["sam-1"].hero, table["sam-2"].hero, table["ogre-1"].hero]).toEqual([true, undefined, undefined]);
+    table = applyPawn(table, { op: "hp", id: "ogre-1", hp: 70, maxHp: 59 }, gm, 4)!;
+    expect(table["ogre-1"]).toMatchObject({ hp: 70, maxHp: 59 });
+    expect(applyPawn(table, { op: "hp", id: "ogre-1", hp: 1, maxHp: 59 }, sam, 5)).toBeNull();
+    expect(sanitizePawnOp({ op: "hp", id: "ogre-1", hp: 70, maxHp: 59 })).toEqual({ op: "hp", id: "ogre-1", hp: 59, maxHp: 59 });
+  });
+});
+
+describe("spell areas", () => {
+  const cast = (id: string): AreaOp => sanitizeAreaOp({ op: "put", id, spell: "Fireball", shape: "sphere", size: 20, x: 0.3, z: -0.2, ox: 0, oz: 1, colour: "#FF7A1A", note: "DEX save · 8d6 fire" })!;
+  const aria = { userId: "u-aria", name: "Aria", isGm: false };
+  const kit = { userId: "u-kit", name: "Kit", isGm: false };
+  const gm = { userId: "u-gm", name: "Dee", isGm: true };
+
+  it("cleans what a client sends", () => {
+    expect(cast("area1")).toMatchObject({ op: "put", shape: "sphere", size: 20, colour: "#ff7a1a", fromSelf: false });
+    expect(sanitizeAreaOp({ op: "put", id: "area1", spell: "X", shape: "donut", size: 20, x: 0, z: 0, ox: 0, oz: 0 })).toBeNull();
+    expect(sanitizeAreaOp({ op: "put", id: "area1", spell: "", shape: "cone", size: 20 })).toBeNull();
+  });
+
+  it("lets the caster and the game master take an area off, and nobody else", () => {
+    const table = applyArea({}, cast("area1"), aria, 1)!;
+    expect(table.area1).toMatchObject({ owner: "u-aria", ownerName: "Aria", at: 1 });
+    expect(applyArea(table, { op: "remove", id: "area1" }, kit, 2)).toBeNull();
+    expect(applyArea(table, cast("area1"), kit, 2)).toBeNull();
+    expect(applyArea(table, { op: "remove", id: "area1" }, gm, 2)).toEqual({});
+    expect(applyArea(table, { op: "clear" }, aria, 2)).toEqual({});
+  });
+
+  it("keeps a few at most, taking the oldest off", () => {
+    let table: Record<string, TableArea> = {};
+    for (let i = 0; i < AREAS_MAX + 2; i++) table = applyArea(table, cast(`area${i}`), aria, i)!;
+    expect(Object.keys(table)).toHaveLength(AREAS_MAX);
+    expect(table.area0).toBeUndefined();
+    expect(table[`area${AREAS_MAX + 1}`]).toBeDefined();
+  });
+
+  it("keeps the map's scale sensible", () => {
+    expect(sanitizeShared("grid", { squares: 200 }, "Dee", 1)).toEqual({ squares: 60 });
+    expect(sanitizeShared("grid", { squares: "lots" }, "Dee", 1)).toBeNull();
   });
 });
