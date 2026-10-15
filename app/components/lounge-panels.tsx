@@ -6,7 +6,7 @@ import {
   addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
   type GameMaster, type HouseLights, type Initiative, type TableCharacter, type TableMap, type WatchState,
 } from "@/lib/lounge-shared";
-import { SCREEN_PAGES, type ScreenPageId } from "../lib/gm-screen";
+import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
@@ -424,10 +424,53 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
 }
 
 /** My character at the table: the name and portrait on my tent card. */
-export function CharacterPanel({ mine, fallbackName, setMine, onClose }: {
+/**
+ * What a screen's panels show, panel by panel, and how many it has: the game
+ * master's three to five, a player's two to four.
+ */
+function ScreenPagesPicker({ role, choice, setChoice }: { role: ScreenRole; choice: ScreenPageId[]; setChoice: (value: ScreenPageId[]) => void }) {
+  const { min, max } = SCREEN_SIZES[role];
+  const counts = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  // As the owner sees them: Left, Middle, Right; with more, the ones between are numbered.
+  const label = (index: number) =>
+    index === 0 ? "Left" : index === choice.length - 1 ? "Right" : choice.length === 3 ? "Middle" : `Panel ${index + 1}`;
+  return (
+    <>
+      <div className="lr-row lr-panels" role="group" aria-label="Panels">
+        <small>Panels</small>
+        {counts.map((count) => (
+          <button key={count} type="button" className={choice.length === count ? "active" : ""} aria-pressed={choice.length === count} onClick={() => setChoice(resizeChoice(role, choice, count))}>{count}</button>
+        ))}
+      </div>
+      {choice.map((id, index) => (
+        <label key={index} className="lr-field lr-inline">
+          <small>{label(index)}</small>
+          <select value={id} onChange={(event) => setChoice(choice.map((old, i) => (i === index ? (event.target.value as ScreenPageId) : old)))}>
+            {pagesFor(role).map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
+          </select>
+        </label>
+      ))}
+    </>
+  );
+}
+
+/** My own little screen at the table: only I ever see it. */
+export interface PlayerScreenSettings {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  choice: ScreenPageId[];
+  setChoice: (value: ScreenPageId[]) => void;
+  notes: string;
+  setNotes: (value: string) => void;
+  sheet: CharacterSheet;
+  setSheet: (value: CharacterSheet) => void;
+}
+
+export function CharacterPanel({ mine, fallbackName, setMine, screen, onClose }: {
   mine: TableCharacter | null;
   fallbackName: string;
   setMine: (value: TableCharacter | null) => void;
+  screen: PlayerScreenSettings;
   onClose: () => void;
 }) {
   const [name, setName] = useState(mine?.name ?? "");
@@ -457,6 +500,39 @@ export function CharacterPanel({ mine, fallbackName, setMine, onClose }: {
         <button type="button" className="primary" onClick={() => { save(); onClose(); }}>Save</button>
         {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>Clear</button>}
       </div>
+
+      <small className="lr-heading">My sheet</small>
+      <div className="lr-sheet">
+        <label className="lr-field"><small>Class &amp; level</small><input value={screen.sheet.level} onChange={(event) => screen.setSheet({ ...screen.sheet, level: event.target.value })} placeholder="Rogue 3" maxLength={40} /></label>
+        <label className="lr-field"><small>HP</small><input value={screen.sheet.hp} onChange={(event) => screen.setSheet({ ...screen.sheet, hp: event.target.value })} placeholder="18/24" maxLength={20} /></label>
+        <label className="lr-field"><small>AC</small><input value={screen.sheet.ac} onChange={(event) => screen.setSheet({ ...screen.sheet, ac: event.target.value })} placeholder="15" maxLength={20} /></label>
+        <label className="lr-field"><small>Speed</small><input value={screen.sheet.speed} onChange={(event) => screen.setSheet({ ...screen.sheet, speed: event.target.value })} placeholder="30 ft" maxLength={20} /></label>
+      </div>
+      <div className="lr-abilities">
+        {ABILITIES.map((name, i) => (
+          <label key={name} className="lr-field"><small>{name}</small>
+            <input value={screen.sheet.abilities[i]} inputMode="numeric" maxLength={3} placeholder="10"
+              onChange={(event) => screen.setSheet({ ...screen.sheet, abilities: screen.sheet.abilities.map((old, j) => (j === i ? event.target.value : old)) })} />
+          </label>
+        ))}
+      </div>
+
+      <small className="lr-heading">My screen (only you see it)</small>
+      <div className="lr-row">
+        <button type="button" className={screen.open ? "active" : ""} aria-pressed={screen.open} onClick={() => screen.setOpen(!screen.open)}>
+          {screen.open ? "Put my screen away" : "Stand my screen up"}
+        </button>
+      </div>
+      {screen.open && (
+        <>
+          <ScreenPagesPicker role="player" choice={screen.choice} setChoice={screen.setChoice} />
+          <label className="lr-field">
+            <small>My notes</small>
+            <textarea value={screen.notes} onChange={(event) => screen.setNotes(event.target.value)} rows={3} maxLength={2000} placeholder="Owe Brannigan 5 gold. The key fits the red door." />
+          </label>
+          <p className="lr-note">It stands in front of your chair at the table. Nobody else sees it.</p>
+        </>
+      )}
     </div>
   );
 }
@@ -464,7 +540,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, onClose }: {
  * The tabletop's game master: who it is and their chair, the battle map on
  * the table, and what the inside of their screen shows.
  */
-export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, choice, setChoice, notes, setNotes, onClose }: {
+export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, choice, setChoice, folded, setFolded, notes, setNotes, onClose }: {
   gm: GameMaster | null;
   myId: string | null;
   myName: string;
@@ -476,6 +552,9 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   setMap: (value: { url: string; turns: number; zoom: number } | null) => void;
   choice: ScreenPageId[];
   setChoice: (value: ScreenPageId[]) => void;
+  /** The screen folded flat on the table, for everyone. */
+  folded: boolean;
+  setFolded: (folded: boolean) => void;
   notes: string;
   setNotes: (value: string) => void;
   onClose: () => void;
@@ -499,7 +578,6 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
     catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
-  const positions = ["Left", "Middle", "Right"];
   return (
     <div className="living-room-panel" role="dialog" aria-label="Game master">
       <div className="living-room-panel-head"><strong>Game master</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
@@ -534,15 +612,18 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
 
       {isGm ? (
         <>
-          <small className="lr-heading">Inside your screen (only you see it)</small>
-          {positions.map((label, index) => (
-            <label key={label} className="lr-field lr-inline">
-              <small>{label}</small>
-              <select value={choice[index]} onChange={(event) => setChoice(choice.map((id, i) => (i === index ? (event.target.value as ScreenPageId) : id)))}>
-                {SCREEN_PAGES.map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
-              </select>
-            </label>
-          ))}
+          <small className="lr-heading">Your screen</small>
+          <div className="lr-row">
+            <button type="button" className={folded ? "" : "active"} aria-pressed={!folded} onClick={() => setFolded(!folded)}>
+              {folded ? "Stand the screen up" : "Fold the screen away"}
+            </button>
+          </div>
+          {!folded && (
+            <>
+              <small className="lr-heading">Inside it (only you see this side)</small>
+              <ScreenPagesPicker role="gm" choice={choice} setChoice={setChoice} />
+            </>
+          )}
           <label className="lr-field">
             <small>My notes</small>
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={2000} placeholder="Ogre in the cellar. Map hidden in the third book." />

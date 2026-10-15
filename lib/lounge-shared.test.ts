@@ -47,6 +47,11 @@ describe("sanitizeShared", () => {
     expect(roll.dice).toEqual([{ sides: 20, count: 1 }]);
   });
 
+  it("keeps the game master's screen between three and five panels", () => {
+    expect(sanitizeShared("gm", { connectionId: "c1", name: "Ann", panels: 9, folded: "yes" }, "x", 1)).toEqual({ connectionId: "c1", name: "Ann", panels: 5, folded: false });
+    expect(sanitizeShared("gm", { connectionId: "c1", name: "Ann", folded: true }, "x", 1)).toEqual({ connectionId: "c1", name: "Ann", panels: 3, folded: true });
+  });
+
   it("refuses non-objects", () => {
     expect(sanitizeShared("gm", "me", "x", 1)).toBeNull();
     expect(sanitizeShared("card", null, "x", 1)).toBeNull();

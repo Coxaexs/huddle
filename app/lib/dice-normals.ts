@@ -147,10 +147,10 @@ export function getRotationForValue(
 }
 
 /**
- * The normal, in the die model's own frame, of the face a die lies on when it
- * shows `value`; null for a die or value the default theme has no face for.
- * The model is wound for a left-handed engine, so this points into the die:
- * turned to face up, it puts that face on the table and `value` on top.
+ * The normal of the face carrying `value` (for a d4, the face it lands on), in
+ * the die model's own left-handed frame; null for a die or value the default
+ * theme has no face for. The model is wound for that engine, so this points
+ * into the die; tabletop-dice.ts mirrors it into three's frame.
  */
 export function faceNormal(dieType: string, value: number): [number, number, number] | null {
   const type = dieType.startsWith("d") ? dieType : `d${dieType}`;

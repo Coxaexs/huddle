@@ -9,6 +9,9 @@ import * as THREE from "three";
 import type { TableCard } from "@/lib/lounge-shared";
 import { TABLE_CENTRE, TABLE_RADIUS, type LoungeSeat } from "../lib/living-room";
 
+/** Where the map ends and the raised rail begins (tabletop-scene's MAP_RADIUS). */
+const MAP_EDGE = TABLE_RADIUS - 0.17;
+
 export interface TentSpec {
   key: string;
   seat: LoungeSeat;
@@ -159,11 +162,24 @@ const screenTexture = (() => {
   };
 })();
 
-/** One panel of the inside of the game master's screen: what they chose to keep there. */
-export interface ScreenPage { title: string; lines: string[] }
+/** One panel of the inside of a screen: a page its owner chose to keep there. */
+export interface ScreenPage { title: string; lines: string[]; /** A picture under the title, e.g. a character's portrait. */ image?: string | null }
 
-/** A screen panel's inside: parchment, a heading, and lines wrapped to fit. */
-function drawScreenPage(page: ScreenPage): THREE.CanvasTexture {
+/** Pictures for screen pages, loaded once; `null` while loading or when it would not load. */
+const pageImages = new Map<string, HTMLImageElement | null>();
+function pageImage(url: string, then: () => void): HTMLImageElement | null {
+  if (pageImages.has(url)) return pageImages.get(url) ?? null;
+  pageImages.set(url, null);
+  const image = new Image();
+  // Anonymous, so a picture from elsewhere either allows it or fails, and never taints the texture.
+  image.crossOrigin = "anonymous";
+  image.onload = () => { pageImages.set(url, image); then(); };
+  image.src = url;
+  return null;
+}
+
+/** A screen panel's inside: parchment, a heading, a picture if it has one, and lines wrapped to fit. */
+function drawScreenPage(page: ScreenPage, image: HTMLImageElement | null): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 672;
@@ -176,16 +192,28 @@ function drawScreenPage(page: ScreenPage): THREE.CanvasTexture {
   ctx.fillStyle = "#4a1f12"; ctx.font = "700 40px Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
   ctx.fillText(page.title, 256, 62, 470);
   ctx.fillStyle = "#8a5a2b"; ctx.fillRect(40, 78, 432, 3);
+  let y = 118;
+  if (image) {
+    // The middle square of the picture, in an oval frame.
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(256, 190, 86, 96, 0, 0, Math.PI * 2); ctx.clip();
+    ctx.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 160, 94, 192, 192);
+    ctx.restore();
+    ctx.strokeStyle = "#8a5a2b"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.ellipse(256, 190, 86, 96, 0, 0, Math.PI * 2); ctx.stroke();
+    y = 330;
+  }
+  const room = 650 - y;
   ctx.textAlign = "left";
   ctx.fillStyle = "#2a1a0e";
-  let y = 118;
   // The largest type that fits the panel: it is read from across the table.
   let size = 30;
   let lines: string[] = [];
   for (; size >= 16; size -= 2) {
     ctx.font = `${size}px system-ui, sans-serif`;
     lines = page.lines.flatMap((line) => wrap(ctx, line, 456, 3).map((part, i) => (i ? "   " + part : part)));
-    if (lines.length * (size + 8) <= 540) break;
+    if (lines.length * (size + 8) <= room) break;
   }
   for (const line of lines) {
     if (y > 650) break;
@@ -203,6 +231,115 @@ function drawScreenPage(page: ScreenPage): THREE.CanvasTexture {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
   return texture;
+}
+
+/** How big a folding screen's panels are and how far each hinge turns. */
+interface ScreenShape { width: number; height: number; bend: number }
+
+/**
+ * The game master's screen: panels hinged edge to edge, folded round towards
+ * them (140 degrees in all) so it stands like a box open on their side. More
+ * panels are narrower, so five still fit between the map and the rail.
+ */
+export const gmScreenShape = (panels: number): ScreenShape =>
+  ({ width: panels <= 3 ? 0.42 : panels === 4 ? 0.38 : 0.34, height: 0.5, bend: 2.44 / Math.max(1, panels - 1) });
+
+/** A player's own little screen: lower, flatter, and only ever drawn for them. */
+const playerScreenShape = (panels: number): ScreenShape =>
+  ({ width: panels <= 3 ? 0.26 : 0.22, height: 0.3, bend: panels <= 2 ? 0.6 : 1.2 / (panels - 1) });
+
+/**
+ * Where each panel of a screen stands, in a frame whose owner sits towards -Z
+ * looking along +Z (so +X is their left), its front edge at z = 0. Panels run
+ * left to right as the owner sees them, each turned by `bend` from the one
+ * before, so neighbours meet at a hinge with no gap.
+ */
+export function screenLayout(panels: number, shape: ScreenShape) {
+  const hinges: Array<{ x: number; z: number }> = [{ x: 0, z: 0 }];
+  const placed: Array<{ x: number; z: number; turn: number }> = [];
+  for (let k = 0; k < panels; k++) {
+    const phi = (k - (panels - 1) / 2) * shape.bend;
+    const from = hinges[k];
+    const dx = -Math.cos(phi) * shape.width;
+    const dz = -Math.sin(phi) * shape.width;
+    placed.push({ x: from.x + dx / 2, z: from.z + dz / 2, turn: -phi });
+    hinges.push({ x: from.x + dx, z: from.z + dz });
+  }
+  const midX = (hinges[0].x + hinges[panels].x) / 2;
+  const front = Math.max(...hinges.map((h) => h.z));
+  const shift = <T extends { x: number; z: number }>(p: T): T => ({ ...p, x: p.x - midX, z: p.z - front });
+  const all = hinges.map(shift);
+  return {
+    panels: placed.map(shift),
+    hinges: all,
+    width: Math.max(...all.map((h) => h.x)) - Math.min(...all.map((h) => h.x)),
+    depth: -Math.min(...all.map((h) => h.z)),
+  };
+}
+
+/**
+ * A folding screen standing on the table in front of a seat: wooden outside,
+ * and inside, facing its owner, the pages they chose (none: plain wood). Folded,
+ * it is a closed stack lying flat at the rail.
+ */
+class FoldingScreen {
+  readonly group = new THREE.Group();
+  private panels: THREE.Mesh[] = [];
+  private readonly back = new THREE.MeshStandardMaterial({ color: "#2a1a0e", roughness: 0.8 });
+  private pagesKey = "";
+  private pages: ScreenPage[] | null = null;
+
+  constructor(readonly key: string, count: number, shape: ScreenShape, folded: boolean, private readonly isGone: () => boolean) {
+    const layout = screenLayout(count, shape);
+    const outside = new THREE.MeshBasicMaterial({ map: screenTexture(), toneMapped: false });
+    const back = this.back;
+    if (folded) {
+      // Closed up: the panels stacked, cover up, lying along the rail at the owner's left (hidden dice land to the right).
+      const thick = 0.022 * count;
+      const stack = new THREE.Mesh(new THREE.BoxGeometry(shape.width, thick, shape.height), [back, back, outside, back, back, back]);
+      stack.rotation.y = Math.PI / 2;
+      stack.position.set(layout.width / 2 - shape.height / 2, thick / 2, -layout.depth + shape.width / 2);
+      stack.castShadow = true;
+      this.group.add(stack);
+      return;
+    }
+    const brass = new THREE.MeshStandardMaterial({ color: "#b08a3e", roughness: 0.35, metalness: 0.75 });
+    for (const at of layout.panels) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(shape.width, shape.height, 0.022), [back, back, back, back, outside, back]);
+      panel.position.set(at.x, shape.height / 2, at.z);
+      panel.rotation.y = at.turn;
+      panel.castShadow = true;
+      this.panels.push(panel);
+      this.group.add(panel);
+    }
+    // A hinge at every joint, and a post at each end: the panels read as one screen.
+    for (const hinge of layout.hinges) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, shape.height + 0.02, 10), brass);
+      post.position.set(hinge.x, (shape.height + 0.02) / 2, hinge.z);
+      this.group.add(post);
+    }
+  }
+
+  /** What the inside shows, panel by panel, left to right as the owner sees it (null: plain wood). */
+  setPages(pages: ScreenPage[] | null) {
+    const key = pages ? JSON.stringify(pages) : "";
+    if (key === this.pagesKey) return;
+    this.pagesKey = key;
+    this.pages = pages;
+    this.paint();
+  }
+
+  private paint() {
+    const pages = this.pages;
+    this.panels.forEach((panel, i) => {
+      const materials = panel.material as THREE.Material[];
+      const old = materials[5];
+      if (old !== this.back) { (old as THREE.MeshBasicMaterial).map?.dispose(); old.dispose(); }
+      const page = pages?.[i];
+      const image = page?.image ? pageImage(page.image, () => { if (!this.isGone() && this.pages === pages) this.paint(); }) : null;
+      materials[5] = page ? new THREE.MeshBasicMaterial({ map: drawScreenPage(page, image), toneMapped: false }) : this.back;
+    });
+  }
 }
 
 export interface CharacterTokenSpec {
@@ -402,13 +539,8 @@ function createCharacterToken(spec: CharacterTokenSpec, surfaceY: number): THREE
 
 export class TableExtras {
   private tents = new Map<string, Tent>();
-  private screen: THREE.Group | null = null;
-  private screenSeat: string | null = null;
-  /** The screen's three panels, left to right as the game master sees them. */
-  private screenPanels: THREE.Mesh[] = [];
-  private screenBack: THREE.Material | null = null;
-  private pagesKey = "";
-  private pages: ScreenPage[] | null = null;
+  private screen: FoldingScreen | null = null;
+  private playerScreen: FoldingScreen | null = null;
   private card: THREE.Sprite | null = null;
   private cardKey = "";
   private readonly marker = new THREE.Group();
@@ -481,56 +613,41 @@ export class TableExtras {
     }
   }
 
-  /** The game master's folding screen, standing between their chair and the map (null: none). */
-  setScreen(seat: LoungeSeat | null) {
-    if ((seat?.id ?? null) === this.screenSeat) return;
-    if (this.screen) { this.root.remove(this.screen); dispose(this.screen); this.screen = null; }
-    this.screenPanels = [];
-    this.pagesKey = "";
-    this.screenSeat = seat?.id ?? null;
-    if (!seat) return;
-    const edge = this.edge(seat, 1.0);
-    const group = new THREE.Group();
-    const material = new THREE.MeshBasicMaterial({ map: screenTexture(), toneMapped: false });
-    const back = new THREE.MeshStandardMaterial({ color: "#2a1a0e", roughness: 0.8 });
-    this.screenBack = back;
-    // The game master sits on the -Z side looking along +Z, so +X is their left.
-    for (const [offset, turn] of [[0.38, -0.5], [0, 0], [-0.38, 0.5]] as const) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.03), [back, back, back, back, material, back]);
-      this.screenPanels.push(panel);
-      panel.position.set(offset * Math.cos(turn * 0.5), 0.25, -Math.abs(offset) * 0.35 * (turn ? 1 : 0));
-      panel.rotation.y = turn;
-      panel.castShadow = true;
-      group.add(panel);
-    }
-    group.position.set(edge.x, this.surfaceY, edge.z);
-    group.rotation.y = edge.angle + Math.PI;
-    this.root.add(group);
-    this.screen = group;
-    this.paintPages();
+  /**
+   * The game master's folding screen, standing between their chair and the
+   * map (null: none), with `panels` panels, or folded flat. `pages` is what
+   * its inside shows; only the game master's own view is given any.
+   */
+  setScreen(seat: LoungeSeat | null, opts: { panels: number; folded: boolean; pages: ScreenPage[] | null } = { panels: 3, folded: false, pages: null }) {
+    const shape = gmScreenShape(opts.panels);
+    this.screen = this.placeScreen(this.screen, seat, opts.panels, shape, opts.folded);
+    this.screen?.setPages(opts.folded ? null : opts.pages);
   }
 
   /**
-   * What the inside of the screen shows, panel by panel (null: plain wood).
-   * Only the game master's own view is given pages; everyone else sees the back.
+   * My own little screen in front of my chair (null: none), with my character
+   * and whatever else I keep there. Nobody else is ever sent it: it is drawn
+   * in my view only.
    */
-  setScreenPages(pages: ScreenPage[] | null) {
-    const key = pages ? JSON.stringify(pages) : "";
-    if (key === this.pagesKey) return;
-    this.pages = pages;
-    this.paintPages();
+  setPlayerScreen(seat: LoungeSeat | null, pages: ScreenPage[]) {
+    this.playerScreen = this.placeScreen(this.playerScreen, seat, pages.length, playerScreenShape(pages.length), false);
+    this.playerScreen?.setPages(pages);
   }
 
-  private paintPages() {
-    const pages = this.pages;
-    this.pagesKey = pages && this.screenPanels.length ? JSON.stringify(pages) : "";
-    this.screenPanels.forEach((panel, i) => {
-      const materials = panel.material as THREE.Material[];
-      const old = materials[5];
-      if (old !== this.screenBack) { (old as THREE.MeshBasicMaterial).map?.dispose(); old.dispose(); }
-      const page = pages?.[i];
-      materials[5] = page ? new THREE.MeshBasicMaterial({ map: drawScreenPage(page), toneMapped: false }) : this.screenBack!;
-    });
+  /** Builds (or keeps) a screen at the table edge in front of a seat, its back against the rail. */
+  private placeScreen(current: FoldingScreen | null, seat: LoungeSeat | null, panels: number, shape: ScreenShape, folded: boolean): FoldingScreen | null {
+    const key = seat ? `${seat.id}|${panels}|${folded}` : "";
+    if (current?.key === key) return current;
+    if (current) { this.root.remove(current.group); dispose(current.group); }
+    if (!seat) return null;
+    const depth = screenLayout(panels, shape).depth;
+    // Its open side against the map's edge, so it never stands on the rail.
+    const edge = this.edge(seat, MAP_EDGE - 0.02 - depth);
+    const screen = new FoldingScreen(key, panels, shape, folded, () => this.disposed);
+    screen.group.position.set(edge.x, this.surfaceY, edge.z);
+    screen.group.rotation.y = edge.angle + Math.PI;
+    this.root.add(screen.group);
+    return screen;
   }
 
   /** Where the turn marker floats (null: hidden). */
@@ -603,6 +720,7 @@ export class TableExtras {
     this.disposed = true;
     this.setTents([]);
     this.setScreen(null);
+    this.setPlayerScreen(null, []);
     this.setCard(null, true);
     this.clearCharacterTokens();
     this.root.remove(this.marker);
@@ -611,17 +729,25 @@ export class TableExtras {
   }
 }
 
-/** Where dice thrown "behind the screen" land: just inside the table edge, on the game master's side. */
-export function behindScreen(seat: LoungeSeat | null) {
+/**
+ * Where dice thrown "behind the screen" land: inside the game master's screen,
+ * between it and them; with the screen folded, beside it on their right.
+ */
+export function behindScreen(seat: LoungeSeat | null, panels = 3, folded = false) {
   const dx = seat ? seat.x - TABLE_CENTRE.x : 0;
   const dz = seat ? seat.z - TABLE_CENTRE.z : 1;
   const length = Math.hypot(dx, dz) || 1;
   const out = { x: dx / length, z: dz / length };
-  // A strip between the screen (at 1.0) and the rail: spread along it, never out in front.
+  const layout = screenLayout(panels, gmScreenShape(panels));
+  const back = MAP_EDGE - 0.02;
+  const middle = back - layout.depth * 0.45;
+  // Their right, along the rail (the screen's -X).
+  const aside = folded ? layout.width * 0.25 : 0;
+  // Spread across the box and squashed in depth, so they stay inside its walls.
   return {
-    at: { x: TABLE_CENTRE.x + out.x * 1.23, z: TABLE_CENTRE.z + out.z * 1.23 },
-    radius: 0.45,
-    spacing: 0.2,
-    squash: { ...out, by: 0.16 },
+    at: { x: TABLE_CENTRE.x + out.x * middle + out.z * aside, z: TABLE_CENTRE.z + out.z * middle - out.x * aside },
+    radius: Math.min(0.4, layout.width * (folded ? 0.2 : 0.32)),
+    spacing: 0.16,
+    squash: { ...out, by: Math.min(0.6, layout.depth / layout.width) },
   };
 }

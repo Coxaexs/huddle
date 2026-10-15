@@ -28,9 +28,11 @@ const MODELS = new Map<string, MeshData>((normalsData as unknown as { meshes: Me
 
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 /**
- * The die model, scaled to `size` metres across. It is used as it comes: its
- * numerals are drawn mirrored in the atlas on purpose (the source engine is
- * left-handed), and read the right way round in three's right-handed space.
+ * The die model, scaled to `size` metres across. It comes from a left-handed
+ * engine, so it is mirrored along z into three's right-handed space: that turns
+ * its triangles outward-facing (as it comes, three would cull the near faces
+ * and draw the inside of the far ones, so the numbers seemed to slide round as
+ * the camera moved) and reads its mirrored atlas numerals the right way round.
  */
 function dieGeometry(type: string): THREE.BufferGeometry {
   const hit = geometryCache.get(type);
@@ -38,6 +40,7 @@ function dieGeometry(type: string): THREE.BufferGeometry {
   const data = MODELS.get(type) ?? MODELS.get("d6")!;
   const positions = new Float32Array(data.positions);
   const normals = new Float32Array(data.normals);
+  for (let i = 2; i < positions.length; i += 3) { positions[i] = -positions[i]; normals[i] = -normals[i]; }
   const indices = new Uint32Array(data.indices);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -198,7 +201,7 @@ function glowTexture(): THREE.CanvasTexture {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
-
+const DOWN = new THREE.Vector3(0, -1, 0);
 
 export class TableDice {
   private sets: Set[] = [];
@@ -287,17 +290,17 @@ export class TableDice {
   }
 
   /**
-   * The turn that leaves `value` showing, at a random heading. The face map
-   * names the face a die lies on, and its normal (as the model is wound)
-   * points into the die: turned up, that face is on the table and the value
-   * reads on top. That holds for the d4 too, whose number sits at its peak.
+   * The turn that leaves `value` on top, at a random heading. faceNormal is in
+   * the source model's frame and points into the die; mirrored along z like
+   * the geometry and flipped, it is that face's outward normal, turned up. A
+   * d4 is read at its peak: the face map names the face it lands on instead.
    */
   private restingOrientation(type: string, value: number, random: () => number): THREE.Quaternion {
     const normal = faceNormal(type, value);
     const yaw = new THREE.Quaternion().setFromAxisAngle(UP, random() * Math.PI * 2);
     if (!normal) return yaw;
-    const n = new THREE.Vector3(normal[0], normal[1], normal[2]).normalize();
-    return yaw.multiply(new THREE.Quaternion().setFromUnitVectors(n, UP));
+    const n = new THREE.Vector3(-normal[0], -normal[1], normal[2]).normalize();
+    return yaw.multiply(new THREE.Quaternion().setFromUnitVectors(n, type === "d4" ? DOWN : UP));
   }
 
   private lowestPoint(geometry: THREE.BufferGeometry, quaternion: THREE.Quaternion): number {

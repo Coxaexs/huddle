@@ -20,7 +20,10 @@ import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type ScreenPage } from "./tabletop-extras";
 import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
-import { buildScreenPage, readNotes, readScreenChoice, saveNotes, saveScreenChoice, type ScreenPageId } from "../lib/gm-screen";
+import {
+  SCREEN_SIZES, buildScreenPage, readNotes, readPlayerScreenOpen, readScreenChoice, readSheet, saveNotes, savePlayerScreenOpen, saveScreenChoice, saveSheet,
+  type CharacterSheet, type ScreenPageId, type ScreenRole,
+} from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { addInitiative, currentEntry, watchPosition, type TableCard, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
@@ -429,6 +432,18 @@ function squeak() {
   } catch { /* No sound, still cute. */ }
 }
 
+/** Which page each panel of a screen at the tabletop shows, kept in this browser. */
+function useScreenChoice(role: ScreenRole) {
+  const [value, set] = useState<ScreenPageId[]>(() => (typeof window === "undefined" ? SCREEN_SIZES[role].first : readScreenChoice(role)));
+  return [value, (next: ScreenPageId[]) => { set(next); saveScreenChoice(role, next); }] as const;
+}
+
+/** The notes on a screen at the tabletop, kept in this browser. */
+function useScreenNotes(role: ScreenRole) {
+  const [value, set] = useState(() => (typeof window === "undefined" ? "" : readNotes(role)));
+  return [value, (next: string) => { set(next); saveNotes(role, next); }] as const;
+}
+
 export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false, boardGameId = null, onPlayBoardGame }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
@@ -466,12 +481,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
   const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | null>(null);
-  // The game master's screen: which page each panel shows, their notes, and their hidden rolls this visit.
-  const [screenChoice, setScreenChoiceState] = useState<ScreenPageId[]>(() => (typeof window === "undefined" ? ["initiative", "conditions", "notes"] : readScreenChoice()));
-  const setScreenChoice = (value: ScreenPageId[]) => { setScreenChoiceState(value); saveScreenChoice(value); };
-  const [gmNotes, setGmNotesState] = useState(() => (typeof window === "undefined" ? "" : readNotes()));
-  const setGmNotes = (value: string) => { setGmNotesState(value); saveNotes(value); };
+  // The screens at the table: which page each panel shows and the notes on them, the game master's and my own.
+  const [screenChoice, setScreenChoice] = useScreenChoice("gm");
+  const [gmNotes, setGmNotes] = useScreenNotes("gm");
+  const [playerChoice, setPlayerChoice] = useScreenChoice("player");
+  const [playerNotes, setPlayerNotes] = useScreenNotes("player");
+  const [playerScreenOpen, setPlayerScreenOpenState] = useState(() => (typeof window === "undefined" ? true : readPlayerScreenOpen()));
+  const setPlayerScreenOpen = (open: boolean) => { setPlayerScreenOpenState(open); savePlayerScreenOpen(open); };
+  const [sheet, setSheetState] = useState<CharacterSheet>(() => readSheet());
+  const setSheet = (value: CharacterSheet) => { setSheetState(value); saveSheet(value); };
+  // The game master's hidden rolls, and my own rolls at the table, this visit.
   const [hiddenLog, setHiddenLog] = useState<string[]>([]);
+  const [myRolls, setMyRolls] = useState<string[]>([]);
   const [watchVolume, setWatchVolume] = useState(0.8);
   const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null });
   /** Lets the panel's button start a film the browser would not start by itself. */
@@ -510,10 +531,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   useEffect(() => { setPanel(null); setHoverSeat(null); }, [venueId]);
 
   // Everything the render loop reads lives in one ref, refreshed every React render.
-  // What the inside of my screen shows, if I am the game master (built further down).
+  // What the inside of the game master's screen shows if that is me, and my own screen if I stood it up (built further down).
   const screenPagesRef = useRef<ScreenPage[] | null>(null);
-  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef });
-  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef };
+  const playerPagesRef = useRef<ScreenPage[] | null>(null);
+  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef });
+  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -1191,6 +1213,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         tentsAt = now;
         const specs: TentSpec[] = [];
         const tokenSpecs: CharacterTokenSpec[] = [];
+        // My own screen, in my view only, stands where my name card would.
+        const mySeat = seatById(live.current.connectionId ? r.poses.get(live.current.connectionId)?.seat : null, venue);
+        const playerPages = live.current.playerPagesRef.current;
+        const myScreenSeat = playerPages && mySeat && mySeat.id.startsWith("tab-") && !mySeat.reserved ? mySeat : null;
+        extras.setPlayerScreen(myScreenSeat, playerPages ?? []);
         for (const p of live.current.participants) {
           if (p.bot || p.recorder) continue;
           const seat = seatById(r.poses.get(p.connectionId)?.seat, venue);
@@ -1200,7 +1227,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           const character = shared.characters[p.id];
           if (!character) continue;
           const isTurn = turn?.connectionId === p.connectionId;
-          specs.push({
+          if (seat !== myScreenSeat) specs.push({
             key: `${p.connectionId}|${character.name}|${character.portraitUrl ?? ""}|${p.displayName}|${p.avatarUrl ?? ""}|${p.color}|${isTurn}`,
             seat, name: character.name, portraitUrl: character.portraitUrl || null,
             letter: (p.avatar || p.displayName || "?").slice(0, 2), colour: p.color || "#ffd67c", turn: isTurn,
@@ -1217,8 +1244,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         extras.setTents(specs);
         extras.setCharacterTokens(tokenSpecs);
         const gmSeat = seatById(shared.gm ? r.poses.get(shared.gm.connectionId)?.seat : null, venue);
-        extras.setScreen(gmSeat && gmSeat.id.startsWith("tab-") ? gmSeat : null);
-        extras.setScreenPages(live.current.screenPagesRef.current);
+        extras.setScreen(gmSeat && gmSeat.id.startsWith("tab-") ? gmSeat : null, {
+          panels: shared.gm?.panels ?? 3, folded: Boolean(shared.gm?.folded), pages: live.current.screenPagesRef.current,
+        });
         syncMap(shared.tablemap);
         const hubNow = (live.current.serverNow ?? Date.now)();
         extras.setCard(shared.card, Boolean(shared.card) && hubNow - shared.card!.at > CARD_SECONDS * 1000);
@@ -1441,6 +1469,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       ? new THREE.Vector3(pose.x, venue.floorY(pose.x, pose.z) + 1.1, pose.z)
       : new THREE.Vector3(TABLE_CENTRE.x, 1.2, TABLE_CENTRE.z + 2.4);
     void dice.roll(diceRoll, from);
+    if (diceRoll.roller.id && diceRoll.roller.id === live.current.participants.find((p) => p.connectionId === live.current.connectionId)?.id) {
+      const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setMyRolls((log) => [`${diceRoll.expression} = ${diceRoll.total} (${at})`, ...log].slice(0, 20));
+    }
     // "Roll my initiative": my next roll goes into the order, tied to my chair.
     const me = live.current.participants.find((p) => p.connectionId === live.current.connectionId);
     if (pendingInitiative.current && me && diceRoll.roller.id === me.id && live.current.connectionId) {
@@ -1473,10 +1505,28 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const character = room.shared.characters[p.id];
     return character && !p.bot && !p.recorder ? [{ character: character.name, player: p.displayName }] : [];
   });
-  const screenData = { initiative: room.shared.initiative, party, notes: gmNotes, rolls: hiddenLog };
+  const gmPanels = room.shared.gm?.panels ?? 3;
+  const gmFolded = Boolean(room.shared.gm?.folded);
+  const screenData = { initiative: room.shared.initiative, party, notes: gmNotes, rolls: { title: "Hidden rolls", lines: hiddenLog, empty: "Roll with Hidden on and the results land here." } };
   screenPagesRef.current = isGm && venueId === "tabletop"
     ? screenChoice.map((id) => buildScreenPage(id, screenData) ?? { title: "", lines: [] })
     : null;
+  const myCharacter = myPerson ? room.shared.characters[myPerson.id] : undefined;
+  const playerData = {
+    ...screenData,
+    character: myCharacter ? { name: myCharacter.name, portraitUrl: myCharacter.portraitUrl, sheet } : null,
+    notes: playerNotes,
+    rolls: { title: "My rolls", lines: myRolls, empty: "Your rolls at the table land here." },
+  };
+  playerPagesRef.current = playerScreenOpen && !isGm && venueId === "tabletop"
+    ? playerChoice.map((id) => buildScreenPage(id, playerData) ?? { title: "", lines: [] })
+    : null;
+  // Everyone draws the game master's screen with as many panels as they picked.
+  useEffect(() => {
+    const gm = room.shared.gm;
+    if (isGm && gm && gm.panels !== screenChoice.length) room.setShared("gm", { ...gm, panels: screenChoice.length });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGm, room.shared.gm?.panels, screenChoice.length]);
   /** The chair a seat belongs to, as a point on the table edge: where a game master's hidden dice land. */
   const seatOf = (id: string | null | undefined) => seatById(id ? room.poses.get(id)?.seat : null, venue);
 
@@ -1492,7 +1542,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       dice: hidden.dice.map((die) => ({ sides: die.sides, sign: 1 as const, rolls: Array.from({ length: die.count }, () => ({ value: 1 + Math.floor(Math.random() * die.sides), kept: true })) })),
       roller: { id: "", displayName: "Game master" }, themeColor: "#444a5a",
     };
-    void dice.roll(fake, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), { ...behindScreen(seat), label: "Rolled behind the screen" });
+    void dice.roll(fake, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), { ...behindScreen(seat, gmPanels, gmFolded), label: "Rolled behind the screen" });
     void playDiceRollSound({ theme: "default", diceCount: hidden.dice.reduce((sum, die) => sum + die.count, 0), material: "plastic" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.hiddenRoll?.id, venueId]);
@@ -1512,7 +1562,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const roll = data.roll;
       const pose = connectionId ? room.poses.get(connectionId) : null;
       void diceRef.current?.roll(roll, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), {
-        ...behindScreen(seatOf(connectionId)), label: `Hidden · ${roll.expression} = ${roll.total}`,
+        ...behindScreen(seatOf(connectionId), gmPanels, gmFolded), label: `Hidden · ${roll.expression} = ${roll.total}`,
       });
       void playDiceRollSound({ theme: "default", diceCount: roll.dice.reduce((sum, term) => sum + term.rolls.length, 0), material: roll.material ?? "plastic" });
       room.setShared("hiddenroll", { dice: roll.dice.map((term) => ({ sides: term.sides, count: term.rolls.length })), seed: roll.animationSeed });
@@ -1685,6 +1735,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               setGm={(value) => room.setShared("gm", value)}
               map={room.shared.tablemap} canEditMap={canEditMap} setMap={(value) => room.setShared("tablemap", value)}
               choice={screenChoice} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes}
+              folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
             />
           )}
@@ -1692,6 +1743,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             <CharacterPanel
               mine={myPerson ? room.shared.characters[myPerson.id] ?? null : null} fallbackName={myName}
               setMine={(value) => room.setShared("character", value)} onClose={() => setPanel(null)}
+              screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerChoice, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes, sheet, setSheet }}
             />
           )}
         </div>
@@ -1927,6 +1979,14 @@ const LIVING_ROOM_CSS = `
 .lr-wide { width: 100%; justify-content: center; background: var(--lr-accent) !important; color: #1b1530 !important; }
 .lr-field { display: grid; gap: 3px; }
 .lr-inline { grid-template-columns: 56px 1fr; align-items: center; }
+.living-room-panel button.active { background: var(--lr-accent); color: #1b1530; }
+.lr-panels small { width: 56px; }
+.lr-panels button { min-width: 34px; justify-content: center; }
+.lr-sheet { display: grid; grid-template-columns: 1.6fr 1fr 0.7fr 0.9fr; gap: 6px; }
+.lr-abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.lr-sheet input, .lr-abilities input { width: 100%; }
+.lr-abilities input { padding: 0 4px !important; text-align: center; }
+.lr-abilities small { text-align: center; font-weight: 700; opacity: 0.8; }
 .lr-heading { margin-top: 4px; font-weight: 700; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
 .living-room-panel select, .living-room-panel textarea { min-width: 0; padding: 5px 8px; border-radius: 9px; font: inherit; font-size: 13px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
 .living-room-panel select option { color: #1b1530; }

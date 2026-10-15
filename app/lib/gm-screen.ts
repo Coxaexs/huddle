@@ -1,15 +1,17 @@
 /**
- * The inside of the game master's screen at the tabletop: three panels, each
- * showing a page the game master picked. Only their own view draws them; to
- * everyone else the screen is plain wood on that side. The choice and the
- * notes stay in this browser.
+ * The insides of the screens at the tabletop. The game master's has three to
+ * five panels, each showing a page they picked; only their own view draws
+ * them, and to everyone else that side is plain wood. Each player can keep a
+ * little screen of their own (their character, notes, rolls), drawn in their
+ * view only. The choices, notes and character sheet stay in this browser.
  */
 import type { Initiative } from "@/lib/lounge-shared";
 import type { ScreenPage } from "../components/tabletop-extras";
 
-export type ScreenPageId = "initiative" | "party" | "conditions" | "rules" | "notes" | "rolls" | "blank";
+export type ScreenPageId = "character" | "initiative" | "party" | "conditions" | "rules" | "notes" | "rolls" | "blank";
 
 export const SCREEN_PAGES: Array<{ id: ScreenPageId; label: string }> = [
+  { id: "character", label: "My character" },
   { id: "initiative", label: "Initiative order" },
   { id: "party", label: "Who is playing whom" },
   { id: "conditions", label: "Conditions" },
@@ -19,32 +21,95 @@ export const SCREEN_PAGES: Array<{ id: ScreenPageId; label: string }> = [
   { id: "blank", label: "Nothing" },
 ];
 
-export const DEFAULT_SCREEN: ScreenPageId[] = ["initiative", "conditions", "notes"];
-const CHOICE_KEY = "huddle-gm-screen";
-const NOTES_KEY = "huddle-gm-notes";
+/** Whose screen: the game master's, or a player's own. */
+export type ScreenRole = "gm" | "player";
+
+/** How many panels each screen may have, and what it starts with. */
+export const SCREEN_SIZES: Record<ScreenRole, { min: number; max: number; first: ScreenPageId[]; extra: ScreenPageId[] }> = {
+  gm: { min: 3, max: 5, first: ["initiative", "conditions", "notes"], extra: ["rolls", "party"] },
+  player: { min: 2, max: 4, first: ["character", "notes", "rolls"], extra: ["conditions"] },
+};
+/** The pages each kind of screen offers ("My character" is a player's). */
+export const pagesFor = (role: ScreenRole) => SCREEN_PAGES.filter((page) => role === "player" || page.id !== "character");
+
+/** The screen at a given panel count: pages kept as far as they go, new panels filled with something useful. */
+export function resizeChoice(role: ScreenRole, choice: ScreenPageId[], count: number): ScreenPageId[] {
+  const { first, extra } = SCREEN_SIZES[role];
+  const pool = [...first, ...extra].filter((id) => !choice.includes(id));
+  const next = choice.slice(0, count);
+  while (next.length < count) next.push(pool.shift() ?? "blank");
+  return next;
+}
+
+const store = (key: string) => `huddle-${key}`;
+const CHOICE_KEY: Record<ScreenRole, string> = { gm: store("gm-screen"), player: store("player-screen") };
+const NOTES_KEY: Record<ScreenRole, string> = { gm: store("gm-notes"), player: store("player-notes") };
+const OPEN_KEY = store("player-screen-open");
+const SHEET_KEY = store("player-sheet");
 
 const isPageId = (value: unknown): value is ScreenPageId => SCREEN_PAGES.some((page) => page.id === value);
 
-export function readScreenChoice(): ScreenPageId[] {
+export function readScreenChoice(role: ScreenRole): ScreenPageId[] {
+  const { min, max, first } = SCREEN_SIZES[role];
   try {
-    const raw = JSON.parse(localStorage.getItem(CHOICE_KEY) || "null") as unknown;
-    if (Array.isArray(raw) && raw.length === 3 && raw.every(isPageId)) return raw;
+    const raw = JSON.parse(localStorage.getItem(CHOICE_KEY[role]) || "null") as unknown;
+    if (Array.isArray(raw) && raw.length >= min && raw.length <= max && raw.every(isPageId)) return raw;
   } catch {
     // Nothing stored, or storage is off.
   }
-  return [...DEFAULT_SCREEN];
+  return [...first];
 }
 
-export function saveScreenChoice(choice: ScreenPageId[]) {
-  try { localStorage.setItem(CHOICE_KEY, JSON.stringify(choice)); } catch { /* Session only. */ }
+export function saveScreenChoice(role: ScreenRole, choice: ScreenPageId[]) {
+  try { localStorage.setItem(CHOICE_KEY[role], JSON.stringify(choice)); } catch { /* Session only. */ }
 }
 
-export function readNotes(): string {
-  try { return localStorage.getItem(NOTES_KEY) || ""; } catch { return ""; }
+export function readNotes(role: ScreenRole): string {
+  try { return localStorage.getItem(NOTES_KEY[role]) || ""; } catch { return ""; }
 }
 
-export function saveNotes(text: string) {
-  try { localStorage.setItem(NOTES_KEY, text.slice(0, 2000)); } catch { /* Session only. */ }
+export function saveNotes(role: ScreenRole, text: string) {
+  try { localStorage.setItem(NOTES_KEY[role], text.slice(0, 2000)); } catch { /* Session only. */ }
+}
+
+/** Whether my own screen stands in front of my chair (it does until I put it away). */
+export function readPlayerScreenOpen(): boolean {
+  try { return localStorage.getItem(OPEN_KEY) !== "0"; } catch { return true; }
+}
+
+export function savePlayerScreenOpen(open: boolean) {
+  try { localStorage.setItem(OPEN_KEY, open ? "1" : "0"); } catch { /* Session only. */ }
+}
+
+/** The few numbers a player glances at: written as they like ("Rogue 3", "18/24"). */
+export interface CharacterSheet { level: string; hp: string; ac: string; speed: string; abilities: string[] }
+export const ABILITIES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
+export const EMPTY_SHEET: CharacterSheet = { level: "", hp: "", ac: "", speed: "", abilities: ["", "", "", "", "", ""] };
+
+export function readSheet(): CharacterSheet {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SHEET_KEY) || "null") as Partial<CharacterSheet> | null;
+    if (raw && typeof raw === "object") {
+      const text = (value: unknown) => (typeof value === "string" ? value.slice(0, 40) : "");
+      const abilities = ABILITIES.map((_, i) => text(Array.isArray(raw.abilities) ? raw.abilities[i] : ""));
+      return { level: text(raw.level), hp: text(raw.hp), ac: text(raw.ac), speed: text(raw.speed), abilities };
+    }
+  } catch {
+    // Nothing stored, or storage is off.
+  }
+  return { ...EMPTY_SHEET, abilities: [...EMPTY_SHEET.abilities] };
+}
+
+export function saveSheet(sheet: CharacterSheet) {
+  try { localStorage.setItem(SHEET_KEY, JSON.stringify(sheet)); } catch { /* Session only. */ }
+}
+
+/** "16 (+3)": a score with its modifier, or as written when it is not a number. */
+function ability(score: string): string {
+  const n = Number(score.trim());
+  if (!score.trim() || !Number.isFinite(n)) return score.trim() || "-";
+  const mod = Math.floor((n - 10) / 2);
+  return `${n} (${mod >= 0 ? "+" : ""}${mod})`;
 }
 
 const CONDITIONS = [
@@ -80,16 +145,32 @@ const RULES = [
 ];
 
 export interface ScreenData {
+  /** The player's own character and sheet (a player's screen only). */
+  character?: { name: string; portraitUrl: string | null; sheet: CharacterSheet } | null;
   initiative: Initiative | null;
   /** Characters at the table: character name and who plays it. */
   party: Array<{ character: string; player: string }>;
   notes: string;
-  /** Newest first, e.g. "1d20+3 = 17". */
-  rolls: string[];
+  /** The game master's hidden rolls or a player's own: newest first, e.g. "1d20+3 = 17", and what to say with none. */
+  rolls: { title: string; lines: string[]; empty: string };
 }
 
 export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage | null {
   switch (id) {
+    case "character": {
+      const me = data.character;
+      if (!me) return { title: "My character", lines: ["Make one with the person button: a name and a portrait.", "Fill in the sheet there too."] };
+      const sheet = me.sheet;
+      const pairs = [0, 2, 4].map((i) => `${ABILITIES[i]} ${ability(sheet.abilities[i])} · ${ABILITIES[i + 1]} ${ability(sheet.abilities[i + 1])}`);
+      const lines = [
+        sheet.level && `Class: ${sheet.level}`,
+        sheet.hp && `HP: ${sheet.hp}`,
+        sheet.ac && `AC: ${sheet.ac}`,
+        sheet.speed && `Speed: ${sheet.speed}`,
+        ...(sheet.abilities.some((a) => a.trim()) ? pairs : []),
+      ].filter((line): line is string => Boolean(line));
+      return { title: me.name, image: me.portraitUrl, lines: lines.length ? lines : ["Your sheet is empty: fill it in with the person button."] };
+    }
     case "initiative": {
       const order = data.initiative;
       if (!order) return { title: "Initiative", lines: ["No combat yet.", "Players roll theirs from the Initiative panel; add monsters there."] };
@@ -109,10 +190,10 @@ export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage 
       return { title: "DCs and rules", lines: RULES };
     case "notes": {
       const lines = data.notes.split("\n").map((line) => line.trimEnd()).filter((line, i, all) => line || (i > 0 && all[i - 1]));
-      return { title: "Notes", lines: lines.length ? lines : ["Write your notes in the Game master panel."] };
+      return { title: "Notes", lines: lines.length ? lines : ["Write your notes in the panel that set up this screen."] };
     }
     case "rolls":
-      return { title: "Hidden rolls", lines: data.rolls.length ? data.rolls.slice(0, 14) : ["Roll with Hidden on and the results land here."] };
+      return { title: data.rolls.title, lines: data.rolls.lines.length ? data.rolls.lines.slice(0, 14) : [data.rolls.empty] };
     case "blank":
       return null;
   }

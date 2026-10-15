@@ -44,7 +44,11 @@ export interface Initiative {
   round: number;
 }
 
-export interface GameMaster { connectionId: string; name: string }
+/**
+ * Who the game master is, and how their screen stands for everyone: how many
+ * panels it has (3-5) and whether it is folded away. What is inside is theirs.
+ */
+export interface GameMaster { connectionId: string; name: string; panels?: number; folded?: boolean }
 
 /** A spell, monster or item floating over the table. */
 export interface TableCard {
@@ -137,7 +141,8 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
     }
     case "gm": {
       const connectionId = str(value.connectionId, 64);
-      return connectionId ? ({ connectionId, name: str(value.name, 40) } satisfies GameMaster) : null;
+      if (!connectionId) return null;
+      return { connectionId, name: str(value.name, 40), panels: Math.round(num(value.panels, 3, 5, 3)), folded: value.folded === true } satisfies GameMaster;
     }
     case "card": {
       const title = str(value.title, 80).trim();
