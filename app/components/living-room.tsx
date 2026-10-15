@@ -22,6 +22,8 @@ import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type
 import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, PAWN_NAMES, PawnsPanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
 import { PAWN_SQUARES, TablePawns, type PawnShow } from "./tabletop-pawns";
 import { TableOverlay, type AreaPreview } from "./tabletop-overlay";
+import { SpellFx } from "./tabletop-spellfx";
+import { fxCount, fxMode, healsWith } from "../lib/spell-fx-plan";
 import { HeldPawnCard, HeroCard, type CastResult } from "./table-hero";
 import { areaColour, castDice, inArea, rangeFeet, type SpellInfo } from "@/lib/dnd-spells";
 import type { Terrain } from "../lib/map-terrain";
@@ -30,7 +32,7 @@ import {
   type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
-import { DEFAULT_SQUARES, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
+import { DEFAULT_SQUARES, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
@@ -557,10 +559,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     spots: Array<{ name: string; x: number; z: number; pad: number }>;
     aiming: AreaPreview | null; ruler: { from: { x: number; z: number }; limit: number | null } | null; ring: { at: { x: number; z: number }; feet: number } | null;
     place: (x: number, z: number) => void; tapArea: (id: string) => void;
+    /** A spell waiting for its target: a pawn or a spot on the map. */
+    targeting: boolean; target: (x: number, z: number, pawnId: string | null) => void;
   }>({
     cell: 0.12, metresPerFoot: 0.024, shows: new Map(), hits: new Set(), areaHits: new Map(), spots: [], aiming: null, ruler: null, ring: null,
-    place: () => undefined, tapArea: () => undefined,
+    place: () => undefined, tapArea: () => undefined, targeting: false, target: () => undefined,
   });
+  /** The table's spell animations, once the room is built. */
+  const spellFxRef = useRef<SpellFx | null>(null);
   const pawnRef = useRef<{ held: string | null; tap: (id: string) => void; moveTo: (x: number, z: number) => void; openCabinet: () => void; landed: (id: string, terrain: Terrain) => void }>({
     held: null, tap: () => undefined, moveTo: () => undefined, openCabinet: () => undefined, landed: () => undefined,
   });
@@ -623,6 +629,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const extras = venueId === "tabletop" ? new TableExtras(house, TABLE_SURFACE_Y) : null;
     const pawns = venueId === "tabletop" ? new TablePawns(house, TABLE_SURFACE_Y, parts.mapColourAt, (id, terrain) => pawnRef.current.landed(id, terrain)) : null;
     const overlay = venueId === "tabletop" ? new TableOverlay(house, TABLE_SURFACE_Y) : null;
+    const spellFx = venueId === "tabletop" ? new SpellFx(house, TABLE_SURFACE_Y) : null;
+    spellFxRef.current = spellFx;
     // The map itself, for the pointer: a ruler or an area being aimed follows it.
     let mapSurface: THREE.Object3D | null = null;
     parts.root.traverse((object) => { if (object.userData.tableMap) mapSurface = object; });
@@ -780,6 +788,15 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           live.current.room.setShared("card", null);
           return;
         }
+        // A spell waiting for its target: a pawn, or a spot on the map.
+        if (tableRef.current.targeting) {
+          const target = pawns?.pawnAt(hit.object);
+          if (target) { tableRef.current.target(Number.NaN, Number.NaN, target); return; }
+          if (!hit.object.userData.tableMap) continue;
+          const at = house.worldToLocal(hit.point.clone());
+          tableRef.current.target(at.x - TABLE_CENTRE.x, at.z - TABLE_CENTRE.z, null);
+          return;
+        }
         // Aiming a spell, only the map counts: the area goes where it was clicked.
         if (tableRef.current.aiming) {
           if (!hit.object.userData.tableMap) continue;
@@ -854,7 +871,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     /** The pointer on the map, for the ruler and the area being aimed. */
     const aim = (event: PointerEvent) => {
       if (!overlay || !mapSurface) return;
-      const wanted = Boolean(tableRef.current.aiming || pawnRef.current.held);
+      const wanted = Boolean(tableRef.current.aiming || tableRef.current.targeting || pawnRef.current.held);
       if (!wanted) { overlay.setCursor(null); return; }
       const now = performance.now();
       if (now - aimAt < 40) return;
@@ -917,7 +934,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       poke();
       const key = event.key.toLowerCase();
       if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
-      if (key === "escape" && event.type === "keydown" && tableRef.current.aiming) { setAimingState(null); return; }
+      if (key === "escape" && event.type === "keydown" && (tableRef.current.aiming || tableRef.current.targeting)) { setAimingState(null); setTargeting(null); return; }
       if (key === "escape" && event.type === "keydown" && pawnRef.current.held) { setHeldPawn(null); return; }
       if (key === "shift") { shiftDown = event.type === "keydown"; return; }
       if (key === " " && event.type === "keydown") {
@@ -1358,6 +1375,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           overlay.setMoveRing(table.ring?.at ?? null, table.ring?.feet ?? 0);
           overlay.update();
         }
+        if (spellFx) {
+          spellFx.update(t, dt);
+          if (spellFx.busy()) poke();
+        }
       }
     };
 
@@ -1545,6 +1566,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       extras?.dispose();
       pawns?.dispose();
       overlay?.dispose();
+      spellFx?.dispose();
+      if (spellFxRef.current === spellFx) spellFxRef.current = null;
       rod?.dispose();
       if (rodRef.current) rodRef.current = null;
       dropWatch();
@@ -1736,7 +1759,20 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const myCharacterNow: TableCharacter | undefined = myUserId ? characters[myUserId] : undefined;
   const [cast, setCast] = useState<CastResult | null>(null);
   const [aiming, setAimingState] = useState<{ preview: AreaPreview; spell: SpellInfo; slotLevel: number; dice: string | null; note: string } | null>(null);
-  useEffect(() => { if (venueId !== "tabletop") { setAimingState(null); setCast(null); } }, [venueId]);
+  /** A spell cast at someone: it waits for its target. */
+  const [targeting, setTargeting] = useState<{ spell: SpellInfo; slotLevel: number; dice: string | null; from: { x: number; z: number } } | null>(null);
+  useEffect(() => { if (venueId !== "tabletop") { setAimingState(null); setTargeting(null); setCast(null); } }, [venueId]);
+  /** A spell going off: drawn here at once, and sent to everyone else at the table. */
+  const fireSpell = (event: SpellFxEvent) => {
+    spellFxRef.current?.play(event, metresPerFoot);
+    room.setShared("spellfx", event);
+  };
+  // Someone else's spell.
+  useEffect(() => {
+    const event = room.spellFx;
+    if (event && venueId === "tabletop") spellFxRef.current?.play(event, metresPerFoot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.spellFx?.id]);
   const myHero = Object.values(tablePawns).find((pawn) => pawn.owner === myUserId && pawn.hero);
   /** Where my spells start: my hero on the map, or the map's edge in front of my chair. */
   const castFrom = () => {
@@ -1755,10 +1791,27 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const castSpell = (spell: SpellInfo, slotLevel: number) => {
     const dice = castDice(spell.dice, spell, slotLevel, myCharacterNow?.level ?? 1);
     const note = [spell.save && `${spell.save.slice(0, 3).toUpperCase()} save`, dice && `${dice}${spell.damageType ? ` ${spell.damageType.toLowerCase()}` : ""}`].filter(Boolean).join(" · ");
+    const mode = fxMode(spell);
+    const fx = { spell: spell.name, count: fxCount(spell.name, slotLevel, myCharacterNow?.level ?? 1), ...(spell.damageType ? { damageType: spell.damageType } : {}), ...(healsWith(spell) ? { heals: true } : {}) };
+    if (mode === "self") {
+      const from = castFrom();
+      spendSlot(slotLevel);
+      fireSpell({ ...fx, from, to: from });
+      setCast({ spell, slotLevel, dice, areaId: null });
+      return;
+    }
+    if (mode === "target") {
+      setCast(null);
+      setHeldPawn(null);
+      setAimingState(null);
+      setTargeting({ spell, slotLevel, dice, from: castFrom() });
+      return;
+    }
     if (spell.area) {
       const from = castFrom();
       setCast(null);
       setHeldPawn(null);
+      setTargeting(null);
       setAimingState({
         preview: { ...spell.area, ox: from.x, oz: from.z, colour: areaColour(spell.damageType ?? undefined), label: `${spell.name} · ${spell.area.size} ft ${spell.area.shape}` },
         spell, slotLevel, dice, note,
@@ -1772,7 +1825,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   tableRef.current = {
     cell, metresPerFoot, shows: pawnShows, hits: areaHits.hit, areaHits: areaHits.byArea, spots: pawnSpots,
     aiming: aiming?.preview ?? null,
-    ruler: held ? { from: { x: held.x, z: held.z }, limit: combat ? Math.max(0, speedOf(held) - movedFeet(held)) : null } : null,
+    ruler: targeting ? { from: targeting.from, limit: rangeFeet(targeting.spell.range) || null }
+      : held ? { from: { x: held.x, z: held.z }, limit: combat ? Math.max(0, speedOf(held) - movedFeet(held)) : null } : null,
     ring: held && combat ? { at: turnStart.current.spots.get(held.id) ?? held, feet: speedOf(held) } : null,
     place: (x, z) => {
       if (!aiming) return;
@@ -1782,9 +1836,34 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const far = Math.hypot(x - preview.ox, z - preview.oz) / metresPerFoot;
       const warning = !preview.fromSelf && reach !== null && far > reach + 2.5 ? `That point is about ${Math.round(far / 5) * 5} ft away; ${spell.name} reaches ${reach} ft.` : null;
       sendArea({ op: "put", id, spell: spell.name, shape: preview.shape, size: preview.size, width: preview.width, fromSelf: preview.fromSelf, x, z, ox: preview.ox, oz: preview.oz, colour: preview.colour, note });
+      fireSpell({
+        spell: spell.name, from: { x: preview.ox, z: preview.oz }, to: { x, z }, count: 1,
+        area: { shape: preview.shape, size: preview.size, width: preview.width, fromSelf: preview.fromSelf },
+        ...(spell.damageType ? { damageType: spell.damageType } : {}),
+      });
       spendSlot(slotLevel);
       setCast({ spell, slotLevel, dice, areaId: id, warning });
       setAimingState(null);
+    },
+    targeting: Boolean(targeting),
+    target: (x, z, pawnId) => {
+      if (!targeting) return;
+      const { spell, slotLevel, dice, from } = targeting;
+      const pawn = pawnId ? tablePawns[pawnId] : undefined;
+      const to = pawn ? { x: pawn.x, z: pawn.z } : { x, z };
+      if (!Number.isFinite(to.x) || !Number.isFinite(to.z)) return;
+      const reach = rangeFeet(spell.range);
+      const far = Math.hypot(to.x - from.x, to.z - from.z) / metresPerFoot;
+      const warning = reach !== null && reach > 0 && far > reach + 2.5 ? `${pawn ? nameOf(pawn) : "That spot"} is about ${Math.round(far / 5) * 5} ft away; ${spell.name} reaches ${reach} ft.` : null;
+      spendSlot(slotLevel);
+      fireSpell({ spell: spell.name, from, to, count: fxCount(spell.name, slotLevel, myCharacterNow?.level ?? 1), ...(spell.damageType ? { damageType: spell.damageType } : {}), ...(healsWith(spell) ? { heals: true } : {}) });
+      // Misty Step and the like take you there.
+      if (/^(misty step|dimension door|thunder step)$/i.test(spell.name) && myHero && !pawn) {
+        const spot = clampPawnSpot(to.x, to.z);
+        sendPawn({ op: "put", id: myHero.id, kind: myHero.kind, colour: myHero.colour, x: spot.x, z: spot.z, facing: myHero.facing, label: myHero.label });
+      }
+      setCast({ spell, slotLevel, dice, areaId: null, warning, target: pawn ? nameOf(pawn) : null });
+      setTargeting(null);
     },
     tapArea: (id) => {
       const area: TableArea | undefined = room.shared.areas[id];
@@ -2076,7 +2155,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       {(myCharacterNow?.maxHp || myCharacterNow?.cls ? (
         <HeroCard
           character={myCharacterNow} onChange={setMine} onEdit={() => setPanel("character")}
-          onCast={castSpell} aiming={aiming?.spell.name ?? null} onStopAiming={() => setAimingState(null)}
+          onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}
+          aiming={aiming ? { name: aiming.spell.name, what: "click the map where it goes" } : targeting ? { name: targeting.spell.name, what: /^(misty step|dimension door|thunder step)$/i.test(targeting.spell.name) ? "click where you go" : "click a pawn or a spot" } : null}
           cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
           onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
         />

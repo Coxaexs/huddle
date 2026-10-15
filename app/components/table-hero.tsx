@@ -21,6 +21,8 @@ export interface CastResult {
   inIt?: string[];
   /** Said once, e.g. "out of range". */
   warning?: string | null;
+  /** Who it was cast at. */
+  target?: string | null;
 }
 
 /** Hit points that change at once on screen, and reach the room once the clicking stops. */
@@ -107,8 +109,8 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
   onRoll: (dice: string) => void;
   onTakeOff: (areaId: string) => void;
   onDismissCast: () => void;
-  /** The spell being aimed at the map, if any. */
-  aiming: string | null;
+  /** The spell being aimed, and what to click. */
+  aiming: { name: string; what: string } | null;
   onStopAiming: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -162,14 +164,14 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
       )}
       {aiming && (
         <div className="lr-cast lr-aim">
-          <span>Aiming <b>{aiming}</b>: click the map. Esc cancels.</span>
+          <span><b>{aiming.name}</b>: {aiming.what}. Esc cancels.</span>
           <button type="button" onClick={onStopAiming} aria-label="Stop aiming"><X size={13} /></button>
         </div>
       )}
       {cast && !aiming && (
         <div className="lr-cast">
           <div className="lr-line">
-            <span><b>{cast.spell.name}</b>{cast.slotLevel ? ` · ${levelName(cast.slotLevel)} slot` : ""}{cast.spell.save ? ` · ${cast.spell.save.slice(0, 3).toUpperCase()} save` : ""}</span>
+            <span><b>{cast.spell.name}</b>{cast.target ? ` → ${cast.target}` : ""}{cast.slotLevel ? ` · ${levelName(cast.slotLevel)} slot` : ""}{cast.spell.save ? ` · ${cast.spell.save.slice(0, 3).toUpperCase()} save` : ""}</span>
             {cast.areaId && <small>{cast.inIt?.length ? `In it: ${cast.inIt.join(", ")}` : "Nobody in it"}</small>}
             {cast.warning && <small className="lr-warn">{cast.warning}</small>}
           </div>

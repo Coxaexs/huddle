@@ -733,7 +733,7 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid") return;
+        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid" && key !== "spellfx") return;
         const now = Date.now();
         // Each piece on its own clock: casting sends the area and the spent slot together.
         const clock = `${attachment.connectionId}|${key}`;
@@ -742,7 +742,7 @@ export class HuddleHub extends DurableObject {
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid", value: unknown, includeSender: boolean) => {
+        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "spellfx", value: unknown, includeSender: boolean) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;
@@ -750,6 +750,11 @@ export class HuddleHub extends DurableObject {
             other.send(payload);
           }
         };
+        if (key === "spellfx") {
+          // A moment, like a hidden roll: everyone else sees it once; the caster drew it already.
+          if (clean) send("spellfx", { ...(clean as object), by: attachment.connectionId }, false);
+          return;
+        }
         if (key === "hiddenroll") {
           // Never stored: it is a moment, and it carries no faces.
           if (clean) send("hiddenroll", { ...(clean as object), by: attachment.connectionId }, false);

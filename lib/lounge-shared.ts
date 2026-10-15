@@ -7,7 +7,7 @@
  */
 import { CLASSES, type AreaShape } from "./dnd-spells";
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -351,6 +351,8 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       return sanitizePawnOp(value);
     case "area":
       return sanitizeAreaOp(value);
+    case "spellfx":
+      return sanitizeSpellFx(value);
     case "grid": {
       const squares = num(value.squares, 10, 60, 0);
       return squares ? ({ squares: Math.round(squares) } satisfies TableGrid) : null;
@@ -498,4 +500,49 @@ export function applyArea(
   const all = Object.values(next).sort((a, b) => a.at - b.at);
   for (const old of all.slice(0, Math.max(0, all.length - AREAS_MAX))) delete next[old.id];
   return next;
+}
+
+/* ---------- spell animations ---------- */
+
+/**
+ * A spell going off at the table, for everyone to see: from its caster to
+ * its target (metres from the table's centre), with its area if it has one
+ * and how many darts or rays it throws. Never stored: it is a moment.
+ */
+export interface SpellFxEvent {
+  spell: string;
+  from: { x: number; z: number };
+  to: { x: number; z: number };
+  area?: { shape: AreaShape; size: number; width: number; fromSelf: boolean };
+  /** Darts, rays or beams (Magic Missile, Scorching Ray, Eldritch Blast). */
+  count: number;
+  /** Damage type, for spells without their own look: the colour. */
+  damageType?: string;
+  /** A healing spell (generic sparkles go green). */
+  heals?: boolean;
+  /** Who cast it (the hub stamps it). */
+  by?: string;
+}
+
+export function sanitizeSpellFx(raw: unknown): SpellFxEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const spell = str(value.spell, 60).trim();
+  if (!spell) return null;
+  const spot = (v: unknown) => {
+    const p = (v ?? {}) as Record<string, unknown>;
+    return { x: Math.round(num(p.x, -2, 2) * 1000) / 1000, z: Math.round(num(p.z, -2, 2) * 1000) / 1000 };
+  };
+  const a = value.area as Record<string, unknown> | undefined;
+  const shape = a ? AREA_SHAPES.find((s) => s === a.shape) : undefined;
+  const damageType = str(value.damageType, 20).trim();
+  return {
+    spell,
+    from: spot(value.from),
+    to: spot(value.to),
+    ...(a && shape ? { area: { shape, size: Math.round(num(a.size, 5, 500, 5)), width: Math.round(num(a.width, 0, 100)), fromSelf: a.fromSelf === true } } : {}),
+    count: Math.round(num(value.count, 1, 10, 1)),
+    ...(damageType ? { damageType } : {}),
+    ...(value.heals === true ? { heals: true } : {}),
+  };
 }

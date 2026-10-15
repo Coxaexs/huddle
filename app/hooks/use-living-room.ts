@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchState } from "@/lib/lounge-shared";
+import type { GameMaster, HiddenRoll, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchState } from "@/lib/lounge-shared";
 import {
   FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -97,7 +97,7 @@ export interface LoungeShared {
 }
 const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null };
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx";
 
 export interface LivingRoom {
   open: boolean;
@@ -106,6 +106,8 @@ export interface LivingRoom {
   setShared: (key: LoungeSharedKey, value: unknown) => void;
   /** The latest roll made behind the game master's screen: the dice, never the faces. */
   hiddenRoll: (HiddenRoll & { id: number }) | null;
+  /** The latest spell someone else cast at the table, to animate. */
+  spellFx: (SpellFxEvent & { id: number }) | null;
   /** Which room this tab is hanging out in. */
   venue: VenueId;
   setVenue: (venue: VenueId) => void;
@@ -182,6 +184,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const [emotes, setEmotes] = useState<LoungeEmote[]>([]);
   const [shared, setSharedState] = useState<LoungeShared>(NO_SHARED);
   const [hiddenRoll, setHiddenRoll] = useState<(HiddenRoll & { id: number }) | null>(null);
+  const [spellFx, setSpellFx] = useState<(SpellFxEvent & { id: number }) | null>(null);
   const setShared = useCallback((key: LoungeSharedKey, value: unknown) => {
     sendRef.current({ t: "lounge-set", key, value });
   }, []);
@@ -205,6 +208,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     setVenueState("lounge");
     setSharedState(NO_SHARED);
     setHiddenRoll(null);
+    setSpellFx(null);
     setEmotes([]);
     if (roomId) sendRef.current({ t: "lounge-sync" });
   }, [roomId]);
@@ -224,7 +228,9 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         return;
       }
       if (detail.t === "lounge-shared") {
-        if (detail.key === "hiddenroll") {
+        if (detail.key === "spellfx") {
+          if (detail.value && typeof detail.value === "object") setSpellFx({ ...(detail.value as SpellFxEvent), id: ++emoteId.current });
+        } else if (detail.key === "hiddenroll") {
           if (detail.value && typeof detail.value === "object") setHiddenRoll({ ...(detail.value as HiddenRoll), id: ++emoteId.current });
         } else {
           setSharedState((current) => ({ ...current, [detail.key]: detail.value ?? (detail.key === "characters" || detail.key === "pawns" || detail.key === "areas" ? {} : null) }));
@@ -390,7 +396,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, setOpen, shared, setShared, hiddenRoll, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, setOpen, shared, setShared, hiddenRoll, spellFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }
