@@ -545,6 +545,8 @@ export interface BuiltRoom {
   idleScreen?: THREE.Texture | null;
   /** The tabletop's battle map: an uploaded image in place of the drawn one (null: back to it). */
   setTableMap?: (image: HTMLImageElement | null, turns?: number, zoom?: number) => void;
+  /** The tabletop's map colour (sRGB 0-255) under a point, for the pawns standing on it; null off the map. */
+  mapColourAt?: (x: number, z: number) => [number, number, number] | null;
   /** The living room's Blåhaj; other rooms have none. */
   shark?: THREE.Group;
   background: THREE.Color;

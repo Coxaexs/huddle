@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
-  addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
-  type GameMaster, type HouseLights, type Initiative, type TableCharacter, type TableMap, type WatchState,
+  PAWNS_EACH, PAWNS_GM, PAWN_KINDS, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
+  type GameMaster, type HouseLights, type Initiative, type PawnKind, type TableCharacter, type TableMap, type TablePawn, type WatchState,
 } from "@/lib/lounge-shared";
 import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
 import type { VoiceParticipant } from "@/lib/protocol";
@@ -631,6 +631,80 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
         </>
       ) : (
         <p className="lr-note">The game master&apos;s screen shows them the order, rules and notes they pick.</p>
+      )}
+    </div>
+  );
+}
+
+/** The cabinet's miniatures as the panel names them. */
+export const PAWN_NAMES: Record<PawnKind, { name: string; glyph: string }> = {
+  fighter: { name: "Fighter", glyph: "⚔️" },
+  wizard: { name: "Wizard", glyph: "🧙" },
+  rogue: { name: "Rogue", glyph: "🗡️" },
+  cleric: { name: "Cleric", glyph: "✨" },
+  beast: { name: "Ogre", glyph: "👹" },
+  dragon: { name: "Dragon", glyph: "🐉" },
+};
+
+/** The paints on the cabinet's shelf. */
+export const PAWN_PAINTS = ["#3b4fa8", "#8a1c1c", "#2f6b3a", "#c9a45c", "#6a3d9a", "#d9822b", "#e8e2d0", "#2b2b2b"];
+
+/**
+ * The miniatures cabinet: take a pawn to the table, painted and named as you
+ * like, then click it and click the map to move it. Players keep a few each;
+ * the game master keeps the monsters, and can move anyone's.
+ */
+export function PawnsPanel({ pawns, myUserId, isGm, held, onTake, onHold, onPutBack, onClear, onClose }: {
+  pawns: Record<string, TablePawn>;
+  myUserId: string | null;
+  isGm: boolean;
+  held: string | null;
+  onTake: (kind: PawnKind, colour: string, label: string) => void;
+  onHold: (id: string | null) => void;
+  onPutBack: (id: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [colour, setColour] = useState(PAWN_PAINTS[0]);
+  const [label, setLabel] = useState("");
+  const all = Object.values(pawns).sort((a, b) => a.ownerName.localeCompare(b.ownerName) || a.at - b.at);
+  const mine = all.filter((pawn) => pawn.owner === myUserId);
+  const limit = isGm ? PAWNS_GM : PAWNS_EACH;
+  const shown = isGm ? all : mine;
+  const full = mine.length >= limit;
+  return (
+    <div className="living-room-panel" role="dialog" aria-label="Miniatures">
+      <div className="living-room-panel-head"><strong><ChessPawn size={14} /> Miniatures</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
+      <p className="lr-note">Take one from the cabinet and it stands on the map in front of you. Click your pawn, then click the map to move it. {isGm ? "As the game master you can move anyone's." : `You can have ${limit} on the table.`}</p>
+      <div className="lr-row" role="group" aria-label="Paint">
+        {PAWN_PAINTS.map((paint) => (
+          <button key={paint} type="button" className="lr-paint" style={{ background: paint }} aria-label={`Paint ${paint}`} aria-pressed={paint === colour} onClick={() => setColour(paint)} />
+        ))}
+      </div>
+      <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={isGm ? "Name over it (Goblin 2)" : "Name over it (optional)"} aria-label="Name over the pawn" maxLength={24} />
+      <div className="lr-pawn-kinds">
+        {PAWN_KINDS.map((kind) => (
+          <button key={kind} type="button" disabled={full || !myUserId} onClick={() => { onTake(kind, colour, label.trim()); if (isGm) setLabel(""); }} title={full ? `You have ${limit} on the table already` : `Put a ${PAWN_NAMES[kind].name.toLowerCase()} on the map`}>
+            <span aria-hidden="true">{PAWN_NAMES[kind].glyph}</span>{PAWN_NAMES[kind].name}
+          </button>
+        ))}
+      </div>
+      {shown.length > 0 && (
+        <>
+          <small>{isGm ? `On the table (${all.length})` : `Yours on the table (${mine.length} of ${limit})`}</small>
+          <ul className="lr-list">
+            {shown.map((pawn) => (
+              <li key={pawn.id} className={pawn.id === held ? "lr-held" : ""}>
+                <span className="lr-name"><i className="lr-dot" style={{ background: pawn.colour }} />{pawn.label || PAWN_NAMES[pawn.kind].name}{isGm && pawn.owner !== myUserId ? <small> · {pawn.ownerName}</small> : null}</span>
+                <button type="button" className={pawn.id === held ? "active" : ""} aria-pressed={pawn.id === held} onClick={() => onHold(pawn.id === held ? null : pawn.id)} title="Then click the map where it should go">{pawn.id === held ? "Moving…" : "Move"}</button>
+                <button type="button" onClick={() => onPutBack(pawn.id)} aria-label={`Put ${pawn.label || PAWN_NAMES[pawn.kind].name} back`} title="Back in the cabinet"><Trash2 size={12} /></button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {(isGm ? all.length > 0 : mine.length > 1) && (
+        <div className="lr-row"><button type="button" onClick={onClear}>{isGm ? "Clear the table" : "Put all mine back"}</button></div>
       )}
     </div>
   );

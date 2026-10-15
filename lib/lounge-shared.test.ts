@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, safeMediaUrl, sanitizeShared, stepTurn, watchPosition, type Initiative, type WatchState } from "./lounge-shared";
+import { PAWNS_EACH, PAWN_REACH, addInitiative, applyPawn, cinemaSeatLabel, currentEntry, removeInitiative, safeMediaUrl, sanitizePawnOp, sanitizeShared, stepTurn, watchPosition, type Initiative, type PawnOp, type TablePawn, type WatchState } from "./lounge-shared";
 
 describe("safeMediaUrl", () => {
   it("allows https links and this server's own uploads, and nothing else", () => {
@@ -119,5 +119,53 @@ describe("house lights", () => {
     expect(sanitizeShared("house", { level: 7, auto: false }, "Mod", 5)).toEqual({ level: 1, auto: false, at: 5, by: "Mod" });
     expect(sanitizeShared("house", { level: -2 }, "Mod", 5)).toEqual({ level: 0, auto: true, at: 5, by: "Mod" });
     expect(sanitizeShared("house", null, "Mod", 5)).toBeNull();
+  });
+});
+
+describe("pawns", () => {
+  const put = (id: string, x = 0, z = 0): Extract<PawnOp, { op: "put" }> => ({ op: "put", id, kind: "fighter", colour: "#3b4fa8", x, z, facing: 0, label: "" });
+  const sam = { userId: "u-sam", name: "Sam", isGm: false };
+  const kit = { userId: "u-kit", name: "Kit", isGm: false };
+  const gm = { userId: "u-gm", name: "Dee", isGm: true };
+
+  it("cleans a request, keeping the pawn on the map", () => {
+    const op = sanitizePawnOp({ op: "put", id: "pawn1234", kind: "dragon", colour: "#ABCDEF", x: 9, z: 0, facing: 7, label: "  Big red " + "x".repeat(40) });
+    expect(op).toMatchObject({ op: "put", kind: "dragon", colour: "#abcdef", x: PAWN_REACH, z: 0, facing: Math.round(Math.PI * 1000) / 1000 });
+    expect((op as { label: string }).label).toHaveLength(24);
+    expect(sanitizePawnOp({ op: "put", id: "pawn1234", kind: "unicorn", x: 0, z: 0 })).toBeNull();
+    expect(sanitizePawnOp({ op: "put", id: "../../x", kind: "rogue", x: 0, z: 0 })).toBeNull();
+    expect(sanitizePawnOp({ op: "put", id: "pawn1234", kind: "rogue", x: Number.NaN, z: 0 })).toBeNull();
+    expect(sanitizePawnOp({ op: "put", id: "pawn1234", kind: "rogue", colour: "red", x: 0, z: 0 })).toMatchObject({ colour: "#c9a45c" });
+    expect(sanitizePawnOp({ op: "clear", id: "whatever" })).toEqual({ op: "clear" });
+    expect(sanitizeShared("pawn", { op: "remove", id: "pawn1234" }, "Sam", 1)).toEqual({ op: "remove", id: "pawn1234" });
+  });
+
+  it("lets the owner move their pawn and nobody else but the game master", () => {
+    let table: Record<string, TablePawn> = applyPawn({}, put("samspawn"), sam, 1)!;
+    expect(table.samspawn).toMatchObject({ owner: "u-sam", ownerName: "Sam", at: 1 });
+    expect(applyPawn(table, put("samspawn", 0.5, 0.5), kit, 2)).toBeNull();
+    expect(applyPawn(table, { op: "remove", id: "samspawn" }, kit, 2)).toBeNull();
+    table = applyPawn(table, { ...put("samspawn", 0.5, 0.5), colour: "#000000", label: "Mine now" }, gm, 3)!;
+    // The game master moves it; it stays Sam's, painted as Sam painted it.
+    expect(table.samspawn).toMatchObject({ x: 0.5, z: 0.5, owner: "u-sam", colour: "#3b4fa8", label: "", at: 3 });
+    table = applyPawn(table, { ...put("samspawn", -0.2, 0), label: "Aria" }, sam, 4)!;
+    expect(table.samspawn).toMatchObject({ x: -0.2, label: "Aria" });
+    expect(applyPawn(table, { op: "remove", id: "samspawn" }, sam, 5)).toEqual({});
+  });
+
+  it("holds each player to a few pawns, and the game master to more", () => {
+    let table: Record<string, TablePawn> = {};
+    for (let i = 0; i < PAWNS_EACH; i++) table = applyPawn(table, put(`sam-${i}`), sam, i)!;
+    expect(applyPawn(table, put("sam-extra"), sam, 9)).toBeNull();
+    for (let i = 0; i < 10; i++) table = applyPawn(table, put(`gob-${i}`), gm, i)!;
+    expect(Object.keys(table)).toHaveLength(PAWNS_EACH + 10);
+  });
+
+  it("clears the table for the game master, and only your own for anyone else", () => {
+    let table = applyPawn({}, put("sam-1"), sam, 1)!;
+    table = applyPawn(table, put("kit-1"), kit, 1)!;
+    expect(Object.keys(applyPawn(table, { op: "clear" }, kit, 2)!)).toEqual(["sam-1"]);
+    expect(applyPawn(table, { op: "clear" }, gm, 2)).toEqual({});
+    expect(applyPawn({}, { op: "clear" }, sam, 2)).toBeNull();
   });
 });

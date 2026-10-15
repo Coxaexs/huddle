@@ -481,6 +481,8 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   surface.rotation.x = -Math.PI / 2;
   surface.position.set(TABLE_CENTRE.x, TABLE_SURFACE_Y - 0.008, TABLE_CENTRE.z);
   surface.receiveShadow = true;
+  // Clicked with a pawn in hand, it says where the pawn goes.
+  surface.userData.tableMap = true;
   const column = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, TABLE_SURFACE_Y - 0.15, 24), woodDark);
   column.position.set(TABLE_CENTRE.x, (TABLE_SURFACE_Y - 0.15) / 2, TABLE_CENTRE.z);
   column.castShadow = true;
@@ -754,6 +756,8 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   cabinet.add(pane);
   cabinet.position.set(-TABLETOP.halfX + cabD / 2, 0, 1.9);
   cabinet.rotation.y = Math.PI / 2;
+  // Clicked, it opens: take a miniature to the table.
+  cabinet.userData.cabinet = true;
   root.add(cabinet);
   addGlow(look.lamp, 1.6, new THREE.Vector3(-TABLETOP.halfX + 0.3, 1.0, 1.9), 0.18);
 
@@ -796,6 +800,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   const setTableMap = (image: HTMLImageElement | null, turns = 0, zoom = 1) => {
     uploaded?.dispose();
     uploaded = null;
+    pixels = null;
     if (!image) {
       mapMaterial.map = drawnMap;
       mapMaterial.needsUpdate = true;
@@ -818,12 +823,66 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     mapMaterial.needsUpdate = true;
   };
 
+  /**
+   * The map's colour under a point on the table (sRGB 0-255), read from a
+   * small copy of whichever map is showing; null off the map or when the
+   * image cannot be read.
+   */
+  let pixels: { data: Uint8ClampedArray; w: number; h: number } | null | false = null;
+  const uv = new THREE.Vector2();
+  const mapColourAt = (x: number, z: number): [number, number, number] | null => {
+    const dx = x - TABLE_CENTRE.x;
+    const dz = z - TABLE_CENTRE.z;
+    if (Math.hypot(dx, dz) > MAP_RADIUS) return null;
+    const texture = mapMaterial.map;
+    const source = texture?.image as (HTMLImageElement | HTMLCanvasElement) | undefined;
+    if (!texture || !source) return null;
+    if (pixels === null) {
+      try {
+        const sw = source instanceof HTMLImageElement ? source.naturalWidth : source.width;
+        const sh = source instanceof HTMLImageElement ? source.naturalHeight : source.height;
+        const scale = Math.min(1, 256 / Math.max(sw, sh, 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(sw * scale));
+        canvas.height = Math.max(1, Math.round(sh * scale));
+        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        pixels = { data: ctx.getImageData(0, 0, canvas.width, canvas.height).data, w: canvas.width, h: canvas.height };
+      } catch {
+        // A picture the browser will not let us read: no colours, never an error.
+        pixels = false;
+      }
+    }
+    if (!pixels) return null;
+    // The circle's own UVs (its +Y is the room's -Z), then the map's crop, turn and zoom.
+    texture.updateMatrix();
+    uv.set(0.5 + dx / (2 * MAP_RADIUS), 0.5 - dz / (2 * MAP_RADIUS)).applyMatrix3(texture.matrix);
+    const u = Math.min(1, Math.max(0, uv.x));
+    const v = Math.min(1, Math.max(0, uv.y));
+    const px = Math.min(pixels.w - 1, Math.floor(u * pixels.w));
+    const py = Math.min(pixels.h - 1, Math.floor((texture.flipY ? 1 - v : v) * pixels.h));
+    // A few pixels round it, so a grid line under the base does not decide.
+    const sum = [0, 0, 0];
+    let n = 0;
+    for (let oy = -2; oy <= 2; oy += 2) {
+      for (let ox = -2; ox <= 2; ox += 2) {
+        const qx = Math.min(pixels.w - 1, Math.max(0, px + ox));
+        const qy = Math.min(pixels.h - 1, Math.max(0, py + oy));
+        const i = (qy * pixels.w + qx) * 4;
+        sum[0] += pixels.data[i]; sum[1] += pixels.data[i + 1]; sum[2] += pixels.data[i + 2];
+        n++;
+      }
+    }
+    return [sum[0] / n, sum[1] / n, sum[2] / n];
+  };
+
   return {
     root,
     ceiling,
     screenMaterial,
     idleScreen,
     setTableMap,
+    mapColourAt,
     background: new THREE.Color(look.background),
     fog: new THREE.Fog(look.fog, 12, 26),
     exposure: look.exposure,

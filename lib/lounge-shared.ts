@@ -1,11 +1,12 @@
 /**
  * State a voice room's living room shares: the film everyone is watching, the
- * initiative order, who the game master is, the card floating over the table
- * and each player's character. The hub keeps it for the life of the call and
- * checks its shape (sanitize), so a client can only ever store these.
+ * initiative order, who the game master is, the card floating over the table,
+ * each player's character and the pawns stood on the map. The hub keeps it
+ * for the life of the call and checks its shape (sanitize), so a client can
+ * only ever store these.
  */
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap";
+export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -81,6 +82,106 @@ export interface TableMap {
 
 /** Someone rolled behind the screen: everyone sees dice land there, but never the faces. */
 export interface HiddenRoll { by: string; dice: Array<{ sides: number; count: number }>; seed: string }
+
+/** The miniatures in the tabletop's cabinet, which anyone may take to the table. */
+export const PAWN_KINDS = ["fighter", "wizard", "rogue", "cleric", "beast", "dragon"] as const;
+export type PawnKind = (typeof PAWN_KINDS)[number];
+
+/**
+ * A miniature someone took from the cabinet and stood on the map. Where it
+ * stands is in metres from the table's centre. Its owner moves it, and so does
+ * the game master while they are in the room (the hub checks).
+ */
+export interface TablePawn {
+  id: string;
+  kind: PawnKind;
+  colour: string;
+  /** Metres east and south of the table's centre, always on the map. */
+  x: number;
+  z: number;
+  /** Which way it looks (radians, 0 north, as poses turn). */
+  facing: number;
+  /** A name over its head ("Goblin 2"); empty: its owner's name. */
+  label: string;
+  /** The user who took it from the cabinet. */
+  owner: string;
+  ownerName: string;
+  /** Hub clock (ms) when it last moved; the hub stamps it. */
+  at: number;
+}
+
+/** What a client asks of a pawn: stand it (somewhere new), put it back, or clear the table. */
+export type PawnOp =
+  | { op: "put"; id: string; kind: PawnKind; colour: string; x: number; z: number; facing: number; label: string }
+  | { op: "remove"; id: string }
+  | { op: "clear" };
+
+/** How many pawns a player may have on the table, the game master's own, and the table's in all. */
+export const PAWNS_EACH = 3;
+export const PAWNS_GM = 20;
+export const PAWNS_MAX = 60;
+/** How far from the centre a pawn may stand: on the map, clear of its edge (tabletop MAP_RADIUS is 1.33). */
+export const PAWN_REACH = 1.2;
+
+/** A pawn's place, kept on the map. */
+export function clampPawnSpot(x: number, z: number): { x: number; z: number } {
+  const r = Math.hypot(x, z);
+  if (r <= PAWN_REACH) return { x, z };
+  return { x: (x / r) * PAWN_REACH, z: (z / r) * PAWN_REACH };
+}
+
+/**
+ * The table after one pawn request from `who`, or null when it is not theirs
+ * to make: a pawn that is somebody else's (unless they are the game master),
+ * one too many, or nothing to change.
+ */
+export function applyPawn(
+  pawns: Record<string, TablePawn>,
+  op: PawnOp,
+  who: { userId: string; name: string; isGm: boolean },
+  now: number,
+): Record<string, TablePawn> | null {
+  const mayTouch = (pawn: TablePawn) => who.isGm || pawn.owner === who.userId;
+  if (op.op === "clear") {
+    // The game master clears the table; anyone else puts their own away.
+    const next = Object.fromEntries(Object.entries(pawns).filter(([, pawn]) => !(who.isGm || pawn.owner === who.userId)));
+    return Object.keys(next).length === Object.keys(pawns).length ? null : next;
+  }
+  const existing = pawns[op.id];
+  if (op.op === "remove") {
+    if (!existing || !mayTouch(existing)) return null;
+    const { [op.id]: _gone, ...rest } = pawns;
+    return rest;
+  }
+  if (existing) {
+    if (!mayTouch(existing)) return null;
+    // Moving someone else's leaves it theirs, and as they painted it.
+    const mine = existing.owner === who.userId;
+    return { ...pawns, [op.id]: { ...existing, x: op.x, z: op.z, facing: op.facing, ...(mine ? { kind: op.kind, colour: op.colour, label: op.label } : {}), at: now } };
+  }
+  const all = Object.values(pawns);
+  const held = all.filter((pawn) => pawn.owner === who.userId).length;
+  if (held >= (who.isGm ? PAWNS_GM : PAWNS_EACH) || all.length >= PAWNS_MAX) return null;
+  return { ...pawns, [op.id]: { id: op.id, kind: op.kind, colour: op.colour, x: op.x, z: op.z, facing: op.facing, label: op.label, owner: who.userId, ownerName: who.name, at: now } };
+}
+
+/** A pawn request as sent, cleaned into a PawnOp (null: not one). */
+export function sanitizePawnOp(raw: unknown): PawnOp | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (value.op === "clear") return { op: "clear" };
+  const id = typeof value.id === "string" && /^[\w-]{4,24}$/.test(value.id) ? value.id : "";
+  if (!id) return null;
+  if (value.op === "remove") return { op: "remove", id };
+  if (value.op !== "put") return null;
+  const kind = PAWN_KINDS.find((k) => k === value.kind);
+  if (!kind) return null;
+  const colour = typeof value.colour === "string" && /^#[0-9a-f]{6}$/i.test(value.colour) ? value.colour.toLowerCase() : "#c9a45c";
+  if (typeof value.x !== "number" || typeof value.z !== "number" || !Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
+  const spot = clampPawnSpot(value.x, value.z);
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  return { op: "put", id, kind, colour, x: round(spot.x), z: round(spot.z), facing: round(num(value.facing, -Math.PI, Math.PI)), label: str(value.label, 60).trim().slice(0, 24) };
+}
 
 const str = (value: unknown, max: number): string => (typeof value === "string" ? value.slice(0, max) : "");
 const num = (value: unknown, min: number, max: number, fallback = 0): number =>
@@ -183,6 +284,9 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       });
       return dice.length ? ({ by, dice, seed: str(value.seed, 40) || String(now) } satisfies HiddenRoll) : null;
     }
+    case "pawn":
+      // A request, not a value: the hub applies it to the table with applyPawn.
+      return sanitizePawnOp(value);
   }
 }
 

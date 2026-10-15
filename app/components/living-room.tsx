@@ -4,7 +4,7 @@ import "../lib/canvas-polyfill";
 import { apiUrl } from "../lib/client";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, Clapperboard, Crown, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
+import { Armchair, ChessPawn, Clapperboard, Crown, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
 import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
@@ -19,13 +19,15 @@ import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from
 import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type ScreenPage } from "./tabletop-extras";
-import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, PAWN_NAMES, PawnsPanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { TablePawns } from "./tabletop-pawns";
+import type { Terrain } from "../lib/map-terrain";
 import {
   SCREEN_SIZES, buildScreenPage, readNotes, readPlayerScreenOpen, readScreenChoice, readSheet, saveNotes, savePlayerScreenOpen, saveScreenChoice, saveSheet,
   type CharacterSheet, type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
-import { addInitiative, currentEntry, watchPosition, type TableCard, type WatchState } from "@/lib/lounge-shared";
+import { addInitiative, clampPawnSpot, currentEntry, watchPosition, type PawnKind, type PawnOp, type TableCard, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
@@ -66,7 +68,7 @@ const VENUE_NAMES: Record<VenueId, string> = { lounge: "Living room", cinema: "C
 const VENUE_HINTS: Record<VenueId, string> = {
   lounge: "Click or tap the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits. Scroll or pinch to zoom.",
   cinema: "Pick any seat (up to 150) and watch what is shared or played on the big screen. Voices are one volume here; turn on Spatial voices in settings to hear the room. WASD walks, X sits.",
-  tabletop: "Take a chair at the table (ten fit), others can stand around it. Roll from the dice tray and the dice are thrown onto the map for everyone at the table.",
+  tabletop: "Take a chair at the table (ten fit), others can stand around it. Roll from the dice tray and the dice are thrown onto the map for everyone at the table. Take a pawn from the miniatures cabinet by the west wall.",
   boardhall: "DeepPixel, life size: the room's game is laid out on the floor and the pawns hop round it as you play. Press Play to open the game; walk the board, or sit on a bench to watch.",
   meadow: "A little world outside. Walk anywhere (WASD, Shift or double-tap W to hurry, Space to jump), sit by the campfire, go home to the cabin, or fish off the jetty (F).",
 };
@@ -480,7 +482,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | null>(null);
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | null>(null);
+  /** The pawn I picked up: the next click on the map puts it there. */
+  const [heldPawn, setHeldPawn] = useState<string | null>(null);
+  /** The pawn I last put down, so its landing can tell me what it landed in. */
+  const myLastPawn = useRef<string | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A hint for a moment, then gone (unless something else replaced it). */
+  const flashHint = (text: string, ms = 3500) => {
+    setHint(text);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHint((current) => (current === text ? null : current)), ms);
+  };
   // The screens at the table: which page each panel shows and the notes on them, the game master's and my own.
   const [screenChoice, setScreenChoice] = useScreenChoice("gm");
   const [gmNotes, setGmNotes] = useScreenNotes("gm");
@@ -534,6 +547,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   // What the inside of the game master's screen shows if that is me, and my own screen if I stood it up (built further down).
   const screenPagesRef = useRef<ScreenPage[] | null>(null);
   const playerPagesRef = useRef<ScreenPage[] | null>(null);
+  // The pawns: which one I hold, and what a click on a pawn, the map or the cabinet does (set further down).
+  const pawnRef = useRef<{ held: string | null; tap: (id: string) => void; moveTo: (x: number, z: number) => void; openCabinet: () => void; landed: (id: string, terrain: Terrain) => void }>({
+    held: null, tap: () => undefined, moveTo: () => undefined, openCabinet: () => undefined, landed: () => undefined,
+  });
   const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef });
   live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef };
 
@@ -591,6 +608,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       : null;
     diceRef.current = dice;
     const extras = venueId === "tabletop" ? new TableExtras(house, TABLE_SURFACE_Y) : null;
+    const pawns = venueId === "tabletop" ? new TablePawns(house, TABLE_SURFACE_Y, parts.mapColourAt, (id, terrain) => pawnRef.current.landed(id, terrain)) : null;
     // Far people, past the nearest few, are small coloured dots: one draw call for a crowd of 150.
     const crowd = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false }), 160);
     crowd.count = 0;
@@ -745,9 +763,23 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           live.current.room.setShared("card", null);
           return;
         }
+        const pawnId = pawns?.pawnAt(hit.object);
+        if (pawnId) {
+          pawnRef.current.tap(pawnId);
+          return;
+        }
+        if (hit.object.userData.tableMap && pawnRef.current.held) {
+          const at = house.worldToLocal(hit.point.clone());
+          pawnRef.current.moveTo(at.x - TABLE_CENTRE.x, at.z - TABLE_CENTRE.z);
+          return;
+        }
         let object: THREE.Object3D | null = hit.object;
-        while (object && !object.userData.seat && !object.userData.blahaj && !object.userData.floor) object = object.parent;
+        while (object && !object.userData.seat && !object.userData.blahaj && !object.userData.floor && !object.userData.cabinet) object = object.parent;
         if (!object) continue;
+        if (object.userData.cabinet) {
+          pawnRef.current.openCabinet();
+          return;
+        }
         if (object.userData.blahaj) {
           squeak();
           if (parts.shark) parts.shark.userData.hop = performance.now();
@@ -837,6 +869,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       poke();
       const key = event.key.toLowerCase();
       if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
+      if (key === "escape" && event.type === "keydown" && pawnRef.current.held) { setHeldPawn(null); return; }
       if (key === "shift") { shiftDown = event.type === "keydown"; return; }
       if (key === " " && event.type === "keydown") {
         event.preventDefault();
@@ -1203,7 +1236,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
     // The tabletop's D&D dressing: tents, the GM's screen, the turn marker, the floating card, and 3D character tokens.
     let tentsAt = 0;
-    const syncExtras = (t: number) => {
+    const syncExtras = (t: number, dt: number) => {
       if (!extras) return;
       const r = live.current.room;
       const shared = r.shared;
@@ -1232,8 +1265,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             seat, name: character.name, portraitUrl: character.portraitUrl || null,
             letter: (p.avatar || p.displayName || "?").slice(0, 2), colour: p.color || "#ffd67c", turn: isTurn,
           });
-          // Also create a 3D character token for the map
-          tokenSpecs.push({
+          // A 3D token for the character, until they stand a pawn of their own on the map.
+          if (!Object.values(shared.pawns).some((pawn) => pawn.owner === p.id)) tokenSpecs.push({
             id: p.connectionId,
             seat,
             name: character.name,
@@ -1260,6 +1293,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
       extras.setTurn(marker);
       extras.update(t);
+      if (pawns) {
+        const turnOwner = turn?.connectionId ? live.current.participants.find((p) => p.connectionId === turn.connectionId)?.id ?? null : null;
+        pawns.set(shared.pawns, pawnRef.current.held, turnOwner);
+        pawns.update(t, dt);
+        if (pawns.busy()) poke();
+      }
     };
 
     // The board hall: feed the floor board the latest game, and walk me over to my pawn when it moves.
@@ -1401,7 +1440,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       syncTv();
       syncWatch();
       syncMusicTv();
-      syncExtras(t);
+      syncExtras(t, dt);
       syncBoard();
       if (rod) {
         const pose = myPose();
@@ -1444,6 +1483,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       disposeTree(scene);
       dice?.dispose();
       extras?.dispose();
+      pawns?.dispose();
       rod?.dispose();
       if (rodRef.current) rodRef.current = null;
       dropWatch();
@@ -1501,6 +1541,73 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const gmPresent = Boolean(room.shared.gm && participants.some((p) => p.connectionId === room.shared.gm?.connectionId));
   const canEditMap = isGm || !gmPresent;
   const inGmChair = Boolean(connectionId && room.poses.get(connectionId)?.seat === GM_SEAT_ID);
+
+  // Pawns: mine to move, and anyone's for the game master (the hub holds everyone to the same).
+  const myUserId = myPerson?.id ?? null;
+  const sendPawn = (op: PawnOp) => room.setShared("pawn", op);
+  const pawnName = (id: string) => {
+    const pawn = room.shared.pawns[id];
+    return pawn ? pawn.label || `the ${PAWN_NAMES[pawn.kind].name.toLowerCase()}` : "it";
+  };
+  /** A new pawn stands on the map in front of me, beside any already there, looking in. */
+  const takePawn = (kind: PawnKind, colour: string, label: string) => {
+    const pose = connectionId ? room.poses.get(connectionId) : null;
+    const toward = Math.atan2((pose?.x ?? TABLE_CENTRE.x) - TABLE_CENTRE.x, (pose?.z ?? TABLE_CENTRE.z + 2) - TABLE_CENTRE.z);
+    const others = Object.values(room.shared.pawns);
+    const reach = 0.8;
+    let spot = { x: Math.sin(toward) * reach, z: Math.cos(toward) * reach };
+    for (let i = 0; i < 16; i++) {
+      const along = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 0.17;
+      const angle = toward + along / reach;
+      const next = { x: Math.sin(angle) * reach, z: Math.cos(angle) * reach };
+      if (others.every((pawn) => Math.hypot(pawn.x - next.x, pawn.z - next.z) > 0.15)) { spot = next; break; }
+    }
+    const id = `p${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-3)}`;
+    myLastPawn.current = id;
+    sendPawn({ op: "put", id, kind, colour, x: spot.x, z: spot.z, facing: Math.atan2(-spot.x, spot.z), label });
+    setHeldPawn(id);
+    flashHint("On the table. Click the map to move it there; Esc lets go.", 6000);
+  };
+  pawnRef.current = {
+    held: heldPawn,
+    tap: (id) => {
+      const pawn = room.shared.pawns[id];
+      if (!pawn) return;
+      if (!isGm && pawn.owner !== myUserId) { flashHint(`That one is ${pawn.ownerName}'s.`); return; }
+      if (heldPawn === id) { setHeldPawn(null); return; }
+      setHeldPawn(id);
+      flashHint(`Click the map where ${pawnName(id)} should go. Esc lets go.`, 6000);
+    },
+    moveTo: (x, z) => {
+      const pawn = heldPawn ? room.shared.pawns[heldPawn] : null;
+      setHeldPawn(null);
+      if (!pawn) return;
+      const spot = clampPawnSpot(x, z);
+      const facing = Math.hypot(spot.x - pawn.x, spot.z - pawn.z) > 0.01 ? Math.atan2(spot.x - pawn.x, -(spot.z - pawn.z)) : pawn.facing;
+      myLastPawn.current = pawn.id;
+      sendPawn({ op: "put", id: pawn.id, kind: pawn.kind, colour: pawn.colour, x: spot.x, z: spot.z, facing, label: pawn.label });
+    },
+    openCabinet: () => setPanel("pawns"),
+    landed: (id, terrain) => {
+      if (id !== myLastPawn.current) return;
+      myLastPawn.current = null;
+      const name = pawnName(id);
+      const said = terrain === "water" ? `Splash: ${name} wades into the water.`
+        : terrain === "fire" ? `${name[0].toUpperCase()}${name.slice(1)} stands in the fire. Hot!`
+          : terrain === "green" ? `${name[0].toUpperCase()}${name.slice(1)} rustles into the grass.`
+            : terrain === "dark" ? `Dark here: ${name} lights a torch.`
+              : null;
+      if (said) flashHint(said);
+    },
+  };
+  // A pawn put away (or the table cleared) is not mine to hold any more; a new one is held before the hub has it.
+  const heldSeen = useRef(false);
+  useEffect(() => {
+    if (!heldPawn) { heldSeen.current = false; return; }
+    if (room.shared.pawns[heldPawn]) heldSeen.current = true;
+    else if (heldSeen.current) setHeldPawn(null);
+  }, [heldPawn, room.shared.pawns]);
+  useEffect(() => { if (venueId !== "tabletop") setHeldPawn(null); }, [venueId]);
   const party = participants.flatMap((p) => {
     const character = room.shared.characters[p.id];
     return character && !p.bot && !p.recorder ? [{ character: character.name, player: p.displayName }] : [];
@@ -1673,6 +1780,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title="Initiative" aria-label="Initiative" aria-expanded={panel === "initiative"}><Swords size={16} /></button>
               <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title="My character" aria-label="My character" aria-expanded={panel === "character"}><UserRound size={16} /></button>
               <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label="Game master" aria-expanded={panel === "gm"}><Crown size={16} /></button>
+              <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title="Miniatures: take a pawn to the table" aria-label="Miniatures" aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
             </>
           )}
           {venueId === "boardhall" && (
@@ -1737,6 +1845,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               choice={screenChoice} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes}
               folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === "pawns" && venueId === "tabletop" && (
+            <PawnsPanel
+              pawns={room.shared.pawns} myUserId={myUserId} isGm={isGm} held={heldPawn}
+              onTake={takePawn} onHold={(id) => { if (id) pawnRef.current.tap(id); else setHeldPawn(null); }}
+              onPutBack={(id) => sendPawn({ op: "remove", id })} onClear={() => sendPawn({ op: "clear" })} onClose={() => setPanel(null)}
             />
           )}
           {panel === "character" && (
@@ -1994,6 +2109,13 @@ const LIVING_ROOM_CSS = `
 .lr-narrow { flex: 0 0 56px !important; }
 .lr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .lr-list li { display: flex; gap: 8px; align-items: center; }
+.lr-list li.lr-held { border-radius: 8px; box-shadow: inset 0 0 0 1px var(--lr-accent); }
+.lr-paint { width: 26px; min-height: 26px !important; padding: 0 !important; border-radius: 50% !important; border: 2px solid rgba(0, 0, 0, 0.35); }
+.lr-paint[aria-pressed="true"] { outline: 2px solid var(--lr-ink); outline-offset: 2px; }
+.lr-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.lr-pawn-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lr-pawn-kinds button { flex-direction: column; justify-content: center; min-height: 54px !important; }
+.lr-pawn-kinds button span { font-size: 20px; line-height: 1; }
 .lr-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lr-order { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
 .lr-order li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 9px; background: rgba(0, 0, 0, 0.18); }

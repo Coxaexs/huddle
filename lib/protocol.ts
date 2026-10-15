@@ -350,7 +350,7 @@ export type ClientEvent =
   /** Living room: pick the room the whole call hangs out in (living room, cinema, tabletop). */
   | { t: "lounge-venue"; venue: LoungeVenue }
   /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
-  | { t: "lounge-set"; key: "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap"; value: unknown }
+  | { t: "lounge-set"; key: "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn"; value: unknown }
   | {
       t: "dm-call";
       channelId: string;
@@ -421,7 +421,7 @@ export type ServerEvent =
       /** Living room: one piece of shared state changed (null: cleared). */
       t: "lounge-shared";
       channelId: string;
-      key: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap";
+      key: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns";
       value: unknown;
       serverNow: number;
     }
