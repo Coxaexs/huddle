@@ -51,9 +51,13 @@ const dispose = (object: THREE.Object3D) => {
   object.traverse((part) => {
     const mesh = part as THREE.Mesh;
     mesh.geometry?.dispose();
-    const material = mesh.material as THREE.MeshBasicMaterial | THREE.SpriteMaterial | undefined;
-    material?.map?.dispose();
-    material?.dispose();
+    // A box with a material per face (the GM screen's panels) holds a list.
+    const materials = [mesh.material ?? []].flat() as Array<THREE.MeshBasicMaterial | THREE.SpriteMaterial>;
+    for (const material of materials) {
+      // The screen's front texture is drawn once and shared by every screen.
+      if (material.map && material.map !== screenTexture()) material.map.dispose();
+      material.dispose();
+    }
   });
 };
 
