@@ -29,12 +29,13 @@ export const CSP_ENV_KEY = "HUDDLE_CSP";
  * - `blob:` on script and worker: the dice renderer, RNNoise worklet and
  *   recorder run from blob URLs.
  * - `'wasm-unsafe-eval'`: the MediaPipe selfie-segmentation wasm build.
+ * - `challenges.cloudflare.com` on script: the Turnstile challenge on open signup.
  * - `ws:`/`wss:` on connect: the realtime hub and LiveKit signalling.
  * - `https:` on img/frame/media: link previews, GIFs, embeds and pasted images.
  */
 export const RECOMMENDED_CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",

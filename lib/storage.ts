@@ -72,6 +72,11 @@ export interface HuddleBindings {
   ADMIN_AGENT_TOKEN?: string;
   /** Where that agent listens. Default http://127.0.0.1:8735. */
   ADMIN_AGENT_URL?: string;
+  /** Cloudflare Turnstile keys; with both set, open signup asks for the challenge. */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  /** Salt for the signup address hash; falls back to BOT_TOKEN. */
+  IP_HASH_SALT?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

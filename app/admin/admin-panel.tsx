@@ -437,6 +437,12 @@ function UsersTab({ users, me, onAction }: { users: AdminUser[]; me: string; onA
                   <strong>{user.displayName}</strong> <span className="admin-muted">@{user.username}</span>
                   {user.isAdmin && <span className="admin-badge">admin</span>}
                   {user.suspended && <span className="admin-badge warn">suspended</span>}
+                  {user.signupSource === "open" && <span className="admin-badge" title="Joined through open signup">open signup</span>}
+                  {user.sameNetwork > 0 && (
+                    <span className="admin-badge warn" title="Other accounts signed up from the same network">
+                      +{user.sameNetwork} on same network
+                    </span>
+                  )}
                 </td>
                 <td>{when(user.createdAt)}</td>
                 <td>{user.online ? "online" : ago(user.lastSeenAt)}</td>

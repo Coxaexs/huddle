@@ -162,6 +162,8 @@ import { StyledName, VoiceAura } from "./components/profile-style-parts";
 export function ChatShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
+  const [openSignup, setOpenSignup] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   /** Per-host feature flags; defaults to everything on until loaded. */
   const [features, setFeatures] = useState<{ recordSessions: boolean }>({
@@ -1624,12 +1626,17 @@ export function ChatShell() {
   }, []);
 
   useEffect(() => {
-    apiFetch<{ user: PublicUser | null; bootstrap: boolean }>(
-      "/api/auth/session",
-    )
+    apiFetch<{
+      user: PublicUser | null;
+      bootstrap: boolean;
+      openSignup?: boolean;
+      turnstileSiteKey?: string | null;
+    }>("/api/auth/session")
       .then((data) => {
         setUser(data.user);
         setBootstrap(data.bootstrap);
+        setOpenSignup(Boolean(data.openSignup));
+        setTurnstileSiteKey(data.turnstileSiteKey ?? null);
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
@@ -6174,6 +6181,8 @@ export function ChatShell() {
       <main className="app-shell">
         <AuthGate
           bootstrap={bootstrap}
+          openSignup={openSignup}
+          turnstileSiteKey={turnstileSiteKey}
           onSignedIn={(signedIn, defaultTheme) => {
             const startTheme = defaultTheme && findThemeById(defaultTheme);
             if (startTheme) applyTheme(startTheme);

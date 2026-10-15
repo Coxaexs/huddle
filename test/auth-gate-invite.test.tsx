@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AuthGate } from "@/app/components/auth-gate";
 
 vi.mock("@/app/lib/client", () => ({
@@ -67,5 +67,45 @@ describe("AuthGate invite link autofill", () => {
 
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Sign in");
     expect(screen.queryByLabelText("Invite code")).toBeNull();
+  });
+
+  describe("with open signup on", () => {
+    it("opens on Create account with no invite field and an Invite code tab", () => {
+      setUrl("https://chat.hoffle.online/hangout");
+      render(<AuthGate bootstrap={false} openSignup onSignedIn={vi.fn()} />);
+
+      expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Create your account");
+      expect(screen.queryByLabelText("Invite code")).toBeNull();
+      expect(screen.getByRole("tab", { name: "Create account" }).getAttribute("aria-selected")).toBe("true");
+
+      fireEvent.click(screen.getByRole("tab", { name: "Invite code" }));
+      expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Join with an invite");
+      expect(screen.getByLabelText("Invite code")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("tab", { name: "Sign in" }));
+      expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Sign in");
+    });
+
+    it("an invite link still lands on the Invite code tab with the code filled in", () => {
+      setUrl("https://chat.hoffle.online/hangout?invite=welcome123");
+      render(<AuthGate bootstrap={false} openSignup onSignedIn={vi.fn()} />);
+
+      expect(screen.getByRole("tab", { name: "Invite code" }).getAttribute("aria-selected")).toBe("true");
+      expect((screen.getByLabelText("Invite code") as HTMLInputElement).value).toBe("WELCOME123");
+    });
+
+    it("sends no code from Create account", async () => {
+      const { apiFetch } = await import("@/app/lib/client");
+      setUrl("https://chat.hoffle.online/hangout");
+      render(<AuthGate bootstrap={false} openSignup onSignedIn={vi.fn()} />);
+
+      fireEvent.change(screen.getByLabelText("Username"), { target: { value: "newbie" } });
+      fireEvent.change(screen.getByLabelText("Password"), { target: { value: "long-enough-pw" } });
+      fireEvent.click(screen.getByRole("button", { name: "Create my account" }));
+
+      const call = vi.mocked(apiFetch).mock.calls.find(([path]) => path === "/api/auth/signup");
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String((call![1] as { body: string }).body)).invite).toBe("");
+    });
   });
 });

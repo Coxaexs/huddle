@@ -1,5 +1,6 @@
 import {
   createSession,
+  hashPassword,
   publicUser,
   sessionCookie,
   touchUser,
@@ -19,11 +20,19 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Guessing-friendly windows: the budget is per IP *and* per username, so one
- * attacker cannot lock a victim out by hammering their name from elsewhere, and
- * a botnet cannot evade the limit by spreading across IPs for one account.
+ * Three buckets, none of which lets a stranger lock someone else out:
+ *  - IP + username: ten tries per five minutes for one person on one account.
+ *    Keyed on both, so hammering a victim's name from elsewhere spends the
+ *    attacker's own budget and never the victim's.
+ *  - IP alone: a host spraying many accounts.
+ *  - Username alone, but only as a very high backstop against a botnet that
+ *    rotates addresses on one account; ordinary guessing never reaches it.
  */
 const LOGIN_RATE_LIMIT = { limit: 10, windowSeconds: 300 } as const;
+const LOGIN_IP_RATE_LIMIT = { limit: 40, windowSeconds: 300 } as const;
+const LOGIN_ACCOUNT_BACKSTOP = { limit: 300, windowSeconds: 3600 } as const;
+
+let dummyHash: Promise<string> | null = null;
 
 export async function POST(request: Request) {
   const db = bindings().DB;
@@ -52,22 +61,26 @@ export async function POST(request: Request) {
   // and cheap for us. Both buckets are counted: the IP one stops a single host
   // spraying many accounts, the username one stops one account being ground
   // down from a rotating set of addresses.
-  const [byIp, byUser] = await Promise.all([
+  const ip = clientIp(request);
+  const results = await Promise.all([
+    checkRateLimit({ db, action: "login-ip", key: ip, ...LOGIN_IP_RATE_LIMIT }),
     checkRateLimit({
       db,
-      action: "login-ip",
-      key: clientIp(request),
+      action: "login-ip-user",
+      key: attemptKey(ip, username),
       ...LOGIN_RATE_LIMIT,
     }),
     checkRateLimit({
       db,
       action: "login-user",
       key: attemptKey(username),
-      ...LOGIN_RATE_LIMIT,
+      ...LOGIN_ACCOUNT_BACKSTOP,
     }),
   ]);
-  if (!byIp.allowed || !byUser.allowed) {
-    return new RateLimitError(Math.max(byIp.retryAfter, byUser.retryAfter)).response();
+  if (results.some((result) => !result.allowed)) {
+    return new RateLimitError(
+      Math.max(...results.map((result) => result.retryAfter)),
+    ).response();
   }
 
   const row = await db
@@ -77,7 +90,12 @@ export async function POST(request: Request) {
     .bind(username)
     .first<User & { password_hash: string }>();
 
-  // Same reply either way so the form cannot be used to enumerate usernames.
+  // Same reply either way so the form cannot be used to enumerate usernames,
+  // and an unknown name still pays for one hash so the timing matches too.
+  if (!row) {
+    dummyHash ??= hashPassword("not-a-real-password");
+    await verifyPassword(password, await dummyHash);
+  }
   if (!row || !(await verifyPassword(password, row.password_hash))) {
     return Response.json(
       { error: "That username and password do not match." },

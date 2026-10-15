@@ -4,6 +4,7 @@
  * is written to the audit log.
  */
 
+import { clampInviteUses } from "./invite-limits";
 import { INSTANCE_AUDIT } from "./admin";
 import { recordAudit } from "./audit";
 import { generateInviteCode, type User } from "./auth";
@@ -348,7 +349,7 @@ export async function adminDeleteMessage(db: D1Database, id: string, actor: User
 
 /**
  * An invite made from /admin. With a server id it joins that server; without
- * one it is a sign-up invite to the instance. `maxUses` 0 means unlimited.
+ * one it is a sign-up invite to the instance. `maxUses` is clamped to 1..1000; unlimited codes are no longer made.
  */
 export async function adminCreateInvite(
   db: D1Database,
@@ -364,7 +365,7 @@ export async function adminCreateInvite(
     .prepare(
       "INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id) VALUES (?, ?, ?, ?, 0, 0, ?, ?)",
     )
-    .bind(code, actor.id, new Date().toISOString(), Math.max(0, Math.min(1000, Math.floor(options.maxUses))), options.note, options.serverId)
+    .bind(code, actor.id, new Date().toISOString(), clampInviteUses(options.maxUses), options.note, options.serverId)
     .run();
   await recordAudit(db, {
     serverId: options.serverId || INSTANCE_AUDIT,

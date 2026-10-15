@@ -354,6 +354,92 @@ export function ServerPeek({
 
 // ---- Invites ----
 
+interface SignupState {
+  open: boolean;
+  serverId: string | null;
+  turnstile: boolean;
+  stats: Record<string, { total: number; last24h: number }>;
+}
+
+/** The open-signup switch: off puts invite-only signup straight back. */
+function OpenSignupCard({ servers }: { servers: AdminServer[] }) {
+  const [state, setState] = useState<SignupState | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiFetch<SignupState>("/api/admin/signup")
+      .then(setState)
+      .catch((cause) => setError(errorText(cause, "Could not load signup settings.")));
+  }, []);
+
+  async function update(change: { open?: boolean; serverId?: string | null }) {
+    setBusy(true);
+    setError("");
+    try {
+      setState(await apiFetch<SignupState>("/api/admin/signup", { method: "POST", body: JSON.stringify(change) }));
+    } catch (cause) {
+      setError(errorText(cause, "Could not save that."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const count = (source: string) => state?.stats[source]?.total ?? 0;
+  const today = (source: string) => state?.stats[source]?.last24h ?? 0;
+
+  return (
+    <section className="portal-card admin-section">
+      <h2>Open signup</h2>
+      {!state ? (
+        <p className="admin-muted">{error || "Loading…"}</p>
+      ) : (
+        <>
+          <p className="admin-muted">
+            {state.open
+              ? "Anyone can press Create account without an invite code. Invite codes still work and are still counted."
+              : "Off: people need an invite code to make an account."}
+          </p>
+          <div className="admin-toolbar">
+            <button
+              type="button"
+              className={`portal-btn ${state.open ? "" : "primary"}`}
+              disabled={busy}
+              onClick={() => void update({ open: !state.open })}
+            >
+              {state.open ? "Turn open signup off" : "Turn open signup on"}
+            </button>
+            <label className="admin-check">
+              New accounts join
+              <select
+                value={state.serverId ?? ""}
+                onChange={(event) => void update({ serverId: event.target.value || null })}
+                disabled={busy}
+                aria-label="Server open-signup accounts join"
+              >
+                <option value="">No server</option>
+                {servers.map((server) => (
+                  <option key={server.id} value={server.id}>
+                    {server.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="admin-muted">
+            Joined so far: {count("open")} by open signup ({today("open")} today), {count("invite")} by invite
+            ({today("invite")} today), {count("first") + count("older")} before this existed.{" "}
+            {state.turnstile
+              ? "Turnstile challenge is on."
+              : "Turnstile is not set up (TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY), so bots only meet the rate limits."}
+          </p>
+        </>
+      )}
+      {error && state && <p className="auth-error">{error}</p>}
+    </section>
+  );
+}
+
 export function InvitesTab({ servers, confirm }: { servers: AdminServer[]; confirm: (request: ConfirmRequest) => void }) {
   const [invites, setInvites] = useState<AdminInvite[] | null>(null);
   const [serverId, setServerId] = useState("");
@@ -410,6 +496,7 @@ export function InvitesTab({ servers, confirm }: { servers: AdminServer[]; confi
 
   return (
     <>
+      <OpenSignupCard servers={servers} />
       <section className="portal-card admin-section">
         <h2>New invite</h2>
         <form className="admin-toolbar" onSubmit={(event) => void create(event)}>
@@ -426,11 +513,11 @@ export function InvitesTab({ servers, confirm }: { servers: AdminServer[]; confi
             <input
               className="admin-input admin-number"
               type="number"
-              min={0}
+              min={1}
               max={1000}
               value={maxUses}
               onChange={(event) => setMaxUses(Number(event.target.value))}
-              aria-label="Maximum uses (0 = unlimited)"
+              aria-label="Maximum uses (1 to 1000)"
             />
           </label>
           <input className="admin-input" placeholder="Note (who it's for)" value={note} onChange={(event) => setNote(event.target.value)} aria-label="Note" />

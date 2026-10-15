@@ -92,7 +92,7 @@ export function InvitesTab({
                   >
                     {INVITE_USE_CHOICES.map((uses) => (
                       <option key={uses} value={uses}>
-                        {uses === 0 ? "No limit" : uses === 1 ? "1 person" : `${uses} people`}
+                        {uses === 1 ? "1 person" : `${uses} people`}
                       </option>
                     ))}
                   </select>

@@ -16,6 +16,8 @@ vi.mock("@/lib/auth", () => ({
   unauthorized: () => Response.json({ error: "Sign in" }, { status: 401 }),
 }));
 vi.mock("@/lib/schema", () => ({ ensureSchema: async () => {} }));
+// The daily budget has its own tests (test/open-signup.test.ts).
+vi.mock("@/lib/upload-quota", () => ({ consumeUploadQuota: async () => null }));
 vi.mock("@/lib/storage", () => ({
   bindings: () => ({
     UPLOADS: {

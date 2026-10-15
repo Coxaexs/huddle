@@ -14,15 +14,22 @@ import { emailCodeLimit, startEmailVerification } from "@/lib/email-verify";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { checkRateLimit, clientIp, RateLimitError } from "@/lib/rate-limit";
+import {
+  getSignupSettings,
+  OPEN_SIGNUPS_PER_ADDRESS_PER_DAY,
+  signupAddressHash,
+  verifyTurnstile,
+} from "@/lib/signup";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Signup is the one endpoint where an unauthenticated caller makes us spend CPU
- * on a password hash *and* consumes a scarce resource (an invite use), so it is
- * throttled harder than login. Still loose enough for a group signing up from
- * one place (a house, a school, a venue's Wi-Fi) with a shared event code:
- * every attempt needs a valid invite anyway.
+ * on a password hash, so it is throttled harder than login. Still loose enough
+ * for a group signing up from one place (a house, a school, a venue's Wi-Fi)
+ * with a shared event code. With open signup on there is no invite to hold an
+ * attacker back, so on top of this request limit an open signup also needs the
+ * Turnstile challenge (when configured) and is capped per address per day.
  */
 const SIGNUP_RATE_LIMIT = { limit: 20, windowSeconds: 600 } as const;
 
@@ -32,6 +39,8 @@ interface SignupBody {
   email?: string;
   displayName?: string;
   invite?: string;
+  /** Turnstile response token, for open signup. */
+  turnstileToken?: string;
 }
 
 export async function POST(request: Request) {
@@ -79,6 +88,7 @@ export async function POST(request: Request) {
   const isFirstUser = (total?.count ?? 0) === 0;
 
   const inviteCode = (body.invite || "").trim().toUpperCase();
+  const addressHash = await signupAddressHash(request);
   let defaultTheme: string | null = null;
   let defaultServerId: string | null = null;
 
@@ -92,49 +102,78 @@ export async function POST(request: Request) {
     );
   }
 
-  // Every account after the first needs an invite code.
+  // Every account after the first comes in with an invite code, or, while an
+  // admin has open signup switched on, with none.
+  let source: "first" | "invite" | "open" = isFirstUser ? "first" : "invite";
   if (!isFirstUser) {
     if (!inviteCode) {
-      return Response.json(
-        { error: "An invite code is required to join this Huddle." },
-        { status: 403 },
-      );
+      const settings = await getSignupSettings(db);
+      if (!settings.open) {
+        return Response.json(
+          { error: "An invite code is required to join this Huddle." },
+          { status: 403 },
+        );
+      }
+      if (!(await verifyTurnstile(body.turnstileToken, request))) {
+        return Response.json(
+          { error: "Confirm you are not a robot and try again." },
+          { status: 403 },
+        );
+      }
+      if (addressHash) {
+        const since = new Date(Date.now() - 86_400_000).toISOString();
+        const recent = await db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM users WHERE signup_ip_hash = ? AND signup_source = 'open' AND created_at > ?",
+          )
+          .bind(addressHash, since)
+          .first<{ count: number }>();
+        if ((recent?.count ?? 0) >= OPEN_SIGNUPS_PER_ADDRESS_PER_DAY) {
+          return Response.json(
+            { error: "Too many accounts were made from this network today. Try again tomorrow, or ask a friend for an invite code." },
+            { status: 429 },
+          );
+        }
+      }
+      source = "open";
+      defaultServerId = settings.serverId;
+    } else {
+      const invite = await db
+        .prepare(
+          "SELECT code, server_id, max_uses, uses, revoked, default_theme, default_server_id FROM invites WHERE code = ?",
+        )
+        .bind(inviteCode)
+        .first<{
+          code: string;
+          server_id: string | null;
+          max_uses: number;
+          uses: number;
+          revoked: number;
+          default_theme: string | null;
+          default_server_id: string | null;
+        }>();
+      if (
+        !invite ||
+        invite.revoked ||
+        (invite.max_uses > 0 && invite.uses >= invite.max_uses)
+      ) {
+        return Response.json(
+          { error: "That invite code is not valid any more." },
+          { status: 403 },
+        );
+      }
+      if (invite.server_id != null && invite.server_id !== "") {
+        return Response.json(
+          {
+            error:
+              "Server invite codes cannot be used to create an account. You need an account invite code.",
+          },
+          { status: 403 },
+        );
+      }
+      defaultTheme = invite.default_theme || null;
+      defaultServerId = invite.default_server_id || null;
     }
-    const invite = await db
-      .prepare(
-        "SELECT code, server_id, max_uses, uses, revoked, default_theme, default_server_id FROM invites WHERE code = ?",
-      )
-      .bind(inviteCode)
-      .first<{
-        code: string;
-        server_id: string | null;
-        max_uses: number;
-        uses: number;
-        revoked: number;
-        default_theme: string | null;
-        default_server_id: string | null;
-      }>();
-    if (
-      !invite ||
-      invite.revoked ||
-      (invite.max_uses > 0 && invite.uses >= invite.max_uses)
-    ) {
-      return Response.json(
-        { error: "That invite code is not valid any more." },
-        { status: 403 },
-      );
-    }
-    if (invite.server_id != null && invite.server_id !== "") {
-      return Response.json(
-        {
-          error:
-            "Server invite codes cannot be used to create an account. You need an account invite code.",
-        },
-        { status: 403 },
-      );
-    }
-    defaultTheme = invite.default_theme || null;
-    defaultServerId = invite.default_server_id || null;
   }
 
   const taken = await db
@@ -157,11 +196,16 @@ export async function POST(request: Request) {
     created_at: now,
     last_seen_at: now,
     email: null,
+    signup_source: source,
   };
+
+  // Hash first: it is the slow part, and a crash after the invite is claimed
+  // would otherwise spend a use for an account that never existed.
+  const passwordHash = await hashPassword(password);
 
   // Claim the invite in one conditional UPDATE, so simultaneous signups can't
   // all read "1 use left" and each spend it.
-  if (!isFirstUser) {
+  if (source === "invite") {
     const claimed = await db
       .prepare(
         `UPDATE invites SET uses = uses + 1
@@ -177,33 +221,44 @@ export async function POST(request: Request) {
     }
   }
 
-  const passwordHash = await hashPassword(password);
-  const inserted = await db
-    .prepare(
-      `INSERT OR IGNORE INTO users
-         (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      user.id,
-      user.username,
-      user.username.toLowerCase(),
-      user.display_name,
-      passwordHash,
-      null,
-      user.avatar,
-      user.color,
-      user.is_admin,
-      user.can_invite,
-      now,
-      now,
-    )
-    .run();
+  const refundInvite = async () => {
+    if (source === "invite") {
+      await db.prepare("UPDATE invites SET uses = uses - 1 WHERE code = ? AND uses > 0").bind(inviteCode).run().catch(() => {});
+    }
+  };
+
+  let inserted;
+  try {
+    inserted = await db
+      .prepare(
+        `INSERT OR IGNORE INTO users
+           (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at, signup_source, signup_ip_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        user.id,
+        user.username,
+        user.username.toLowerCase(),
+        user.display_name,
+        passwordHash,
+        null,
+        user.avatar,
+        user.color,
+        user.is_admin,
+        user.can_invite,
+        now,
+        now,
+        source,
+        addressHash,
+      )
+      .run();
+  } catch (error) {
+    await refundInvite();
+    throw error;
+  }
   if (!inserted.meta.changes) {
     // Someone took the username (or email) between the check above and this insert.
-    if (!isFirstUser) {
-      await db.prepare("UPDATE invites SET uses = uses - 1 WHERE code = ?").bind(inviteCode).run();
-    }
+    await refundInvite();
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 

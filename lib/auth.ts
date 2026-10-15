@@ -65,6 +65,8 @@ export interface User {
   email_prompt_skipped?: number;
   /** When an instance admin suspended the account; null while it is in good standing. */
   suspended_at?: string | null;
+  /** "first", "invite" or "open"; null on accounts older than the column. */
+  signup_source?: string | null;
 }
 
 const USER_COLUMN_NAMES = [
@@ -72,7 +74,7 @@ const USER_COLUMN_NAMES = [
   "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
-  "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at",
+  "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at", "signup_source",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */

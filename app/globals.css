@@ -4546,6 +4546,42 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   line-height: 1.4;
 }
 
+/* Create account / Sign in / Invite code, shown when open signup is on. */
+.username-card .auth-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 8px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #ffffff0f;
+}
+
+.username-card .auth-tab {
+  flex: 1;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 8px 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #aaaeba !important;
+  background: none !important;
+  box-shadow: none !important;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.username-card .auth-tab.active {
+  color: #fff !important;
+  background: #ffffff1f !important;
+}
+
+.auth-challenge {
+  margin-top: 12px;
+  min-height: 65px;
+}
+
 .auth-switch {
   color: #aaaeba !important;
   background: none !important;

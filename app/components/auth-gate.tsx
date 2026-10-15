@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { extractInviteCodeFromUrl } from "../lib/chat/invites";
@@ -10,14 +10,57 @@ import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
 interface AuthGateProps {
   /** True when nobody has signed up yet: the first account skips the invite. */
   bootstrap: boolean;
+  /** An admin switched open signup on: "Create account" needs no invite code. */
+  openSignup?: boolean;
+  /** Cloudflare Turnstile site key; when set, open signup shows the challenge. */
+  turnstileSiteKey?: string | null;
   /** `defaultTheme` is the invite's starting theme id, on signup only. */
   onSignedIn: (user: PublicUser, defaultTheme?: string | null) => void;
 }
 
-export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
+interface TurnstileApi {
+  render: (
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      callback: (token: string) => void;
+      "expired-callback"?: () => void;
+      "error-callback"?: () => void;
+    },
+  ) => string;
+  reset: (widgetId?: string) => void;
+  remove: (widgetId?: string) => void;
+}
+
+const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+function loadTurnstile(): Promise<TurnstileApi | null> {
+  const existing = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
+  if (existing) return Promise.resolve(existing);
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = TURNSTILE_SCRIPT;
+    script.async = true;
+    script.onload = () =>
+      resolve((window as unknown as { turnstile?: TurnstileApi }).turnstile ?? null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
+export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = null, onSignedIn }: AuthGateProps) {
+  const open = openSignup && !bootstrap;
   const [mode, setMode] = useState<"signin" | "signup" | "forgot" | "reset">(
-    bootstrap ? "signup" : "signin",
+    bootstrap || open ? "signup" : "signin",
   );
+  // With open signup on, "signup" is Create account; this is the Invite code tab.
+  const [haveInvite, setHaveInvite] = useState(false);
+  const [challengeToken, setChallengeToken] = useState("");
+  const [challengeFailed, setChallengeFailed] = useState(false);
+  const challengeBox = useRef<HTMLDivElement | null>(null);
+  const challengeWidget = useRef<{ api: TurnstileApi; id: string } | null>(null);
+  const showInviteField = bootstrap || !open || haveInvite;
+  const needsChallenge = open && !haveInvite && mode === "signup" && Boolean(turnstileSiteKey);
   const [resetToken, setResetToken] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -45,6 +88,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
       const inviteCode = extractInviteCodeFromUrl(window.location.search || window.location.href);
       if (inviteCode) {
         setInvite(inviteCode);
+        setHaveInvite(true);
         setMode("signup");
         setNotice(`Invite code applied: ${inviteCode}`);
 
@@ -75,11 +119,48 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
     }
   }, []);
 
+  // The challenge lives only on the open Create account tab; leaving the tab
+  // removes it, and coming back renders a fresh one.
+  useEffect(() => {
+    if (!needsChallenge || !turnstileSiteKey) return;
+    let cancelled = false;
+    void loadTurnstile().then((api) => {
+      if (cancelled) return;
+      if (!api || !challengeBox.current) {
+        setChallengeFailed(true);
+        return;
+      }
+      const id = api.render(challengeBox.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token) => setChallengeToken(token),
+        "expired-callback": () => setChallengeToken(""),
+        "error-callback": () => setChallengeToken(""),
+      });
+      challengeWidget.current = { api, id };
+    });
+    return () => {
+      cancelled = true;
+      const widget = challengeWidget.current;
+      challengeWidget.current = null;
+      setChallengeToken("");
+      try {
+        widget?.api.remove(widget.id);
+      } catch {
+        // Already gone.
+      }
+    };
+  }, [needsChallenge, turnstileSiteKey]);
+
   function switchMode(next: typeof mode) {
     setMode(next);
     setError("");
     setNotice("");
     setPassword("");
+  }
+
+  function pickTab(tab: "create" | "signin" | "invite") {
+    switchMode(tab === "signin" ? "signin" : "signup");
+    setHaveInvite(tab === "invite");
   }
 
   async function submit(event: FormEvent) {
@@ -109,7 +190,15 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
       const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const body =
         mode === "signup"
-          ? { username, password, email, displayName, invite }
+          ? {
+              username,
+              password,
+              email,
+              displayName,
+              // Create account on an open Huddle sends no code at all.
+              invite: showInviteField ? invite : "",
+              ...(needsChallenge ? { turnstileToken: challengeToken } : {}),
+            }
           : { username, password };
       const data = await apiFetch<{
         user: PublicUser;
@@ -144,6 +233,15 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
       setError(
         failure instanceof Error ? failure.message : "That did not work.",
       );
+      // A challenge token works once; ask for a new one.
+      if (needsChallenge) {
+        setChallengeToken("");
+        try {
+          challengeWidget.current?.api.reset(challengeWidget.current.id);
+        } catch {
+          // The widget is gone; reopening the tab renders another.
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -154,7 +252,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
       <form className="username-card" onSubmit={submit}>
         <span className="username-mark">h</span>
         <p className="eyebrow">
-          {bootstrap ? "SET UP YOUR HOFFLE" : "WELCOME BACK"}
+          {bootstrap ? "SET UP YOUR HOFFLE" : open && mode === "signup" ? "WELCOME TO HOFFLE" : "WELCOME BACK"}
         </p>
         <h2>
           {mode === "forgot"
@@ -164,7 +262,9 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               : mode === "signup"
             ? bootstrap
               ? "Claim this Hoffle"
-              : "Join with an invite"
+              : open && !haveInvite
+                ? "Create your account"
+                : "Join with an invite"
             : "Sign in"}
         </h2>
         <p>
@@ -175,9 +275,38 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               : mode === "signup"
             ? bootstrap
               ? "The first account owns this Hoffle and can invite everyone else."
-              : "Ask a friend already inside for an invite code."
+              : open && !haveInvite
+                ? "Pick a name and a password. No invite needed."
+                : "Ask a friend already inside for an invite code."
             : "Your name and messages stay on your own server."}
         </p>
+
+        {open && (mode === "signin" || mode === "signup") && (
+          <div className="auth-tabs" role="tablist" aria-label="How to get in">
+            {(
+              [
+                ["create", "Create account"],
+                ["signin", "Sign in"],
+                ["invite", "Invite code"],
+              ] as const
+            ).map(([tab, label]) => {
+              const active =
+                tab === "signin" ? mode === "signin" : mode === "signup" && haveInvite === (tab === "invite");
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`auth-tab${active ? " active" : ""}`}
+                  onClick={() => pickTab(tab)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {mode !== "reset" && (
           <>
@@ -238,7 +367,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           </>
         )}
 
-        {mode === "signup" && (
+        {mode === "signup" && showInviteField && (
           <>
             <label htmlFor="huddle-invite">
               {bootstrap ? "Setup code" : "Invite code"}
@@ -253,6 +382,17 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           </>
         )}
 
+        {needsChallenge && (
+          <>
+            <div ref={challengeBox} className="auth-challenge" />
+            {challengeFailed && (
+              <p className="auth-error">
+                The robot check could not load. Check your connection, or use an invite code instead.
+              </p>
+            )}
+          </>
+        )}
+
         {error && <p className="auth-error">{error}</p>}
         {notice && <p className="modal-hint">{notice}</p>}
 
@@ -264,7 +404,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
               ? !username
               : mode === "reset"
                 ? !password
-                : !username || !password)
+                : !username || !password || (needsChallenge && !challengeToken))
           }
         >
           {busy
@@ -298,7 +438,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           </button>
         )}
 
-        {!bootstrap && (mode === "signin" || mode === "signup") && (
+        {!bootstrap && !open && (mode === "signin" || mode === "signup") && (
           <button
             type="button"
             className="auth-switch"
@@ -310,7 +450,7 @@ export function AuthGate({ bootstrap, onSignedIn }: AuthGateProps) {
           </button>
         )}
 
-        {mode === "signup" && !bootstrap && (
+        {mode === "signup" && !bootstrap && !open && (
           <div className="auth-request-try">
             <p className="auth-request-try-hint">Need an invite or want early access?</p>
             <a

@@ -1,6 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { findOrCreateDm, listDms, setDmHidden, setDmPinned } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
+import { limitUser, SOCIAL_RATE_LIMITS } from "@/lib/rate-limit";
+import { isRestrictedAccount } from "@/lib/trust";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -48,6 +50,52 @@ export async function POST(request: Request) {
 
   const blocked =
     targetId === user.id ? false : await isBlockedBetween(db, user.id, targetId);
+
+  // Starting a conversation with someone new is what spam looks like, so it
+  // has a budget; reopening one that exists does not. An account in its first
+  // day of open signup may only start one with someone it already shares a
+  // server with, or has added as a friend.
+  if (targetId !== user.id) {
+    const existing = await db
+      .prepare(
+        `SELECT 1 FROM dm_members x
+           JOIN dm_members y ON y.channel_id = x.channel_id
+           JOIN channels c ON c.id = x.channel_id
+          WHERE x.user_id = ? AND y.user_id = ? AND COALESCE(c.is_group, 0) = 0
+          LIMIT 1`,
+      )
+      .bind(user.id, targetId)
+      .first();
+    if (!existing) {
+      const restricted = isRestrictedAccount(user);
+      if (restricted) {
+        const known = await db
+          .prepare(
+            `SELECT 1 FROM server_members a JOIN server_members b ON b.server_id = a.server_id
+              WHERE a.user_id = ?1 AND b.user_id = ?2
+             UNION ALL
+             SELECT 1 FROM friendships
+              WHERE status = 'accepted'
+                AND ((user_id = ?1 AND friend_id = ?2) OR (user_id = ?2 AND friend_id = ?1))
+             LIMIT 1`,
+          )
+          .bind(user.id, targetId)
+          .first();
+        if (!known) {
+          return Response.json(
+            { error: "New accounts can message people they share a server with, or have added as a friend. Try again tomorrow." },
+            { status: 403 },
+          );
+        }
+      }
+      const limited = await limitUser(
+        db,
+        restricted ? SOCIAL_RATE_LIMITS.newDmRestricted : SOCIAL_RATE_LIMITS.newDm,
+        user.id,
+      );
+      if (limited) return limited;
+    }
+  }
   const channelId = await findOrCreateDm(db, user.id, targetId);
   // Opening a conversation you had closed puts it back in your list.
   await setDmHidden(db, channelId, user.id, false);

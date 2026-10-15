@@ -45,6 +45,10 @@ export interface AdminUser {
   sessions: number;
   online: boolean;
   suspended: boolean;
+  /** "first", "invite" or "open"; null for accounts older than the column. */
+  signupSource: string | null;
+  /** Other accounts that signed up from the same network (salted hash match). */
+  sameNetwork: number;
 }
 
 export interface AdminServer {
@@ -208,7 +212,7 @@ export async function adminUsers(db: D1Database, onlineIds: Set<string>): Promis
   const [users, messages, servers, sessions] = await Promise.all([
     db
       .prepare(
-        `SELECT id, username, display_name, avatar, avatar_url, color, created_at, last_seen_at, is_admin, suspended_at
+        `SELECT id, username, display_name, avatar, avatar_url, color, created_at, last_seen_at, is_admin, suspended_at, signup_source, signup_ip_hash
            FROM users ORDER BY created_at DESC`,
       )
       .all<{
@@ -222,6 +226,8 @@ export async function adminUsers(db: D1Database, onlineIds: Set<string>): Promis
         last_seen_at: string;
         is_admin: number;
         suspended_at: string | null;
+        signup_source: string | null;
+        signup_ip_hash: string | null;
       }>(),
     db
       .prepare("SELECT user_id, COUNT(*) AS n FROM messages WHERE deleted_at IS NULL AND user_id IS NOT NULL GROUP BY user_id")
@@ -237,6 +243,10 @@ export async function adminUsers(db: D1Database, onlineIds: Set<string>): Promis
   const messageCount = tally(messages.results);
   const serverCount = tally(servers.results);
   const sessionCount = tally(sessions.results);
+  const perNetwork = new Map<string, number>();
+  for (const row of users.results) {
+    if (row.signup_ip_hash) perNetwork.set(row.signup_ip_hash, (perNetwork.get(row.signup_ip_hash) ?? 0) + 1);
+  }
   return users.results.map((row) => ({
     id: row.id,
     username: row.username,
@@ -252,6 +262,8 @@ export async function adminUsers(db: D1Database, onlineIds: Set<string>): Promis
     sessions: sessionCount.get(row.id) ?? 0,
     online: onlineIds.has(row.id),
     suspended: Boolean(row.suspended_at),
+    signupSource: row.signup_source,
+    sameNetwork: row.signup_ip_hash ? (perNetwork.get(row.signup_ip_hash) ?? 1) - 1 : 0,
   }));
 }
 

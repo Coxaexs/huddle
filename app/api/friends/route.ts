@@ -4,7 +4,9 @@ import {
   removeFriend,
   sendFriendRequest,
 } from "@/lib/friends";
+import { limitUser, SOCIAL_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
+import { isRestrictedAccount } from "@/lib/trust";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +47,15 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const limited = await limitUser(
+    db,
+    isRestrictedAccount(user)
+      ? SOCIAL_RATE_LIMITS.friendRequestRestricted
+      : SOCIAL_RATE_LIMITS.friendRequest,
+    user.id,
+  );
+  if (limited) return limited;
 
   try {
     const result = await sendFriendRequest(db, user.id, target);

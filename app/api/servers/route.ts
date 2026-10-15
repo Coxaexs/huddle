@@ -1,8 +1,15 @@
-import { currentUser, unauthorized } from "@/lib/auth";
+import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import {
+  limitUser,
+  MAX_OWNED_SERVERS,
+  MAX_OWNED_SERVERS_RESTRICTED,
+  SOCIAL_RATE_LIMITS,
+} from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { addServerMember, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { isRestrictedAccount } from "@/lib/trust";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +47,28 @@ export async function POST(request: Request) {
   const name = body.name?.trim().slice(0, 50);
   if (!name) {
     return Response.json({ error: "Give the server a name." }, { status: 400 });
+  }
+
+  // Servers are free to make, so without a cap one account fills the list.
+  if (!isInstanceAdmin(user)) {
+    const limited = await limitUser(db, SOCIAL_RATE_LIMITS.createServer, user.id);
+    if (limited) return limited;
+    const owned = await db
+      .prepare("SELECT COUNT(*) AS count FROM servers WHERE created_by = ?")
+      .bind(user.id)
+      .first<{ count: number }>();
+    const cap = isRestrictedAccount(user) ? MAX_OWNED_SERVERS_RESTRICTED : MAX_OWNED_SERVERS;
+    if ((owned?.count ?? 0) >= cap) {
+      return Response.json(
+        {
+          error:
+            cap === MAX_OWNED_SERVERS_RESTRICTED
+              ? "New accounts can make one server for now. Try again tomorrow."
+              : `You can own up to ${cap} servers. Delete one you no longer use first.`,
+        },
+        { status: 403 },
+      );
+    }
   }
 
   const now = new Date().toISOString();

@@ -6,13 +6,14 @@ describe("clampInviteUses", () => {
     expect(clampInviteUses(200)).toBe(200);
   });
 
-  it("treats 0 as no limit", () => {
-    expect(clampInviteUses(0)).toBe(0);
+  it("never mints an unlimited code: 0 and negatives become one use", () => {
+    expect(clampInviteUses(0)).toBe(1);
+    expect(clampInviteUses(-5)).toBe(1);
   });
 
-  it("caps at the maximum and floors negatives", () => {
+  it("caps at the maximum", () => {
     expect(clampInviteUses(10_000)).toBe(MAX_INVITE_USES);
-    expect(clampInviteUses(-5)).toBe(0);
+    expect(clampInviteUses(1000)).toBe(1000);
   });
 
   it("drops fractions", () => {

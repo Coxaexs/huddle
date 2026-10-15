@@ -173,6 +173,22 @@ export const WRITE_RATE_LIMITS = {
 } satisfies Record<string, RateLimitRule>;
 
 /**
+ * Budgets for the ways one account can reach other people or take up space.
+ * Accounts in their first day of open signup get the `restricted` row.
+ */
+export const SOCIAL_RATE_LIMITS = {
+  newDm: { action: "new-dm", limit: 20, windowSeconds: 3600 },
+  newDmRestricted: { action: "new-dm-restricted", limit: 5, windowSeconds: 3600 },
+  friendRequest: { action: "friend-request", limit: 30, windowSeconds: 3600 },
+  friendRequestRestricted: { action: "friend-request-restricted", limit: 5, windowSeconds: 3600 },
+  createServer: { action: "create-server", limit: 5, windowSeconds: 3600 },
+} satisfies Record<string, RateLimitRule>;
+
+/** Servers one account may own at a time; instance admins are exempt. */
+export const MAX_OWNED_SERVERS = 5;
+export const MAX_OWNED_SERVERS_RESTRICTED = 1;
+
+/**
  * Per-user limits live in this process's memory rather than in SQLite: they
  * sit on the hottest paths (every message, upload, roll), and a write per
  * request there was lock contention for nothing. Hoffle is one process, so

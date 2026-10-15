@@ -3,6 +3,7 @@ import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { sniffUpload } from "@/lib/upload-sniff";
+import { consumeUploadQuota } from "@/lib/upload-quota";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,8 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const overQuota = await consumeUploadQuota(db, user, bytes.byteLength);
+  if (overQuota) return overQuota;
   const fallbackName = `${
     sniffed.family === "pdf" ? "document" : sniffed.family === "file" ? "file" : sniffed.family
   }.${sniffed.extension}`;

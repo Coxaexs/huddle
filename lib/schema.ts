@@ -200,6 +200,13 @@ async function migrate(db: D1Database): Promise<void> {
     db.prepare(
       "CREATE INDEX IF NOT EXISTS server_member_positions_user_idx ON server_member_positions(user_id, position)",
     ),
+    // Bytes one account has uploaded per UTC day (lib/upload-quota.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS upload_usage (
+        user_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, day)
+      )`),
     // Tiny key/value store for one-off migration flags.
     db.prepare(`CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
@@ -844,6 +851,12 @@ async function migrate(db: D1Database): Promise<void> {
     ["email", "ALTER TABLE users ADD COLUMN email TEXT"],
     // Set once someone clicks "Skip for now" on the add-an-email prompt.
     ["email_prompt_skipped", "ALTER TABLE users ADD COLUMN email_prompt_skipped INTEGER NOT NULL DEFAULT 0"],
+    // How the account came to exist: "first" (the owner), "invite" or "open"
+    // (open signup). NULL on accounts that predate the column.
+    ["signup_source", "ALTER TABLE users ADD COLUMN signup_source TEXT"],
+    // Salted hash of the address it signed up from, so an admin can see which
+    // accounts came from the same place. The address itself is never stored.
+    ["signup_ip_hash", "ALTER TABLE users ADD COLUMN signup_ip_hash TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -851,6 +864,9 @@ async function migrate(db: D1Database): Promise<void> {
   await db.batch([
     // One person may run several accounts on the same address, so not UNIQUE.
     db.prepare("DROP INDEX IF EXISTS users_email_idx"),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS users_signup_ip_idx ON users(signup_ip_hash) WHERE signup_ip_hash IS NOT NULL",
+    ),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS users_email_lookup_idx ON users(email) WHERE email IS NOT NULL",
     ),
