@@ -1247,6 +1247,19 @@ async function migrate(db: D1Database): Promise<void> {
       created_at TEXT NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS message_reports_server_idx ON message_reports(server_id, status, created_at DESC)"),
+    // Earned achievements (unlike pride_badges, these are unlocked by activity).
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_achievements (
+      user_id TEXT NOT NULL,
+      achievement_id TEXT NOT NULL,
+      earned_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, achievement_id)
+    )`),
+    // Cumulative lifetime voice time per user, in seconds.
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_voice_seconds (
+      user_id TEXT PRIMARY KEY,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`),
   ]);
 
   await seedDefaultServer(db);

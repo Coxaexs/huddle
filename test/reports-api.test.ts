@@ -123,7 +123,7 @@ describe("POST /api/reports", () => {
 
     const res = await post({ messageId: "m1", reason: "This is spam" });
     expect(res.status).toBe(200);
-    const json = await res.json();
+    const json = (await res.json()) as { ok: boolean; id: string };
     expect(json.ok).toBe(true);
 
     const report = await db
