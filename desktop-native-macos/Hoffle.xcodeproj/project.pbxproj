@@ -1,0 +1,286 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 2001 /* main.m */; };
+		1002 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2002 /* AppDelegate.m */; };
+		1003 /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2003 /* MainWindowController.m */; };
+		1004 /* WebViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2004 /* WebViewController.m */; };
+		1005 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2005 /* PreferencesWindowController.m */; };
+		1006 /* ConfigManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 2006 /* ConfigManager.m */; };
+		1007 /* GlobalHotkeyManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 2007 /* GlobalHotkeyManager.m */; };
+		1008 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2008 /* AppIcon.icns */; };
+		1009 /* StatusIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = 2009 /* StatusIcon.png */; };
+		1010 /* web-bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = 2010 /* web-bridge.js */; };
+		1011 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3001 /* Cocoa.framework */; };
+		1012 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3002 /* WebKit.framework */; };
+		1013 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3003 /* UserNotifications.framework */; };
+		1014 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3004 /* Carbon.framework */; };
+		1015 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3005 /* Security.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0001 /* Hoffle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hoffle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		2002 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		2003 /* MainWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MainWindowController.m; sourceTree = "<group>"; };
+		2004 /* WebViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebViewController.m; sourceTree = "<group>"; };
+		2005 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
+		2006 /* ConfigManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ConfigManager.m; sourceTree = "<group>"; };
+		2007 /* GlobalHotkeyManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GlobalHotkeyManager.m; sourceTree = "<group>"; };
+		2008 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		2009 /* StatusIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = StatusIcon.png; sourceTree = "<group>"; };
+		2010 /* web-bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "web-bridge.js"; sourceTree = "<group>"; };
+		2011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2012 /* Hoffle.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Hoffle.entitlements; sourceTree = "<group>"; };
+		3001 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		3002 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		3003 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
+		3004 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		3005 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1011 /* Cocoa.framework in Frameworks */,
+				1012 /* WebKit.framework in Frameworks */,
+				1013 /* UserNotifications.framework in Frameworks */,
+				1014 /* Carbon.framework in Frameworks */,
+				1015 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5001 = {
+			isa = PBXGroup;
+			children = (
+				5002 /* Source */,
+				5003 /* Resources */,
+				5004 /* Frameworks */,
+				5005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5002 /* Source */ = {
+			isa = PBXGroup;
+			children = (
+				2001 /* main.m */,
+				2002 /* AppDelegate.m */,
+				2003 /* MainWindowController.m */,
+				2004 /* WebViewController.m */,
+				2005 /* PreferencesWindowController.m */,
+				2006 /* ConfigManager.m */,
+				2007 /* GlobalHotkeyManager.m */,
+				2010 /* web-bridge.js */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		5003 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				2008 /* AppIcon.icns */,
+				2009 /* StatusIcon.png */,
+				2011 /* Info.plist */,
+				2012 /* Hoffle.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		5004 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3001 /* Cocoa.framework */,
+				3002 /* WebKit.framework */,
+				3003 /* UserNotifications.framework */,
+				3004 /* Carbon.framework */,
+				3005 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0001 /* Hoffle.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6001 /* Hoffle */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7001 /* Build configuration list for PBXNativeTarget "Hoffle" */;
+			buildPhases = (
+				8001 /* Sources */,
+				4001 /* Frameworks */,
+				9001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Hoffle;
+			productName = Hoffle;
+			productReference = 0001 /* Hoffle.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					6001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 7002 /* Build configuration list for PBXProject "Hoffle" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 5001;
+			productRefGroup = 5005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6001 /* Hoffle */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1008 /* AppIcon.icns in Resources */,
+				1009 /* StatusIcon.png in Resources */,
+				1010 /* web-bridge.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1001 /* main.m in Sources */,
+				1002 /* AppDelegate.m in Sources */,
+				1003 /* MainWindowController.m in Sources */,
+				1004 /* WebViewController.m in Sources */,
+				1005 /* PreferencesWindowController.m in Sources */,
+				1006 /* ConfigManager.m in Sources */,
+				1007 /* GlobalHotkeyManager.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		C001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 120;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = Resources/Hoffle.entitlements;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = online.deeppixel.huddle;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				ARCHS = "$(ARCHS_STANDARD)";
+			};
+			name = Debug;
+		};
+		C002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 120;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = Resources/Hoffle.entitlements;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = online.deeppixel.huddle;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				ARCHS = "$(ARCHS_STANDARD)";
+			};
+			name = Release;
+		};
+		C003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		C004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7001 /* Build configuration list for PBXNativeTarget "Hoffle" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C001 /* Debug */,
+				C002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7002 /* Build configuration list for PBXProject "Hoffle" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C003 /* Debug */,
+				C004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 0000 /* Project object */;
+}

@@ -52,6 +52,10 @@ export interface ServerRow {
   created_by: string | null;
   created_at: string;
   position: number;
+  is_public?: number;
+  description?: string | null;
+  disabled_modules?: string | null;
+  raid_mode?: number;
 }
 
 export interface PublicChannel {
@@ -94,6 +98,10 @@ export interface PublicServer {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   ownerId: string | null;
+  isPublic?: boolean;
+  description?: string;
+  disabledModules?: string[];
+  raidMode?: boolean;
   channels: PublicChannel[];
   categories: PublicCategory[];
   roles: PublicRole[];
@@ -214,7 +222,7 @@ export async function listServers(
     userId
       ? db
           .prepare(
-            `SELECT s.id, s.name, s.icon, s.color, s.icon_url, s.banner_url, s.created_by, s.created_at, s.position
+            `SELECT s.*
                FROM servers s
                JOIN server_members m ON m.server_id = s.id AND m.user_id = ?
               WHERE s.id != ?
@@ -227,7 +235,7 @@ export async function listServers(
           .all()
       : db
           .prepare(
-            `SELECT id, name, icon, color, icon_url, banner_url, created_by, created_at, position
+            `SELECT *
                FROM servers WHERE id != ?
               ORDER BY position ASC, created_at ASC`,
           )
@@ -280,18 +288,31 @@ export async function listServers(
     rolesByServer.set(row.server_id, list);
   }
 
-  return ((servers.results || []) as unknown as ServerRow[]).map((server) => ({
-    id: server.id,
-    name: server.name,
-    icon: server.icon,
-    color: server.color,
-    iconUrl: server.icon_url || null,
-    bannerUrl: server.banner_url || null,
-    ownerId: server.created_by,
-    channels: channelsByServer.get(server.id) || [],
-    categories: categoriesByServer.get(server.id) || [],
-    roles: rolesByServer.get(server.id) || [],
-  }));
+  return ((servers.results || []) as unknown as ServerRow[]).map((server) => {
+    let disabledModules: string[] = [];
+    if (typeof server.disabled_modules === "string" && server.disabled_modules) {
+      try {
+        const parsed = JSON.parse(server.disabled_modules);
+        if (Array.isArray(parsed)) disabledModules = parsed.filter((x): x is string => typeof x === "string");
+      } catch {}
+    }
+    return {
+      id: server.id,
+      name: server.name,
+      icon: server.icon,
+      color: server.color,
+      iconUrl: server.icon_url || null,
+      bannerUrl: server.banner_url || null,
+      ownerId: server.created_by,
+      ...(server.is_public !== undefined ? { isPublic: Boolean(server.is_public) } : {}),
+      ...(server.description !== undefined ? { description: server.description || "" } : {}),
+      ...(server.disabled_modules !== undefined ? { disabledModules } : {}),
+      ...(server.raid_mode !== undefined ? { raidMode: Boolean(server.raid_mode) } : {}),
+      channels: channelsByServer.get(server.id) || [],
+      categories: categoriesByServer.get(server.id) || [],
+      roles: rolesByServer.get(server.id) || [],
+    };
+  });
 }
 
 export async function findChannel(

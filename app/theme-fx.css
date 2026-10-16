@@ -252,3 +252,47 @@
     animation: none;
   }
 }
+
+/* Zombie: the vampire drip in toxic ooze. */
+.fx-ooze-pool {
+  width: 14px;
+  height: 6px;
+  border-radius: 0 0 60% 60% / 0 0 100% 100%;
+  background: radial-gradient(ellipse at 50% 10%, #a8e04a 0, #5f8f1c 65%, #2f4a0c 100%);
+  box-shadow: 0 1px 2px rgba(30, 50, 0, 0.7);
+}
+.fx-ooze-stream {
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, #2f4a0c 0%, #9ad53b 45%, #5f8f1c 100%);
+}
+.fx-ooze-bead {
+  width: 7px;
+  height: 10px;
+  margin: -2px 0 0 -3.5px;
+  border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+  background: radial-gradient(circle at 35% 65%, #e4ff9a 0, #9ad53b 35%, #4a7414 85%, #2a4208 100%);
+  box-shadow: 0 0 6px rgba(154, 213, 59, 0.6);
+  transform-origin: 50% 0;
+}
+.fx-ooze-splat {
+  width: 13px;
+  height: 5px;
+  border-radius: 55% 45% 50% 50% / 45% 55% 50% 50%;
+  background: radial-gradient(ellipse at 45% 45%, #9ad53b 0, #4a7414 70%, transparent 100%);
+}
+.fx-ooze-splat::before,
+.fx-ooze-splat::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: #6f9f24;
+}
+.fx-ooze-splat::before { width: 2.5px; height: 2px; left: -4px; top: 1px; }
+.fx-ooze-splat::after { width: 2px; height: 2px; right: -5px; top: 2px; }
+
+/* Minecraft: square block-break chips (size and colour set per particle). */
+.fx-block {
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.35);
+}

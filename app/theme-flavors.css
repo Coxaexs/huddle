@@ -958,21 +958,6 @@
    Brushed titanium frames, a black LCD with lime text, and the now-playing
    card drawn as Winamp's main window (title bar, LED clock, analyser strip,
    transport buttons). */
-:root[data-custom-theme-id="winamp"] {
-  --font-mono: "Courier New", Courier, monospace;
-}
-
-:root[data-custom-theme-id="winamp"] :is(.rail, .channel-nav, .member-panel) {
-  background: linear-gradient(180deg, #2b303a 0%, #1c1f26 100%) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .channel.selected {
-  background: #0b0d10 !important;
-  box-shadow: inset 3px 0 0 #00ff00;
-  color: #00ff00 !important;
-  text-shadow: 0 0 4px rgba(0, 255, 0, 0.6);
-}
-
 :root[data-custom-theme-id="winamp"] .now-playing {
   position: relative;
   max-width: 380px;
@@ -1066,23 +1051,505 @@
   :root[data-custom-theme-id="winamp"] .now-playing.is-playing .now-playing-viz i { animation: none; height: 8px; }
 }
 
-/* TeamSpeak 2 -------------------------------------------------------------
-   Windows 2000 grey, navy selection, inset borders, Tahoma. */
-:root[data-custom-theme-id="teamspeak"] {
-  --font-ui: Tahoma, "Segoe UI", Arial, sans-serif;
+/* The rest of Winamp and all of TeamSpeak 2 live in retro-skins.css. */
+
+/* Zombie: outbreak night -------------------------------------------------
+   Toxic green on rotting black, hazard tape under the header, dripping
+   Creepster titles, quarantine-report labels and fog creeping up the page. */
+:root[data-custom-theme-id="zombie"] {
+  --rail-bg: #070906;
+  --surface-2: #19200f;
+  --muted-2: #8a957c;
+  --faint: #5c6650;
+  --accent-strong: #9ad53b;
+  --accent-hi: #c4f06a;
+  --on-accent: #0a0d08;
+  --toxic: #9ad53b;
+  --zombie-blood: #8e1b12;
+  --font-display: "Creepster", "Pirata One", Georgia, serif;
+  --font-label: "Special Elite", "Courier New", monospace;
+  --ring: 0 0 0 2px rgba(154, 213, 59, 0.6);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, .7), 0 0 0 1px rgba(154, 213, 59, .07);
 }
 
-:root[data-custom-theme-id="teamspeak"] body {
-  font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+:root[data-custom-theme-id="zombie"] :is(.rail, .sidebar, .member-panel) {
+  background:
+    radial-gradient(120% 30% at 50% 105%, rgba(110, 160, 40, 0.14), transparent 70%),
+    linear-gradient(180deg, #080a07 0%, #0d110b 70%, #121a0c 100%) !important;
 }
 
-:root[data-custom-theme-id="teamspeak"] :is(.rail, .channel-nav) {
-  background: #ece9d8 !important;
-  box-shadow: inset -2px 0 0 #7f9db9;
+/* Grimy glass with a toxic glow from below and a dried blood stain up top. */
+:root[data-custom-theme-id="zombie"] .chat-panel {
+  background:
+    radial-gradient(90% 38% at 50% 112%, rgba(154, 213, 59, 0.16), transparent 70%),
+    radial-gradient(28% 18% at 94% 4%, rgba(142, 27, 18, 0.16), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .45 0 0 0 0 .2 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    var(--chat-bg) !important;
+  border-color: rgba(154, 213, 59, 0.2) !important;
 }
 
-:root[data-custom-theme-id="teamspeak"] .channel.selected {
-  background: #0a246a !important;
-  color: #ffffff !important;
+/* Hazard tape under the channel header. */
+:root[data-custom-theme-id="zombie"] .chat-header {
+  border-bottom: 0 !important;
+  background-image: repeating-linear-gradient(-45deg, #e3c21c 0 10px, #111 10px 20px) !important;
+  background-size: 100% 5px !important;
+  background-repeat: no-repeat !important;
+  background-position: bottom !important;
+}
+
+/* Fog rolling along the floor of the window. */
+:root[data-custom-theme-id="zombie"] body::after {
+  content: "";
+  position: fixed;
+  left: -20%;
+  right: -20%;
+  bottom: 0;
+  height: 30vh;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 60% at 20% 100%, rgba(150, 190, 110, 0.10), transparent 70%),
+    radial-gradient(35% 50% at 60% 100%, rgba(170, 200, 130, 0.08), transparent 70%),
+    radial-gradient(30% 55% at 90% 100%, rgba(140, 180, 100, 0.09), transparent 70%);
+  animation: zombie-fog 26s ease-in-out infinite alternate;
+}
+
+@keyframes zombie-fog {
+  from { transform: translateX(-6%); }
+  to { transform: translateX(6%); }
+}
+
+:root[data-custom-theme-id="zombie"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.04em !important;
+  color: var(--toxic) !important;
+  text-shadow: 0 0 14px rgba(154, 213, 59, 0.45), 0 2px 0 #1c2a0c;
+}
+
+:root[data-custom-theme-id="zombie"] .channel-heading strong {
+  font-size: 28px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .space-header h1 {
+  font-size: 25px !important;
+}
+
+:root[data-custom-theme-id="zombie"] :is(.member-panel-title, .section-label) > span:first-child,
+:root[data-custom-theme-id="zombie"] .member-panel-title {
+  font-family: var(--font-label) !important;
+  color: #b8c79c !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase;
+}
+
+:root[data-custom-theme-id="zombie"] .channel.selected,
+:root[data-custom-theme-id="zombie"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.24), rgba(154, 213, 59, 0.03)) !important;
+  box-shadow: inset 3px 0 0 var(--toxic) !important;
+  color: #f0f7e4 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .composer {
+  background: rgba(14, 18, 11, 0.92) !important;
+  border-color: rgba(154, 213, 59, 0.26) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .composer:focus-within {
+  border-color: var(--toxic) !important;
+  box-shadow: 0 0 22px rgba(154, 213, 59, 0.22) !important;
+}
+
+:root[data-custom-theme-id="zombie"] :is(.send-button, .join-button) {
+  background: var(--toxic) !important;
+  color: #0a0d08 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .message time {
+  font-family: var(--font-label);
+  color: #7d8a6c;
+}
+
+:root[data-custom-theme-id="zombie"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px var(--toxic), 0 0 14px rgba(154, 213, 59, 0.45) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .server-banner-header {
+  filter: saturate(0.55) sepia(0.25) hue-rotate(35deg) brightness(0.85);
+}
+
+:root[data-custom-theme-id="zombie"] ::selection {
+  background: var(--toxic);
+  color: #0a0d08;
+}
+
+:root[data-custom-theme-id="zombie"] ::-webkit-scrollbar-thumb {
+  background: #2f4219;
+  border-radius: 999px;
+}
+
+/* Voice: a quarantine bunker; speakers twitch with a sickly glow. */
+:root[data-custom-theme-id="zombie"] :is(.voice-stage, .voice-stage-body) {
+  background:
+    radial-gradient(70% 50% at 50% 110%, rgba(154, 213, 59, 0.12), transparent 70%),
+    radial-gradient(140% 110% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    #0b0e09 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile {
+  background: linear-gradient(180deg, #141a10, #0d110a) !important;
+  border: 1px solid rgba(154, 213, 59, 0.22) !important;
+}
+
+@keyframes zombie-twitch {
+  0%, 100% { transform: translate(0, 0); box-shadow: 0 0 0 2px var(--toxic), 0 0 22px rgba(154, 213, 59, 0.4); }
+  20% { transform: translate(-1px, 0); }
+  40% { transform: translate(1px, -1px); box-shadow: 0 0 0 2px var(--toxic), 0 0 34px rgba(154, 213, 59, 0.55); }
+  60% { transform: translate(0, 1px); }
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile.is-speaking {
+  border-color: var(--toxic) !important;
+  animation: zombie-twitch 0.9s steps(2) infinite;
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile figcaption,
+:root[data-custom-theme-id="zombie"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-label) !important;
+  color: #dfe8d2 !important;
+}
+
+:root[data-custom-theme-id="zombie"] :is(.voice-stage-bottom-bar, .voice-stage-bar) {
+  background: #0b0e09 !important;
+  border-top: 1px solid rgba(154, 213, 59, 0.2) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .vctrl-btn {
+  background: #161d11 !important;
+  border: 1px solid rgba(154, 213, 59, 0.3) !important;
+  color: #c4f06a !important;
+}
+
+:root[data-custom-theme-id="zombie"] .vctrl-btn:hover {
+  border-color: var(--toxic) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .voice-member-status :is(.is-speaking-icon, .speaking-bars),
+:root[data-custom-theme-id="zombie"] .voice-member.is-speaking .ring-2 {
+  color: var(--toxic) !important;
+  --tw-ring-color: rgba(154, 213, 59, 0.8) !important;
+}
+
+/* Menus: a grimy field-report card. */
+:root[data-custom-theme-id="zombie"] .user-menu {
+  color: #dfe8d2;
+  background:
+    radial-gradient(120% 60% at 50% 120%, rgba(154, 213, 59, 0.12), transparent 70%),
+    linear-gradient(180deg, #121810 0%, #0a0d08 100%);
+  border: 1px solid rgba(154, 213, 59, 0.32);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 26px rgba(154, 213, 59, 0.12);
+}
+
+:root[data-custom-theme-id="zombie"] .bot-menu .user-menu-head {
+  background: #121810;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-head {
+  border-bottom-color: rgba(154, 213, 59, 0.25);
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-head strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+  letter-spacing: 0.04em;
+  color: var(--toxic);
+}
+
+:root[data-custom-theme-id="zombie"] :is(.user-menu-head span, .user-menu-note, .user-menu-volume span) {
+  font-family: var(--font-label);
+  color: #8f9c80;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu button:hover {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.24), rgba(154, 213, 59, 0.05));
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu button.danger {
+  color: #e05a4a;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-divider {
+  background: repeating-linear-gradient(-45deg, #e3c21c 0 5px, #111 5px 10px);
+  height: 3px;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu input[type="range"] {
+  accent-color: #9ad53b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="zombie"] body::after { animation: none; }
+  :root[data-custom-theme-id="zombie"] .stage-tile.is-speaking {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--toxic), 0 0 22px rgba(154, 213, 59, 0.4) !important;
+  }
+}
+
+/* Minecraft: the overworld ------------------------------------------------
+   Cobblestone server rail, dark oak plank sidebars, a deepslate chat wall
+   with a grass-block header, stone buttons, square heads, pixel type and
+   the inventory GUI for menus. Textures are 16px tiles drawn at 3x. */
+:root[data-custom-theme-id="minecraft"] {
+  --mc-dirt: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAxUlEQVR42nWSyw3CQBBDXU5q4IZy58YNJErgmgJCCfRCdzh6kbE2QhqtZjwfz2f1eszL9cSLYrmfJ5TPejNoM17Ffj8vFkN+OxOXFV4lwkYKp3bIAa3sDGRbHAcPehjCplDbDVtIqBIGXCLUEAndQOtkOkapMUhmCCeIeqBebkdngVtL1mim7zD0QzT5aihocthM1r21BNQls5ycqEuojeO/6B2Ci3r/BsjJctlfSz0GSHebk2uYtf8ZeH+w/Q7DWD3A8fBfZEEe90ukoXkAAAAASUVORK5CYII=");
+  --mc-grass: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAA2ElEQVR42nWRMQ7CUAxDfRkkNnYWhJi6wMQGghvA2okJjsDCMZjYORhGr3Kjj5DSyHUc/+R/bR6zw3OeDDi9OwNnsDOxuExUdYAa6KpA/tzHz345vR1Xxs7w/XZoMOP4nmDKOgwMXtcdDcYwLt3P6zCilYIBNcKYM22aknA15YyOcoPptEbxaAIXR86EUTwAiAJQO6dNRgwT6e88qOlXpcKmxwNzjakKqlrmcsCNhepPvRC2rHcIL/z+LZAnQ+YYR6prwNRpwePS9QbjB58Jh6Wb10lk6ObhP5NgIg35AoJaAAAAAElFTkSuQmCC");
+  --mc-stone: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAApklEQVR42mWSwRFEIQhDKdcCvFPCtry4z83k53NgUBIiYO29Pz9ba+G7ey4nwHPEj1X/DcIEeEDcKxgrItiKyfXLroKKTW2powONNxM8CI5wEfEPQY16WjdeCyulA0HVaP30IC3QHNWSBLFDiEo+QY1O/DtWhkA6VqFa4lcsEoQT4s0V6koEWoCKqhqRNGNRFZt33Pt33E07VHP0xwjz6CGW7WQX+QLrpnDg4w7lrwAAAABJRU5ErkJggg==");
+  --mc-cobble: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAuklEQVR42nWSwQ1DIQxDPSJjMAD3jMDKzedVrvVRc0ABnNgxaIyx1honqorkPnGiOjHn3Hv32lBOqOkTtn0LTOsECBc31Ah6dTSgVwH1NeyuNwMkPwYEgDOnCa2wE40IzwpVJr5SjmWhbm+FnkeA2Ceaue2br8SeTedoYIx0mfZPQUUgOl3O6QEoX7F5/r2041tg71DinBZpt/wi6XrO/ZKnl8qE2sAkV7LbIqAYkH/kkZTPeX/m+8N/AH4yUGGHim96AAAAAElFTkSuQmCC");
+  --mc-deepslate: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAtElEQVR42mWSMQ7DMAwD9Z4MXbIUWbpl6v/fUxVnHGgFEAzZlkiKdp3n+7o+Hcfx6rW3Jl7d97fzXjsvjqjzlJWEarargetuAJv+wea2bBVGtizdGlKuPE2b8E5SygWVkIHb5Ckzx01PnFiIUkCawyHy0qJ/g1aMuRUDpyjFPpFSsZx6Mx9uiNGDrUFSRtRlx00zKrvzF+SsQnTB9jVg70jpmS9bJR1inp9quZQvnWC4x2r8AKcIqyfjpW+1AAAAAElFTkSuQmCC");
+  --mc-planks: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAArUlEQVR42qWSsQ7CMAxE/RGdmJA6sMAIEkslJFb+/3e46kmvbraCZDmO7eTunNTrfsbej9Wu8xT/WS7mLcWet1NRjqeQA2wpk0wQI1ksFOJFMC9CkitCOg5Zya8T67yBNVOJ4ApLuUKgT2LTQLcS6WZQA8IfGhKBIJqSiDcNbBg/Nek53P4sxa2wHDqGWXH1Txpk79MCBU/FEJRCPWNHH/9OdP9nw3vBu3+Cwxq+tI2I4Z7Cf7UAAAAASUVORK5CYII=");
+  --mc-yellow: #ffff55;
+  --mc-bevel: inset 2px 2px 0 rgba(255, 255, 255, 0.3), inset -2px -3px 0 rgba(0, 0, 0, 0.45);
+  --rail-bg: #3b3b3b;
+  --surface-2: #3a3a3a;
+  --muted-2: #a0a0a0;
+  --faint: #7a7a7a;
+  --accent-strong: #5fb33a;
+  --accent-hi: #80d65a;
+  --on-accent: #ffffff;
+  --font-ui: "Pixelify Sans", "Instrument Sans", sans-serif;
+  --font-display: "Pixelify Sans", sans-serif;
+  --ring: 0 0 0 2px #ffffff;
+  --ui-corners: 0px;
+}
+
+:root[data-custom-theme-id="minecraft"] body,
+:root[data-custom-theme-id="minecraft"] .app-shell {
+  font-family: var(--font-ui) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.rail, .sidebar, .member-panel, .chat-panel, .chat-header) {
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"] .rail {
+  background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.42)), var(--mc-cobble) 0 0 / 48px 48px !important;
+  border-right: 3px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.sidebar, .member-panel) {
+  background: linear-gradient(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)), var(--mc-planks) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .chat-panel {
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--mc-deepslate) 0 0 / 48px 48px !important;
+  border: 3px solid #000 !important;
   border-radius: 0 !important;
+}
+
+/* The header is the side of a grass block. */
+:root[data-custom-theme-id="minecraft"] .chat-header {
+  background: linear-gradient(180deg, transparent 30%, rgba(0, 0, 0, 0.35)), var(--mc-grass) 0 0 / 48px 48px repeat-x, var(--mc-dirt) 0 0 / 48px 48px !important;
+  border-bottom: 3px solid #000 !important;
+}
+
+/* Menu-title yellow with the game's hard drop shadow. */
+:root[data-custom-theme-id="minecraft"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-display) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  color: var(--mc-yellow) !important;
+  text-shadow: 2px 2px 0 #3f3f15;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-header h1 {
+  font-size: 21px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .chat-header :is(.channel-heading > span, button) {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.member-panel-title, .section-label) > span:first-child,
+:root[data-custom-theme-id="minecraft"] .member-panel-title {
+  color: #e0e0e0 !important;
+  text-shadow: 2px 2px 0 #2a2a2a;
+  letter-spacing: 0.04em !important;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.channel, .voice-room) {
+  border-radius: 0 !important;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+}
+
+/* The open channel is the selected hotbar slot. */
+:root[data-custom-theme-id="minecraft"] .channel.selected,
+:root[data-custom-theme-id="minecraft"] .voice-room.selected {
+  background: rgba(0, 0, 0, 0.45) !important;
+  box-shadow: inset 0 0 0 2px #ffffff, inset 0 0 0 4px #000000 !important;
+  color: #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.space-mark, .brand-mark, .avatar) {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-mark {
+  box-shadow: 0 0 0 2px #000 !important;
+}
+
+/* Square heads, square everything. */
+:root[data-custom-theme-id="minecraft"] :is(.avatar-base, .avatar-base img, .stage-avatar img, input, textarea, select, .discord-user-footer, .user-footer-profile) {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .member-panel input {
+  background: rgba(0, 0, 0, 0.62) !important;
+  border: 2px solid #a0a0a0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .discord-user-footer {
+  background: rgba(0, 0, 0, 0.55) !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px #000, 0 0 0 5px #ffffff !important;
+}
+
+/* Chat input: the game's translucent black chat line. */
+:root[data-custom-theme-id="minecraft"] .composer {
+  border-radius: 0 !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  border: 2px solid #a0a0a0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .composer:focus-within {
+  border-color: #ffffff !important;
+}
+
+/* Stone buttons with the bevel and the white hover outline. */
+:root[data-custom-theme-id="minecraft"] :is(.send-button, .join-button, .vctrl-btn) {
+  border-radius: 0 !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.12)), var(--mc-stone) 0 0 / 48px 48px !important;
+  image-rendering: pixelated;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.send-button, .join-button, .vctrl-btn):hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .message time {
+  color: #aaaaaa;
+}
+
+:root[data-custom-theme-id="minecraft"] ::selection {
+  background: rgba(85, 85, 255, 0.7);
+  color: #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] ::-webkit-scrollbar-thumb {
+  background: #8b8b8b;
+  border-radius: 0;
+  box-shadow: inset 2px 2px 0 #c6c6c6, inset -2px -2px 0 #555555;
+}
+
+/* Voice: tiles are inventory slots; a speaker lights up with XP green. */
+:root[data-custom-theme-id="minecraft"] :is(.voice-stage, .voice-stage-body) {
+  background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), var(--mc-deepslate) 0 0 / 48px 48px !important;
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile {
+  background: #8b8b8b !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile.is-speaking {
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #ffffff, 0 0 0 3px #55ff55, 0 0 18px rgba(85, 255, 85, 0.55) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-avatar {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile figcaption,
+:root[data-custom-theme-id="minecraft"] .stage-tile figcaption span:first-child {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.voice-stage-bottom-bar, .voice-stage-bar) {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border-top: 3px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .voice-active-contour {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .voice-member-status :is(.is-speaking-icon, .speaking-bars),
+:root[data-custom-theme-id="minecraft"] .voice-member.is-speaking .ring-2 {
+  color: #55ff55 !important;
+  --tw-ring-color: rgba(85, 255, 85, 0.85) !important;
+}
+
+/* Menus: the inventory window, grey with a raised bevel and dark text. */
+:root[data-custom-theme-id="minecraft"] .user-menu {
+  color: #3f3f3f;
+  background: #c6c6c6;
+  border: 2px solid #000;
+  border-radius: 0;
+  box-shadow: inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555, 0 18px 40px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-custom-theme-id="minecraft"] .bot-menu .user-menu-head {
+  background: #c6c6c6;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-head {
+  border-bottom-color: #8b8b8b;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-head strong {
+  color: #3f3f3f;
+  font-weight: 600;
+}
+
+:root[data-custom-theme-id="minecraft"] :is(.user-menu-head span, .user-menu-note, .user-menu-volume span) {
+  color: #555555;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button {
+  color: #3f3f3f;
+  border-radius: 0;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button:hover {
+  color: #000000;
+  background: #8b8b8b;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button.danger {
+  color: #aa0000;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-divider {
+  background: #8b8b8b;
+  box-shadow: 0 1px 0 #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu input[type="range"] {
+  accent-color: #5fb33a;
 }

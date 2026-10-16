@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkProfileCss, checkThemeCss } from "./themes";
+import { checkProfileCss, checkThemeCss, scopeProfileCss } from "./themes";
 
 const errorOf = (check: { ok: boolean; error?: string }) => (check.ok ? undefined : check.error);
 
@@ -43,5 +43,44 @@ describe("shipped profile presets", () => {
     for (const preset of PROFILE_CSS_PRESETS) {
       expect([preset.name, errorOf(checkProfileCss(preset.css))]).toEqual([preset.name, undefined]);
     }
+  });
+});
+
+describe("scopeProfileCss", () => {
+  it("scopes Flo's rave override CSS strictly inside the profile card without losing card animations", () => {
+    const floCss = `
+      html, body, #root, main {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: #05060a !important;
+      }
+      @keyframes raveHue {
+        0% { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+      }
+      body {
+        animation: raveHue .001s linear infinite !important;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+      }
+      #root, main, body > div {
+        animation: fastShake .001s linear infinite !important;
+      }
+    `;
+    const scoped = scopeProfileCss(floCss, "flo");
+    expect(scoped).toContain(".user-profile-scoped-flo");
+    expect(scoped).toContain("animation: raveHue");
+    expect(scoped).toContain("position: absolute");
+    expect(scoped).not.toContain("position: fixed");
+    expect(scoped).not.toContain("width: 100%");
+    expect(scoped).toContain(".user-profile-scoped-flo.user-profile-scoped-flo::before");
+    expect(scoped).toContain(".user-profile-scoped-flo.user-profile-scoped-flo > div");
   });
 });

@@ -6,20 +6,14 @@
  * posts into the channel it was switched on in.
  */
 import type { PostOptions } from "../app/api/messages/route";
+import { ensureSchema } from "./schema";
 import { publishMessage } from "./hub-client";
 import { textChannelKindsSql } from "./channel-kinds";
 
 export const RECAP_WEEK_MS = 7 * 86_400_000;
 
 export async function ensureRecapTable(db: D1Database): Promise<void> {
-  await db
-    .prepare(`CREATE TABLE IF NOT EXISTS server_recaps (
-        server_id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        next_at INTEGER NOT NULL,
-        created_by TEXT
-      )`)
-    .run();
+  await ensureSchema(db);
 }
 
 function plural(count: number, word: string): string {

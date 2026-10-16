@@ -48,3 +48,13 @@ public/assets/tts/
 
 # scripts/deploy.sh is running (the healthcheck waits)
 /.deploying
+
+# Tools & Native build outputs
+.tools/
+desktop-native-macos/build/
+desktop-native-macos/scratch/
+desktop-native-windows/build/
+desktop-native-windows/vendor/*.zip
+desktop-native-linux/build/
+public/hoffle_native.dmg
+.dice-sound-preview/

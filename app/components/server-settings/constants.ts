@@ -22,6 +22,15 @@ export const AUDIT_LABELS: Record<string, string> = {
   "member.timeout": "timed out a member",
   "member.timeout_remove": "lifted a timeout",
   "invite.create": "created an invite",
+  "invite.revoke": "revoked an invite",
+  "moderation.raid_on": "enabled raid lockdown",
+  "moderation.raid_off": "disabled raid lockdown",
+  "message.purge": "bulk-purged messages in",
+  "report.resolve": "resolved a moderation report",
+  "server.import": "imported server structure from",
+  "webhook.create": "created a webhook",
+  "webhook.rotate": "rotated a webhook URL",
+  "webhook.delete": "deleted a webhook",
 };
 export const BANNER_COLORS = [
   { label: "Dark", value: "linear-gradient(135deg, #1e1f29, #111218)" },

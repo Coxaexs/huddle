@@ -13,6 +13,7 @@
 import { isInstanceAdmin, type User } from "./auth";
 import { INSTANCE_AUDIT } from "./admin";
 import { recordAudit } from "./audit";
+import { ensureSchema } from "./schema";
 import {
   BIG_UPLOAD_LIFETIME_MS,
   BIG_UPLOAD_MAX_BYTES,
@@ -41,37 +42,8 @@ export interface BigUploadRow {
 
 type Failure = { error: string; status: number };
 
-let tablesReady: Promise<void> | null = null;
-
 export function ensureBigUploadTables(db: D1Database): Promise<void> {
-  if (!tablesReady) {
-    tablesReady = db
-      .batch([
-        db.prepare(`CREATE TABLE IF NOT EXISTS big_upload_grants (
-          user_id TEXT PRIMARY KEY,
-          granted_by TEXT,
-          granted_at INTEGER NOT NULL
-        )`),
-        db.prepare(`CREATE TABLE IF NOT EXISTS big_uploads (
-          key TEXT PRIMARY KEY,
-          upload_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          size INTEGER NOT NULL,
-          content_type TEXT,
-          created_at INTEGER NOT NULL,
-          expires_at INTEGER NOT NULL,
-          completed_at INTEGER
-        )`),
-        db.prepare("CREATE INDEX IF NOT EXISTS big_uploads_expiry_idx ON big_uploads(expires_at)"),
-      ])
-      .then(() => undefined)
-      .catch((error) => {
-        tablesReady = null;
-        throw error;
-      });
-  }
-  return tablesReady;
+  return ensureSchema(db);
 }
 
 export function bigUploadBudget(): number {

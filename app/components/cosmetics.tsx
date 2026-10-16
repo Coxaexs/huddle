@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type CSSProperties, type ReactNode } from "react";
-import { CANVAS_SCENES, CanvasScene } from "./particle-scenes";
+import { CANVAS_SCENES, CanvasScene, useParticlesSetting } from "./particle-scenes";
 import { EXTRA_DECORATIONS, EXTRA_EFFECTS, EXTRA_FRAME_ART, EXTRA_NAMEPLATE_ART, EXTRA_SCENES, NAMEPLATE_FIT_WHOLE } from "./cosmetics-extra";
 
 /*
@@ -1802,7 +1802,9 @@ export function customEffectUrl(id?: string | null) {
 
 /** Animated effect over a whole profile card. Parent must be position: relative. */
 export function ProfileEffect({ id, density = 1 }: { id?: string | null; density?: number }) {
-  if (!id || id === "none") return null;
+  const particlesOn = useParticlesSetting();
+  if (!id || id === "none" || !particlesOn) return null;
+  if (typeof document !== "undefined" && document.documentElement.dataset.cosmetics === "off") return null;
   const gif = customEffectUrl(id);
   if (gif) {
     return (

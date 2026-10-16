@@ -13,6 +13,7 @@ import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { maskRoll } from "@/lib/secret-roll";
+import { DICE_STYLE_WORDS, resolveDiceStyle } from "@/lib/dice-styles";
 
 export const dynamic = "force-dynamic";
 
@@ -231,17 +232,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const allowedThemes = [
-    "default",
-    "pride",
-    "trans",
-    "nonbinary",
-    "vampire",
-    "dark-academia",
-    "darkacademia",
-    "matrix",
-    "cyberpunk",
-  ];
+  const allowedThemes = DICE_STYLE_WORDS;
   const allowedMaterials = ["plastic", "metal", "wood", "glass"] as const;
   const allowedTextures = [
     "none",
@@ -317,7 +308,7 @@ export async function POST(request: Request) {
   for (const token of tokens) {
     const lower = token.toLowerCase();
     if (styleOnly && allowedThemes.includes(lower)) {
-      parsedTheme = lower === "darkacademia" ? "dark-academia" : lower;
+      parsedTheme = resolveDiceStyle(lower) ?? undefined;
     } else if (styleOnly && allowedMaterials.includes(lower as (typeof allowedMaterials)[number])) {
       parsedMaterial = lower as (typeof allowedMaterials)[number];
     } else if (styleOnly && allowedTextures.includes(lower as (typeof allowedTextures)[number])) {
@@ -334,7 +325,7 @@ export async function POST(request: Request) {
   const rawTheme =
     parsedTheme ||
     (body.theme && allowedThemes.includes(body.theme.toLowerCase()) ? body.theme.toLowerCase() : "default");
-  const theme = rawTheme === "darkacademia" ? "dark-academia" : rawTheme;
+  const theme = resolveDiceStyle(rawTheme) ?? "default";
   const themeColor =
     parsedThemeColor ||
     (typeof body.themeColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.themeColor)

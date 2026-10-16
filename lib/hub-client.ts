@@ -17,6 +17,18 @@ export function hub(): DurableObjectStub | null {
   return namespace.get(namespace.idFromName("huddle"));
 }
 
+/**
+ * Per-room Durable Object shard (`room:<channelId>`) for high-frequency voice,
+ * 3D living-room pose (10Hz), and Jam synth traffic so a single active room
+ * never bottlenecks global chat/presence.
+ */
+export function roomHub(channelId: string): DurableObjectStub | null {
+  const namespace = (bindings() as { HUB?: DurableObjectNamespace }).HUB;
+  const clean = channelId.trim().slice(0, 64);
+  if (!namespace || !clean) return null;
+  return namespace.get(namespace.idFromName(`room:${clean}`));
+}
+
 /** Base URL is arbitrary — Durable Object fetches never leave the worker. */
 const INTERNAL = "https://huddle.hub";
 

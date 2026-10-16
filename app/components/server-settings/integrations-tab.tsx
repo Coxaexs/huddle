@@ -5,11 +5,13 @@ import type { PublicServer } from "@/lib/servers";
 import { ServerBot, Tab } from "./types";
 import { DndSettingsPanel } from "./dnd-settings";
 import { GameServerSettingsPanel } from "./game-server-settings";
+import { WebhooksPanel } from "./webhooks-settings";
 
 export function ServerIntegrationsTab({
   tab,
   server,
   onRequestPrompt,
+  onRequestConfirm,
   addBot,
   creatingBot,
   bots,
@@ -23,6 +25,7 @@ export function ServerIntegrationsTab({
   tab: Tab;
   server: PublicServer;
   onRequestPrompt: (options: { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmText?: string; onConfirm: (val?: string) => void; }) => void;
+  onRequestConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; onConfirm: () => void }) => void;
   addBot: (name: string, kind?: string, avatar?: string, description?: string) => Promise<void>;
   creatingBot: boolean;
   bots: ServerBot[];
@@ -132,6 +135,7 @@ export function ServerIntegrationsTab({
 
             <DndSettingsPanel serverId={server.id} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
             <GameServerSettingsPanel serverId={server.id} onNotice={setNotice} />
+            <WebhooksPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
 
             {/* Active Bots List */}
             <h2 style={{ fontSize: 16, color: "#fff", marginTop: 24, marginBottom: 8 }}>Installed Bots ({bots.length})</h2>

@@ -1,0 +1,5 @@
+Surface detail for the Living Room's rooms, from ambientCG (https://ambientcg.com), CC0 1.0.
+Packed by hand: *_c = colour as grey detail (rooms tint it), *_n = OpenGL normal, *_r = R ambient occlusion, G roughness.
+floor   WoodFloor051   wood    Wood051     fabric  Fabric061   carpet  Carpet016
+plaster Plaster002     stone   Bricks102   leather Leather037
+grass   Grass004       bark    Bark012

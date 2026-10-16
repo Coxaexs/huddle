@@ -122,6 +122,20 @@ describe("house lights", () => {
   });
 });
 
+describe("living room switches and moments", () => {
+  it("keeps only known switches, once each, stamped by the hub", () => {
+    expect(sanitizeShared("lounge", { off: ["fire", "lamp-couch", "fire", "oven", 3], curtains: true, by: "Evil", at: 1 }, "Aria", 9)).toEqual({ off: ["fire", "lamp-couch"], curtains: true, mood: "warm", at: 9, by: "Aria" });
+    expect(sanitizeShared("lounge", { off: "fire", mood: "storm" }, "Aria", 9)).toEqual({ off: [], curtains: false, mood: "storm", at: 9, by: "Aria" });
+    expect(sanitizeShared("lounge", { off: [], mood: "disco" }, "Aria", 9)).toMatchObject({ mood: "warm" });
+    expect(sanitizeShared("lounge", null, "Aria", 9)).toBeNull();
+  });
+  it("passes a moment for a known thing and nothing else", () => {
+    expect(sanitizeShared("loungefx", { thing: "cat", extra: "x" }, "Aria", 9)).toEqual({ thing: "cat" });
+    expect(sanitizeShared("loungefx", { thing: "toaster" }, "Aria", 9)).toBeNull();
+    expect(sanitizeShared("loungefx", { thing: ["cat"] }, "Aria", 9)).toBeNull();
+  });
+});
+
 describe("pawns", () => {
   const put = (id: string, x = 0, z = 0): Extract<PawnOp, { op: "put" }> => ({ op: "put", id, kind: "fighter", colour: "#3b4fa8", x, z, facing: 0, label: "" });
   const sam = { userId: "u-sam", name: "Sam", isGm: false };

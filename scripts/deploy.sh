@@ -102,6 +102,12 @@ if [[ -d "$ROOT/dist" ]]; then
   rsync -a --delete "$ROOT/dist/" "$ROOT/dist-prev/"
 fi
 
+# Record what the machine is doing from before the restart until a few minutes
+# after it (~/.cache/huddle-stall/), so a slow stall can be explained.
+if [[ -x "$ROOT/scripts/stall-probe.sh" ]]; then
+  nohup "$ROOT/scripts/stall-probe.sh" 360 >/dev/null 2>&1 </dev/null &
+fi
+
 echo "Swapping the new build in ..."
 land "$STAGE/dist"
 lap "swap"
@@ -112,11 +118,14 @@ if healthy; then
   # The standby copy (database snapshot plus code, pushed to Oracle and the
   # ThinkPad) is what made a deploy take minutes. The site is already live and
   # hoffle-backup.timer repeats this every five minutes anyway, so start it
-  # and carry on instead of waiting; its output goes to the log below.
+  # and carry on instead of waiting; its output goes to the log below. It waits
+  # five minutes first and runs at the lowest priority: right after a restart
+  # everyone's client reconnects at once, and a copy of the database competing
+  # with that is exactly when the site is slowest.
   if [[ -x "$HOME/.local/bin/hoffle-backup.sh" ]]; then
     mkdir -p "$HOME/.cache"
-    nohup "$HOME/.local/bin/hoffle-backup.sh" >"$HOME/.cache/hoffle-deploy-sync.log" 2>&1 </dev/null &
-    echo "Syncing the standby in the background (log: ~/.cache/hoffle-deploy-sync.log)."
+    nohup bash -c 'sleep 300; exec nice -n 19 ionice -c3 "$HOME/.local/bin/hoffle-backup.sh"' >"$HOME/.cache/hoffle-deploy-sync.log" 2>&1 </dev/null &
+    echo "Syncing the standby in five minutes, at low priority (log: ~/.cache/hoffle-deploy-sync.log)."
   fi
 else
   echo "Hoffle is not answering at $HEALTH_URL after the deploy." >&2

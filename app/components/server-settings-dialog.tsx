@@ -19,6 +19,9 @@ import { ServerBansTab } from "./server-settings/bans-tab";
 import { ServerInvitesTab } from "./server-settings/invites-tab";
 import { ServerAuditLogTab } from "./server-settings/audit-log-tab";
 import { ServerIntegrationsTab } from "./server-settings/integrations-tab";
+import { ServerAccessTab } from "./server-settings/access-tab";
+import { ServerSafetyTab } from "./server-settings/safety-tab";
+import { ServerTemplateTab } from "./server-settings/template-tab";
 
 
 
@@ -121,7 +124,7 @@ export function ServerSettingsDialog({
       case "tag":
       case "engagement":
       case "boost":
-        return Boolean(canManageServer || isOwner);
+        return false;
       case "emoji":
       case "stickers":
       case "soundboard":
@@ -135,8 +138,9 @@ export function ServerSettingsDialog({
       case "access":
         return Boolean(canManageServer || canManageRoles || isOwner);
       case "integrations":
-      case "app_directory":
         return Boolean(canManageServer || isOwner);
+      case "app_directory":
+        return false;
       case "safety":
         return Boolean(canManageServer || canModerate || isOwner);
       case "audit_log":
@@ -1190,6 +1194,7 @@ export function ServerSettingsDialog({
         tab={tab}
         server={server}
         onRequestPrompt={onRequestPrompt}
+        onRequestConfirm={onRequestConfirm}
         addBot={addBot}
         creatingBot={creatingBot}
         bots={bots}
@@ -1201,10 +1206,34 @@ export function ServerSettingsDialog({
         removeBot={removeBot}
       />
 
+        <ServerAccessTab
+          tab={tab}
+          server={server}
+          canManageServer={Boolean(canManageServer || isOwner)}
+          onServerUpdated={onServerUpdated}
+          setNotice={setNotice}
+        />
+
+        <ServerSafetyTab
+          tab={tab}
+          server={server}
+          canManageServer={Boolean(canManageServer || isOwner)}
+          canModerate={canModerateEffective}
+          onServerUpdated={onServerUpdated}
+          setNotice={setNotice}
+        />
+
+        <ServerTemplateTab
+          tab={tab}
+          server={server}
+          onServerUpdated={onServerUpdated}
+          setNotice={setNotice}
+        />
+
         {/* Sidebar items with no panel yet. Listed by what exists rather than
             what doesn't, so a new panel can't end up with this under it. */}
         {!["profile", "emoji", "stickers", "soundboard", "members", "roles", "bans", "invites",
-          "audit_log", "integrations", "automod"].includes(tab) && (
+          "audit_log", "integrations", "automod", "access", "community", "safety", "template", "welcome"].includes(tab) && (
           <div className="tab-pane fallback-pane">
             <h1 className="pane-title">
               {tab.replace("_", " ").toUpperCase()}

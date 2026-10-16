@@ -9,19 +9,6 @@ export const dynamic = "force-dynamic";
 /** Most messages one person can keep saved. */
 const SAVED_LIMIT = 500;
 
-async function ensureSavedTable(db: D1Database): Promise<void> {
-  await db
-    .prepare(
-      `CREATE TABLE IF NOT EXISTS saved_messages (
-         user_id TEXT NOT NULL,
-         message_id TEXT NOT NULL,
-         created_at TEXT NOT NULL,
-         PRIMARY KEY (user_id, message_id)
-       )`,
-    )
-    .run();
-}
-
 /**
  * Your saved messages, newest saved first. Anything you can no longer read
  * (deleted, or a server you left) drops out of the list on its own.
@@ -32,7 +19,6 @@ export async function GET(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
-  await ensureSavedTable(db);
 
   const rows = await db
     .prepare(
@@ -104,7 +90,6 @@ export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
-  await ensureSavedTable(db);
   const body = (await request.json().catch(() => ({}))) as { messageId?: string };
   const messageId = body.messageId?.slice(0, 64) || "";
   const access = await messageAccess(db, messageId, user);
@@ -129,7 +114,6 @@ export async function DELETE(request: Request) {
   if (!db) return Response.json({ ok: false });
   const user = await currentUser(request);
   if (!user) return unauthorized();
-  await ensureSavedTable(db);
   const messageId = new URL(request.url).searchParams.get("messageId") || "";
   await db
     .prepare("DELETE FROM saved_messages WHERE user_id = ? AND message_id = ?")

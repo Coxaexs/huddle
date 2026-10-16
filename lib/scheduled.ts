@@ -1,3 +1,4 @@
+import { ensureSchema } from "./schema";
 /**
  * /schedule: messages written now and posted later, as you.
  *
@@ -24,21 +25,7 @@ export function parseScheduled(spec: string, now: number, timezoneOffset = 0) {
 }
 
 export async function ensureScheduledTable(db: D1Database): Promise<void> {
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_messages (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        channel_id TEXT NOT NULL,
-        thread_id TEXT,
-        text TEXT NOT NULL,
-        due_at INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        sent_at TEXT,
-        message_id TEXT,
-        error TEXT
-      )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS scheduled_due_idx ON scheduled_messages(sent_at, due_at)"),
-  ]);
+  await ensureSchema(db);
 }
 
 /** When the next unsent scheduled message falls due, or null. */

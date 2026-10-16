@@ -9,6 +9,8 @@ import {
   playCriticalFumbleSound,
   playCriticalSuccessSound,
 } from "../lib/dice-sounds";
+import { getDiceStyle, inheritDiceStyle } from "@/lib/dice-styles";
+import { installHuddleDiceTextures } from "../lib/dice-textures";
 import { runCritFx, type CritFxHandle } from "./dice-crit-fx";
 
 /** Flatten the server's authoritative die values in roll order. */
@@ -121,55 +123,44 @@ export function DiceOverlay({
       if (disposed) return;
       const DiceBox = (mod as { default: any }).default;
 
-      // Theme configuration:
-      // If roll has an explicit theme, use it.
-      // If default or unset, automatically inherit active theme if on vampire or dark academia.
+      // The roll's style, or the app theme's dice while the roller left dice on Solid Colour.
       const activeCustomTheme =
         typeof document !== "undefined"
           ? document.documentElement.dataset.customThemeId
           : undefined;
-
-      let theme = roll.theme || "default";
-      if (theme === "default") {
-        if (activeCustomTheme === "vampire") theme = "vampire";
-        else if (activeCustomTheme === "dark-academia") theme = "dark-academia";
-        else if (activeCustomTheme === "matrix") theme = "matrix";
-        else if (activeCustomTheme === "cyberpunk") theme = "cyberpunk";
-      }
-      if (theme === "darkacademia") theme = "dark-academia";
+      const theme = inheritDiceStyle(roll.theme, activeCustomTheme);
+      const style = getDiceStyle(theme);
       setCurrentTheme(theme);
 
-      // Texture resolution: roll.texture > localStorage > theme default
+      // Texture resolution: roll.texture > localStorage > style default
       const savedTexture =
         typeof window !== "undefined"
           ? window.localStorage.getItem("huddle_dice_texture")
           : null;
 
-      const effectiveTexture: string =
+      const effectiveTexture: string | string[] =
         roll.texture ||
         (savedTexture && savedTexture !== "auto" ? savedTexture : "") ||
-        (theme === "vampire" ? "skulls" : theme === "dark-academia" ? "wood" : theme === "cyberpunk" ? "metal" : "none");
+        style?.texture ||
+        "none";
 
-      // Material resolution: roll.material > localStorage > texture/theme default
+      // Material resolution: roll.material > localStorage > texture/style default
       const savedMaterial =
         typeof window !== "undefined"
           ? (window.localStorage.getItem("huddle_dice_material") as "plastic" | "metal" | "wood" | "glass" | null)
           : null;
 
+      const textureMaterials: Record<string, "metal" | "wood" | "glass"> = {
+        metal: "metal",
+        wood: "wood",
+        marble: "glass",
+        stainedglass: "glass",
+        ice: "glass",
+      };
       const defaultMaterialForTexture: "plastic" | "metal" | "wood" | "glass" =
-        effectiveTexture === "metal"
-          ? "metal"
-          : effectiveTexture === "wood"
-            ? "wood"
-            : effectiveTexture === "marble" || effectiveTexture === "stainedglass" || effectiveTexture === "ice"
-              ? "glass"
-              : theme === "vampire" || theme === "cyberpunk"
-                ? "metal"
-                : theme === "matrix"
-                  ? "glass"
-                  : theme === "dark-academia"
-                    ? "wood"
-                    : "plastic";
+        (typeof effectiveTexture === "string" ? textureMaterials[effectiveTexture] : undefined) ??
+        style?.material ??
+        "plastic";
 
       const effectiveMaterial: "plastic" | "metal" | "wood" | "glass" =
         roll.material ||
@@ -178,82 +169,23 @@ export function DiceOverlay({
 
       const themeColor = roll.themeColor || "#2563eb";
 
-      let customColorset: any = null;
-      let themeSurface = "green-felt";
-
-      if (theme === "vampire") {
-        customColorset = {
-          name: "vampire",
-          foreground: "#f3e7e7",
-          background: ["#140508", "#2c070d", "#5c0816", "#8a0e1e", "#c8102e"],
-          outline: "#1a0206",
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-        themeSurface = "stainless";
-      } else if (theme === "matrix") {
-        customColorset = {
-          name: "matrix",
-          foreground: "#00ff66",
-          background: ["#020b05", "#041a0b", "#083c18", "#0d6027", "#128537"],
-          outline: "#00ff66",
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-        themeSurface = "green-felt";
-      } else if (theme === "cyberpunk") {
-        customColorset = {
-          name: "cyberpunk",
-          foreground: "#00f0ff",
-          background: ["#050814", "#1b0933", "#7a0c6d", "#fcee0a", "#ff003c"],
-          outline: "#ffe600",
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-        themeSurface = "stainless";
-      } else if (theme === "dark-academia") {
-        customColorset = {
-          name: "dark-academia",
-          foreground: "#f5ecd5",
-          background: ["#131a14", "#231810", "#3a2a1c", "#4d3826", "#c9a45c"],
-          outline: "#0e130f",
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-        themeSurface = "mahogany";
-      } else if (theme === "pride") {
-        customColorset = {
-          name: "pride",
-          foreground: "#ffffff",
-          background: ["#E40303", "#FF8C00", "#FFED00", "#008026", "#24408E", "#732982"],
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-      } else if (theme === "trans") {
-        customColorset = {
-          name: "trans",
-          foreground: "#ffffff",
-          background: ["#5BCEFA", "#F5A9B8", "#FFFFFF", "#F5A9B8", "#5BCEFA"],
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-      } else if (theme === "nonbinary") {
-        customColorset = {
-          name: "nonbinary",
-          foreground: "#ffffff",
-          background: ["#FFF433", "#FFFFFF", "#9B59D0", "#2C2C2C"],
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-      } else {
-        customColorset = {
-          name: `custom-${themeColor}`,
-          foreground: "#ffffff",
-          background: themeColor,
-          texture: effectiveTexture,
-          material: effectiveMaterial,
-        };
-      }
+      let customColorset: any = style
+        ? {
+            name: style.id,
+            foreground: style.ink,
+            background: style.body,
+            ...(style.outline ? { outline: style.outline } : {}),
+            texture: effectiveTexture,
+            material: effectiveMaterial,
+          }
+        : {
+            name: `custom-${themeColor}`,
+            foreground: "#ffffff",
+            background: themeColor,
+            texture: effectiveTexture,
+            material: effectiveMaterial,
+          };
+      const themeSurface = style?.surface ?? "green-felt";
 
       // A secret roll: blank faces, so the tumbling dice give nothing away.
       if (roll.masked) {
@@ -272,6 +204,7 @@ export function DiceOverlay({
         strength: 1.2,
       });
       boxRef.current = box;
+      installHuddleDiceTextures(box);
       flattenDiceCamera(box);
 
       let initOk = false;

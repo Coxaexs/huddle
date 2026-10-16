@@ -35,6 +35,34 @@ describe("Dice Roll & Theme Features", () => {
     expect(buildDiceBoxNotation(masked)).toBe("1d20");
   });
 
+  it("knows every dice style, its aliases and which app themes bring their own dice", async () => {
+    const { DICE_STYLE_IDS, DICE_STYLES, resolveDiceStyle, inheritDiceStyle } = await import("../lib/dice-styles");
+
+    // Three rows of five in the settings menu.
+    expect(DICE_STYLE_IDS).toHaveLength(15);
+    for (const id of ["classic", "amber-resin", "shadowflame", "ocean-epoxy", "msn", "zombie", "minecraft"]) {
+      expect(resolveDiceStyle(id)).toBe(id);
+    }
+    expect(resolveDiceStyle("TeamSpeak")).toBe("msn");
+    expect(resolveDiceStyle("darkacademia")).toBe("dark-academia");
+    // "amber" stays the solid amber colour word in /roll.
+    expect(resolveDiceStyle("amber")).toBeNull();
+    expect(resolveDiceStyle("dragon")).toBeNull();
+
+    // A per-die list (ink, outline, texture) must line up with the body colours.
+    for (const style of DICE_STYLES) {
+      for (const list of [style.ink, style.outline, style.texture]) {
+        if (Array.isArray(list)) expect(list).toHaveLength(style.body.length);
+      }
+    }
+
+    expect(inheritDiceStyle("default", "msn-dark")).toBe("msn");
+    expect(inheritDiceStyle("default", "teamspeak")).toBe("msn");
+    expect(inheritDiceStyle("zombie", "vampire")).toBe("zombie");
+    expect(inheritDiceStyle(null, "cozy")).toBe("default");
+    expect(inheritDiceStyle("nonsense", "matrix")).toBe("matrix");
+  });
+
   it("parses inline theme names and hex colors correctly", () => {
     const allowedThemes = [
       "default",

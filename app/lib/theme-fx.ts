@@ -49,49 +49,51 @@ function particle(
 /**
  * Blood that wells at the bottom edge, runs down in a thin stream with a
  * heavy bead at its tip, then the bead lets go, falls and splats while the
- * stream thins out and fades.
+ * stream thins out and fades. Zombie runs the same drip in toxic ooze.
  */
-const blood: Spawn = (_layer, rect, x) => {
-  const count = 2 + Math.floor(Math.random() * 2);
-  for (let i = 0; i < count; i += 1) {
-    const offset = i === 0 ? rand(-5, 5) : (i % 2 === 1 ? rand(14, 28) : -rand(14, 28));
-    const left = Math.min(rect.right - 6, Math.max(rect.left + 6, x + offset));
-    const top = rect.bottom;
-    const run = rand(14, 30);
-    const fall = rand(36, 70);
-    const total = rand(1300, 1700);
-    const delay = i * rand(120, 240);
-    const options = { duration: total, delay, easing: "linear" } as const;
-    // Pool clinging to the edge.
-    particle("fx-blood-pool", left, top, [
-      { transform: "translate(-50%, 0) scale(0.2, 0.2)", opacity: 0 },
-      { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.15 },
-      { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.5 },
-      { transform: "translate(-50%, 0) scale(0.6, 0.5)", opacity: 0 },
-    ], options);
-    // Stream: grows while the bead runs, then retracts upwards and fades.
-    particle("fx-blood-stream", left, top, [
-      { height: "0px", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
-      { height: `${run}px`, opacity: 1, offset: 0.4 },
-      { height: `${run * 0.9}px`, opacity: 0.9, offset: 0.55, easing: "ease-in" },
-      { height: `${run * 0.15}px`, opacity: 0 },
-    ], options);
-    // Bead: swells at the tip, detaches at 40%, falls, stretching as it speeds up.
-    particle("fx-blood-bead", left, top, [
-      { transform: "translateY(0) scale(0.5, 0.5)", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
-      { transform: `translateY(${run}px) scale(1, 1.05)`, opacity: 1, offset: 0.4, easing: "cubic-bezier(.5,0,.9,.5)" },
-      { transform: `translateY(${run + fall}px) scale(0.8, 1.45)`, opacity: 1, offset: 0.72 },
-      { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0, offset: 0.73 },
-      { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0 },
-    ], options);
-    // Splat where it lands.
-    particle("fx-blood-splat", left, top + run + fall, [
-      { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0 },
-      { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0, offset: 0.72 },
-      { transform: "translate(-50%, -50%) scale(1, 1)", opacity: 0.9, offset: 0.78 },
-      { transform: "translate(-50%, -50%) scale(1.4, 0.8)", opacity: 0 },
-    ], options);
-  }
+function drip(kind: "blood" | "ooze"): Spawn {
+  return (_layer, rect, x) => {
+    const count = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i += 1) {
+      const offset = i === 0 ? rand(-5, 5) : (i % 2 === 1 ? rand(14, 28) : -rand(14, 28));
+      const left = Math.min(rect.right - 6, Math.max(rect.left + 6, x + offset));
+      const top = rect.bottom;
+      const run = rand(14, 30);
+      const fall = rand(36, 70);
+      const total = rand(1300, 1700);
+      const delay = i * rand(120, 240);
+      const options = { duration: total, delay, easing: "linear" } as const;
+      // Pool clinging to the edge.
+      particle(`fx-${kind}-pool`, left, top, [
+        { transform: "translate(-50%, 0) scale(0.2, 0.2)", opacity: 0 },
+        { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.15 },
+        { transform: "translate(-50%, 0) scale(1, 1)", opacity: 1, offset: 0.5 },
+        { transform: "translate(-50%, 0) scale(0.6, 0.5)", opacity: 0 },
+      ], options);
+      // Stream: grows while the bead runs, then retracts upwards and fades.
+      particle(`fx-${kind}-stream`, left, top, [
+        { height: "0px", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
+        { height: `${run}px`, opacity: 1, offset: 0.4 },
+        { height: `${run * 0.9}px`, opacity: 0.9, offset: 0.55, easing: "ease-in" },
+        { height: `${run * 0.15}px`, opacity: 0 },
+      ], options);
+      // Bead: swells at the tip, detaches at 40%, falls, stretching as it speeds up.
+      particle(`fx-${kind}-bead`, left, top, [
+        { transform: "translateY(0) scale(0.5, 0.5)", opacity: 1, easing: "cubic-bezier(.3,.6,.4,1)" },
+        { transform: `translateY(${run}px) scale(1, 1.05)`, opacity: 1, offset: 0.4, easing: "cubic-bezier(.5,0,.9,.5)" },
+        { transform: `translateY(${run + fall}px) scale(0.8, 1.45)`, opacity: 1, offset: 0.72 },
+        { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0, offset: 0.73 },
+        { transform: `translateY(${run + fall + 2}px) scale(0.8, 1.45)`, opacity: 0 },
+      ], options);
+      // Splat where it lands.
+      particle(`fx-${kind}-splat`, left, top + run + fall, [
+        { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0 },
+        { transform: "translate(-50%, -50%) scale(0, 0)", opacity: 0, offset: 0.72 },
+        { transform: "translate(-50%, -50%) scale(1, 1)", opacity: 0.9, offset: 0.78 },
+        { transform: "translate(-50%, -50%) scale(1.4, 0.8)", opacity: 0 },
+      ], options);
+    }
+  };
 };
 
 const GLYPHS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ01ﾅﾆﾇﾈﾉ";
@@ -172,6 +174,28 @@ const embers: Spawn = (_layer, rect) => {
   }
 };
 
+/** Block-break particles: square chips burst out of the button and drop under gravity. */
+const BLOCK_CHIPS = ["#866043", "#5d4128", "#96704e", "#5fb33a", "#4f9b2f", "#7f7f7f"];
+const blockBreak: Spawn = (_layer, rect, x) => {
+  const y = rect.top + rect.height / 2;
+  for (let i = 0; i < 8; i += 1) {
+    const size = Math.round(rand(3, 6));
+    const dx = rand(-30, 30);
+    const up = rand(10, 26);
+    const drop = rand(30, 55);
+    const el = particle("fx-block", x + rand(-6, 6), y + rand(-4, 4), [
+      { transform: "translate(0, 0)", opacity: 1 },
+      { transform: `translate(${dx * 0.5}px, ${-up}px)`, opacity: 1, offset: 0.3, easing: "ease-in" },
+      { transform: `translate(${dx}px, ${drop}px)`, opacity: 0 },
+    ], { duration: rand(550, 800), delay: rand(0, 60), easing: "steps(10)" });
+    if (el) {
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      el.style.background = BLOCK_CHIPS[Math.floor(Math.random() * BLOCK_CHIPS.length)];
+    }
+  }
+};
+
 /** Symbols that float up and fade: hearts, stars, ink, petals. */
 function floaters(className: string, symbols: string[], count = 3): Spawn {
   return (_layer, rect, x) => {
@@ -205,7 +229,9 @@ const ripple: Spawn = (_layer, rect, x) => {
 };
 
 const EFFECTS: Record<string, Spawn> = {
-  vampire: blood,
+  vampire: drip("blood"),
+  zombie: drip("ooze"),
+  minecraft: blockBreak,
   matrix: glyphs,
   cyberpunk: neon,
   amber: embers,
@@ -245,8 +271,31 @@ export function setThemeFxEnabled(enabled: boolean): void {
   }
 }
 
+
+export function isParticlesEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem("huddle-particles") !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setParticlesEnabled(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem("huddle-particles", enabled ? "on" : "off");
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.particles = enabled ? "on" : "off";
+    }
+    window.dispatchEvent(new CustomEvent("huddle-particles-change", { detail: enabled ? "on" : "off" }));
+  } catch {
+    // Ignore quota issues
+  }
+}
+
 function enabled(): boolean {
-  return isThemeFxEnabled();
+  return isParticlesEnabled() && isThemeFxEnabled();
 }
 
 function onPointerDown(event: PointerEvent): void {

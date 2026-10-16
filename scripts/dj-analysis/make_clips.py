@@ -8,7 +8,22 @@ from concurrent.futures import ThreadPoolExecutor
 
 SRC = "/mnt/harddisk/data/bot/musicbot-main/musics"
 OUT = "/home/coxaexs/dj-analysis"
-CLIPS = os.path.join(OUT, "clips")
+NEW = "--new" in sys.argv                      # only songs not tagged / uploaded yet
+FULL = "--full" in sys.argv                    # whole songs (mono 22.05 kHz) for beats / structure
+CLIPS = os.path.join(OUT, "full" if FULL else "clips_new" if NEW else "clips")
+SEEN = os.path.join(OUT, "uploaded_full_ids.json" if FULL else "uploaded_ids.json")      # ids already sent to Colab
+def _ids(path, key=None):
+    try:
+        data = json.load(open(path))
+        return set(data[key] if key else data)
+    except (OSError, ValueError, KeyError):
+        return set()
+
+
+seen = set()
+if NEW or FULL:
+    seen = _ids(SEEN) | _ids(os.path.join(OUT, "out", "song_tags.json"), "ids")
+os.makedirs(CLIPS, exist_ok=True)
 ID = re.compile(r"\[([A-Za-z0-9_-]{11})\]\.[a-z0-9]+$")
 
 
@@ -25,11 +40,16 @@ def cut(name):
     m = ID.search(name)
     vid = m.group(1) if m else "f_" + hashlib.md5(name.encode()).hexdigest()[:10]
     path = os.path.join(SRC, name)
+    if vid in seen:
+        return None
     dest = os.path.join(CLIPS, vid + ".mp3")
     dur = duration(path)
     if not dur:
         return None
-    if not os.path.exists(dest):
+    if FULL and not os.path.exists(dest):
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", path, "-ac", "1", "-ar", "22050",
+                        "-b:a", "96k", dest], check=False)
+    elif not os.path.exists(dest):
         start = max(0.0, min(dur * 0.35, dur - 32))
         subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-ss", f"{start:.1f}", "-t", "30",
                         "-i", path, "-ac", "1", "-ar", "48000", "-b:a", "64k", dest], check=False)
@@ -41,6 +61,11 @@ files = sorted(os.path.relpath(os.path.join(d, f), SRC) for d, _, fs in os.walk(
 with ThreadPoolExecutor(3) as pool:
     results = [r for r in pool.map(cut, files) if r]
 manifest = dict(results)
+if NEW or FULL:
+    with open(SEEN, "w") as f:
+        json.dump(sorted(seen | set(manifest)), f)
+    print(len(manifest), "files in", CLIPS)
+    sys.exit(0)
 with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as f:
     json.dump(manifest, f, ensure_ascii=False, indent=0)
 with zipfile.ZipFile(os.path.join(OUT, "clips.zip"), "w", zipfile.ZIP_STORED) as z:

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { isParticlesEnabled } from "../lib/theme-fx";
 import { crimsonRonin, REAPER } from "./profile-fx-ronin";
 import { ANTI_VENOM, CARNAGE, symbiote } from "./profile-fx-symbiote";
 import { warpDisc } from "./profile-fx-warp";
@@ -716,10 +717,23 @@ export const CANVAS_SCENES: Record<string, () => Scene> = {
 };
 
 /** Fills its (position: relative) parent with a running canvas scene. */
+export function useParticlesSetting(): boolean {
+  const [on, setOn] = useState<boolean>(() => isParticlesEnabled());
+  useEffect(() => {
+    setOn(isParticlesEnabled());
+    const handler = () => setOn(isParticlesEnabled());
+    window.addEventListener("huddle-particles-change", handler);
+    return () => window.removeEventListener("huddle-particles-change", handler);
+  }, []);
+  return on;
+}
+
 export function CanvasScene({ id, density = 1 }: { id: string; density?: number }) {
+  const particlesOn = useParticlesSetting();
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    if (!particlesOn) return;
     const canvas = ref.current;
     const make = CANVAS_SCENES[id];
     if (!canvas || !make) return;
@@ -766,8 +780,9 @@ export function CanvasScene({ id, density = 1 }: { id: string; density?: number 
       ro.disconnect();
       io.disconnect();
     };
-  }, [id, density]);
+  }, [id, density, particlesOn]);
 
+  if (!particlesOn) return null;
   return (
     <div className={`pfx pfx-canvas pfx-canvas-${id}`} aria-hidden="true">
       <canvas ref={ref} />

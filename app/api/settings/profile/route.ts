@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth";
 import { publishMemberUpdate } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
+import { normalizeDisabledModules } from "@/lib/features";
 import { normalizeProfileImage } from "@/lib/profile-media";
 import { checkProfileCss } from "@/lib/themes";
 import { normalizePrideBadges, normalizeLastfmUsername, normalizeProfileActivity, normalizeProfileStyle, normalizeSocialLinks } from "@/lib/users";
@@ -50,6 +51,7 @@ export async function PATCH(request: Request) {
     customTheme?: string | null;
     quickReactions?: unknown;
     hiddenEmojis?: unknown;
+    disabledModules?: unknown;
   };
 
   const displayName =
@@ -109,9 +111,10 @@ export async function PATCH(request: Request) {
 
   let customCss = user.custom_css || null;
   if (body.customCss !== undefined) {
-    customCss = body.customCss || null;
-    // Instance admins' CSS is stored and used as written (see scopeProfileCss).
-    if (customCss && !(isInstanceAdmin(user) && typeof customCss === "string")) {
+    customCss = typeof body.customCss === "string" && body.customCss.trim()
+      ? body.customCss.replace(/position\s*:\s*fixed/gi, "position: absolute")
+      : null;
+    if (customCss) {
       const checked = checkProfileCss(customCss);
       if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
     }
@@ -234,9 +237,14 @@ export async function PATCH(request: Request) {
     }
   }
 
+  const disabledModules: string =
+    body.disabledModules !== undefined
+      ? JSON.stringify(normalizeDisabledModules(body.disabledModules))
+      : (user as { disabled_modules?: string | null }).disabled_modules || "[]";
+
   await db
     .prepare(
-      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, profile_effect = ?, nameplate = ?, profile_frame = ?, profile_style = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ? WHERE id = ?",
+      "UPDATE users SET display_name = ?, avatar = ?, color = ?, avatar_url = ?, banner_url = ?, bio = ?, pronouns = ?, tagline = ?, custom_status = ?, pride_badges = ?, spotify_activity = ?, activity = ?, lastfm_username = ?, social_links = ?, avatar_frame = ?, profile_effect = ?, nameplate = ?, profile_frame = ?, profile_style = ?, custom_css = ?, custom_theme = ?, quick_reactions = ?, hidden_emojis = ?, disabled_modules = ? WHERE id = ?",
     )
     .bind(
       displayName,
@@ -262,6 +270,7 @@ export async function PATCH(request: Request) {
       customTheme,
       quickReactions,
       hiddenEmojis,
+      disabledModules,
       user.id,
     )
     .run();
@@ -295,6 +304,7 @@ export async function PATCH(request: Request) {
       custom_theme: customTheme,
       quick_reactions: quickReactions,
       hidden_emojis: hiddenEmojis,
+      disabled_modules: disabledModules,
     }),
   });
 }

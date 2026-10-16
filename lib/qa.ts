@@ -1,3 +1,4 @@
+import { ensureSchema } from "./schema";
 /**
  * Live Q&A for stage (and voice) rooms: the audience asks and upvotes,
  * hosts pin the question being answered, mark it done or hide it.
@@ -18,25 +19,7 @@ export interface QaQuestion {
 export const QA_TEXT_LIMIT = 300;
 
 export async function ensureQaTables(db: D1Database): Promise<void> {
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS qa_questions (
-        id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        author TEXT NOT NULL,
-        text TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        answered_at TEXT,
-        pinned_at TEXT,
-        hidden_at TEXT
-      )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS qa_questions_channel_idx ON qa_questions(channel_id, created_at)"),
-    db.prepare(`CREATE TABLE IF NOT EXISTS qa_votes (
-        question_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        PRIMARY KEY (question_id, user_id)
-      )`),
-  ]);
+  await ensureSchema(db);
 }
 
 interface QaRow {

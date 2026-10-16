@@ -26,6 +26,7 @@ import { NowPlaying } from "../../now-playing";
 import { OutlineEmoji } from "../../outline-emoji";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
 import { QUICK_VOTES } from "../../../lib/chat/constants";
+import { apiFetch } from "../../../lib/client";
 import { dayDividerLabel, formatClientTime, formatClientDateTime } from "../../../lib/chat/format";
 import { extractInviteCodes } from "../../../lib/chat/invites";
 import { MessageReactions } from "../message-reactions";
@@ -1083,6 +1084,40 @@ function MessageRowImpl({
                                 }}
                               >
                                 <Pin size={16} />
+                              </button>
+                            )}
+                            {!inDmHome && activeServer && message.userId !== user.id && !message.bot && (
+                              <button
+                                type="button"
+                                title="Report message"
+                                onClick={() => {
+                                  setOpenActionsId(null);
+                                  setMobileActionsMoreId(null);
+                                  showCustomConfirm({
+                                    title: "Report Message",
+                                    message: "Report this message to the server moderators?",
+                                    isDanger: true,
+                                    confirmText: "Report",
+                                    cancelText: "Cancel",
+                                    onConfirm: () => {
+                                      void apiFetch("/api/reports", {
+                                        method: "POST",
+                                        body: JSON.stringify({
+                                          serverId: activeServer.id,
+                                          channelId: activeChannelId,
+                                          messageId: message.id,
+                                          reason: "Reported from chat",
+                                        }),
+                                      })
+                                        .then(() => setNotice("Message reported to moderators."))
+                                        .catch((err) =>
+                                          setNotice(err instanceof Error ? err.message : "Could not report message."),
+                                        );
+                                    },
+                                  });
+                                }}
+                              >
+                                <ShieldAlert size={16} />
                               </button>
                             )}
                           </>

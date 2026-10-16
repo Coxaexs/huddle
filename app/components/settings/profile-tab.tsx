@@ -188,7 +188,6 @@ export function ProfileTab({
     prideBadges,
     socialLinks,
     isAdmin: user.isAdmin,
-    unrestrictedCss: user.unrestrictedCss,
     createdAt: (user as { createdAt?: string }).createdAt,
     profileStyle,
     song: spotifySong.trim() ? { title: spotifySong, artist: spotifyArtist || "Unknown artist", cover: spotifyCover.startsWith("/") || spotifyCover.startsWith("http") ? spotifyCover : undefined } : null,
@@ -691,9 +690,7 @@ export function ProfileTab({
           {details === "css" && (
             <>
               <p className="pe-hint">
-                {user.unrestrictedCss
-                  ? "Admin: no restrictions. Your CSS is used exactly as written and can restyle the whole app while your profile is open."
-                  : "CSS that only applies to your own card."}{" "}
+"CSS that only applies to your own card."{" "}
                 <button type="button" className="pe-link-btn" onClick={() => setShowProfileCssGuide(!showProfileCssGuide)}>
                   {showProfileCssGuide ? "Hide selectors" : "Show selectors"}
                 </button>
@@ -738,9 +735,8 @@ export function ProfileTab({
                 aria-label="Custom profile CSS"
               />
               {profileCustomCss.trim() &&
-                !user.unrestrictedCss &&
                 (() => {
-                  const checked = checkProfileCss(profileCustomCss);
+                  const checked = checkProfileCss(profileCustomCss.replace(/position\s*:\s*fixed/gi, "position: absolute"));
                   return checked.ok ? null : <p role="alert" className="pe-error">{checked.error}</p>;
                 })()}
             </>

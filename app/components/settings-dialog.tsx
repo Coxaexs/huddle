@@ -44,6 +44,7 @@ import { DiceTab } from "./settings/dice-tab";
 import { ActivitiesTab } from "./settings/activities-tab";
 import { CustomCssTab } from "./settings/custom-css-tab";
 import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
+import { DICE_STYLE_IDS } from "@/lib/dice-styles";
 
 
 
@@ -357,7 +358,7 @@ export function SettingsDialog({
       setPrideTheme(savedPrideTheme as PrideTheme);
     }
     setBlahaj(savedBlahaj === "on");
-    if (savedDiceTheme && ["default", "pride", "trans", "nonbinary", "vampire", "dark-academia"].includes(savedDiceTheme)) {
+    if (savedDiceTheme && DICE_STYLE_IDS.includes(savedDiceTheme)) {
       setDiceTheme(savedDiceTheme);
     }
     if (savedDiceColor) setDiceColor(savedDiceColor);

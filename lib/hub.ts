@@ -12,13 +12,15 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { applyArea, applyPawn, sanitizeShared, type AreaOp, type PawnOp, type TableArea, type TablePawn } from "./lounge-shared";
+import { applyArea, applyPawn, applyQueue, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
+import { deliverDueDigest, nextDigestAlarm } from "./digest";
+import { allDisabledFeatures } from "./features";
 import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
@@ -149,8 +151,12 @@ export class HuddleHub extends DurableObject {
   /** connectionId -> living room poses relayed this second. */
   private readonly loungeBudget = new Map<string, { second: number; count: number }>();
   private readonly synthBudget = new Map<string, { second: number; count: number }>();
+  /** In-memory attachment cache to avoid O(N) structured-clone deserialization on every 10Hz frame. */
+  private readonly attachmentCache = new WeakMap<WebSocket, Attachment>();
   /** voice room -> its shared living room state; persisted, since the object may sleep mid-call. */
   private loungeShared: Record<string, Record<string, unknown>> | null = null;
+  /** Whether this start has armed the alarm yet (see handleSocket). */
+  private alarmChecked = false;
   /** connectionId -> when they last changed shared state, to keep it from being spammed. */
   private readonly sharedAt = new Map<string, number>();
   /** voice room -> when its living room venue was last changed. */
@@ -300,7 +306,7 @@ export class HuddleHub extends DurableObject {
         if (attachment.userId === body.userId && attachment.voiceChannelId) {
           if (body.muted) {
             attachment.important = false;
-            socket.serializeAttachment(attachment);
+            this.saveAttachment(socket, attachment);
           }
           this.broadcastVoice(attachment.voiceChannelId);
         }
@@ -437,6 +443,12 @@ export class HuddleHub extends DurableObject {
     if (request.headers.get("upgrade") !== "websocket") {
       return new Response("Expected a WebSocket", { status: 426 });
     }
+    // Once per start: make sure the alarm is set for whatever is due next
+    // (the weekly digest has no other trigger to arm it).
+    if (!this.alarmChecked) {
+      this.alarmChecked = true;
+      this.ctx.waitUntil(this.runEvents().catch(() => undefined));
+    }
 
     // A reconnect after a restart keeps its old id when its ticket checks out
     // and nobody holds that id now, so its seat and LiveKit identity carry on.
@@ -447,17 +459,19 @@ export class HuddleHub extends DurableObject {
       !this.sockets().some((entry) => entry.attachment.connectionId === resumeId) &&
       (await verifyResumeTicket(this.resumeKey, userId, resumeId, url.searchParams.get("ticket") || ""));
 
+    const shardRoom = url.searchParams.get("room")?.trim().slice(0, 64) || null;
+    const connId = shardRoom && resumeId ? resumeId : (resumable ? resumeId : crypto.randomUUID());
     const attachment: Attachment = {
-      connectionId: resumable ? resumeId : crypto.randomUUID(),
+      connectionId: connId,
       userId: url.searchParams.get("userId") || "",
       username: url.searchParams.get("username") || "",
       displayName: url.searchParams.get("displayName") || "",
       avatar: url.searchParams.get("avatar") || "H",
       avatarUrl: url.searchParams.get("avatarUrl") || null,
       color: url.searchParams.get("color") || "#ffd67c",
-      channelId: null,
-      voiceChannelId: null,
-      voiceJoinedAt: null,
+      channelId: shardRoom,
+      voiceChannelId: shardRoom,
+      voiceJoinedAt: shardRoom ? Date.now() : null,
       muted: false,
       deafened: false,
       cameraStreamId: null,
@@ -474,8 +488,8 @@ export class HuddleHub extends DurableObject {
     const [client, socket] = Object.values(pair);
     // Hibernation-aware: workerd can evict this object between messages and
     // still deliver events, so identity lives on the socket itself.
-    this.ctx.acceptWebSocket(socket);
-    socket.serializeAttachment(attachment);
+    this.ctx.acceptWebSocket(socket, [`user:${attachment.userId}`, `conn:${attachment.connectionId}`]);
+    this.saveAttachment(socket, attachment);
 
     const ready: ServerEvent = {
       t: "ready",
@@ -548,7 +562,7 @@ export class HuddleHub extends DurableObject {
       return;
     }
 
-    const attachment = socket.deserializeAttachment() as Attachment | null;
+    const attachment = this.readAttachment(socket);
     if (!attachment) return;
 
     switch (event.t) {
@@ -558,7 +572,7 @@ export class HuddleHub extends DurableObject {
 
       case "subscribe":
         attachment.channelId = event.channelId;
-        socket.serializeAttachment(attachment);
+        this.saveAttachment(socket, attachment);
         return;
 
       case "typing":
@@ -673,7 +687,7 @@ export class HuddleHub extends DurableObject {
         const venue = isLoungeVenue(event.venue) && event.venue !== "lounge" ? event.venue : undefined;
         const pose: LoungeWirePose = { x, z, facing, seat, ...(venue ? { venue } : {}) };
         attachment.lounge = pose;
-        socket.serializeAttachment(attachment);
+        this.saveAttachment(socket, attachment);
         const payload = JSON.stringify({
           t: "lounge",
           channelId: room,
@@ -702,7 +716,7 @@ export class HuddleHub extends DurableObject {
         // A newcomer learns the room and keeps it, so it outlasts whoever chose it.
         if (venue && attachment.loungeVenue !== venue) {
           attachment.loungeVenue = venue;
-          socket.serializeAttachment(attachment);
+          this.saveAttachment(socket, attachment);
         }
         socket.send(JSON.stringify({ t: "lounge-state", channelId: room, poses, ...(venue ? { venue } : {}), ...(shared && Object.keys(shared).length ? { shared } : {}), serverNow: Date.now() } satisfies ServerEvent));
         return;
@@ -733,7 +747,7 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid" && key !== "spellfx") return;
+        if (key !== "watch" && key !== "queue" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid" && key !== "spellfx" && key !== "lounge" && key !== "loungefx") return;
         const now = Date.now();
         // Each piece on its own clock: casting sends the area and the spent slot together.
         const clock = `${attachment.connectionId}|${key}`;
@@ -742,7 +756,7 @@ export class HuddleHub extends DurableObject {
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "spellfx", value: unknown, includeSender: boolean) => {
+        const send = (name: "watch" | "queue" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "spellfx" | "lounge" | "loungefx", value: unknown, includeSender: boolean) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;
@@ -753,6 +767,11 @@ export class HuddleHub extends DurableObject {
         if (key === "spellfx") {
           // A moment, like a hidden roll: everyone else sees it once; the caster drew it already.
           if (clean) send("spellfx", { ...(clean as object), by: attachment.connectionId }, false);
+          return;
+        }
+        if (key === "loungefx") {
+          // Petting the cat and the like: a moment, never stored; the one who did it saw it already.
+          if (clean) send("loungefx", { ...(clean as object), by: attachment.connectionId }, false);
           return;
         }
         if (key === "hiddenroll") {
@@ -768,6 +787,10 @@ export class HuddleHub extends DurableObject {
         if (key === "tablemap" || key === "grid") {
           // The game master's table: while one is in the room, only they change the map and its scale.
           if (gmHere && gm !== attachment.connectionId) return;
+        }
+        if (key === "lounge" && clean && gmHere && gm !== attachment.connectionId) {
+          // The tabletop's mood is the game master's call; everyone may still work the lamps.
+          (clean as { mood: string }).mood = (bag.lounge as { mood?: string } | undefined)?.mood ?? "warm";
         }
         if (key === "pawn") {
           // A pawn is its owner's to move, and the game master's while they are here.
@@ -787,6 +810,32 @@ export class HuddleHub extends DurableObject {
           if (Object.keys(next).length) bag.areas = next; else delete bag.areas;
           await this.saveLoungeShared();
           send("areas", next, true);
+          return;
+        }
+        if (key === "queue") {
+          // The watch party: anyone in the room adds and votes; the hub decides what plays.
+          const roomUserIds = [
+            ...new Set(
+              this.sockets()
+                .filter(({ attachment: peer }) => peer.voiceChannelId === room && !peer.bot)
+                .map(({ attachment: peer }) => peer.userId),
+            ),
+          ];
+          const result = applyQueue(
+            (bag.queue as WatchQueue | undefined) ?? null,
+            clean as QueueOp,
+            { userId: attachment.userId, name: by, roomUserIds },
+            (bag.watch as WatchState | undefined) ?? null,
+            now,
+          );
+          if (!result) return;
+          if (result.queue) bag.queue = result.queue; else delete bag.queue;
+          if (result.watch !== undefined) {
+            if (result.watch) bag.watch = result.watch; else delete bag.watch;
+          }
+          await this.saveLoungeShared();
+          send("queue", result.queue, true);
+          if (result.watch !== undefined) send("watch", result.watch, true);
           return;
         }
         if (key === "character") {
@@ -884,7 +933,7 @@ export class HuddleHub extends DurableObject {
         attachment.deafened = event.deafened === true;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
-        socket.serializeAttachment(attachment);
+        this.saveAttachment(socket, attachment);
 
         if (previous && previous !== event.channelId) {
           this.broadcastVoice(previous);
@@ -907,7 +956,7 @@ export class HuddleHub extends DurableObject {
         if (attachment.voiceChannelId === null && previous) queueMicrotask(() => void this.pruneLounge(previous));
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
-        socket.serializeAttachment(attachment);
+        this.saveAttachment(socket, attachment);
         if (previous) this.broadcastVoice(previous);
         return;
       }
@@ -948,7 +997,7 @@ export class HuddleHub extends DurableObject {
         if (typeof event.sfu === "boolean") {
           attachment.sfu = event.sfu;
         }
-        socket.serializeAttachment(attachment);
+        this.saveAttachment(socket, attachment);
         if (attachment.voiceChannelId) {
           this.broadcastVoice(attachment.voiceChannelId);
         }
@@ -978,7 +1027,7 @@ export class HuddleHub extends DurableObject {
           target.attachment.muted = true;
           target.attachment.handRaised = false;
         }
-        target.socket.serializeAttachment(target.attachment);
+        this.saveAttachment(target.socket, target.attachment);
         this.broadcastVoice(room);
         return;
       }
@@ -1199,7 +1248,7 @@ export class HuddleHub extends DurableObject {
   }
 
   async webSocketClose(socket: WebSocket) {
-    const attachment = socket.deserializeAttachment() as Attachment | null;
+    const attachment = this.readAttachment(socket);
     if (attachment) this.markSeen(attachment);
     if (attachment) {
       this.captionBudget.delete(attachment.connectionId);
@@ -1242,17 +1291,37 @@ export class HuddleHub extends DurableObject {
     );
   }
 
+  private readAttachment(socket: WebSocket): Attachment | null {
+    const cached = this.attachmentCache.get(socket);
+    if (cached) return { ...cached };
+    const raw = socket.deserializeAttachment() as Attachment | null;
+    if (raw) {
+      this.attachmentCache.set(socket, { ...raw });
+      return { ...raw };
+    }
+    return null;
+  }
+
+  private saveAttachment(socket: WebSocket, attachment: Attachment): void {
+    this.attachmentCache.set(socket, { ...attachment });
+    socket.serializeAttachment(attachment);
+  }
+
   private sockets(): Array<{ socket: WebSocket; attachment: Attachment }> {
     const out: Array<{ socket: WebSocket; attachment: Attachment }> = [];
     for (const socket of this.ctx.getWebSockets()) {
       if (socket.readyState !== WebSocket.OPEN) continue;
-      const attachment = socket.deserializeAttachment() as Attachment | null;
+      const attachment = this.readAttachment(socket);
       if (attachment) out.push({ socket, attachment });
     }
     return out;
   }
 
   private socketFor(connectionId: string): WebSocket | null {
+    const tagged = this.ctx.getWebSockets(`conn:${connectionId}`);
+    for (const socket of tagged) {
+      if (socket.readyState === WebSocket.OPEN) return socket;
+    }
     for (const { socket, attachment } of this.sockets()) {
       if (attachment.connectionId === connectionId) return socket;
     }
@@ -1463,7 +1532,7 @@ export class HuddleHub extends DurableObject {
         // once here, so its timer starts now instead of reading as zero.
         if (attachment.voiceJoinedAt == null) {
           attachment.voiceJoinedAt = Date.now();
-          socket.serializeAttachment(attachment);
+          this.saveAttachment(socket, attachment);
         }
         return {
           connectionId: attachment.connectionId,
@@ -1960,6 +2029,10 @@ export class HuddleHub extends DurableObject {
     const reminders = [
       ...scheduledNotes,
       ...(await deliverDueReminders(this.db).catch(() => [])),
+      // The weekly digest lands in Notes the same way, unless it is switched off.
+      ...((await allDisabledFeatures(this.bindingsEnv as { FEATURES_DISABLED?: string; DB?: D1Database })).includes("digest")
+        ? []
+        : await deliverDueDigest(this.db).catch(() => [])),
     ];
     for (const reminder of reminders) {
       this.broadcast(
@@ -1976,11 +2049,12 @@ export class HuddleHub extends DurableObject {
     const nextReminder = await nextReminderAlarm(this.db).catch(() => null);
     const nextScheduled = await nextScheduledAlarm(this.db).catch(() => null);
     const nextRecap = await nextRecapAlarm(this.db).catch(() => null);
+    const nextDigest = await nextDigestAlarm(this.db).catch(() => null);
     // Big uploads are deleted 12 hours after they were sent.
     const bigUploads = (this.bindingsEnv as { BIG_UPLOADS?: R2Bucket }).BIG_UPLOADS;
     if (bigUploads) await sweepBigUploads(this.db, bigUploads).catch(() => undefined);
     const nextBigUpload = bigUploads ? await nextBigUploadAlarm(this.db).catch(() => null) : null;
-    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload].filter((at): at is number => at !== null);
+    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload, nextDigest].filter((at): at is number => at !== null);
     if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
   }
 

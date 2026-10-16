@@ -210,6 +210,7 @@ export function buildBooth(opts: {
     }
     reel.rotation.z = Math.PI / 2; // lying on its side: it turns about the x axis
     reel.position.set(projectorX + (i ? 0.1 : -0.1), lensY + 0.45 + i * 0.12, projectorZ - 0.1 + z);
+    reel.userData.keep = true; // it turns: never baked into the static geometry
     reel.scale.setScalar(i ? 0.8 : 1);
     root.add(reel);
     reels.push(reel);

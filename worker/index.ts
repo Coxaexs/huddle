@@ -7,7 +7,7 @@
  */
 import handler from "vinext/server/app-router-entry";
 import { currentUser } from "../lib/auth";
-import { hub } from "../lib/hub-client";
+import { hub, roomHub } from "../lib/hub-client";
 import { allDisabledFeatures, disabledFeatureFor, featureFlags, SIDE_FEATURES } from "../lib/features";
 import { withSecurityHeaders } from "../lib/security-headers";
 import { SPEECH_HOST } from "../lib/speech";
@@ -142,12 +142,14 @@ async function handleRequest(
         return new Response("Unauthorized", { status: 401 });
       }
 
-      const stub = hub();
+      const roomParam = url.searchParams.get("room")?.trim().slice(0, 64) || "";
+      const stub = roomParam ? roomHub(roomParam) : hub();
       if (!stub) {
         return new Response("Realtime is not configured.", { status: 503 });
       }
 
       const target = new URL("https://huddle.hub/socket");
+      if (roomParam) target.searchParams.set("room", roomParam);
       target.searchParams.set(
         "userId",
         isRecorder ? "bot:recorder" : isMusicBot ? "bot:music" : user!.id,

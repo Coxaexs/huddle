@@ -13,7 +13,10 @@ import type { RoomTheme } from "../hooks/use-living-room";
 import {
   CABIN, CABIN_DOOR_HALF, CABIN_FLOOR_Y, CAMPFIRE, JETTY, LOOKOUT, MEADOW, MEADOW_HALF, MEADOW_TREES, PICNIC, POND, WATER_Y, inCabin, meadowHeight,
 } from "../lib/living-room";
-import { LOOKS, box, canvasTexture, cushion, floorTexture, flameTexture, glowTexture, isNight, mat, plant, seeded, tagSeat, type BuiltRoom, type Look } from "./living-room-scene";
+import { LOOKS, box, canvasTexture, cushion, floorMaterial, flameTexture, glowTexture, isNight, mat, plant, seeded, tagSeat, type BuiltRoom, type Look } from "./living-room-scene";
+import { dress } from "./room-surfaces";
+import { ThingKit } from "./room-things";
+import { playIgnite, playDouse, playPops, playSizzle, playSkips } from "./living-room-sounds";
 
 const GROUND_EXTENT = MEADOW_HALF + 20;
 
@@ -201,7 +204,8 @@ export function buildMeadow(theme: RoomTheme, night = isNight()): BuiltRoom {
   }
   ground.setAttribute("color", new THREE.BufferAttribute(colours, 3));
   ground.computeVertexNormals();
-  const groundMesh = new THREE.Mesh(ground, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+  // The grass under the vertex colours: real blades and soil in close-up, every 2 m (the colours do the large scale).
+  const groundMesh = new THREE.Mesh(ground, dress(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), "grass", { repeat: [GROUND_EXTENT, GROUND_EXTENT], bump: 0.5, rough: false }));
   groundMesh.receiveShadow = true;
   groundMesh.userData.floor = true;
   root.add(groundMesh);
@@ -344,13 +348,137 @@ export function buildMeadow(theme: RoomTheme, night = isNight()): BuiltRoom {
   const fireLight = new THREE.PointLight(look.fireLight, night ? 26 : 6, 14, 1.6);
   fireLight.position.set(CAMPFIRE.x, fireY + 1, CAMPFIRE.z);
   root.add(fireLight);
+  // The campfire is everyone's to put out or light; anyone can throw a log on or toast a marshmallow,
+  // and from the jetty skip a stone over the pond.
+  const kit = new ThingKit(root);
+  const fireAt = new THREE.Vector3(CAMPFIRE.x, fireY + 0.5, CAMPFIRE.z);
+  let flare = 0;
+  const fireHit = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.4, 12), new THREE.MeshBasicMaterial({ visible: false }));
+  fireHit.position.set(CAMPFIRE.x, fireY + 0.6, CAMPFIRE.z);
+  root.add(kit.tag(fireHit, "campfire"));
+  kit.onSwitch("campfire", (k) => {
+    campfire.group.visible = k > 0.02;
+    // Dying, the flames sink; catching, they leap.
+    const height = k < 1 ? 0.3 + 0.7 * k + Math.sin(k * Math.PI) * 0.3 : 1;
+    campfire.group.scale.set(0.6 + 0.4 * k, height, 0.6 + 0.4 * k);
+  }, 0.8);
   animated.push((t) => {
-    fireGlow.material.opacity = (night ? 0.75 : 0.35) * (0.9 + Math.sin(t * 7.7) * 0.1);
-    fireLight.intensity = (night ? 26 : 6) * (0.85 + Math.sin(t * 9) * 0.08 + Math.sin(t * 21) * 0.05);
+    const k = kit.level("campfire");
+    flare = Math.max(0, flare - 0.012);
+    fireGlow.material.opacity = k * (night ? 0.75 : 0.35) * (0.9 + Math.sin(t * 7.7) * 0.1) * (1 + flare * 0.8);
+    fireLight.intensity = k * (night ? 26 : 6) * (0.85 + Math.sin(t * 9) * 0.08 + Math.sin(t * 21) * 0.05) * (1 + flare * 1.6);
+    if (flare > 0 && k > 0.99) campfire.group.scale.setScalar(1 + flare * 0.45);
   });
+  // A log thrown on: it drops onto the fire, which flares up in a shower of sparks.
+  const thrown = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.8, 9), dress(mat("#7a5638", 0.95), "bark", { repeat: [1, 1], bump: 1.2 }));
+  thrown.visible = false;
+  root.add(thrown);
+  kit.things.log = (since) => {
+    const k = Math.min(1, since / 0.45);
+    thrown.visible = since < 1.2;
+    thrown.position.set(CAMPFIRE.x + 0.9 * (1 - k), fireY + 0.25 + Math.sin(k * Math.PI) * 0.7, CAMPFIRE.z + 0.2);
+    thrown.rotation.set(0.3, 0, Math.PI / 2 + k * 2.5);
+    if (since >= 0.45 && since - 0.45 < 0.05 && flare < 0.5) {
+      flare = 1;
+      kit.floatUp("spark", fireAt, 18, look.fire[0]);
+      playPops(10);
+    }
+    return since < 1.2;
+  };
+  // A marshmallow on a stick, held over the fire: white, golden, toasted, gone (eaten).
+  const stick = new THREE.Group();
+  const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 1.1, 6), mat("#6b4a2a", 0.9));
+  twig.rotation.z = Math.PI / 2;
+  twig.position.x = 0.55;
+  const marshmallowMaterial = mat("#fbf6ec", 0.8);
+  const marshmallow = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 12), marshmallowMaterial);
+  marshmallow.rotation.z = Math.PI / 2;
+  stick.add(twig, marshmallow);
+  stick.visible = false;
+  root.add(stick);
+  const toast = [new THREE.Color("#fbf6ec"), new THREE.Color("#e8b25a"), new THREE.Color("#8a5326")];
+  kit.things.marshmallow = (since) => {
+    if (since === 0) stick.rotation.set(0, Math.random() * Math.PI * 2, -0.35);
+    stick.visible = since < 5.5;
+    stick.position.set(CAMPFIRE.x, fireY + 0.75 + Math.sin(since * 2) * 0.03, CAMPFIRE.z);
+    const k = Math.min(1, since / 5);
+    marshmallowMaterial.color.copy(k < 0.5 ? toast[0].clone().lerp(toast[1], k * 2) : toast[1].clone().lerp(toast[2], (k - 0.5) * 2));
+    if (since >= 5 && since - 5 < 0.05) kit.floatUp("star", fireAt.clone().setY(fireY + 1.0), 3, "#ffe08a");
+    return since < 5.5;
+  };
+  // A stone skipped from the end of the jetty: hops across the water, each leaving a ring.
+  const pebble = new THREE.Mesh(new THREE.DodecahedronGeometry(0.05, 0), mat("#8a8a86", 0.7));
+  pebble.scale.y = 0.4;
+  pebble.visible = false;
+  root.add(pebble);
+  const rings = Array.from({ length: 5 }, () => {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color: "#e8f4ff", transparent: true, opacity: 0, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.visible = false;
+    root.add(ring);
+    return ring;
+  });
+  const HOPS = 4;
+  const hopAt: number[] = [];
+  { let at = 0.35; let gap = 0.42; for (let i = 0; i <= HOPS; i++) { hopAt.push(at); at += gap; gap *= 0.72; } }
+  const skipFrom = new THREE.Vector3(JETTY.x0 - 0.2, WATER_Y + 1.1, JETTY.z);
+  let skipSide = 0;
+  kit.things.stone = (since) => {
+    if (since === 0) skipSide = (Math.random() - 0.5) * 0.6;
+    const end = hopAt[HOPS] + 0.3;
+    pebble.visible = since < hopAt[HOPS];
+    // Distance along the throw: fast at first, slowing with each touch.
+    const along = (time: number) => 6.5 * (1 - Math.exp(-time * 1.1));
+    const x = skipFrom.x - along(since);
+    const z = skipFrom.z + along(since) * skipSide;
+    let y = WATER_Y + 0.02;
+    if (since < hopAt[0]) y = skipFrom.y + (WATER_Y - skipFrom.y) * (since / hopAt[0]);
+    else for (let i = 0; i < HOPS; i++) {
+      if (since >= hopAt[i] && since < hopAt[i + 1]) {
+        const k = (since - hopAt[i]) / (hopAt[i + 1] - hopAt[i]);
+        y = WATER_Y + 0.02 + Math.sin(k * Math.PI) * 0.4 * Math.pow(0.65, i);
+      }
+    }
+    pebble.position.set(x, y, z);
+    pebble.rotation.y = since * 30;
+    rings.forEach((ring, i) => {
+      const age = since - hopAt[i];
+      ring.visible = age > 0 && age < 1.6;
+      if (!ring.visible) return;
+      if (age < 0.05) ring.position.set(skipFrom.x - along(hopAt[i]), WATER_Y + 0.015, skipFrom.z + along(hopAt[i]) * skipSide);
+      ring.scale.setScalar(0.1 + age * 0.55);
+      ring.material.opacity = 0.5 * (1 - age / 1.6);
+    });
+    return since < end + 1.6;
+  };
+  // A bucket of water by the ring puts the fire out; a bag of marshmallows on the log beside it.
+  const bucket = new THREE.Group();
+  const pail = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.28, 16, 1, true), mat("#7d8790", 0.4, { metalness: 0.7, side: THREE.DoubleSide }));
+  pail.position.y = 0.14;
+  const inPail = new THREE.Mesh(new THREE.CircleGeometry(0.15, 16), mat("#3a6a8a", 0.1));
+  inPail.rotation.x = -Math.PI / 2;
+  inPail.position.y = 0.24;
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.008, 6, 20, Math.PI), mat("#5d646a", 0.4, { metalness: 0.7 }));
+  handle.position.y = 0.28;
+  bucket.add(pail, inPail, handle);
+  bucket.position.set(CAMPFIRE.x + 1.05, meadowHeight(CAMPFIRE.x + 1.05, CAMPFIRE.z - 0.75), CAMPFIRE.z - 0.75);
+  root.add(kit.tag(bucket, "bucket"));
+  const bag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.1), mat("#f2efe6", 0.9));
+  bag.position.set(CAMPFIRE.x - 1.0, meadowHeight(CAMPFIRE.x - 1.0, CAMPFIRE.z + 0.8) + 0.13, CAMPFIRE.z + 0.8);
+  bag.rotation.y = 0.5;
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.08), mat("#e8508a", 0.8));
+  label.position.set(0, 0.02, 0.051);
+  bag.add(label);
+  root.add(kit.tag(bag, "marshmallow"));
+
+  // Clicking the pond (not the shore) throws: an invisible disc just over the water.
+  const pondHit = new THREE.Mesh(new THREE.CircleGeometry(POND.radius * 0.8, 24), new THREE.MeshBasicMaterial({ visible: false }));
+  pondHit.rotation.x = -Math.PI / 2;
+  pondHit.position.set(POND.x, WATER_Y + 0.05, POND.z);
+  root.add(kit.tag(pondHit, "stone"));
 
   // Log seats round the fire.
-  const bark = mat("#5b3d26", 0.95);
+  const bark = dress(mat("#7a5638", 0.95), "bark", { repeat: [2, 1], bump: 1.4 });
   // The sawn ends: pale wood with rings.
   const endGrain = mat("#ffffff", 0.9, {
     map: canvasTexture(128, 128, (ctx) => {
@@ -720,10 +848,21 @@ export function buildMeadow(theme: RoomTheme, night = isNight()): BuiltRoom {
     fog: new THREE.Fog(night ? "#0d1428" : "#c9e2f2", 26, 70),
     exposure: night ? 1.3 : 1.0,
     shark,
-    update: (t) => { for (const step of animated) step(t); },
+    update: (t, dt) => { kit.update(t, dt); for (const step of animated) step(t); },
+    things: kit.api({
+      label: (id) => id === "campfire" ? (kit.wanted("campfire") ? "Throw on a log" : "Light the fire")
+        : id === "bucket" ? (kit.wanted("campfire") ? "Put the fire out" : null)
+          : id === "stone" ? "Skip a stone" : id === "marshmallow" ? (kit.wanted("campfire") ? "Toast a marshmallow" : null) : null,
+      // The fire, lit, takes a log; unlit, it is lit. The bucket only ever puts it out.
+      route: (id) => id === "campfire" ? (kit.wanted("campfire") ? { moment: "log" } : { switch: "campfire", on: true })
+        : id === "bucket" ? (kit.wanted("campfire") ? { switch: "campfire", on: false } : null)
+          : id === "marshmallow" ? (kit.wanted("campfire") ? { moment: "marshmallow" } : null) : undefined,
+      sounds: { marshmallow: playSizzle, stone: () => playSkips(HOPS) },
+      switched: (id, on) => { if (id === "campfire") { if (on) { playIgnite(); flare = 1; } else playDouse(); } },
+    }),
     // Walking into the house takes its roof off from above (from your own eyes it is the ceiling).
     viewer: (x, z, view) => { roof.visible = !(inCabin(x, z) && view !== "eyes"); },
-    dispose: () => { for (const item of disposables) item.dispose(); },
+    dispose: () => { kit.dispose(); for (const item of disposables) item.dispose(); },
   };
 }
 
@@ -739,8 +878,8 @@ function buildCabin(look: Look, night: boolean, glow: THREE.Texture, flame: THRE
   const D = CABIN.d;
   const H = 2.6;
   const F = CABIN_FLOOR_Y;
-  const logs = mat("#7a5233", 0.9);
-  const darkLogs = mat("#6a4529", 0.9);
+  const logs = dress(mat("#8a6040", 0.9), "bark", { repeat: [3, 1], bump: 1.2 });
+  const darkLogs = dress(mat("#78502f", 0.9), "bark", { repeat: [3, 1], bump: 1.2 });
   const logGeometry = (length: number) => new THREE.CylinderGeometry(0.15, 0.15, length, 9);
   const addLog = (length: number, x: number, y: number, z: number, alongX: boolean, i: number) => {
     const log = new THREE.Mesh(logGeometry(length), i % 2 ? darkLogs : logs);
@@ -768,10 +907,7 @@ function buildCabin(look: Look, night: boolean, glow: THREE.Texture, flame: THRE
     }
   }
   // The floor, walkable.
-  const planks = floorTexture(look);
-  planks.wrapS = planks.wrapT = THREE.RepeatWrapping;
-  planks.repeat.set(2, 1.5);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.2, D - 0.2), mat("#ffffff", 0.75, { map: planks }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.2, D - 0.2), floorMaterial(look, W - 0.2, D - 0.2));
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = F + 0.005;
   floor.receiveShadow = true;

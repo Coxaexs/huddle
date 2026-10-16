@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
+import { normalizeDisabledModules } from "@/lib/features";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { deleteServerData, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -37,28 +38,66 @@ export async function PATCH(
     color?: string;
     iconUrl?: string | null;
     bannerUrl?: string | null;
+    isPublic?: boolean;
+    description?: string;
+    disabledModules?: unknown;
+    raidMode?: boolean;
   };
 
   const server = await db
-    .prepare("SELECT id, name, icon, color, icon_url, banner_url FROM servers WHERE id = ?")
+    .prepare("SELECT * FROM servers WHERE id = ?")
     .bind(id)
-    .first<{ id: string; name: string; icon: string; color: string; icon_url?: string; banner_url?: string }>();
+    .first<{
+      id: string;
+      name: string;
+      icon: string;
+      color: string;
+      icon_url?: string;
+      banner_url?: string;
+      is_public?: number;
+      description?: string;
+      disabled_modules?: string;
+      raid_mode?: number;
+    }>();
   if (!server) {
     return Response.json({ error: "That server is gone." }, { status: 404 });
   }
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
+  const isPublic = body.isPublic !== undefined ? (body.isPublic ? 1 : 0) : (server.is_public ?? 0);
+  const description = body.description !== undefined ? String(body.description || "").trim().slice(0, 240) : (server.description || "");
+  const disabledModules = body.disabledModules !== undefined
+    ? JSON.stringify(normalizeDisabledModules(body.disabledModules))
+    : (server.disabled_modules || "[]");
+  const raidMode = body.raidMode !== undefined ? (body.raidMode ? 1 : 0) : (server.raid_mode ?? 0);
+
   await db
-    .prepare("UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ? WHERE id = ?")
+    .prepare(
+      "UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ?, is_public = ?, description = ?, disabled_modules = ?, raid_mode = ? WHERE id = ?",
+    )
     .bind(
       body.name?.trim().slice(0, 50) || server.name,
       body.icon?.trim().slice(0, 2).toUpperCase() || server.icon,
       body.color?.trim().slice(0, 24) || server.color,
       body.iconUrl !== undefined ? body.iconUrl : server.icon_url || null,
       body.bannerUrl !== undefined ? body.bannerUrl : server.banner_url || null,
+      isPublic,
+      description,
+      disabledModules,
+      raidMode,
       id,
     )
     .run();
+
+  if (body.raidMode !== undefined && Boolean(server.raid_mode) !== Boolean(raidMode)) {
+    await recordAudit(db, {
+      serverId: id,
+      actor: user,
+      action: raidMode ? "moderation.raid_on" : "moderation.raid_off",
+      targetName: server.name,
+      detail: raidMode ? "Enabled raid lockdown" : "Disabled raid lockdown",
+    });
+  }
 
   await recordAudit(db, {
     serverId: id,

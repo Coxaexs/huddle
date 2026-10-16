@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isParticlesEnabled } from "../lib/theme-fx";
 
 /** Katakana, digits and a few code symbols, as on the film's screens. */
 const GLYPHS =
@@ -12,11 +13,15 @@ function useMatrixTheme(): boolean {
   const [on, setOn] = useState(false);
   useEffect(() => {
     const root = document.documentElement;
-    const read = () => setOn(root.dataset.customThemeId === "matrix");
+    const read = () => setOn(root.dataset.customThemeId === "matrix" && isParticlesEnabled());
     read();
     const observer = new MutationObserver(read);
-    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id"] });
-    return () => observer.disconnect();
+    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id", "data-particles"] });
+    window.addEventListener("huddle-particles-change", read);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("huddle-particles-change", read);
+    };
   }, []);
   return on;
 }

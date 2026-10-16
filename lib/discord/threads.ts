@@ -37,32 +37,6 @@ export const THREAD_COLUMNS = `id, channel_id, server_id, name, anchor_message_i
   auto_archive_duration, owner_bot_id, owner_user_id, locked, archived,
   archive_timestamp, created_at`;
 
-export async function ensureThreadTable(db: D1Database): Promise<void> {
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS discord_threads (
-        id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        server_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        anchor_message_id TEXT,
-        type INTEGER NOT NULL DEFAULT 11,
-        auto_archive_duration INTEGER NOT NULL DEFAULT 1440,
-        owner_bot_id TEXT,
-        owner_user_id TEXT,
-        locked INTEGER NOT NULL DEFAULT 0,
-        archived INTEGER NOT NULL DEFAULT 0,
-        archive_timestamp TEXT,
-        created_at TEXT NOT NULL
-      )`),
-    db.prepare(
-      "CREATE INDEX IF NOT EXISTS discord_threads_channel_idx ON discord_threads(channel_id, archived)",
-    ),
-    db.prepare(
-      "CREATE INDEX IF NOT EXISTS discord_threads_server_idx ON discord_threads(server_id, archived)",
-    ),
-  ]);
-}
-
 export async function loadThread(
   db: D1Database,
   nativeId: string,

@@ -15,7 +15,11 @@ import { boardOf, spaceGlyph, tileSpot, travelDirection, type BoardGameState, ty
 import type { DiceRollEvent } from "@/lib/protocol";
 import { playDiceRollSound } from "../lib/dice-sounds";
 import { TableDice } from "./tabletop-dice";
-import { LOOKS, box, canvasTexture, cushion, floorTexture, glowTexture, mat, plant, tagSeat, wallTexture, type BuiltRoom } from "./living-room-scene";
+import { LOOKS, box, canvasTexture, cushion, floorMaterial, glowTexture, mat, plant, plasterOver, tagSeat, wallTexture, woodMaterial, type BuiltRoom } from "./living-room-scene";
+import { mergeStatics } from "./living-room-fx";
+import { dress, fabric } from "./room-surfaces";
+import { ThingKit } from "./room-things";
+import { playFanfare } from "./living-room-sounds";
 
 const BOARD_Y = 0.012;
 const TEXTURE_SIZE = 2048;
@@ -681,10 +685,7 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
   };
 
   // Floor: the theme's planks, with a dark border round the board.
-  const floorMap = floorTexture(look);
-  floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
-  floorMap.repeat.set(4, 4);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, W), mat("#ffffff", 0.75, { map: floorMap }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, W), floorMaterial(look, W, W));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   floor.userData.floor = true;
@@ -697,11 +698,12 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
   root.add(border);
 
   const board = new FloorBoard();
+  board.group.userData.keep = true; // the game moves on it: never baked
   root.add(board.group);
 
   // Walls with the theme's paper, wainscot and a rail.
-  const wallMaterial = mat("#ffffff", 0.95, { map: wallTexture(look) });
-  const wainscot = mat(look.wainscot, 0.7);
+  const wallMaterial = plasterOver(mat("#ffffff", 0.95, { map: wallTexture(look) }), [8, 2]);
+  const wainscot = woodMaterial(look.wainscot, 0.6, [8, 0.6]);
   const trim = mat(look.trim, 0.5);
   for (const [x, z, ry] of [[0, -half, 0], [0, half, Math.PI], [-half, 0, Math.PI / 2], [half, 0, -Math.PI / 2]] as const) {
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(W, H), wallMaterial);
@@ -719,12 +721,12 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
     rail.rotation.y = ry;
     root.add(rail);
   }
-  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, W), mat(look.ceiling, 1));
+  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, W), dress(mat(look.ceiling, 1), "plaster", { repeat: [8, 8], bump: 0.4, rough: false, detail: false }));
   ceilingPlane.rotation.x = Math.PI / 2;
   ceilingPlane.position.y = H;
   ceiling.add(ceilingPlane);
   for (let x = -half + 2; x < half; x += 4) {
-    const beam = box(0.24, 0.3, W, mat(look.beam, 0.8), false);
+    const beam = box(0.24, 0.3, W, woodMaterial(look.beam, 0.75, [0.4, 5]), false);
     beam.position.set(x, H - 0.15, 0);
     ceiling.add(beam);
   }
@@ -919,8 +921,8 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
   root.add(banner);
 
   // Benches along the four sides, a cushion per seat.
-  const benchWood = mat(look.wood, 0.55);
-  const pad = mat(look.sofaCushion, 0.9);
+  const benchWood = woodMaterial(look.wood, 0.5, [1.5, 0.5]);
+  const pad = fabric(look.sofaCushion, { repeat: [1.5, 1.5] });
   for (const seat of BOARD_HALL.seats) {
     const group = new THREE.Group();
     const plank = box(1.5, 0.08, 0.5, benchWood);
@@ -928,7 +930,7 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
     const back = box(1.5, 0.5, 0.07, benchWood);
     back.position.set(0, 0.7, 0.27);
     for (const lx of [-0.65, 0.65]) {
-      const leg = box(0.08, 0.38, 0.42, mat(look.woodDark, 0.6));
+      const leg = box(0.08, 0.38, 0.42, woodMaterial(look.woodDark, 0.55));
       leg.position.set(lx, 0.19, 0);
       group.add(leg);
     }
@@ -987,7 +989,38 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
   root.add(sun, sun.target);
   root.add(new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2] * 1.4));
 
-  const update = (t: number) => {
+  // A trophy on a pedestal by the north wall: touched, it bursts into confetti for the whole hall.
+  const kit = new ThingKit(root);
+  const gold = mat("#e2b53e", 0.3, { metalness: 0.7, emissive: "#3a2a08", emissiveIntensity: 0.6 });
+  const trophy = new THREE.Group();
+  const plinth = box(0.5, 1.0, 0.5, woodMaterial(look.woodDark, 0.5), false);
+  plinth.position.y = 0.5;
+  const cup = new THREE.Mesh(new THREE.LatheGeometry([[0, 0], [0.09, 0.01], [0.04, 0.05], [0.03, 0.15], [0.06, 0.2], [0.16, 0.3], [0.17, 0.46], [0.15, 0.46]].map(([x, y]) => new THREE.Vector2(x, y)), 28), Object.assign(gold.clone(), { side: THREE.DoubleSide }));
+  cup.position.y = 1.0;
+  for (const side of [-1, 1]) {
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.012, 6, 16, Math.PI), gold);
+    handle.position.set(side * 0.16, 1.36, 0);
+    handle.rotation.z = side * -Math.PI / 2;
+    trophy.add(handle);
+  }
+  trophy.add(plinth, cup);
+  trophy.position.set(half - 1.6, 0, -half + 0.6);
+  root.add(kit.tag(trophy, "trophy"));
+  const confetti = ["#ff4b6e", "#ffd24b", "#4bd6ff", "#7dff6a", "#c77dff"];
+  kit.things.trophy = (since) => {
+    if (since === 0) for (const colour of confetti) kit.floatUp("star", new THREE.Vector3(half - 1.6, 1.6, -half + 0.6), 6, colour);
+    cup.rotation.y = since * 6 * Math.max(0, 1 - since / 1.5);
+    return since < 1.6;
+  };
+  kit.settle();
+
+  // What never moves, baked into a few meshes.
+  mergeStatics(root, [ceiling]);
+
+  let lastT = 0;
+  const update = (t: number, dt = t - lastT) => {
+    lastT = t;
+    kit.update(t, Math.max(0, Math.min(0.1, dt)));
     board.update(t);
     for (let i = 0; i < bulbs.length; i++) bulbs[i].scale.setScalar(0.9 + Math.sin(t * 1.3 + i) * 0.1);
   };
@@ -1002,6 +1035,7 @@ export function buildBoardHall(theme: RoomTheme): BuiltRoom & { board: FloorBoar
     fog: new THREE.Fog(look.fog, 22, 44),
     exposure: look.exposure,
     update,
-    dispose: () => { board.dispose(); glow.dispose(); floorMap.dispose(); },
+    dispose: () => { board.dispose(); glow.dispose(); kit.dispose(); },
+    things: kit.api({ label: (id) => (id === "trophy" ? "Celebrate!" : null), sounds: { trophy: playFanfare } }),
   };
 }

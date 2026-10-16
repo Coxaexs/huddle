@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, ThumbsUp, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
-  PAWNS_EACH, PAWNS_GM, PAWN_KINDS, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, stepTurn, watchPosition,
-  type GameMaster, type HouseLights, type Initiative, type PawnKind, type TableCharacter, type TableMap, type TablePawn, type WatchState,
+  PAWNS_EACH, PAWNS_GM, PAWN_KINDS, QUEUE_MAX, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, skipVotesNeeded, stepTurn, watchPosition,
+  type GameMaster, type HouseLights, type Initiative, type PawnKind, type QueueOp, type TableCharacter, type TableMap, type TablePawn, type WatchQueue, type WatchState,
 } from "@/lib/lounge-shared";
 import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
 import { CLASSES, slotsFor } from "@/lib/dnd-spells";
@@ -62,6 +62,112 @@ async function downloadYouTubeVideo(urlOrId: string): Promise<{ streamUrl: strin
 
 export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null }
 
+/** Turns what someone typed (a YouTube link, a name to search, or a direct video link) into a link the screen can play. */
+async function resolveVideo(raw: string): Promise<{ url: string; title: string }> {
+  const isUrl = /^(https?:)?\/\//i.test(raw) || /^\/hangout\/api\//.test(raw);
+  if (extractYouTubeId(raw) || !isUrl) {
+    const { streamUrl, title } = await downloadYouTubeVideo(raw);
+    return { url: streamUrl, title };
+  }
+  return { url: raw, title: raw.split("/").pop()?.split("?")[0] || "Video" };
+}
+
+/**
+ * The watch party's queue: what plays after this film, most votes first, a
+ * vote to skip, and a box to add another. The hub keeps the order and starts
+ * the next film when this one ends.
+ */
+function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
+  queue: WatchQueue | null;
+  watch: WatchState;
+  myUserId: string | null;
+  roomSize: number;
+  sendQueue: (op: QueueOp) => void;
+}) {
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const films = queue?.films ?? [];
+  const skipVotes = queue?.skip?.url === watch.url ? queue.skip.votes : [];
+  const iSkipped = Boolean(myUserId && skipVotes.includes(myUserId));
+  const needed = skipVotesNeeded(roomSize);
+
+  const add = async () => {
+    const raw = link.trim();
+    if (!raw) return;
+    if (films.length >= QUEUE_MAX) { setProblem(`The queue is full (${QUEUE_MAX}).`); return; }
+    setBusy(true); setProblem(null);
+    try {
+      const { url, title } = await resolveVideo(raw);
+      sendQueue({ op: "add", url, title });
+      setLink("");
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : "That video could not be added.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="lr-queue">
+      <div className="lr-row lr-queue-head">
+        <strong>Up next{films.length ? ` (${films.length})` : ""}</strong>
+        <button
+          type="button"
+          className={iSkipped ? "lr-on" : undefined}
+          aria-pressed={iSkipped}
+          onClick={() => sendQueue({ op: "skip" })}
+          title={`More than half the room skips it: ${needed} of ${roomSize}`}
+        >
+          <SkipForward size={13} /> {iSkipped ? "Voted to skip" : "Vote to skip"} ({skipVotes.length}/{needed})
+        </button>
+      </div>
+      {films.length ? (
+        <ol className="lr-queue-list">
+          {films.map((film, index) => {
+            const mine = myUserId === film.userId;
+            const voted = Boolean(myUserId && film.votes.includes(myUserId));
+            return (
+              <li key={film.id}>
+                <span className="lr-queue-text">
+                  <span className="lr-queue-title" title={film.title}>{film.title}</span>
+                  <small>{film.by}</small>
+                </span>
+                <button
+                  type="button"
+                  className={voted ? "lr-on" : undefined}
+                  aria-pressed={voted}
+                  aria-label={`${voted ? "Take back your vote for" : "Vote for"} ${film.title}`}
+                  onClick={() => sendQueue({ op: "vote", id: film.id })}
+                >
+                  <ThumbsUp size={12} /> {film.votes.length}
+                </button>
+                {index === 0 && (
+                  <button type="button" onClick={() => sendQueue({ op: "next", from: watch.url })} title="Start it now for everyone" aria-label={`Play ${film.title} now`}>
+                    <PlayCircle size={13} />
+                  </button>
+                )}
+                {mine && (
+                  <button type="button" onClick={() => sendQueue({ op: "remove", id: film.id })} aria-label={`Take ${film.title} out of the queue`}>
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="lr-note">Nothing queued. Add a video and it plays when this one ends; vote one up to move it nearer the front.</p>
+      )}
+      <form className="lr-row" onSubmit={(event) => { event.preventDefault(); void add(); }}>
+        <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Add a YouTube link, a name, or a video link" aria-label="Add to the queue" maxLength={600} disabled={busy} />
+        <button type="submit" disabled={!link.trim() || busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Queue</button>
+      </form>
+      {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
+    </div>
+  );
+}
+
 export function extractYouTubeId(url: string): string | null {
   if (!url) return null;
   const match = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+?&v=))([\w-]{11})/i);
@@ -69,8 +175,13 @@ export function extractYouTubeId(url: string): string | null {
 }
 
 /** Watch together: pick a video (a link, upload, or YouTube search) and the whole room sees it on the screen, in step. */
-export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, onStartSound, onYoutube, onClose }: {
+export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, onStartSound, onYoutube, onClose, queue = null, myUserId = null, roomSize = 1, sendQueue }: {
   watch: WatchState | null;
+  queue?: WatchQueue | null;
+  myUserId?: string | null;
+  /** People in the call, for how many skip votes it takes. */
+  roomSize?: number;
+  sendQueue?: (op: QueueOp) => void;
   hubNow: () => number;
   info: WatchInfo;
   volume: number;
@@ -153,6 +264,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
           {info.blocked && <button type="button" className="lr-wide" onClick={onStartSound}>Click to start the sound</button>}
           {info.error && <p className="lr-note">{info.error}</p>}
           <div className="lr-row"><button type="button" onClick={() => setWatch(null)}>Stop for everyone</button></div>
+          {sendQueue && <QueueSection queue={queue} watch={watch} myUserId={myUserId} roomSize={roomSize} sendQueue={sendQueue} />}
         </>
       ) : (
         <>

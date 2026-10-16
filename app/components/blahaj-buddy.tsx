@@ -917,7 +917,19 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
 
   // Active theme tracking
   const [themeId, setThemeId] = useState<string>("cozy");
-  const [isThemeEnabled, setIsThemeEnabled] = useState<boolean>(true);
+  const [isThemeEnabled, setIsThemeEnabled] = useState<boolean>(() => {
+    if (typeof document !== "undefined" && document.documentElement.dataset.blahaj) {
+      return document.documentElement.dataset.blahaj === "on";
+    }
+    if (typeof window !== "undefined") {
+      try {
+        return window.localStorage.getItem("huddle-blahaj") === "on";
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
 
   // Position state (persisted to localStorage)
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -966,7 +978,9 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
     const read = () => {
       const activeId = root.dataset.customThemeId || "cozy";
       setThemeId(activeId);
-      const isBlahajOn = root.dataset.blahaj === "on";
+      const isBlahajOn = root.dataset.blahaj
+        ? root.dataset.blahaj === "on"
+        : (typeof window !== "undefined" && window.localStorage.getItem("huddle-blahaj") === "on");
       setIsThemeEnabled(isBlahajOn);
     };
 

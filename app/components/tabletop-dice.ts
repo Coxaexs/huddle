@@ -10,6 +10,7 @@ import * as THREE from "three";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
 import { dieFaces, faceNormal } from "../lib/dice-normals";
+import { getDiceStyle } from "@/lib/dice-styles";
 import normalsData from "@/public/assets/themes/default/default.json";
 
 /** How many dice are drawn for one roll; the total still counts them all. */
@@ -234,7 +235,9 @@ export class TableDice {
     const group = new THREE.Group();
     this.root.add(group);
 
-    const colour = roll.themeColor || "#2563eb";
+    // A style's dice each take one of its colours; Solid Colour is the roller's own.
+    const style = getDiceStyle(roll.theme);
+    const solid = roll.themeColor || "#2563eb";
     const faces = roll.dice.flatMap((term) => term.rolls.flatMap((entry) => dieFaces(term.sides, entry.value, entry.kept !== false)));
     const shown = faces.slice(0, MAX_DICE);
     const throws: Throw[] = [];
@@ -242,8 +245,9 @@ export class TableDice {
     shown.forEach((face, i) => {
       const type = face.type;
       const geometry = dieGeometry(type);
-      const map = image ? dieTexture(colour, image) : null;
-      const mesh = new THREE.Mesh(geometry, dieMaterial(roll.material, map, colour, !face.kept));
+      const body = style ? style.body[Math.floor(random() * style.body.length)] : solid;
+      const map = image ? dieTexture(body, image) : null;
+      const mesh = new THREE.Mesh(geometry, dieMaterial(roll.material ?? style?.material, map, body, !face.kept));
       mesh.castShadow = true;
       group.add(mesh);
 

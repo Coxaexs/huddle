@@ -11,7 +11,11 @@ import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { CINEMA, CINEMA_FIRST_ROW_Z, CINEMA_RISE, CINEMA_ROWS, CINEMA_ROW_PITCH } from "../lib/living-room";
 import { buildBooth } from "./cinema-booth";
-import { LOOKS, box, canvasTexture, codeRain, glowTexture, mat, wallTexture, type BuiltRoom } from "./living-room-scene";
+import { LOOKS, box, canvasTexture, codeRain, glowTexture, mat, plasterOver, wallTexture, woodMaterial, type BuiltRoom } from "./living-room-scene";
+import { mergeStatics } from "./living-room-fx";
+import { dress, fabric } from "./room-surfaces";
+import { ThingKit, popcornBurst } from "./room-things";
+import { playIntermission, playPops } from "./living-room-sounds";
 
 export interface CinemaLights {
   /** 0..1 overall brightness */
@@ -80,30 +84,26 @@ function createCinemaLights(
   root.add(screenWash, screenWash.target);
   lights.push(screenWash);
 
-  // Sconce lights
+  // The sconces' light on the side walls. Every light costs every pixel, so the sixteen sconces share three
+  // a side (their own glow and shades do the close-up work), and the ceiling's downlights are three wide washes.
   const sconceLights: THREE.PointLight[] = [];
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 8; i++) {
-      const z = -6.0 + i * 2.2;
+    for (const z of [-5.0, 0.5, 6.0]) {
       const y = Math.min(2.7, Math.max(0, (z - CINEMA_FIRST_ROW_Z) / CINEMA_ROW_PITCH * CINEMA_RISE)) + 2.0;
-      const sl = new THREE.PointLight(look.lamp, 3, 5, 1.5);
-      sl.position.set(side * (CINEMA.halfX - 0.2), y + 0.35, z);
+      const sl = new THREE.PointLight(look.lamp, 4, 8, 1.5);
+      sl.position.set(side * (CINEMA.halfX - 1.1), y + 0.35, z);
       root.add(sl);
       sconceLights.push(sl);
       lights.push(sl);
     }
   }
-
-  // Recessed ceiling lights
   const ceilingLights: THREE.PointLight[] = [];
-  for (let x = -W/2 + 1.5; x < W/2; x += 3) {
-    for (let z = -D/2 + 1.5; z < D/2; z += 4) {
-      const cl = new THREE.PointLight("#fff8e8", 2, 4, 1.5);
-      cl.position.set(x, H - 0.2, z);
-      ceiling.add(cl);
-      ceilingLights.push(cl);
-      lights.push(cl);
-    }
+  for (const z of [-D / 2 + 3, 0, D / 2 - 3]) {
+    const cl = new THREE.PointLight("#fff8e8", 5, 11, 1.5);
+    cl.position.set(0, H - 0.3, z);
+    ceiling.add(cl);
+    ceilingLights.push(cl);
+    lights.push(cl);
   }
 
   function applyLevel(l: number) {
@@ -114,8 +114,8 @@ function createCinemaLights(
     hallLight.intensity = 12 * l;
     backLight.intensity = 10 * l;
     screenWash.intensity = screenActive ? 0 : 20 * l; // screen wash off when video plays
-    for (const sl of sconceLights) sl.intensity = 3 * l;
-    for (const cl of ceilingLights) cl.intensity = 2 * l;
+    for (const sl of sconceLights) sl.intensity = 4 * l;
+    for (const cl of ceilingLights) cl.intensity = 5 * l;
     for (const sm of sconceMats) sm.emissiveIntensity = 0.5 * l;
     for (const slm of sconceLamps) {
       slm.transparent = true;
@@ -194,7 +194,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     ctx.fillRect(512 - 272, 0, 32, 512);
   }, [W / 3, D / 3]);
   
-  const carpet = mat("#ffffff", 1, { map: carpetTex });
+  const carpet = dress(mat("#ffffff", 1, { map: carpetTex }), "carpet", { repeat: [W / 1.5, D / 1.5], detail: false, bump: 1.1 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), carpet);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -203,7 +203,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
 
   const stepWidth = W - 0.6;
   const striplight = new THREE.MeshBasicMaterial({ color: look.fairy[0], toneMapped: false });
-  const stepMat = mat(dark(look.rug[0], 0.7), 1, { map: carpetTex });
+  const stepMat = dress(mat(dark(look.rug[0], 0.7), 1, { map: carpetTex }), "carpet", { repeat: [8, 1], detail: false, bump: 1.1 });
   for (let row = 1; row < CINEMA_ROWS; row++) {
     const z = CINEMA_FIRST_ROW_Z + row * CINEMA_ROW_PITCH;
     const top = row * CINEMA_RISE;
@@ -226,7 +226,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   root.add(platform);
 
   // Aisle carpet runners
-  const aisleMat = mat(dark(look.rug[1], 0.5), 1);
+  const aisleMat = dress(mat(dark(look.rug[1], 0.5), 1), "carpet", { repeat: [1, 12] });
   const aisle1 = new THREE.Mesh(new THREE.PlaneGeometry(1.2, D), aisleMat);
   aisle1.rotation.x = -Math.PI / 2;
   aisle1.position.set(-W / 4, 0.01, 0);
@@ -239,6 +239,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   // Walls: dark panelling; the matrix hall has code running down its sides
   const code = look.wallPattern === "code" ? codeRain(512, 256, 40) : null;
   const wallMaterial = mat("#ffffff", 0.95, { map: wallTexture(look), ...(code ? { emissive: "#ffffff", emissiveMap: code.texture, emissiveIntensity: 0.5 } : {}) });
+  if (!code) plasterOver(wallMaterial, [6, 2]);
   const walls: Array<[number, number, number, number]> = [
     [W, 0, -CINEMA.halfZ, 0], [W, 0, CINEMA.halfZ, Math.PI], [D, -CINEMA.halfX, 0, Math.PI / 2], [D, CINEMA.halfX, 0, -Math.PI / 2],
   ];
@@ -251,7 +252,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     root.add(wall);
     // Acoustic panels on side walls
     if (Math.abs(ry) === Math.PI / 2) {
-      const panelMat = mat(dark(look.rug[0], 0.4), 0.9);
+      const panelMat = fabric(dark(look.rug[0], 0.4), { repeat: [1, 1], sheen: 0.4 });
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 4; col++) {
           const panel = box(2.0, 1.5, 0.08, panelMat, false);
@@ -263,7 +264,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     }
   }
   // Ceiling with recessed lighting
-  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat(dark(look.ceiling, 0.3), 1));
+  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), dress(mat(dark(look.ceiling, 0.3), 1), "plaster", { repeat: [6, 8], bump: 0.4, rough: false, detail: false }));
   ceilingPlane.rotation.x = Math.PI / 2;
   ceilingPlane.position.y = H;
   ceiling.add(ceilingPlane);
@@ -273,7 +274,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   const SW = 8;
   const SH = 4.5;
   const SY = CINEMA.tv.height;
-  const frame = box(SW + 0.3, SH + 0.3, 0.12, mat(look.woodDark, 0.5), false);
+  const frame = box(SW + 0.3, SH + 0.3, 0.12, woodMaterial(look.woodDark, 0.5, [3, 2]), false);
   frame.position.set(0, SY, -CINEMA.halfZ + 0.08);
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), screenMaterial);
   screen.position.set(0, SY, -CINEMA.halfZ + 0.15);
@@ -287,8 +288,8 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   spill.position.set(0, SY, -CINEMA.halfZ + 0.16);
   root.add(spill);
 
-  // Curtains with pleats and tiebacks
-  const curtain = mat(look.rug[0], 1);
+  // Velvet curtains with pleats and tiebacks
+  const curtain = fabric(look.rug[0], { repeat: [0.5, 3], sheen: 1 });
   for (const side of [-1, 1]) {
     for (let i = 0; i < 8; i++) {
       const pleat = box(0.35, H - 0.4, 0.18, curtain, false);
@@ -303,12 +304,12 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   }
 
   // Stage with steps
-  const stage = box(W - 1.2, 0.25, 1.3, mat(look.woodDark, 0.6), false);
+  const stage = box(W - 1.2, 0.25, 1.3, woodMaterial(look.woodDark, 0.5, [8, 1]), false);
   stage.position.set(0, 0.125, -CINEMA.halfZ + 0.75);
   root.add(stage);
   // Stage steps
   for (const side of [-1, 1]) {
-    const step = box(1.0, 0.2, 0.6, mat(look.woodDark, 0.6), false);
+    const step = box(1.0, 0.2, 0.6, woodMaterial(look.woodDark, 0.5), false);
     step.position.set(side * (W/2 - 1.0), 0.1, -CINEMA.halfZ + 0.4);
     root.add(step);
   }
@@ -343,8 +344,9 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
 
   // Seats: every one of the 150, two draw calls (base + back)
   const seats = CINEMA.seats;
-  const seatBaseMat = mat(dark(look.rug[0], 1.15), 0.9);
-  const seatBackMat = mat(dark(look.rug[0], 0.8), 0.9);
+  // Velvet seats: the sheen is what makes a row of red chairs read as cinema seats in the dark.
+  const seatBaseMat = fabric(dark(look.rug[0], 1.15), { repeat: [0.6, 0.6], sheen: 1 });
+  const seatBackMat = fabric(dark(look.rug[0], 0.8), { repeat: [0.6, 0.8], sheen: 1 });
   const base = new THREE.InstancedMesh(new THREE.BoxGeometry(0.58, 0.14, 0.52), seatBaseMat, seats.length);
   const back = new THREE.InstancedMesh(new THREE.BoxGeometry(0.58, 0.74, 0.1), seatBackMat, seats.length);
   const place = new THREE.Matrix4();
@@ -362,7 +364,7 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   }
 
   // Armrests between seats (instanced)
-  const armrestMat = mat(dark(look.woodDark, 0.8), 0.8);
+  const armrestMat = woodMaterial(dark(look.woodDark, 0.8), 0.6, [0.3, 1]);
   const armrestGeom = new THREE.BoxGeometry(0.06, 0.12, 0.45);
   const seatsPerRow = 15;
   const armrestCount = seats.length - seatsPerRow; // No armrest at row ends
@@ -439,8 +441,62 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
   const setScreenActive = cinemaLights.setScreenActive;
   cinemaLights.setScreenActive = (active: boolean) => { setScreenActive(active); booth.setLive(active); };
 
+  // Things to touch: a brass bell on the stage for the intermission, and a popcorn cart on the back walkway.
+  const kit = new ThingKit(root);
+  const brass = mat("#c9a45c", 0.3, { metalness: 0.85 });
+  const bellStand = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 1.0, 10), mat(look.woodDark, 0.5));
+  post.position.y = 0.5;
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 8), brass);
+  arm.rotation.z = Math.PI / 2;
+  arm.position.set(0.15, 1.0, 0);
+  const bell = new THREE.Mesh(new THREE.LatheGeometry([[0.01, 0], [0.06, -0.01], [0.1, -0.08], [0.12, -0.18], [0.15, -0.22]].map(([x, y]) => new THREE.Vector2(x, y)), 24), Object.assign(brass.clone(), { side: THREE.DoubleSide }));
+  bell.position.set(0.3, 1.0, 0);
+  bellStand.add(post, arm, bell);
+  bellStand.position.set(W / 2 - 2.0, 0.25, -CINEMA.halfZ + 0.9);
+  root.add(kit.tag(bellStand, "bell"));
+  kit.things.bell = (since) => {
+    bell.rotation.z = Math.sin(since * 14) * 0.35 * Math.max(0, 1 - since / 1.6);
+    if (since > 0 && since < 0.05) kit.floatUp("note", bell.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.2, 0)), 3, "#ffe08a");
+    return since < 1.7;
+  };
+  const cart = new THREE.Group();
+  const cartBase = box(0.7, 0.8, 0.5, mat("#b3262d", 0.5), false);
+  cartBase.position.y = 0.45;
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.5, 0.46), new THREE.MeshStandardMaterial({ color: "#fff6e0", roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false }));
+  for (const [x, z] of [[-0.33, -0.23], [0.33, -0.23], [-0.33, 0.23], [0.33, 0.23]] as const) {
+    const corner = box(0.03, 0.52, 0.03, mat("#b3262d", 0.5), false);
+    corner.position.set(x, 1.1, z);
+    cart.add(corner);
+  }
+  glass.position.y = 1.1;
+  const roof = box(0.74, 0.06, 0.54, mat("#b3262d", 0.5), false);
+  roof.position.y = 1.38;
+  const heap = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat("#fff3c4", 1));
+  heap.scale.set(1, 0.45, 0.75);
+  heap.position.y = 0.86;
+  const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.12, 14), brass);
+  kettle.position.y = 1.24;
+  for (const x of [-0.28, 0.28]) {
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 6, 16), mat("#1a1a1a", 0.6));
+    wheel.position.set(x, 0.1, 0.27);
+    cart.add(wheel);
+  }
+  cart.add(cartBase, glass, roof, heap, kettle);
+  const cartZ = (backZ + CINEMA.halfZ) / 2;
+  cart.position.set(-W / 2 + 1.2, backTop, cartZ);
+  cart.rotation.y = Math.PI / 2;
+  root.add(kit.tag(cart, "popcorn"));
+  addGlow("#ffe9b0", 0.9, new THREE.Vector3(-W / 2 + 1.2, backTop + 1.15, cartZ), 0.25);
+  kit.things.popcorn = popcornBurst(root, new THREE.Vector3(-W / 2 + 1.2, backTop + 1.3, cartZ), backTop + 0.02);
+  kit.settle();
+
+  // Everything that never moves, baked into a few meshes: the hall drew some 640 objects one by one.
+  mergeStatics(root, [ceiling]);
+
   let codeNext = 0;
   const update = (t: number, dt: number = 1/60) => {
+    kit.update(t, dt);
     if (code && t > codeNext) { codeNext = t + 0.08; code.step(); }
     cinemaLights.update(dt);
     booth.update(t, dt);
@@ -454,7 +510,11 @@ export function buildCinema(theme: RoomTheme): BuiltRoom & { cinemaLights: Cinem
     fog: new THREE.Fog(look.fog, 16, 34),
     exposure: look.exposure,
     update,
-    dispose: () => { glow.dispose(); booth.dispose(); },
+    dispose: () => { glow.dispose(); booth.dispose(); kit.dispose(); },
+    things: kit.api({
+      label: (id) => id === "bell" ? "Ring the intermission bell" : id === "popcorn" ? "Grab some popcorn" : null,
+      sounds: { bell: playIntermission, popcorn: () => playPops(9) },
+    }),
     cinemaLights,
   };
 }

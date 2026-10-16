@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Syne:wght@500&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Nunito:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Syne:wght@500&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Creepster&family=Special+Elite&family=Pixelify+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 /* Every avatar, whatever class its caller gives it: a letter tile is a centred
@@ -14051,11 +14051,11 @@ html[data-motion="reduced"] .typing-dots i {
 }
 
 .composer-more-mobile-btn {
-  display: none !important;
+  display: inline-flex !important;
 }
 
 .desktop-composer-item {
-  display: inline-flex;
+  display: none !important;
 }
 
 .message-action-mobile-more {
@@ -15904,12 +15904,14 @@ html[data-motion="reduced"] .typing-dots i {
 
 .dice-theme-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .dice-theme-row button {
+  min-width: 0;
+  overflow-wrap: anywhere;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
@@ -15963,6 +15965,59 @@ html[data-motion="reduced"] .typing-dots i {
 .dice-theme-row button.dark-academia .dice-theme-swatch {
   background: linear-gradient(90deg, #131a14 0%, #3a2a1c 45%, #c9a45c 100%);
   box-shadow: 0 0 6px rgba(201, 164, 92, 0.35);
+}
+
+.dice-theme-row button.classic .dice-theme-swatch {
+  background: linear-gradient(90deg, #c81d25 0 16.6%, #1d4ed8 16.6% 33.2%, #f5f5f4 33.2% 49.8%, #15803d 49.8% 66.4%, #facc15 66.4% 83%, #18181b 83%);
+}
+
+.dice-theme-row button.amber-resin .dice-theme-swatch {
+  background:
+    radial-gradient(circle at 30% 50%, #fff3b0 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 72% 40%, #e2b33c 0 2px, transparent 3px),
+    linear-gradient(90deg, #451a03 0%, #b45309 40%, #fbbf24 70%, #92400e 100%);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+}
+
+.dice-theme-row button.shadowflame .dice-theme-swatch {
+  background:
+    radial-gradient(circle at 25% 45%, #e2b33c 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 66% 55%, #fff3b0 0 2px, transparent 3px),
+    linear-gradient(90deg, #05010d 0%, #3b0764 35%, #a855f7 65%, #1e1b4b 100%);
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.45);
+}
+
+.dice-theme-row button.ocean-epoxy .dice-theme-swatch {
+  background:
+    radial-gradient(circle at 35% 50%, #e2b33c 0 2px, transparent 3px),
+    radial-gradient(circle at 80% 40%, #fff3b0 0 1.5px, transparent 2.5px),
+    linear-gradient(90deg, #06182e 0%, #075985 35%, #5eead4 60%, #1e3a8a 100%);
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.4);
+}
+
+.dice-theme-row button.msn .dice-theme-swatch {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0 45%, transparent 45%),
+    linear-gradient(90deg, #2f6fd6 0%, #2580c3 40%, #4fae35 70%, #78c043 100%);
+}
+
+.dice-theme-row button.zombie .dice-theme-swatch {
+  background:
+    radial-gradient(circle at 30% 50%, #7a0a0a 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 40%, #5c0808 0 1.5px, transparent 2.5px),
+    linear-gradient(90deg, #3e4a22 0%, #6e7b45 45%, #55524a 75%, #4d5e2a 100%);
+}
+
+.dice-theme-row button.minecraft .dice-theme-swatch {
+  border-radius: 0;
+  background: linear-gradient(90deg, #5d9c3a 0 20%, #866043 20% 40%, #7d7d7d 40% 60%, #5decf5 60% 80%, #a5834f 80%);
+  image-rendering: pixelated;
+}
+
+@media (max-width: 560px) {
+  .dice-theme-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .dice-theme-row button.active {
@@ -31248,4 +31303,108 @@ a.link-preview-author:hover {
 @media (pointer: coarse) {
   .tile-whisper { min-width: 40px; min-height: 40px; }
   .whisper-stop { min-height: 36px; padding: 6px 14px; }
+}
+
+/* Server Settings → Integrations → Webhooks */
+.webhook-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.webhook-create input,
+.webhook-create select,
+.webhook-row select {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.webhook-create input {
+  flex: 1 1 160px;
+  width: auto;
+}
+
+.webhook-create .webhook-avatar-input {
+  flex: 0 0 52px;
+  width: 52px;
+  min-width: 0;
+  max-width: 52px;
+  text-align: center;
+}
+
+.webhook-row {
+  justify-content: flex-start;
+}
+
+.webhook-row .webhook-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--paper);
+  font-size: 18px;
+}
+
+.webhook-row .webhook-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.webhook-row .webhook-main strong {
+  color: var(--ink);
+}
+
+.webhook-row select {
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+.webhook-row .discord-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 640px) {
+  .webhook-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Settings → Weekly digest (digest-settings.tsx) */
+.digest-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.digest-modes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.digest-modes label.active {
+  border-color: var(--lavender, #a99af5);
+  background: color-mix(in srgb, var(--lavender, #a99af5) 16%, transparent);
+}
+
+.digest-modes input {
+  margin: 0;
+}
+
+.digest-modes label:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

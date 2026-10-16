@@ -10,7 +10,12 @@ import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { TABLETOP, TABLE_CENTRE, TABLE_RADIUS } from "../lib/living-room";
 import { addPropList, TABLETOP_PROPS } from "./living-room-props";
-import { LOOKS, box, canvasTexture, candle, cushion, floorTexture, glowTexture, mat, plant, seeded, tagSeat, wallTexture, type BuiltRoom, type Look } from "./living-room-scene";
+import { LOOKS, box, canvasTexture, candle, cushion, floorMaterial, glowTexture, mat, plant, plasterOver, seeded, tagSeat, wallTexture, woodMaterial, type BuiltRoom, type Look } from "./living-room-scene";
+import { mergeStatics } from "./living-room-fx";
+import { dress, fabric } from "./room-surfaces";
+import { ThingKit } from "./room-things";
+import { playDouse, playIgnite, playThunder, startRain } from "./living-room-sounds";
+import type { TableMood } from "@/lib/lounge-shared";
 import { miniFigure, type MiniKind } from "./tabletop-extras";
 
 /** Height of the map the dice land on. */
@@ -385,18 +390,22 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     return sprite;
   };
   const flickers: Array<{ mesh: THREE.Object3D; phase: number }> = [];
+  // The candles on the rail are everyone's to snuff; the game master's lantern sets the room's mood.
+  const kit = new ThingKit(root);
+  const candles: THREE.Object3D[] = [];
+  const candleGlows: THREE.Sprite[] = [];
   const rand = seeded(11);
   const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
 
   // Floor
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat("#ffffff", 0.75, { map: floorTexture(look) }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMaterial(look, W, D));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   floor.userData.floor = true;
   root.add(floor);
 
   // Round rug under the table, with a border.
-  const rug = new THREE.Mesh(new THREE.CircleGeometry(3.1, 64), mat(look.rug[2], 1));
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(3.1, 64), dress(mat(look.rug[2], 1), "carpet", { repeat: [5, 5] }));
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(TABLE_CENTRE.x, 0.006, TABLE_CENTRE.z);
   rug.receiveShadow = true;
@@ -409,7 +418,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
 
   // Small rugs in the corners.
   for (const [x, z] of [[-4.5, -3.5], [4.5, -3.5], [-4.5, 3.5], [4.5, 3.5]] as const) {
-    const cr = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), mat(look.rug[0], 0.8));
+    const cr = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), dress(mat(look.rug[0], 0.9), "carpet", { repeat: [1.6, 1.6] }));
     cr.rotation.x = -Math.PI / 2;
     cr.position.set(x, 0.007, z);
     cr.receiveShadow = true;
@@ -418,8 +427,8 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   }
 
   // Walls
-  const wallMaterial = mat("#ffffff", 0.95, { map: wallTexture(look) });
-  const wainscot = mat(look.wainscot, 0.7);
+  const wallMaterial = plasterOver(mat("#ffffff", 0.95, { map: wallTexture(look) }));
+  const wainscot = woodMaterial(look.wainscot, 0.6, [6, 0.5]);
   const trim = mat(look.trim, 0.5);
   for (const [width, x, z, ry] of [[W, 0, -TABLETOP.halfZ, 0], [W, 0, TABLETOP.halfZ, Math.PI], [D, -TABLETOP.halfX, 0, Math.PI / 2], [D, TABLETOP.halfX, 0, -Math.PI / 2]] as const) {
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, H), wallMaterial);
@@ -445,21 +454,21 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     crown.rotation.y = ry;
     ceiling.add(crown);
   }
-  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat(look.ceiling, 1));
+  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), dress(mat(look.ceiling, 1), "plaster", { repeat: [6, 5], bump: 0.4, rough: false, detail: false }));
   ceilingPlane.rotation.x = Math.PI / 2;
   ceilingPlane.position.y = H;
   ceiling.add(ceilingPlane);
 
   // Ceiling beams
   for (let x = -TABLETOP.halfX + 1.0; x < TABLETOP.halfX; x += 2.0) {
-    const beam = box(0.18, 0.2, D, mat(look.beam, 0.8), false);
+    const beam = box(0.18, 0.2, D, woodMaterial(look.beam, 0.75, [0.4, 4]), false);
     beam.position.set(x, H - 0.1, 0);
     ceiling.add(beam);
   }
 
   // The table: a pedestal, an apron, the map sunk into the top and a rail round it.
-  const woodMat = mat(look.wood, 0.45);
-  const woodDark = mat(look.woodDark, 0.6);
+  const woodMat = woodMaterial(look.wood, 0.45, [2, 2]);
+  const woodDark = woodMaterial(look.woodDark, 0.55, [2, 2]);
   const apron = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_RADIUS - 0.02, TABLE_RADIUS - 0.06, 0.14, 64), woodDark);
   apron.position.set(TABLE_CENTRE.x, TABLE_SURFACE_Y - 0.08, TABLE_CENTRE.z);
   apron.castShadow = true;
@@ -468,7 +477,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     [MAP_RADIUS, TABLE_SURFACE_Y - 0.01], [MAP_RADIUS, RAIL_TOP - 0.022], [MAP_RADIUS + 0.008, RAIL_TOP - 0.008], [MAP_RADIUS + 0.025, RAIL_TOP],
     [TABLE_RADIUS - 0.025, RAIL_TOP], [TABLE_RADIUS - 0.006, RAIL_TOP - 0.01], [TABLE_RADIUS, RAIL_TOP - 0.03], [TABLE_RADIUS, TABLE_SURFACE_Y - 0.01],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  const rail = new THREE.Mesh(new THREE.LatheGeometry(railProfile, 96), new THREE.MeshStandardMaterial({ color: look.wood, roughness: 0.4, side: THREE.DoubleSide }));
+  const rail = new THREE.Mesh(new THREE.LatheGeometry(railProfile, 96), dress(new THREE.MeshStandardMaterial({ color: look.wood, roughness: 0.4, side: THREE.DoubleSide }), "wood", { repeat: [12, 0.3], bump: 0.6 }));
   rail.position.set(TABLE_CENTRE.x, 0, TABLE_CENTRE.z);
   rail.castShadow = true;
   rail.receiveShadow = true;
@@ -515,9 +524,10 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     dish.position.set(at.x, RAIL_TOP + 0.006, at.z);
     const c = candle(0.11, candleColour);
     c.position.set(at.x, RAIL_TOP + 0.012, at.z);
-    root.add(dish, c);
+    root.add(dish, kit.tag(c, "candles"));
     flickers.push({ mesh: c.userData.flame, phase: k * 1.7 });
-    addGlow(look.lamp, 0.42, new THREE.Vector3(at.x, RAIL_TOP + 0.16, at.z), 0.45);
+    candles.push(c.userData.flame);
+    candleGlows.push(addGlow(look.lamp, 0.42, new THREE.Vector3(at.x, RAIL_TOP + 0.16, at.z), 0.45));
   }
   for (const [i, metal] of [[0, true], [2, false], [3, true], [5, false], [7, true], [8, false]] as const) {
     const at = around(seatAngle(i) + 0.17, RAIL_MID);
@@ -535,8 +545,8 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   }
 
   // Ten chairs, each clickable to sit in; the game master's at the head.
-  const chairWood = mat(look.woodDark, 0.55);
-  const chairPad = mat(look.sofaCushion, 0.9);
+  const chairWood = woodMaterial(look.woodDark, 0.5);
+  const chairPad = fabric(look.sofaCushion, { repeat: [1.5, 1.5] });
   const throneRed = theme === "matrix" ? "#0b5d2a" : theme === "cyberpunk" ? "#6a1b9a" : "#7a1622";
   for (const seat of TABLETOP.seats) {
     const c = seat.reserved ? gmThrone(chairWood, throneRed) : chair(chairWood, chairPad);
@@ -784,12 +794,103 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   // Props from the shared list
   const stopProps = addPropList(root, TABLETOP_PROPS[theme], addGlow);
 
-  const update = (t: number) => {
+  kit.onSwitch("candles", (k) => {
+    for (const flame of candles) flame.visible = k > 0.02;
+    for (const glowSprite of candleGlows) { glowSprite.material.opacity = 0.45 * k; glowSprite.visible = k > 0.02; }
+  }, 3);
+
+  // The mood lantern, on the rail at the game master's chair: warm, dungeon (cold and low) or storm.
+  const gmSeat = TABLETOP.seats.findIndex((seat) => seat.reserved);
+  const lanternAt = around(seatAngle(Math.max(0, gmSeat)) + 0.2, RAIL_MID);
+  const lantern = new THREE.Group();
+  const brass = mat("#b08a3e", 0.35, { metalness: 0.8 });
+  for (const [y, h] of [[0.005, 0.01], [0.13, 0.012]] as const) {
+    const plate = box(0.08, h, 0.08, brass, false);
+    plate.position.y = y;
+    lantern.add(plate);
+  }
+  for (const [x, z] of [[-0.035, -0.035], [0.035, -0.035], [-0.035, 0.035], [0.035, 0.035]] as const) {
+    const bar = box(0.008, 0.12, 0.008, brass, false);
+    bar.position.set(x, 0.07, z);
+    lantern.add(bar);
+  }
+  const lanternFlame = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), new THREE.MeshBasicMaterial({ color: look.lamp, toneMapped: false }));
+  lanternFlame.scale.y = 1.6;
+  lanternFlame.position.y = 0.065;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 12), brass);
+  ring.position.y = 0.15;
+  lantern.add(lanternFlame, ring);
+  lantern.position.set(lanternAt.x, RAIL_TOP, lanternAt.z);
+  root.add(kit.tag(lantern, "mood"));
+  const lanternGlow = addGlow(look.lamp, 0.35, new THREE.Vector3(lanternAt.x, RAIL_TOP + 0.07, lanternAt.z), 0.5);
+
+  // Every light in the room, as built: the moods scale and tint them from here.
+  const roomLights: Array<{ light: THREE.Light; base: number; colour: THREE.Color }> = [];
+  root.traverse((object) => {
+    const light = object as THREE.Light;
+    if (light.isLight && light !== fillLight) roomLights.push({ light, base: light.intensity, colour: light.color.clone() });
+  });
+  const hemi = roomLights.find((entry) => (entry.light as THREE.HemisphereLight).isHemisphereLight);
+  const fog = new THREE.Fog(look.fog, 12, 26);
+  const fogBase = fog.color.clone();
+  const MOODS: Record<TableMood, { light: number; table: number; tint: number; lantern: string }> = {
+    warm: { light: 1, table: 1, tint: 0, lantern: look.lamp },
+    dungeon: { light: 0.4, table: 0.75, tint: 0.5, lantern: "#7f9cff" },
+    storm: { light: 0.3, table: 0.6, tint: 0.6, lantern: "#c7d6ff" },
+  };
+  const cold = new THREE.Color("#6f86ff");
+  const moodNow = { light: 1, table: 1, tint: 0 };
+  let moodWant = MOODS.warm;
+  let stopRain: (() => void) | null = null;
+  let nextBolt = 0;
+  let bolt = -10;
+  kit.onMood((mood, instant) => {
+    moodWant = MOODS[mood];
+    if (instant) Object.assign(moodNow, { light: moodWant.light, table: moodWant.table, tint: moodWant.tint });
+    lanternFlame.material.color.set(moodWant.lantern);
+    lanternGlow.material.color.set(moodWant.lantern);
+    if (mood === "storm" && !stopRain) { stopRain = startRain(); nextBolt = 0; }
+    if (mood !== "storm" && stopRain) { stopRain(); stopRain = null; }
+  });
+  const applyMood = (t: number, dt: number) => {
+    const k = Math.min(1, dt * 1.2);
+    moodNow.light += (moodWant.light - moodNow.light) * k;
+    moodNow.table += (moodWant.table - moodNow.table) * k;
+    moodNow.tint += (moodWant.tint - moodNow.tint) * k;
+    // Storm: lightning now and then, a double flash, and the thunder after it.
+    let flash = 0;
+    if (stopRain) {
+      if (!nextBolt) nextBolt = t + 3 + Math.random() * 6;
+      if (t > nextBolt) { bolt = t; nextBolt = t + 7 + Math.random() * 12; const far = Math.random(); setTimeout(() => playThunder(far), 300 + far * 2200); }
+      const since = t - bolt;
+      flash = since < 0.09 ? 1 : since > 0.16 && since < 0.24 ? 0.7 : 0;
+    }
+    for (const entry of roomLights) {
+      const scale = entry.light === tableLight ? moodNow.table : moodNow.light;
+      entry.light.intensity = entry.base * scale;
+      entry.light.color.copy(entry.colour).lerp(cold, moodNow.tint);
+    }
+    if (hemi) {
+      hemi.light.intensity = hemi.base * moodNow.light + flash * 6;
+      if (flash) hemi.light.color.set("#e6eeff");
+    }
+    fog.color.copy(fogBase).lerp(cold, moodNow.tint * 0.25).multiplyScalar(0.5 + moodNow.light * 0.5);
+  };
+
+  // What never moves, baked into a few meshes (the room drew some 640 objects one at a time).
+  kit.settle();
+  mergeStatics(root, [ceiling]);
+
+  let lastT = 0;
+  const update = (t: number, dt = t - lastT) => {
+    lastT = t;
+    kit.update(t, dt);
+    applyMood(t, Math.max(0, Math.min(0.1, dt)));
     for (const { mesh, phase } of flickers) {
       mesh.scale.y = 0.85 + Math.sin(t * 9 + phase) * 0.14 + Math.sin(t * 23 + phase * 2) * 0.07;
     }
     for (const b of bulbs) b.scale.setScalar(0.75 + Math.sin(t * 1.4 + (b.userData.phase as number)) * 0.25);
-    fillLight.intensity = 2.4 * (1 + Math.sin(t * 7.3) * 0.05 + Math.sin(t * 13.1) * 0.03);
+    fillLight.intensity = 2.4 * kit.level("candles") * (0.4 + 0.6 * moodNow.light) * (1 + Math.sin(t * 7.3) * 0.05 + Math.sin(t * 13.1) * 0.03);
   };
 
   /**
@@ -884,9 +985,14 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
     setTableMap,
     mapColourAt,
     background: new THREE.Color(look.background),
-    fog: new THREE.Fog(look.fog, 12, 26),
+    fog,
     exposure: look.exposure,
     update,
-    dispose: () => { stopProps(); glow.dispose(); uploaded?.dispose(); },
+    things: kit.api({
+      label: (id) => id === "candles" ? (kit.wanted("candles") ? "Snuff the candles" : "Light the candles")
+        : id === "mood" ? `Mood: ${kit.currentMood} (game master: click for ${({ warm: "dungeon", dungeon: "storm", storm: "warm" } as const)[kit.currentMood]})` : null,
+      switched: (id, on) => { if (on) playIgnite(); else playDouse(); },
+    }),
+    dispose: () => { stopProps(); glow.dispose(); uploaded?.dispose(); stopRain?.(); kit.dispose(); },
   };
 }

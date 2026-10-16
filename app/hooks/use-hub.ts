@@ -142,6 +142,8 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
   });
 
   const socketRef = useRef<WebSocket | null>(null);
+  const roomSocketRef = useRef<WebSocket | null>(null);
+  const activeRoomRef = useRef<string | null>(null);
   const clockOffsetRef = useRef(0);
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -153,14 +155,66 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
   const graceRef = useRef<{ voice: Record<string, VoiceParticipant[]>; until: number } | null>(null);
   const shownVoiceRef = useRef<Record<string, VoiceParticipant[]>>({});
 
+  const connectRoomShard = useCallback((channelId: string | null) => {
+    if (typeof window === "undefined") return;
+    if (activeRoomRef.current === channelId && roomSocketRef.current && roomSocketRef.current.readyState <= WebSocket.OPEN) {
+      return;
+    }
+    if (roomSocketRef.current) {
+      try {
+        roomSocketRef.current.onclose = null;
+        roomSocketRef.current.onerror = null;
+        roomSocketRef.current.onmessage = null;
+        roomSocketRef.current.close();
+      } catch {}
+      roomSocketRef.current = null;
+    }
+    activeRoomRef.current = channelId;
+    if (!channelId) return;
+    try {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const resume = resumeRef.current;
+      const params = new URLSearchParams({ room: channelId });
+      if (resume) {
+        params.set("resume", resume.connectionId);
+        params.set("ticket", resume.ticket);
+      }
+      const rs = new WebSocket(`${protocol}//${window.location.host}${basePath}/api/realtime?${params.toString()}`);
+      rs.onmessage = (ev) => {
+        socketRef.current?.onmessage?.(ev);
+      };
+      rs.onerror = () => {
+        try { rs.close(); } catch {}
+      };
+      rs.onclose = () => {
+        if (roomSocketRef.current === rs) roomSocketRef.current = null;
+      };
+      roomSocketRef.current = rs;
+    } catch {
+      roomSocketRef.current = null;
+    }
+  }, []);
+
   const send = useCallback((event: ClientEvent) => {
+    if (event.t === "voice-join") {
+      connectRoomShard(event.channelId);
+    } else if (event.t === "voice-leave") {
+      connectRoomShard(null);
+    }
+    if (
+      (event.t === "lounge" || event.t === "synth" || event.t === "caption") &&
+      roomSocketRef.current?.readyState === WebSocket.OPEN
+    ) {
+      roomSocketRef.current.send(JSON.stringify(event));
+      return true;
+    }
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(event));
       return true;
     }
     return false;
-  }, []);
+  }, [connectRoomShard]);
 
   /** The hub's idea of "now", in this browser's terms. */
   const serverNow = useCallback(() => Date.now() + clockOffsetRef.current, []);
@@ -545,6 +599,8 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       window.clearTimeout(probe);
       window.clearTimeout(graceTimer);
       window.clearInterval(heartbeat);
+      roomSocketRef.current?.close();
+      roomSocketRef.current = null;
       socketRef.current?.close();
       socketRef.current = null;
     };

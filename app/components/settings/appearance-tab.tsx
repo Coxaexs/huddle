@@ -1,11 +1,15 @@
 "use client";
 
-import { Sparkles, Fish, Plus, Download, Share2, Trash2, Edit3, Globe, Copy } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Fish, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Layers } from "lucide-react";
+import { FEATURE_MODULES, FEATURE_MODULE_KEYS, normalizeDisabledModules, type FeatureModuleKey } from "@/lib/features";
+import { apiFetch } from "../../lib/client";
 import { PhonePushSettings } from "../phone-push-settings";
+import { DigestSettings } from "../digest-settings";
 import { disableWebPush, enableWebPush } from "../../lib/web-push";
 import { BUILTIN_THEMES, type Theme, getStoredThemes, saveCustomTheme } from "@/lib/themes";
 import { setRetroSoundThemeEnabled, playRetroSound } from "../../lib/msn-sounds";
-import { setThemeFxEnabled } from "../../lib/theme-fx";
+import { isParticlesEnabled, setParticlesEnabled, setThemeFxEnabled } from "../../lib/theme-fx";
 import { Tab, PrideTheme, Density, Backdrop } from "./types";
 
 export function AppearanceTab({
@@ -111,6 +115,35 @@ export function AppearanceTab({
   retroSounds: boolean;
   setRetroSounds: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
+  const [ambientParticles, setAmbientParticles] = useState<boolean>(() => isParticlesEnabled());
+  const [disabledModules, setDisabledModules] = useState<FeatureModuleKey[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("huddle-disabled-modules");
+      return raw ? normalizeDisabledModules(JSON.parse(raw)) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleUserModule = (key: FeatureModuleKey, enabled: boolean) => {
+    const next = enabled
+      ? disabledModules.filter((k) => k !== key)
+      : Array.from(new Set([...disabledModules, key]));
+    setDisabledModules(next);
+    try {
+      window.localStorage.setItem("huddle-disabled-modules", JSON.stringify(next));
+      if (typeof document !== "undefined") {
+        document.documentElement.dataset.cosmetics = next.includes("cosmetics") ? "off" : "on";
+      }
+      window.dispatchEvent(new CustomEvent("huddle-modules-change", { detail: next }));
+    } catch {}
+    void apiFetch("/api/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ disabledModules: next }),
+    }).catch(() => undefined);
+  };
+
   return (
     <>
       {tab === "appearance" && (
@@ -523,6 +556,22 @@ export function AppearanceTab({
 
               <label className="appearance-switch">
                 <span>
+                  <strong className="inline-flex items-center gap-1.5">Profile &amp; background particles <Sparkles size={14} /></strong>
+                  <small>Animated particle scenes on profile cards and Matrix digital rain</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={ambientParticles}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setAmbientParticles(next);
+                    setParticlesEnabled(next);
+                  }}
+                />
+              </label>
+
+              <label className="appearance-switch">
+                <span>
                   <strong>Desktop notifications</strong>
                   <small>Mentions, DMs and calls — even with the tab closed</small>
                 </span>
@@ -565,6 +614,33 @@ export function AppearanceTab({
               </label>
 
               <PhonePushSettings />
+              <DigestSettings />
+
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <span className="settings-label inline-flex items-center gap-1.5">
+                  <Layers size={14} /> Feature modules (Simple by default, deep when you want it)
+                </span>
+                <p className="text-xs opacity-70 mb-2">
+                  Hide optional features you don&apos;t use to keep your chat interface and slash commands focused.
+                </p>
+                {FEATURE_MODULE_KEYS.map((modKey) => {
+                  const mod = FEATURE_MODULES[modKey];
+                  const isOn = !disabledModules.includes(modKey);
+                  return (
+                    <label key={modKey} className="appearance-switch">
+                      <span>
+                        <strong>{mod.label}</strong>
+                        <small>{mod.description}</small>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={isOn}
+                        onChange={(e) => toggleUserModule(modKey, e.target.checked)}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
             </>
           )}
     </>

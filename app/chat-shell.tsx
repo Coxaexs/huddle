@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
 import { ConnectionBanner } from "./components/connection-banner";
+import { RetroChrome } from "./components/retro-chrome";
 import { convertMsnEmoticons } from "@/lib/msn-emoticons";
 import {
   canShowVoiceBubble,
@@ -130,6 +131,8 @@ import { ForwardMessageDialog, type ForwardMessageTarget } from "./components/fo
 import { updateAppBadge } from "./lib/chat/app-badge";
 import { installThemeFx } from "./lib/theme-fx";
 import { WelcomeGate } from "./components/server-welcome";
+import { OnboardingDirectoryDialog } from "./components/onboarding-directory-dialog";
+import { useChannelServerActions } from "./hooks/use-channel-server-actions";
 import { type Theme, getActiveThemeId, findThemeById, applyThemeToDocument, applyClientUiCss, exportThemeCode } from "@/lib/themes";
 import { DRAFTS_KEY, mergeMessages, fitComposer } from "./lib/chat/shell-helpers";
 import { GroupDmContextMenu } from "./components/chat/group-dm-context-menu";
@@ -2290,6 +2293,12 @@ export function ChatShell() {
             incoming.text.slice(0, 140),
             `msg-${channelId}`,
           );
+        } else if (level === "all") {
+          showNotification(
+            incoming.author,
+            incoming.text.slice(0, 140),
+            `msg-${channelId}`,
+          );
         }
         return;
       }
@@ -3146,10 +3155,13 @@ export function ChatShell() {
       // Storage blocked: it won't open by itself, but Settings → Tutorial still works.
     }
   }, [user?.id]);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
   const closeTutorial = useCallback(() => {
     setTutorial(null);
     try {
+      const wasOnboarding = Boolean(window.localStorage.getItem(TUTORIAL_PENDING_KEY));
       window.localStorage.removeItem(TUTORIAL_PENDING_KEY);
+      if (wasOnboarding) setDirectoryOpen(true);
     } catch {
       // Nothing to clear.
     }
@@ -4474,6 +4486,30 @@ export function ChatShell() {
       return;
     }
 
+    // /purge <count>
+    if (name === "purge") {
+      pendingCommandRef.current = null;
+      if (!activeChannelId || inDmHome) {
+        setNotice("You can only purge messages in a server channel.");
+        return;
+      }
+      const count = parseInt(value.trim(), 10);
+      if (!Number.isFinite(count) || count < 1 || count > 100) {
+        setNotice("Try: /purge 25 (deletes between 1 and 100 recent messages)");
+        return;
+      }
+      try {
+        const res = await apiFetch<{ deleted: number }>("/api/messages/purge", {
+          method: "POST",
+          body: JSON.stringify({ channelId: activeChannelId, count }),
+        });
+        setNotice(`Purged ${res.deleted} message${res.deleted === 1 ? "" : "s"}.`);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Could not purge messages.");
+      }
+      return;
+    }
+
     // /poll Question? | option | option
     if (name === "poll") {
       const [question, ...options] = value.split("|").map((part) => part.trim());
@@ -5356,13 +5392,18 @@ export function ChatShell() {
     await sendText("", [upload.key]);
   }
 
+  const activeDisabledModules = useMemo(
+    () => [...(activeServer?.disabledModules || []), ...(user?.disabledModules || [])],
+    [activeServer?.disabledModules, user?.disabledModules],
+  );
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(
     () =>
-      (slashOpen ? matchCommands(draft.split(/\s+/)[0], botCommands) : []).filter(
-        (command) => features.recordSessions || command.name !== "record",
-      ),
-    [slashOpen, draft, features.recordSessions, botCommands],
+      (slashOpen
+        ? matchCommands(draft.split(/\s+/)[0], botCommands, activeDisabledModules)
+        : []
+      ).filter((command) => features.recordSessions || command.name !== "record"),
+    [slashOpen, draft, features.recordSessions, botCommands, activeDisabledModules],
   );
   const slashActive = slashOpen && !draft.includes(" ") && slashMatches.length > 0;
 
@@ -5726,375 +5767,64 @@ export function ChatShell() {
     acceptAttachment(event.dataTransfer.files);
   }
 
-  /** Leaves a server: drops membership and falls back to another server. */
-  async function leaveServer(serverId: string) {
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        "/api/servers/membership",
-        {
-          method: "POST",
-          body: JSON.stringify({ action: "leave", serverId }),
-        },
-      );
-      setServers(data.servers);
-      setServerSettingsOpen(false);
-      setActiveServerId(data.servers[0]?.id || DM_HOME);
-      setNotice("You left the server.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not leave.");
-    }
-  }
-
-  /** Redeems a server invite code or link directly and jumps into the joined server. */
-  async function joinServerDirect(rawInput?: string) {
-    if (!rawInput?.trim()) return;
-    let code = rawInput.trim();
-    if (code.includes("?") || code.includes("/")) {
-      try {
-        const url = new URL(code.startsWith("http") ? code : `https://${code}`);
-        code =
-          url.searchParams.get("code") ||
-          url.searchParams.get("servercode") ||
-          url.searchParams.get("invite") ||
-          url.search.slice(1) ||
-          code;
-      } catch {
-        const qIdx = code.indexOf("?");
-        if (qIdx !== -1) code = code.slice(qIdx + 1);
-      }
-    }
-    code = code
-      .replace(/^code=/i, "")
-      .replace(/^servercode=/i, "")
-      .replace(/^invite=/i, "")
-      .trim()
-      .toUpperCase();
-    if (!code) return;
-    try {
-      const data = await apiFetch<{
-        serverId: string;
-        servers: PublicServer[];
-        alreadyMember?: boolean;
-      }>("/api/servers/membership", {
-        method: "POST",
-        body: JSON.stringify({ action: "join", code }),
-      });
-      setServers(data.servers);
-      setActiveServerId(data.serverId);
-      setResolvedInvites((prev) => {
-        const existing = prev[code];
-        if (!existing) return prev;
-        return {
-          ...prev,
-          [code]: { ...existing, isMember: true },
-        };
-      });
-      setNotice(
-        data.alreadyMember
-          ? "Switched to server."
-          : "Joined the server.",
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not join.");
-    }
-  }
-
-  /** Redeems a server invite code and jumps into the joined server. */
-  async function joinServerByCode() {
-    showCustomPrompt({
-      title: "Join a Server",
-      message: "Paste the invite code or invite link:",
-      placeholder: "e.g. HX3F-9K2Q or deeppixel.online/hangout?HX3F-9K2Q",
-      confirmText: "Join Server",
-      onConfirm: async (rawInput) => {
-        await joinServerDirect(rawInput);
-      },
-    });
-  }
-
-  function createServer() {
-    // "+" now offers both making a server and joining one by invite.
-    showCustomConfirm({
-      title: "Add a Server",
-      message: "Create your own server, or join one with an invite code.",
-      confirmText: "Create New",
-      cancelText: "Join with Code",
-      onConfirm: () => {
-        showCustomPrompt({
-          title: "Create Server",
-          message: "Enter a name for your new server:",
-          placeholder: "e.g. My Cool Server",
-          confirmText: "Create Server",
-          maxLength: 50,
-          onConfirm: async (name) => {
-            if (!name?.trim()) return;
-            try {
-              const data = await apiFetch<{
-                server: PublicServer;
-                servers: PublicServer[];
-              }>("/api/servers", {
-                method: "POST",
-                body: JSON.stringify({ name: name.trim() }),
-              });
-              setServers(data.servers);
-              setActiveServerId(data.server.id);
-              setNotice(
-                `${data.server.name} is live — invite people from its settings.`,
-              );
-            } catch (error) {
-              setNotice(
-                error instanceof Error ? error.message : "Could not create it.",
-              );
-            }
-          },
-        });
-      },
-      onCancel: () => void joinServerByCode(),
-    });
-  }
-
-  async function createChannel(
-    kind: ChannelKind,
-    categoryId: string | null = null,
-  ) {
-    if (!activeServerId || activeServerId === DM_HOME) return;
-    const copy = CHANNEL_KIND_COPY[kind] ?? CHANNEL_KIND_COPY.text;
-    showCustomPrompt({
-      title: copy.title,
-      message: copy.message,
-      placeholder: copy.placeholder,
-      confirmText: "Create Channel",
-      // Voice-room and stage names are free-form; text-like ones become
-      // `#mentions`, so they get the shorter cap the server also enforces.
-      maxLength: channelNameRules(kind).maxLength,
-      onConfirm: async (name) => {
-        if (!name?.trim()) return;
-        try {
-          const data = await apiFetch<{ channelId: string; servers: PublicServer[] }>(
-            "/api/channels",
-            {
-              method: "POST",
-              body: JSON.stringify({ serverId: activeServerId, name: name.trim(), kind, categoryId }),
-            },
-          );
-          setServers(data.servers);
-          // Only text-like kinds become the open channel. Dropping someone into
-          // an empty voice room they just created is a dead end.
-          if (channelKindInfo(kind).text) setActiveChannelId(data.channelId);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not create it.");
-        }
-      },
-    });
-  }
-
-  /** Turns a channel into another kind of the same family, keeping its messages. */
-  async function changeChannelKind(channel: { id: string; name: string }, kind: ChannelKind) {
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(`/api/channels/${channel.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ kind }),
-      });
-      setServers(data.servers);
-      setNotice(`#${channel.name} is now ${withArticle(channelKindLabel(kind))}.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not change the channel type.");
-    }
-  }
-
-  /**
-   * The kind picker's menu, shared by the sidebar header and each category so
-   * both offer the same five kinds instead of only text and voice.
-   */
-  function renderKindMenu(categoryId: string | null) {
-    return (
-      <div className="channel-kind-menu" role="menu" aria-label="Channel type">
-        {CREATABLE_CHANNEL_KINDS.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setKindMenu(null);
-              void createChannel(kind, categoryId);
-            }}
-          >
-            <span className="flex items-center gap-2">
-              {channelKindIcon(kind)} {channelKindLabel(kind)}
-            </span>
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  async function renameChannel(channel: PublicChannel) {
-    showCustomPrompt({
-      title: `Rename Channel`,
-      message: `Enter a new name for ${channel.name}:`,
-      defaultValue: channel.name,
-      confirmText: "Save Name",
-      maxLength: 25,
-      onConfirm: async (name) => {
-        if (!name?.trim()) return;
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
-          );
-          setServers(data.servers);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not rename it.");
-        }
-      },
-    });
-  }
-
-  async function editChannelTopic(channel: PublicChannel) {
-    showCustomPrompt({
-      title: `Edit Channel Topic`,
-      message: `Set topic description for #${channel.name}:`,
-      defaultValue: channel.topic || "",
-      placeholder: "e.g. Plans, chaos, and meme sharing",
-      confirmText: "Save Topic",
-      onConfirm: async (topic) => {
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "PATCH", body: JSON.stringify({ topic: topic?.trim() || "" }) },
-          );
-          setServers(data.servers);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not save topic.");
-        }
-      },
-    });
-  }
-
-  async function editChannelSlowmode(channel: PublicChannel) {
-    showCustomPrompt({
-      title: `Set Channel Slowmode Cooldown`,
-      message: `Enter slowmode cooldown in seconds (0 to disable, e.g. 5, 10, 30):`,
-      defaultValue: String(channel.slowmode || 0),
-      placeholder: "0",
-      confirmText: "Set Slowmode",
-      onConfirm: async (val) => {
-        const sec = parseInt(val || "0", 10) || 0;
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "PATCH", body: JSON.stringify({ slowmode: sec }) },
-          );
-          setServers(data.servers);
-          setNotice(sec > 0 ? `Slowmode set to ${sec}s` : "Slowmode disabled");
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not set slowmode.");
-        }
-      },
-    });
-  }
-
-  async function editChannelBitrate(channel: PublicChannel) {
-    const current = Math.round(clampVoiceBitrate(channel.bitrate) / 1000);
-    showCustomPrompt({
-      title: `Voice Bitrate for ${channel.name}`,
-      message:
-        `The most each speaker sends, in kbps (${VOICE_BITRATE_MIN / 1000}–${VOICE_BITRATE_MAX / 1000}). ` +
-        `64 is clear speech; go higher for music or singing. Bigger rooms automatically send ` +
-        `less per person, so nobody's upload gets swamped.`,
-      defaultValue: String(current),
-      placeholder: String(VOICE_BITRATE_DEFAULT / 1000),
-      confirmText: "Set Bitrate",
-      onConfirm: async (value) => {
-        const kbps = parseInt(value || "", 10);
-        if (!Number.isFinite(kbps)) return;
-        const bitrate = clampVoiceBitrate(kbps * 1000);
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "PATCH", body: JSON.stringify({ bitrate }) },
-          );
-          setServers(data.servers);
-          setNotice(`Voice bitrate set to ${bitrate / 1000} kbps`);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not set the bitrate.");
-        }
-      },
-    });
-  }
-
-  async function toggleChannelSoundboard(channel: PublicChannel) {
-    const enable = channel.soundboard === false;
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(`/api/channels/${channel.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ soundboard: enable }),
-      });
-      setServers(data.servers);
-      setNotice(enable ? `Soundboard on in ${channel.name}.` : `Soundboard off in ${channel.name}.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not change the soundboard.");
-    }
-  }
-
-  async function editChannelRegion(channel: PublicChannel) {
-    const current = channel.rtcRegion || "auto";
-    showCustomPrompt({
-      title: `Region Override for #${channel.name}`,
-      message:
-        `Select the primary voice server region for this channel.\n` +
-        `• "auto" - Netherlands normally, automatically routes to Germany when 40+ people join\n` +
-        `• "nl" - Netherlands (Home Server)\n` +
-        `• "de" - Germany (Oracle Cloud)`,
-      defaultValue: current,
-      placeholder: "auto, nl, or de",
-      confirmText: "Set Region",
-      onConfirm: async (value) => {
-        const val = (value || "").trim().toLowerCase();
-        if (val !== "auto" && val !== "nl" && val !== "de") {
-          setNotice("Invalid region. Choose 'auto', 'nl', or 'de'.");
-          return;
-        }
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "PATCH", body: JSON.stringify({ rtcRegion: val }) },
-          );
-          setServers(data.servers);
-          const label = val === "de" ? "Germany" : val === "nl" ? "Netherlands" : "Automatic";
-          setNotice(`Voice region set to ${label} for #${channel.name}.`);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not set region.");
-        }
-      },
-    });
-  }
-
-  async function deleteChannel(channel: PublicChannel) {
-    showCustomConfirm({
-      title: `Delete '${channel.name}'?`,
-      message: "Are you sure? All messages in this channel will be permanently removed.",
-      isDanger: true,
-      confirmText: "Delete Channel",
-      onConfirm: async () => {
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/channels/${channel.id}`,
-            { method: "DELETE" },
-          );
-          setServers(data.servers);
-          if (voice.channelId === channel.id) voice.leave();
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not delete it.");
-        }
-      },
-    });
-  }
-
-  async function editServer() {
-    if (!activeServer) return;
-    setServerSettingsOpen(true);
-  }
+  const {
+    leaveServer,
+    joinServerDirect,
+    joinServerByCode,
+    createServer,
+    createChannel,
+    changeChannelKind,
+    renderKindMenu,
+    renameChannel,
+    editChannelTopic,
+    editChannelSlowmode,
+    editChannelBitrate,
+    toggleChannelSoundboard,
+    editChannelRegion,
+    deleteChannel,
+    editServer,
+    toggleCategory,
+    addCategory,
+    renameCategory,
+    deleteCategory,
+    dropChannel,
+    channelDragProps,
+    categoryDropProps,
+    dropServer,
+    saveServerFolders,
+    toggleFolderOpen,
+    folderIdOf,
+    serverDragProps,
+    folderDropProps,
+  } = useChannelServerActions({
+    activeServer,
+    activeServerId,
+    servers,
+    setServers,
+    setActiveServerId,
+    setActiveChannelId,
+    setServerSettingsOpen,
+    setResolvedInvites,
+    setNotice,
+    setKindMenu,
+    canManageChannels,
+    dragChannelId,
+    setDragChannelId,
+    dragServerId,
+    setDragServerId,
+    serverDropHint,
+    setServerDropHint,
+    serverFolders,
+    setServerFolders,
+    loadServerFolders,
+    openFolders,
+    setOpenFolders,
+    setCollapsedCats,
+    voiceChannelId: voice.channelId,
+    leaveVoice: voice.leave,
+    showCustomPrompt,
+    showCustomConfirm,
+  });
 
   async function signOut() {
     // Before logging out, while the request is still authenticated: this
@@ -6249,356 +5979,6 @@ export function ChatShell() {
       const startMuted = shouldStartMuted(channel.kind, hasPermission(myPermissions, Permission.SPEAK));
       void voice.join(channel.id, { startMuted });
     }
-  }
-
-  function toggleCategory(id: string) {
-    setCollapsedCats((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      window.localStorage.setItem(
-        "huddle-collapsed-cats",
-        JSON.stringify([...next]),
-      );
-      return next;
-    });
-  }
-
-  async function addCategory() {
-    if (!activeServerId || activeServerId === DM_HOME) return;
-    showCustomPrompt({
-      title: "Add Category",
-      message: "Enter name for the new category:",
-      placeholder: "e.g. Text Channels",
-      confirmText: "Create Category",
-      onConfirm: async (name) => {
-        if (!name?.trim()) return;
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>("/api/categories", {
-            method: "POST",
-            body: JSON.stringify({ serverId: activeServerId, name: name.trim() }),
-          });
-          setServers(data.servers);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not create it.");
-        }
-      },
-    });
-  }
-
-  async function renameCategory(categoryId: string, current: string) {
-    showCustomPrompt({
-      title: "Rename Category",
-      message: `Enter new name for category "${current}":`,
-      defaultValue: current,
-      confirmText: "Save Name",
-      onConfirm: async (name) => {
-        if (!name?.trim() || name.trim() === current) return;
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/categories/${categoryId}`,
-            { method: "PATCH", body: JSON.stringify({ name: name.trim() }) },
-          );
-          setServers(data.servers);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not rename it.");
-        }
-      },
-    });
-  }
-
-  async function deleteCategory(categoryId: string, name: string) {
-    showCustomConfirm({
-      title: `Delete Category '${name}'?`,
-      message: `Are you sure you want to delete the "${name}" category? Channels inside it will remain uncategorized.`,
-      isDanger: true,
-      confirmText: "Delete Category",
-      onConfirm: async () => {
-        try {
-          const data = await apiFetch<{ servers: PublicServer[] }>(
-            `/api/categories/${categoryId}`,
-            { method: "DELETE" },
-          );
-          setServers(data.servers);
-        } catch (error) {
-          setNotice(error instanceof Error ? error.message : "Could not delete it.");
-        }
-      },
-    });
-  }
-
-  /**
-   * Persist a drag: place the dragged channel into `targetCategoryId`, just
-   * before `beforeChannelId` (or at the end when null), then renumber every
-   * channel's position within its category and send the whole layout.
-   */
-  async function dropChannel(
-    draggedId: string,
-    targetCategoryId: string | null,
-    beforeChannelId: string | null,
-  ) {
-    if (!activeServerId || !canManageChannels) return;
-    const all = (activeServer?.channels.filter((c) => c.kind !== "dm") || []).map(
-      (c) => ({ ...c }),
-    );
-    const dragged = all.find((c) => c.id === draggedId);
-    if (!dragged || draggedId === beforeChannelId) return;
-
-    // Rebuild each category's ordered list from current positions.
-    const lists = new Map<string, PublicChannel[]>();
-    const keyOf = (id: string | null) => id ?? "__none__";
-    for (const channel of all) {
-      if (channel.id === draggedId) continue;
-      const key = keyOf(channel.categoryId);
-      const list = lists.get(key) || [];
-      list.push(channel);
-      lists.set(key, list);
-    }
-    for (const list of lists.values()) list.sort((a, b) => a.position - b.position);
-
-    dragged.categoryId = targetCategoryId;
-    const targetKey = keyOf(targetCategoryId);
-    const targetList = lists.get(targetKey) || [];
-    const index = beforeChannelId
-      ? targetList.findIndex((c) => c.id === beforeChannelId)
-      : -1;
-    if (index < 0) targetList.push(dragged);
-    else targetList.splice(index, 0, dragged);
-    lists.set(targetKey, targetList);
-
-    const payload: Array<{ id: string; categoryId: string | null; position: number }> =
-      [];
-    for (const [key, list] of lists) {
-      list.forEach((channel, position) => {
-        payload.push({
-          id: channel.id,
-          categoryId: key === "__none__" ? null : key,
-          position,
-        });
-      });
-    }
-
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        "/api/channels/reorder",
-        {
-          method: "POST",
-          body: JSON.stringify({ serverId: activeServerId, channels: payload }),
-        },
-      );
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not reorder.");
-    } finally {
-      setDragChannelId(null);
-    }
-  }
-
-  /** Drag handles for a channel row: drop places the dragged one before it. */
-  function channelDragProps(channel: PublicChannel) {
-    if (!canManageChannels) return {};
-    return {
-      draggable: true,
-      onDragStart: (event: DragEvent<HTMLElement>) => {
-        setDragChannelId(channel.id);
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("application/x-huddle-channel", channel.id);
-      },
-      onDragEnd: () => setDragChannelId(null),
-      onDragOver: (event: DragEvent<HTMLElement>) => {
-        if (dragChannelId && dragChannelId !== channel.id) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-        }
-      },
-      onDrop: (event: DragEvent<HTMLElement>) => {
-        if (!dragChannelId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        void dropChannel(dragChannelId, channel.categoryId, channel.id);
-      },
-    };
-  }
-
-  /** Drop onto a category (header or body) appends the channel to its end. */
-  function categoryDropProps(categoryId: string | null) {
-    if (!canManageChannels) return {};
-    return {
-      onDragOver: (event: DragEvent<HTMLElement>) => {
-        if (dragChannelId) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-        }
-      },
-      onDrop: (event: DragEvent<HTMLElement>) => {
-        if (!dragChannelId) return;
-        event.preventDefault();
-        void dropChannel(dragChannelId, categoryId, null);
-      },
-    };
-  }
-
-  /**
-   * Persist a server-rail drag: place the dragged server just before
-   * `beforeServerId` (or at the end when null), renumber every server the user
-   * belongs to, and send the whole layout.
-   */
-  async function dropServer(
-    draggedId: string,
-    beforeServerId: string | null,
-  ) {
-    if (!draggedId || draggedId === beforeServerId) return;
-    const all = servers.map((s) => ({ ...s }));
-    const dragged = all.find((s) => s.id === draggedId);
-    if (!dragged) return;
-
-    const rest = all.filter((s) => s.id !== draggedId);
-    const index = beforeServerId
-      ? rest.findIndex((s) => s.id === beforeServerId)
-      : -1;
-    if (index < 0) rest.push(dragged);
-    else rest.splice(index, 0, dragged);
-
-    const payload = rest.map((server, position) => ({
-      id: server.id,
-      position,
-    }));
-
-    try {
-      const data = await apiFetch<{ servers: PublicServer[] }>(
-        "/api/servers/reorder",
-        {
-          method: "POST",
-          body: JSON.stringify({ servers: payload }),
-        },
-      );
-      setServers(data.servers);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not reorder.");
-    } finally {
-      setDragServerId(null);
-    }
-  }
-
-  /** Saves the folder layout: shown at once, then stored on the account. */
-  function saveServerFolders(next: ServerFolder[]) {
-    setServerFolders(next);
-    void apiFetch<{ folders: ServerFolder[] }>("/api/servers/folders", {
-      method: "PUT",
-      body: JSON.stringify({ folders: next }),
-    }).catch((error) => {
-      setNotice(error instanceof Error ? error.message : "Could not save folders.");
-      void loadServerFolders().catch(() => undefined);
-    });
-  }
-
-  function toggleFolderOpen(folderId: string) {
-    setOpenFolders((current) => {
-      const next = new Set(current);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      try {
-        localStorage.setItem("huddle:open-folders", JSON.stringify([...next]));
-      } catch {
-        // Private mode: folders just start closed next time.
-      }
-      return next;
-    });
-  }
-
-  function folderIdOf(serverId: string): string | null {
-    return serverFolders.find((folder) => folder.serverIds.includes(serverId))?.id || null;
-  }
-
-  /**
-   * Drag props for a server on the rail. Dropping on the middle of another
-   * server groups the two into a folder (like Discord); dropping near its edge
-   * places the dragged one before it, joining or leaving folders to match.
-   */
-  function serverDragProps(server: PublicServer) {
-    return {
-      draggable: true,
-      onDragStart: (event: DragEvent<HTMLElement>) => {
-        setDragServerId(server.id);
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("application/x-huddle-server", server.id);
-      },
-      onDragEnd: () => {
-        setDragServerId(null);
-        setServerDropHint(null);
-      },
-      onDragOver: (event: DragEvent<HTMLElement>) => {
-        if (dragServerId && dragServerId !== server.id) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          const box = event.currentTarget.getBoundingClientRect();
-          const y = (event.clientY - box.top) / box.height;
-          const mode = y > 0.25 && y < 0.75 ? "merge" : "before";
-          if (serverDropHint?.id !== server.id || serverDropHint.mode !== mode) {
-            setServerDropHint({ id: server.id, mode });
-          }
-        }
-      },
-      onDragLeave: (event: DragEvent<HTMLElement>) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setServerDropHint((hint) => (hint?.id === server.id ? null : hint));
-        }
-      },
-      onDrop: (event: DragEvent<HTMLElement>) => {
-        if (!dragServerId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const merge = serverDropHint?.id === server.id && serverDropHint.mode === "merge";
-        setServerDropHint(null);
-        const targetFolder = folderIdOf(server.id);
-        if (merge) {
-          saveServerFolders(
-            targetFolder
-              ? moveToFolder(serverFolders, dragServerId, targetFolder)
-              : createFolder(serverFolders, server.id, dragServerId, crypto.randomUUID()),
-          );
-          if (targetFolder && !openFolders.has(targetFolder)) toggleFolderOpen(targetFolder);
-          setDragServerId(null);
-          return;
-        }
-        if (targetFolder !== folderIdOf(dragServerId)) {
-          saveServerFolders(
-            targetFolder
-              ? moveToFolder(serverFolders, dragServerId, targetFolder)
-              : removeFromFolders(serverFolders, dragServerId),
-          );
-        }
-        void dropServer(dragServerId, server.id);
-      },
-    };
-  }
-
-  /** Drop props for a folder's icon: dropping a server there files it inside. */
-  function folderDropProps(folder: ServerFolder) {
-    return {
-      onDragOver: (event: DragEvent<HTMLElement>) => {
-        if (dragServerId && !folder.serverIds.includes(dragServerId)) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          if (serverDropHint?.id !== folder.id) {
-            setServerDropHint({ id: folder.id, mode: "merge" });
-          }
-        }
-      },
-      onDragLeave: (event: DragEvent<HTMLElement>) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setServerDropHint((hint) => (hint?.id === folder.id ? null : hint));
-        }
-      },
-      onDrop: (event: DragEvent<HTMLElement>) => {
-        if (!dragServerId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        setServerDropHint(null);
-        saveServerFolders(moveToFolder(serverFolders, dragServerId, folder.id));
-        setDragServerId(null);
-      },
-    };
   }
 
   /** One server icon on the rail (loose, or inside an open folder). */
@@ -6976,6 +6356,49 @@ export function ChatShell() {
       } as React.CSSProperties}
     >
       <ConnectionBanner connected={hub.connected} />
+      <RetroChrome
+        serverName={inDmHome ? null : activeServer?.name ?? null}
+        serverIconUrl={inDmHome ? null : activeServer?.iconUrl ?? null}
+        bannerUrl={inDmHome ? null : activeServer?.bannerUrl ?? null}
+        channelName={activeChannel?.name ?? null}
+        channelNumber={Math.max(1, textChannels.findIndex((channel) => channel.id === activeChannelId) + 1)}
+        channelTopic={activeChannel?.topic || null}
+        onlineCount={rawDisplayedMembers.filter((member) => hub.online.has(member.id)).length}
+        memberCount={rawDisplayedMembers.length}
+        userName={user.displayName || user.username}
+        connected={hub.connected}
+        voiceRoom={voiceChannelName}
+        muted={voice.muted}
+        deafened={voice.deafened}
+        pingMs={voice.latency.rttMs || null}
+        player={roomPlayer}
+        membersOpen={membersOpen}
+        onPrevChannel={() => {
+          if (!textChannels.length) return;
+          const at = textChannels.findIndex((channel) => channel.id === activeChannelId);
+          setActiveChannelId(textChannels[(at - 1 + textChannels.length) % textChannels.length].id);
+        }}
+        onNextChannel={() => {
+          if (!textChannels.length) return;
+          const at = textChannels.findIndex((channel) => channel.id === activeChannelId);
+          setActiveChannelId(textChannels[(at + 1) % textChannels.length].id);
+        }}
+        onToggleMute={voice.toggleMute}
+        onToggleDeafen={voice.toggleDeafen}
+        onLeaveVoice={() => {
+          if (stageChannelId === voice.channelId) setStageChannelId(null);
+          voice.leave();
+        }}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSearch={() => setGlobalSearchOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onToggleMembers={() => setMembersOpen((open) => !open)}
+        onOpenSounds={() => setSoundsOpen(true)}
+        onOpenPicture={() => setPictureOpen(true)}
+        onOpenToday={() => setTodayOpen(true)}
+        onSendNudge={() => void sendNudge()}
+        onSignOut={() => void signOut()}
+      />
       <MsnOverlays
         msnTheme={msnTheme}
         soundsOpen={soundsOpen}
@@ -7025,6 +6448,7 @@ export function ChatShell() {
         renderRailServer={renderRailServer}
         renderRailFolder={renderRailFolder}
         createServer={createServer}
+        openDirectory={() => setDirectoryOpen(true)}
         activeChannelId={activeChannelId}
         unread={unread}
         voiceRooms={voiceRooms}
@@ -8190,6 +7614,17 @@ export function ChatShell() {
           onClose={closeTutorial}
         />
       )}
+
+      <OnboardingDirectoryDialog
+        open={directoryOpen}
+        onClose={() => setDirectoryOpen(false)}
+        onServersUpdated={setServers}
+        onSelectServer={(serverId) => {
+          setActiveServerId(serverId);
+          setStageChannelId(null);
+          setMobileNav(false);
+        }}
+      />
 
       <KeyboardShortcutsDialog
         open={shortcutsOpen}

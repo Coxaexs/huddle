@@ -270,14 +270,14 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "tts",
-    args: "[tr|en] <message>",
-    description: "Send a message read aloud to everyone in the channel (asks the language unless you start with tr or en; /tts off to stop hearing them)",
+    args: "<message>",
+    description: "Send a message read aloud to everyone in the channel (/tts off to mute)",
     group: "Huddle",
   },
   {
     name: "say",
-    args: "[tr|en] <text>",
-    description: "Say something (up to 200 characters) in your voice channel with text-to-speech; picks Turkish or English itself, or asks",
+    args: "<text>",
+    description: "Speak text (up to 200 characters) aloud in your voice channel",
     group: "Huddle",
     voice: true,
   },
@@ -299,7 +299,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Toggle markdown tips and code snippet helpers (e.g. ```cpp)",
     group: "Huddle",
   },
-  { name: "help", description: "How commands work here", group: "Huddle" },
+  {
+    name: "purge",
+    args: "<count 1-100> [@username]",
+    description: "Moderators: bulk-delete recent messages in this channel",
+    group: "Huddle",
+  },
+    { name: "help", description: "How commands work here", group: "Huddle" },
 ];
 
 export const MUSIC_COMMANDS = new Set(
@@ -367,23 +373,47 @@ export const COMMAND_ALIASES: Record<string, string> = {
  * @param extra commands registered by connected bots, which are discovered at
  *   runtime rather than shipped in this list.
  */
+const SECONDARY_COMPANION_STUBS = new Set([
+  "inventory",
+  "condition",
+  "levelup",
+  "rest",
+  "deathsave",
+  "gmview",
+  "coinflip",
+]);
+
 export function matchCommands(
   query: string,
   extra: SlashCommand[] = [],
+  disabledModules: string[] = [],
 ): SlashCommand[] {
   // A bot may register a name Hoffle already uses; the built-in wins, so a
   // third-party bot cannot shadow /play or /record. The exception is the D&D
   // stubs that only link out to the companion: a connected D&D bot does
   // those for real, so its version replaces the stub.
+  const disabled = new Set(disabledModules);
   const builtinNames = new Set(SLASH_COMMANDS.map((command) => command.name));
   const extraNames = new Set(extra.map((command) => command.name));
   const replaced = (name: string) => DND_LINK_COMMANDS.has(name) && extraNames.has(name);
   const all = [
     ...SLASH_COMMANDS.filter((command) => !replaced(command.name)),
     ...extra.filter((command) => !builtinNames.has(command.name) || replaced(command.name)),
-  ];
+  ].filter((command) => {
+    if (disabled.has("dnd") && command.group === "D&D") return false;
+    if (disabled.has("music") && (command.group === "Music" || command.group === "Discord music" || command.name === "web" || command.name === "dj")) return false;
+    if (disabled.has("games") && command.name === "game") return false;
+    return true;
+  });
   const term = query.replace(/^\//, "").toLowerCase().trim();
-  if (!term) return all;
+  if (!term) {
+    // Keep the initial `/` list focused by hiding unreplaced companion link stubs & Discord-only bridge commands until typed.
+    return all.filter(
+      (command) =>
+        command.group !== "Discord music" &&
+        !(SECONDARY_COMPANION_STUBS.has(command.name) && !extraNames.has(command.name)),
+    );
+  }
   // Exact name first, then name prefixes, then description matches, so Enter
   // on a fully typed "/character" runs /character, not the first command
   // whose description happens to mention characters.

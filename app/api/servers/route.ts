@@ -43,6 +43,8 @@ export async function POST(request: Request) {
     name?: string;
     icon?: string;
     color?: string;
+    isPublic?: boolean;
+    description?: string;
   };
   const name = body.name?.trim().slice(0, 50);
   if (!name) {
@@ -86,9 +88,11 @@ export async function POST(request: Request) {
     .prepare("SELECT COUNT(*) AS count FROM servers")
     .first<{ count: number }>();
 
+  const isPublic = body.isPublic ? 1 : 0;
+  const description = typeof body.description === "string" ? body.description.trim().slice(0, 240) : "";
   await db
     .prepare(
-      "INSERT INTO servers (id, name, icon, color, created_by, created_at, position) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO servers (id, name, icon, color, created_by, created_at, position, is_public, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -98,6 +102,8 @@ export async function POST(request: Request) {
       user.id,
       now,
       position?.count ?? 0,
+      isPublic,
+      description,
     )
     .run();
 

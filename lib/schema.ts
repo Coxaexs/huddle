@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -857,6 +857,7 @@ async function migrate(db: D1Database): Promise<void> {
     // Salted hash of the address it signed up from, so an admin can see which
     // accounts came from the same place. The address itself is never stored.
     ["signup_ip_hash", "ALTER TABLE users ADD COLUMN signup_ip_hash TEXT"],
+    ["disabled_modules", "ALTER TABLE users ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT '[]'"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -941,10 +942,17 @@ async function migrate(db: D1Database): Promise<void> {
   for (const [column, ddl] of [
     ["icon_url", "ALTER TABLE servers ADD COLUMN icon_url TEXT"],
     ["banner_url", "ALTER TABLE servers ADD COLUMN banner_url TEXT"],
+    ["is_public", "ALTER TABLE servers ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0"],
+    ["description", "ALTER TABLE servers ADD COLUMN description TEXT NOT NULL DEFAULT ''"],
+    ["disabled_modules", "ALTER TABLE servers ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT '[]'"],
+    ["raid_mode", "ALTER TABLE servers ADD COLUMN raid_mode INTEGER NOT NULL DEFAULT 0"],
   ] as const) {
     if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
   }
   if (serverMigrations.length) await db.batch(serverMigrations);
+  if (!serverColumns.has("is_public")) {
+    await db.prepare("UPDATE servers SET is_public = 1 WHERE id = ?").bind(DEFAULT_SERVER_ID).run();
+  }
 
   // Invites can now target a specific server, so redeeming one joins you to it.
   const inviteColumns = await columnNames(db, "invites");
@@ -1119,6 +1127,128 @@ async function migrate(db: D1Database): Promise<void> {
     await db.prepare("ALTER TABLE sounds ADD COLUMN owner_id TEXT").run();
   }
 
+
+  // Centralized tables (previously scattered across feature modules) + moderation reports
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS saved_messages (
+      user_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, message_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_recaps (
+      server_id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      next_at INTEGER NOT NULL,
+      created_by TEXT
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS big_upload_grants (
+      user_id TEXT PRIMARY KEY,
+      granted_by TEXT,
+      granted_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS big_uploads (
+      key TEXT PRIMARY KEY,
+      upload_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      content_type TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      completed_at INTEGER
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS big_uploads_expiry_idx ON big_uploads(expires_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS qa_questions (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      author TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      answered_at TEXT,
+      pinned_at TEXT,
+      hidden_at TEXT
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS qa_questions_channel_idx ON qa_questions(channel_id, created_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS qa_votes (
+      question_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      PRIMARY KEY (question_id, user_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS scheduled_messages (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      thread_id TEXT,
+      text TEXT NOT NULL,
+      due_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      sent_at TEXT,
+      message_id TEXT,
+      error TEXT
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS scheduled_due_idx ON scheduled_messages(sent_at, due_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS digest_prefs (
+      user_id TEXT PRIMARY KEY,
+      mode TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_threads (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      anchor_message_id TEXT,
+      type INTEGER NOT NULL DEFAULT 11,
+      auto_archive_duration INTEGER NOT NULL DEFAULT 1440,
+      owner_bot_id TEXT,
+      owner_user_id TEXT,
+      locked INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archive_timestamp TEXT,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS discord_threads_channel_idx ON discord_threads(channel_id, archived)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS discord_threads_server_idx ON discord_threads(server_id, archived)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      channel_id TEXT,
+      text TEXT NOT NULL,
+      due_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      sent_at TEXT
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS reminders_due_idx ON reminders(sent_at, due_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS channel_webhooks (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar TEXT NOT NULL DEFAULT '🪝',
+      token TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT,
+      uses INTEGER NOT NULL DEFAULT 0
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS channel_webhooks_server_idx ON channel_webhooks(server_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS message_reports (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      reporter_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      resolved_by TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS message_reports_server_idx ON message_reports(server_id, status, created_at DESC)"),
+  ]);
+
   await seedDefaultServer(db);
   await backfillServerMembers(db);
   await migrateProfileImages(db);
@@ -1176,8 +1306,8 @@ async function seedDefaultServer(db: D1Database): Promise<void> {
   if (!existing?.count) {
     await db
       .prepare(
-        `INSERT OR IGNORE INTO servers (id, name, icon, color, created_by, created_at, position)
-         VALUES (?, ?, ?, ?, NULL, ?, 0)`,
+        `INSERT OR IGNORE INTO servers (id, name, icon, color, created_by, created_at, position, is_public)
+         VALUES (?, ?, ?, ?, NULL, ?, 0, 1)`,
       )
       .bind(DEFAULT_SERVER_ID, "The Hangout", "HG", "#7b63e6", now)
       .run();

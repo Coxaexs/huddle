@@ -7,7 +7,7 @@
  */
 import { CLASSES, type AreaShape } from "./dnd-spells";
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx";
+export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 export interface WatchState {
@@ -20,6 +20,39 @@ export interface WatchState {
   by: string;
 }
 
+/** A film waiting its turn on the screen. The room votes it up the queue. */
+export interface QueuedFilm {
+  id: string;
+  url: string;
+  title: string;
+  /** Who added it, by name and account. */
+  by: string;
+  userId: string;
+  /** Account ids that voted for it. */
+  votes: string[];
+  /** Hub clock (ms) when it was added: ties play in the order they came. */
+  at: number;
+}
+
+/** The watch party: what plays after the current film, and the votes to skip that film. */
+export interface WatchQueue {
+  films: QueuedFilm[];
+  skip: { url: string; votes: string[] } | null;
+}
+
+/** A change to the queue, as a client asks for it; the hub applies it with applyQueue. */
+export type QueueOp =
+  | { op: "add"; url: string; title: string }
+  | { op: "vote"; id: string }
+  | { op: "remove"; id: string }
+  /** Start the top film. `from` is the film the asker saw on the screen (null: none), so ten tabs seeing one film end start one film. */
+  | { op: "next"; from: string | null }
+  /** Vote (again: take back) to skip what is on now; a majority of the room skips it. */
+  | { op: "skip" };
+
+export const QUEUE_MAX = 25;
+export const QUEUE_PER_PERSON = 5;
+
 /** The cinema's house lights, set from the projection booth: automatic (dim while a film plays) or held at a level. */
 export interface HouseLights {
   /** 0..1, used when `auto` is off. */
@@ -29,6 +62,29 @@ export interface HouseLights {
   at: number;
   by: string;
 }
+
+/** The living room's switches: what is turned off, and whether the curtains are drawn. Everyone sees the same room. */
+export interface LoungeSwitches {
+  /** Switch ids (see LOUNGE_SWITCHES) that are off; everything else is on. */
+  off: string[];
+  curtains: boolean;
+  /** The tabletop's lighting, set by the game master (anyone, while there is none). */
+  mood: TableMood;
+  /** Hub clock (ms) when it was set; the hub stamps it. */
+  at: number;
+  by: string;
+}
+
+/** The rooms' lights and fires, each one switch: the living room's, the tabletop's candles, the meadow's campfire. */
+export const LOUNGE_SWITCHES = ["lamp-couch", "lamp-reading", "pendant", "fairy", "fire", "candles", "campfire"] as const;
+
+export const TABLE_MOODS = ["warm", "dungeon", "storm"] as const;
+export type TableMood = (typeof TABLE_MOODS)[number];
+
+/** Things in the rooms that do something for a moment when touched; everyone else sees it once. */
+export const LOUNGE_MOMENTS = ["cat", "shark", "guitar", "popcorn", "globe", "clock", "skull", "arcade", "crt", "mug", "log", "marshmallow", "stone", "bell", "trophy"] as const;
+export type LoungeMoment = (typeof LOUNGE_MOMENTS)[number];
+export interface LoungeFx { thing: LoungeMoment; by?: string }
 
 export interface InitiativeEntry {
   id: string;
@@ -346,6 +402,9 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       });
       return dice.length ? ({ by, dice, seed: str(value.seed, 40) || String(now) } satisfies HiddenRoll) : null;
     }
+    case "queue":
+      // A request too: the hub applies it with applyQueue.
+      return sanitizeQueueOp(value);
     case "pawn":
       // A request, not a value: the hub applies it to the table with applyPawn.
       return sanitizePawnOp(value);
@@ -353,9 +412,129 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       return sanitizeAreaOp(value);
     case "spellfx":
       return sanitizeSpellFx(value);
+    case "lounge": {
+      const off = Array.isArray(value.off) ? [...new Set(value.off)].filter((id): id is string => (LOUNGE_SWITCHES as readonly unknown[]).includes(id)) : [];
+      const mood = (TABLE_MOODS as readonly unknown[]).includes(value.mood) ? (value.mood as TableMood) : "warm";
+      return { off, curtains: value.curtains === true, mood, at: now, by } satisfies LoungeSwitches;
+    }
+    case "loungefx":
+      return (LOUNGE_MOMENTS as readonly unknown[]).includes(value.thing) ? ({ thing: value.thing as LoungeMoment } satisfies LoungeFx) : null;
     case "grid": {
       const squares = num(value.squares, 10, 60, 0);
       return squares ? ({ squares: Math.round(squares) } satisfies TableGrid) : null;
+    }
+  }
+}
+
+/* ---------- the watch party's queue ---------- */
+
+export function sanitizeQueueOp(value: Record<string, unknown>): QueueOp | null {
+  switch (value.op) {
+    case "add": {
+      const url = safeMediaUrl(value.url);
+      return url ? { op: "add", url, title: str(value.title, 100).trim() || "Video" } : null;
+    }
+    case "vote":
+    case "remove": {
+      const id = str(value.id, 40);
+      return id ? { op: value.op, id } : null;
+    }
+    case "next":
+      return { op: "next", from: typeof value.from === "string" ? value.from.slice(0, 600) : null };
+    case "skip":
+      return { op: "skip" };
+    default:
+      return null;
+  }
+}
+
+/** Most votes first; equal votes keep the order they were added in. */
+export function orderQueue(films: QueuedFilm[]): QueuedFilm[] {
+  return [...films].sort((a, b) => b.votes.length - a.votes.length || a.at - b.at);
+}
+
+/** Votes a skip needs: more than half of the people in the room. */
+export function skipVotesNeeded(roomSize: number): number {
+  return Math.floor(Math.max(1, roomSize) / 2) + 1;
+}
+
+/**
+ * Applies one queue change. Returns the new queue (null: empty) and, when the
+ * film on the screen changes, the new `watch` (null: the screen goes dark);
+ * `watch` is left out when the screen is untouched. Null when the change is
+ * refused or changes nothing.
+ */
+export function applyQueue(
+  queue: WatchQueue | null,
+  op: QueueOp,
+  actor: { userId: string; name: string; roomUserIds: string[] },
+  watch: WatchState | null,
+  now: number,
+): { queue: WatchQueue | null; watch?: WatchState | null } | null {
+  const films = queue?.films ?? [];
+  // A skip vote only counts for the film it was cast against.
+  const skip = queue?.skip && watch && queue.skip.url === watch.url ? queue.skip : null;
+  const done = (next: QueuedFilm[], nextSkip: WatchQueue["skip"], nextWatch?: WatchState | null) => {
+    const ordered = orderQueue(next);
+    const result: { queue: WatchQueue | null; watch?: WatchState | null } = {
+      queue: ordered.length || nextSkip ? { films: ordered, skip: nextSkip } : null,
+    };
+    if (nextWatch !== undefined) result.watch = nextWatch;
+    return result;
+  };
+  const startTop = (rest: QueuedFilm[]) => {
+    const [top, ...after] = orderQueue(rest);
+    if (!top) return done([], null, null);
+    return done(after, null, { url: top.url, title: top.title, position: 0, at: now, paused: false, by: top.by });
+  };
+
+  switch (op.op) {
+    case "add": {
+      if (films.length >= QUEUE_MAX) return null;
+      if (films.filter((f) => f.userId === actor.userId).length >= QUEUE_PER_PERSON) return null;
+      // Once each: twice in a row would also confuse "next" (it matches by link).
+      if (watch?.url === op.url || films.some((f) => f.url === op.url)) return null;
+      const film: QueuedFilm = {
+        id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        url: op.url,
+        title: op.title,
+        by: actor.name,
+        userId: actor.userId,
+        votes: [],
+        at: now,
+      };
+      // Nothing on the screen: no reason to wait.
+      if (!watch) return startTop([...films, film]);
+      return done([...films, film], skip);
+    }
+    case "vote": {
+      const film = films.find((f) => f.id === op.id);
+      if (!film) return null;
+      const votes = film.votes.includes(actor.userId)
+        ? film.votes.filter((id) => id !== actor.userId)
+        : [...film.votes, actor.userId];
+      return done(films.map((f) => (f.id === op.id ? { ...f, votes } : f)), skip);
+    }
+    case "remove": {
+      const film = films.find((f) => f.id === op.id);
+      if (!film || film.userId !== actor.userId) return null;
+      return done(films.filter((f) => f.id !== op.id), skip);
+    }
+    case "next": {
+      if ((watch?.url ?? null) !== op.from) return null;
+      if (!films.length) return null;
+      return startTop(films);
+    }
+    case "skip": {
+      if (!watch) return null;
+      const already = skip?.votes.includes(actor.userId) ?? false;
+      const votes = already
+        ? (skip?.votes ?? []).filter((id) => id !== actor.userId)
+        : [...(skip?.votes ?? []), actor.userId];
+      const present = new Set(actor.roomUserIds);
+      const counted = votes.filter((id) => present.has(id)).length;
+      if (!already && counted >= skipVotesNeeded(present.size)) return startTop(films);
+      return done(films, votes.length ? { url: watch.url, votes } : null);
     }
   }
 }

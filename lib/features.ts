@@ -37,6 +37,7 @@ export const SIDE_FEATURES = {
   activities: "Watch-together activities",
   ai: "/ask AI answers",
   battlemap: "Battlemaps",
+  digest: "Weekly digest",
   emoticons: "Custom emoticons",
   events: "Server events",
   "game-servers": "Game server status and RCON",
@@ -59,6 +60,7 @@ export const SIDE_FEATURES = {
   themes: "Community themes",
   tts: "Text-to-speech",
   unfurl: "Link previews",
+  webhooks: "Incoming webhooks",
   youtube: "YouTube",
 } as const;
 
@@ -144,4 +146,43 @@ export async function allDisabledFeatures(env: {
 /** Tests only: forget the cached runtime switches. */
 export function resetFeatureCache() {
   runtimeCache = null;
+}
+
+/**
+ * Optional feature modules that can be toggled on/off per server (by server
+ * managers) or per user (in personal settings) for a "simple by default,
+ * deep when you want it" experience.
+ */
+export const FEATURE_MODULES = {
+  dnd: {
+    label: "D&D & Tabletop",
+    description: "Character sheets, battlemaps, initiative tracker, /srd & /lookup commands",
+  },
+  games: {
+    label: "Mini-Games",
+    description: "Chess, Checkers, Connect 4, Wordle, Poker, Uno & Trivia in chat",
+  },
+  music: {
+    label: "Music & Jam Synth",
+    description: "Shared music player, Jam synth keyboard, and /music commands",
+  },
+  living_room: {
+    label: "3D Living Room & Cinema",
+    description: "3D spatial lounge, meadow fishing, and cinema room in voice calls",
+  },
+  cosmetics: {
+    label: "Profile Cosmetics & FX",
+    description: "Animated profile effects, avatar decorations, frames, and nameplates",
+  },
+} as const;
+
+export type FeatureModuleKey = keyof typeof FEATURE_MODULES;
+
+export const FEATURE_MODULE_KEYS = Object.keys(FEATURE_MODULES) as FeatureModuleKey[];
+
+export function normalizeDisabledModules(raw: unknown): FeatureModuleKey[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is FeatureModuleKey =>
+    typeof item === "string" && (FEATURE_MODULE_KEYS as readonly string[]).includes(item),
+  );
 }

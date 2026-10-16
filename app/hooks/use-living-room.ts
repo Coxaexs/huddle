@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchState } from "@/lib/lounge-shared";
+import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchQueue, WatchState } from "@/lib/lounge-shared";
 import {
   FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -49,10 +49,15 @@ export interface LoungeSettings {
   ambienceVolume: number;
   /** Room echo / reverb send level: 0 (dry) to 1. */
   echo: number;
+  /** How finished the picture is: auto steps down when frames come late, and back up when there is room. */
+  graphics: LoungeGraphics;
 }
 
+export type LoungeGraphics = "auto" | "high" | "medium" | "low";
+const GRAPHICS: LoungeGraphics[] = ["auto", "high", "medium", "low"];
+
 const SETTINGS_KEY = "huddle-living-room-settings";
-const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5, echo: 0.5 };
+const DEFAULT_SETTINGS: LoungeSettings = { spatial: true, tvMusic: true, ambience: true, ambienceVolume: 0.5, echo: 0.5, graphics: "auto" };
 /** What is stored: one spatial choice for the lounge and tabletop, and the cinema's own (off). */
 interface StoredSettings extends LoungeSettings { spatialCinema: boolean }
 
@@ -68,6 +73,7 @@ function readStored(): StoredSettings {
         ? Math.max(0, Math.min(1, raw.ambienceVolume)) : DEFAULT_SETTINGS.ambienceVolume,
       echo: typeof raw.echo === "number" && Number.isFinite(raw.echo)
         ? Math.max(0, Math.min(1, raw.echo)) : DEFAULT_SETTINGS.echo,
+      graphics: GRAPHICS.includes(raw.graphics as LoungeGraphics) ? (raw.graphics as LoungeGraphics) : DEFAULT_SETTINGS.graphics,
     };
   } catch {
     return { ...DEFAULT_SETTINGS, spatialCinema: false };
@@ -79,6 +85,8 @@ export interface LoungeEmote { id: number; connectionId: string; emoji: string; 
 /** What the whole call shares in its living room, kept by the hub. */
 export interface LoungeShared {
   watch: WatchState | null;
+  /** The watch party's queue and skip votes; null: nothing queued. */
+  queue: WatchQueue | null;
   initiative: Initiative | null;
   gm: GameMaster | null;
   card: TableCard | null;
@@ -94,10 +102,12 @@ export interface LoungeShared {
   areas: Record<string, TableArea>;
   /** The map's scale; null: DEFAULT_SQUARES. */
   grid: TableGrid | null;
+  /** The living room's lamps, fire and curtains; null: all on, curtains open. */
+  lounge: LoungeSwitches | null;
 }
-const NO_SHARED: LoungeShared = { watch: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null };
+const NO_SHARED: LoungeShared = { watch: null, queue: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null, lounge: null };
 
-export type LoungeSharedKey = "watch" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx";
+export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
 
 export interface LivingRoom {
   open: boolean;
@@ -108,6 +118,8 @@ export interface LivingRoom {
   hiddenRoll: (HiddenRoll & { id: number }) | null;
   /** The latest spell someone else cast at the table, to animate. */
   spellFx: (SpellFxEvent & { id: number }) | null;
+  /** The latest thing someone else touched in the living room (the cat, the guitar), to play. */
+  loungeFx: (LoungeFx & { id: number }) | null;
   /** Which room this tab is hanging out in. */
   venue: VenueId;
   setVenue: (venue: VenueId) => void;
@@ -185,6 +197,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const [shared, setSharedState] = useState<LoungeShared>(NO_SHARED);
   const [hiddenRoll, setHiddenRoll] = useState<(HiddenRoll & { id: number }) | null>(null);
   const [spellFx, setSpellFx] = useState<(SpellFxEvent & { id: number }) | null>(null);
+  const [loungeFx, setLoungeFx] = useState<(LoungeFx & { id: number }) | null>(null);
   const setShared = useCallback((key: LoungeSharedKey, value: unknown) => {
     sendRef.current({ t: "lounge-set", key, value });
   }, []);
@@ -209,6 +222,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     setSharedState(NO_SHARED);
     setHiddenRoll(null);
     setSpellFx(null);
+    setLoungeFx(null);
     setEmotes([]);
     if (roomId) sendRef.current({ t: "lounge-sync" });
   }, [roomId]);
@@ -228,7 +242,9 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         return;
       }
       if (detail.t === "lounge-shared") {
-        if (detail.key === "spellfx") {
+        if (detail.key === "loungefx") {
+          if (detail.value && typeof detail.value === "object") setLoungeFx({ ...(detail.value as LoungeFx), id: ++emoteId.current });
+        } else if (detail.key === "spellfx") {
           if (detail.value && typeof detail.value === "object") setSpellFx({ ...(detail.value as SpellFxEvent), id: ++emoteId.current });
         } else if (detail.key === "hiddenroll") {
           if (detail.value && typeof detail.value === "object") setHiddenRoll({ ...(detail.value as HiddenRoll), id: ++emoteId.current });
@@ -396,7 +412,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, setOpen, shared, setShared, hiddenRoll, spellFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

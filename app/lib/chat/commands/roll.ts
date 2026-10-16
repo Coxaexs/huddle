@@ -2,6 +2,7 @@
 import { apiFetch } from "../../client";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { rememberSecretRoll } from "@/lib/secret-roll";
+import { inheritDiceStyle } from "@/lib/dice-styles";
 import type { Message } from "../types";
 import type { PostBotMessage } from "./types";
 
@@ -26,16 +27,10 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
       (typeof document !== "undefined" &&
         document.documentElement.dataset.customThemeId) ||
       "cozy";
-    let diceTheme =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("huddle_dice_theme") || "default"
-        : "default";
-    if (diceTheme === "default") {
-      if (activeTheme === "vampire") diceTheme = "vampire";
-      else if (activeTheme === "dark-academia") diceTheme = "dark-academia";
-      else if (activeTheme === "matrix") diceTheme = "matrix";
-      else if (activeTheme === "cyberpunk") diceTheme = "cyberpunk";
-    }
+    const diceTheme = inheritDiceStyle(
+      typeof window !== "undefined" ? window.localStorage.getItem("huddle_dice_theme") : null,
+      activeTheme,
+    );
     const diceColor =
       typeof window !== "undefined"
         ? window.localStorage.getItem("huddle_dice_color") || "#2563eb"

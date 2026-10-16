@@ -9,7 +9,7 @@ import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays } from "lucide-react";
+import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -58,6 +58,7 @@ export function ServerRail({
   renderRailServer,
   renderRailFolder,
   createServer,
+  openDirectory,
   activeChannelId,
   unread,
   voiceRooms,
@@ -91,6 +92,7 @@ export function ServerRail({
   renderRailServer: (server: PublicServer) => React.JSX.Element;
   renderRailFolder: (folder: ServerFolder, folderServers: PublicServer[]) => React.JSX.Element;
   createServer: () => void;
+  openDirectory?: () => void;
   activeChannelId: string | null;
   unread: Record<string, { unread: boolean; count: number; mentions: number; }>;
   voiceRooms: Record<string, VoiceParticipant[]>;
@@ -148,6 +150,16 @@ export function ServerRail({
       >
         +
       </button>
+      {openDirectory && (
+        <button
+          className="space-mark add-space"
+          aria-label="Explore public servers"
+          title="Explore public servers"
+          onClick={openDirectory}
+        >
+          <Compass size={16} />
+        </button>
+      )}
 
       <div className="rail-divider" />
 
@@ -298,7 +310,7 @@ export function ChannelSidebar({
   canManageChannels: boolean;
   setKindMenu: Dispatch<SetStateAction<{ categoryId: string | null; } | null>>;
   markServerRead: (server: PublicServer) => void;
-  setNotifyLevel: (key: string, level: string) => void;
+  setNotifyLevel: (key: string, level: string, durationMs?: number) => void;
   channelPrefs: Record<string, string>;
   showCustomConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel?: () => void; }) => void;
   setActiveServerId: Dispatch<SetStateAction<string | null>>;
@@ -489,22 +501,35 @@ export function ChannelSidebar({
                 <CheckCheck size={16} /> Mark as Read
               </span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setServerMenuOpen(false);
-                const key = `server:${activeServer.id}`;
-                setNotifyLevel(key, channelPrefs[key] ? "all" : "mentions");
-              }}
-            >
-              <span className="flex items-center gap-2">
-                {channelPrefs[`server:${activeServer.id}`] ? (
-                  <><Bell size={16} /> Unmute Server</>
-                ) : (
-                  <><BellOff size={16} /> Mute Server</>
-                )}
-              </span>
-            </button>
+            <div className="server-menu-divider" />
+            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+              Notifications
+            </div>
+            {(
+              [
+                ["all", "All messages"],
+                ["mentions", "Only @mentions"],
+                ["nothing", "Nothing (Muted)"],
+              ] as const
+            ).map(([lvl, lbl]) => {
+              const key = `server:${activeServer.id}`;
+              const current = channelPrefs[key] || "all";
+              return (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => {
+                    setNotifyLevel(key, lvl);
+                    setServerMenuOpen(false);
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Bell size={14} />
+                    {current === lvl ? `● ${lbl}` : `○ ${lbl}`}
+                  </span>
+                </button>
+              );
+            })}
             <div className="server-menu-divider" />
             {canManageServer && (
               <button

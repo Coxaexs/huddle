@@ -146,10 +146,10 @@ export interface PublicUser {
   canInvite: boolean;
   customCss?: string | null;
   /** Instance admin: customCss is used as written, unchecked and unscoped. */
-  unrestrictedCss?: boolean;
   customTheme?: string | null;
   quickReactions?: string[];
   hiddenEmojis?: string[];
+  disabledModules?: string[];
   /** Only on the signed-in user's own account. */
   lastfmUsername?: string | null;
   email?: string | null;
@@ -190,7 +190,6 @@ export interface Member {
   color: string;
   customCss?: string | null;
   /** Instance admin: customCss is used as written, unchecked and unscoped. */
-  unrestrictedCss?: boolean;
   customTheme?: string | null;
   lastSeenAt: string;
   createdAt?: string;

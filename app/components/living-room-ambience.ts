@@ -91,6 +91,9 @@ export class RoomAmbience {
   private disposed = false;
   private volume = 0.5;
   private muted = false;
+  /** The fire's own level, so putting it out quiets the crackle. */
+  private fires: Array<{ level: GainNode; gain: number }> = [];
+  private fireOn = true;
 
   constructor(theme: RoomTheme) {
     try {
@@ -126,7 +129,8 @@ export class RoomAmbience {
     panner.positionY.value = placed.at[1];
     panner.positionZ.value = placed.at[2];
     const level = context.createGain();
-    level.gain.value = placed.gain;
+    level.gain.value = placed.clip === "fire" && !this.fireOn ? 0 : placed.gain;
+    if (placed.clip === "fire") this.fires.push({ level, gain: placed.gain });
     let head: AudioNode = level;
     if (placed.muffle) {
       const glass = context.createBiquadFilter();
@@ -194,6 +198,14 @@ export class RoomAmbience {
       listener.setPosition?.(pose.x, eye, pose.z);
       listener.setOrientation?.(fx, 0, fz, 0, 1, 0);
     }
+  }
+
+  /** The fire lit or put out: its crackle swells in or dies away. */
+  setFire(on: boolean) {
+    this.fireOn = on;
+    const context = this.context;
+    if (!context) return;
+    for (const fire of this.fires) fire.level.gain.setTargetAtTime(on ? fire.gain : 0, context.currentTime, on ? 0.6 : 0.35);
   }
 
   setVolume(volume: number) {

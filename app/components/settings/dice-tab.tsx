@@ -1,6 +1,7 @@
 "use client";
 
 import type { DiceRollEvent } from "@/lib/protocol";
+import { DICE_STYLE_MENU, inheritDiceStyle } from "@/lib/dice-styles";
 import { Tab } from "./types";
 
 export function DiceTab({
@@ -42,16 +43,7 @@ export function DiceTab({
               <div>
                 <span className="field-label">3D Dice Style</span>
                 <div className="dice-theme-row">
-                  {([
-                    ["default", "Solid Colour"],
-                    ["matrix", "Matrix 📟"],
-                    ["cyberpunk", "Cyberpunk ⚡"],
-                    ["vampire", "Vampire 🧛"],
-                    ["dark-academia", "Dark Academia 📜"],
-                    ["pride", "Pride 🏳️‍🌈"],
-                    ["trans", "Trans 🏳️‍⚧️"],
-                    ["nonbinary", "Nonbinary 💛"],
-                  ] as const).map(([option, label]) => (
+                  {DICE_STYLE_MENU.map(([option, label]) => (
                     <button
                       type="button"
                       key={option}
@@ -163,17 +155,14 @@ export function DiceTab({
               <div>
                 <span className="field-label">Sound Physics & Multi-Dice Voices</span>
                 <small style={{ display: "block", color: "var(--muted)", fontSize: "12px", marginBottom: "8px" }}>
-                  Acoustics dynamically choreograph 1 through 10 individual dice collisions, bounces, and cascading chorus impacts matched to material acoustics.
+                  Acoustics dynamically choreograph up to 50 individual dice collisions, bounces, and cascading chorus impacts matched to material acoustics.
                 </small>
                 <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px" }}>
                   <button
                     type="button"
                     className="dice-test-btn"
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "1d20",
                         dice: [{ sides: 20, rolls: [{ value: 14, kept: true }], sign: 1 }],
@@ -195,10 +184,7 @@ export function DiceTab({
                     type="button"
                     className="dice-test-btn"
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "2d20",
                         dice: [{
@@ -227,10 +213,7 @@ export function DiceTab({
                     type="button"
                     className="dice-test-btn"
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "4d6",
                         dice: [{
@@ -261,10 +244,7 @@ export function DiceTab({
                     type="button"
                     className="dice-test-btn"
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "10d6",
                         dice: [{
@@ -311,10 +291,7 @@ export function DiceTab({
                     className="dice-test-btn"
                     style={{ borderColor: "rgba(255, 68, 68, 0.4)", color: "#ff8888" }}
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "1d20",
                         dice: [{ sides: 20, rolls: [{ value: 1, kept: true }], sign: 1 }],
@@ -337,10 +314,7 @@ export function DiceTab({
                     className="dice-test-btn"
                     style={{ borderColor: "rgba(255, 215, 0, 0.5)", color: "#ffd700" }}
                     onClick={() => {
-                      const resolvedTheme =
-                        diceTheme === "default" && (activeThemeId === "vampire" || activeThemeId === "dark-academia")
-                          ? activeThemeId
-                          : diceTheme;
+                      const resolvedTheme = inheritDiceStyle(diceTheme, activeThemeId);
                       setTestRoll({
                         expression: "1d20",
                         dice: [{ sides: 20, rolls: [{ value: 20, kept: true }], sign: 1 }],

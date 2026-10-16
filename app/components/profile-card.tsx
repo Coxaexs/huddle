@@ -73,7 +73,7 @@ export function ProfileCard({
         {member.customCss && (
           <style
             dangerouslySetInnerHTML={{
-              __html: scopeProfileCss(member.customCss, member.id, member.unrestrictedCss),
+              __html: scopeProfileCss(member.customCss, member.id),
             }}
           />
         )}

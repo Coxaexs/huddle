@@ -149,15 +149,24 @@ export async function handleCommandRoutes(
       if (!Array.isArray(body)) {
         return discordError(400, ErrorCode.InvalidFormBody, "Expected an array");
       }
-      await db
-        .prepare("DELETE FROM discord_commands WHERE bot_id = ? AND server_id IS ?")
-        .bind(bot.id, scope)
-        .run();
+      // Upsert first and delete only what the new set no longer names. Wiping
+      // the set up front gave every command a fresh id on every boot (bots
+      // register on each start), which minted two snowflakes per command each
+      // time, and a bad entry halfway through left the bot with no commands.
       const created: CommandRow[] = [];
       for (const entry of body) {
         const row = await upsertCommand(context, scope, entry);
         if (row instanceof Response) return row;
         created.push(row);
+      }
+      const kept = new Set(created.map((row) => row.id));
+      const stored = await db
+        .prepare("SELECT id FROM discord_commands WHERE bot_id = ? AND server_id IS ?")
+        .bind(bot.id, scope)
+        .all<{ id: string }>();
+      for (const row of stored.results || []) {
+        if (kept.has(row.id)) continue;
+        await db.prepare("DELETE FROM discord_commands WHERE id = ?").bind(row.id).run();
       }
       return json(
         await Promise.all(created.map((row) => serializeCommand(row, applicationId))),
@@ -245,19 +254,35 @@ async function upsertCommand(
     updated_at: now,
   };
 
+  // An existing command is updated by id. The unique index on
+  // (bot_id, server_id, name) cannot catch a repeat when server_id is NULL (a
+  // global registration), so an INSERT ... ON CONFLICT there tried to insert
+  // the same primary key twice and failed.
+  if (existing) {
+    await context.db
+      .prepare(
+        `UPDATE discord_commands SET description = ?, type = ?, options = ?,
+                default_member_permissions = ?, dm_permission = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .bind(
+        row.description,
+        row.type,
+        row.options,
+        row.default_member_permissions,
+        row.dm_permission,
+        row.updated_at,
+        row.id,
+      )
+      .run();
+    return row;
+  }
   await context.db
     .prepare(
       `INSERT INTO discord_commands
          (id, bot_id, server_id, name, description, type, options,
           default_member_permissions, dm_permission, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(bot_id, server_id, name) DO UPDATE SET
-         description = excluded.description,
-         type = excluded.type,
-         options = excluded.options,
-         default_member_permissions = excluded.default_member_permissions,
-         dm_permission = excluded.dm_permission,
-         updated_at = excluded.updated_at`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,

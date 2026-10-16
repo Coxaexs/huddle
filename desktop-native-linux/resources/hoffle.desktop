@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Hoffle
+GenericName=Voice & Text Chat
+Comment=Ultra-fast, native voice and text huddle chat
+Exec=hoffle %U
+Icon=hoffle
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;Chat;AudioVideo;
+StartupWMClass=hoffle
+Keywords=chat;voice;discord;huddle;hoffle;
+MimeType=x-scheme-handler/hoffle;

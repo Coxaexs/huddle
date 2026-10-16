@@ -47,7 +47,6 @@ import { ChannelType, SUPPORTED_API_VERSIONS } from "./protocol";
 import {
   DEFAULT_AUTO_ARCHIVE_DURATION,
   THREAD_ARCHIVE_DURATIONS,
-  ensureThreadTable,
   insertThread,
   listThreads,
   loadThread,
@@ -529,7 +528,6 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
     if (subId !== "active" || context.request.method !== "GET") {
       return discordError(404, ErrorCode.GeneralError, "404: Not Found");
     }
-    await ensureThreadTable(context.db);
     const rows = await listThreads(context.db, {
       serverId: nativeGuildId,
       archived: false,
@@ -1094,7 +1092,6 @@ export async function resolveChannel(
     return { channel: located.channel, guildSnowflake, isDm: located.isDm };
   }
 
-  await ensureThreadTable(context.db);
   // A thread a bot opened has a row; one started in the web UI is only the id
   // its replies carry, and is recognised from the message it hangs off. Both
   // are addressable the same way afterwards, which is what makes the web UI's
@@ -1227,7 +1224,6 @@ async function channelRoutes(
   }
 
   if (sub === "threads") {
-    await ensureThreadTable(context.db);
     // GET /channels/{id}/threads/archived/{public|private}
     if (messageId === "archived") {
       return archivedThreadRoutes(context, channel, guildSnowflake, subSub);
@@ -1363,7 +1359,6 @@ async function startThread(
   anchorNativeId: string | null,
 ): Promise<Response> {
   const db = context.db;
-  await ensureThreadTable(db);
 
   const body = (await context.request.json().catch(() => ({}))) as {
     name?: string;

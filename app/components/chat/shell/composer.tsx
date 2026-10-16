@@ -702,13 +702,26 @@ export function Composer({
                           <Gamepad2 size={18} />
                           <span>Play Games</span>
                         </button>
+                        <button
+                          type="button"
+                          className="mobile-composer-menu-item"
+                          onClick={() => {
+                            setDraft("/");
+                            setMobileComposerMenuOpen(false);
+                            composerRef.current?.focus();
+                          }}
+                          disabled={!activeChannelId}
+                        >
+                          <span className="inline-flex items-center justify-center w-[18px] h-[18px] font-mono font-bold text-[15px] text-[var(--lavender,#5865f2)]">/</span>
+                          <span>Slash Commands</span>
+                        </button>
                       </div>
                     )}
 
                     {/* Mobile ^ more menu toggle button */}
                     <button
                       type="button"
-                      className={`composer-emoji-btn composer-more-mobile-btn ${mobileComposerMenuOpen ? "active" : ""}`}
+                      className={`composer-emoji-btn composer-more-mobile-btn ${mobileComposerMenuOpen || formatOpen || gamesOpen ? "active" : ""}`}
                       onClick={() => {
                         setMobileComposerMenuOpen((prev) => !prev);
                         setEmojiOpen(false);
@@ -796,10 +809,10 @@ export function Composer({
                       <Gamepad2 size={18} />
                     </button>
 
-                    {/* Slash command button - visible on both mobile and desktop */}
+                    {/* Slash command button - housed in More tools popover */}
                     <button
                       type="button"
-                      className="gif-button"
+                      className="gif-button desktop-composer-item"
                       onClick={() => {
                         setDraft("/");
                         composerRef.current?.focus();

@@ -406,9 +406,9 @@ export function RailMenuLayer({
                     {current === level ? "● " : "○ "}
                     {label}
                   </button>
-                  {level === "nothing" && current === "nothing" && (
+                  {level === "nothing" && (
                     <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
-                      <span className="text-[10px] text-white/40 uppercase">For:</span>
+                      <span className="text-[10px] text-white/40 uppercase">Mute:</span>
                       {(
                         [
                           ["15m", 15 * 60 * 1000],
@@ -648,9 +648,9 @@ export function ChannelMenuLayer({
                     {current === level ? "● " : "○ "}
                     {label}
                   </button>
-                  {level === "nothing" && current === "nothing" && (
+                  {level === "nothing" && (
                     <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
-                      <span className="text-[10px] text-white/40 uppercase">For:</span>
+                      <span className="text-[10px] text-white/40 uppercase">Mute:</span>
                       {(
                         [
                           ["15m", 15 * 60 * 1000],

@@ -1,3 +1,4 @@
+import { ensureSchema } from "./schema";
 /**
  * /remind: personal reminders.
  *
@@ -80,18 +81,7 @@ export function parseReminder(
 }
 
 export async function ensureReminderTable(db: D1Database): Promise<void> {
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS reminders (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        channel_id TEXT,
-        text TEXT NOT NULL,
-        due_at INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        sent_at TEXT
-      )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS reminders_due_idx ON reminders(sent_at, due_at)"),
-  ]);
+  await ensureSchema(db);
 }
 
 /** When the next unsent reminder falls due, or null. */
@@ -112,6 +102,11 @@ export async function noteToSelf(
   userId: string,
   text: string,
   now = Date.now(),
+  from: { author: string; avatar: string; color: string } = {
+    author: "Reminder",
+    avatar: "⏰",
+    color: "#f59e6e",
+  },
 ): Promise<{ channelId: string; message: Record<string, unknown> }> {
   const notes = await findOrCreateDm(db, userId, userId);
   await reopenDmForAll(db, notes).catch(() => undefined);
@@ -119,9 +114,9 @@ export async function noteToSelf(
     id: crypto.randomUUID(),
     channelId: notes,
     userId: null,
-    author: "Reminder",
-    avatar: "⏰",
-    color: "#f59e6e",
+    author: from.author,
+    avatar: from.avatar,
+    color: from.color,
     text,
     bot: true,
     createdAt: new Date(now).toISOString(),

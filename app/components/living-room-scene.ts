@@ -10,6 +10,10 @@
 import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { addProps } from "./living-room-props";
+import { dress, fabric } from "./room-surfaces";
+import { ThingKit, type RoomThings } from "./room-things";
+import { contactShadows, lightShaft, mergeStatics, moteField, type Contact } from "./living-room-fx";
+import { playArcade, playBoo, playChime, playCurtains, playData, playDouse, playIgnite, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
 import { CIRCLES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
 
 export interface Look {
@@ -145,6 +149,20 @@ export function floorTexture(look: Look) {
     }
   }, [ROOM_HALF_X / 1.5, ROOM_HALF_Z / 1.5]);
 }
+
+/** A real plank floor in the room's own wood colour: `w` by `d` metres. */
+export function floorMaterial(look: Look, w: number, d: number) {
+  const tint = new THREE.Color(look.floor[0]).multiplyScalar(1.12);
+  return dress(mat(`#${tint.getHexString()}`, 0.7), "floor", { repeat: [w / 2.2, d / 2.2], bump: 0.9 });
+}
+
+/** Wallpaper with plaster under it: the paper's pattern, the wall's bumps. */
+export function plasterOver(material: THREE.MeshStandardMaterial, repeat: [number, number] = [5, 1.5]) {
+  return dress(material, "plaster", { repeat, detail: false, bump: 0.5, rough: false });
+}
+
+/** Wood with real grain: furniture, panelling, beams. */
+export const woodMaterial = (colour: string, rough = 0.6, repeat: [number, number] = [1.4, 1.4]) => dress(mat(colour, rough), "wood", { repeat, bump: 0.6 });
 
 export function wallTexture(look: Look) {
   const [base, accent] = look.wall;
@@ -496,7 +514,7 @@ function sofa(look: Look, seats: number, sofaMaterial: THREE.Material, cushionMa
 }
 
 function pillow(colour: string) {
-  const mesh = cushion(0.42, 0.14, 0.42, mat(colour, 1), 0.07);
+  const mesh = cushion(0.42, 0.14, 0.42, fabric(colour, { sheen: 1 }), 0.07);
   mesh.rotation.x = Math.PI / 2 - 0.35;
   return mesh;
 }
@@ -536,6 +554,8 @@ export function plant(look: Look, scale = 1, leafy = "#4f8f4f") {
 
 const CIRCLE_PILLOWS = [0, 1, 2, 3, 4];
 
+export type { RoomThings } from "./room-things";
+
 export interface BuiltRoom {
   root: THREE.Group;
   /** Things above head height, hidden in the overhead view so they never block it. */
@@ -547,8 +567,10 @@ export interface BuiltRoom {
   setTableMap?: (image: HTMLImageElement | null, turns?: number, zoom?: number) => void;
   /** The tabletop's map colour (sRGB 0-255) under a point, for the pawns standing on it; null off the map. */
   mapColourAt?: (x: number, z: number) => [number, number, number] | null;
-  /** The living room's Blåhaj; other rooms have none. */
+  /** The meadow cabin's Blåhaj (the living room's is one of its things). */
   shark?: THREE.Group;
+  /** The things you can touch, in the living room. */
+  things?: RoomThings;
   background: THREE.Color;
   fog: THREE.Fog;
   exposure: number;
@@ -567,13 +589,21 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const D = ROOM_HALF_Z * 2;
   const H = ROOM_HEIGHT;
   const flickers: Array<{ mesh: THREE.Object3D; phase: number; base: number }> = [];
-  const lights: Array<{ light: THREE.PointLight; base: number; phase: number; amount: number }> = [];
+  const lights: Array<{ light: THREE.PointLight; base: number; phase: number; amount: number; switch?: string }> = [];
   const animated: Array<(t: number, dt: number) => void> = [];
+  // The things you can touch: switches (lamps, the fire, the curtains) and moments (the cat, the guitar).
+  const kit = new ThingKit(root);
+  const { tag, onSwitch, level, things, playing } = kit;
+  let hacking = 0;
+  /** Where the cat's hearts float up from. */
+  const hearts: THREE.Vector3[] = [];
   const glow = glowTexture();
   const addGlow = (colour: string, size: number, at: THREE.Vector3, opacity = 0.55, parent: THREE.Object3D = root) => {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
     sprite.scale.setScalar(size);
     sprite.position.copy(at);
+    // A glow is light, not a thing: pointing through it reaches what is behind.
+    sprite.raycast = () => undefined;
     parent.add(sprite);
     return sprite;
   };
@@ -582,7 +612,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     light.position.copy(at);
     if (shadow) {
       light.castShadow = true;
-      light.shadow.mapSize.set(2048, 2048);
+      // A cube of six: 1024 each is plenty for soft firelight, and a quarter of the fill of 2048.
+      light.shadow.mapSize.set(1024, 1024);
       light.shadow.bias = 0.0005;
       light.shadow.normalBias = 0.03;
       light.shadow.radius = 1;
@@ -593,19 +624,19 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   };
 
   // Floor, rug.
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat("#ffffff", 0.75, { map: floorTexture(look) }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMaterial(look, W, D));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   floor.userData.floor = true;
   root.add(floor);
-  const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 3.4), mat("#ffffff", 1, { map: rugTexture(look) }));
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 3.4), dress(mat("#ffffff", 1, { map: rugTexture(look) }), "carpet", { repeat: [4.6, 3.4], detail: false, bump: 1.2 }));
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(0, 0.006, -1.3);
   rug.receiveShadow = true;
   rug.userData.floor = true;
   root.add(rug);
   // A round rug in the reading corner.
-  const roundRug = new THREE.Mesh(new THREE.CircleGeometry(1.0, 40), mat(look.rug[2], 1));
+  const roundRug = new THREE.Mesh(new THREE.CircleGeometry(1.0, 40), dress(mat(look.rug[2], 1), "carpet", { repeat: [2, 2] }));
   roundRug.rotation.x = -Math.PI / 2;
   roundRug.position.set(-4.6, 0.006, 3.0);
   roundRug.receiveShadow = true;
@@ -615,7 +646,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   // Walls: four inward planes, so whichever is between the overhead camera and the room is culled.
   const code = look.wallPattern === "code" ? codeRain(512, 256, 40) : null;
   const wallMaterial = mat("#ffffff", 0.95, { map: code ? code.texture : wallTexture(look), ...(code ? { emissive: "#ffffff", emissiveMap: code.texture, emissiveIntensity: 0.55 } : {}) });
-  const wainscotMaterial = mat(look.wainscot, 0.7);
+  if (!code) plasterOver(wallMaterial);
+  const wainscotMaterial = woodMaterial(look.wainscot, 0.6, [6, 0.5]);
   const trimMaterial = mat(look.trim, 0.5, theme === "cyberpunk" ? { emissive: look.trim, emissiveIntensity: 1.6 } : {});
   const walls: Array<[number, number, number, number]> = [
     [W, 0, -ROOM_HALF_Z, 0], [W, 0, ROOM_HALF_Z, Math.PI], [D, -ROOM_HALF_X, 0, Math.PI / 2], [D, ROOM_HALF_X, 0, -Math.PI / 2],
@@ -643,12 +675,12 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     crown.rotation.y = ry;
     ceiling.add(crown);
   }
-  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), mat(look.ceiling, 1));
+  const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(W, D), dress(mat(look.ceiling, 1), "plaster", { repeat: [6, 4.5], bump: 0.4, rough: false, detail: false }));
   ceilingPlane.rotation.x = Math.PI / 2;
   ceilingPlane.position.y = H;
   ceiling.add(ceilingPlane);
   for (let x = -ROOM_HALF_X + 1.2; x < ROOM_HALF_X; x += 2.4) {
-    const beam = box(0.22, 0.24, D, mat(look.beam, 0.8), false);
+    const beam = box(0.22, 0.24, D, woodMaterial(look.beam, 0.75, [0.4, 4]), false);
     beam.position.set(x, H - 0.12, 0);
     ceiling.add(beam);
   }
@@ -657,11 +689,13 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const hearthZ = -ROOM_HALF_Z;
   const stoneColour = theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
   const stone = mat(stoneColour, 0.95, theme === "cyberpunk" ? { metalness: 0.6, roughness: 0.3 } : {});
+  // Real stonework for the stone hearths; the hacker's rack and the holo-fireplace stay smooth.
+  if (theme !== "cyberpunk" && theme !== "matrix") dress(stone, "stone", { repeat: [1.6, 1], bump: 1.1 });
   const surround = box(2.6, 1.3, 0.6, stone);
   surround.position.set(0, 0.65, hearthZ + 0.3);
   const chimney = box(1.9, H - 1.3, 0.4, stone);
   chimney.position.set(0, 1.3 + (H - 1.3) / 2, hearthZ + 0.2);
-  const mantel = box(2.9, 0.1, 0.72, mat(look.wood, 0.6));
+  const mantel = box(2.9, 0.1, 0.72, woodMaterial(look.wood, 0.6));
   mantel.position.set(0, 1.34, hearthZ + 0.36);
   const firebox = box(1.2, 0.8, 0.36, mat("#0d0806", 1), false);
   firebox.position.set(0, 0.42, hearthZ + 0.45);
@@ -670,16 +704,6 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const hearthStep = box(2.9, 0.08, 0.5, stone);
   hearthStep.position.set(0, 0.04, hearthZ + 0.82);
   root.add(surround, chimney, mantel, firebox, hearthStep);
-  if (theme === "cozy") {
-    // Stone courses on the surround.
-    for (let row = 0; row < 6; row++) for (let col = 0; col < 6; col++) {
-      const block = box(0.4, 0.2, 0.02, mat(new THREE.Color(stoneColour).offsetHSL(0, 0, ((row * 7 + col * 3) % 5 - 2) * 0.03).getStyle(), 1), false);
-      block.position.set(-1.07 + col * 0.43 + (row % 2) * 0.2, 0.12 + row * 0.215, hearthZ + 0.61);
-      if (Math.abs(block.position.x) < 0.65 && block.position.y < 0.85) continue;
-      if (Math.abs(block.position.x) > 1.25) continue;
-      root.add(block);
-    }
-  }
   const fireGroup = new THREE.Group();
   fireGroup.position.set(0, 0, hearthZ + 0.62);
   root.add(fireGroup);
@@ -697,10 +721,12 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const flameMaterial = (colour: string, opacity: number) => new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: true });
     for (let i = 0; i < 9; i++) {
       const outer = i % 3 !== 0;
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(outer ? 0.1 : 0.06, outer ? 0.45 : 0.3, 10, 1, true), flameMaterial(outer ? look.fire[1] : look.fire[0], outer ? 0.55 : 0.9));
+      const opacity = outer ? 0.55 : 0.9;
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(outer ? 0.1 : 0.06, outer ? 0.45 : 0.3, 10, 1, true), flameMaterial(outer ? look.fire[1] : look.fire[0], opacity));
       flame.position.set(-0.36 + (i % 7) * 0.12, outer ? 0.36 : 0.3, (i % 2) * 0.06 - 0.03);
       flickers.push({ mesh: flame, phase: i * 1.7, base: 1 });
       fireGroup.add(flame);
+      onSwitch("fire", (k) => { flame.material.opacity = opacity * k; flame.visible = k > 0.01; });
     }
   } else {
     // Tongues of flame along the logs: a solid outer flame shaped by the texture, a brighter core added over it.
@@ -713,6 +739,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
           ? { map: flame, color: look.fire[0], transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }
           : { alphaMap: flame, color: look.fire[1], transparent: true, opacity: 0.8, depthWrite: false }));
         sprite.center.set(0.5, 0.04);
+        sprite.raycast = () => undefined;
         // Rooted on the back log, just in front of it so the front log does not hide them.
         sprite.position.set(x, 0.16, 0.08);
         sprite.renderOrder = 2;
@@ -721,15 +748,52 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       }
     }
     animated.push((t) => {
+      const k = level("fire");
+      // Dying down, the flames shrink before they go; catching, they leap up.
+      const height = k < 1 ? 0.25 + 0.75 * k + Math.sin(k * Math.PI) * 0.35 : 1;
       for (const tongue of tongues) {
-        tongue.sprite.scale.set(tongue.w * (0.92 + Math.sin(t * 6.3 + tongue.phase) * 0.08), tongue.h * (0.84 + Math.sin(t * 9 + tongue.phase) * 0.12 + Math.sin(t * 17 + tongue.phase * 2) * 0.06), 1);
-        tongue.sprite.material.opacity = tongue.base * (0.88 + Math.sin(t * 13 + tongue.phase) * 0.12);
+        tongue.sprite.visible = k > 0.01;
+        tongue.sprite.scale.set(tongue.w * (0.92 + Math.sin(t * 6.3 + tongue.phase) * 0.08), height * tongue.h * (0.84 + Math.sin(t * 9 + tongue.phase) * 0.12 + Math.sin(t * 17 + tongue.phase * 2) * 0.06), 1);
+        tongue.sprite.material.opacity = k * tongue.base * (0.88 + Math.sin(t * 13 + tongue.phase) * 0.12);
       }
     });
+    // A bed of glowing coals under the logs, breathing; grey ash once the fire is out.
+    const coals = canvasTexture(256, 64, (ctx) => {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, 256, 64);
+      const r = seeded(21);
+      for (let i = 0; i < 140; i++) {
+        const x = r() * 256; const y = 8 + r() * 48; const size = 4 + r() * 10;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, size);
+        g.addColorStop(0, r() < 0.3 ? look.fire[0] : look.fire[1]);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+    const bed = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.22), new THREE.MeshBasicMaterial({ map: coals, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    bed.rotation.x = -Math.PI / 2;
+    bed.position.set(0, 0.035, 0.0);
+    fireGroup.add(bed);
+    const ash = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.24), mat("#2a2420", 1));
+    ash.rotation.x = -Math.PI / 2;
+    ash.position.set(0, 0.03, 0.0);
+    fireGroup.add(ash);
+    animated.push((t) => {
+      const k = level("fire");
+      bed.material.color.setScalar(Math.max(0, k * (0.75 + Math.sin(t * 1.3) * 0.15 + Math.sin(t * 3.7) * 0.08) + (1 - k) * 0.06));
+    });
   }
-  addGlow(look.fire[1], 2.2, new THREE.Vector3(0, 0.45, 0.1), 0.6, fireGroup);
-  addGlow(look.fire[0], 0.9, new THREE.Vector3(0, 0.3, 0.12), 0.7, fireGroup);
+  for (const [colour, size, y, z, opacity] of [[look.fire[1], 2.2, 0.45, 0.1, 0.6], [look.fire[0], 0.9, 0.3, 0.12, 0.7]] as const) {
+    const fireGlow = addGlow(colour, size, new THREE.Vector3(0, y, z), opacity, fireGroup);
+    onSwitch("fire", (k) => { fireGlow.material.opacity = opacity * k; fireGlow.visible = k > 0.01; });
+  }
   addLight(look.fireLight, 6, 11, new THREE.Vector3(0, 0.6, hearthZ + 1.1), true, 0.18);
+  lights[lights.length - 1].switch = "fire";
+  // The fire's own hit box: the logs and flames are small, the hearth's mouth is what you reach for.
+  const fireHit = box(1.15, 0.8, 0.3, new THREE.MeshBasicMaterial({ visible: false }), false);
+  fireHit.position.set(0, 0.42, 0.0);
+  fireGroup.add(fireHit);
   // Embers drifting up out of the fire.
   const emberCount = 40;
   const embers = new THREE.BufferGeometry();
@@ -737,18 +801,25 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const emberLife = new Float32Array(emberCount).map(() => Math.random());
   embers.setAttribute("position", new THREE.BufferAttribute(emberPos, 3));
   const emberPoints = new THREE.Points(embers, new THREE.PointsMaterial({ color: look.fire[0], size: 0.035, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  emberPoints.raycast = () => undefined;
   fireGroup.add(emberPoints);
+  /** A shower of sparks when the fire is lit, fading back to the usual drift. */
+  let sparks = 0;
+  onSwitch("fire", (k) => { emberPoints.material.opacity = 0.9 * k; emberPoints.visible = k > 0.01; });
   animated.push((_, dt) => {
+    sparks = Math.max(0, sparks - dt * 0.7);
     for (let i = 0; i < emberCount; i++) {
-      emberLife[i] += dt * (0.25 + (i % 5) * 0.05);
+      emberLife[i] += dt * (0.25 + (i % 5) * 0.05) * (1 + sparks * 3);
       if (emberLife[i] > 1) emberLife[i] = 0;
       const l = emberLife[i];
-      emberPos[i * 3] = Math.sin(i * 12.9 + l * 6) * 0.3 * (1 - l * 0.5);
-      emberPos[i * 3 + 1] = 0.2 + l * 0.85;
+      emberPos[i * 3] = Math.sin(i * 12.9 + l * 6) * 0.3 * (1 - l * 0.5) * (1 + sparks * 1.5);
+      emberPos[i * 3 + 1] = 0.2 + l * 0.85 * (1 + sparks);
       emberPos[i * 3 + 2] = Math.cos(i * 4.1) * 0.08;
     }
     embers.attributes.position.needsUpdate = true;
   });
+
+  tag(fireGroup, "fire");
 
   // TV / screen over the mantel. In Matrix it is a big CRT-green monitor wall.
   const tvFrame = box(2.0, 1.16, 0.07, mat("#0b0b0e", 0.4, { metalness: 0.4 }));
@@ -803,8 +874,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   }
 
   // Seating.
-  const sofaMaterial = mat(look.sofa, theme === "vampire" ? 0.55 : theme === "academia" ? 0.42 : 1);
-  const cushionMaterial = mat(look.sofaCushion, 1);
+  // Velvet for the vampire, a leather Chesterfield in the library, wool everywhere else.
+  const sofaMaterial = theme === "academia" ? dress(mat(look.sofa, 0.45), "leather", { repeat: [2, 2], detail: false, bump: 0.7 }) : fabric(look.sofa, { sheen: theme === "vampire" ? 1 : 0.7 });
+  const cushionMaterial = theme === "academia" ? dress(mat(look.sofaCushion, 0.45), "leather", { repeat: [2, 2], detail: false, bump: 0.7 }) : fabric(look.sofaCushion, { sheen: theme === "vampire" ? 1 : 0.7 });
   const couch = sofa(look, 3, sofaMaterial, cushionMaterial);
   couch.position.set(0, 0, 0.75);
   root.add(couch);
@@ -844,7 +916,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const armchair = (seatId: string, rotation: number) => {
     const seat = seatById(seatId)!;
     const chair = new THREE.Group();
-    const material = mat(theme === "cozy" ? "#8e5a3c" : look.sofa, 0.9);
+    const material = theme === "cozy" || theme === "academia" ? dress(mat(theme === "cozy" ? "#8e5a3c" : look.sofa, 0.5), "leather", { repeat: [2, 2], detail: false, bump: 0.8 }) : fabric(look.sofa);
     const base = cushion(0.86, 0.36, 0.86, material, 0.08);
     base.position.y = 0.26;
     const back = cushion(0.86, 0.72, 0.2, material, 0.1);
@@ -854,7 +926,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     wingL.position.set(-0.38, 0.55, 0.02);
     const wingR = wingL.clone();
     wingR.position.x = 0.38;
-    const seatCushion = cushion(0.56, 0.12, 0.6, mat(look.sofaCushion, 1), 0.05);
+    const seatCushion = cushion(0.56, 0.12, 0.6, fabric(look.sofaCushion), 0.05);
     seatCushion.position.set(0, 0.48, -0.04);
     chair.add(base, back, wingL, wingR, seatCushion);
     chair.position.set(seat.x, 0, seat.z);
@@ -866,15 +938,21 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   armchair("arm-e", -seatById("arm-e")!.facing);
   armchair("read-1", -seatById("read-1")!.facing);
   // A side table and lamp by the reading chair, a stack of books on the floor.
-  const sideTable = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.04, 24), mat(look.wood, 0.5));
+  const sideTable = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.04, 24), woodMaterial(look.wood, 0.5));
   sideTable.position.set(-5.4, 0.55, 2.3);
-  const sideLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.55, 10), mat(look.woodDark, 0.5));
+  const sideLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.55, 10), woodMaterial(look.woodDark, 0.5));
   sideLeg.position.set(-5.4, 0.275, 2.3);
   root.add(sideTable, sideLeg);
+  /** A sip sends up a big puff of steam, easing back to a wisp. */
+  let steam = 0;
   const mug = (x: number, y: number, z: number, colour: string) => {
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 16), mat(colour, 0.4));
     cup.position.set(x, y + 0.05, z);
-    root.add(cup);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.008, 6, 12, Math.PI), mat(colour, 0.4));
+    handle.rotation.z = -Math.PI / 2;
+    handle.position.set(0.045, 0, 0);
+    cup.add(handle);
+    root.add(tag(cup, "mug"));
     // Steam: a few soft sprites drifting up and fading.
     for (let i = 0; i < 3; i++) {
       // The glow is grey on black for adding light; as steam it is an alpha mask, or it draws its whole square.
@@ -884,9 +962,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       puff.material.map = null;
       animated.push((t) => {
         const l = (t * 0.35 + i / 3) % 1;
-        puff.position.set(x + Math.sin(t * 2 + i) * 0.02, y + 0.12 + l * 0.3, z);
-        puff.scale.setScalar(0.06 + l * 0.12);
-        puff.material.opacity = 0.22 * Math.sin(l * Math.PI);
+        puff.position.set(x + Math.sin(t * 2 + i) * 0.02, y + 0.12 + l * 0.3 * (1 + steam), z);
+        puff.scale.setScalar((0.06 + l * 0.12) * (1 + steam * 1.5));
+        puff.material.opacity = 0.22 * Math.sin(l * Math.PI) * (1 + steam * 1.6);
       });
     }
   };
@@ -901,7 +979,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   // Fireside floor cushions and beanbags.
   for (const id of ["cushion-1", "cushion-2"]) {
     const seat = seatById(id)!;
-    const pouf = cushion(0.65, 0.16, 0.65, mat(id === "cushion-1" ? look.pillows[0] : look.pillows[1], 1), 0.08);
+    const pouf = cushion(0.65, 0.16, 0.65, fabric(id === "cushion-1" ? look.pillows[0] : look.pillows[1]), 0.08);
     pouf.position.set(seat.x, 0.09, seat.z);
     pouf.rotation.y = 0.3;
     tagSeat(pouf, id);
@@ -909,7 +987,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   }
   for (const id of ["bean-1", "bean-2"]) {
     const seat = seatById(id)!;
-    const bean = new THREE.Mesh(new THREE.SphereGeometry(0.48, 28, 18), mat(id === "bean-1" ? look.pillows[3] : look.pillows[2], 1));
+    const bean = new THREE.Mesh(new THREE.SphereGeometry(0.48, 28, 18), fabric(id === "bean-1" ? look.pillows[3] : look.pillows[2], { repeat: [4, 2] }));
     bean.scale.set(1, 0.55, 1);
     bean.position.set(seat.x, 0.22, seat.z);
     bean.castShadow = true;
@@ -920,7 +998,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   // Two cushion circles on the south floor: a rug, a low table with a lantern, and five poufs each.
   CIRCLES.forEach((circle, n) => {
     // A round rug with a thin lighter border; quiet enough that the poufs on it stand out.
-    const ring = new THREE.Mesh(new THREE.CircleGeometry(1.4, 56), mat(look.rug[2], 1));
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(1.4, 56), dress(mat(look.rug[2], 1), "carpet", { repeat: [2.5, 2.5] }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(circle.x, 0.007, circle.z);
     ring.receiveShadow = true;
@@ -930,10 +1008,10 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     inner.position.set(circle.x, 0.009, circle.z);
     inner.userData.floor = true;
     root.add(ring, inner);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 28), mat(look.wood, 0.45));
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 28), woodMaterial(look.wood, 0.45));
     top.position.set(circle.x, 0.3, circle.z);
     top.castShadow = true;
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.28, 12), mat(look.woodDark, 0.6));
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.28, 12), woodMaterial(look.woodDark, 0.6));
     stem.position.set(circle.x, 0.14, circle.z);
     root.add(top, stem);
     const lantern = candle(0.1, theme === "vampire" ? "#2a0a10" : "#f5e6c8");
@@ -944,7 +1022,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     // A paper lantern hung low over the circle, so it reads as its own warm corner.
     const shade = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 12), new THREE.MeshBasicMaterial({ color: look.lamp, toneMapped: false }));
     shade.position.set(circle.x, H - 0.85, circle.z);
-    const cord = box(0.01, 0.85, 0.01, mat(look.woodDark, 0.8), false);
+    const cord = box(0.01, 0.85, 0.01, woodMaterial(look.woodDark, 0.8), false);
     cord.position.set(circle.x, H - 0.425, circle.z);
     ceiling.add(shade, cord);
     addGlow(look.lamp, 0.8, new THREE.Vector3(circle.x, H - 0.85, circle.z), 0.3);
@@ -953,7 +1031,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       const colour = look.pillows[(i + n) % look.pillows.length];
       // The dark themes light their cushions faintly, or they vanish into the floor.
       const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
-      const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.16, 28), mat(colour, 1, dark ? { emissive: colour, emissiveIntensity: 0.3 } : {}));
+      const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.16, 28), fabric(colour, { repeat: [3, 1] }));
+      if (dark) Object.assign(pouf.material, { emissive: new THREE.Color(colour), emissiveIntensity: 0.3 });
       pouf.position.set(seat.x, 0.09, seat.z);
       pouf.castShadow = true;
       pouf.receiveShadow = true;
@@ -963,11 +1042,11 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   });
 
   // Coffee table with snacks, a board game and candles.
-  const tableTop = cushion(1.3, 0.07, 0.62, mat(look.wood, 0.45), 0.03);
+  const tableTop = cushion(1.3, 0.07, 0.62, woodMaterial(look.wood, 0.45), 0.03);
   tableTop.position.set(0, 0.42, -1.2);
   root.add(tableTop);
   for (const [x, z] of [[-0.58, -1.45], [0.58, -1.45], [-0.58, -0.95], [0.58, -0.95]]) {
-    const leg = box(0.05, 0.4, 0.05, mat(look.woodDark, 0.6));
+    const leg = box(0.05, 0.4, 0.05, woodMaterial(look.woodDark, 0.6));
     leg.position.set(x, 0.2, z);
     root.add(leg);
   }
@@ -975,6 +1054,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   popcorn.position.set(-0.35, 0.54, -1.25);
   const kernels = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat("#fff3c4", 1));
   kernels.position.set(-0.35, 0.61, -1.25);
+  tag(popcorn, "popcorn");
+  tag(kernels, "popcorn");
   const board = box(0.4, 0.02, 0.4, mat(theme === "matrix" ? "#0a3d1c" : "#e8d5a8", 0.8));
   board.position.set(0.25, 0.47, -1.2);
   board.rotation.y = 0.4;
@@ -986,12 +1067,57 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   flickers.push({ mesh: tableCandle.userData.flame, phase: 4.2, base: 1 });
   addGlow("#ffb35c", 0.4, new THREE.Vector3(0.5, 0.6, -1.38), 0.5);
   addLight("#ffb35c", 0.6, 2.5, new THREE.Vector3(0.5, 0.75, -1.38), false, 0.25);
+  // Popcorn: a handful jumps out of the bucket, bounces on the table and is gone.
+  const KERNELS = 14;
+  const flying = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.018, 0), mat("#fff3c4", 1), KERNELS);
+  flying.count = 0;
+  flying.frustumCulled = false;
+  root.add(flying);
+  const kernelState = Array.from({ length: KERNELS }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), spin: 0 }));
+  const kernelMatrix = new THREE.Matrix4();
+  const kernelTurn = new THREE.Quaternion();
+  const up = new THREE.Vector3(0.3, 1, 0.2).normalize();
+  let kernelAt = 0;
+  things.popcorn = (since) => {
+    if (since === 0) {
+      kernelAt = 0;
+      const r = seeded(Math.floor(Math.random() * 1e6) + 1);
+      for (const kernel of kernelState) {
+        kernel.p.set(-0.35 + (r() - 0.5) * 0.1, 0.66, -1.25 + (r() - 0.5) * 0.1);
+        const a = r() * Math.PI * 2;
+        const out = 0.25 + r() * 0.5;
+        kernel.v.set(Math.cos(a) * out, 1.2 + r() * 1.0, Math.sin(a) * out);
+        kernel.spin = (r() - 0.5) * 20;
+      }
+    }
+    const dt = Math.min(0.05, since - kernelAt);
+    kernelAt = since;
+    flying.count = since < 2.2 ? KERNELS : 0;
+    kernelState.forEach((kernel, i) => {
+      kernel.v.y -= 9.8 * dt;
+      kernel.p.addScaledVector(kernel.v, dt);
+      // The table top, or the floor past its edge.
+      const onTable = Math.abs(kernel.p.x) < 0.65 && Math.abs(kernel.p.z + 1.2) < 0.31;
+      const floorY = onTable ? 0.475 : 0.018;
+      if (kernel.p.y < floorY) { kernel.p.y = floorY; kernel.v.y *= -0.35; kernel.v.x *= 0.6; kernel.v.z *= 0.6; kernel.spin *= 0.5; }
+      kernelTurn.setFromAxisAngle(up, since * kernel.spin);
+      const shrink = since > 1.7 ? Math.max(0.001, (2.2 - since) / 0.5) : 1;
+      kernelMatrix.compose(kernel.p, kernelTurn, new THREE.Vector3(shrink, shrink, shrink));
+      flying.setMatrixAt(i, kernelMatrix);
+    });
+    flying.instanceMatrix.needsUpdate = true;
+    return since < 2.2;
+  };
+  things.mug = (since) => {
+    steam = Math.max(0, Math.sin(Math.min(1, since / 2.4) * Math.PI));
+    return since < 2.4;
+  };
 
   // Bookshelves along the west wall (and, in the library, along more walls).
   const rand = seeded(5);
   const bookshelf = (zCentre: number) => {
     const shelf = new THREE.Group();
-    const frame = mat(look.woodDark, 0.7);
+    const frame = woodMaterial(look.woodDark, 0.7);
     const back = box(0.05, 2.2, 1.5, frame);
     back.position.set(-ROOM_HALF_X + 0.03, 1.1, zCentre);
     shelf.add(back);
@@ -1043,7 +1169,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.7), new THREE.MeshBasicMaterial({ map: skyTexture(look), toneMapped: false }));
   sky.position.set(ROOM_HALF_X - 0.01, 1.75, windowZ);
   sky.rotation.y = -Math.PI / 2;
-  root.add(sky);
+  root.add(tag(sky, "curtains"));
   let windowCode: ReturnType<typeof codeRain> | null = null;
   if (look.sky === "code") {
     windowCode = codeRain(256, 200, 22);
@@ -1065,12 +1191,35 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const pos = geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) * 22) * 0.04);
     geometry.computeVertexNormals();
-    const curtain = new THREE.Mesh(geometry, mat(curtainColour, 1, { side: THREE.DoubleSide }));
+    const curtain = new THREE.Mesh(geometry, Object.assign(fabric(curtainColour, { repeat: [0.8, 2.5], sheen: 1 }), { side: THREE.DoubleSide }));
     curtain.position.set(ROOM_HALF_X - 0.12, 1.55, windowZ + side * 1.45);
     curtain.rotation.y = -Math.PI / 2;
     curtain.castShadow = true;
-    root.add(curtain);
+    root.add(tag(curtain, "curtains"));
+    // Drawn, each curtain spreads over its half of the window.
+    onSwitch("curtains", (k) => {
+      const eased = k * k * (3 - 2 * k);
+      curtain.position.z = windowZ + side * (1.45 - eased * 0.85);
+      curtain.scale.x = 1 + eased * 1.15;
+    });
   }
+  // The window's light falling into the room: warm by day, faint and blue by night, the theme's colour elsewhere.
+  const night = isNight();
+  const [shaftColour, shaftStrength] = look.sky === "time" ? (night ? ["#8fa0ff", 0.05] : ["#ffe2b0", 0.2])
+    : look.sky === "moon" ? ["#ff9aa8", 0.07] : look.sky === "overcast" ? (night ? ["#9fb0c8", 0.04] : ["#d6e0e6", 0.12])
+      : look.sky === "city" ? ["#ff7ad1", 0.09] : ["#3dff8a", 0.07];
+  const glass = [
+    new THREE.Vector3(ROOM_HALF_X - 0.03, 2.58, windowZ - 1.1), new THREE.Vector3(ROOM_HALF_X - 0.03, 2.58, windowZ + 1.1),
+    new THREE.Vector3(ROOM_HALF_X - 0.03, 0.92, windowZ + 1.1), new THREE.Vector3(ROOM_HALF_X - 0.03, 0.92, windowZ - 1.1),
+  ];
+  const sun = new THREE.Vector3(0, 0, 1).sub(new THREE.Vector3(ROOM_HALF_X + 4, 3.5, 2.6)).normalize();
+  const shaft = lightShaft(glass, sun, 5.2, shaftColour as string, shaftStrength as number);
+  root.add(shaft.mesh);
+  animated.push((t) => { shaft.material.uniforms.uTime.value = t; });
+  onSwitch("curtains", (k) => {
+    shaft.material.uniforms.uOpacity.value = (shaftStrength as number) * (1 - k);
+    shaft.mesh.visible = k < 0.99;
+  });
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 3.6, 8), mat("#c9a25a", 0.3, { metalness: 0.8 }));
   rod.rotation.x = Math.PI / 2;
   rod.position.set(ROOM_HALF_X - 0.12, 2.82, windowZ);
@@ -1110,9 +1259,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       });
     }
   }
-  const bench = cushion(0.75, 0.42, 2.4, mat(look.wood, 0.7), 0.04);
+  const bench = cushion(0.75, 0.42, 2.4, woodMaterial(look.wood, 0.7), 0.04);
   bench.position.set(ROOM_HALF_X - 0.38, 0.23, windowZ);
-  const benchCushion = cushion(0.7, 0.12, 2.3, mat(theme === "cozy" ? "#93b7a0" : look.sofaCushion, 1), 0.05);
+  const benchCushion = cushion(0.7, 0.12, 2.3, fabric(theme === "cozy" ? "#93b7a0" : look.sofaCushion), 0.05);
   benchCushion.position.set(ROOM_HALF_X - 0.38, 0.5, windowZ);
   tagSeat(bench, "nook-1");
   tagSeat(benchCushion, "nook-1");
@@ -1125,7 +1274,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     root.add(p);
   }
   const nookSeat = seatById("nook-2")!;
-  const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.4, 24), mat(theme === "cozy" ? "#d1a35c" : look.pillows[1], 1));
+  const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.4, 24), fabric(theme === "cozy" ? "#d1a35c" : look.pillows[1], { repeat: [3, 1] }));
   pouf.position.set(nookSeat.x, 0.2, nookSeat.z);
   pouf.castShadow = true;
   tagSeat(pouf, "nook-2");
@@ -1136,45 +1285,113 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   root.add(nookMark);
 
   // Lamps: a floor lamp by the couch, a reading lamp, a pendant over the table.
-  const floorLamp = (x: number, z: number) => {
+  const floorLamp = (x: number, z: number, id: string) => {
+    const lamp = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.55, 8), mat("#2b2b2b", 0.4, { metalness: 0.6 }));
     pole.position.set(x, 0.78, z);
     const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.03, 20), mat("#2b2b2b", 0.4, { metalness: 0.6 }));
     foot.position.set(x, 0.015, z);
-    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.27, 0.32, 24, 1, true), mat(theme === "vampire" ? "#3a0a12" : "#fbe7c2", 1, { emissive: look.lamp, emissiveIntensity: 0.9, side: THREE.DoubleSide, transparent: true, opacity: 0.95 }));
+    const shadeMaterial = mat(theme === "vampire" ? "#3a0a12" : "#fbe7c2", 1, { emissive: look.lamp, emissiveIntensity: 0.9, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.27, 0.32, 24, 1, true), shadeMaterial);
     shade.position.set(x, 1.6, z);
-    root.add(pole, foot, shade);
-    addGlow(look.lamp, 1.6, new THREE.Vector3(x, 1.55, z), 0.35);
-    addLight(look.lamp, 3.2, 7, new THREE.Vector3(x, 1.45, z));
+    // A pull chain under the shade, and a fatter hit box than a pole you could miss.
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.16, 4), mat("#c9a25a", 0.3, { metalness: 0.8 }));
+    chain.position.set(x + 0.1, 1.38, z);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), mat("#c9a25a", 0.3, { metalness: 0.8 }));
+    knob.position.set(x + 0.1, 1.3, z);
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.75, 8), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(x, 0.88, z);
+    lamp.add(pole, foot, shade, chain, knob, hit);
+    root.add(tag(lamp, id));
+    const glowSprite = addGlow(look.lamp, 1.6, new THREE.Vector3(x, 1.55, z), 0.35);
+    const light = addLight(look.lamp, 3.2, 7, new THREE.Vector3(x, 1.45, z));
+    onSwitch(id, (k) => {
+      shadeMaterial.emissiveIntensity = 0.04 + 0.86 * k;
+      glowSprite.material.opacity = 0.35 * k;
+      glowSprite.visible = k > 0.01;
+      light.intensity = 3.2 * k;
+    });
   };
-  floorLamp(-1.75, 1.45);
-  floorLamp(-5.55, 3.95);
+  floorLamp(-1.75, 1.45, "lamp-couch");
+  floorLamp(-5.55, 3.95, "lamp-reading");
   const pendantCord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.9, 6), mat("#111"));
   pendantCord.position.set(0, H - 0.45, -1.2);
-  const pendant = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat(look.trim, 0.5, { side: THREE.DoubleSide, emissive: look.lamp, emissiveIntensity: 0.3 }));
+  const pendantMaterial = mat(look.trim, 0.5, { side: THREE.DoubleSide, emissive: look.lamp, emissiveIntensity: 0.3 });
+  const pendant = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), pendantMaterial);
   pendant.position.set(0, H - 0.9, -1.2);
-  ceiling.add(pendantCord, pendant);
-  addGlow(look.lamp, 0.9, new THREE.Vector3(0, H - 0.98, -1.2), 0.45, ceiling);
-  addLight(look.lamp, 1.6, 5, new THREE.Vector3(0, H - 1.05, -1.2));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshBasicMaterial({ color: look.lamp, toneMapped: false }));
+  bulb.position.set(0, H - 0.95, -1.2);
+  ceiling.add(pendantCord, tag(pendant, "pendant"), tag(bulb, "pendant"));
+  const pendantGlow = addGlow(look.lamp, 0.9, new THREE.Vector3(0, H - 0.98, -1.2), 0.45, ceiling);
+  const pendantLight = addLight(look.lamp, 1.6, 5, new THREE.Vector3(0, H - 1.05, -1.2));
+  const bulbColour = new THREE.Color(look.lamp);
+  const bulbOff = new THREE.Color("#3a3530");
+  onSwitch("pendant", (k) => {
+    pendantMaterial.emissiveIntensity = 0.02 + 0.28 * k;
+    pendantGlow.material.opacity = 0.45 * k;
+    pendantGlow.visible = k > 0.01;
+    pendantLight.intensity = 1.6 * k;
+    bulb.material.color.lerpColors(bulbOff, bulbColour, k);
+  });
 
-  // String lights in scallops along the top of three walls.
-  const bulbs: THREE.Mesh[] = [];
+  // String lights in scallops along the top of three walls: one instanced mesh of bulbs, one cloud of glows.
+  const bulbSpots: Array<{ at: THREE.Vector3; colour: THREE.Color; phase: number }> = [];
+  const fairy = new THREE.Group();
   const string = (from: THREE.Vector3, to: THREE.Vector3, count: number) => {
     for (let i = 0; i < count; i++) {
       const t = i / (count - 1);
       const p = from.clone().lerp(to, t);
       p.y -= Math.sin(t * Math.PI * 5) ** 2 * 0.16;
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: look.fairy[i % look.fairy.length], toneMapped: false }));
-      bulb.position.copy(p);
-      bulb.userData.phase = i * 0.7;
-      bulbs.push(bulb);
-      root.add(bulb);
-      if (i % 2 === 0) addGlow(look.fairy[i % look.fairy.length], 0.32, p, 0.5);
+      bulbSpots.push({ at: p, colour: new THREE.Color(look.fairy[i % look.fairy.length]), phase: i * 0.7 });
     }
+    // Reaching for a bulb 3 cm across is fiddly: the whole string is the switch.
+    const length = from.distanceTo(to);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, length), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.copy(from).lerp(to, 0.5).setY(H - 0.32);
+    hit.lookAt(to.x, H - 0.32, to.z);
+    fairy.add(hit);
   };
   string(new THREE.Vector3(-ROOM_HALF_X + 0.3, H - 0.25, -ROOM_HALF_Z + 0.05), new THREE.Vector3(ROOM_HALF_X - 0.3, H - 0.25, -ROOM_HALF_Z + 0.05), 46);
   string(new THREE.Vector3(-ROOM_HALF_X + 0.05, H - 0.25, -ROOM_HALF_Z + 0.4), new THREE.Vector3(-ROOM_HALF_X + 0.05, H - 0.25, ROOM_HALF_Z - 0.4), 34);
   string(new THREE.Vector3(ROOM_HALF_X - 0.05, H - 0.25, -ROOM_HALF_Z + 0.4), new THREE.Vector3(ROOM_HALF_X - 0.05, H - 0.25, ROOM_HALF_Z - 0.4), 34);
+  const bulbMaterial = new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false });
+  const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.03, 8, 6), bulbMaterial, bulbSpots.length);
+  const glowPositions = new Float32Array(Math.ceil(bulbSpots.length / 2) * 3);
+  const glowColours = new Float32Array(glowPositions.length);
+  let glowCount = 0;
+  bulbSpots.forEach((spot, i) => {
+    bulbs.setColorAt(i, spot.colour);
+    bulbs.setMatrixAt(i, new THREE.Matrix4().setPosition(spot.at));
+    if (i % 2) return;
+    spot.at.toArray(glowPositions, glowCount * 3);
+    spot.colour.toArray(glowColours, glowCount * 3);
+    glowCount++;
+  });
+  const glowGeometry = new THREE.BufferGeometry();
+  glowGeometry.setAttribute("position", new THREE.BufferAttribute(glowPositions.subarray(0, glowCount * 3), 3));
+  glowGeometry.setAttribute("color", new THREE.BufferAttribute(glowColours.subarray(0, glowCount * 3), 3));
+  const glowMaterial = new THREE.PointsMaterial({ map: glow, size: 0.32, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+  const fairyGlow = new THREE.Points(glowGeometry, glowMaterial);
+  fairyGlow.raycast = () => undefined;
+  fairy.add(bulbs, fairyGlow);
+  root.add(tag(fairy, "fairy"));
+  const bulbMatrix = new THREE.Matrix4();
+  animated.push((t) => {
+    const k = level("fairy");
+    if (k < 0.01 && bulbMaterial.color.r <= 0.06) return;
+    for (let i = 0; i < bulbSpots.length; i++) {
+      const spot = bulbSpots[i];
+      const twinkle = 0.75 + Math.sin(t * 1.4 + spot.phase) * 0.25 * k;
+      bulbMatrix.makeScale(twinkle, twinkle, twinkle).setPosition(spot.at);
+      bulbs.setMatrixAt(i, bulbMatrix);
+    }
+    bulbs.instanceMatrix.needsUpdate = true;
+  });
+  onSwitch("fairy", (k) => {
+    bulbMaterial.color.setScalar(0.05 + 0.95 * k);
+    glowMaterial.opacity = 0.5 * k;
+    fairyGlow.visible = k > 0.01;
+  });
 
   // Plants.
   for (const [x, z, s] of [[ROOM_HALF_X - 0.5, -ROOM_HALF_Z + 0.5, 1.6], [-ROOM_HALF_X + 0.5, ROOM_HALF_Z - 0.5, 1.3], [1.75, -ROOM_HALF_Z + 0.4, 1.0], [ROOM_HALF_X - 0.45, ROOM_HALF_Z - 0.45, 1.2], [3.6, -0.2, 0.9]] as const) {
@@ -1231,10 +1448,29 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.2, 14), mat("#14060a", 0.2, { metalness: 0.4 }));
     vase.position.set(0.46, 0.55, -1.03);
     root.add(vase);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.08, 14, 10), mat("#efe4d0", 0.6));
-    skull.scale.set(1, 0.95, 1.15);
+    const skull = new THREE.Group();
+    const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.08, 14, 10), mat("#efe4d0", 0.6));
+    cranium.scale.set(1, 0.95, 1.15);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.03, 0.07), mat("#e6d8c0", 0.7));
+    jaw.position.set(0, -0.07, 0.04);
+    // Its eyes light up when it is poked.
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: "#ff2a2a", toneMapped: false, transparent: true, opacity: 0 });
+    for (const dx of [-0.028, 0.028]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), eyeMaterial);
+      eye.position.set(dx, 0.005, 0.078);
+      skull.add(eye);
+    }
+    skull.add(cranium, jaw);
     skull.position.set(-0.3, mantelTop + 0.08, mantelZ);
-    root.add(skull);
+    root.add(tag(skull, "skull"));
+    things.skull = (since) => {
+      const k = Math.min(1, since / 1.6);
+      skull.rotation.z = Math.sin(since * 18) * 0.12 * (1 - k);
+      skull.rotation.y = Math.sin(since * 4) * 0.4 * (1 - k);
+      jaw.position.y = -0.07 - Math.abs(Math.sin(since * 22)) * 0.02 * (1 - k);
+      eyeMaterial.opacity = Math.sin(Math.min(1, since / 1.6) * Math.PI);
+      return since < 1.6;
+    };
   } else if (theme === "academia") {
     // More shelves: the south wall and the east wall beside the fireplace.
     shelfAt(-0.2, ROOM_HALF_Z, Math.PI / 2);
@@ -1248,11 +1484,11 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       root.add(button);
     }
     // A writing desk by the hearth: green banker's lamp, an open book, ink and a quill.
-    const desk = cushion(1.5, 0.06, 0.72, mat(look.wood, 0.4), 0.02);
+    const desk = cushion(1.5, 0.06, 0.72, woodMaterial(look.wood, 0.4), 0.02);
     desk.position.set(3.6, 0.76, -4.0);
     root.add(desk);
     for (const [x, z] of [[2.92, -4.3], [4.28, -4.3], [2.92, -3.7], [4.28, -3.7]]) {
-      const leg = box(0.06, 0.74, 0.06, mat(look.woodDark, 0.5));
+      const leg = box(0.06, 0.74, 0.06, woodMaterial(look.woodDark, 0.5));
       leg.position.set(x, 0.37, z);
       root.add(leg);
     }
@@ -1282,11 +1518,11 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const chair = new THREE.Group();
     const seat = cushion(0.48, 0.08, 0.48, mat("#5e1a1a", 0.6), 0.03);
     seat.position.y = 0.48;
-    const back = box(0.48, 0.5, 0.05, mat(look.wood, 0.5));
+    const back = box(0.48, 0.5, 0.05, woodMaterial(look.wood, 0.5));
     back.position.set(0, 0.75, 0.23);
     chair.add(seat, back);
     for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) {
-      const leg = box(0.04, 0.46, 0.04, mat(look.woodDark, 0.5));
+      const leg = box(0.04, 0.46, 0.04, woodMaterial(look.woodDark, 0.5));
       leg.position.set(x, 0.23, z);
       chair.add(leg);
     }
@@ -1306,15 +1542,22 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const meridian = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.01, 6, 32), gilt);
     meridian.position.copy(globe.position);
     meridian.rotation.y = Math.PI / 2;
-    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.18, 0.75, 12), mat(look.woodDark, 0.5));
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.18, 0.75, 12), woodMaterial(look.woodDark, 0.5));
     stand.position.set(4.9, 0.38, -2.9);
-    root.add(globe, meridian, stand);
-    animated.push((_, dt) => { globe.rotation.y += dt * 0.08; });
+    const globeStand = new THREE.Group();
+    globeStand.add(globe, meridian, stand);
+    root.add(tag(globeStand, "globe"));
+    let spin = 0;
+    animated.push((_, dt) => { spin *= Math.exp(-dt * 0.6); globe.rotation.y += dt * (0.08 + spin); });
+    things.globe = (since) => {
+      if (since === 0) spin = Math.min(spin + 9, 14);
+      return spin > 0.3;
+    };
     // The grandfather clock between the west shelves, its pendulum swinging.
     const clock = new THREE.Group();
-    const caseBody = box(0.55, 2.1, 0.38, mat(look.woodDark, 0.45));
+    const caseBody = box(0.55, 2.1, 0.38, woodMaterial(look.woodDark, 0.45));
     caseBody.position.y = 1.05;
-    const hood = box(0.65, 0.12, 0.44, mat(look.wood, 0.45));
+    const hood = box(0.65, 0.12, 0.44, woodMaterial(look.wood, 0.45));
     hood.position.y = 2.16;
     const face = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), mat("#efe2c0", 0.6));
     face.position.set(0.195, 1.8, 0);
@@ -1344,9 +1587,15 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     pendulum.position.set(0.15, 1.35, 0);
     clock.add(caseBody, hood, face, ring, minuteHand, hourHand, glassPane, pendulum);
     clock.position.set(-ROOM_HALF_X + 0.22, 0, -1.4);
-    root.add(clock);
-    animated.push((t) => {
-      pendulum.rotation.x = Math.sin(t * Math.PI) * 0.18;
+    root.add(tag(clock, "clock"));
+    let swing = 0.18;
+    things.clock = (since) => {
+      if (since === 0) swing = 0.34;
+      return since < 2.6;
+    };
+    animated.push((t, dt) => {
+      swing += (0.18 - swing) * Math.min(1, dt * 0.5);
+      pendulum.rotation.x = Math.sin(t * Math.PI) * swing;
       const date = new Date();
       minuteHand.rotation.x = -(date.getMinutes() / 60) * Math.PI * 2;
       hourHand.rotation.x = -((date.getHours() % 12 + date.getMinutes() / 60) / 12) * Math.PI * 2;
@@ -1386,12 +1635,18 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.28), new THREE.MeshBasicMaterial({ map: rain.texture, toneMapped: false }));
       face.position.set(ROOM_HALF_X - 0.67, 0.98, -3.25 + i * 0.65);
       face.rotation.y = -Math.PI / 2;
-      root.add(crt, face);
+      root.add(tag(crt, "crt"), tag(face, "crt"));
       let next = 0;
-      animated.push((t) => { if (t > next) { next = t + 0.09; rain.step(); } });
+      animated.push((t) => { if (t > next) { next = t + (hacking > 0 ? 0.03 : 0.09); rain.step(); } });
+      animated.push(() => { face.material.color.setScalar(1 + hacking * 1.4); });
       addGlow("#22ff77", 0.7, face.position.clone().setX(ROOM_HALF_X - 0.75), 0.35);
     }
-    addLight("#22ff77", 2.2, 5, new THREE.Vector3(ROOM_HALF_X - 1.1, 1.1, -2.6));
+    const crtLight = addLight("#22ff77", 2.2, 5, new THREE.Vector3(ROOM_HALF_X - 1.1, 1.1, -2.6));
+    animated.push((t) => { crtLight.intensity = 2.2 * (1 + hacking * (1.2 + Math.sin(t * 40) * 0.4)); });
+    things.crt = (since) => {
+      hacking = Math.max(0, 1 - since / 1.8);
+      return since < 1.8;
+    };
     // A red and a blue pill on the coffee table.
     for (const [x, colour] of [[-0.1, "#ff2a2a"], [0.05, "#2a6bff"]] as const) {
       const pill = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.03, 4, 8), mat(colour, 0.2, { emissive: colour, emissiveIntensity: 0.6 }));
@@ -1437,8 +1692,33 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     cabinet.add(body, arcadeScreen);
     cabinet.position.set(4.6, 0, -3.9);
     cabinet.rotation.y = -0.3;
-    root.add(cabinet);
-    addGlow("#ffe94a", 0.9, new THREE.Vector3(4.5, 1.35, -4.25), 0.3);
+    root.add(tag(cabinet, "arcade"));
+    const arcadeGlow = addGlow("#ffe94a", 0.9, new THREE.Vector3(4.5, 1.35, -4.25), 0.3);
+    // Touched, it plays a round: the muncher chases dots across the screen.
+    const idleArcade = arcadeScreen.material.map;
+    const playCanvas = document.createElement("canvas");
+    playCanvas.width = 128; playCanvas.height = 100;
+    const playing = new THREE.CanvasTexture(playCanvas);
+    playing.colorSpace = THREE.SRGBColorSpace;
+    things.arcade = (since) => {
+      const done = since > 3;
+      arcadeScreen.material.map = done ? idleArcade : playing;
+      arcadeGlow.material.opacity = done ? 0.3 : 0.45 + Math.sin(since * 20) * 0.1;
+      if (!done) {
+        const ctx = playCanvas.getContext("2d")!;
+        ctx.fillStyle = "#05010f"; ctx.fillRect(0, 0, 128, 100);
+        const x = (since / 3) * 150 - 10;
+        ctx.fillStyle = "#fff";
+        for (let dot = 10; dot < 128; dot += 14) if (dot > x) ctx.fillRect(dot, 48, 4, 4);
+        const mouth = Math.abs(Math.sin(since * 14)) * 0.7;
+        ctx.fillStyle = "#ffe94a"; ctx.beginPath(); ctx.arc(x, 50, 12, mouth, Math.PI * 2 - mouth); ctx.lineTo(x, 50); ctx.fill();
+        ctx.fillStyle = "#ff2fb4"; ctx.fillRect(x - 40, 38, 16, 18);
+        ctx.fillStyle = "#00f0ff"; ctx.font = "bold 12px monospace"; ctx.fillText(`${Math.floor(since * 330)}`, 6, 14);
+        playing.needsUpdate = true;
+      }
+      arcadeScreen.material.needsUpdate = true;
+      return !done;
+    };
   } else {
     // A cat curled up on the rug by the fire, breathing.
     const cat = new THREE.Group();
@@ -1459,8 +1739,23 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     cat.position.set(0.3, 0, -2.6);
     cat.rotation.y = 0.6;
     cat.traverse((part) => { part.castShadow = true; part.userData.cat = true; });
-    root.add(cat);
-    animated.push((t) => { body.scale.y = 0.5 + Math.sin(t * 1.6) * 0.025; });
+    root.add(tag(cat, "cat"));
+    let purring = 0;
+    animated.push((t) => { body.scale.y = 0.5 + Math.sin(t * (1.6 + purring * 4)) * (0.025 + purring * 0.01); });
+    // Petted, it lifts its head into your hand and its tail curls; little hearts float up.
+    const headRest = head.position.clone();
+    things.cat = (since) => {
+      const k = Math.min(1, since / 2.6);
+      const up = Math.sin(k * Math.PI);
+      purring = up;
+      head.position.set(headRest.x + up * 0.03, headRest.y + up * 0.07, headRest.z);
+      head.rotation.z = up * 0.35 + Math.sin(since * 5) * 0.08 * up;
+      earL.position.y = 0.19 + up * 0.07; earR.position.y = 0.18 + up * 0.07;
+      earL.position.x = 0.22 + up * 0.03; earR.position.x = 0.17 + up * 0.03;
+      tail.rotation.z = Math.sin(since * 6) * 0.35 * up;
+      return since < 2.6;
+    };
+    hearts.push(new THREE.Vector3(0.45, 0.35, -2.5));
     // A basket of firewood and a guitar against the wall.
     const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.35, 18, 1, true), mat("#a8794a", 1, { side: THREE.DoubleSide }));
     basket.position.set(-1.8, 0.175, -4.0);
@@ -1478,9 +1773,20 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     const neck = box(0.06, 0.65, 0.03, mat("#3a2414", 0.5));
     neck.position.y = 0.5;
     guitar.add(guitarBody, neck);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), mat("#1a0f08", 1));
+    hole.position.set(0, 0.03, 0.061);
+    const strings = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.85), new THREE.MeshBasicMaterial({ color: "#d9d2c0", transparent: true, opacity: 0.25 }));
+    strings.position.set(0, 0.33, 0.066);
+    guitar.add(hole, strings);
     guitar.position.set(ROOM_HALF_X - 0.22, 0.32, -0.9);
     guitar.rotation.set(0, -Math.PI / 2, 0.12);
-    root.add(guitar);
+    root.add(tag(guitar, "guitar"));
+    things.guitar = (since) => {
+      const k = Math.min(1, since / 1.8);
+      guitar.rotation.z = 0.12 + Math.sin(since * 26) * 0.025 * (1 - k);
+      strings.material.opacity = 0.25 + Math.abs(Math.sin(since * 60)) * 0.4 * (1 - k);
+      return since < 1.8;
+    };
   }
 
   // Blåhaj on the couch. Clicking it squeaks.
@@ -1499,22 +1805,102 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   shark.add(sharkBody, belly, fin, tailFin);
   shark.position.set(1.05, 0.68, 0.85);
   shark.rotation.y = 0.4;
-  shark.traverse((part) => { part.userData.blahaj = true; part.castShadow = true; });
-  root.add(shark);
+  shark.traverse((part) => { part.castShadow = true; });
+  root.add(tag(shark, "shark"));
+  animated.push((t) => { if (!playing.has("shark")) shark.rotation.z = Math.sin(t * 0.8) * 0.03; });
+  // Squeezed, it hops and does a little barrel roll.
+  things.shark = (since) => {
+    const k = Math.min(1, since / 0.7);
+    shark.position.y = 0.68 + Math.sin(k * Math.PI) * 0.22;
+    shark.rotation.x = k * Math.PI * 2;
+    if (k >= 1) shark.rotation.x = 0;
+    return k < 1;
+  };
 
+
+  // The room's daylight and sky glow, dimmed when the curtains are drawn.
+  const [hemi, daylight, daylightTarget] = roomAmbience(theme) as [THREE.HemisphereLight, THREE.DirectionalLight, THREE.Object3D];
+  root.add(hemi, daylight, daylightTarget);
+  const daylightBase = daylight.intensity;
+  onSwitch("curtains", (k) => { daylight.intensity = daylightBase * (1 - 0.8 * k); });
+
+  // Soft contact shadows where the furniture meets the floor.
+  const contacts: Contact[] = [
+    [0, 0.8, 3.0, 1.15, 0, false], [-2.9, -1.47, 2.2, 1.1, Math.PI / 2, false], [0, -1.2, 1.45, 0.8, 0, false],
+    [ROOM_HALF_X - 0.38, windowZ, 0.95, 2.6, 0, false], [0, hearthZ + 0.85, 3.1, 0.6, 0, false],
+    [-ROOM_HALF_X + 0.22, -3.2, 0.55, 1.7, 0, false], [-ROOM_HALF_X + 0.22, 0.6, 0.55, 1.7, 0, false],
+    [-5.4, 2.3, 0.75, 0.75, 0, true], [-1.75, 1.45, 0.5, 0.5, 0, true], [-5.55, 3.95, 0.5, 0.5, 0, true],
+  ];
+  for (const id of ["arm-e", "read-1"]) { const seat = seatById(id)!; contacts.push([seat.x, seat.z, 1.1, 1.1, -seat.facing, false]); }
+  for (const id of ["bean-1", "bean-2"]) { const seat = seatById(id)!; contacts.push([seat.x, seat.z, 1.2, 1.2, 0, true]); }
+  for (const id of ["cushion-1", "cushion-2"]) { const seat = seatById(id)!; contacts.push([seat.x, seat.z, 0.85, 0.85, 0.3, false]); }
+  const nookPouf = seatById("nook-2")!;
+  contacts.push([nookPouf.x, nookPouf.z, 0.9, 0.9, 0, true]);
+  for (const circle of CIRCLES) {
+    contacts.push([circle.x, circle.z, 0.95, 0.95, 0, true]);
+    for (const i of CIRCLE_PILLOWS) { const seat = seatById(`${circle.id}-${i}`)!; contacts.push([seat.x, seat.z, 0.8, 0.8, 0, true]); }
+  }
+  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
+  root.add(contactShadows(contacts, 0.011, dark ? 0.6 : 0.5));
+
+  // Dust turning in the light: before the fire, in the window's light and under the lamps.
+  const motes = moteField([
+    { min: [-1.2, 0.3, -4.0], max: [1.2, 1.8, -2.4], count: 60 },
+    { min: [2.6, 0.4, 1.0], max: [5.7, 2.4, 3.6], count: 80 },
+    { min: [-2.3, 0.8, 0.9], max: [-1.2, 2.0, 2.0], count: 28 },
+    { min: [-6.0, 0.6, 3.3], max: [-4.9, 2.0, 4.4], count: 24 },
+  ], look.motes, 13);
+  motes.material.uniforms.uOpacity.value = 0.4;
+  root.add(motes.points);
+
+  const roomThings = kit.api({
+    label: (id) => {
+      const on = kit.wanted(id);
+      switch (id) {
+        case "lamp-couch": case "lamp-reading": return on ? "Switch off the lamp" : "Switch on the lamp";
+        case "pendant": return on ? "Switch off the ceiling light" : "Switch on the ceiling light";
+        case "fairy": return on ? "Switch off the fairy lights" : "Switch on the fairy lights";
+        case "fire": return theme === "cyberpunk" ? (on ? "Switch off the holo-fire" : "Switch on the holo-fire") : on ? "Put the fire out" : "Light the fire";
+        case "curtains": return on ? "Open the curtains" : "Draw the curtains";
+        case "cat": return "Pet the cat";
+        case "shark": return "Squeeze Blåhaj";
+        case "guitar": return "Strum the guitar";
+        case "popcorn": return "Grab some popcorn";
+        case "globe": return "Spin the globe";
+        case "clock": return "Ring the clock";
+        case "skull": return "Poke the skull";
+        case "arcade": return "Play a round";
+        case "crt": return "Hack the mainframe";
+        case "mug": return "Take a sip";
+        default: return null;
+      }
+    },
+    sounds: {
+      cat: playPurr, shark: playSqueak, guitar: playStrum, popcorn: () => playPops(), globe: playWhirr, clock: playChime,
+      skull: playBoo, arcade: playArcade, crt: playData, mug: playSip,
+    },
+    switched: (id, on) => {
+      if (id === "fire") {
+        if (on) { playIgnite(); sparks = 1; } else playDouse();
+      } else if (id === "curtains") playCurtains();
+      else playSwitch(on);
+    },
+    played: (thing) => {
+      if (thing === "cat") for (const at of hearts) kit.floatUp("heart", at, 3);
+      if (thing === "guitar") kit.floatUp("note", new THREE.Vector3(ROOM_HALF_X - 0.5, 1.0, -0.9), 3, look.fairy[0]);
+    },
+  });
 
   let codeNext = 0;
   const update = (t: number, dt: number) => {
+    kit.update(t, dt);
     for (const { mesh, phase } of flickers) {
       mesh.scale.y = 0.85 + Math.sin(t * 9 + phase) * 0.14 + Math.sin(t * 23 + phase * 2) * 0.07;
       mesh.scale.x = 0.92 + Math.sin(t * 7 + phase) * 0.08;
     }
     for (const entry of lights) {
-      entry.light.intensity = entry.base * (1 + (Math.sin(t * 11 + entry.phase) * 0.6 + Math.sin(t * 27 + entry.phase) * 0.4) * entry.amount);
-    }
-    for (const bulb of bulbs) {
-      const twinkle = 0.75 + Math.sin(t * 1.4 + (bulb.userData.phase as number)) * 0.25;
-      bulb.scale.setScalar(twinkle);
+      const on = entry.switch ? level(entry.switch) : 1;
+      entry.light.intensity = on * entry.base * (1 + (Math.sin(t * 11 + entry.phase) * 0.6 + Math.sin(t * 27 + entry.phase) * 0.4) * entry.amount);
     }
     if (t > codeNext) {
       codeNext = t + 0.08;
@@ -1522,7 +1908,12 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       windowCode?.step();
     }
     for (const step of animated) step(t, dt);
+    motes.update(t);
   };
+
+  // Everything settled: show the switches as they start, then bake what never moves into a few meshes.
+  kit.settle();
+  mergeStatics(root, [ceiling]);
 
   const stopProps = addProps(root, theme, addGlow);
   const background = new THREE.Color(look.background);
@@ -1531,12 +1922,16 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     ceiling,
     screenMaterial,
     idleScreen,
-    shark,
+    things: roomThings,
     background,
     fog: new THREE.Fog(look.fog, 12, 26),
     exposure: look.exposure,
     update,
-    dispose: () => { stopProps(); glow.dispose(); },
+    dispose: () => {
+      stopProps();
+      glow.dispose();
+      kit.dispose();
+    },
   };
 }
 

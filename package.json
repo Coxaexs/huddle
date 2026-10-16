@@ -17,7 +17,8 @@
     "backup": "sh scripts/backup.sh",
     "check:turn": "node scripts/check-turn.mjs",
     "serve": "wrangler dev --config dist/server/wrangler.json --env-file .dev.vars --ip 127.0.0.1 --port 8730 --persist-to state",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "build:mac-native": "bash desktop-native-macos/scripts/build.sh"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
@@ -31,11 +32,13 @@
     "livekit-server-sdk": "^2.19.1",
     "lucide-react": "^1.27.0",
     "marked": "^16.4.2",
+    "n8ao": "2.0.1",
     "node": "22.23.1",
     "onnxruntime-web": "^1.30.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "phonemizer": "^1.2.1",
+    "postprocessing": "6.39.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "three": "^0.180.0",

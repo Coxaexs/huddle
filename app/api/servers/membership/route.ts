@@ -72,11 +72,17 @@ export async function POST(request: Request) {
       );
     }
     const server = await db
-      .prepare("SELECT id, name FROM servers WHERE id = ?")
+      .prepare("SELECT * FROM servers WHERE id = ?")
       .bind(invite.server_id)
-      .first<{ id: string; name: string }>();
+      .first<{ id: string; name: string; raid_mode?: number }>();
     if (!server) {
       return Response.json({ error: "That server is gone." }, { status: 404 });
+    }
+    if (server.raid_mode) {
+      return Response.json(
+        { error: "This server has Raid Lockdown enabled and is temporarily pausing new joins." },
+        { status: 403 },
+      );
     }
     if (await isServerMember(db, server.id, user.id)) {
       return Response.json({

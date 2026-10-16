@@ -50,6 +50,7 @@ export interface User {
   nameplate?: string | null;
   profile_frame?: string | null;
   profile_style?: string | null;
+  disabled_modules?: string | null;
   color: string;
   is_admin: number;
   can_invite?: number;
@@ -142,7 +143,6 @@ function profileFields(user: User) {
     color: user.color,
     customCss: user.custom_css || null,
     // Instance admins' profile CSS is used as written (see scopeProfileCss).
-    ...(isInstanceAdmin(user) ? { unrestrictedCss: true } : {}),
     customTheme: user.custom_theme || null,
   };
 }
@@ -194,6 +194,7 @@ export function publicUser(user: User): PublicUser {
     isInstanceAdmin: isInstanceAdmin(user),
     quickReactions: stringList(user.quick_reactions),
     hiddenEmojis: stringList(user.hidden_emojis),
+    ...(user.disabled_modules !== undefined ? { disabledModules: stringList(user.disabled_modules) } : {}),
     lastfmUsername: user.lastfm_username || null,
     email: user.email || null,
     emailPromptSkipped: Boolean(user.email_prompt_skipped),

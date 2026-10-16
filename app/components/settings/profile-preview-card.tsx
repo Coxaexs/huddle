@@ -33,7 +33,6 @@ export interface PreviewProfile {
   socialLinks?: SocialLink[];
   isAdmin?: boolean;
   /** Instance admin: the custom CSS is used as written (see scopeProfileCss). */
-  unrestrictedCss?: boolean;
   createdAt?: string;
   song?: { title: string; artist: string; cover?: string } | null;
   profileStyle?: ProfileStyle;
@@ -84,7 +83,7 @@ export function ProfilePreviewCard({
       data-has-custom-css={Boolean(customCss?.trim())}
     >
       <CardBackdrop themed={look.themed} />
-      {customCss?.trim() && <style dangerouslySetInnerHTML={{ __html: scopeProfileCss(customCss, "live_preview", profile.unrestrictedCss) }} />}
+      {customCss?.trim() && <style dangerouslySetInnerHTML={{ __html: scopeProfileCss(customCss, "live_preview") }} />}
       <div className="pv-banner profile-banner" style={{ background: profile.bannerBackground }} />
       <div className="pv-head">
         <div className={`pv-avatar-wrap avatar-frame-${cosmetics.avatarFrame}`}>

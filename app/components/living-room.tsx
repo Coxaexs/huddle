@@ -9,7 +9,10 @@ import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParti
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
 import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
-import { buildRoom, roomAmbience, type BuiltRoom } from "./living-room-scene";
+import { buildRoom, type BuiltRoom, type RoomThings } from "./living-room-scene";
+import { RoomProbe } from "./living-room-fx";
+import { ROOM_POST, RoomPost, type RoomQuality } from "./room-post";
+import { setThingSound } from "./living-room-sounds";
 import { buildCinema } from "./cinema-scene";
 import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
@@ -32,7 +35,7 @@ import {
   type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
-import { DEFAULT_SQUARES, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
+import { DEFAULT_SQUARES, LOUNGE_SWITCHES, TABLE_MOODS, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type LoungeSwitches, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
@@ -178,21 +181,21 @@ function drawNowPlaying(ctx: CanvasRenderingContext2D, state: PlayerState, now: 
   ctx.textAlign = "left";
 }
 
-const EYE_SEATED = 1.1;
+const EYE_SEATED = 1.15;
 /** Sitting at the tabletop: high enough to look down on the map and the dice, not across the rim. */
 const EYE_AT_TABLE = 1.55;
 const EYE_STANDING = 1.6;
 const EYE_FLOOR = 0.75;
 /** First-person field of view in degrees; the wheel zooms between the limits. */
 const EYE_FOV = 70;
-const EYE_FOV_MIN = 20;
-const EYE_FOV_MAX = 100;
+const EYE_FOV_MIN = 15;
+const EYE_FOV_MAX = 120;
 const OVERHEAD_FOV = 52;
 const WALK_SPEED = 1.6; // m/s
 /** Shift+W, or W tapped twice: a brisk walk, 30% faster. */
-const SPRINT = 1.3;
+const SPRINT = 1.6;
 /** A jump: how high (metres) and how long it is in the air (seconds). */
-const JUMP_HEIGHT = 0.45;
+const JUMP_HEIGHT = 0.55;
 const JUMP_SECONDS = 0.55;
 /** Height of a jump `ms` milliseconds after it started. */
 const jumpLift = (ms: number) => {
@@ -344,7 +347,7 @@ function attachCam(body: Body, stream: MediaStream, mirrored: boolean) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.generateMipmaps = false;
   texture.minFilter = THREE.LinearFilter;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, alphaMap: circleMaskTexture(), transparent: true }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, alphaMap: circleMaskTexture(), transparent: true, alphaTest: 0.05 }));
   sprite.renderOrder = 6;
   body.group.add(sprite);
   body.cam = { stream, video, texture, sprite, mirrored, w: 0, h: 0 };
@@ -380,11 +383,13 @@ const TOKEN = 0.364; // 30% smaller than the original 0.52
 function makeBody(person: VoiceParticipant): Body {
   const group = new THREE.Group();
   const colour = new THREE.Color(person.color || "#ffd67c");
-  const token = new THREE.Sprite(new THREE.SpriteMaterial({ map: tokenTexture(person), transparent: true }));
+  // Its see-through corners write no depth, so the ambient occlusion never draws a square shadow round it.
+  const token = new THREE.Sprite(new THREE.SpriteMaterial({ map: tokenTexture(person), transparent: true, alphaTest: 0.05 }));
   token.scale.setScalar(TOKEN);
   token.renderOrder = 5;
   const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTexture(), color: "#5dffa0", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
   ring.scale.setScalar(TOKEN * 1.45);
+  ring.material.userData.noGlow = true; // who is talking stays as bright as ever
   ring.renderOrder = 4;
   // A soft contact shadow, and a little arrow on the floor for which way they face (it is where their ears point).
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.24, 32), new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: 0.32, depthWrite: false }));
@@ -418,6 +423,15 @@ function disposeTree(object: THREE.Object3D) {
       material.dispose();
     }
   });
+}
+
+/** The living room's switches as the hub has them; nothing set yet is everything on, curtains open. */
+const switchesOf = (lounge: LoungeSwitches | null | undefined) => ({ off: lounge?.off ?? [], curtains: lounge?.curtains ?? false, mood: lounge?.mood ?? "warm" as const });
+
+/** Whether an object is drawn at all (the ceiling and its pendant are hidden from overhead). */
+function shown(object: THREE.Object3D | null): boolean {
+  for (let at = object; at; at = at.parent) if (!at.visible) return false;
+  return true;
 }
 
 function squeak() {
@@ -464,7 +478,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-      if (event.key.toLowerCase() === "h" && !event.repeat) setControlsHidden((hidden) => !hidden);
+      if (event.key.toLowerCase() === "h" && !event.repeat) {
+        event.preventDefault();
+        setControlsHidden((hidden) => !hidden);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -567,6 +584,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   });
   /** The table's spell animations, once the room is built. */
   const spellFxRef = useRef<SpellFx | null>(null);
+  /** The living room's touchable things (lamps, the fire, the cat), once the room is built. */
+  const thingsRef = useRef<RoomThings | null>(null);
+  /** The pointer's tip over a thing: written straight to the page, so hovering never re-renders the room. */
+  const thingTipRef = useRef<HTMLDivElement | null>(null);
+  /** The finishing actually in use (what "auto" settled on), for the settings panel. */
+  const [graphicsNow, setGraphicsNow] = useState<RoomQuality>("high");
   const pawnRef = useRef<{ held: string | null; tap: (id: string) => void; moveTo: (x: number, z: number) => void; openCabinet: () => void; landed: (id: string, terrain: Terrain) => void }>({
     held: null, tap: () => undefined, moveTo: () => undefined, openCabinet: () => undefined, landed: () => undefined,
   });
@@ -585,6 +608,21 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [ambienceOn, theme]);
   useEffect(() => { ambience.current?.setVolume(room.settings.ambienceVolume); }, [room.settings.ambienceVolume, ambienceOn, theme]);
   useEffect(() => { ambience.current?.setMuted(deafened); }, [deafened, ambienceOn, theme]);
+  // The things' little sounds follow the ambience: its volume, and quiet when deafened or switched off.
+  useEffect(() => { setThingSound({ muted: deafened || !room.settings.ambience, volume: room.settings.ambienceVolume }); }, [deafened, room.settings.ambience, room.settings.ambienceVolume]);
+  // Someone switched a lamp or drew the curtains: the room shows it (and so does the fire's crackle).
+  const loungeSwitches = room.shared.lounge;
+  useEffect(() => {
+    const state = switchesOf(loungeSwitches);
+    thingsRef.current?.set(state);
+    ambience.current?.setFire(!state.off.includes("fire"));
+  }, [loungeSwitches, ambienceOn, theme]);
+  // Someone else petted the cat.
+  useEffect(() => {
+    const fx = room.loungeFx;
+    if (fx) thingsRef.current?.play(fx.thing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.loungeFx?.id]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -611,19 +649,32 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     if (/Mac/i.test(navigator.platform) && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)) {
       parts.root.traverse((object) => { if ((object as THREE.PointLight).isPointLight) object.castShadow = false; });
     }
-    if (venueId === "lounge") for (const light of roomAmbience(theme)) house.add(light);
+    // The living room's things: as the room has them now, and changed as anyone touches them.
+    const things = parts.things ?? null;
+    thingsRef.current = things;
+    things?.set(switchesOf(live.current.room.shared.lounge));
+    // Its light bounces: the room photographed into an environment map once the props are in, and again when a lamp changes.
+    const probeAt = venueId === "lounge" ? new THREE.Vector3(0, 1.3, -0.3) : new THREE.Vector3(venue.focus.x, venue.floorY(venue.focus.x, venue.focus.z) + 1.4, venue.focus.z);
+    const probe = new RoomProbe(renderer, scene, probeAt, venueId === "meadow" ? 0.35 : 0.5);
+    probe.request(1200);
+    const reprobe = setTimeout(() => probe.request(0), 5000);
+    // Nothing in the living room or the cinema that moves casts much shadow (people are cut-outs), so their
+    // shadow maps are redrawn only when a thing moves (and now and then, for props arriving).
+    const steadyShadows = venueId === "lounge" || venueId === "cinema";
+    if (steadyShadows) renderer.shadowMap.autoUpdate = false;
+    let shadowsAt = 0;
     // At the tabletop, dice are thrown onto the map.
     const dice = venueId === "tabletop"
       ? new TableDice(house, {
-          surfaceY: TABLE_SURFACE_Y,
-          centre: TABLE_CENTRE,
-          radius: 1.15,
-          onSettled: (roll, crit) => {
-            const dieTheme = roll.theme || "default";
-            if (crit === "nat20") void playCriticalSuccessSound({ theme: dieTheme });
-            else if (crit === "nat1") void playCriticalFumbleSound({ material: roll.material ?? "plastic", theme: dieTheme });
-          },
-        })
+        surfaceY: TABLE_SURFACE_Y,
+        centre: TABLE_CENTRE,
+        radius: 1.15,
+        onSettled: (roll, crit) => {
+          const dieTheme = roll.theme || "default";
+          if (crit === "nat20") void playCriticalSuccessSound({ theme: dieTheme });
+          else if (crit === "nat1") void playCriticalFumbleSound({ material: roll.material ?? "plastic", theme: dieTheme });
+        },
+      })
       : null;
     diceRef.current = dice;
     const extras = venueId === "tabletop" ? new TableExtras(house, TABLE_SURFACE_Y) : null;
@@ -671,10 +722,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     /** Eyes above the floor the person stands on, which rises in the cinema's tiers. */
     const eyeAt = (pose: LoungePose) => venue.floorY(pose.x, pose.z) + (pose.seat === "floor" ? EYE_FLOOR : pose.seat ? (venueId === "tabletop" ? EYE_AT_TABLE : EYE_SEATED) : EYE_STANDING);
 
+    // The finishing: ambient occlusion, bloom, filmic tones, SMAA. Outdoors the occlusion reaches further.
+    const post = new RoomPost(renderer, scene, camera, venueId === "meadow" ? { ...ROOM_POST, aoRadius: 0.9 } : venueId === "cinema" || venueId === "boardhall" ? { ...ROOM_POST, aoRadius: 0.7, vignette: 0.5 } : ROOM_POST);
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = mount;
       if (!w || !h) return;
       renderer.setSize(w, h, false);
+      post.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
@@ -719,15 +773,15 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let canFishNow = false;
     const rod = venueId === "meadow"
       ? new FishingRod(house, (phase) => {
-          setFishing(phase);
-          if (phase.phase === "caught") {
-            const { log, record } = recordCatch(phase.fish);
-            setTackle(log);
-            setLastCatch({ ...phase.fish, record });
-            // The room sees a fish over your head.
-            live.current.room.emote("🐟");
-          }
-        })
+        setFishing(phase);
+        if (phase.phase === "caught") {
+          const { log, record } = recordCatch(phase.fish);
+          setTackle(log);
+          setLastCatch({ ...phase.fish, record });
+          // The room sees a fish over your head.
+          live.current.room.emote("🐟");
+        }
+      })
       : null;
     const castNow = () => {
       const pose = myPose();
@@ -821,8 +875,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           return;
         }
         let object: THREE.Object3D | null = hit.object;
-        while (object && !object.userData.seat && !object.userData.blahaj && !object.userData.floor && !object.userData.cabinet) object = object.parent;
+        while (object && !object.userData.seat && !object.userData.blahaj && !object.userData.floor && !object.userData.cabinet && !object.userData.thing) object = object.parent;
         if (!object) continue;
+        if (object.userData.thing) {
+          if (!shown(hit.object)) continue;
+          touchThing(object.userData.thing as string);
+          return;
+        }
         if (object.userData.cabinet) {
           pawnRef.current.openCabinet();
           return;
@@ -849,6 +908,60 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           return;
         }
       }
+    };
+
+    /** A lamp or the fire is a switch for the whole room; the cat or the guitar plays here and for everyone else. */
+    const touchThing = (thing: string) => {
+      const r = live.current.room;
+      const now = switchesOf(r.shared.lounge);
+      const touch = things?.route(thing);
+      if (!touch) return;
+      poke();
+      if ("switch" in touch) {
+        if (!(LOUNGE_SWITCHES as readonly string[]).includes(touch.switch)) return;
+        const on = touch.on ?? now.off.includes(touch.switch);
+        r.setShared("lounge", { ...now, off: on ? now.off.filter((id) => id !== touch.switch) : [...new Set([...now.off, touch.switch])] });
+      } else if ("curtains" in touch) {
+        r.setShared("lounge", { ...now, curtains: !now.curtains });
+      } else if ("mood" in touch) {
+        // The game master sets the table's mood; anyone may while there is none.
+        const gm = r.shared.gm?.connectionId;
+        if (gm && gm !== live.current.connectionId && live.current.participants.some((p) => p.connectionId === gm)) { setHint("The game master sets the mood here."); return; }
+        const next = TABLE_MOODS[(TABLE_MOODS.indexOf(now.mood) + 1) % TABLE_MOODS.length];
+        r.setShared("lounge", { ...now, mood: next });
+      } else {
+        things?.play(touch.moment);
+        r.setShared("loungefx", { thing: touch.moment });
+      }
+    };
+    // Pointing at a thing says what touching it does.
+    let thingAt = 0;
+    let thingLabel: string | null = null;
+    const hoverThing = (event: PointerEvent) => {
+      if (!things) return;
+      const now = performance.now();
+      if (now - thingAt < 60) return;
+      thingAt = now;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      let label: string | null = null;
+      for (const hit of raycaster.intersectObjects(things.targets, true)) {
+        const id = hit.object.userData.thing as string | undefined;
+        if (id && shown(hit.object)) { label = things.label(id); break; }
+      }
+      const tip = thingTipRef.current;
+      if (label !== thingLabel) {
+        thingLabel = label;
+        renderer.domElement.style.cursor = label ? "pointer" : "";
+        if (tip) { tip.textContent = label ?? ""; tip.hidden = !label; }
+      }
+      if (tip && label) { tip.style.left = `${event.clientX - rect.left + 14}px`; tip.style.top = `${event.clientY - rect.top + 14}px`; }
+    };
+    const hideThingTip = () => {
+      thingLabel = null;
+      renderer.domElement.style.cursor = "";
+      if (thingTipRef.current) thingTipRef.current.hidden = true;
     };
 
     const spread = () => {
@@ -888,6 +1001,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       poke();
       if (venueId === "cinema" && !drag && pinch === null) hover(event);
       if (venueId === "tabletop" && !drag && pinch === null) aim(event);
+      if (things && event.pointerType === "mouse") { if (!drag?.moved && pinch === null) hoverThing(event); else if (thingLabel) hideThingTip(); }
       if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pinch !== null) {
         const now = spread();
@@ -933,9 +1047,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       poke();
       const key = event.key.toLowerCase();
-      if (key === "x" && event.type === "keydown" && !event.repeat) { local = null; live.current.room.toggleFloor(); return; }
-      if (key === "escape" && event.type === "keydown" && (tableRef.current.aiming || tableRef.current.targeting)) { setAimingState(null); setTargeting(null); return; }
-      if (key === "escape" && event.type === "keydown" && pawnRef.current.held) { setHeldPawn(null); return; }
+      if (key === "x" && event.type === "keydown" && !event.repeat) { event.preventDefault(); local = null; live.current.room.toggleFloor(); return; }
+      if (key === "escape" && event.type === "keydown" && (tableRef.current.aiming || tableRef.current.targeting)) { event.preventDefault(); setAimingState(null); setTargeting(null); return; }
+      if (key === "escape" && event.type === "keydown" && pawnRef.current.held) { event.preventDefault(); setHeldPawn(null); return; }
       if (key === "shift") { shiftDown = event.type === "keydown"; return; }
       if (key === " " && event.type === "keydown") {
         event.preventDefault();
@@ -943,6 +1057,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         return;
       }
       if (key === "f" && event.type === "keydown" && !event.repeat && venueId === "meadow") {
+        event.preventDefault();
         if (rod?.busy()) rod.reel();
         else if (canFishNow) castNow();
         return;
@@ -954,6 +1069,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
       if ((key === "w" || key === "arrowup") && event.type === "keyup") { lastForwardUp = performance.now(); doubleTap = false; }
       if (!["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) return;
+      event.preventDefault();
       if (event.type === "keydown") { keys.add(key); walkTarget = null; walkQueue = []; } else keys.delete(key);
     };
     const canvas = renderer.domElement;
@@ -961,6 +1077,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onUp);
+    canvas.addEventListener("pointerleave", hideThingTip);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
@@ -1211,6 +1328,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let watchError: string | null = null;
     let watchSeekAt = 0;
     let watchInfoAt = 0;
+    /** The film and queue head this tab last asked the hub to move on from. */
+    let advancedFor = "";
     const dropWatch = () => {
       if (watchVideo) { watchVideo.pause(); watchVideo.removeAttribute("src"); watchVideo.load(); }
       watchTexture?.dispose();
@@ -1261,7 +1380,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const duration = Number.isFinite(element.duration) ? element.duration : 0;
       let expected = watchPosition(w, (live.current.serverNow ?? Date.now)());
       let paused = w.paused;
-      if (duration && expected >= duration) { expected = duration; paused = true; }
+      if (duration && expected >= duration) {
+        expected = duration; paused = true;
+        // Over: start the next film in the queue. Every tab asks; the hub starts it once.
+        const top = live.current.room.shared.queue?.films[0];
+        const key = top ? `${w.url}|${top.id}` : "";
+        if (key && key !== advancedFor) {
+          advancedFor = key;
+          live.current.room.setShared("queue", { op: "next", from: w.url });
+        }
+      }
       const now = performance.now();
       if (element.readyState >= 1 && Math.abs(element.currentTime - expected) > (paused ? 0.3 : 1.2) && now - watchSeekAt > 1500) {
         element.currentTime = expected;
@@ -1507,12 +1635,70 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
     // Behind other windows nobody is watching closely: half the frames do.
     let sinceFrame = 0;
+    // Keeping up. On "auto" graphics, frames that keep coming late first lose the ambient occlusion, then a
+    // notch of resolution at a time, then the finishing altogether; with room to spare it all comes back.
+    // A fixed choice keeps its finishing and only the resolution gives.
+    const fullRatio = Math.min(window.devicePixelRatio, 2);
+    const floorRatio = Math.min(fullRatio, 0.75);
+    let ratio = fullRatio;
+    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    let autoTier: RoomQuality = phone ? "medium" : "high";
+    let applied: string | null = null;
+    let lastLoop = 0;
+    let window60 = { frames: 0, time: 0 };
+    let roomy = 0;
+    /** Windows of spare time needed before stepping back up; doubles when a step up does not hold. */
+    let roomyNeed = 5;
+    let raisedAt = 0;
+    let settleUntil = performance.now() + 3000;
+    const applyGraphics = () => {
+      const chosen = live.current.room.settings.graphics ?? "auto";
+      const tier = chosen === "auto" ? autoTier : chosen;
+      const key = `${tier}|${ratio}`;
+      if (key === applied) return;
+      applied = key;
+      post.setQuality(tier);
+      if (renderer.getPixelRatio() !== ratio) { renderer.setPixelRatio(ratio); resize(); }
+      setGraphicsNow(tier);
+    };
+    const pace = (now: number, rendering: boolean) => {
+      const gap = now - lastLoop;
+      lastLoop = now;
+      if (!rendering || gap > 250 || now < settleUntil) return;
+      window60.frames++;
+      window60.time += gap;
+      if (window60.frames < 60) return;
+      const average = window60.time / window60.frames;
+      window60 = { frames: 0, time: 0 };
+      const auto = (live.current.room.settings.graphics ?? "auto") === "auto";
+      if (average > 24) {
+        roomy = 0;
+        if (now - raisedAt < 10_000) roomyNeed = Math.min(60, roomyNeed * 2);
+        if (auto && autoTier === "high") autoTier = "medium";
+        else if (ratio > floorRatio) ratio = Math.max(floorRatio, ratio * 0.8);
+        else if (auto && autoTier === "medium") autoTier = "low";
+        else return;
+      } else if (average < 17.5) {
+        if (++roomy < roomyNeed) return;
+        roomy = 0;
+        if (auto && autoTier === "low") autoTier = "medium";
+        else if (ratio < fullRatio) ratio = Math.min(fullRatio, ratio * 1.15);
+        else if (auto && autoTier === "medium" && !phone) autoTier = "high";
+        else return;
+        raisedAt = now;
+      } else {
+        roomy = 0;
+        return;
+      }
+      settleUntil = now + 1500;
+    };
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       sinceFrame += dt;
-      if (walkTarget || keys.size || performance.now() - jumpedAt < 1000 || dice?.busy() || parts.board?.busy() || live.current.view === "pawn" || live.current.room.emotes.length) poke();
+      if (walkTarget || keys.size || performance.now() - jumpedAt < 1000 || dice?.busy() || parts.board?.busy() || things?.busy() || live.current.view === "pawn" || live.current.room.emotes.length) poke();
       // Nothing moving for a couple of seconds, or behind another window: 30 frames a second is plenty.
       const calm = !document.hasFocus() || performance.now() - lastActive > 2500;
+      pace(performance.now(), !calm);
       if (calm && sinceFrame < 1 / 30) return;
       sinceFrame = 0;
       const t = clock.elapsedTime;
@@ -1545,12 +1731,27 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       placeCamera();
       const me = myPose();
       if (me) ambience.current?.setListener(me, eyeAt(me));
-      renderer.render(scene, camera);
+      if (steadyShadows) {
+        const now = performance.now();
+        if (things?.busy() || now - shadowsAt > 1500) { renderer.shadowMap.needsUpdate = true; shadowsAt = now; }
+      }
+      {
+        if (things?.relit()) probe.request(60);
+        // People and their names stay out of the room's reflections.
+        if (probe.tick(() => house.children.filter((child) => child !== parts.root))) poke();
+      }
+      applyGraphics();
+      post.render(scene, camera, dt);
     });
 
     return () => {
       renderer.setAnimationLoop(null);
       observer.disconnect();
+      clearTimeout(reprobe);
+      post.dispose();
+      probe.dispose();
+      if (thingsRef.current === things) thingsRef.current = null;
+      canvas.removeEventListener("pointerleave", hideThingTip);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -2084,6 +2285,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               watch={room.shared.watch} hubNow={() => (serverNow ?? Date.now)()} info={watchInfo} volume={watchVolume} onVolume={setWatchVolume}
               setWatch={(value) => room.setShared("watch", value)} onStartSound={() => watchApi.current.start()}
               onYoutube={onCommand ? () => { onCommand("/watch"); setPanel(null); } : undefined} onClose={() => setPanel(null)}
+              queue={room.shared.queue} myUserId={myUserId} sendQueue={(op) => room.setShared("queue", op)}
+              roomSize={new Set(participants.filter((p) => !p.bot && !p.recorder).map((p) => p.id)).size}
             />
           )}
           {panel === "booth" && inBooth && (
@@ -2130,6 +2333,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           )}
         </div>
       )}
+      <div ref={thingTipRef} className="living-room-tip" hidden />
       {hoverSeat && venueId === "cinema" && (() => {
         const seat = seatById(hoverSeat.id, venue);
         const holder = [...room.poses].find(([, pose]) => pose.seat === hoverSeat.id)?.[0];
@@ -2137,32 +2341,32 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         return seat ? <div className="living-room-tip" style={{ left: hoverSeat.x + 14, top: hoverSeat.y + 14 }}>{seat.label}{who ? ` · ${who}` : " · free"}</div> : null;
       })()}
       {!controlsHidden && !settingsOpen && venueId === "tabletop" && <div className="lr-side">
-      {held && (() => {
-        const mine = held.owner === myUserId;
-        const heroSheet = held.hero ? characters[held.owner] : undefined;
-        return (
-          <HeldPawnCard
-            name={nameOf(held)}
-            hp={heroSheet ? heroSheet.hp ?? heroSheet.maxHp : held.hp} maxHp={heroSheet ? heroSheet.maxHp : held.maxHp}
-            canEditHp={held.hero ? mine : mine || isGm}
-            setHp={held.hero ? (hp) => heroSheet && setMine({ ...heroSheet, hp }) : (hp, maxHp) => sendPawn({ op: "hp", id: held.id, hp, maxHp })}
-            moved={combat ? movedFeet(held) : null} speed={speedOf(held)}
-            offTurn={combat && turnEntry && !onTurn(held) ? turnEntry.name : null}
-            onLetGo={() => setHeldPawn(null)}
+        {held && (() => {
+          const mine = held.owner === myUserId;
+          const heroSheet = held.hero ? characters[held.owner] : undefined;
+          return (
+            <HeldPawnCard
+              name={nameOf(held)}
+              hp={heroSheet ? heroSheet.hp ?? heroSheet.maxHp : held.hp} maxHp={heroSheet ? heroSheet.maxHp : held.maxHp}
+              canEditHp={held.hero ? mine : mine || isGm}
+              setHp={held.hero ? (hp) => heroSheet && setMine({ ...heroSheet, hp }) : (hp, maxHp) => sendPawn({ op: "hp", id: held.id, hp, maxHp })}
+              moved={combat ? movedFeet(held) : null} speed={speedOf(held)}
+              offTurn={combat && turnEntry && !onTurn(held) ? turnEntry.name : null}
+              onLetGo={() => setHeldPawn(null)}
+            />
+          );
+        })()}
+        {(myCharacterNow?.maxHp || myCharacterNow?.cls ? (
+          <HeroCard
+            character={myCharacterNow} onChange={setMine} onEdit={() => setPanel("character")}
+            onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}
+            aiming={aiming ? { name: aiming.spell.name, what: "click the map where it goes" } : targeting ? { name: targeting.spell.name, what: /^(misty step|dimension door|thunder step)$/i.test(targeting.spell.name) ? "click where you go" : "click a pawn or a spot" } : null}
+            cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
+            onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
           />
-        );
-      })()}
-      {(myCharacterNow?.maxHp || myCharacterNow?.cls ? (
-        <HeroCard
-          character={myCharacterNow} onChange={setMine} onEdit={() => setPanel("character")}
-          onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}
-          aiming={aiming ? { name: aiming.spell.name, what: "click the map where it goes" } : targeting ? { name: targeting.spell.name, what: /^(misty step|dimension door|thunder step)$/i.test(targeting.spell.name) ? "click where you go" : "click a pawn or a spot" } : null}
-          cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
-          onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
-        />
-      ) : !isGm && panel !== "character" ? (
-        <button type="button" className="lr-hero-make" onClick={() => setPanel("character")}><UserRound size={14} /> Make my character</button>
-      ) : null)}
+        ) : !isGm && panel !== "character" ? (
+          <button type="button" className="lr-hero-make" onClick={() => setPanel("character")}><UserRound size={14} /> Make my character</button>
+        ) : null)}
       </div>}
       {hint && !settingsOpen && !controlsHidden && (
         <div className="living-room-hint" onClick={() => setHint(null)}>{hint}</div>
@@ -2186,6 +2390,16 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               onChange={(event) => room.setSettings({ echo: Number(event.target.value) })}
             />
           </label>
+          <div className="living-room-slider">
+            <span>Graphics{(room.settings.graphics ?? "auto") === "auto" ? ` · now ${graphicsNow}` : ""}</span>
+            <div className="lr-graphics" role="group" aria-label="Graphics">
+              {(["auto", "high", "medium", "low"] as const).map((choice) => (
+                <button key={choice} type="button" aria-pressed={(room.settings.graphics ?? "auto") === choice} onClick={() => room.setSettings({ graphics: choice })}>
+                  {choice[0].toUpperCase() + choice.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="living-room-switch">
             <span><strong>Music from the TV</strong><small>{venueId === "lounge" ? "The music bot plays from the TV over the fireplace." : "The music bot plays from the screen."}</small></span>
             <input type="checkbox" checked={room.settings.tvMusic} onChange={(event) => room.setSettings({ tvMusic: event.target.checked })} />
@@ -2325,6 +2539,9 @@ const LIVING_ROOM_CSS = `
 .living-room-hint { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: var(--lr-panel); color: var(--lr-ink); padding: 6px 14px; border-radius: 12px; font-size: 13px; cursor: pointer; text-align: center; }
 .living-room-reveal { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 999px; background: var(--lr-panel); color: var(--lr-ink); border: 1px solid var(--lr-edge); opacity: 0.55; transition: opacity 0.15s; }
 .living-room-reveal:hover { opacity: 1; }
+.lr-graphics { display: flex; gap: 4px; margin-top: 6px; }
+.lr-graphics button { flex: 1; padding: 5px 0; border-radius: 8px; border: 1px solid var(--lr-edge); color: var(--lr-ink); font-size: 12px; font-weight: 600; }
+.lr-graphics button[aria-pressed="true"] { background: var(--lr-accent); border-color: var(--lr-accent); color: #1a110c; }
 .living-room-settings { position: absolute; top: 58px; right: 10px; width: min(320px, calc(100% - 20px)); display: grid; gap: 10px; padding: 12px 14px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 14px; font-size: 13px; z-index: 2; }
 .living-room-switch { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; cursor: pointer; }
 .living-room-switch span { display: grid; gap: 2px; }
@@ -2386,6 +2603,16 @@ const LIVING_ROOM_CSS = `
 .lr-line { display: grid; gap: 2px; }
 .lr-title { font-weight: 700; }
 .lr-note { margin: 0; opacity: 0.75; line-height: 1.4; font-size: 12px; }
+.lr-queue { display: grid; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--lr-edge); }
+.lr-queue-head { justify-content: space-between; }
+.lr-queue-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; counter-reset: film; }
+.lr-queue-list li { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
+.lr-queue-text { display: grid; flex: 1; min-width: 0; }
+.lr-queue-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.lr-queue-list small { opacity: 0.65; font-size: 11px; }
+.lr-queue-list button { display: inline-flex; align-items: center; gap: 3px; }
+.lr-queue button.lr-on { background: var(--lr-accent) !important; color: #1b1530 !important; }
+.lr-queue form input { flex: 1; min-width: 0; }
 .lr-wide { width: 100%; justify-content: center; background: var(--lr-accent) !important; color: #1b1530 !important; }
 .lr-field { display: grid; gap: 3px; }
 .lr-inline { grid-template-columns: 56px 1fr; align-items: center; }

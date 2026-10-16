@@ -202,7 +202,7 @@ export const BUILTIN_THEMES: Theme[] = [
   {
     id: "winamp",
     name: "Classic Winamp",
-    description: "Brushed titanium, neon-green fluorescent LEDs, and miniature spectrum analyzer.",
+    description: "The whole app as Winamp 2: main window with LCD and transport, equalizer, channel playlist and media library.",
     baseTheme: "legacy",
     isBuiltin: true,
     corners: 2,
@@ -220,11 +220,12 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff4444",
       mint: "#00ff00",
     },
+    // Layout and skin live in retro-skins.css; window furniture in components/retro-chrome.tsx.
   },
   {
     id: "teamspeak",
     name: "TeamSpeak 2",
-    description: "Classic Windows Luna gray, deep navy headers, and hierarchical audio tree-view.",
+    description: "The whole app as the TeamSpeak 2 client: title and menu bars, channel tree, server info pane and status bar.",
     baseTheme: "light",
     isBuiltin: true,
     corners: 2,
@@ -242,6 +243,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#cc0000",
       mint: "#008800",
     },
+    // Layout and skin live in retro-skins.css; window furniture in components/retro-chrome.tsx.
   },
   {
     id: "cyberpunk",
@@ -361,6 +363,52 @@ export const BUILTIN_THEMES: Theme[] = [
       mint: "#7fd1a6",
     },
     // Sky gradients live in redesign.css under [data-custom-theme-id="sunset"].
+  },
+  {
+    id: "zombie",
+    name: "Zombie",
+    description: "Outbreak night: toxic green on rotting black, hazard tape, dripping titles and a creeping fog.",
+    baseTheme: "cozy",
+    isBuiltin: true,
+    corners: 4,
+    backdrop: "plain",
+    colors: {
+      ink: "#dfe8d2",
+      muted: "#8f9c80",
+      line: "rgba(140, 200, 60, 0.13)",
+      paper: "#0a0d08",
+      panel: "#0f130c",
+      chatBg: "#12170e",
+      lavender: "#9ad53b",
+      lavenderSoft: "#1f2c12",
+      lavenderMuted: "#3b5a1c",
+      coral: "#c0392b",
+      mint: "#9ad53b",
+    },
+    // Styling lives in theme-flavors.css under [data-custom-theme-id="zombie"].
+  },
+  {
+    id: "minecraft",
+    name: "Minecraft",
+    description: "Blocky overworld: grass and dirt sidebars, stone buttons with bevels, pixel type and yellow menu text.",
+    baseTheme: "cozy",
+    isBuiltin: true,
+    corners: 0,
+    backdrop: "plain",
+    colors: {
+      ink: "#f0f0f0",
+      muted: "#a8a8a8",
+      line: "rgba(0, 0, 0, 0.55)",
+      paper: "#1b1b1b",
+      panel: "#2a2a2a",
+      chatBg: "#313131",
+      lavender: "#5fb33a",
+      lavenderSoft: "#2f4a22",
+      lavenderMuted: "#3f6e2a",
+      coral: "#ff5555",
+      mint: "#55ff55",
+    },
+    // Styling lives in theme-flavors.css under [data-custom-theme-id="minecraft"].
   },
 ];
 
@@ -622,7 +670,12 @@ export function applyClientUiCss(): void {
     document.head.appendChild(styleEl);
   }
 
-  styleEl.textContent = enabled && css ? css : "";
+  if (enabled && css) {
+    const checked = checkThemeCss(css);
+    styleEl.textContent = checked.ok && checked.css ? checked.css : "";
+  } else {
+    styleEl.textContent = "";
+  }
 }
 
 /**
@@ -904,10 +957,18 @@ function splitSelectorList(prelude: string): string[] {
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
+const PAGE_ROOT_SELECTOR = /^(html|body|#root|main)(?![a-zA-Z0-9_-])/i;
+
 function prefixSelector(selector: string, scope: string): string {
-  const root = /^(:root|:scope|&|\.profile-card)(?![a-zA-Z0-9_-])/.exec(selector);
+  const root = /^(:root|:scope|&|\.profile-card|\.user-profile-card|html|body|#root|main)(?![a-zA-Z0-9_-])/i.exec(selector);
   if (root) return `${scope}${selector.slice(root[0].length)}`;
   return `${scope} ${selector}`;
+}
+
+function sanitizePageRootBody(body: string): string {
+  return body
+    .replace(/(?:^|;)\s*(?:width|height)\s*:\s*100(?:%|vw|vh)\s*(?:!important)?/gi, "")
+    .replace(/(?:^|;)\s*(?:margin|padding)\s*:\s*0(?:px)?\s*(?:!important)?/gi, "");
 }
 
 /** Rewrites every selector to live under `scope`; used where @scope is unsupported. */
@@ -916,12 +977,14 @@ function prefixCssBlocks(css: string, scope: string): string {
     .map(({ prelude, body }) => {
       if (prelude.startsWith("@")) {
         const name = /^@([a-zA-Z-]+)/.exec(prelude)?.[1].toLowerCase() || "";
-        if (name.endsWith("keyframes")) return `${prelude}{${body}}`;
+        if (name.endsWith("keyframes")) return `${prelude} {${body}}`;
         return `${prelude}{${prefixCssBlocks(body, scope)}}`;
       }
       const selectors = splitSelectorList(prelude);
       if (selectors.length === 0) return "";
-      return `${selectors.map((selector) => prefixSelector(selector, scope)).join(", ")}{${body}}`;
+      const allPageRoots = selectors.every((sel) => PAGE_ROOT_SELECTOR.test(sel));
+      const safeBody = allPageRoots ? sanitizePageRootBody(body) : body;
+      return `${selectors.map((selector) => prefixSelector(selector, scope)).join(", ")}{${safeBody}}`;
     })
     .join("\n");
 }
@@ -929,24 +992,24 @@ function prefixCssBlocks(css: string, scope: string): string {
 /**
  * Scopes user-written profile CSS so it only targets their specific profile card.
  * CSS that fails {@link checkProfileCss} renders nothing at all.
- *
- * `unrestricted` is for instance admins: their CSS is used exactly as written,
- * neither checked nor scoped, so it can restyle the whole app while their
- * profile is open.
+ * Page-level selectors (html, body, #root, main) and fixed positioning are
+ * automatically confined to the profile card container so they never leak out.
  */
-export function scopeProfileCss(rawCss: string, userId: string, unrestricted = false): string {
+export function scopeProfileCss(rawCss: string, userId: string): string {
   if (!rawCss || typeof rawCss !== "string") return "";
-  if (unrestricted) return rawCss;
-  const checked = checkProfileCss(rawCss);
+  const normalized = rawCss.replace(/position\s*:\s*fixed/gi, "position: absolute");
+  const checked = checkProfileCss(normalized);
   if (!checked.ok || !checked.css) return "";
 
   const scopeClass = `.user-profile-scoped-${userId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const scopedInner = prefixCssBlocks(checked.css, ":scope");
   // The class twice: the owner's CSS should outrank the app's own profile
   // styling, theme rules like `[data-theme=light] .profile-card` included.
   const prefixed = prefixCssBlocks(checked.css, `${scopeClass}${scopeClass}`);
   // @scope gives exact encapsulation; the prefixed copy covers webviews without it.
-  return `@scope (${scopeClass}) {
-${checked.css}
+  return `${scopeClass} { position: relative; overflow: hidden; }
+@scope (${scopeClass}) {
+${scopedInner}
 }
 ${prefixed}
 `;

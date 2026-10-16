@@ -110,12 +110,15 @@ describe("Theme System & Serialization", () => {
     }
   });
 
-  it("uses an instance admin's profile CSS exactly as written", () => {
-    const css = `@import url("https://fonts.example/x.css");
-body::before { content: ""; position: fixed; inset: 0; }
+  it("never allows unscoped CSS injection and safely scopes root/fixed rules to the profile card", () => {
+    const bad = `@import url("https://fonts.example/x.css");
 } html { filter: hue-rotate(90deg) }`;
-    expect(scopeProfileCss(css, "u1")).toBe("");
-    expect(scopeProfileCss(css, "u1", true)).toBe(css);
+    expect(scopeProfileCss(bad, "u1")).toBe("");
+    const safeRoot = `body::before { content: ""; position: fixed; inset: 0; }`;
+    const scoped = scopeProfileCss(safeRoot, "u1");
+    expect(scoped).toContain(".user-profile-scoped-u1.user-profile-scoped-u1::before");
+    expect(scoped).toContain("position: absolute");
+    expect(scoped).not.toContain("position: fixed");
   });
 
   it("keeps safe profile CSS working", () => {
