@@ -838,8 +838,9 @@ export async function postMessageAs(
 
   // Grant any achievements this message unlocked (e.g. message-count tiers).
   // Best effort: a failure here never stops the message itself.
+  let newAchievements: string[] = [];
   try {
-    await evaluateAndAward(db, user.id);
+    newAchievements = await evaluateAndAward(db, user.id);
   } catch {
     // Ignored.
   }
@@ -957,7 +958,7 @@ export async function postMessageAs(
     }
   }
 
-  return Response.json({ message }, { status: 201 });
+  return Response.json({ message, newAchievements }, { status: 201 });
 }
 
 /** The names a signed-in member's browser may post bot answers under. */
