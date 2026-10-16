@@ -2,7 +2,7 @@
 
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle } from "lucide-react";
+import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
@@ -421,6 +421,14 @@ export function ChatHeader({
                 }}
               >
                 <Bookmark size={18} />
+              </Icon>
+              <Icon
+                label="Achievements"
+                onClick={() => {
+                  window.location.href = "/hangout/achievements";
+                }}
+              >
+                <Award size={18} />
               </Icon>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (

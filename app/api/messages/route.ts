@@ -11,6 +11,7 @@ import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { can, Permission } from "@/lib/permissions";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
+import { evaluateAndAward } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
@@ -835,6 +836,15 @@ export async function postMessageAs(
     )
     .run();
 
+  // Grant any achievements this message unlocked (e.g. message-count tiers).
+  // Best effort: a failure here never stops the message itself.
+  let newAchievements: string[] = [];
+  try {
+    newAchievements = await evaluateAndAward(db, user.id);
+  } catch {
+    // Ignored.
+  }
+
   const message = publicMessage(stored);
 
   // Record the mentions resolved before the insert. Doing it here keeps the
@@ -948,7 +958,7 @@ export async function postMessageAs(
     }
   }
 
-  return Response.json({ message }, { status: 201 });
+  return Response.json({ message, newAchievements }, { status: 201 });
 }
 
 /** The names a signed-in member's browser may post bot answers under. */

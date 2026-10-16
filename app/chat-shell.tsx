@@ -53,6 +53,8 @@ import { createFolder, moveToFolder, removeFromFolders, type ServerFolder } from
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog";
 import { practiceRoll, TUTORIAL_PENDING_KEY, TutorialPill, WelcomeTutorial } from "./components/welcome-tutorial";
 import { ToastContainer, showToast } from "./components/toast";
+import { AchievementToast } from "./components/achievement-toast";
+import { allAchievements, getAchievement } from "@/lib/achievements";
 import { DeviceSwitchPrompt } from "./components/device-switch-prompt";
 import { ForumBoard } from "./components/forum-board";
 import { PdfViewer } from "./components/pdf-viewer";
@@ -370,6 +372,7 @@ export function ChatShell() {
     Array<{ id: string; file: File; preview: string | null }>
   >([]);
   const [notice, setNotice] = useState("");
+  const [pendingAchievementIds, setPendingAchievementIds] = useState<string[]>([]);
   const [mobileNav, setMobileNav] = useState(false);
   /** On touch screens, which message's action bar is currently revealed. */
   const [openActionsId, setOpenActionsId] = useState<string | number | null>(
@@ -736,7 +739,7 @@ export function ChatShell() {
   ) {
     if (!forwardTarget) return;
     try {
-      const res = await apiFetch<Message>("/api/messages", {
+      const res = await apiFetch<{ message: Message; newAchievements: string[] }>("/api/messages", {
         method: "POST",
         body: JSON.stringify({
           channelId: destinationChannelId,
@@ -760,8 +763,15 @@ export function ChatShell() {
         }),
       });
       showToast(`Forwarded message to ${destinationName}`, "success");
+      const newAchievements = res?.newAchievements || [];
+      if (newAchievements.length) {
+        setPendingAchievementIds((current) => {
+          const ids = new Set(current);
+          return [...current, ...newAchievements.filter((id) => !ids.has(id))];
+        });
+      }
       if (destinationChannelId === activeChannelId && res) {
-        setMessages((prev) => [...prev, res]);
+        setMessages((prev) => [...prev, res.message]);
       }
     } catch {
       showToast("Failed to forward message", "warning");
@@ -5012,7 +5022,7 @@ export function ChatShell() {
       typeof attachmentKeys === "string"
         ? [attachmentKeys]
         : attachmentKeys || [];
-    await apiFetch("/api/messages", {
+    const res = await apiFetch<{ message: Message; newAchievements: string[] }>("/api/messages", {
       method: "POST",
       body: JSON.stringify({
         channelId: activeChannelId,
@@ -5022,7 +5032,16 @@ export function ChatShell() {
         replyTo,
       }),
     });
+    return res;
   }
+
+  /** Wrapper for Composer: it doesn't need the achievement payload, only fire-and-forget. */
+  const sendTextComposer = useCallback(
+    async (text: string, attachmentKeys?: string | string[] | undefined) => {
+      await sendText(text, attachmentKeys);
+    },
+    [sendText],
+  );
 
   async function toggleReaction(messageId: string | number, emoji: string) {
     const id = String(messageId);
@@ -5363,7 +5382,14 @@ export function ChatShell() {
         msnTheme && !isImageUrl(processedText)
           ? applyMessageFont(applyPersonalEmoticons(processedText, personalEmoticons.emoticons), messageFont)
           : processedText;
-      await sendText(styled, keys);
+      const res = await sendText(styled, keys);
+      const newAchievements = res?.newAchievements || [];
+      if (newAchievements.length) {
+        setPendingAchievementIds((current) => {
+          const ids = new Set(current);
+          return [...current, ...newAchievements.filter((id) => !ids.has(id))];
+        });
+      }
       if (msnSoundsRef.current) {
         playMsnSound("send");
       }
@@ -6989,7 +7015,7 @@ export function ChatShell() {
         inDmHome={inDmHome}
         activeServerId={activeServerId}
         canManageChannels={canManageChannels}
-        sendText={sendText}
+        sendText={sendTextComposer}
         setDraft={setDraft}
         composerRef={composerRef}
         loadEmojis={loadEmojis}
@@ -7689,6 +7715,16 @@ export function ChatShell() {
 
       <BlahajBuddy onRollCommand={(command) => void runCommand(command)} />
       <ToastContainer />
+      {pendingAchievementIds.length > 0 && (
+        <AchievementToast
+          earned={pendingAchievementIds
+            .map((id) => getAchievement(id))
+            .filter((a): a is NonNullable<typeof a> => Boolean(a))}
+          onDismiss={() => {
+            setPendingAchievementIds((current) => current.slice(1));
+          }}
+        />
+      )}
       <DeviceSwitchPrompt
         inCall={Boolean(voice.channelId)}
         activeMicrophone={voice.activeMicrophone}

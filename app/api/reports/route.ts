@@ -1,9 +1,10 @@
 import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishMessageEvent } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { can, Permission, reportNotifierIds } from "@/lib/permissions";
 import { ensureSchema, DM_SERVER_ID } from "@/lib/schema";
 import { findChannel, isServerMember } from "@/lib/servers";
+import { sendPushNotifications } from "@/lib/push";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +32,22 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
 
-  const serverId = new URL(request.url).searchParams.get("serverId")?.trim().slice(0, 64) || "";
-  if (!serverId) return Response.json({ error: "Missing serverId." }, { status: 400 });
+  const serverId = new URL(request.url).searchParams.get("serverId")?.trim().slice(0, 64) || undefined;
 
-  const allowed =
-    isInstanceAdmin(user) ||
-    (await can(db, user.id, serverId, Permission.MANAGE_MESSAGES)) ||
-    (await can(db, user.id, serverId, Permission.MANAGE_SERVER));
-  if (!allowed) {
-    return Response.json({ error: "Moderators only." }, { status: 403 });
+  let where = "";
+  const params: Array<string | undefined> = [];
+  if (serverId) {
+    where = "WHERE r.server_id = ?";
+    params.push(serverId);
+    const allowed =
+      isInstanceAdmin(user) ||
+      (await can(db, user.id, serverId, Permission.MANAGE_MESSAGES)) ||
+      (await can(db, user.id, serverId, Permission.MANAGE_SERVER));
+    if (!allowed) {
+      return Response.json({ error: "Moderators only." }, { status: 403 });
+    }
+  } else if (!isInstanceAdmin(user)) {
+    return Response.json({ error: "Instance admins only." }, { status: 403 });
   }
 
   const rows = await db
@@ -52,11 +60,11 @@ export async function GET(request: Request) {
          LEFT JOIN channels c ON c.id = r.channel_id
          LEFT JOIN messages m ON m.id = r.message_id
          LEFT JOIN users u ON u.id = r.reporter_id
-        WHERE r.server_id = ?
+        ${where}
         ORDER BY CASE WHEN r.status = 'open' THEN 0 ELSE 1 END, r.created_at DESC
         LIMIT 100`,
     )
-    .bind(serverId)
+    .bind(...params)
     .all<{
       id: string;
       server_id: string;
@@ -133,6 +141,24 @@ export async function POST(request: Request) {
     )
     .bind(id, channel.server_id, channel.id, messageId, user.id, reason, now)
     .run();
+
+  // Tell the server's moderators a report was filed so they don't have to keep
+  // checking the Safety tab or /kivi. Errors here must never fail a report.
+  const server = await db
+    .prepare("SELECT name FROM servers WHERE id = ?")
+    .bind(channel.server_id)
+    .first<{ name: string }>();
+  const notifierIds = await reportNotifierIds(db, channel.server_id, user.id);
+  if (notifierIds.length) {
+    await sendPushNotifications(db, notifierIds, {
+      title: "New message report",
+      body: `${user.display_name} reported a message in #${channel.name}${
+        server ? ` (${server.name})` : ""
+      }: “${reason}”`,
+      url: "/kivi",
+      tag: "message-report",
+    }).catch(() => undefined);
+  }
 
   return Response.json({ ok: true, id });
 }

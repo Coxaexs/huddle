@@ -20,6 +20,7 @@ import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
 import { deliverDueDigest, nextDigestAlarm } from "./digest";
+import { addVoiceSeconds } from "./achievements";
 import { allDisabledFeatures } from "./features";
 import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
@@ -950,6 +951,7 @@ export class HuddleHub extends DurableObject {
       case "voice-leave": {
         attachment.important = false;
         const previous = attachment.voiceChannelId;
+        const joinedAt = attachment.voiceJoinedAt;
         attachment.voiceChannelId = null;
         attachment.lounge = null;
         attachment.voiceJoinedAt = null;
@@ -958,6 +960,18 @@ export class HuddleHub extends DurableObject {
         attachment.screenStreamId = null;
         this.saveAttachment(socket, attachment);
         if (previous) this.broadcastVoice(previous);
+        // Persist lifetime voice time so achievements can reward it. A missed
+        // leave event just under-counts; it never over-counts.
+        if (this.db && joinedAt && previous) {
+          const durationMs = Date.now() - joinedAt;
+          if (durationMs > 1000) {
+            void addVoiceSeconds(
+              this.db,
+              attachment.userId,
+              Math.floor(durationMs / 1000),
+            ).catch(() => undefined);
+          }
+        }
         return;
       }
 
