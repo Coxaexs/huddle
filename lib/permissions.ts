@@ -517,6 +517,45 @@ export async function roleAuthority(
   };
 }
 
+/**
+ * User ids that should be told when a new message report is filed in a server:
+ * instance admins, the server owner, and members who can manage messages or the
+ * server. The reporter themselves is never included.
+ */
+export async function reportNotifierIds(
+  db: D1Database,
+  serverId: string,
+  excludeUserId: string,
+): Promise<string[]> {
+  const mask =
+    Permission.ADMINISTRATOR | Permission.MANAGE_MESSAGES | Permission.MANAGE_SERVER;
+  const set = new Set<string>([excludeUserId]);
+
+  const admins = await db
+    .prepare("SELECT id FROM users WHERE is_admin = 1")
+    .all<{ id: string }>();
+  for (const row of admins.results || []) set.add(row.id);
+
+  const owner = await db
+    .prepare("SELECT created_by FROM servers WHERE id = ?")
+    .bind(serverId)
+    .first<{ created_by: string | null }>();
+  if (owner?.created_by) set.add(owner.created_by);
+
+  const mods = await db
+    .prepare(
+      `SELECT DISTINCT mr.user_id AS user_id
+         FROM member_roles mr
+         JOIN roles r ON r.id = mr.role_id
+        WHERE mr.server_id = ? AND (r.permissions & ?) != 0`,
+    )
+    .bind(serverId, mask)
+    .all<{ user_id: string }>();
+  for (const row of mods.results || []) set.add(row.user_id);
+
+  return [...set].filter((id) => id !== excludeUserId);
+}
+
 /** Why `authority` may not touch a role at `position`, or null when it may. */
 export function roleRefusal(
   authority: RoleAuthority,

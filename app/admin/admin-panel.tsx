@@ -22,15 +22,17 @@ import {
   Music,
   Ticket,
   Trash2,
+  Flag,
+  File,
 } from "lucide-react";
 import type { AdminAuditEntry, AdminFeature, AdminOverview, AdminServer, AdminUser } from "@/lib/admin";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
 import { BigFilesTab } from "./big-files-tab";
-import { ConfirmDialog, InvitesTab, MessagesTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
+import { ConfirmDialog, FilesTab, InvitesTab, MessagesTab, ReportsTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
-type Tab = "overview" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "invites" | "voice" | "songs" | "audit" | "features";
+type Tab = "overview" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
 
 interface AdminData {
   overview: AdminOverview;
@@ -88,6 +90,8 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: "bigfiles", label: "Big files", icon: FileUp },
   { id: "servers", label: "Servers", icon: Server },
   { id: "messages", label: "Messages", icon: MessageSquare },
+  { id: "reports", label: "Reports", icon: Flag },
+  { id: "files", label: "Files", icon: File },
   { id: "invites", label: "Invites", icon: Ticket },
   { id: "voice", label: "Voice rooms", icon: Mic },
   { id: "songs", label: "Songs", icon: Music },
@@ -893,6 +897,10 @@ export function AdminPanel() {
         )
       ) : tab === "messages" ? (
         <MessagesTab servers={data.servers} confirm={setConfirming} />
+      ) : tab === "reports" ? (
+        <ReportsTab servers={data.servers} />
+      ) : tab === "files" ? (
+        <FilesTab />
       ) : tab === "invites" ? (
         <InvitesTab servers={data.servers} confirm={setConfirming} />
       ) : tab === "voice" ? (

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, Copy, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ArrowLeft, Check, CheckCircle2, Copy, File, Flag, Loader2, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { AdminInvite, AdminMessageHit, AdminVoiceRoom, PeekChannel } from "@/lib/admin-tools";
 import type { AdminServer } from "@/lib/admin";
+import type { ModerationReport } from "@/app/api/reports/route";
 import { apiFetch } from "../lib/client";
 import { buildUserInviteLink } from "../lib/chat/invites";
 
@@ -239,6 +240,242 @@ export function MessagesTab({
           </p>
           <MessageList messages={result.hits} onDelete={remove} />
         </>
+      )}
+    </section>
+  );
+}
+
+// ---- Message reports across servers ----
+
+export function ReportsTab({ servers }: { servers: AdminServer[] }) {
+  const [serverId, setServerId] = useState("");
+  const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const url = serverId ? `/api/reports?serverId=${encodeURIComponent(serverId)}` : "/api/reports";
+      const res = await apiFetch<{ reports: ModerationReport[] }>(url);
+      setReports(res.reports || []);
+    } catch (cause) {
+      setError(errorText(cause, "Could not load reports."));
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [serverId]);
+
+  useEffect(() => {
+    void loadReports();
+  }, [serverId, loadReports]);
+
+  const resolveReport = async (reportId: string, status: "resolved" | "dismissed", deleteMessage: boolean) => {
+    try {
+      await apiFetch("/api/reports", {
+        method: "PATCH",
+        body: JSON.stringify({ reportId, status, deleteMessage }),
+      });
+      setReports((prev) =>
+        prev.map((r) => (r.id === reportId ? { ...r, status, resolvedAt: new Date().toISOString() } : r)),
+      );
+      setNotice(deleteMessage ? "Deleted reported message and resolved report." : `Report marked as ${status}.`);
+      setTimeout(() => setNotice(""), 5000);
+    } catch (cause) {
+      setNotice(errorText(cause, "Could not update report."));
+      setTimeout(() => setNotice(""), 5000);
+    }
+  };
+
+  return (
+    <section className="portal-card admin-section">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Message Reports</h2>
+          <p className="text-xs opacity-70">
+            Reports filed by members via “Report message” in the message menu. Resolve or dismiss them here, or delete the reported message.
+          </p>
+        </div>
+      </div>
+
+      {notice && <p className="admin-muted">{notice}</p>}
+
+      <div className="flex flex-wrap items-center gap-3 pt-3">
+        <label className="text-xs opacity-70">Server</label>
+        <select
+          value={serverId}
+          onChange={(event) => setServerId(event.target.value)}
+          aria-label="Server"
+          className="discord-input text-xs py-1.5 px-2.5"
+        >
+          <option value="">All servers</option>
+          {servers.map((server) => (
+            <option key={server.id} value={server.id}>{server.name}</option>
+          ))}
+        </select>
+        {loading && <Loader2 size={14} className="animate-spin" />}
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+
+      {loading ? (
+        <p className="text-xs opacity-70 py-3">Loading reports…</p>
+      ) : reports.length === 0 ? (
+        <p className="text-xs opacity-70 py-3">No message reports.</p>
+      ) : (
+        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+          {reports.map((r) => (
+            <div key={r.id} className="p-3 rounded-lg bg-black/25 border border-white/10 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold">
+                  #{r.channelName} · Author: <span className="text-indigo-300">{r.messageAuthor}</span>
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] uppercase font-bold ${
+                    r.status === "open"
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {r.status}
+                </span>
+              </div>
+              <blockquote className="text-xs bg-white/5 p-2 rounded border-l-2 border-indigo-400">{r.messageContent}</blockquote>
+              <div className="flex items-center justify-between text-xs opacity-75">
+                <span>Reported by <strong>{r.reporterName}</strong>: &ldquo;{r.reason}&rdquo;</span>
+                <time>{new Date(r.createdAt).toLocaleString()}</time>
+              </div>
+              {r.status === "open" && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    className="discord-btn danger text-xs py-1 px-2.5 inline-flex items-center gap-1"
+                    onClick={() => void resolveReport(r.id, "resolved", true)}
+                  >
+                    <CheckCircle2 size={13} /> Delete Message &amp; Resolve
+                  </button>
+                  <button
+                    type="button"
+                    className="discord-btn text-xs py-1 px-2.5 inline-flex items-center gap-1"
+                    onClick={() => void resolveReport(r.id, "dismissed", false)}
+                  >
+                    <XCircle size={13} /> Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---- Uploaded files across servers ----
+
+export function FilesTab() {
+  const [query, setQuery] = useState("");
+  const [files, setFiles] = useState<Array<{
+    key: string;
+    name: string;
+    size: number;
+    uploaded: string;
+    contentType: string;
+  }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const search = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiFetch<{ files: Array<{
+        key: string;
+        name: string;
+        size: number;
+        uploaded: string;
+        contentType: string;
+      }> }>(`/api/admin/search/files?q=${encodeURIComponent(query)}`);
+      setFiles(res.files || []);
+    } catch (cause) {
+      setError(errorText(cause, "File search failed."));
+      setFiles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => void search(), 300);
+    return () => clearTimeout(timer);
+  }, [query, search]);
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let value = bytes / 1024;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+  }
+
+  return (
+    <section className="portal-card admin-section">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Uploaded Files</h2>
+          <p className="text-xs opacity-70">
+            Search every file uploaded to the instance, across all servers and DMs.
+          </p>
+        </div>
+      </div>
+      <div className="admin-toolbar pt-3">
+        <label className="admin-search">
+          <Search size={15} aria-hidden />
+          <input
+            type="search"
+            placeholder="File name, e.g. screenshot"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search files"
+          />
+        </label>
+      </div>
+      {error && <p className="admin-error">{error}</p>}
+      {loading && files.length === 0 && (
+        <p className="text-xs opacity-70 py-3">Searching files…</p>
+      )}
+      {!loading && files.length === 0 && query.trim() && (
+        <p className="text-xs opacity-70 py-3">No files matched.</p>
+      )}
+      {!loading && files.length > 0 && (
+        <div className="space-y-1 max-h-[520px] overflow-y-auto pr-1">
+          {files.map((f) => (
+            <div key={f.key} className="p-2.5 rounded-lg bg-black/25 border border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <File size={13} opacity={60} />
+                <div className="text-xs">
+                  <div className="font-medium truncate max-w-[34rem]" title={f.name}>
+                    {f.name}
+                  </div>
+                  <div className="text-[10px] opacity-60 truncate max-w-[30rem]" title={f.key}>
+                    {f.key}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[10px] opacity-70 text-right">
+                <div>{formatBytes(f.size)}</div>
+                <div>{new Date(f.uploaded).toLocaleString()}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
