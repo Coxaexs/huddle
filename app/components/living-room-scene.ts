@@ -15,13 +15,13 @@ import { addProps } from "./living-room-props";
 import { dress, fabric } from "./room-surfaces";
 import { ThingKit, type RoomThings } from "./room-things";
 import { contactShadows, lightShaft, mergeStatics, moteField, type Contact } from "./living-room-fx";
-import { playArcade, playBloop, playBoo, playChime, playCurtains, playData, playDouse, playHiss, playIgnite, playNudge, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
+import { playArcade, playBloop, playBoo, playChime, playCurtains, playData, playDouse, playGroan, playHiss, playIgnite, playNudge, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
 import { CIRCLES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
 
 export interface Look {
   floor: [string, string]; // plank, grain
   wall: [string, string]; // base, pattern
-  wallPattern: "stripes" | "damask" | "code" | "panels" | "blocks" | "y2k";
+  wallPattern: "stripes" | "damask" | "code" | "panels" | "blocks" | "y2k" | "grime";
   wainscot: string;
   trim: string;
   ceiling: string;
@@ -42,7 +42,7 @@ export interface Look {
   fairy: string[];
   motes: string;
   exposure: number;
-  sky: "time" | "moon" | "code" | "city" | "overcast";
+  sky: "time" | "moon" | "code" | "city" | "overcast" | "outbreak";
   shark: string;
 }
 
@@ -100,6 +100,15 @@ export const LOOKS: Record<RoomTheme, Look> = {
     wood: "#a07f4f", woodDark: "#6b5130", fire: ["#ffd84a", "#ff7a1a"], fireLight: "#ffa94a", lamp: "#ffd88a",
     hemi: ["#d8e8ff", "#3a2a18", 0.5], fog: "#1c160e", background: "#7fa8ff",
     fairy: ["#ffd84a", "#55ff55", "#ffffff"], motes: "#ffe9a0", exposure: 1.1, sky: "time", shark: "#5a8fb8",
+  },
+  zombie: {
+    floor: ["#74624a", "#3e3222"], wall: ["#68725a", "#56604a"], wallPattern: "grime",
+    wainscot: "#2e2a20", trim: "#3a3a2e", ceiling: "#2a2c24", beam: "#2a2418",
+    rug: ["#3a3424", "#8e1b12", "#2a3018"], sofa: "#4a4a34", sofaCushion: "#58583e",
+    pillows: ["#6b5a3a", "#3a4a2a", "#7a2a20", "#5a5a48"], blanket: ["#3a4a2a", "#6b5a3a"],
+    wood: "#5a4026", woodDark: "#2e2014", fire: ["#ffcf6a", "#ff5a1a"], fireLight: "#ff8a3a", lamp: "#e8d890",
+    hemi: ["#b8cca0", "#2a2c20", 0.62], fog: "#0a0d08", background: "#050704",
+    fairy: ["#9ad53b", "#e8d890", "#ff8a3a"], motes: "#c4d8a0", exposure: 1.3, sky: "outbreak", shark: "#5a7a6a",
   },
   y2k: {
     floor: ["#c9a77c", "#9c7a52"], wall: ["#b9d4ff", "#e3c6ff"], wallPattern: "y2k",
@@ -237,6 +246,34 @@ export function wallTexture(look: Look) {
           }
         }
       }
+    } else if (look.wallPattern === "grime") {
+      // Old wallpaper gone bad: faded stripes, water stains, peeled patches and scratches.
+      const rand = seeded(28);
+      ctx.fillStyle = accent;
+      for (let x = 0; x < 256; x += 32) ctx.fillRect(x, 0, 10, 256);
+      for (let i = 0; i < 7; i++) {
+        const x = rand() * 256, y = rand() * 256, r = 18 + rand() * 40;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(60,48,20,0.45)"); g.addColorStop(0.8, "rgba(80,64,30,0.25)"); g.addColorStop(1, "rgba(80,64,30,0)");
+        ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      for (let i = 0; i < 4; i++) {
+        // Peeled: the plaster underneath, with a curled edge.
+        const x = rand() * 220, y = rand() * 220, w = 20 + rand() * 30, h = 14 + rand() * 30;
+        ctx.fillStyle = "#8a8670"; ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(x + w, y + rand() * 6); ctx.lineTo(x + w * 0.8, y + h); ctx.lineTo(x + rand() * 6, y + h * 0.8); ctx.fill();
+        ctx.strokeStyle = "rgba(20,20,10,0.5)"; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(15,12,8,0.55)"; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        // Four-finger scratch marks.
+        const x = rand() * 220, y = rand() * 180;
+        for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(x + k * 6, y); ctx.lineTo(x + k * 6 + 10, y + 50 + rand() * 20); ctx.stroke(); }
+      }
+      // Grime collecting low down.
+      const low = ctx.createLinearGradient(0, 160, 0, 256);
+      low.addColorStop(0, "rgba(20,18,10,0)"); low.addColorStop(1, "rgba(20,18,10,0.5)");
+      ctx.fillStyle = low; ctx.fillRect(0, 160, 256, 96);
     } else if (look.wallPattern === "y2k") {
       // Millennium wallpaper: soft blue with lilac swooshes, bubbles and twinkly stars.
       const rand = seeded(2000);
@@ -529,6 +566,31 @@ function skyTexture(look: Look) {
           if (rand() < (night ? 0.4 : 0.15)) { ctx.fillStyle = "#e8b860"; ctx.fillRect(wx, wy, 5, 9); ctx.fillStyle = night ? "#06080a" : "#2c3330"; }
         }
       }
+    } else if (look.sky === "outbreak") {
+      // A dead city at night: green haze, a sick moon, fires burning between the towers.
+      const g = ctx.createLinearGradient(0, 0, 0, 400);
+      g.addColorStop(0, "#050805"); g.addColorStop(0.65, "#18240f"); g.addColorStop(1, "#3a2a10");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 400);
+      const moon = ctx.createRadialGradient(110, 90, 6, 110, 90, 80);
+      moon.addColorStop(0, "rgba(220,240,180,0.95)"); moon.addColorStop(0.35, "rgba(190,220,140,0.7)"); moon.addColorStop(0.4, "rgba(154,213,59,0.18)"); moon.addColorStop(1, "rgba(154,213,59,0)");
+      ctx.fillStyle = moon; ctx.beginPath(); ctx.arc(110, 90, 80, 0, Math.PI * 2); ctx.fill();
+      let x = -10;
+      while (x < 520) {
+        const w = 26 + rand() * 46, h = 90 + rand() * 170;
+        ctx.fillStyle = "#070905"; ctx.fillRect(x, 400 - h, w, h);
+        // Broken tops and a few windows still lit.
+        ctx.beginPath(); ctx.moveTo(x, 400 - h); ctx.lineTo(x + w * 0.4, 400 - h - 10 - rand() * 14); ctx.lineTo(x + w * 0.6, 400 - h + 6); ctx.lineTo(x + w, 400 - h - rand() * 8); ctx.lineTo(x + w, 400 - h + 2); ctx.fill();
+        for (let wy = 400 - h + 10; wy < 380; wy += 14) for (let wx = x + 4; wx < x + w - 5; wx += 9) if (rand() < 0.06) { ctx.fillStyle = "#d8c070"; ctx.fillRect(wx, wy, 3, 5); }
+        x += w + 2;
+      }
+      for (const fx of [70, 250, 400]) {
+        const fire = ctx.createRadialGradient(fx, 395, 4, fx, 380, 70);
+        fire.addColorStop(0, "rgba(255,190,80,0.9)"); fire.addColorStop(0.4, "rgba(255,90,20,0.45)"); fire.addColorStop(1, "rgba(255,60,0,0)");
+        ctx.fillStyle = fire; ctx.fillRect(fx - 80, 300, 160, 100);
+        ctx.fillStyle = "rgba(40,40,30,0.35)";
+        for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(fx + (rand() - 0.5) * 30 + k * 6, 320 - k * 30, 18 + k * 6, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.fillStyle = "rgba(154,213,59,0.07)"; ctx.fillRect(0, 250, 512, 150);
     } else if (look.sky === "code") {
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 512, 400);
     } else {
@@ -799,7 +861,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
 
   // Hearth: stone (or gothic marble, or a server rack, or a holo-fireplace) on the north wall.
   const hearthZ = -ROOM_HALF_Z;
-  const stoneColour = theme === "minecraft" ? "#9a9a9a" : theme === "y2k" ? "#d9d4e8" : theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
+  const stoneColour = theme === "minecraft" ? "#9a9a9a" : theme === "y2k" ? "#d9d4e8" : theme === "zombie" ? "#4a4c44" : theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
   const stone = mat(stoneColour, 0.95, theme === "cyberpunk" ? { metalness: 0.6, roughness: 0.3 } : {});
   // Real stonework for the stone hearths; the hacker's rack and the holo-fireplace stay smooth.
   if (theme !== "cyberpunk" && theme !== "matrix") dress(stone, "stone", { repeat: [1.6, 1], bump: 1.1 });
@@ -1142,7 +1204,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       const seat = seatById(`${circle.id}-${i}`)!;
       const colour = look.pillows[(i + n) % look.pillows.length];
       // The dark themes light their cushions faintly, or they vanish into the floor.
-      const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
+      const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie";
       const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.16, 28), fabric(colour, { repeat: [3, 1] }));
       if (dark) Object.assign(pouf.material, { emissive: new THREE.Color(colour), emissiveIntensity: 0.3 });
       pouf.position.set(seat.x, 0.09, seat.z);
@@ -1297,7 +1359,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   sill.position.set(ROOM_HALF_X - 0.15, 0.86, windowZ);
   root.add(sill);
   // Curtains: wavy planes either side, tied back.
-  const curtainColour = theme === "vampire" ? "#4a0a14" : theme === "matrix" ? "#0b1a10" : theme === "cyberpunk" ? "#3a1a6a" : "#b9583f";
+  const curtainColour = theme === "zombie" ? "#3a3a2a" : theme === "vampire" ? "#4a0a14" : theme === "matrix" ? "#0b1a10" : theme === "cyberpunk" ? "#3a1a6a" : "#b9583f";
   for (const side of [-1, 1]) {
     const geometry = new THREE.PlaneGeometry(0.6, 2.5, 12, 1);
     const pos = geometry.attributes.position;
@@ -1530,7 +1592,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     art.rotation.y = ry;
     root.add(frame, art);
   };
-  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : theme === "minecraft" ? ["#6aa84f", "#e8c27a", "#4a7fc1"] : theme === "y2k" ? ["#4fc3ff", "#ff7ad9", "#c8ff5a"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
+  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : theme === "minecraft" ? ["#6aa84f", "#e8c27a", "#4a7fc1"] : theme === "y2k" ? ["#4fc3ff", "#ff7ad9", "#c8ff5a"] : theme === "zombie" ? ["#1c2614", "#8e1b12", "#9ad53b"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
   picture(-3.0, 1.85, ROOM_HALF_Z - 0.03, Math.PI, 1.0, 0.7, paint);
   picture(-1.6, 1.75, ROOM_HALF_Z - 0.03, Math.PI, 0.5, 0.6, [...paint].reverse());
   picture(2.5, 1.85, -ROOM_HALF_Z + 0.03, 0, 0.8, 0.6, paint);
@@ -2261,6 +2323,187 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     }
   }
 
+  // Zombie: a boarded-up hideout. Planks over the window (something knocks on them), toxic barrels, supplies, a dying bulb.
+  if (theme === "zombie") {
+    const plank = woodMaterial("#6b5638", 0.85, [0.4, 2]);
+    const nail = mat("#8a8a80", 0.4, { metalness: 0.8 });
+    const boards = new THREE.Group();
+    for (const [y, tilt, length] of [[2.15, 0.12, 2.5], [1.6, -0.08, 2.45], [1.15, 0.18, 2.5]] as const) {
+      const board = box(0.04, 0.2, length, plank);
+      board.position.set(0, y, 0);
+      board.rotation.x = tilt;
+      board.userData.board = true;
+      boards.add(board);
+      for (const end of [-1, 1]) {
+        const head = box(0.012, 0.025, 0.025, nail, false);
+        head.position.set(-0.025, y + end * Math.sin(tilt) * (length / 2 - 0.12), end * Math.cos(tilt) * (length / 2 - 0.12));
+        head.userData.board = true;
+        boards.add(head);
+      }
+    }
+    boards.position.set(ROOM_HALF_X - 0.12, 0, windowZ);
+    root.add(tag(boards, "boards"));
+
+    // Shapes shambling past down in the street.
+    const silhouette = canvasTexture(64, 128, (ctx) => {
+      ctx.fillStyle = "#020302";
+      ctx.beginPath(); ctx.arc(30, 18, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(20, 28, 20, 50);
+      ctx.save(); ctx.translate(36, 36); ctx.rotate(-1.2); ctx.fillRect(0, -4, 32, 8); ctx.restore();
+      ctx.save(); ctx.translate(24, 40); ctx.rotate(-1.35); ctx.fillRect(0, -4, 30, 8); ctx.restore();
+      ctx.fillRect(21, 76, 8, 50); ctx.save(); ctx.translate(34, 76); ctx.rotate(0.2); ctx.fillRect(0, 0, 8, 50); ctx.restore();
+    });
+    for (let i = 0; i < 3; i++) {
+      const walker = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.32), new THREE.MeshBasicMaterial({ map: silhouette, transparent: true, depthWrite: false }));
+      walker.rotation.y = -Math.PI / 2;
+      walker.userData.walker = true;
+      root.add(walker);
+      const speed = 0.018 + i * 0.006;
+      animated.push((t) => {
+        const l = (t * speed + i * 0.37) % 1;
+        walker.position.set(ROOM_HALF_X - 0.014, 1.12 + Math.abs(Math.sin(t * 2.2 + i)) * 0.015 + i * 0.05, windowZ + 1.05 - l * 2.1);
+        walker.rotation.z = Math.sin(t * 2.2 + i) * 0.08;
+        walker.material.opacity = Math.min(1, l * 8, (1 - l) * 8) * 0.9;
+      });
+    }
+
+    // Knock on the boards and something answers: a face at the glass, hands slapping, the planks rattling.
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.62), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, map: canvasTexture(128, 144, (ctx) => {
+      const skin = ctx.createRadialGradient(64, 66, 10, 64, 70, 64);
+      skin.addColorStop(0, "#8fa070"); skin.addColorStop(1, "#4a5a3a");
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(64, 72, 50, 64, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#1a1a10";
+      for (const ex of [42, 86]) { ctx.beginPath(); ctx.ellipse(ex, 60, 13, 10, 0, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#e8e070";
+      for (const ex of [44, 84]) { ctx.beginPath(); ctx.arc(ex, 61, 3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#200a06"; ctx.beginPath(); ctx.ellipse(64, 108, 20, 14, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#c8c0a0"; for (let k = 0; k < 5; k++) ctx.fillRect(50 + k * 6, 96, 4, 6);
+      ctx.fillStyle = "rgba(40,50,20,0.5)"; ctx.beginPath(); ctx.arc(92, 88, 9, 0, Math.PI * 2); ctx.fill();
+    }) }));
+    face.rotation.y = -Math.PI / 2;
+    face.position.set(ROOM_HALF_X - 0.016, 1.55, windowZ - 0.3);
+    face.userData.face = true;
+    root.add(face);
+    const handTexture = canvasTexture(96, 128, (ctx) => {
+      ctx.fillStyle = "#6f8256";
+      ctx.beginPath(); ctx.roundRect(24, 50, 48, 56, 14); ctx.fill();
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.roundRect(24 + k * 12.5, 6 + Math.abs(k - 1.5) * 6, 10, 52, 5); ctx.fill(); }
+      ctx.beginPath(); ctx.roundRect(4, 60, 26, 10, 5); ctx.fill();
+      ctx.fillStyle = "#2a2a1a"; for (let k = 0; k < 4; k++) ctx.fillRect(26 + k * 12.5, 8 + Math.abs(k - 1.5) * 6, 6, 5);
+      ctx.fillRect(24, 100, 48, 28);
+    });
+    const hands = [-1, 1].map((side) => {
+      const hand = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.34), new THREE.MeshBasicMaterial({ map: handTexture, transparent: true, opacity: 0, depthWrite: false }));
+      hand.rotation.y = -Math.PI / 2;
+      hand.position.set(ROOM_HALF_X - 0.017, 1.75, windowZ - 0.3 + side * 0.45);
+      hand.userData.hand = true;
+      root.add(hand);
+      return hand;
+    });
+    const boardRest = boards.children.map((child) => child.rotation.x);
+    things.boards = (since) => {
+      const k = since / 2.6;
+      const show = since < 2.6 ? Math.min(1, since / 0.25, (2.6 - since) / 0.5) : 0;
+      face.material.opacity = show;
+      face.position.y = 1.5 + Math.sin(since * 3) * 0.04;
+      hands.forEach((hand, i) => {
+        const slap = Math.max(0, Math.sin(since * 9 + i * Math.PI));
+        hand.material.opacity = show;
+        hand.position.y = 1.7 + slap * 0.12;
+      });
+      boards.children.forEach((child, i) => { child.rotation.x = boardRest[i] + (since < 2.2 ? Math.sin(since * 40 + i) * 0.02 * (1 - k) : 0); });
+      return since < 2.6;
+    };
+
+    // Toxic barrels in the north-east corner, one tipped over and leaking.
+    const drum = mat("#d8b020", 0.55, { metalness: 0.35 });
+    const ooze = new THREE.MeshStandardMaterial({ color: "#9ad53b", emissive: "#9ad53b", emissiveIntensity: 0.9, roughness: 0.2 });
+    const barrel = (x: number, z: number, tipped = false) => {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.85, 20), drum);
+      body.castShadow = true;
+      const lid = new THREE.Mesh(new THREE.CircleGeometry(0.27, 20), ooze);
+      lid.rotation.x = -Math.PI / 2;
+      lid.position.y = 0.43;
+      group.add(body, lid);
+      for (const y of [-0.25, 0.25]) {
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.285, 0.015, 6, 24), mat("#2a2a20", 0.5, { metalness: 0.6 }));
+        hoop.rotation.x = Math.PI / 2;
+        hoop.position.y = y;
+        group.add(hoop);
+      }
+      group.position.set(x, tipped ? 0.28 : 0.425, z);
+      if (tipped) group.rotation.z = Math.PI / 2;
+      group.userData.barrel = true;
+      root.add(group);
+    };
+    barrel(5.35, -3.75);
+    barrel(4.75, -3.95);
+    barrel(4.55, -3.1, true);
+    const puddle = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), ooze);
+    puddle.rotation.x = -Math.PI / 2;
+    puddle.scale.set(1.3, 0.8, 1);
+    puddle.position.set(4.0, 0.008, -3.0);
+    puddle.userData.puddle = true;
+    root.add(puddle);
+    addGlow("#9ad53b", 1.4, new THREE.Vector3(4.6, 0.4, -3.4), 0.4);
+    const toxicLight = addLight("#9ad53b", 1.4, 4, new THREE.Vector3(4.4, 0.6, -3.2));
+    animated.push((t) => { toxicLight.intensity = 1.2 + Math.sin(t * 1.3) * 0.25; ooze.emissiveIntensity = 0.75 + Math.sin(t * 1.3) * 0.2; });
+
+    // Supply crates and tinned food by the hearth.
+    const stencil = canvasTexture(128, 128, (ctx) => {
+      ctx.fillStyle = "#7a6440"; ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = "#5e4c30"; for (const y of [0, 42, 85]) ctx.fillRect(0, y, 128, 3);
+      ctx.strokeStyle = "#4a3a24"; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 122, 122);
+      ctx.fillStyle = "rgba(20,20,10,0.75)"; ctx.font = "bold 20px 'Courier New', monospace"; ctx.textAlign = "center";
+      ctx.fillText("SUPPLIES", 64, 60); ctx.font = "bold 14px 'Courier New', monospace"; ctx.fillText("DO NOT OPEN", 64, 82);
+    });
+    const crateMaterial = mat("#ffffff", 0.9, { map: stencil });
+    for (const [x, y, z, ry, s] of [[-3.7, 0, -4.05, 0.1, 0.6], [-3.05, 0, -4.1, -0.15, 0.55], [-3.45, 0.6, -4.05, 0.3, 0.5]] as const) {
+      const crate = box(s, s, s, crateMaterial);
+      crate.position.set(x, y + s / 2, z);
+      crate.rotation.y = ry;
+      root.add(crate);
+    }
+    const tin = mat("#b8b8a8", 0.35, { metalness: 0.7 });
+    const label = mat("#8e3a1a", 0.8);
+    for (let i = 0; i < 5; i++) {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.11, 12), i % 2 ? label : tin);
+      can.position.set(-3.6 + (i % 3) * 0.1, 1.155 + (i > 2 ? 0.11 : 0), -4.05 + (i > 2 ? 0.05 : 0));
+      root.add(can);
+    }
+
+    // The count of days and a warning, sprayed on the south wall.
+    const spray = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshBasicMaterial({ transparent: true, map: canvasTexture(320, 160, (ctx) => {
+      ctx.strokeStyle = "rgba(160,30,20,0.9)"; ctx.fillStyle = "rgba(160,30,20,0.9)"; ctx.lineWidth = 5; ctx.lineCap = "round";
+      ctx.font = "bold 44px 'Special Elite', 'Courier New', monospace"; ctx.fillText("STAY QUIET", 12, 52);
+      for (let g = 0; g < 4; g++) {
+        for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(20 + g * 70 + k * 11, 80); ctx.lineTo(18 + g * 70 + k * 11, 140); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(12 + g * 70, 130); ctx.lineTo(66 + g * 70, 88); ctx.stroke();
+      }
+    }) }));
+    spray.position.set(1.4, 1.7, ROOM_HALF_Z - 0.02);
+    spray.rotation.y = Math.PI;
+    root.add(spray);
+
+    // A bare bulb on its wire that can't decide whether to stay on.
+    const wire = box(0.01, 0.55, 0.01, mat("#111", 0.8), false);
+    wire.position.set(2.4, H - 0.275, -0.3);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), new THREE.MeshBasicMaterial({ color: "#f2e6a0", toneMapped: false }));
+    bulb.position.set(2.4, H - 0.6, -0.3);
+    bulb.userData.bulb = true;
+    ceiling.add(wire, bulb);
+    const bulbLight = addLight("#e8d890", 2.0, 7, new THREE.Vector3(2.4, H - 0.7, -0.3));
+    let off = 0;
+    animated.push((_t, dt) => {
+      off = Math.max(0, off - dt);
+      if (off === 0 && Math.random() < dt * 0.6) off = 0.05 + Math.random() * 0.25;
+      const on = off > 0 ? (Math.random() < 0.3 ? 0.4 : 0) : 1;
+      bulbLight.intensity = 2.0 * on;
+      bulb.material.color.setScalar(0.25 + on * 0.75);
+    });
+  }
+
   // The room's daylight and sky glow, dimmed when the curtains are drawn.
   const [hemi, daylight, daylightTarget] = roomAmbience(theme) as [THREE.HemisphereLight, THREE.DirectionalLight, THREE.Object3D];
   root.add(hemi, daylight, daylightTarget);
@@ -2283,7 +2526,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     contacts.push([circle.x, circle.z, 0.95, 0.95, 0, true]);
     for (const i of CIRCLE_PILLOWS) { const seat = seatById(`${circle.id}-${i}`)!; contacts.push([seat.x, seat.z, 0.8, 0.8, 0, true]); }
   }
-  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk";
+  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie";
   root.add(contactShadows(contacts, 0.011, dark ? 0.6 : 0.5));
 
   // Dust turning in the light: before the fire, in the window's light and under the lamps.
@@ -2318,12 +2561,13 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
         case "creeper": return "Poke the creeper";
         case "computer": return "Nudge your contacts";
         case "lava": return "Stir the lava lamp";
+        case "boards": return "Check the boards";
         default: return null;
       }
     },
     sounds: {
       cat: playPurr, shark: playSqueak, guitar: playStrum, popcorn: () => playPops(), globe: playWhirr, clock: playChime,
-      skull: playBoo, arcade: playArcade, crt: playData, mug: playSip, creeper: playHiss, computer: playNudge, lava: playBloop,
+      skull: playBoo, arcade: playArcade, crt: playData, mug: playSip, creeper: playHiss, computer: playNudge, lava: playBloop, boards: playGroan,
     },
     switched: (id, on) => {
       if (id === "fire") {
@@ -2387,7 +2631,7 @@ export function roomAmbience(theme: RoomTheme): THREE.Object3D[] {
   const hemi = new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2]);
   // Soft moon/daylight through the window.
   const night = (theme !== "cozy" && theme !== "minecraft" && theme !== "y2k") || isNight();
-  const daylight = new THREE.DirectionalLight(night ? (theme === "cyberpunk" ? "#ff7ad1" : theme === "matrix" ? "#3dff8a" : "#8fa0ff") : "#fff1d6", night ? 0.35 : 1.1);
+  const daylight = new THREE.DirectionalLight(night ? (theme === "cyberpunk" ? "#ff7ad1" : theme === "matrix" || theme === "zombie" ? "#3dff8a" : "#8fa0ff") : "#fff1d6", night ? 0.35 : 1.1);
   daylight.position.set(ROOM_HALF_X + 4, 3.5, 2.6);
   daylight.target.position.set(0, 0, 1);
   daylight.castShadow = true;

@@ -472,3 +472,33 @@ export function playBloop() {
     osc.stop(now + at + 0.3);
   });
 }
+
+/** The zombie at the boarded window: three thumps on the planks and a long groan. */
+export function playGroan() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  [0, 0.32, 0.6].forEach((at) => {
+    burst(context, out, now + at, "lowpass", 220, 0.8, 0.5, 0.18);
+    tone(context, out, "sine", 70, now + at, 0.004, 0.35, 0.16);
+  });
+  const osc = context.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(110, now + 0.5);
+  osc.frequency.linearRampToValueAtTime(78, now + 2.0);
+  const wobble = context.createOscillator();
+  const depth = context.createGain();
+  wobble.frequency.value = 4.5;
+  depth.gain.value = 7;
+  wobble.connect(depth).connect(osc.frequency);
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 520;
+  filter.Q.value = 5;
+  osc.connect(filter).connect(envelope(context, out, now + 0.5, 0.2, 0.3, 1.4));
+  osc.start(now + 0.5);
+  wobble.start(now + 0.5);
+  osc.stop(now + 2.2);
+  wobble.stop(now + 2.2);
+}

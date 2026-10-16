@@ -44,6 +44,13 @@ export function ambienceFor(theme: RoomTheme, night = isNight()): Placed[] {
         { clip: "rain", at: WINDOW, gain: 0.5, muffle: 2200 },
         { clip: "clock", at: [-ROOM_HALF_X + 0.4, 1.6, -1.4], gain: 0.6, seamless: true },
       ];
+    case "zombie":
+      // Boarded up: the fire, wind round the boards and rain on the glass.
+      return [
+        { clip: "fire", at: HEARTH, gain: 0.8 },
+        { clip: "wind", at: WINDOW, gain: 0.8, muffle: 2600 },
+        { clip: "rain", at: WINDOW, gain: 0.35, muffle: 2000 },
+      ];
     case "cyberpunk":
       return [
         { clip: "city", at: WINDOW, gain: 0.85, muffle: 3200 },

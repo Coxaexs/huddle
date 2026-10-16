@@ -98,7 +98,18 @@ const Y2K: Prop[] = [
   { model: "pottedPlant", x: -2.0, z: -3.7, size: 1.0 },
 ];
 
+/** The hideout: a fire in a basket, lanterns, the emergency radio and the last books. */
+const ZOMBIE: Prop[] = [
+  { model: "fire-basket", x: -4.6, z: -3.6, size: 0.9, glow: { colour: "#ff7a2a", size: 1.5, height: 0.5, opacity: 0.6 } },
+  { model: "lantern-glass", x: -5.3, z: -2.6, size: 0.5, glow: { colour: "#ffb35c", size: 0.9, height: 0.3, opacity: 0.5 } },
+  { model: "sideTable", x: 5.4, z: -1.6, size: 1.0, ry: EAST },
+  { model: "radio", x: 5.45, z: -1.75, size: 0.42, y: 0.72, ry: EAST },
+  { model: "books", x: 5.4, z: -1.35, size: 0.3, y: 0.72, ry: EAST + 0.3 },
+  { model: "lantern-glass", x: -2.0, z: -3.7, size: 0.45, glow: { colour: "#ffb35c", size: 0.8, height: 0.28, opacity: 0.5 } },
+];
+
 const SETS: Record<RoomTheme, Prop[]> = {
+  zombie: ZOMBIE,
   // The Minecraft room's corners are built from blocks in the scene itself.
   minecraft: [],
   y2k: Y2K,
@@ -147,6 +158,7 @@ const TABLETOP_TECH = (tint: string): Prop[] => [
   { model: "televisionVintage", x: -3.8, z: 3.5, size: 0.7, ry: 0.4, emissive: tint },
 ];
 export const TABLETOP_PROPS: Record<RoomTheme, Prop[]> = {
+  zombie: TABLETOP_VAMPIRE.filter((prop) => prop.model !== "character-vampire"),
   minecraft: TABLETOP_COZY.filter((prop) => prop.model !== "lampRoundFloor"),
   y2k: TABLETOP_TECH("#4fc3ff"),
   cozy: TABLETOP_COZY,

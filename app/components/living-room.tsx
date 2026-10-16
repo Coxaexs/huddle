@@ -101,6 +101,7 @@ const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: st
   cyberpunk: { bg: ["#1c0a3a", "#05020f"], ink: "#e6f9ff", dim: "#9fb4ff", accent: "#ff2fb4", font: "system-ui, sans-serif" },
   academia: { bg: ["#1d2a1e", "#0e130f"], ink: "#ebdfc4", dim: "#b09f7e", accent: "#c9a45c", font: "'EB Garamond', Garamond, Georgia, serif" },
   minecraft: { bg: ["#3b2a1a", "#1a120a"], ink: "#ffffff", dim: "#a0a0a0", accent: "#55ff55", font: "ui-monospace, monospace" },
+  zombie: { bg: ["#151c10", "#070906"], ink: "#dfe8d2", dim: "#8f9c80", accent: "#9ad53b", font: "'Special Elite', 'Courier New', monospace" },
   y2k: { bg: ["#2a5bd8", "#0b1c5a"], ink: "#ffffff", dim: "#b9ccff", accent: "#ff7ad9", font: "Tahoma, Verdana, sans-serif" },
 };
 
