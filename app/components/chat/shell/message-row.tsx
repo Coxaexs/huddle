@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { type MouseEvent, type ReactNode } from "react";
 import type { PlayerState } from "@/lib/protocol";
 import { MessageAttachmentFiles } from "../../message-file-card";
@@ -41,6 +41,7 @@ import { ThemeShareCard } from "../../theme-share-card";
 import { AiAnswerCard } from "../../ai-answer-card";
 import { ImageGallery } from "../../image-gallery";
 import { type Theme, importThemeCode } from "@/lib/themes";
+import { MessageContextMenu } from "./message-context-menu";
 import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { HeadTrackingSource, SpatialOutput, VideoPause, RemoteVoiceStream, VoiceLatencyStats, ScreenShareQuality, RelayStatus } from "../../../hooks/use-voice";
 import type { HeadTrackingStatus } from "../../../lib/head-tracking";
@@ -228,6 +229,12 @@ function MessageRowImpl({
   deleteMessage: (id: string | number) => Promise<void>;
   showCustomConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel?: () => void; }) => void;
 }): ReactNode {
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const closeCtxMenu = () => setCtxMenu(null);
                   const dayLabel = dayDividerLabel(message, prev) ?? undefined;
                   if (message.kind?.startsWith("system-")) {
                     const pinnedId =
@@ -403,7 +410,8 @@ function MessageRowImpl({
                     (!message.kind || message.kind === "voice") &&
                     (!prev?.kind || prev.kind === "voice");
                   return (
-                    <article
+                    <>
+                      <article
                       id={`msg-${message.id}`}
                       data-day={dayLabel}
                       className={`message ${continuation ? "continuation" : ""} ${message.pinned ? "is-pinned" : ""
@@ -424,6 +432,8 @@ function MessageRowImpl({
                           setOpenActionsId(message.id);
                           return;
                         }
+                        event.preventDefault();
+                        event.stopPropagation();
                         if (message.bot) {
                           openBotMenu(
                             event,
@@ -431,7 +441,9 @@ function MessageRowImpl({
                               ? "dnd"
                               : "music",
                           );
+                          return;
                         }
+                        setCtxMenu({ x: event.clientX, y: event.clientY });
                       }}
                     >
                       {isBlockedUser && (
@@ -1169,6 +1181,174 @@ function MessageRowImpl({
                         )}
                       </div>
                     </article>
+                    {ctxMenu && (
+                      <MessageContextMenu
+                        x={ctxMenu.x}
+                        y={ctxMenu.y}
+                        messageId={message.id}
+                        messageContent={message.text}
+                        channelId={message.channelId}
+                        isOwn={message.userId === user.id}
+                        isBot={Boolean(message.bot)}
+                        isPinned={Boolean(message.pinned)}
+                        isSaved={savedIds.has(String(message.id))}
+                        canPin={canPin}
+                        onClose={closeCtxMenu}
+                        onEdit={() => {
+                          closeCtxMenu();
+                          beginEdit(message);
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onReply={() => {
+                          closeCtxMenu();
+                          setReplyTarget(message);
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onForward={() => {
+                          closeCtxMenu();
+                          const chName = inDmHome
+                            ? activeDm?.user.displayName
+                            : activeChannel?.name;
+                          const srvName = inDmHome ? undefined : activeServer?.name;
+                          setForwardTarget({
+                            id: message.id,
+                            author: author?.displayName || message.author,
+                            avatar: author?.avatar || message.avatar,
+                            avatarUrl: author?.avatarUrl,
+                            color: author?.color || message.color,
+                            text: message.text,
+                            createdAt: message.createdAt,
+                            image: message.image,
+                            images: message.images,
+                            file: message.file,
+                            channelId: message.channelId || activeChannelId,
+                            channelName: chName,
+                            serverName: srvName,
+                          });
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onThread={() => {
+                          closeCtxMenu();
+                          void openThread(message);
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onCopyText={() => {
+                          closeCtxMenu();
+                          void navigator.clipboard.writeText(message.text);
+                          setNotice("Message text copied.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onPin={() => {
+                          closeCtxMenu();
+                          void togglePin(message);
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onBookmark={() => {
+                          closeCtxMenu();
+                          void toggleSaved(String(message.id));
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onReminder={() => {
+                          closeCtxMenu();
+                          setNotice("Reminder coming soon.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onApps={() => {
+                          closeCtxMenu();
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onMarkUnread={() => {
+                          closeCtxMenu();
+                          setNotice("Mark as unread coming soon.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onCopyLink={() => {
+                          closeCtxMenu();
+                          const link = `${window.location.origin}/hangout?message=${message.id}`;
+                          void navigator.clipboard.writeText(link);
+                          setNotice("Message link copied.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onSpeak={() => {
+                          closeCtxMenu();
+                          setNotice("Speak message coming soon.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onDelete={() => {
+                          closeCtxMenu();
+                          showCustomConfirm({
+                            title: "Delete Message",
+                            message:
+                              "Are you sure you want to delete this message? Pro tip: You can delete while pressing Shift to skip this confirmation.",
+                            isDanger: true,
+                            confirmText: "Delete",
+                            cancelText: "Cancel",
+                            onConfirm: () => {
+                              void deleteMessage(message.id);
+                            },
+                          });
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onCopyId={() => {
+                          closeCtxMenu();
+                          void navigator.clipboard.writeText(String(message.id));
+                          setNotice("Message ID copied.");
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onReport={() => {
+                          closeCtxMenu();
+                          showCustomConfirm({
+                            title: "Report Message",
+                            message: "Report this message to the server moderators?",
+                            isDanger: true,
+                            confirmText: "Report",
+                            cancelText: "Cancel",
+                            onConfirm: () => {
+                              void apiFetch("/api/reports", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  serverId: activeServer?.id,
+                                  channelId: activeChannelId,
+                                  messageId: message.id,
+                                  reason: "Reported from chat",
+                                }),
+                              })
+                                .then(() => setNotice("Message reported to moderators."))
+                                .catch((err) =>
+                                  setNotice(err instanceof Error ? err.message : "Could not report message."),
+                                );
+                            },
+                          });
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                        onAddReaction={() => {
+                          closeCtxMenu();
+                          handleOpenReactionPicker(
+                            { clientX: ctxMenu?.x, clientY: ctxMenu?.y } as React.MouseEvent,
+                            message.id,
+                            "react",
+                          );
+                          setOpenActionsId(null);
+                          setMobileActionsMoreId(null);
+                        }}
+                      />
+                    )}
+                  </>
                   );
                 }
 
