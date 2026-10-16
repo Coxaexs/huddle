@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Award, CheckCircle2, Clock, Users, MessageSquare, Mic, Calendar, X } from "lucide-react";
-import { apiFetch, basePath } from "../lib/client";
+import { apiFetch } from "../lib/client";
 
 const ICONS: Record<string, typeof Award> = {
   Award,
@@ -35,7 +35,7 @@ export default function AchievementsPage() {
     (async () => {
       try {
         const session = await apiFetch<{ user: { id: string; display_name: string } | null }>(
-          `${basePath}/api/auth/session`,
+          "/api/auth/session",
         );
         if (!session.user) {
           setError("Sign in to see your achievements.");
@@ -53,7 +53,7 @@ export default function AchievementsPage() {
           current: number;
           threshold: number;
           progress: number;
-        }> }>(`${basePath}/api/achievements`);
+        }> }>("/api/achievements");
         if (!cancelled) setAchievements(data.achievements || []);
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load achievements.");
