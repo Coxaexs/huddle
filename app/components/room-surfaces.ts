@@ -65,11 +65,91 @@ const clone = (texture: THREE.Texture, repeat: [number, number]) => {
 };
 
 /**
+ * "pixel" swaps the scans for 16x16 block textures drawn here (oak planks,
+ * cobblestone, wool, grass, logs), sharp-edged, for the Minecraft rooms. Set
+ * before a room is built; materials made after it follow.
+ */
+export type SurfaceStyle = "real" | "pixel";
+let surfaceStyle: SurfaceStyle = "real";
+export function setSurfaceStyle(style: SurfaceStyle) {
+  surfaceStyle = style;
+}
+
+/** Blocks per texture repeat in pixel mode: scans tile every metre or two, blocks are smaller. */
+const PIXEL_DENSITY: Partial<Record<Surface, number>> = { floor: 2.6, wood: 1.6, stone: 1.6, carpet: 1.2, fabric: 0.8, leather: 0.8, grass: 2, bark: 1.4 };
+
+function pixelNoise(x: number, y: number, salt: number) {
+  const v = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453;
+  return v - Math.floor(v);
+}
+
+const pixelMaps = new Map<Surface, THREE.Texture>();
+
+/** A grey 16x16 block face (so the material's colour tints it), sampled without smoothing. */
+function pixelMap(kind: Surface): THREE.Texture | null {
+  if (kind === "plaster") return null;
+  let texture = pixelMaps.get(kind);
+  if (texture) return texture;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 16;
+  const ctx = canvas.getContext("2d")!;
+  const grey = (v: number) => {
+    const c = Math.max(0, Math.min(255, Math.round(v)));
+    return `rgb(${c},${c},${c})`;
+  };
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const n = pixelNoise(x, y, kind.length);
+      let v = 200 + (n - 0.5) * 40;
+      if (kind === "floor" || kind === "wood") {
+        // Oak planks: four boards, each with dark seams and staggered ends.
+        const row = Math.floor(y / 4);
+        const seamX = row % 2 ? 4 : 12;
+        if (y % 4 === 3) v = 120;
+        else if (x === seamX) v = 135;
+        else v = 205 + (pixelNoise(Math.floor(x / 3), y, 3) - 0.5) * 34;
+      } else if (kind === "stone") {
+        // Cobblestone: irregular light stones in dark mortar.
+        const cx = Math.floor((x + (Math.floor(y / 5) % 2) * 3) / 5);
+        const cy = Math.floor(y / 5);
+        const edge = (x + (Math.floor(y / 5) % 2) * 3) % 5 === 0 || y % 5 === 0;
+        v = edge ? 95 + n * 30 : 175 + (pixelNoise(cx, cy, 8) - 0.5) * 60 + (n - 0.5) * 25;
+      } else if (kind === "carpet" || kind === "fabric" || kind === "leather") {
+        // Wool: soft, low contrast speckle with a faint weave.
+        v = 210 + (n - 0.5) * 26 - ((x + y) % 4 === 0 ? 10 : 0);
+      } else if (kind === "grass") {
+        v = 190 + (n - 0.5) * 70;
+      } else if (kind === "bark") {
+        // A log's side: vertical dark streaks.
+        v = (x % 4 === 0 ? 120 : 185) + (n - 0.5) * 40;
+      }
+      ctx.fillStyle = grey(v);
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestMipmapLinearFilter;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  pixelMaps.set(kind, texture);
+  return texture;
+}
+
+/**
  * Gives `material` a surface. Marks it at once (so materials meant to look
  * different are never merged together) and fills in the maps when they arrive.
  */
 export function dress<T extends THREE.MeshStandardMaterial>(material: T, kind: Surface, options: Dress = {}): T {
   const { repeat = [1, 1], detail = true, bump = 1, rough = true } = options;
+  if (surfaceStyle === "pixel") {
+    material.userData.surface = `pixel|${kind}|${repeat.join("x")}|${detail}`;
+    const map = pixelMap(kind);
+    const k = PIXEL_DENSITY[kind] ?? 1;
+    if (map && detail && !material.map) material.map = clone(map, [repeat[0] * k, repeat[1] * k]);
+    material.needsUpdate = true;
+    return material;
+  }
   material.userData.surface = `${kind}|${repeat.join("x")}|${detail}|${bump}|${rough}`;
   const apply = (set: Set) => {
     if (detail && !material.map) material.map = clone(set.detail, repeat);

@@ -420,3 +420,55 @@ export function playFanfare() {
   }
   burst(a.context, a.out, now + 0.45, "highpass", 6000, 0.5, 0.1, 0.6);
 }
+
+/** The Minecraft room's creeper: a rising hiss that thinks better of it. */
+export function playHiss() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  const source = context.createBufferSource();
+  source.buffer = noise(context);
+  source.loop = true;
+  const band = context.createBiquadFilter();
+  band.type = "bandpass";
+  band.Q.value = 1.4;
+  band.frequency.setValueAtTime(4200, now);
+  band.frequency.linearRampToValueAtTime(6000, now + 1.3);
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.25, now + 0.15);
+  gain.gain.linearRampToValueAtTime(0.35, now + 1.2);
+  gain.gain.linearRampToValueAtTime(0.0001, now + 1.5);
+  source.connect(band).connect(gain).connect(out);
+  source.start(now);
+  source.stop(now + 1.55);
+}
+
+/** MSN's nudge: a buzzy wobble and the "new message" two-note chime. */
+export function playNudge() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  for (let i = 0; i < 6; i++) tone(context, out, "square", i % 2 ? 140 : 120, now + i * 0.07, 0.005, 0.05, 0.06);
+  tone(context, out, "sine", 880, now + 0.5, 0.005, 0.2, 0.35);
+  tone(context, out, "sine", 1318.5, now + 0.62, 0.005, 0.2, 0.6);
+}
+
+/** The lava lamp: a slow, liquid bloop. */
+export function playBloop() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  [0, 0.35, 0.6].forEach((at, i) => {
+    const osc = context.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(260 + i * 60, now + at);
+    osc.frequency.exponentialRampToValueAtTime(520 + i * 90, now + at + 0.14);
+    osc.connect(envelope(context, out, now + at, 0.01, 0.18, 0.2));
+    osc.start(now + at);
+    osc.stop(now + at + 0.3);
+  });
+}

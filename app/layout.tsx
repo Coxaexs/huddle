@@ -10,6 +10,7 @@ import "./theme-fx.css";
 import "./cosmetics.css";
 import "./cosmetics-extra.css";
 import "./profile-style.css";
+import "./theme-panels.css";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {

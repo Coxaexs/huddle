@@ -133,6 +133,10 @@ export const ROOM_SHAPES = {
   cyberpunk: { seconds: 0.7, decay: 0.13, damp: 0.6, predelay: 0.015 },
   // A library: books swallow the highs, the wood keeps a warm, medium tail.
   academia: { seconds: 0.8, decay: 0.15, damp: 0.25, predelay: 0.018 },
+  // Stone and planks: a little cave ring.
+  minecraft: { seconds: 0.9, decay: 0.17, damp: 0.4, predelay: 0.02 },
+  // A carpeted bedroom: short and soft.
+  y2k: { seconds: 0.45, decay: 0.08, damp: 0.4, predelay: 0.01 },
 } satisfies Record<string, RoomShape>;
 export type RoomShapeName = keyof typeof ROOM_SHAPES;
 

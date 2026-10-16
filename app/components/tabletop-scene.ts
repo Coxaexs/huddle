@@ -39,6 +39,8 @@ const MAP_INKS: Record<RoomTheme, MapInk> = {
   academia: { paper: ["#e6d3ac", "#bb9a6a"], ink: "#3e2a1a", wall: "#2f2016", floor: "#d2c3a4", water: ["#56809a", "#93b6c9"], wood: "#7c4f28", tree: ["#4a6e38", "#2b4521"], grass: "rgba(100,140,70,0.22)", accent: "#7b1f1f", label: "#2e1c10" },
   vampire: { paper: ["#c9ab8c", "#7a5a45"], ink: "#2a1210", wall: "#1e0c0c", floor: "#b39a82", water: ["#4a2a3a", "#7a4a5a"], wood: "#5a2f1f", tree: ["#3d3a2a", "#221f16"], grass: "rgba(80,60,40,0.25)", accent: "#8a0f1f", label: "#3a0a12" },
   matrix: { paper: ["#04210f", "#010a05"], ink: "#00e060", wall: "#00ff66", floor: "#062a14", water: ["#00a050", "#40ffa0"], wood: "#0f8040", tree: ["#00c853", "#007a32"], grass: "rgba(0,200,80,0.10)", accent: "#b9ffcf", label: "#6dff9e" },
+  minecraft: { paper: ["#e0cfa0", "#b89f6a"], ink: "#3a2a1a", wall: "#4a4a4a", floor: "#cbb88a", water: ["#3f76e4", "#7fa8ff"], wood: "#6b5130", tree: ["#5fa83a", "#3f7a28"], grass: "rgba(95,168,58,0.25)", accent: "#a83232", label: "#2a1a0a" },
+  y2k: { paper: ["#eef2ff", "#c6d0f5"], ink: "#2a3aa8", wall: "#3a3f6a", floor: "#e3e8ff", water: ["#4fc3ff", "#a8e4ff"], wood: "#b0806a", tree: ["#5ab85a", "#2f7a3a"], grass: "rgba(120,200,90,0.2)", accent: "#ff4fa8", label: "#1a237e" },
   cyberpunk: { paper: ["#1b0f40", "#08041a"], ink: "#00f0ff", wall: "#00f0ff", floor: "#241a52", water: ["#9b5cff", "#ff7ad1"], wood: "#ff2fb4", tree: ["#2fbf8f", "#13705a"], grass: "rgba(0,240,255,0.08)", accent: "#ff2fb4", label: "#ffe94a" },
 };
 

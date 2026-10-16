@@ -10,6 +10,7 @@ import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
 import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, type BuiltRoom, type RoomThings } from "./living-room-scene";
+import { setSurfaceStyle } from "./room-surfaces";
 import { RoomProbe } from "./living-room-fx";
 import { ROOM_POST, RoomPost, type RoomQuality } from "./room-post";
 import { setThingSound } from "./living-room-sounds";
@@ -99,6 +100,8 @@ const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: st
   matrix: { bg: ["#021a0a", "#000500"], ink: "#b9ffcf", dim: "#4fbf78", accent: "#00ff66", font: "ui-monospace, monospace" },
   cyberpunk: { bg: ["#1c0a3a", "#05020f"], ink: "#e6f9ff", dim: "#9fb4ff", accent: "#ff2fb4", font: "system-ui, sans-serif" },
   academia: { bg: ["#1d2a1e", "#0e130f"], ink: "#ebdfc4", dim: "#b09f7e", accent: "#c9a45c", font: "'EB Garamond', Garamond, Georgia, serif" },
+  minecraft: { bg: ["#3b2a1a", "#1a120a"], ink: "#ffffff", dim: "#a0a0a0", accent: "#55ff55", font: "ui-monospace, monospace" },
+  y2k: { bg: ["#2a5bd8", "#0b1c5a"], ink: "#ffffff", dim: "#b9ccff", accent: "#ff7ad9", font: "Tahoma, Verdana, sans-serif" },
 };
 
 /** The TV's "now playing" screen: cover, title, artist, a progress bar and the time. */
@@ -638,6 +641,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const scene = new THREE.Scene();
     const house = new THREE.Group();
     scene.add(house);
+    // Minecraft's venues are built from pixel blocks, not scanned wood and stone.
+    setSurfaceStyle(theme === "minecraft" ? "pixel" : "real");
     const parts: BuiltRoom & { cinemaLights?: any; board?: FloorBoard } = venueId === "cinema" ? buildCinema(theme)
       : venueId === "tabletop" ? buildTabletop(theme)
         : venueId === "boardhall" ? buildBoardHall(theme)

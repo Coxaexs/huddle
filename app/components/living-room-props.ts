@@ -87,7 +87,21 @@ const MATRIX: Prop[] = [
 
 const CYBER = (tint: string): Prop[] => MATRIX.map((prop) => (prop.emissive ? { ...prop, emissive: tint, glow: prop.glow && { ...prop.glow, colour: tint } } : prop));
 
+/** The year-2000 bedroom: a desk chair at the computer, a teddy, a pink floor lamp and a boombox. */
+const Y2K: Prop[] = [
+  { model: "chairDesk", x: 4.75, z: -3.0, size: 0.95, ry: WEST + 0.4 },
+  { model: "lampRoundFloor", x: -5.25, z: -3.7, size: 1.7, ry: WEST, glow: { colour: "#ff9ae6", size: 1.6, height: 1.45, opacity: 0.5 } },
+  { model: "bear", x: -4.4, z: -3.3, size: 0.5, ry: 0.5 },
+  { model: "pillow", x: -4.6, z: -2.7, size: 0.45, ry: -0.4 },
+  { model: "radio", x: -3.9, z: -3.9, size: 0.5, ry: 0.2 },
+  { model: "speaker", x: -5.3, z: -2.4, size: 0.9 },
+  { model: "pottedPlant", x: -2.0, z: -3.7, size: 1.0 },
+];
+
 const SETS: Record<RoomTheme, Prop[]> = {
+  // The Minecraft room's corners are built from blocks in the scene itself.
+  minecraft: [],
+  y2k: Y2K,
   cozy: COZY,
   academia: COZY,
   vampire: VAMPIRE,
@@ -133,6 +147,8 @@ const TABLETOP_TECH = (tint: string): Prop[] => [
   { model: "televisionVintage", x: -3.8, z: 3.5, size: 0.7, ry: 0.4, emissive: tint },
 ];
 export const TABLETOP_PROPS: Record<RoomTheme, Prop[]> = {
+  minecraft: TABLETOP_COZY.filter((prop) => prop.model !== "lampRoundFloor"),
+  y2k: TABLETOP_TECH("#4fc3ff"),
   cozy: TABLETOP_COZY,
   academia: TABLETOP_COZY,
   vampire: TABLETOP_VAMPIRE,

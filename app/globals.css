@@ -5937,6 +5937,14 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
     min-width: 4px;
   }
 
+  /* The rail is a row here: a server's slot is as wide as its icon, not the
+     whole bar (the desktop column's width: 100% put a screen of air between
+     servers). */
+  .app-shell.nav-open .rail :is(.rail-item, .rail-folder) {
+    width: auto;
+    flex: none;
+  }
+
   .brand-mark,
   .space-mark,
   .profile-dot {

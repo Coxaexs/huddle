@@ -61,6 +61,17 @@ describe("Dice Roll & Theme Features", () => {
     expect(inheritDiceStyle("zombie", "vampire")).toBe("zombie");
     expect(inheritDiceStyle(null, "cozy")).toBe("default");
     expect(inheritDiceStyle("nonsense", "matrix")).toBe("matrix");
+    expect(inheritDiceStyle("default", "minecraft")).toBe("minecraft");
+    expect(inheritDiceStyle(null, "zombie")).toBe("zombie");
+
+    // A natural 1 in the Minecraft, Messenger, TeamSpeak and Zombie themes gets the theme's own fumble.
+    const { fumbleSkinFor } = await import("../app/components/dice-theme-fumbles");
+    expect(fumbleSkinFor("minecraft", "cozy")).toBe("creeper");
+    expect(fumbleSkinFor("glass", "minecraft")).toBe("creeper");
+    expect(fumbleSkinFor("msn", "msn-dark")).toBe("virus-xp");
+    expect(fumbleSkinFor("msn", "teamspeak")).toBe("virus-ts");
+    expect(fumbleSkinFor("zombie", "zombie")).toBe("zombie");
+    expect(fumbleSkinFor("classic", "cozy")).toBeNull();
   });
 
   it("parses inline theme names and hex colors correctly", () => {

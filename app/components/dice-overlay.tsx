@@ -12,6 +12,7 @@ import {
 import { getDiceStyle, inheritDiceStyle } from "@/lib/dice-styles";
 import { installHuddleDiceTextures } from "../lib/dice-textures";
 import { runCritFx, type CritFxHandle } from "./dice-crit-fx";
+import { fumbleSkinFor, THEME_FUMBLES } from "./dice-theme-fumbles";
 
 /** Flatten the server's authoritative die values in roll order. */
 function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number; kept: boolean }> {
@@ -256,6 +257,7 @@ export function DiceOverlay({
       const nat1 = natIndexes(1);
 
       if (!roll.masked && (nat20.length || nat1.length)) {
+        const skin = fumbleSkinFor(theme, activeCustomTheme);
         critFx = runCritFx(
           box,
           {
@@ -265,8 +267,9 @@ export function DiceOverlay({
             ],
             material: effectiveMaterial,
             color: themeColor,
+            fumble: skin ? THEME_FUMBLES[skin] : undefined,
           },
-          { onFumbleHit: () => void playCriticalFumbleSound({ material: effectiveMaterial, theme }) },
+          { onFumbleHit: () => void playCriticalFumbleSound({ material: effectiveMaterial, theme: skin ?? theme }) },
         );
         if (nat20.length) void playCriticalSuccessSound({ theme });
         // The room's music dips under the crit sound (use-player listens).

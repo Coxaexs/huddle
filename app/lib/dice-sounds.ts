@@ -812,6 +812,82 @@ export async function playCriticalFumbleSound({
   master.gain.setValueAtTime(0.92, now);
   master.connect(ctx.destination);
 
+  if (theme === "creeper") {
+    // Minecraft explosion: a noise burst through a closing low-pass, over a falling thump.
+    const len = Math.floor(ctx.sampleRate * 1.6);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2400, now);
+    lp.frequency.exponentialRampToValueAtTime(160, now + 1.4);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(1.1, now);
+    noise.connect(lp).connect(ng).connect(master);
+    noise.start(now);
+    const boom = ctx.createOscillator();
+    const bg = ctx.createGain();
+    boom.type = "sine";
+    boom.frequency.setValueAtTime(110, now);
+    boom.frequency.exponentialRampToValueAtTime(32, now + 0.6);
+    bg.gain.setValueAtTime(0.9, now);
+    bg.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+    boom.connect(bg).connect(master);
+    boom.start(now);
+    boom.stop(now + 0.85);
+    return;
+  }
+
+  if (theme === "zombie") {
+    // A groan from under the table, and the thud of dirt.
+    const groan = ctx.createOscillator();
+    groan.type = "sawtooth";
+    groan.frequency.setValueAtTime(95, now);
+    groan.frequency.linearRampToValueAtTime(70, now + 1.1);
+    const wobble = ctx.createOscillator();
+    const wobbleGain = ctx.createGain();
+    wobble.frequency.setValueAtTime(5, now);
+    wobbleGain.gain.setValueAtTime(8, now);
+    wobble.connect(wobbleGain).connect(groan.frequency);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(600, now);
+    lp.Q.setValueAtTime(6, now);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.5, now + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+    groan.connect(lp).connect(g).connect(master);
+    groan.start(now);
+    wobble.start(now);
+    groan.stop(now + 1.25);
+    wobble.stop(now + 1.25);
+    synthProceduralDiceHit(ctx, master, now + 0.9, 0.5, "dark-academia");
+    return;
+  }
+
+  if (theme === "virus-xp" || theme === "virus-ts") {
+    // The old Windows error chimes: XP's critical stop, or 98's chord.
+    const notes = theme === "virus-xp" ? [[659, 0], [494, 0.13], [330, 0.26]] : [[523, 0], [659, 0], [784, 0], [392, 0.18]];
+    for (const [freq, at] of notes) {
+      const t = now + at;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.28, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      osc.connect(g).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.52);
+    }
+    return;
+  }
+
   if (theme === "matrix") {
     // Digital matrix code glitch collapse: cascading bitcrushed pitches down into system error
     [1600, 950, 420, 180].forEach((freq, i) => {
@@ -1086,4 +1162,30 @@ export async function playCriticalSuccessSound({
     bass.start(now + 0.02);
     bass.stop(now + 1.25);
   });
+}
+
+/** A creeper's fuse: a rising, hissing "sssss" lasting `seconds`. */
+export async function playCreeperHiss(seconds = 1.5): Promise<void> {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime + 0.01;
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const band = ctx.createBiquadFilter();
+  band.type = "bandpass";
+  band.Q.setValueAtTime(1.4, now);
+  band.frequency.setValueAtTime(4200, now);
+  band.frequency.linearRampToValueAtTime(6200, now + seconds);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.32, now + 0.15);
+  g.gain.linearRampToValueAtTime(0.5, now + seconds - 0.05);
+  g.gain.linearRampToValueAtTime(0.0001, now + seconds);
+  noise.connect(band).connect(g).connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + seconds);
 }

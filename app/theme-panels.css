@@ -1,0 +1,1160 @@
+/* Themed panels: the Settings window, the profile card and the voice bar
+   for Minecraft, MSN Messenger (light and dark), TeamSpeak 2 and Zombie.
+
+   Settings: each theme sets a small palette (--sp-*) and the shared rules
+   below repaint the window with it, including the Tailwind colour utilities
+   the tabs use (written for a dark window, so on the light themes they had
+   white text on pale grey). Then each theme adds its own furniture: the
+   options screen of the game, an XP window, a Windows 98 dialog, a
+   quarantine terminal.
+
+   Profile cards: only cards without their owner's own card style or CSS
+   (.pst / data-has-custom-css), so a custom card always keeps its look. */
+
+/* ==========================================================================
+   Settings: palettes
+   ========================================================================== */
+
+:root[data-custom-theme-id="minecraft"] {
+  --sp-frame: #000000;
+  --sp-side: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), var(--mc-planks) 0 0 / 48px 48px;
+  --sp-main: linear-gradient(rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.62)), var(--mc-dirt) 0 0 / 64px 64px;
+  --sp-ink: #ffffff;
+  --sp-muted: #b4b4b4;
+  --sp-card: rgba(0, 0, 0, 0.55);
+  --sp-card-edge: #6b6b6b;
+  --sp-hover: rgba(255, 255, 255, 0.12);
+  --sp-field: #000000;
+  --sp-field-edge: #a0a0a0;
+  --sp-accent: #5fb33a;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 0px;
+  --sp-title: #ffff55;
+}
+
+:root[data-custom-theme-id="msn"] {
+  --sp-frame: #0831d9;
+  --sp-side: linear-gradient(180deg, #d6e4f7 0%, #b9cfee 100%);
+  --sp-main: #ffffff;
+  --sp-ink: #000000;
+  --sp-muted: #4d5a6e;
+  --sp-card: linear-gradient(180deg, #ffffff 0%, #eef4fc 100%);
+  --sp-card-edge: #9ab8e0;
+  --sp-hover: #dcebfc;
+  --sp-field: #ffffff;
+  --sp-field-edge: #7f9db9;
+  --sp-accent: #2a62d4;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 3px;
+  --sp-title: #0f3a82;
+}
+
+:root[data-custom-theme-id="msn-dark"] {
+  --sp-frame: #2b4a80;
+  --sp-side: linear-gradient(180deg, #172a4e 0%, #0f1f3c 100%);
+  --sp-main: #0e1930;
+  --sp-ink: #e6eefc;
+  --sp-muted: #9fb2d4;
+  --sp-card: linear-gradient(180deg, #172a4e 0%, #12223f 100%);
+  --sp-card-edge: #34507f;
+  --sp-hover: #1d3766;
+  --sp-field: #0b1426;
+  --sp-field-edge: #4c7cc8;
+  --sp-accent: #4c8cff;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 3px;
+  --sp-title: #7fb8ff;
+}
+
+:root[data-custom-theme-id="teamspeak"] {
+  --sp-frame: #0a246a;
+  --sp-side: #ece9d8;
+  --sp-main: #ece9d8;
+  --sp-ink: #000000;
+  --sp-muted: #4a4a44;
+  --sp-card: #ffffff;
+  --sp-card-edge: #aca899;
+  --sp-hover: #d8e4f8;
+  --sp-field: #ffffff;
+  --sp-field-edge: #7f9db9;
+  --sp-accent: #0a246a;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 0px;
+  --sp-title: #0a246a;
+}
+
+:root[data-custom-theme-id="zombie"] {
+  --sp-frame: rgba(154, 213, 59, 0.45);
+  --sp-side:
+    radial-gradient(120% 40% at 50% 110%, rgba(110, 160, 40, 0.16), transparent 70%),
+    linear-gradient(180deg, #080a07 0%, #10150c 100%);
+  --sp-main:
+    radial-gradient(80% 40% at 80% 0%, rgba(142, 27, 18, 0.12), transparent 70%),
+    linear-gradient(180deg, #0c100a 0%, #0a0d08 100%);
+  --sp-ink: #dfe8d2;
+  --sp-muted: #8f9c80;
+  --sp-card: rgba(25, 32, 15, 0.85);
+  --sp-card-edge: rgba(154, 213, 59, 0.22);
+  --sp-hover: rgba(154, 213, 59, 0.12);
+  --sp-field: #070906;
+  --sp-field-edge: rgba(154, 213, 59, 0.35);
+  --sp-accent: #9ad53b;
+  --sp-on-accent: #0a0d08;
+  --sp-radius: 2px;
+  --sp-title: #9ad53b;
+}
+
+/* ==========================================================================
+   Settings: shared repaint
+   ========================================================================== */
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .modal.settings-modal {
+  background: var(--sp-main) !important;
+  border: 2px solid var(--sp-frame) !important;
+  border-radius: var(--sp-radius) !important;
+  color: var(--sp-ink);
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.settings-sidebar, .settings-mobile-head) {
+  background: var(--sp-side) !important;
+  border-right-color: var(--sp-card-edge) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-main {
+  background: var(--sp-main) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-topbar {
+  border-bottom-color: var(--sp-card-edge) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.settings-topbar h2, .settings-mobile-head h2) {
+  color: var(--sp-title) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.settings-sidebar-user-name, .field-label, h3, h4, label, strong) {
+  color: var(--sp-ink) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.settings-group-title, .modal-hint, .settings-esc-text, .settings-search-icon) {
+  color: var(--sp-muted) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-sidebar-user {
+  background: var(--sp-card) !important;
+  border: 1px solid var(--sp-card-edge) !important;
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-sidebar-user-sub {
+  color: var(--sp-accent) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-nav-btn {
+  color: var(--sp-ink) !important;
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-nav-btn:hover {
+  background: var(--sp-hover) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-nav-btn.active {
+  background: var(--sp-accent) !important;
+  color: var(--sp-on-accent) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .settings-nav-btn.signout {
+  color: #c62828 !important;
+  border-top-color: var(--sp-card-edge) !important;
+}
+
+/* The Tailwind colours the tabs were written with, mapped onto the palette. */
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is(.text-white, .text-gray-100, .text-gray-200, .text-gray-300, .text-zinc-200, .text-zinc-300, .text-slate-200, .text-slate-300) {
+  color: var(--sp-ink) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is(.text-gray-400, .text-gray-500, .text-zinc-400, .text-zinc-500, .text-slate-400, .text-slate-500) {
+  color: var(--sp-muted) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is([class*="bg-black/"], [class*="bg-gray-900"], [class*="bg-zinc-900"], [class*="bg-[#1"], [class*="bg-[#2"]) {
+  background: var(--sp-card) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is([class*="bg-white/"], [class*="bg-purple-950"], [class*="bg-indigo-950"]) {
+  background: var(--sp-hover) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is([class*="border-white/"], [class*="border-gray-7"], [class*="border-zinc-7"]) {
+  border-color: var(--sp-card-edge) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-content-scroll :is(.rounded-xl, .rounded-lg, .rounded-md, .rounded) {
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="number"], input[type="url"], textarea, select, .discord-text-input, .pe-input, .settings-search-input) {
+  color: var(--sp-ink) !important;
+  background: var(--sp-field) !important;
+  border: 1px solid var(--sp-field-edge) !important;
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal .discord-btn.secondary-gray {
+  color: var(--sp-ink) !important;
+  background: var(--sp-card) !important;
+  border: 1px solid var(--sp-card-edge) !important;
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.discord-btn.primary-indigo, .discord-btn.primary, .bg-purple-600, .bg-indigo-600) {
+  color: var(--sp-on-accent) !important;
+  background: var(--sp-accent) !important;
+  border-radius: var(--sp-radius) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(.border-purple-500, .ring-purple-500\/40) {
+  border-color: var(--sp-accent) !important;
+  --tw-ring-color: var(--sp-accent) !important;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]) .settings-modal :is(input[type="range"], input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--sp-accent);
+}
+
+/* ==========================================================================
+   Settings: Minecraft — the game's Options screen
+   ========================================================================== */
+
+:root[data-custom-theme-id="minecraft"] .settings-modal {
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px #000, 0 30px 80px rgba(0, 0, 0, 0.8) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-topbar {
+  justify-content: center;
+  border-bottom: 2px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-topbar h2 {
+  font-family: var(--font-display) !important;
+  font-weight: 500 !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  letter-spacing: 0.03em;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-esc-control {
+  position: absolute;
+  right: 28px;
+}
+
+/* Every menu entry is a stone button; the open one is the pressed one. */
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn {
+  margin: 2px 0;
+  background: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel);
+  color: #e0e0e0 !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  justify-content: center;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn:hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+  background: linear-gradient(rgba(70, 90, 200, 0.28), rgba(70, 90, 200, 0.28)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn.active {
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--mc-stone) 0 0 / 48px 48px !important;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.5), inset -2px -2px 0 rgba(255, 255, 255, 0.12);
+  color: #ffff55 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn.signout {
+  margin-top: auto;
+  color: #ff5555 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-group-title {
+  color: #ffff55 !important;
+  text-shadow: 2px 2px 0 #3f3f15;
+  text-align: center;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal :is(.discord-btn, .bg-purple-600, .bg-indigo-600) {
+  background: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal :is(.discord-btn, .bg-purple-600, .bg-indigo-600):hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+}
+
+/* Cards are inventory slots: dark well, light bottom-right edge. */
+:root[data-custom-theme-id="minecraft"] .settings-content-scroll :is([class*="bg-black/"], [class*="bg-purple-950"]) {
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.6), inset -2px -2px 0 rgba(255, 255, 255, 0.1);
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-esc-circle {
+  border-radius: 0 !important;
+  border: 2px solid #000 !important;
+  background: var(--mc-stone) 0 0 / 48px 48px !important;
+  color: #fff !important;
+  box-shadow: var(--mc-bevel);
+}
+
+/* ==========================================================================
+   Settings: MSN Messenger — an XP "Options" window
+   ========================================================================== */
+
+:root[data-custom-theme-id^="msn"] .modal.settings-modal {
+  font-family: var(--msn-font, Tahoma, sans-serif);
+  border-radius: 8px 8px 0 0 !important;
+  padding-top: 28px !important;
+  position: relative;
+  box-shadow: 4px 6px 24px rgba(10, 30, 80, 0.5) !important;
+}
+
+/* The blue title bar with the Messenger buddies. */
+:root[data-custom-theme-id^="msn"] .modal.settings-modal::before {
+  content: "Options";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28px;
+  padding: 0 0 0 32px;
+  display: flex;
+  align-items: center;
+  font: 700 13px/1 var(--msn-font, Tahoma, sans-serif);
+  color: #fff;
+  text-shadow: 1px 1px 0 #0a246a;
+  background:
+    radial-gradient(circle at 15px 11px, #4bc04b 0 4px, transparent 4.5px),
+    radial-gradient(circle at 15px 21px, #2fa82f 0 7px, transparent 7.5px),
+    radial-gradient(circle at 21px 10px, #3a7ce0 0 4px, transparent 4.5px),
+    radial-gradient(circle at 21px 20px, #2a62d4 0 7px, transparent 7.5px),
+    linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #005bff 95%, #003dd7 100%);
+  z-index: 2;
+}
+
+:root[data-custom-theme-id="msn-dark"] .modal.settings-modal::before {
+  background:
+    radial-gradient(circle at 15px 11px, #4bc04b 0 4px, transparent 4.5px),
+    radial-gradient(circle at 15px 21px, #2fa82f 0 7px, transparent 7.5px),
+    radial-gradient(circle at 21px 10px, #3a7ce0 0 4px, transparent 4.5px),
+    radial-gradient(circle at 21px 20px, #2a62d4 0 7px, transparent 7.5px),
+    linear-gradient(180deg, #2f5aa3 0%, #1d4185 48%, #143472 52%, #214a8f 100%);
+}
+
+/* The red XP close box sits on the title bar. */
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-control {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  z-index: 3;
+  padding: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-circle {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 3px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-text {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-topbar {
+  background: var(--msn-sky);
+  padding: 14px 24px 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-topbar h2 {
+  font: 700 18px var(--msn-font, Tahoma, sans-serif) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-nav-btn.active {
+  background: var(--msn-select) !important;
+  color: var(--msn-win-ink, #000) !important;
+  box-shadow: inset 0 0 0 1px var(--msn-menu-hi-edge, #7da2ce);
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-nav-btn:hover {
+  background: var(--msn-hover) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-group-title {
+  color: var(--msn-title) !important;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--sp-card-edge);
+  margin: 0 8px 2px;
+  padding-left: 4px;
+}
+
+/* XP push buttons. */
+:root[data-custom-theme-id="msn"] .settings-modal .discord-btn.secondary-gray {
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal :is(.discord-btn.primary-indigo, .discord-btn.primary, .bg-purple-600, .bg-indigo-600) {
+  background: linear-gradient(180deg, #5c9bf5 0%, #2a62d4 50%, #1f52bf 100%) !important;
+  border: 1px solid #0a246a !important;
+}
+
+/* ==========================================================================
+   Settings: TeamSpeak 2 — a Windows dialog with tabs on the left
+   ========================================================================== */
+
+:root[data-custom-theme-id="teamspeak"] .modal.settings-modal {
+  font-family: var(--ts-font) !important;
+  border: 1px solid #0a246a !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding-top: 24px !important;
+  position: relative;
+  box-shadow: 2px 3px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .modal.settings-modal::before {
+  content: "TeamSpeak 2 - Options";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 24px;
+  padding-left: 26px;
+  display: flex;
+  align-items: center;
+  font: 700 12px/1 var(--ts-font);
+  color: #fff;
+  background:
+    radial-gradient(circle at 13px 12px, #c9c9c9 0 3px, #2a62d4 3.5px 7px, transparent 7.5px),
+    linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #003dd7 100%);
+  z-index: 2;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-control {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 3;
+  padding: 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-circle {
+  width: 21px !important;
+  height: 20px !important;
+  border-radius: 3px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-text {
+  display: none;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal :is(*, h2, button, input) {
+  font-family: var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-topbar {
+  padding: 12px 20px 10px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-topbar h2 {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+/* The page sits in a sunken white well, like a property sheet. */
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-content-scroll {
+  margin: 0 12px 12px;
+  background: #fbfbf8;
+  border: 1px solid;
+  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow);
+  box-shadow: inset 1px 1px 0 var(--ts-dark);
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-nav-btn {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-nav-btn.active {
+  background: #316ac5 !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-group-title {
+  color: #0a246a !important;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal :is(.discord-btn, .bg-purple-600, .bg-indigo-600) {
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal :is(.discord-btn, .bg-purple-600, .bg-indigo-600):hover {
+  box-shadow: inset 0 0 0 2px #f8b636 !important;
+}
+
+/* ==========================================================================
+   Settings: Zombie — the quarantine terminal
+   ========================================================================== */
+
+:root[data-custom-theme-id="zombie"] .modal.settings-modal {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(154, 213, 59, 0.12) !important;
+}
+
+/* Hazard tape across the top of the page. */
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-topbar {
+  border-bottom: 0 !important;
+  background: repeating-linear-gradient(-45deg, #e3c21c 0 10px, #111 10px 20px) bottom / 100% 6px no-repeat;
+  padding-bottom: 22px;
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-topbar h2 {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  font-size: 30px !important;
+  letter-spacing: 0.04em;
+  color: var(--toxic) !important;
+  text-shadow: 0 0 14px rgba(154, 213, 59, 0.35);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal :is(.settings-group-title, .field-label) {
+  font-family: var(--font-label) !important;
+  letter-spacing: 0.06em;
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-group-title::before {
+  content: "// ";
+  color: var(--zombie-blood);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-nav-btn.active {
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.9), rgba(154, 213, 59, 0.55)) !important;
+  box-shadow: 0 0 16px rgba(154, 213, 59, 0.25);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-sidebar-user::after {
+  content: "INFECTED";
+  margin-left: auto;
+  padding: 1px 5px;
+  font: 700 9px/1.4 var(--font-label);
+  letter-spacing: 0.1em;
+  color: #e05a4a;
+  border: 1px solid #e05a4a;
+  transform: rotate(-6deg);
+}
+
+/* ==========================================================================
+   Profile cards
+   ========================================================================== */
+
+/* Minecraft: the item tooltip — near-black purple with the violet frame,
+   the name in the game's yellow and roles as aqua "enchantments". */
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: rgba(16, 0, 16, 0.96);
+  background: rgba(16, 0, 16, 0.96) !important;
+  border: 3px solid #000 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 2px #2d0a63, inset 0 0 0 3px #28007f, 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+  color: #ffffff;
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 84px !important;
+  border-bottom: 3px solid #000;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.3)), var(--mc-grass) 0 0 / 48px 48px repeat-x, var(--mc-dirt) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-card-avatar, .profile-card-avatar img, .profile-card-avatar .avatar-base) {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  box-shadow: 0 0 0 3px #000, 0 0 0 5px #8b8b8b !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-presence-dot {
+  border-radius: 0 !important;
+  border: 2px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  color: #ffff55 !important;
+  text-shadow: 2px 2px 0 #3f3f15;
+  font-weight: 500 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-username, .profile-global-name, .profile-pronouns-tag) {
+  color: #aaaaaa !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-tagline {
+  color: #aa00aa !important;
+  font-style: italic;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-badge-item, .role-badge, .profile-mutual-chip, .profile-social-link-pill, [class*="role-badge"]) {
+  color: #55ffff !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-badge-item.badge-owner {
+  color: #ffaa00 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.6), inset -2px -2px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-section h4, .profile-section > span:first-child) {
+  color: #aaaaaa !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-bio, .profile-note) {
+  color: #e0e0e0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  border-radius: 0 !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-close {
+  border-radius: 0 !important;
+  background: var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  color: #fff !important;
+}
+
+/* TeamSpeak 2: the "Client Information" dialog. */
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: #ece9d8;
+  background: #ece9d8 !important;
+  color: #000 !important;
+  font-family: var(--ts-font) !important;
+  border: 1px solid #0a246a !important;
+  border-radius: 7px 7px 0 0 !important;
+  box-shadow: 2px 3px 12px rgba(0, 0, 0, 0.45) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) * {
+  font-family: var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 64px !important;
+  border-bottom: 1px solid #aca899;
+  border-radius: 6px 6px 0 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner::before {
+  content: "Client Information";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 22px;
+  padding: 4px 30px 0 8px;
+  font: 700 12px var(--ts-font);
+  color: #fff;
+  text-shadow: 1px 1px 0 #0a246a;
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 10%, #0050ee 45%, #0066ff 90%, #003dd7 100%);
+  border-radius: 6px 6px 0 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-close {
+  top: 2px !important;
+  right: 3px !important;
+  width: 19px !important;
+  height: 18px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-copy {
+  right: 26px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-card-avatar, .profile-card-avatar img) {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  box-shadow: 0 0 0 1px #716f64, 0 0 0 3px #fff, 0 0 0 4px #aca899 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  color: #0a246a !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-username, .profile-global-name, .profile-pronouns-tag, .profile-tagline) {
+  color: #4a4a44 !important;
+}
+
+/* Sections are group boxes: an etched frame with the title on the line. */
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: #fff !important;
+  border: 1px solid !important;
+  border-color: #aca899 #fff #fff #aca899 !important;
+  box-shadow: inset 1px 1px 0 #716f64 !important;
+  border-radius: 0 !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-section h4, .profile-section > span:first-child) {
+  color: #0a246a !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-bio, .profile-note, .profile-section) {
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-badge-item, .profile-mutual-chip, .profile-social-link-pill, [class*="role-badge"]) {
+  color: #000 !important;
+  background: #ece9d8 !important;
+  border: 1px solid #aca899 !important;
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  box-shadow: inset 0 0 0 2px #f8b636 !important;
+}
+
+/* Zombie: a quarantine file — hazard tape for a banner, a mugshot, a stamp. */
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: #0d110b;
+  background:
+    radial-gradient(120% 50% at 50% 115%, rgba(154, 213, 59, 0.1), transparent 70%),
+    linear-gradient(180deg, #121810 0%, #0a0d08 100%) !important;
+  color: #dfe8d2 !important;
+  border: 1px solid rgba(154, 213, 59, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(154, 213, 59, 0.12) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 80px !important;
+  border-radius: 3px 3px 0 0;
+  background:
+    repeating-linear-gradient(-45deg, #e3c21c 0 14px, #111 14px 28px) bottom / 100% 12px no-repeat,
+    radial-gradient(60% 90% at 70% 20%, rgba(142, 27, 18, 0.55), transparent 70%),
+    linear-gradient(180deg, #1c2614 0%, #0d110b 100%) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner::before {
+  content: "QUARANTINE FILE";
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font: 700 10px/1 var(--font-label);
+  letter-spacing: 0.18em;
+  color: rgba(223, 232, 210, 0.75);
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-card-avatar, .profile-card-avatar img) {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  filter: sepia(0.25) hue-rotate(40deg) saturate(0.85);
+  box-shadow: 0 0 0 3px #0d110b, 0 0 0 4px rgba(154, 213, 59, 0.6) !important;
+}
+
+/* The stamp. */
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-header::after {
+  content: "INFECTED";
+  position: absolute;
+  right: 16px;
+  top: 96px;
+  padding: 2px 8px;
+  font: 700 13px/1.3 var(--font-label);
+  letter-spacing: 0.16em;
+  color: rgba(224, 90, 74, 0.85);
+  border: 2px solid rgba(224, 90, 74, 0.85);
+  border-radius: 3px;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  font-size: 24px !important;
+  letter-spacing: 0.03em;
+  color: var(--toxic) !important;
+  text-shadow: 0 0 12px rgba(154, 213, 59, 0.35);
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-username, .profile-global-name, .profile-pronouns-tag, .profile-section h4, .profile-section > span:first-child) {
+  font-family: var(--font-label) !important;
+  color: #8f9c80 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: rgba(25, 32, 15, 0.85) !important;
+  border: 1px dashed rgba(154, 213, 59, 0.3) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) :is(.profile-badge-item, .profile-mutual-chip, .profile-social-link-pill, [class*="role-badge"]) {
+  color: #dfe8d2 !important;
+  background: rgba(154, 213, 59, 0.1) !important;
+  border: 1px solid rgba(154, 213, 59, 0.35) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  color: #dfe8d2 !important;
+  background: #151c10 !important;
+  border: 1px solid rgba(154, 213, 59, 0.35) !important;
+  border-radius: 2px !important;
+  font-family: var(--font-label) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  background: rgba(154, 213, 59, 0.18) !important;
+  color: #fff !important;
+}
+
+/* ==========================================================================
+   The voice bar above your user panel
+   ========================================================================== */
+
+/* Every themed bar: name and status on top, the buttons in a row below. */
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-bar-header {
+  flex-wrap: wrap;
+  row-gap: 7px;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 1px;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-status {
+  display: block;
+  max-width: 100%;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-status .mini-voice-dot {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-info {
+  align-self: stretch;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) .mini-voice-actions {
+  width: 100%;
+  justify-content: space-between;
+}
+
+:root:is([data-custom-theme-id="minecraft"], [data-custom-theme-id^="msn"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id="zombie"]):not(#_) :is(.mini-voice-btn, .mini-voice-leave) {
+  flex: 1 1 0;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Minecraft: a hotbar strip — XP-green status over an XP bar, stone buttons. */
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-bar {
+  margin: 0 8px;
+  padding: 9px 9px 8px;
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 2px solid #000 !important;
+  border-bottom: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.12);
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-name {
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-status {
+  color: #80ff20 !important;
+  text-shadow: 1px 1px 0 #1f3f00;
+}
+
+/* The XP bar under the name, slowly filling while you are connected. */
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-info::after {
+  content: "";
+  align-self: stretch;
+  height: 5px;
+  margin-top: 4px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), #000 calc(10% - 1px) 10%),
+    linear-gradient(90deg, #80ff20 var(--mc-xp, 0%), #2b2b2b var(--mc-xp, 0%));
+  border: 1px solid #000;
+  animation: mc-xp 40s linear infinite;
+}
+
+@property --mc-xp {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@keyframes mc-xp {
+  from { --mc-xp: 0%; }
+  to { --mc-xp: 100%; }
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) :is(.mini-voice-btn, .mini-voice-leave) {
+  border-radius: 0 !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+  color: #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) :is(.mini-voice-btn, .mini-voice-leave):hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-btn.on {
+  background: linear-gradient(rgba(60, 140, 30, 0.55), rgba(60, 140, 30, 0.55)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-leave {
+  background: linear-gradient(rgba(170, 0, 0, 0.55), rgba(170, 0, 0, 0.55)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-signal-btn {
+  color: #80ff20 !important;
+}
+
+/* MSN: the "you are in a call" strip of a conversation window. */
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-bar {
+  margin: 0;
+  padding: 8px 10px 9px;
+  background: var(--msn-sky) !important;
+  border-top: 1px solid var(--msn-frame) !important;
+  border-bottom: 1px solid var(--msn-frame) !important;
+  font-family: var(--msn-font);
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-name {
+  color: var(--msn-title);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-status {
+  color: #2a8a2a !important;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="msn-dark"]:not(#_) .mini-voice-status {
+  color: #6bd36b !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-signal-btn {
+  color: #2a8a2a !important;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn {
+  color: var(--msn-win-ink, #000) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn:hover {
+  background: var(--msn-hover) !important;
+  box-shadow: inset 0 0 0 1px #f8b636;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn.on {
+  background: var(--msn-select) !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-leave {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #8b2410 !important;
+  border-radius: 3px !important;
+}
+
+/* TeamSpeak 2: a "Voice" group box with raised push buttons. */
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar > .mini-voice-bar {
+  position: relative;
+  margin: 10px 6px 4px !important;
+  padding: 12px 8px 8px !important;
+  background: var(--ts-face) !important;
+  border: 1px solid !important;
+  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow) !important;
+  box-shadow: inset 1px 1px 0 var(--ts-hi), 1px 1px 0 var(--ts-shadow) !important;
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar > .mini-voice-bar::before {
+  content: "Voice";
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  padding: 0 4px;
+  font: 11px var(--ts-font);
+  color: #0a246a;
+  background: var(--ts-face);
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .mini-voice-name {
+  color: #000;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .mini-voice-status {
+  color: #006400 !important;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar :is(.mini-voice-btn, .mini-voice-leave) {
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar :is(.mini-voice-btn, .mini-voice-leave):hover {
+  box-shadow: inset 0 0 0 2px #f8b636 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar .mini-voice-btn.on {
+  background: linear-gradient(180deg, #d8e4f8 0%, #b9cdef 100%) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar .mini-voice-leave {
+  color: #a00000 !important;
+}
+
+/* Zombie: a field radio — hazard tape on top, toxic readout, metal keys. */
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-bar {
+  margin: 0 8px;
+  padding: 14px 10px 9px;
+  background:
+    repeating-linear-gradient(-45deg, #e3c21c 0 7px, #111 7px 14px) top / 100% 5px no-repeat,
+    linear-gradient(180deg, #151c10 0%, #0d110b 100%) !important;
+  border: 1px solid rgba(154, 213, 59, 0.3) !important;
+  border-bottom: 0 !important;
+  border-radius: 4px 4px 0 0 !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-name {
+  font-family: var(--font-label);
+  color: #dfe8d2;
+  letter-spacing: 0.04em;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-status {
+  font-family: var(--font-label);
+  color: var(--toxic) !important;
+  text-shadow: 0 0 8px rgba(154, 213, 59, 0.45);
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-status .mini-voice-dot {
+  background: var(--toxic) !important;
+  box-shadow: 0 0 8px var(--toxic);
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-signal-btn {
+  color: var(--toxic) !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) :is(.mini-voice-btn, .mini-voice-leave) {
+  color: #cfd8c2 !important;
+  background: linear-gradient(180deg, #2a3122 0%, #171c12 100%) !important;
+  border: 1px solid #3a4530 !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-btn:hover {
+  border-color: rgba(154, 213, 59, 0.6) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-btn.on {
+  color: var(--toxic) !important;
+  border-color: rgba(154, 213, 59, 0.7) !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-leave {
+  color: #ff8a7a !important;
+  border-color: rgba(142, 27, 18, 0.8) !important;
+  background: linear-gradient(180deg, #3a1410 0%, #200a08 100%) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="minecraft"] .mini-voice-info::after {
+    animation: none;
+  }
+}

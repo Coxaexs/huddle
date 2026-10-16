@@ -12,28 +12,28 @@
  * bundles its own copy of three), so nothing here imports three directly.
  */
 
-type Any = any;
-type V3 = { x: number; y: number; z: number };
+export type Any = any;
+export type V3 = { x: number; y: number; z: number };
 
 export type DiceMaterialKind = "plastic" | "metal" | "wood" | "glass";
 export type CritKind = "nat1" | "nat20";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const smooth = (v: number) => {
+export const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+export const smooth = (v: number) => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
 };
-const easeOutCubic = (v: number) => 1 - Math.pow(1 - clamp01(v), 3);
+export const easeOutCubic = (v: number) => 1 - Math.pow(1 - clamp01(v), 3);
 const easeOutBack = (v: number) => {
   const t = clamp01(v) - 1;
   return 1 + 2.7 * t * t * t + 1.7 * t * t;
 };
-const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const pick = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+export const rand = (a: number, b: number) => a + Math.random() * (b - a);
+export const pick = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
 
-function prefersReducedMotion(): boolean {
+export function prefersReducedMotion(): boolean {
   try {
     return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   } catch {
@@ -41,7 +41,7 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-function shakePage(strength: number, duration = 260) {
+export function shakePage(strength: number, duration = 260) {
   if (prefersReducedMotion()) return;
   const k = 10 * strength;
   document.body.animate(
@@ -66,7 +66,7 @@ function vertexKey(x: number, y: number, z: number): string {
   return `${Math.round(x * 4)},${Math.round(y * 4)},${Math.round(z * 4)}`;
 }
 
-function cloneMaterials(die: Any): Any[] {
+export function cloneMaterials(die: Any): Any[] {
   const list: Any[] = Array.isArray(die.material) ? die.material : [die.material];
   const cloned = list.map((m) => {
     const c = m.clone();
@@ -77,7 +77,7 @@ function cloneMaterials(die: Any): Any[] {
   return cloned;
 }
 
-function setGlow(materials: Any[], hex: number, intensity: number) {
+export function setGlow(materials: Any[], hex: number, intensity: number) {
   for (const m of materials) {
     if (!m.emissive) continue;
     m.emissive.setHex(hex);
@@ -85,12 +85,12 @@ function setGlow(materials: Any[], hex: number, intensity: number) {
   }
 }
 
-function setOpacity(materials: Any[], opacity: number) {
+export function setOpacity(materials: Any[], opacity: number) {
   for (const m of materials) m.opacity = opacity;
 }
 
 /** Moves the die's transform into its geometry (world space, z up) and centres it on its body. */
-function bakeToWorld(die: Any) {
+export function bakeToWorld(die: Any) {
   die.updateMatrix();
   const geometry = die.geometry.clone(); // dice of one type share a cached geometry
   geometry.applyMatrix4(die.matrix);
@@ -114,21 +114,21 @@ function bakeToWorld(die: Any) {
 }
 
 /** Screen (client px) position of a world point. */
-function toScreen(box: Any, p: V3): { x: number; y: number } {
+export function toScreen(box: Any, p: V3): { x: number; y: number } {
   const Vec3 = box.camera.position.constructor;
   const v = new Vec3(p.x, p.y, p.z).project(box.camera);
   const r = box.renderer.domElement.getBoundingClientRect();
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 }
 
-function screenRadius(box: Any, p: V3, worldRadius: number): number {
+export function screenRadius(box: Any, p: V3, worldRadius: number): number {
   const a = toScreen(box, p);
   const b = toScreen(box, { x: p.x + worldRadius, y: p.y, z: p.z });
   return Math.max(12, Math.hypot(b.x - a.x, b.y - a.y));
 }
 
 /** Full-window 2D canvas above everything, for light, sparks, cracks, plants. */
-function createOverlay() {
+export function createOverlay() {
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   Object.assign(canvas.style, {
@@ -164,14 +164,14 @@ function createOverlay() {
     destroy: () => canvas.remove(),
   };
 }
-type Overlay = ReturnType<typeof createOverlay>;
+export type Overlay = ReturnType<typeof createOverlay>;
 
 // --------------------------------------------------------------------------
 // Pieces: triangles cut out of the die that fly around with simple physics
 // --------------------------------------------------------------------------
 
 type Tri = { p: number[]; n: number[]; uv: number[] | null; mat: number };
-type Piece = {
+export type Piece = {
   mesh: Any;
   vel: [number, number, number];
   spin: [number, number, number];
@@ -201,7 +201,7 @@ function subdivide(t: Tri): Tri[] {
 }
 
 /** Removes the die from the scene and returns its faces as separate meshes. */
-function fragment(box: Any, die: Any, materials: Any[], subdivideAbove = Infinity, rounds = 1) {
+export function fragment(box: Any, die: Any, materials: Any[], subdivideAbove = Infinity, rounds = 1) {
   die.updateMatrixWorld(true);
   const world = die.geometry.clone();
   world.applyMatrix4(die.matrixWorld);
@@ -246,7 +246,7 @@ function fragment(box: Any, die: Any, materials: Any[], subdivideAbove = Infinit
   return { pieces, center, GeometryCtor, AttrCtor, MeshCtor };
 }
 
-function stepPiece(p: Piece, dt: number, gravity: number, bounce = 0.3, floor = 1) {
+export function stepPiece(p: Piece, dt: number, gravity: number, bounce = 0.3, floor = 1) {
   if (p.resting) return;
   const m = p.mesh;
   m.rotation.x += p.spin[0] * dt;
@@ -304,7 +304,7 @@ function subdivideGeometry(geometry: Any, rounds: number): Any {
   return out;
 }
 
-function disposePieces(scene: Any, pieces: Array<{ mesh: Any }>) {
+export function disposePieces(scene: Any, pieces: Array<{ mesh: Any }>) {
   for (const p of pieces) {
     scene.remove(p.mesh);
     p.mesh.geometry.dispose();
@@ -415,8 +415,8 @@ function drawImpact(ctx: CanvasRenderingContext2D, imp: Impact, grown: number) {
 // Effects. Each one owns its die and returns update/destroy plus its length.
 // --------------------------------------------------------------------------
 
-type Effect = { duration: number; update: (ms: number, dt: number) => void; destroy: () => void };
-type EffectCtx = { box: Any; die: Any; onHit: () => void; color: string };
+export type Effect = { duration: number; update: (ms: number, dt: number) => void; destroy: () => void };
+export type EffectCtx = { box: Any; die: Any; onHit: () => void; color: string };
 
 /** Glass nat 1: cracks, then bursts into a pile of shards on the table. */
 function glassShatter({ box, die, onHit }: EffectCtx): Effect {
@@ -1530,7 +1530,14 @@ export function runCritFx(
     dice,
     material,
     color = "#2563eb",
-  }: { dice: Array<{ index: number; kind: CritKind }>; material: DiceMaterialKind; color?: string },
+    fumble,
+  }: {
+    dice: Array<{ index: number; kind: CritKind }>;
+    material: DiceMaterialKind;
+    color?: string;
+    /** A theme's own nat 1 (dice-theme-fumbles), in place of the material's. */
+    fumble?: (c: EffectCtx) => Effect;
+  },
   { onFumbleHit }: { onFumbleHit?: () => void } = {},
 ): CritFxHandle {
   let fumbleHeard = false;
@@ -1538,7 +1545,7 @@ export function runCritFx(
   for (const { index, kind } of dice) {
     const die = box.diceList[index];
     if (!die) continue;
-    const make = EFFECTS[material]?.[kind] ?? EFFECTS.plastic[kind];
+    const make = (kind === "nat1" && fumble) || EFFECTS[material]?.[kind] || EFFECTS.plastic[kind];
     try {
       effects.push(
         make({

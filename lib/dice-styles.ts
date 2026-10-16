@@ -202,6 +202,8 @@ const THEME_DICE: Record<string, string> = {
   msn: "msn",
   "msn-dark": "msn",
   teamspeak: "msn",
+  minecraft: "minecraft",
+  zombie: "zombie",
 };
 
 /** The dice style a roll uses: the player's pick, or their app theme's dice while on Solid Colour. */

@@ -4,7 +4,9 @@
  * The floor plan (seats, solids) comes from lib/living-room and is the same for
  * everyone; this file decides how it looks. Each Hoffle theme with a strong
  * mood gets its own room: a warm cabin by default, a candlelit gothic parlour
- * for Vampire, a green-lit hacker den for Matrix and a neon flat for Cyberpunk.
+ * for Vampire, a green-lit hacker den for Matrix, a neon flat for Cyberpunk,
+ * a block-built cabin for Minecraft and a year-2000 bedroom for the MSN,
+ * TeamSpeak and Winamp themes.
  * Everything is procedural (canvas textures, primitives) so nothing is fetched.
  */
 import * as THREE from "three";
@@ -13,13 +15,13 @@ import { addProps } from "./living-room-props";
 import { dress, fabric } from "./room-surfaces";
 import { ThingKit, type RoomThings } from "./room-things";
 import { contactShadows, lightShaft, mergeStatics, moteField, type Contact } from "./living-room-fx";
-import { playArcade, playBoo, playChime, playCurtains, playData, playDouse, playIgnite, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
+import { playArcade, playBloop, playBoo, playChime, playCurtains, playData, playDouse, playHiss, playIgnite, playNudge, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
 import { CIRCLES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
 
 export interface Look {
   floor: [string, string]; // plank, grain
   wall: [string, string]; // base, pattern
-  wallPattern: "stripes" | "damask" | "code" | "panels";
+  wallPattern: "stripes" | "damask" | "code" | "panels" | "blocks" | "y2k";
   wainscot: string;
   trim: string;
   ceiling: string;
@@ -89,6 +91,24 @@ export const LOOKS: Record<RoomTheme, Look> = {
     wood: "#2a2340", woodDark: "#17122a", fire: ["#9ff8ff", "#ff2fb4"], fireLight: "#ff4fd0", lamp: "#00f0ff",
     hemi: ["#7a5cff", "#0a0418", 0.38], fog: "#0b0620", background: "#06030f",
     fairy: ["#ff2fb4", "#00f0ff", "#ffe94a"], motes: "#9ff8ff", exposure: 1.1, sky: "city", shark: "#ff7ad1",
+  },
+  minecraft: {
+    floor: ["#b8945f", "#7a5a32"], wall: ["#8f8f8f", "#6b6b6b"], wallPattern: "blocks",
+    wainscot: "#6b5130", trim: "#5a4126", ceiling: "#a07f4f", beam: "#5a4126",
+    rug: ["#a83232", "#e8e8e8", "#3c44aa"], sofa: "#3c8527", sofaCushion: "#5aa83a",
+    pillows: ["#f9801d", "#e8e8e8", "#c74ebd", "#3ab3da"], blanket: ["#a83232", "#f9d749"],
+    wood: "#a07f4f", woodDark: "#6b5130", fire: ["#ffd84a", "#ff7a1a"], fireLight: "#ffa94a", lamp: "#ffd88a",
+    hemi: ["#d8e8ff", "#3a2a18", 0.5], fog: "#1c160e", background: "#7fa8ff",
+    fairy: ["#ffd84a", "#55ff55", "#ffffff"], motes: "#ffe9a0", exposure: 1.1, sky: "time", shark: "#5a8fb8",
+  },
+  y2k: {
+    floor: ["#c9a77c", "#9c7a52"], wall: ["#b9d4ff", "#e3c6ff"], wallPattern: "y2k",
+    wainscot: "#7a8fd8", trim: "#f5f7ff", ceiling: "#eef0ff", beam: "#c9d2f5",
+    rug: ["#4fc3ff", "#ff7ad9", "#c8ff5a"], sofa: "#4d5bd8", sofaCushion: "#6b78f0",
+    pillows: ["#ff7ad9", "#c8ff5a", "#ffb347", "#d8dde8"], blanket: ["#ff7ad9", "#ffffff"],
+    wood: "#d8b98c", woodDark: "#9c7a52", fire: ["#ffd27a", "#ff6a1f"], fireLight: "#ff9a6a", lamp: "#ff9ae6",
+    hemi: ["#e8e0ff", "#2a2450", 0.5], fog: "#1a1630", background: "#141028",
+    fairy: ["#ff7ad9", "#4fc3ff", "#c8ff5a"], motes: "#ffd9f5", exposure: 1.1, sky: "time", shark: "#5a8fb8",
   },
 };
 
@@ -166,7 +186,7 @@ export const woodMaterial = (colour: string, rough = 0.6, repeat: [number, numbe
 
 export function wallTexture(look: Look) {
   const [base, accent] = look.wall;
-  return canvasTexture(256, 256, (ctx) => {
+  const texture = canvasTexture(256, 256, (ctx) => {
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, 256, 256);
     if (look.wallPattern === "stripes") {
@@ -196,6 +216,62 @@ export function wallTexture(look: Look) {
           ctx.stroke();
         }
       }
+    } else if (look.wallPattern === "blocks") {
+      // Stone bricks: 16 px blocks, four bricks each, with dark mortar.
+      const rand = seeded(11);
+      for (let by = 0; by < 256; by += 16) {
+        for (let bx = 0; bx < 256; bx += 16) {
+          for (let y = 0; y < 16; y++) {
+            for (let x = 0; x < 16; x++) {
+              const offset = (y >= 8 ? 4 : 0);
+              const mortar = y % 8 === 7 || (x + offset) % 8 === 7;
+              const v = mortar ? 82 + rand() * 18 : 128 + rand() * 30 + ((x + y) % 7 === 0 ? -12 : 0);
+              ctx.fillStyle = `rgb(${v},${v},${v})`;
+              ctx.fillRect(bx + x, by + y, 1, 1);
+            }
+          }
+          if (rand() < 0.12) {
+            // A mossy or cracked brick here and there.
+            ctx.fillStyle = rand() < 0.5 ? "rgba(70,110,50,0.55)" : "rgba(40,40,40,0.5)";
+            for (let i = 0; i < 6; i++) ctx.fillRect(bx + Math.floor(rand() * 15), by + Math.floor(rand() * 15), 2, 1);
+          }
+        }
+      }
+    } else if (look.wallPattern === "y2k") {
+      // Millennium wallpaper: soft blue with lilac swooshes, bubbles and twinkly stars.
+      const rand = seeded(2000);
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      g.addColorStop(0, base); g.addColorStop(1, accent);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 6;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        const y = 40 + i * 80;
+        ctx.moveTo(-10, y);
+        ctx.bezierCurveTo(70, y - 40, 170, y + 40, 266, y);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 14; i++) {
+        const x = rand() * 256, y = rand() * 256, r = 5 + rand() * 14;
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.2, 0, Math.PI * 2); ctx.fill();
+      }
+      for (let i = 0; i < 10; i++) {
+        const x = rand() * 256, y = rand() * 256, r = 4 + rand() * 6;
+        ctx.fillStyle = ["#ff7ad9", "#ffffff", "#c8ff5a", "#ffd84a"][i % 4];
+        ctx.beginPath();
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          const d = k % 2 ? r * 0.3 : r;
+          ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+        }
+        ctx.fill();
+      }
     } else if (look.wallPattern === "panels") {
       ctx.strokeStyle = accent;
       ctx.lineWidth = 4;
@@ -203,7 +279,12 @@ export function wallTexture(look: Look) {
       ctx.fillStyle = "rgba(0,240,255,0.08)";
       ctx.fillRect(0, 120, 256, 6);
     }
-  }, look.wallPattern === "code" ? undefined : [ROOM_HALF_X / 1.2, 1]);
+  }, look.wallPattern === "code" ? undefined : look.wallPattern === "blocks" ? [ROOM_HALF_X / 4, ROOM_HEIGHT / 8] : [ROOM_HALF_X / 1.2, 1]);
+  if (look.wallPattern === "blocks") {
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestMipmapLinearFilter;
+  }
+  return texture;
 }
 
 const GLYPHS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ0123456789:=+<>";
@@ -362,6 +443,37 @@ function skyTexture(look: Look) {
       g.addColorStop(1, `#${top.clone().lerp(new THREE.Color("#ffd8a8"), night ? 0.05 : 0.35).getHexString()}`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, 512, 400);
+      if (look.wallPattern === "blocks") {
+        // The overworld: a square sun or moon, flat block clouds, grass and dirt hills, an oak.
+        if (night) {
+          ctx.fillStyle = "#fffbe0";
+          for (let i = 0; i < 60; i++) ctx.fillRect(Math.floor(rand() * 128) * 4, Math.floor(rand() * 60) * 4, 4, 4);
+          ctx.fillStyle = "#e8eef8"; ctx.fillRect(352, 60, 52, 52);
+          ctx.fillStyle = "#b8c2d4"; ctx.fillRect(364, 72, 12, 12); ctx.fillRect(384, 88, 8, 8);
+        } else {
+          ctx.fillStyle = "#fff8a0"; ctx.fillRect(360, 50, 56, 56);
+          ctx.fillStyle = "#fffbe0"; ctx.fillRect(372, 62, 32, 32);
+          ctx.fillStyle = "rgba(255,255,255,0.92)";
+          for (let i = 0; i < 5; i++) {
+            const x = Math.floor(rand() * 112) * 4, y = 40 + Math.floor(rand() * 30) * 4;
+            ctx.fillRect(x, y, 96 + Math.floor(rand() * 8) * 8, 20);
+            ctx.fillRect(x + 16, y - 12, 48, 12);
+          }
+        }
+        const cell = 16;
+        for (let x = 0; x < 512; x += cell) {
+          const top = 400 - cell * (5 + Math.round(Math.sin(x / 70) * 2 + Math.sin(x / 23) * 1.2));
+          for (let y = top; y < 400; y += cell) {
+            ctx.fillStyle = y === top ? (night ? "#1d3a1a" : "#5fa83a") : night ? "#241a12" : "#866043";
+            ctx.fillRect(x, y, cell, cell);
+            ctx.fillStyle = "rgba(0,0,0,0.12)";
+            ctx.fillRect(x + (y / cell % 3) * 4, y + 6, 4, 4);
+          }
+        }
+        ctx.fillStyle = night ? "#1a120a" : "#6b5130"; ctx.fillRect(112, 240, 16, 64);
+        ctx.fillStyle = night ? "#10260f" : "#3f7a28"; ctx.fillRect(80, 192, 80, 56); ctx.fillRect(96, 176, 48, 16);
+        return;
+      }
       if (night) {
         ctx.fillStyle = "#fffbe0";
         for (let i = 0; i < 70; i++) ctx.fillRect(rand() * 512, rand() * 260, 1.5, 1.5);
@@ -687,7 +799,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
 
   // Hearth: stone (or gothic marble, or a server rack, or a holo-fireplace) on the north wall.
   const hearthZ = -ROOM_HALF_Z;
-  const stoneColour = theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
+  const stoneColour = theme === "minecraft" ? "#9a9a9a" : theme === "y2k" ? "#d9d4e8" : theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
   const stone = mat(stoneColour, 0.95, theme === "cyberpunk" ? { metalness: 0.6, roughness: 0.3 } : {});
   // Real stonework for the stone hearths; the hacker's rack and the holo-fireplace stay smooth.
   if (theme !== "cyberpunk" && theme !== "matrix") dress(stone, "stone", { repeat: [1.6, 1], bump: 1.1 });
@@ -1418,7 +1530,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     art.rotation.y = ry;
     root.add(frame, art);
   };
-  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
+  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : theme === "minecraft" ? ["#6aa84f", "#e8c27a", "#4a7fc1"] : theme === "y2k" ? ["#4fc3ff", "#ff7ad9", "#c8ff5a"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
   picture(-3.0, 1.85, ROOM_HALF_Z - 0.03, Math.PI, 1.0, 0.7, paint);
   picture(-1.6, 1.75, ROOM_HALF_Z - 0.03, Math.PI, 0.5, 0.6, [...paint].reverse());
   picture(2.5, 1.85, -ROOM_HALF_Z + 0.03, 0, 0.8, 0.6, paint);
@@ -1818,6 +1930,337 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   };
 
 
+  // Minecraft: torches, a crafting corner and a creeper; the year-2000 bedroom: a CRT with Messenger on it, a lava lamp, posters.
+  if (theme === "minecraft") {
+    const px = (draw: (ctx: CanvasRenderingContext2D, r: () => number) => void, seed = 1) => {
+      const texture = canvasTexture(16, 16, (ctx) => draw(ctx, seeded(seed)));
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      return texture;
+    };
+    const speckle = (ctx: CanvasRenderingContext2D, r: () => number, colours: string[], x0 = 0, y0 = 0, w = 16, h = 16) => {
+      for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { ctx.fillStyle = colours[Math.floor(r() * colours.length)]; ctx.fillRect(x, y, 1, 1); }
+    };
+    const PLANK = ["#a07f4f", "#9a7a4a", "#ab8a57", "#8f6f42"];
+    const COBBLE = ["#7f7f7f", "#8f8f8f", "#6e6e6e", "#5d5d5d", "#a0a0a0"];
+    const planks = (ctx: CanvasRenderingContext2D, r: () => number) => {
+      speckle(ctx, r, PLANK);
+      ctx.fillStyle = "#6b5130";
+      for (const y of [3, 7, 11, 15]) ctx.fillRect(0, y, 16, 1);
+      for (const [x, y] of [[5, 0], [12, 4], [3, 8], [10, 12]]) ctx.fillRect(x, y, 1, 3);
+    };
+    const tex = {
+      planks: px(planks, 2),
+      cobble: px((ctx, r) => { speckle(ctx, r, COBBLE); ctx.fillStyle = "#4a4a4a"; for (let i = 0; i < 22; i++) ctx.fillRect(Math.floor(r() * 16), Math.floor(r() * 16), 2, 1); }, 3),
+      craftTop: px((ctx, r) => { speckle(ctx, r, PLANK); ctx.fillStyle = "#5a4126"; ctx.fillRect(0, 0, 16, 1); ctx.fillRect(0, 15, 16, 1); ctx.fillRect(0, 0, 1, 16); ctx.fillRect(15, 0, 1, 16); ctx.fillRect(5, 1, 1, 14); ctx.fillRect(10, 1, 1, 14); ctx.fillRect(1, 5, 14, 1); ctx.fillRect(1, 10, 14, 1); }, 4),
+      craftSide: px((ctx, r) => { planks(ctx, r); ctx.fillStyle = "#5a4126"; ctx.fillRect(0, 0, 16, 3); ctx.fillStyle = "#c6c6c6"; ctx.fillRect(3, 5, 4, 2); ctx.fillRect(4, 7, 2, 5); ctx.fillStyle = "#7a5a32"; ctx.fillRect(10, 5, 1, 8); ctx.fillStyle = "#9a9a9a"; ctx.fillRect(9, 4, 4, 2); }, 5),
+      furnaceSide: px((ctx, r) => speckle(ctx, r, COBBLE), 6),
+      furnaceTop: px((ctx, r) => { speckle(ctx, r, ["#a0a0a0", "#9a9a9a", "#a8a8a8"]); }, 7),
+      furnaceFront: px((ctx, r) => { speckle(ctx, r, COBBLE); ctx.fillStyle = "#1c1c1c"; ctx.fillRect(4, 8, 8, 5); ctx.fillStyle = "#ff9a1a"; ctx.fillRect(5, 10, 6, 3); ctx.fillStyle = "#ffe14a"; ctx.fillRect(6, 11, 4, 2); ctx.fillStyle = "#3a3a3a"; ctx.fillRect(3, 3, 10, 2); }, 8),
+      chestFront: px((ctx, r) => { speckle(ctx, r, ["#a2732d", "#9a6b28", "#ab7c34"]); ctx.fillStyle = "#3a2814"; ctx.fillRect(0, 0, 16, 1); ctx.fillRect(0, 15, 16, 1); ctx.fillRect(0, 0, 1, 16); ctx.fillRect(15, 0, 1, 16); ctx.fillRect(1, 5, 14, 1); ctx.fillStyle = "#d8d8d8"; ctx.fillRect(7, 4, 2, 4); ctx.fillStyle = "#3a3a3a"; ctx.fillRect(7, 6, 2, 1); }, 9),
+      chestSide: px((ctx, r) => { speckle(ctx, r, ["#a2732d", "#9a6b28", "#ab7c34"]); ctx.fillStyle = "#3a2814"; ctx.fillRect(0, 0, 16, 1); ctx.fillRect(0, 15, 16, 1); ctx.fillRect(0, 0, 1, 16); ctx.fillRect(15, 0, 1, 16); ctx.fillRect(1, 5, 14, 1); }, 10),
+      tntSide: px((ctx, r) => { speckle(ctx, r, ["#db441a", "#c93a14", "#e45024"]); ctx.fillStyle = "#e8e8e8"; ctx.fillRect(0, 5, 16, 6); ctx.fillStyle = "#1a1a1a"; for (const [x, w] of [[2, 3], [7, 2], [11, 3]]) ctx.fillRect(x, 6, w, 1); ctx.fillRect(3, 6, 1, 4); ctx.fillRect(7, 6, 1, 4); ctx.fillRect(8, 7, 1, 1); ctx.fillRect(9, 6, 1, 4); ctx.fillRect(12, 6, 1, 4); }, 11),
+      tntTop: px((ctx, r) => { speckle(ctx, r, ["#db441a", "#c93a14"]); ctx.fillStyle = "#9a9a9a"; ctx.fillRect(4, 4, 8, 8); ctx.fillStyle = "#3a3a3a"; ctx.fillRect(7, 7, 2, 2); }, 12),
+      pumpkinFace: px((ctx, r) => { speckle(ctx, r, ["#e3901d", "#d9821a", "#eb9a26"]); ctx.fillStyle = "#ffe14a"; ctx.fillRect(3, 4, 3, 3); ctx.fillRect(10, 4, 3, 3); ctx.fillRect(3, 10, 10, 2); ctx.fillRect(5, 12, 2, 1); ctx.fillRect(9, 12, 2, 1); }, 13),
+      pumpkinSide: px((ctx, r) => { speckle(ctx, r, ["#e3901d", "#d9821a", "#eb9a26"]); ctx.fillStyle = "#b0650f"; for (const x of [3, 8, 13]) ctx.fillRect(x, 0, 1, 16); }, 14),
+      pumpkinTop: px((ctx, r) => { speckle(ctx, r, ["#e3901d", "#d9821a"]); ctx.fillStyle = "#4a7a28"; ctx.fillRect(7, 7, 2, 2); }, 15),
+    };
+    const faceMaterial = (texture: THREE.Texture, glow = 0) => new THREE.MeshStandardMaterial({ map: texture, roughness: 0.95, ...(glow ? { emissive: "#ffffff", emissiveMap: texture, emissiveIntensity: glow } : {}) });
+    /** A block: faces in three.js box order (+x, -x, top, bottom, front +z, back -z); `ry` turns its front. */
+    const block = (size: number, faces: THREE.Texture[], x: number, y: number, z: number, ry = 0, glowFront = 0) => {
+      const materials = faces.map((texture, i) => faceMaterial(texture, i === 4 ? glowFront : 0));
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), materials);
+      mesh.position.set(x, y + size / 2, z);
+      mesh.rotation.y = ry;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      root.add(mesh);
+      return mesh;
+    };
+    const t = tex;
+    const toRoom = -Math.PI / 2; // front faces west, off the east wall
+    block(0.62, [t.craftSide, t.craftSide, t.craftTop, t.planks, t.craftSide, t.craftSide], ROOM_HALF_X - 0.36, 0, -3.75, toRoom);
+    block(0.62, [t.furnaceSide, t.furnaceSide, t.furnaceTop, t.furnaceTop, t.furnaceFront, t.furnaceSide], ROOM_HALF_X - 0.36, 0, -3.05, toRoom, 0.35);
+    addGlow("#ff9a3a", 0.6, new THREE.Vector3(ROOM_HALF_X - 0.7, 0.25, -3.05), 0.45);
+    addLight("#ff9a3a", 0.9, 2.5, new THREE.Vector3(ROOM_HALF_X - 0.9, 0.3, -3.05), false, 0.3);
+    block(0.56, [t.chestSide, t.chestSide, t.chestSide, t.chestSide, t.chestFront, t.chestSide], ROOM_HALF_X - 0.36, 0, -2.35, toRoom);
+    // TNT stacked by the north-west corner (it never goes off).
+    const tntFaces = [t.tntSide, t.tntSide, t.tntTop, t.tntTop, t.tntSide, t.tntSide];
+    block(0.5, tntFaces, -3.85, 0, -4.1, 0.1);
+    block(0.5, tntFaces, -3.3, 0, -4.15, -0.05);
+    block(0.5, tntFaces, -3.6, 0.5, -4.1, 0.25);
+    // A jack o'lantern on the mantel.
+    block(0.24, [t.pumpkinSide, t.pumpkinSide, t.pumpkinTop, t.pumpkinTop, t.pumpkinFace, t.pumpkinSide], 0.75, mantelTop, mantelZ, 0, 0.8);
+    addGlow("#ffb347", 0.35, new THREE.Vector3(0.75, mantelTop + 0.12, mantelZ + 0.14), 0.4);
+
+    // Torches: a stick leaning off the wall with a flame cube on top.
+    const stick = mat("#6b5130", 0.9);
+    const torchAt = (x: number, z: number, ry: number) => {
+      const inward = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+      const torch = new THREE.Group();
+      const handle = box(0.05, 0.32, 0.05, stick, false);
+      handle.position.y = 0.16;
+      const flame = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.07), new THREE.MeshBasicMaterial({ color: "#ffd84a", toneMapped: false }));
+      flame.position.y = 0.36;
+      flame.userData.flicker = true;
+      torch.add(handle, flame);
+      torch.position.set(x + inward.x * 0.1, 1.55, z + inward.z * 0.1);
+      torch.rotation.set(0, ry, 0);
+      torch.rotateX(0.35);
+      torch.userData.torch = true;
+      root.add(torch);
+      flickers.push({ mesh: flame, phase: x * 2 + z, base: 1 });
+      const at = new THREE.Vector3(x + inward.x * 0.22, 1.95, z + inward.z * 0.22);
+      addGlow("#ffc35a", 0.7, at, 0.55);
+      addLight("#ffb347", 1.1, 4.5, at, false, 0.18);
+    };
+    torchAt(-2.2, -ROOM_HALF_Z, 0);
+    torchAt(2.2, -ROOM_HALF_Z, 0);
+    torchAt(-2.6, ROOM_HALF_Z, Math.PI);
+    torchAt(2.6, ROOM_HALF_Z, Math.PI);
+    torchAt(-ROOM_HALF_X, -1.3, Math.PI / 2);
+    torchAt(ROOM_HALF_X, -1.0, -Math.PI / 2);
+
+    // A poppy in a flower pot on the coffee table.
+    const pot = box(0.1, 0.09, 0.1, mat("#8a4a2f", 0.9), false);
+    pot.position.set(-0.4, 0.5, -1.05);
+    const stem = box(0.015, 0.12, 0.015, mat("#3f7a28", 0.8), false);
+    stem.position.set(-0.4, 0.6, -1.05);
+    const petals = box(0.06, 0.05, 0.06, mat("#d21f1f", 0.7), false);
+    petals.position.set(-0.4, 0.68, -1.05);
+    root.add(pot, stem, petals);
+
+    // The creeper in the corner: poke it and it hisses and flashes... then thinks better of it.
+    const greens = ["#0da70b", "#5bd35a", "#3e9a3c", "#18b818", "#4fb84c"];
+    const skin = px((ctx, r) => speckle(ctx, r, greens), 21);
+    const face = px((ctx, r) => {
+      speckle(ctx, r, greens);
+      ctx.fillStyle = "#0a0a0a";
+      for (const [x, y, w, h] of [[2, 4, 4, 4], [10, 4, 4, 4], [6, 8, 4, 4], [4, 10, 2, 4], [10, 10, 2, 4]]) ctx.fillRect(x, y, w, h);
+    }, 22);
+    const creeperMaterials: THREE.MeshStandardMaterial[] = [];
+    const part = (w: number, h: number, d: number, front: THREE.Texture, y: number, x = 0, z = 0) => {
+      const faces = [skin, skin, skin, skin, front, skin].map((texture) => {
+        const m = faceMaterial(texture);
+        m.emissive = new THREE.Color("#ffffff");
+        m.emissiveIntensity = 0;
+        creeperMaterials.push(m);
+        return m;
+      });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), faces);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.userData.creeper = true;
+      return mesh;
+    };
+    const creeper = new THREE.Group();
+    const head = part(0.46, 0.46, 0.46, face, 1.32);
+    const body = part(0.46, 0.7, 0.24, skin, 0.74);
+    for (const [x, z] of [[-0.12, 0.2], [0.12, 0.2], [-0.12, -0.2], [0.12, -0.2]]) creeper.add(part(0.22, 0.4, 0.22, skin, 0.2, x, z));
+    creeper.add(head, body);
+    creeper.position.set(-4.75, 0, -3.75);
+    creeper.rotation.y = 0.55;
+    root.add(tag(creeper, "creeper"));
+    things.creeper = (since) => {
+      const k = Math.min(1, since / 1.5);
+      const flash = Math.sin(since * (8 + k * 30)) > 0.2 ? 0.9 * Math.sin(k * Math.PI) + 0.1 : 0;
+      for (const m of creeperMaterials) m.emissiveIntensity = since < 1.5 ? flash : 0;
+      const swell = since < 1.5 ? 1 + Math.sin(k * Math.PI) * 0.12 : 1;
+      creeper.scale.set(swell, 1 + (swell - 1) * 0.5, swell);
+      return since < 1.5;
+    };
+  } else if (theme === "y2k") {
+    // The computer desk in the north-east corner: a beige CRT with Messenger open.
+    const beige = mat("#e6dfc8", 0.55);
+    const deskTop = box(0.75, 0.05, 1.7, woodMaterial("#d8b98c", 0.6));
+    deskTop.position.set(ROOM_HALF_X - 0.42, 0.74, -2.85);
+    root.add(deskTop);
+    for (const [dx, dz] of [[-0.3, -0.78], [0.3, -0.78], [-0.3, 0.78], [0.3, 0.78]]) {
+      const leg = box(0.04, 0.72, 0.04, mat("#9aa3b5", 0.4, { metalness: 0.6 }), false);
+      leg.position.set(ROOM_HALF_X - 0.42 + dx, 0.36, -2.85 + dz);
+      root.add(leg);
+    }
+    const crt = box(0.48, 0.42, 0.48, beige);
+    crt.position.set(ROOM_HALF_X - 0.36, 0.98, -3.15);
+    const crtBack = box(0.3, 0.3, 0.2, beige);
+    crtBack.position.set(ROOM_HALF_X - 0.12, 0.96, -3.15);
+    const tower = box(0.2, 0.46, 0.46, beige);
+    tower.position.set(ROOM_HALF_X - 0.3, 0.23, -2.35);
+    const keyboard = box(0.18, 0.025, 0.46, beige);
+    keyboard.position.set(ROOM_HALF_X - 0.72, 0.78, -3.1);
+    root.add(crt, crtBack, tower, keyboard);
+    const msn = (nudge: number) => (ctx: CanvasRenderingContext2D) => {
+      const dx = nudge ? Math.round((Math.random() - 0.5) * 10) : 0;
+      ctx.fillStyle = "#3a6ea5"; ctx.fillRect(0, 0, 256, 200);
+      ctx.save();
+      ctx.translate(dx, 0);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(40, 14, 176, 176);
+      const bar = ctx.createLinearGradient(0, 14, 0, 30);
+      bar.addColorStop(0, "#0997ff"); bar.addColorStop(1, "#0053ee");
+      ctx.fillStyle = bar; ctx.fillRect(40, 14, 176, 16);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 10px Tahoma, Verdana, sans-serif"; ctx.fillText("MSN Messenger", 46, 26);
+      ctx.fillStyle = "#dbe8fb"; ctx.fillRect(40, 30, 176, 26);
+      ctx.fillStyle = "#000"; ctx.font = "bold 10px Tahoma, Verdana, sans-serif"; ctx.fillText(nudge ? "You have just sent a nudge!" : "~*~ me ~*~ (Online)", 46, 46);
+      ctx.fillStyle = "#1f4fa8"; ctx.fillText("Online (4)", 46, 72);
+      const people = ["xX_sk8er_Xx", "~*princess*~", "brb dinner", "DJ Mike 2001"];
+      people.forEach((name, i) => {
+        const y = 88 + i * 18;
+        ctx.fillStyle = i === 2 ? "#f2a31b" : "#2fa82f";
+        ctx.beginPath(); ctx.arc(52, y - 4, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(48, y, 8, 5);
+        ctx.fillStyle = "#000"; ctx.font = "10px Tahoma, Verdana, sans-serif"; ctx.fillText(name, 62, y + 2);
+      });
+      ctx.fillStyle = "#1f4fa8"; ctx.fillText("Offline (12)", 46, 172);
+      ctx.restore();
+      ctx.fillStyle = "#245edb"; ctx.fillRect(0, 186, 256, 14);
+      ctx.fillStyle = "#3c9a3c"; ctx.fillRect(0, 186, 44, 14);
+      ctx.fillStyle = "#fff"; ctx.font = "bold italic 10px Tahoma, sans-serif"; ctx.fillText("start", 8, 197);
+    };
+    const screenCanvas = document.createElement("canvas");
+    screenCanvas.width = 256; screenCanvas.height = 200;
+    msn(0)(screenCanvas.getContext("2d")!);
+    const screenTexture = new THREE.CanvasTexture(screenCanvas);
+    screenTexture.colorSpace = THREE.SRGBColorSpace;
+    const crtFace = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.31), new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false }));
+    crtFace.position.set(ROOM_HALF_X - 0.605, 0.99, -3.15);
+    crtFace.rotation.y = -Math.PI / 2;
+    root.add(tag(crtFace, "computer"));
+    addGlow("#7fb2ff", 0.8, new THREE.Vector3(ROOM_HALF_X - 0.75, 0.99, -3.15), 0.3);
+    addLight("#8fb8ff", 0.9, 3, new THREE.Vector3(ROOM_HALF_X - 1.0, 1.0, -3.15));
+    things.computer = (since) => {
+      const busy = since < 1.2;
+      msn(busy ? 1 : 0)(screenCanvas.getContext("2d")!);
+      screenTexture.needsUpdate = true;
+      crt.position.z = -3.15 + (busy ? Math.sin(since * 60) * 0.01 : 0);
+      crtFace.position.z = crt.position.z;
+      return busy;
+    };
+
+    // A lava lamp at the other end of the desk, blobs drifting up and down.
+    const lamp = new THREE.Group();
+    const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.12, 16), mat("#b8bfd0", 0.25, { metalness: 0.8 }));
+    lampBase.position.y = 0.06;
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.06, 0.3, 16), new THREE.MeshStandardMaterial({ color: "#ff5ab8", emissive: "#ff3aa0", emissiveIntensity: 0.6, transparent: true, opacity: 0.55, roughness: 0.1 }));
+    glass.position.y = 0.27;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.06, 16), mat("#b8bfd0", 0.25, { metalness: 0.8 }));
+    cap.position.y = 0.45;
+    lamp.add(lampBase, glass, cap);
+    const blobs = Array.from({ length: 4 }, (_, i) => {
+      const blob = new THREE.Mesh(new THREE.SphereGeometry(0.022 + (i % 2) * 0.008, 12, 10), new THREE.MeshBasicMaterial({ color: "#ffd23a", toneMapped: false }));
+      blob.userData.blob = true;
+      lamp.add(blob);
+      return blob;
+    });
+    lamp.position.set(ROOM_HALF_X - 0.4, 0.765, -2.2);
+    lamp.traverse((p) => { p.userData.lava = true; });
+    root.add(tag(lamp, "lava"));
+    addGlow("#ff6ac8", 0.9, new THREE.Vector3(ROOM_HALF_X - 0.4, 1.05, -2.2), 0.45);
+    addLight("#ff6ac8", 1.0, 3.5, new THREE.Vector3(ROOM_HALF_X - 0.5, 1.15, -2.2));
+    let lavaSpeed = 1;
+    let lavaClock = 0;
+    animated.push((_t, dt) => {
+      lavaClock += dt * lavaSpeed;
+      blobs.forEach((blob, i) => {
+        const k = (Math.sin(lavaClock * (0.35 + i * 0.11) + i * 1.7) + 1) / 2;
+        blob.position.set(Math.sin(lavaClock * 0.5 + i) * 0.012, 0.15 + k * 0.24, Math.cos(lavaClock * 0.4 + i) * 0.012);
+        blob.scale.set(1, 1.1 + Math.sin(lavaClock + i) * 0.25, 1);
+      });
+    });
+    things.lava = (since) => {
+      lavaSpeed = since < 3 ? 1 + (1 - since / 3) * 5 : 1;
+      return since < 3;
+    };
+
+    // An inflatable chair by the west wall.
+    const vinyl = new THREE.MeshPhysicalMaterial({ color: "#b06aff", transparent: true, opacity: 0.72, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1 });
+    const blow = new THREE.Group();
+    const seatRing = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.14, 14, 28), vinyl);
+    seatRing.rotation.x = Math.PI / 2;
+    seatRing.position.y = 0.16;
+    const seatPad = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 24), vinyl);
+    seatPad.position.y = 0.12;
+    const backRing = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.13, 14, 28), vinyl);
+    backRing.position.set(0, 0.5, -0.24);
+    backRing.rotation.x = -0.25;
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.1, 12, 20), vinyl);
+      arm.position.set(s * 0.36, 0.3, 0);
+      arm.rotation.y = Math.PI / 2;
+      blow.add(arm);
+    }
+    blow.add(seatRing, seatPad, backRing);
+    blow.position.set(-ROOM_HALF_X + 0.7, 0, -1.25);
+    blow.rotation.y = Math.PI / 2;
+    blow.userData.decor = true;
+    root.add(blow);
+
+    // A CD tower against the south wall.
+    const tower2 = new THREE.Group();
+    const spine = box(0.26, 1.25, 0.18, mat("#2a2d3a", 0.4, { metalness: 0.4 }));
+    spine.position.y = 0.625;
+    tower2.add(spine);
+    const cdColours = ["#ff7ad9", "#4fc3ff", "#c8ff5a", "#ffd84a", "#ffffff", "#9b5cff", "#ff9a3a"];
+    for (let i = 0; i < 26; i++) {
+      const cd = box(0.2, 0.035, 0.14, mat(cdColours[(i * 3) % cdColours.length], 0.4), false);
+      cd.position.set(0, 0.08 + i * 0.044, 0.03);
+      tower2.add(cd);
+    }
+    tower2.position.set(3.7, 0, ROOM_HALF_Z - 0.12);
+    tower2.userData.decor = true;
+    root.add(tower2);
+
+    // Posters, a little curled at the corners.
+    const poster = (x: number, y: number, z: number, ry: number, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) => {
+      const sheet = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat("#ffffff", 0.6, { map: canvasTexture(256, Math.round((256 * h) / w), draw) }));
+      sheet.position.set(x, y, z);
+      sheet.rotation.y = ry;
+      root.add(sheet);
+    };
+    poster(0.9, 1.85, ROOM_HALF_Z - 0.02, Math.PI, 0.7, 0.95, (ctx) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 347);
+      g.addColorStop(0, "#ff7a3a"); g.addColorStop(0.5, "#ff4fa8"); g.addColorStop(1, "#2a3aa8");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 347);
+      ctx.fillStyle = "#ffe14a"; ctx.beginPath(); ctx.arc(128, 150, 50, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#1a2a6a"; ctx.fillRect(0, 200, 256, 147);
+      ctx.fillStyle = "#3fb8ff";
+      ctx.beginPath(); ctx.moveTo(60, 230); ctx.quadraticCurveTo(120, 150, 200, 210); ctx.quadraticCurveTo(140, 200, 100, 240); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "italic bold 44px Georgia, serif"; ctx.textAlign = "center"; ctx.fillText("DREAM", 128, 310);
+    });
+    poster(3.0, 1.85, ROOM_HALF_Z - 0.02, Math.PI, 0.8, 0.8, (ctx) => {
+      ctx.fillStyle = "#14102a"; ctx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 16; i++) { ctx.strokeStyle = i % 2 ? "#ff7ad9" : "#4fc3ff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(128, 128); ctx.lineTo(128 + Math.cos(i / 16 * Math.PI * 2) * 200, 128 + Math.sin(i / 16 * Math.PI * 2) * 200); ctx.stroke(); }
+      ctx.font = "bold 92px Arial Black, Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const chrome = ctx.createLinearGradient(0, 90, 0, 170);
+      chrome.addColorStop(0, "#ffffff"); chrome.addColorStop(0.5, "#8fa3c8"); chrome.addColorStop(0.55, "#2a3550"); chrome.addColorStop(1, "#d8e4ff");
+      ctx.fillStyle = chrome; ctx.strokeStyle = "#ff4fa8"; ctx.lineWidth = 4;
+      ctx.strokeText("Y2K", 128, 130); ctx.fillText("Y2K", 128, 130);
+    });
+    poster(ROOM_HALF_X - 0.02, 1.85, 0.1, -Math.PI / 2, 0.6, 0.85, (ctx) => {
+      ctx.fillStyle = "#06140c"; ctx.fillRect(0, 0, 256, 363);
+      ctx.fillStyle = "#7dff6a"; ctx.beginPath(); ctx.ellipse(128, 150, 70, 92, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#000";
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(128 + s * 32, 150, 22, 36, s * 0.5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#7dff6a"; ctx.font = "bold 26px Courier New, monospace"; ctx.textAlign = "center"; ctx.fillText("THEY ARE", 128, 290); ctx.fillText("OUT THERE", 128, 322);
+    });
+
+    // Glow-in-the-dark stars on the ceiling.
+    const starTexture = canvasTexture(64, 64, (ctx) => {
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = "#cfffd8"; ctx.beginPath();
+      for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2 - Math.PI / 2; const d = k % 2 ? 11 : 28; ctx.lineTo(32 + Math.cos(a) * d, 32 + Math.sin(a) * d); }
+      ctx.fill();
+    });
+    const starRand = seeded(77);
+    for (let i = 0; i < 30; i++) {
+      const star = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ map: starTexture, color: "#b8ffcc", transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      star.rotation.x = Math.PI / 2;
+      star.rotation.z = starRand() * Math.PI;
+      star.position.set((starRand() - 0.5) * (ROOM_HALF_X * 2 - 1), H - 0.02, (starRand() - 0.5) * (ROOM_HALF_Z * 2 - 1));
+      star.userData.star = true;
+      ceiling.add(star);
+    }
+  }
+
   // The room's daylight and sky glow, dimmed when the curtains are drawn.
   const [hemi, daylight, daylightTarget] = roomAmbience(theme) as [THREE.HemisphereLight, THREE.DirectionalLight, THREE.Object3D];
   root.add(hemi, daylight, daylightTarget);
@@ -1872,12 +2315,15 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
         case "arcade": return "Play a round";
         case "crt": return "Hack the mainframe";
         case "mug": return "Take a sip";
+        case "creeper": return "Poke the creeper";
+        case "computer": return "Nudge your contacts";
+        case "lava": return "Stir the lava lamp";
         default: return null;
       }
     },
     sounds: {
       cat: playPurr, shark: playSqueak, guitar: playStrum, popcorn: () => playPops(), globe: playWhirr, clock: playChime,
-      skull: playBoo, arcade: playArcade, crt: playData, mug: playSip,
+      skull: playBoo, arcade: playArcade, crt: playData, mug: playSip, creeper: playHiss, computer: playNudge, lava: playBloop,
     },
     switched: (id, on) => {
       if (id === "fire") {
@@ -1940,7 +2386,7 @@ export function roomAmbience(theme: RoomTheme): THREE.Object3D[] {
   const look = LOOKS[theme];
   const hemi = new THREE.HemisphereLight(look.hemi[0], look.hemi[1], look.hemi[2]);
   // Soft moon/daylight through the window.
-  const night = theme !== "cozy" || isNight();
+  const night = (theme !== "cozy" && theme !== "minecraft" && theme !== "y2k") || isNight();
   const daylight = new THREE.DirectionalLight(night ? (theme === "cyberpunk" ? "#ff7ad1" : theme === "matrix" ? "#3dff8a" : "#8fa0ff") : "#fff1d6", night ? 0.35 : 1.1);
   daylight.position.set(ROOM_HALF_X + 4, 3.5, 2.6);
   daylight.target.position.set(0, 0, 1);
