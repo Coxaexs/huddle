@@ -6,6 +6,7 @@
  * is stored, so a leaked database cannot be replayed as a login.
  */
 
+import { normalizeShowcase } from "./achievement-defs";
 import { bindings } from "./storage";
 import { activeUntil } from "./timeouts";
 import { ensureSchema } from "./schema";
@@ -41,6 +42,7 @@ export interface User {
   pronouns?: string;
   tagline?: string | null;
   pride_badges?: string | null;
+  achievement_showcase?: string | null;
   spotify_activity?: string | null;
   activity?: string | null;
   lastfm_username?: string | null;
@@ -72,7 +74,7 @@ export interface User {
 
 const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
-  "pronouns", "tagline", "custom_status", "pride_badges", "spotify_activity", "activity", "lastfm_username",
+  "pronouns", "tagline", "custom_status", "pride_badges", "achievement_showcase", "spotify_activity", "activity", "lastfm_username",
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
   "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at", "signup_source",
@@ -132,6 +134,7 @@ function profileFields(user: User) {
     tagline: user.tagline || "",
     customStatus: user.custom_status || null,
     prideBadges: normalizePrideBadges(parseJson(user.pride_badges)),
+    achievementShowcase: normalizeShowcase(parseJson(user.achievement_showcase)),
     spotifyActivity: spotifyActivity(user.spotify_activity),
     activity: profileActivity(user.activity),
     socialLinks: normalizeSocialLinks(parseJson(user.social_links)),

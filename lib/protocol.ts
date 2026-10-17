@@ -131,9 +131,14 @@ export interface DiceRollEvent {
     sides: number;
     rolls: Array<{ value: number; kept: boolean }>;
     sign: 1 | -1;
+    /** Vampire V5 Hunger dice: drawn red (see lib/v5-dice.ts). */
+    hunger?: boolean;
   }>;
   modifier: number;
+  /** A V5 roll's is its successes. */
   total: number;
+  /** Shown in place of "TOTAL n" when set: a V5 roll's "3 SUCCESSES · MESSY CRITICAL". */
+  summary?: string;
   roller: { id: string; displayName: string };
   rollType: "normal" | "advantage" | "disadvantage" | "critical-damage";
   animationSeed: string;
@@ -221,6 +226,19 @@ export interface PlayerState {
   volume: number;
   loop: "off" | "track" | "queue";
 }
+
+/** One line of /longhistory; kept apart from PlayerState so it is never broadcast. */
+export interface PlayedTrack {
+  title: string;
+  artist: string;
+  duration: number | null;
+  pageUrl: string | null;
+  /** When it left the player (ms). */
+  playedAt: number;
+}
+
+/** How many plays /longhistory remembers per room. */
+export const LONG_HISTORY_LIMIT = 250;
 
 export function emptyPlayer(channelId: string): PlayerState {
   return {
@@ -653,6 +671,8 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "notice"; text: string; serverNow: number }
+  /** This account just unlocked these achievements (ids from achievement-defs). */
+  | { t: "achievement"; ids: string[]; serverNow: number }
   | {
       /** Direct message call signaling between caller and callee. */
       t: "dm-call";

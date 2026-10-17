@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap } from "lucide-react";
+import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell } from "lucide-react";
 import { LicensesTab } from "./licenses-tab";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
@@ -32,7 +32,7 @@ import { apiFetch } from "../lib/client";
 import { DEVICE_SAVED_EVENT, listDevices, primeDeviceLabels, savedDevice, type DeviceLists } from "../lib/devices";
 import { readMicSettings, writeMicSettings, type MicSettings, type MicTelemetry } from "../lib/mic-chain";
 import { RolesTab } from "./settings/roles-tab";
-import { Invite, Tab, PrideTheme, Density, Backdrop } from "./settings/types";
+import { Invite, Tab, PrideTheme, Density, Backdrop, type AppearanceSubtab } from "./settings/types";
 import { ProfileTab } from "./settings/profile-tab";
 import { ProfileEditorShell } from "./settings/profile-editor-shell";
 import { takeProfileEditorRequest } from "@/lib/profile-editor-request";
@@ -40,6 +40,7 @@ import { VoiceTab } from "./settings/voice-tab";
 import { PasswordTab } from "./settings/password-tab";
 import { InvitesTab } from "./settings/invites-tab";
 import { AppearanceTab } from "./settings/appearance-tab";
+import { NotificationsTab } from "./settings/notifications-tab";
 import { DiceTab } from "./settings/dice-tab";
 import { ActivitiesTab } from "./settings/activities-tab";
 import { CustomCssTab } from "./settings/custom-css-tab";
@@ -96,6 +97,8 @@ interface SettingsDialogProps {
   deafenKey?: string;
   onMuteKey?: (combo: string) => void;
   onDeafenKey?: (combo: string) => void;
+  /** Deafens you while the Voice & Video mic check plays you back, then restores. */
+  onMicTestHold?: (active: boolean) => void;
   /** Screen share audio defaults. */
   screenShareAudio?: boolean;
   onScreenShareAudioChange?: (enabled: boolean) => void;
@@ -166,6 +169,7 @@ export function SettingsDialog({
   deafenKey = "Ctrl+Shift+KeyD",
   onMuteKey,
   onDeafenKey,
+  onMicTestHold,
   screenShareAudio = true,
   onScreenShareAudioChange,
   server,
@@ -275,7 +279,7 @@ export function SettingsDialog({
   // Theme Manager state
   const [customThemes, setCustomThemes] = useState<Theme[]>(() => getStoredThemes());
   const [activeThemeId, setActiveThemeId] = useState<string>(() => getActiveThemeId());
-  const [appearanceSubtab, setAppearanceSubtab] = useState<"installed" | "community">("installed");
+  const [appearanceSubtab, setAppearanceSubtab] = useState<AppearanceSubtab>("installed");
   const [themeSearchQuery, setThemeSearchQuery] = useState("");
   const [communityThemes, setCommunityThemes] = useState<Theme[]>([]);
   const [communityLoading, setCommunityLoading] = useState(false);
@@ -1042,12 +1046,13 @@ export function SettingsDialog({
     {
       title: "APP SETTINGS",
       items: [
-        { id: "appearance" as Tab, label: "Appearance", icon: Palette, desc: "Themes, colors, and community library" },
-        { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
-        { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
-        { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Input, output, mic test, volume and noise gate" },
+        { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Mic, speakers, mic test and camera" },
+        { id: "appearance" as Tab, label: "Appearance", icon: Palette, desc: "Themes, colours and extras" },
+        { id: "notifications" as Tab, label: "Notifications", icon: Bell, desc: "Desktop, phone and email digest" },
         { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
         { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
+        { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
+        { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
       ],
     },
     ...(canCreateInvites || (canManageServer && server)
@@ -1215,6 +1220,7 @@ export function SettingsDialog({
               {tab === "password" && "Account & Password"}
               {tab === "activities" && "Activities & Privacy"}
               {tab === "appearance" && "Appearance"}
+              {tab === "notifications" && "Notifications"}
               {tab === "dice" && "3D Dice"}
               {tab === "custom_ui_css" && "Custom CSS"}
               {tab === "voice" && "Voice & Video"}
@@ -1290,6 +1296,7 @@ export function SettingsDialog({
         onMuteKey={onMuteKey}
         deafenKey={deafenKey}
         onDeafenKey={onDeafenKey}
+        onMicTestHold={onMicTestHold}
       />
 
           <PasswordTab
@@ -1382,19 +1389,17 @@ export function SettingsDialog({
         setBackdrop={setBackdrop}
         corners={corners}
         setCorners={setCorners}
-        motion={motion}
-        setMotion={setMotion}
         cute={cute}
         setCute={setCute}
         blahaj={blahaj}
         setBlahaj={setBlahaj}
         clickParticles={clickParticles}
         setClickParticles={setClickParticles}
-        notify={notify}
-        setNotify={setNotify}
         retroSounds={retroSounds}
         setRetroSounds={setRetroSounds}
       />
+
+          {tab === "notifications" && <NotificationsTab notify={notify} setNotify={setNotify} />}
 
           <DiceTab
         tab={tab}

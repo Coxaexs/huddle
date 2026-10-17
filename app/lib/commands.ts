@@ -97,6 +97,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Music",
   },
   { name: "history", description: "What this room played before", group: "Music" },
+  { name: "longhistory", description: "Everything this room played lately (up to 250)", group: "Music" },
   { name: "shuffle", description: "Shuffle the queue", group: "Music", voice: true },
   { name: "clear", description: "Empty the queue", group: "Music", voice: true },
   {
@@ -194,6 +195,24 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "gmroll",
     args: "<d20+5> [label] [adv|dis|crit]",
     description: "Roll in secret: only you see the result (/gmroll d20+4 perception)",
+    group: "D&D",
+  },
+  {
+    name: "v",
+    args: "<pool> [h<hunger>] [d<difficulty>] [label]",
+    description: "Vampire V5 roll: d10 pool with red Hunger dice (/v 7 h2 d3 Strength + Brawl)",
+    group: "D&D",
+  },
+  {
+    name: "gmv",
+    args: "<pool> [h<hunger>] [d<difficulty>] [label]",
+    description: "Vampire V5 roll in secret: only you see the result",
+    group: "D&D",
+  },
+  {
+    name: "rouse",
+    args: "[2] [h<hunger>] [label]",
+    description: "Rouse check: 6+ keeps your Hunger, anything less adds one (/rouse h2 Celerity)",
     group: "D&D",
   },
   {

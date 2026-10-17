@@ -11,6 +11,7 @@ import type { DiceRollEvent } from "@/lib/protocol";
 import { basePath } from "../lib/client";
 import { dieFaces, faceNormal } from "../lib/dice-normals";
 import { getDiceStyle } from "@/lib/dice-styles";
+import { HUNGER_DIE_COLOR, HUNGER_DIE_INK } from "@/lib/v5-dice";
 import normalsData from "@/public/assets/themes/default/default.json";
 
 /** How many dice are drawn for one roll; the total still counts them all. */
@@ -74,12 +75,13 @@ function loadAtlas(): Promise<HTMLImageElement | null> {
 const luminance = (colour: THREE.Color) => 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b;
 
 const textureCache = new Map<string, THREE.CanvasTexture>();
-/** The numbers atlas painted onto the die's colour. */
-function dieTexture(colour: string, image: HTMLImageElement): THREE.CanvasTexture {
-  const hit = textureCache.get(colour);
+/** The numbers atlas painted onto the die's colour (in `ink`, or whatever reads on it). */
+function dieTexture(colour: string, image: HTMLImageElement, inkColour?: string): THREE.CanvasTexture {
+  const key = inkColour ? `${colour}/${inkColour}` : colour;
+  const hit = textureCache.get(key);
   if (hit) return hit;
   const tint = new THREE.Color(colour);
-  const ink = luminance(tint) > 0.55 ? "#1a1420" : "#ffffff";
+  const ink = inkColour ?? (luminance(tint) > 0.55 ? "#1a1420" : "#ffffff");
   const size = 1024;
   const numbers = document.createElement("canvas");
   numbers.width = numbers.height = size;
@@ -97,7 +99,7 @@ function dieTexture(colour: string, image: HTMLImageElement): THREE.CanvasTextur
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
-  textureCache.set(colour, texture);
+  textureCache.set(key, texture);
   return texture;
 }
 
@@ -238,15 +240,20 @@ export class TableDice {
     // A style's dice each take one of its colours; Solid Colour is the roller's own.
     const style = getDiceStyle(roll.theme);
     const solid = roll.themeColor || "#2563eb";
-    const faces = roll.dice.flatMap((term) => term.rolls.flatMap((entry) => dieFaces(term.sides, entry.value, entry.kept !== false)));
+    const faces = roll.dice.flatMap((term) =>
+      term.rolls.flatMap((entry) => dieFaces(term.sides, entry.value, entry.kept !== false).map((face) => ({ ...face, hunger: term.hunger === true }))),
+    );
     const shown = faces.slice(0, MAX_DICE);
     const throws: Throw[] = [];
     const spacing = opts.spacing ?? 0.27;
     shown.forEach((face, i) => {
       const type = face.type;
       const geometry = dieGeometry(type);
-      const body = style ? style.body[Math.floor(random() * style.body.length)] : solid;
-      const map = image ? dieTexture(body, image) : null;
+      // Always draw from the seeded random, so a Hunger die doesn't change the others' throws.
+      const styled = style ? style.body[Math.floor(random() * style.body.length)] : solid;
+      // V5 Hunger dice are red with black numbers, whatever the style.
+      const body = face.hunger ? HUNGER_DIE_COLOR : styled;
+      const map = image ? dieTexture(body, image, face.hunger ? HUNGER_DIE_INK : undefined) : null;
       const mesh = new THREE.Mesh(geometry, dieMaterial(roll.material ?? style?.material, map, body, !face.kept));
       mesh.castShadow = true;
       group.add(mesh);
@@ -283,7 +290,7 @@ export class TableDice {
 
     let label: THREE.Sprite | null = null;
     if (opts.label !== null) {
-      label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(opts.label ?? `${roll.roller.displayName} · ${roll.expression} = ${roll.total}`), transparent: true, depthTest: false, opacity: 0 }));
+      label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(opts.label ?? `${roll.roller.displayName} · ${roll.summary ? `${roll.expression}: ${roll.summary.toLowerCase()}` : `${roll.expression} = ${roll.total}`}`), transparent: true, depthTest: false, opacity: 0 }));
       const aspect = (label.material.map!.image as HTMLCanvasElement).width / 84;
       label.scale.set(0.2 * aspect, 0.2, 1);
       label.renderOrder = 20;

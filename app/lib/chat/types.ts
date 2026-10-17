@@ -130,6 +130,8 @@ export interface Message {
     queue?: any;
     totalTracks?: number;
     history?: any;
+    /** music-history from /longhistory: page through up to 250 tracks. */
+    long?: boolean;
     query?: string;
     forwardedFrom?: ForwardedFromData;
   };

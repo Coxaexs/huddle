@@ -14,24 +14,12 @@ import { bindings, type StoredMessage } from "@/lib/storage";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { maskRoll } from "@/lib/secret-roll";
 import { DICE_STYLE_WORDS, resolveDiceStyle } from "@/lib/dice-styles";
+import { randomDie, randomSeed } from "@/lib/fair-dice";
+import { parseRouse, parseV5 } from "@/lib/v5-dice";
+import { rollRouse, rollV5 } from "@/lib/v5-roll";
+import { getGameSystem, rollBot } from "@/lib/dnd-rules";
 
 export const dynamic = "force-dynamic";
-
-/** Rejection sampling so every face of the die stays equally likely. */
-function randomDie(sides: number): number {
-  const limit = Math.floor(4294967296 / sides) * sides;
-  const values = new Uint32Array(1);
-  do {
-    crypto.getRandomValues(values);
-  } while (values[0] >= limit);
-  return (values[0] % sides) + 1;
-}
-
-function randomSeed(): string {
-  return [...crypto.getRandomValues(new Uint8Array(16))]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 interface ParsedTerm {
   sides: number;
@@ -221,11 +209,21 @@ export async function POST(request: Request) {
     material?: "plastic" | "metal" | "wood" | "glass";
     texture?: string;
   };
-  const isSecret = /^\/(?:gmroll|blindroll)\b/i.test(body.command || "");
+  const commandWord = (body.command || "").match(/^\/([a-z]+)/i)?.[1]?.toLowerCase() || "roll";
+  const isSecret = ["gmroll", "blindroll", "gmv"].includes(commandWord);
+  // Vampire: The Masquerade 5th edition: a d10 pool with Hunger dice, or a Rouse check.
+  const isV5 = ["v", "vroll", "vtm", "gmv"].includes(commandWord);
+  const isRouse = commandWord === "rouse";
   const rawInput = (body.command || "")
-    .replace(/^\/(?:roll|gmroll|blindroll)\s*/i, "")
+    .replace(/^\/(?:roll|gmroll|blindroll|vroll|vtm|gmv|v|rouse)\b\s*/i, "")
     .trim();
-  if (!rawInput) {
+  if (isV5 && !rawInput) {
+    return Response.json(
+      { error: "Give a dice pool: `/v 7 h2 d3 Strength + Brawl` (7 dice, Hunger 2, Difficulty 3)." },
+      { status: 400 },
+    );
+  }
+  if (!rawInput && !isRouse) {
     return Response.json(
       { error: "Use `/roll 2d20`, `/gmroll d20 stealth`, or `/roll d20 advantage`." },
       { status: 400 },
@@ -320,7 +318,7 @@ export async function POST(request: Request) {
     }
   }
   input = remainingTokens.join(" ").trim();
-  if (!input) input = rawInput; // Fallback if user only typed theme name
+  if (!input && !isRouse) input = rawInput; // Fallback if user only typed theme name
 
   const rawTheme =
     parsedTheme ||
@@ -342,18 +340,44 @@ export async function POST(request: Request) {
       ? body.texture.toLowerCase()
       : undefined);
 
-  const result = resolveRoll(
-    input,
-    { id: user.id, display_name: user.display_name },
-    theme,
-    themeColor,
-    material,
-    texture,
-  );
-  if ("error" in result) {
-    return Response.json({ error: result.error }, { status: 400 });
+  const roller = { id: user.id, display_name: user.display_name };
+  const look = { theme, themeColor, material, texture };
+  let roll: DiceRollEvent;
+  let label: string;
+  let total: number;
+  let modifier = 0;
+  let text: string;
+  let fullCard: Record<string, unknown>;
+  if (isV5 || isRouse) {
+    const request = isV5 ? parseV5(input) : parseRouse(input);
+    if ("error" in request) return Response.json({ error: request.error }, { status: 400 });
+    const rolled = "pool" in request ? rollV5(request, roller, look) : rollRouse(request, roller, look);
+    ({ roll, text } = rolled);
+    fullCard = { ...rolled.card };
+    label = request.label;
+    total = roll.total;
+  } else {
+    const result = resolveRoll(input, roller, theme, themeColor, material, texture);
+    if ("error" in result) {
+      return Response.json({ error: result.error }, { status: 400 });
+    }
+    const { details, expression, mode } = result;
+    ({ roll, label, total, modifier } = result);
+    text = `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`;
+    fullCard = {
+      type: "roll",
+      name: "Dice result",
+      expression,
+      mode: mode.trim(),
+      label: label || undefined,
+      roller: user.display_name,
+      rollerId: user.id,
+      total,
+      modifier,
+      details,
+      dice: roll.dice,
+    };
   }
-  const { roll, details, expression, label, mode, total, modifier } = result;
   // A secret roll's faces and total leave this route only in the reply to the
   // roller. Everyone else, the rooms and the stored card get a masked copy, so
   // nothing in their browser (or the database) gives the result away.
@@ -366,8 +390,14 @@ export async function POST(request: Request) {
   const db = bindings().DB;
   const voiceChannelId = body.channelId?.slice(0, 64) || "";
   const textChannelId = body.textChannelId?.slice(0, 64) || "";
+  // V5 dice always answer as the Storyteller; at a Vampire table every roll does.
+  let storyteller = isV5 || isRouse;
   if (db) {
     await ensureSchema(db);
+    if (!storyteller && (textChannelId || voiceChannelId)) {
+      const serverId = (await findChannel(db, textChannelId || voiceChannelId))?.server_id;
+      if (serverId) storyteller = (await getGameSystem(db, serverId)) === "vtm5";
+    }
 
     // Publish to the voice room (if you're in one), so people on the stage
     // see the dice tumble.
@@ -433,22 +463,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const text = isSecret
-    ? `${label ? `${label}: ` : ""}rolled in secret, behind the DM screen.`
-    : `${label ? `${label}: ` : ""}rolled ${expression}${mode}: ${details.join(" · ")}. Total: ${total}`;
-  const fullCard = {
-    type: "roll",
-    name: "Dice result",
-    expression,
-    mode: mode.trim(),
-    label: label || undefined,
-    roller: user.display_name,
-    rollerId: user.id,
-    total,
-    modifier,
-    details,
-    dice: roll.dice,
-  };
+  if (isSecret) text = `${label ? `${label}: ` : ""}rolled in secret, behind the ${storyteller ? "Storyteller's" : "DM"} screen.`;
   const payload = isSecret
     ? {
         type: "roll",
@@ -471,13 +486,16 @@ export async function POST(request: Request) {
     const posted = await postVerifiedRoll(db, user, textChannelId, {
       text,
       payload: { ...payload, verified: true },
-      command: `${isSecret ? "/gmroll" : "/roll"} ${rawInput}`.slice(0, 200),
+      command: `/${commandWord} ${rawInput}`.trim().slice(0, 200),
+      ...rollBot(storyteller),
     });
     if (posted instanceof Response) return posted;
     return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, secretCard, posted: true, message: posted });
   }
 
-  return Response.json({ text, kind: "dnd", payload, roll, secretCard });
+  // Who answers, for the browser that posts this card itself.
+  const { author, avatar } = rollBot(storyteller);
+  return Response.json({ text, kind: "dnd", payload, roll, secretCard, bot: { author, avatar } });
 }
 
 
@@ -486,7 +504,7 @@ async function postVerifiedRoll(
   db: D1Database,
   user: { id: string; display_name: string; is_admin?: number },
   channelId: string,
-  card: { text: string; payload: Record<string, unknown>; command: string },
+  card: { text: string; payload: Record<string, unknown>; command: string; author?: string; avatar?: string; color?: string },
 ): Promise<Response | ReturnType<typeof publicMessage>> {
   const access = await channelAccess(db, channelId, user);
   if (!access.ok) return access.response;
@@ -511,9 +529,9 @@ async function postVerifiedRoll(
     channel: access.channel.name,
     channel_id: channelId,
     user_id: null,
-    author: "D&D Bot",
-    avatar: "⚔",
-    color: "#b8a6ff",
+    author: card.author ?? "D&D Bot",
+    avatar: card.avatar ?? "⚔",
+    color: card.color ?? "#b8a6ff",
     content: card.text,
     attachment_key: null,
     is_bot: 1,

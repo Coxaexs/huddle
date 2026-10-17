@@ -133,6 +133,8 @@ export interface PublicUser {
   tagline?: string;
   customStatus?: string | null;
   prideBadges?: PrideBadgeId[];
+  /** Earned achievement ids the member pinned to their profile. */
+  achievementShowcase?: string[];
   spotifyActivity?: SpotifyActivity | null;
   activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];
@@ -179,6 +181,8 @@ export interface Member {
   pronouns?: string;
   tagline?: string;
   prideBadges?: PrideBadgeId[];
+  /** Earned achievement ids the member pinned to their profile. */
+  achievementShowcase?: string[];
   spotifyActivity?: SpotifyActivity | null;
   activity?: ProfileActivity | null;
   socialLinks?: SocialLink[];

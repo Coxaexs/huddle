@@ -3,7 +3,7 @@
 /** Extracts server invite codes from text that contain hangout invite links or codes. */
 export function extractInviteCodes(text: string): string[] {
   if (!text) return [];
-  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})\b/gi;
+  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})(?![\w=-])/gi;
   const codes: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = inviteRegex.exec(text)) !== null) {

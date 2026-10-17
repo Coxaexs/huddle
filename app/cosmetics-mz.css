@@ -1,0 +1,347 @@
+/*
+ * Minecraft and zombie cosmetics (app/components/cosmetics-mz.tsx), plus the
+ * matching profile-style pieces: the pixel/grime card finishes, the blocks /
+ * creeper / biohazard / splatter patterns, the enchanted / infected name
+ * effects and the creeper / grave join flourishes. Classes start with mz- or
+ * name an id. Imported by cosmetics-extra.css.
+ */
+
+/* ================================================================== */
+/* Nameplates                                                          */
+/* ================================================================== */
+
+.nameplate-overworld { --np-base: #2f6fb8; --np-art: linear-gradient(180deg, #3a7bcc, #6aa9ea 65%, #8cc4fb); }
+.nameplate-diamond-mine { --np-base: #26262b; --np-art: linear-gradient(100deg, #18181c, #2a2a30 60%, #36363d); box-shadow: inset 0 0 0 1px rgba(92, 225, 230, 0.28); }
+.nameplate-nether { --np-base: #3a0c0c; --np-art: radial-gradient(70% 120% at 80% 110%, rgba(255, 110, 20, 0.45), transparent 60%), linear-gradient(100deg, #240505, #430c0c 60%, #631313); }
+.nameplate-dead-city { --np-base: #1c2418; --np-art: linear-gradient(180deg, #273621, #3a4e2d 70%, #4f6339); }
+.nameplate-quarantine { --np-base: #151510; --np-art: repeating-linear-gradient(135deg, rgba(245, 196, 0, 0.13) 0 8px, transparent 8px 16px), linear-gradient(100deg, #121210, #1f1e14); box-shadow: inset 0 0 0 1px rgba(245, 196, 0, 0.35); }
+
+.mz-np-cloud { animation: mzCloud 34s linear var(--d, 0s) infinite; }
+@keyframes mzCloud { from { transform: translateX(165px); } to { transform: translateX(40px); } }
+.mz-np-sun { animation: cxGlow 3s ease-in-out infinite alternate; filter: drop-shadow(0 0 3px #fff3a0); }
+.mz-np-creep { animation: mzHissFlash 5s steps(1) infinite; }
+@keyframes mzHissFlash { 0%, 74%, 100% { filter: none; } 76%, 84%, 92% { filter: brightness(2.3) saturate(0.4); } 80%, 88% { filter: none; } }
+.mz-np-torch { animation: mzTorch 0.5s steps(2) infinite; filter: drop-shadow(0 0 2px #ffb347); }
+@keyframes mzTorch { 50% { filter: drop-shadow(0 0 4px #ffcf6b); } }
+.mz-np-torchglow { animation: mzGlow 1.6s ease-in-out infinite alternate; }
+@keyframes mzGlow { from { opacity: 0.16; } to { opacity: 0.3; } }
+.mz-np-glint { transform-box: fill-box; transform-origin: center; animation: cxTwinkle 2.4s ease-in-out var(--d, 0s) infinite; filter: drop-shadow(0 0 1.5px #5ce1e6); }
+.mz-np-lavafall { animation: mzLava 0.8s steps(2) var(--d, 0s) infinite; }
+@keyframes mzLava { 50% { fill: #ff9a2a; } }
+.mz-np-ghast { animation: mzBob 3.2s ease-in-out infinite alternate; }
+@keyframes mzBob { from { transform: translateY(-1.5px); } to { transform: translateY(2.5px); } }
+.mz-np-ember { animation: cxEmber var(--t, 3s) ease-out var(--d, 0s) infinite; filter: drop-shadow(0 0 1.5px #ff7a1a); }
+.mz-np-flicker { animation: cxOnOff 3.6s steps(1) var(--d, 0s) infinite; }
+.mz-np-walk { animation: mzWalkPlate 22s linear infinite; }
+@keyframes mzWalkPlate { from { transform: translateX(48px); } to { transform: translateX(176px); } }
+.mz-np-walk path { transform-box: fill-box; transform-origin: 50% 100%; animation: mzShamble 1.1s ease-in-out infinite alternate; }
+.mz-np-walk .mz-np-walk-b { animation-delay: -0.5s; }
+@keyframes mzShamble { from { rotate: -5deg; } to { rotate: 4deg; } }
+.mz-np-fog { animation: mzFogPlate 9s ease-in-out infinite alternate; }
+@keyframes mzFogPlate { from { transform: translateX(-8px); } to { transform: translateX(8px); } }
+.mz-np-alarm { animation: mzPulse 1.2s ease-in-out infinite alternate; }
+@keyframes mzPulse { from { opacity: 0.06; } to { opacity: 0.32; } }
+.mz-np-bio { animation: mzSpin 24s linear infinite; filter: drop-shadow(0 0 2px rgba(245, 196, 0, 0.6)); }
+@keyframes mzSpin { to { rotate: 360deg; } }
+.mz-np-beacon { animation: mzBeacon 1s steps(1) infinite; }
+@keyframes mzBeacon { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px #ff2a2a) drop-shadow(0 0 6px #ff2a2a); } 50% { opacity: 0.25; filter: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="mz-np-"] { animation-play-state: paused !important; }
+}
+
+/* ================================================================== */
+/* Avatar decorations                                                  */
+/* ================================================================== */
+
+.mz-d-peek { animation: mzPeek 6s ease-in-out infinite; }
+@keyframes mzPeek { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 30% { transform: translate(-2px, 2px) rotate(-4deg); } 55% { transform: translate(1px, -1px) rotate(3deg); } }
+.mz-d-swell { transform-box: fill-box; transform-origin: center; animation: mzSwell 6s ease-in-out infinite; }
+@keyframes mzSwell { 0%, 68%, 96%, 100% { transform: scale(1); } 80% { transform: scale(1.08); } 92% { transform: scale(1.16); } }
+.mz-d-hiss { opacity: 0; animation: mzHiss 6s steps(1) infinite; }
+@keyframes mzHiss { 0%, 70%, 100% { opacity: 0; } 72%, 80%, 88%, 92% { opacity: 0.75; } 76%, 84%, 90% { opacity: 0; } }
+.mz-d-powder { animation: mzPowder 2.4s linear var(--d, 0s) infinite; }
+@keyframes mzPowder { from { transform: translateY(0); opacity: 0.9; } to { transform: translateY(26px); opacity: 0; } }
+.mz-d-hat { animation: mzHat 3s ease-in-out infinite alternate; }
+@keyframes mzHat { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+.mz-d-flower { transform-box: fill-box; transform-origin: 50% 100%; animation: cxSway 2.4s ease-in-out infinite alternate; }
+.mz-d-glint { animation: mzBladeGlint 2.6s linear infinite; }
+@keyframes mzBladeGlint { from { transform: translate(28px, 28px); } to { transform: translate(84px, 84px); } }
+.mz-d-orb { transform-box: view-box; transform-origin: 0 0; animation: mzOrbit 9s linear var(--d, 0s) infinite; filter: drop-shadow(0 0 2px #c8ff4a); }
+@keyframes mzOrbit {
+  from { transform: translate(60px, 60px) rotate(var(--a, 0deg)) translate(57px) rotate(calc(-1 * var(--a, 0deg))); }
+  to { transform: translate(60px, 60px) rotate(calc(var(--a, 0deg) + 360deg)) translate(57px) rotate(calc(-1 * var(--a, 0deg) - 360deg)); }
+}
+.mz-d-claw { transform-box: fill-box; transform-origin: 50% 100%; animation: mzClaw 1.8s ease-in-out infinite alternate; }
+.mz-d-claw-b { animation-delay: -0.7s; animation-duration: 2.1s; }
+.mz-d-claw-c { animation-delay: -1.3s; animation-duration: 1.5s; }
+@keyframes mzClaw { from { transform: rotate(-5deg) translateY(1px); } to { transform: rotate(5deg) translateY(-3px); } }
+.mz-d-pulse { animation: mzDPulse 1.8s ease-in-out infinite alternate; }
+@keyframes mzDPulse { from { opacity: 0.25; } to { opacity: 0.7; } }
+.mz-d-drip { transform-box: fill-box; transform-origin: 50% 0; animation: mzDrip 2.6s ease-in var(--d, 0s) infinite; }
+@keyframes mzDrip { 0% { transform: translateY(0) scaleY(0.4); opacity: 1; } 55% { transform: translateY(0) scaleY(1); } 85% { opacity: 1; } 100% { transform: translateY(var(--len, 12px)) scaleY(1.15); opacity: 0; } }
+.mz-d-bubble { transform-box: fill-box; transform-origin: center; animation: mzPop 2.2s ease-out var(--d, 0s) infinite; }
+@keyframes mzPop { 0% { transform: scale(0.2); opacity: 0; } 60% { opacity: 0.9; transform: scale(1); } 80%, 100% { transform: scale(1.5); opacity: 0; } }
+.mz-d-bio { animation: mzSpin 18s linear infinite; }
+
+/* ================================================================== */
+/* Profile frames                                                      */
+/* ================================================================== */
+
+.profile-frame-grass-block { --pf-grad: linear-gradient(180deg, #79bd4f 0%, #4e8a30 16%, #8b5a2b 22%, #6b4220 66%, #7c7c7c 74%, #5c5c5c 100%); box-shadow: 0 0 14px rgba(121, 189, 79, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-tnt { --pf-grad: linear-gradient(135deg, #db2f20, #f2f2f2 50%, #db2f20); animation: mzTntGlow 2.2s steps(1) infinite !important; }
+@keyframes mzTntGlow {
+  0%, 100% { box-shadow: 0 0 12px rgba(219, 47, 32, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6); }
+  50% { box-shadow: 0 0 24px rgba(255, 255, 255, 0.45), 0 12px 32px rgba(0, 0, 0, 0.6); }
+}
+.profile-frame-zombie-hands { --pf-grad: linear-gradient(180deg, #94a07a, #4c5c3e 45%, #2c2418); box-shadow: 0 0 18px rgba(166, 255, 58, 0.18), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+.profile-frame-quarantine { --pf-grad: repeating-linear-gradient(135deg, #f5c400 0 9px, #1a1600 9px 18px); box-shadow: 0 0 16px rgba(245, 196, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6) !important; }
+
+.mz-f-sway { transform-box: fill-box; transform-origin: 50% 100%; animation: cxSway 2.6s ease-in-out infinite alternate; }
+.mz-f-sway-b { animation-delay: -1.2s; }
+.mz-f-fuse { transform-box: fill-box; transform-origin: center; animation: mzFuse 0.18s steps(2) infinite; filter: drop-shadow(0 0 3px #ffb347); }
+@keyframes mzFuse { 50% { transform: scale(0.65); } }
+.mz-f-spark { animation: mzSpark 0.8s ease-out var(--d, 0s) infinite; }
+@keyframes mzSpark { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(var(--dx, 0px), -12px); opacity: 0; } }
+.mz-f-creeper { animation: mzHissFlash 4.4s steps(1) -1s infinite; }
+.mz-f-grip { transform-box: fill-box; transform-origin: 50% 100%; animation: mzGrip 3.4s ease-in-out infinite; }
+.mz-f-grip-b { animation-delay: -1.1s; }
+.mz-f-grip-c { animation-delay: -2.3s; }
+@keyframes mzGrip { 0%, 100% { transform: translateY(0) rotate(0deg); } 40% { transform: translateY(-4px) rotate(-3deg); } 55% { transform: translateY(2px) rotate(2deg); } }
+.mz-f-rise { animation: mzRiseFrame 5s cubic-bezier(0.3, 1.2, 0.5, 1) infinite; }
+@keyframes mzRiseFrame { 0%, 8% { transform: translateY(30px); } 30%, 80% { transform: translateY(0); } 100% { transform: translateY(30px); } }
+.mz-f-clod { animation: mzClod 5s ease-out var(--d, 0s) infinite; }
+@keyframes mzClod { 0%, 24% { transform: translate(0, 0); opacity: 0; } 26% { opacity: 1; } 40% { transform: translate(6px, -14px); } 55%, 100% { transform: translate(10px, 0); opacity: 0; } }
+
+/* ================================================================== */
+/* Profile effects                                                     */
+/* ================================================================== */
+
+.mz-e-orb { filter: drop-shadow(0 0 3px #c8ff4a) drop-shadow(0 0 7px rgba(150, 255, 40, 0.6)); animation: mzOrbPulse 1.2s ease-in-out var(--d, 0s) infinite alternate; }
+@keyframes mzOrbPulse { from { opacity: 0.7; } to { opacity: 1; } }
+.mz-e-glyph { filter: drop-shadow(0 0 2px #b98cff) drop-shadow(0 0 5px rgba(185, 140, 255, 0.7)); }
+.pfx-p > b > span.mz-e-spore { border-radius: 50%; background: radial-gradient(circle, #fff 0 18%, var(--c) 40%, transparent 72%); box-shadow: 0 0 6px var(--c); opacity: 0.8; }
+
+.pfx-scene > i[class^="mz-e-"] { position: absolute; display: block; pointer-events: none; }
+
+/* Creeper: walks in, hisses, blows up. One 9s cycle. */
+.mz-e-creeper { left: 0; bottom: 4%; width: 13cqw; z-index: 2; animation: mzCreeper 9s linear infinite; }
+.mz-e-creeper-body { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 0.6cqw 0.8cqw rgba(0, 0, 0, 0.45)); animation: mzStep 0.36s steps(2) infinite; }
+@keyframes mzStep { 50% { transform: translateY(-0.7cqw); } }
+@keyframes mzCreeper {
+  0% { translate: 105cqw 0; scale: 1; opacity: 1; filter: none; }
+  38% { translate: 43cqw 0; filter: none; }
+  44% { filter: brightness(2.6) saturate(0.25); }
+  48% { filter: none; scale: 1.03; }
+  52% { filter: brightness(2.6) saturate(0.25); }
+  55% { filter: none; scale: 1.08; }
+  58% { filter: brightness(3) saturate(0.2); scale: 1.14; }
+  61.9% { translate: 43cqw 0; filter: brightness(3.2) saturate(0); scale: 1.22; opacity: 1; }
+  62%, 100% { translate: 43cqw 0; opacity: 0; scale: 1; filter: none; }
+}
+.mz-e-flash { inset: 0; z-index: 3; opacity: 0; background: radial-gradient(70% 45% at 50% calc(100% - 4% - 21cqw), #fff 0%, rgba(255, 255, 255, 0.8) 30%, transparent 75%); animation: mzFlash 9s linear infinite; }
+@keyframes mzFlash { 0%, 61.6% { opacity: 0; } 62.4% { opacity: 1; } 74%, 100% { opacity: 0; } }
+.mz-e-debris { left: 50%; bottom: calc(4% + 21cqw); width: var(--s); height: var(--s); z-index: 3; background: var(--c); box-shadow: inset -0.4cqw -0.4cqw 0 rgba(0, 0, 0, 0.25); opacity: 0; animation: mzDebris 9s linear infinite; }
+@keyframes mzDebris {
+  0%, 61.9% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  62% { opacity: 1; transform: translate(0, 0) rotate(0deg); animation-timing-function: cubic-bezier(0.1, 0.7, 0.3, 1); }
+  80% { opacity: 1; }
+  88% { opacity: 0; transform: translate(calc(cos(var(--a)) * var(--r)), calc(sin(var(--a)) * var(--r) + 14cqw)) rotate(var(--spin)); }
+  100% { opacity: 0; }
+}
+.mz-e-smoke { left: 50%; bottom: calc(4% + 12cqw); width: 22cqw; height: 22cqw; margin-left: -11cqw; z-index: 2; border-radius: 50%; background: radial-gradient(circle, rgba(220, 220, 220, 0.85), rgba(150, 150, 150, 0.4) 55%, transparent 72%); opacity: 0; animation: mzSmoke 9s linear var(--d, 0s) infinite; }
+@keyframes mzSmoke {
+  0%, 62% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+  63% { opacity: 0.9; animation-timing-function: ease-out; }
+  95% { opacity: 0; transform: translate(calc(cos(var(--a)) * 14cqw), calc(sin(var(--a)) * 8cqw - 22cqw)) scale(1.6); }
+  100% { opacity: 0; }
+}
+
+/* Enchanted: the glint rolling over everything. */
+.mz-e-glint {
+  inset: -60%;
+  background: repeating-linear-gradient(115deg, transparent 0 9%, rgba(160, 96, 255, 0.28) 12%, rgba(214, 186, 255, 0.4) 13%, rgba(160, 96, 255, 0.22) 15%, transparent 18% 30%);
+  mix-blend-mode: screen;
+  animation: mzGlint 7s linear infinite;
+}
+.mz-e-glint-b { background: repeating-linear-gradient(-55deg, transparent 0 14%, rgba(140, 80, 255, 0.2) 18%, rgba(200, 160, 255, 0.28) 19%, transparent 23% 36%); animation-duration: 11s; animation-direction: reverse; }
+@keyframes mzGlint { from { transform: translate(-12%, -8%); } to { transform: translate(12%, 8%); } }
+
+/* Horde: a moonlit graveyard, shamblers and hands from the dirt. */
+.mz-e-moon { top: 6%; right: 9%; width: 20cqw; height: 20cqw; border-radius: 50%; background: radial-gradient(circle at 40% 38%, #f4f8dc, #d4e3a8 60%, #b9cc8a); box-shadow: 0 0 6cqw rgba(214, 232, 160, 0.45); opacity: 0.85; }
+.mz-e-ground { left: 0; right: 0; bottom: 0; height: 13%; z-index: 2; background: linear-gradient(180deg, transparent, #120f09 30%, #0b0906); }
+.mz-e-walker { left: 0; bottom: 8%; width: calc(17cqw * var(--s, 1)); z-index: 1; opacity: 0.92; animation: mzWalk var(--t, 26s) linear var(--d, 0s) infinite; }
+.mz-e-walker svg { display: block; width: 100%; height: auto; overflow: visible; }
+.mz-e-walker-back { scale: -1 1; animation-direction: reverse; }
+@keyframes mzWalk { from { translate: -30cqw 0; } to { translate: 115cqw 0; } }
+.mz-e-shamble { transform-box: fill-box; transform-origin: 50% 100%; animation: mzShamble 1.2s ease-in-out var(--d, 0s) infinite alternate; }
+.mz-e-hand { bottom: 2%; width: 15cqw; z-index: 1; translate: -50% 0; animation: mzHandRise 7.5s cubic-bezier(0.3, 1.1, 0.5, 1) var(--d, 0s) infinite; }
+.mz-e-hand svg { display: block; width: 100%; height: auto; overflow: visible; }
+@keyframes mzHandRise { 0%, 10% { transform: translateY(105%); } 26%, 62% { transform: translateY(8%); } 78%, 100% { transform: translateY(105%); } }
+.mz-e-handclaw { transform-box: fill-box; transform-origin: 50% 100%; animation: mzClaw 0.9s ease-in-out infinite alternate; }
+.mz-e-fog { left: -50%; right: -50%; bottom: -4%; height: 34%; z-index: 3; background: radial-gradient(30% 50% at 25% 70%, rgba(170, 210, 130, 0.28), transparent 70%), radial-gradient(28% 45% at 65% 80%, rgba(170, 210, 130, 0.22), transparent 70%); filter: blur(4px); animation: mzFog 14s ease-in-out infinite alternate; }
+.mz-e-fog-b { bottom: 6%; opacity: 0.7; animation-duration: 19s; animation-direction: alternate-reverse; }
+@keyframes mzFog { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+
+/* Outbreak: a quarantine alarm. */
+.mz-e-alarm { left: 50%; top: 0; width: 320cqw; height: 320cqw; translate: -50% -50%; background: conic-gradient(rgba(255, 36, 36, 0.3) 0deg 16deg, transparent 16deg 180deg, rgba(255, 36, 36, 0.3) 180deg 196deg, transparent 196deg); mix-blend-mode: screen; animation: mzSpin 2.6s linear infinite; }
+.mz-e-vignette { inset: 0; background: radial-gradient(120% 90% at 50% 45%, transparent 45%, rgba(170, 0, 0, 0.5)); animation: mzVignette 1.3s ease-in-out infinite alternate; }
+@keyframes mzVignette { from { opacity: 0.35; } to { opacity: 0.95; } }
+.mz-e-bio { left: 50%; top: 22%; width: 46cqw; translate: -50% 0; opacity: 0.13; animation: mzBioPulse 2.6s ease-in-out infinite alternate; }
+.mz-e-bio svg { display: block; width: 100%; height: auto; animation: mzSpin 40s linear infinite; }
+@keyframes mzBioPulse { from { opacity: 0.08; filter: none; } to { opacity: 0.2; filter: drop-shadow(0 0 3cqw #a6ff3a); } }
+.mz-e-lamp { left: 50%; top: -3cqw; width: 10cqw; height: 7cqw; translate: -50% 0; border-radius: 50% 50% 0 0 / 100% 100% 0 0; background: radial-gradient(circle at 50% 70%, #ffb0b0, #ff2a2a 45%, #8a0000); animation: mzBeacon 1.3s steps(1) infinite; }
+.mz-e-tape { left: -10%; width: 120%; bottom: 12%; rotate: -7deg; filter: drop-shadow(0 0.6cqw 0.8cqw rgba(0, 0, 0, 0.5)); }
+.mz-e-tape svg { display: block; width: 100%; height: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pfx-scene > i[class^="mz-e-"],
+  .pfx-scene > i[class^="mz-e-"] * { animation-play-state: paused !important; }
+}
+
+/* ================================================================== */
+/* Card finishes and patterns (lib/profile-style.ts)                   */
+/* ================================================================== */
+
+.pst-f-pixel {
+  --pst-bg: linear-gradient(var(--pst-scrim), var(--pst-scrim)),
+    conic-gradient(rgba(0, 0, 0, 0.06) 25%, transparent 0 50%, rgba(0, 0, 0, 0.06) 0 75%, transparent 0) 0 0 / 12px 12px,
+    linear-gradient(180deg,
+      var(--pt-a) 0 16%,
+      color-mix(in srgb, var(--pt-a) 80%, var(--pt-b)) 16% 30%,
+      color-mix(in srgb, var(--pt-a) 60%, var(--pt-b)) 30% 44%,
+      color-mix(in srgb, var(--pt-a) 40%, var(--pt-b)) 44% 58%,
+      color-mix(in srgb, var(--pt-a) 20%, var(--pt-b)) 58% 72%,
+      var(--pt-b) 72% 100%);
+}
+.pst-f-grime {
+  --pst-ring: color-mix(in srgb, var(--pt-b) 70%, #050605);
+  --pst-bg:
+    radial-gradient(30% 16% at 18% 30%, rgba(0, 0, 0, 0.32), transparent 70%),
+    radial-gradient(24% 12% at 82% 52%, rgba(0, 0, 0, 0.28), transparent 70%),
+    radial-gradient(18% 9% at 32% 76%, rgba(40, 18, 0, 0.32), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, color-mix(in srgb, var(--pt-a) 38%, #0a0b08), color-mix(in srgb, var(--pt-b) 82%, #050605));
+}
+.pst-light.pst-f-grime {
+  --pst-ring: color-mix(in srgb, var(--pt-b) 45%, #fff);
+  --pst-bg:
+    radial-gradient(30% 16% at 18% 30%, rgba(60, 50, 20, 0.16), transparent 70%),
+    radial-gradient(24% 12% at 82% 52%, rgba(60, 50, 20, 0.14), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--pt-a) 70%, #fff), color-mix(in srgb, var(--pt-b) 60%, #fff));
+}
+.pst-f-grime .pst-lights {
+  display: block;
+  left: -10%;
+  right: -10%;
+  bottom: -18%;
+  height: 55%;
+  background: radial-gradient(60% 60% at 50% 100%, color-mix(in srgb, var(--pt-a) 75%, transparent), transparent 72%);
+  animation: mzGrime 4.5s ease-in-out infinite alternate;
+}
+@keyframes mzGrime { from { opacity: 0.55; transform: scaleY(0.9); } to { opacity: 1; transform: scaleY(1.08); } }
+
+.pst-pat-blocks { --pst-pat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' shape-rendering='crispEdges'%3E%3Cpath d='M0 .5H32M.5 0V32' fill='none' stroke='%23fff' stroke-width='1'/%3E%3Cpath d='M6 6h3v3H6zM20 4h2v2h-2zM14 14h4v2h-4zM24 20h3v3h-3zM5 22h2v4H5zM16 26h3v2h-3zM27 9h2v2h-2z' fill='%23fff'/%3E%3C/svg%3E"); --pst-pat-size: 32px 32px; }
+.pst-pat-creeper { --pst-pat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40' shape-rendering='crispEdges'%3E%3Cpath d='M10 12h4v4h-4zM18 12h4v4h-4zM14 16h4v2h-4zM12 18h8v4h-8zM12 22h2v2h-2zM18 22h2v2h-2z' fill='%23fff'/%3E%3Cpath d='M8.5 8.5h15v15h-15z' fill='none' stroke='%23fff' stroke-width='1' opacity='.5'/%3E%3C/svg%3E"); --pst-pat-size: 40px 40px; }
+.pst-pat-biohazard { --pst-pat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.8'%3E%3Ccircle cx='16' cy='10.5' r='5'/%3E%3Ccircle cx='11.2' cy='18.8' r='5'/%3E%3Ccircle cx='20.8' cy='18.8' r='5'/%3E%3Ccircle cx='48' cy='42.5' r='5'/%3E%3Ccircle cx='43.2' cy='50.8' r='5'/%3E%3Ccircle cx='52.8' cy='50.8' r='5'/%3E%3C/g%3E%3Ccircle cx='16' cy='16' r='2' fill='%23fff'/%3E%3Ccircle cx='48' cy='48' r='2' fill='%23fff'/%3E%3C/svg%3E"); --pst-pat-size: 64px 64px; }
+.pst-pat-splatter { --pst-pat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='%23fff'%3E%3Cpath d='M20 14c4-3 9 0 10 4 2 1 6-1 6 3s-4 3-5 5c1 3 3 8-1 9-3 1-4-3-7-3-3 1-6 5-9 2s1-6 0-9c-2-2-7-2-6-6s5-2 7-3c1-1 1-1 5-2z'/%3E%3Ccircle cx='38' cy='10' r='2'/%3E%3Ccircle cx='8' cy='32' r='1.6'/%3E%3Ccircle cx='34' cy='38' r='1.2'/%3E%3Cpath d='M60 58c3-2 6 1 7 3 2-1 5 0 4 3-1 2-3 2-3 4 1 2 2 5-1 6-2 0-3-2-5-2-2 1-4 3-6 1s0-4-1-6c-2-1-5-1-4-4s4-2 5-3c1-2 1-1 4-2z'/%3E%3Ccircle cx='76' cy='54' r='1.8'/%3E%3Ccircle cx='54' cy='80' r='1.4'/%3E%3Cpath d='M62 76c.6 0 1 2 1 5s-.4 4-1 4-1-1-1-4 .4-5 1-5z'/%3E%3C/g%3E%3C/svg%3E"); --pst-pat-size: 90px 90px; }
+
+/* ================================================================== */
+/* Name effects                                                        */
+/* ================================================================== */
+
+.pn-fx-enchanted,
+.pn-fx-infected {
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.pn-fx-enchanted {
+  background-image:
+    linear-gradient(115deg, transparent 30%, rgba(206, 160, 255, 0.95) 40%, rgba(150, 80, 255, 0.75) 46%, transparent 56%),
+    linear-gradient(65deg, transparent 40%, rgba(190, 140, 255, 0.6) 50%, transparent 60%),
+    linear-gradient(var(--n1), var(--n1));
+  background-size: 300% 100%, 240% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 0 0.12em rgba(170, 110, 255, 0.55));
+  animation: pnEnchant 3.4s linear infinite;
+}
+@keyframes pnEnchant {
+  from { background-position: 150% 0, -120% 0, 0 0; }
+  to { background-position: -50% 0, 220% 0, 0 0; }
+}
+.pn-fx-infected {
+  background-image:
+    radial-gradient(0.16em 0.12em at 30% 62%, rgba(20, 28, 6, 0.8), transparent 70%),
+    radial-gradient(0.1em 0.09em at 72% 34%, rgba(70, 8, 8, 0.75), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--n1) 60%, #fff) 0%, var(--n1) 45%, color-mix(in srgb, var(--n1) 55%, #0b1205) 100%);
+  background-size: 1.3em 1em, 0.9em 1em, 100% 100%;
+  filter: drop-shadow(0 0 0.1em color-mix(in srgb, var(--n1) 60%, transparent));
+  animation: pnInfect 3s ease-in-out infinite;
+}
+@keyframes pnInfect {
+  0%, 100% { filter: drop-shadow(0 0 0.08em color-mix(in srgb, var(--n1) 45%, transparent)); }
+  50% { filter: drop-shadow(0 0 0.22em color-mix(in srgb, var(--n1) 75%, transparent)); }
+  51%, 53% { filter: drop-shadow(0 0 0.22em color-mix(in srgb, var(--n1) 75%, transparent)) brightness(0.6); }
+  52% { filter: drop-shadow(0 0 0.22em color-mix(in srgb, var(--n1) 75%, transparent)); }
+}
+.pn-fx-infected::after {
+  content: "";
+  position: absolute;
+  left: 34%;
+  top: 78%;
+  width: 0.11em;
+  height: 0.16em;
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+  background: var(--n1);
+  -webkit-text-fill-color: initial;
+  pointer-events: none;
+  opacity: 0;
+}
+.pn-live.pn-fx-infected::after { animation: pnDrip 2.8s ease-in infinite; }
+@keyframes pnDrip { 0%, 40% { transform: translateY(0) scale(0.4); opacity: 0; } 50% { opacity: 1; transform: translateY(0) scale(1); } 90% { opacity: 0.9; } 100% { transform: translateY(0.55em) scale(1); opacity: 0; } }
+
+/* ================================================================== */
+/* Join flourishes                                                     */
+/* ================================================================== */
+
+.jf-creeper .va-face { animation: jfCreeper 1.25s both; }
+@keyframes jfCreeper {
+  0% { transform: scale(0.3); opacity: 0; filter: none; }
+  18% { transform: scale(1); opacity: 1; }
+  30% { filter: brightness(2.4) saturate(0.2); }
+  38% { filter: none; transform: scale(1.04); }
+  46% { filter: brightness(2.6) saturate(0.2); transform: scale(1.1); }
+  52% { filter: brightness(3) saturate(0); transform: scale(1.18); }
+  60% { filter: none; transform: scale(0.94); }
+  100% { transform: none; filter: none; }
+}
+.jf-creeper .jf-p { left: 50%; top: 50%; width: 6cqw; height: 6cqw; margin: -3cqw 0 0 -3cqw; background: #5fbf4a; box-shadow: inset -1cqw -1cqw 0 rgba(0, 0, 0, 0.25); animation: jfBlast 0.9s cubic-bezier(0.1, 0.7, 0.3, 1) 0.62s both; }
+.jf-creeper .jf-p:nth-child(3n) { background: #3f8f2e; }
+.jf-creeper .jf-p:nth-child(4n) { background: #4a4a4a; }
+.jf-creeper .jf-p:nth-child(5n) { background: #e8e8e8; }
+.jf-creeper .jf-p:first-child { inset: 18%; width: auto; height: auto; margin: 0; border-radius: 50%; background: radial-gradient(circle, #fff 0%, rgba(255, 255, 255, 0.7) 40%, transparent 70%); box-shadow: none; animation: jfFlash 0.6s ease-out 0.6s both; }
+@keyframes jfBlast {
+  from { translate: 0 0; rotate: 0deg; opacity: 1; }
+  to { translate: calc(cos(var(--a)) * 44cqw * var(--r)) calc(sin(var(--a)) * 44cqw * var(--r)); rotate: var(--spin); opacity: 0; }
+}
+
+.jf-grave .va-face { animation: jfGrave 1.3s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+@keyframes jfGrave {
+  0% { translate: 0 100%; clip-path: inset(0 0 100% 0); }
+  25% { rotate: -6deg; }
+  40% { rotate: 5deg; }
+  55% { rotate: -3deg; }
+  75% { translate: 0 -5%; clip-path: inset(0 0 0 0); rotate: 0deg; }
+  100% { translate: 0 0; clip-path: inset(0 0 0 0); }
+}
+.jf-grave .jf-p { left: 50%; top: 76%; width: 5cqw; height: 4cqw; margin: -2cqw 0 0 -2.5cqw; border-radius: 30%; background: #4a3a24; animation: jfClod 1.1s cubic-bezier(0.2, 0.6, 0.4, 1) both; animation-delay: calc(0.1s + var(--d)); }
+.jf-grave .jf-p:nth-child(odd) { background: #6b5233; }
+.jf-grave .jf-p:nth-child(4n) { width: 3cqw; height: 3cqw; background: #2c2418; }
+@keyframes jfClod {
+  0% { translate: 0 0; opacity: 0; }
+  10% { opacity: 1; }
+  50% { translate: calc(cos(var(--a)) * 18cqw) calc(-20cqw * var(--r)); }
+  100% { translate: calc(cos(var(--a)) * 30cqw) 8cqw; opacity: 0; }
+}

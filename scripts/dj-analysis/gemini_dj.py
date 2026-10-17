@@ -156,6 +156,22 @@ def thinking_for(model):
     return None
 
 
+BLOCKED_FILE = f"{ROOT}/out/gemini/blocked.json"
+
+
+def load_blocked():
+    """Songs Google refuses (PROHIBITED_CONTENT): asking again only wastes daily quota."""
+    try:
+        return json.load(open(BLOCKED_FILE))
+    except (OSError, ValueError):
+        return []
+
+
+def mark_blocked(vid):
+    ids = sorted(set(load_blocked()) | {vid})
+    json.dump(ids, open(BLOCKED_FILE, "w"))
+
+
 def save(model, vid, result, usage, seconds):
     folder = f"{ROOT}/out/gemini/{model}"
     os.makedirs(folder, exist_ok=True)
@@ -181,6 +197,7 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--rpm", type=int, default=14, help="requests per minute (free tier: 15)")
     ap.add_argument("--ids-file", help="JSON list of video ids to do first (then the rest, unless --only)")
+    ap.add_argument("--redo", action="store_true", help="also redo songs that another model already did")
     ap.add_argument("--only", action="store_true", help="with --ids-file: do nothing else")
     ap.add_argument("--max-tokens", type=int, default=0, help="stop after this many total (prompt+output) tokens")
     args = ap.parse_args()
@@ -196,7 +213,13 @@ def main():
                 except Exception as error:
                     print(f"\n== {model} {vid} FAILED: {error}")
         return
-    todo = [v for v in songs if not os.path.exists(f"{ROOT}/out/gemini/{args.model}/{v}.json") and os.path.exists(f"{ROOT}/full/{v}.mp3")]
+    gem_dir = f"{ROOT}/out/gemini"
+    if args.redo:                       # only this model's own results count as done
+        have = {f[:-5] for f in os.listdir(f"{gem_dir}/{args.model}") if f.endswith(".json")} if os.path.isdir(f"{gem_dir}/{args.model}") else set()
+    else:                               # a song done by ANY model is done (the plans builder merges them)
+        have = {f[:-5] for d in os.listdir(gem_dir) if os.path.isdir(f"{gem_dir}/{d}") for f in os.listdir(f"{gem_dir}/{d}") if f.endswith(".json")}
+    blocked = set(load_blocked())
+    todo = [v for v in songs if v not in have and v not in blocked and os.path.exists(f"{ROOT}/full/{v}.mp3")]
     if args.ids_file:
         first = [v for v in json.load(open(args.ids_file)) if v in set(todo)]
         todo = first if args.only else first + [v for v in todo if v not in set(first)]
@@ -222,6 +245,8 @@ def main():
             print("DAILY QUOTA REACHED, stopping (run again tomorrow, finished songs are kept):", error, flush=True)
             stop.set()
         except Exception as error:
+            if "PROHIBITED_CONTENT" in str(error):
+                mark_blocked(vid)
             with lock:
                 failed[0] += 1
             print(f"FAILED {vid}: {str(error)[:200]}", flush=True)

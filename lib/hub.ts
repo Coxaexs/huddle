@@ -18,9 +18,10 @@ import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
+import { djControl, type DjControl } from "./musicbot";
 import { deliverDueReminders, nextReminderAlarm } from "./reminders";
 import { deliverDueDigest, nextDigestAlarm } from "./digest";
-import { addVoiceSeconds } from "./achievements";
+import { addVoiceSeconds, evaluateAndAward } from "./achievements";
 import { allDisabledFeatures } from "./features";
 import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
@@ -42,12 +43,14 @@ import {
   emptyPlayer,
   LIVE_OWNED_ACTIONS,
   liveTrack,
+  LONG_HISTORY_LIMIT,
   playbackPosition,
   type ClientEvent,
   type LoungeVenue,
   isLoungeVenue,
   type LoungeWirePose,
   type PlayerAction,
+  type PlayedTrack,
   type PlayerState,
   type RecordingState,
   type ServerEvent,
@@ -108,6 +111,9 @@ const CHANNEL_CACHE_LIMIT = 500;
 
 export class HuddleHub extends DurableObject {
   private players = new Map<string, PlayerState>();
+  /** Voice room -> its last LONG_HISTORY_LIMIT plays (/longhistory), newest first. */
+  private longHistory = new Map<string, PlayedTrack[]>();
+  private longHistoryDirty = false;
   /** People muted for everyone, by user id. */
   private forcedMutes = new Set<string>();
   /** One public active/finalizing recording snapshot per voice channel. */
@@ -187,6 +193,11 @@ export class HuddleHub extends DurableObject {
         for (const [channelId, state] of Object.entries(stored || {})) {
           this.players.set(channelId, state);
         }
+        const played =
+          await this.ctx.storage.get<Record<string, PlayedTrack[]>>("longHistory");
+        for (const [channelId, list] of Object.entries(played || {})) {
+          this.longHistory.set(channelId, list);
+        }
         const mutes = await this.ctx.storage.get<string[]>("forcedMutes");
         for (const userId of mutes || []) this.forcedMutes.add(userId);
         const recordings =
@@ -219,6 +230,30 @@ export class HuddleHub extends DurableObject {
       "players",
       Object.fromEntries(this.players.entries()),
     );
+    if (this.longHistoryDirty) {
+      this.longHistoryDirty = false;
+      await this.ctx.storage.put(
+        "longHistory",
+        Object.fromEntries(this.longHistory.entries()),
+      );
+    }
+  }
+
+  /** A track just left the player: into /history and /longhistory. */
+  private remember(state: PlayerState, track: Track): void {
+    state.history = [track, ...(state.history || [])].slice(0, 25);
+    const played: PlayedTrack = {
+      title: track.title,
+      artist: track.artist,
+      duration: track.duration,
+      pageUrl: track.pageUrl,
+      playedAt: Date.now(),
+    };
+    this.longHistory.set(
+      state.channelId,
+      [played, ...(this.longHistory.get(state.channelId) || [])].slice(0, LONG_HISTORY_LIMIT),
+    );
+    this.longHistoryDirty = true;
   }
 
   // ---------------------------------------------------------------- routing
@@ -355,7 +390,7 @@ export class HuddleHub extends DurableObject {
         if (attachment.userId !== body.userId || !attachment.voiceChannelId) continue;
         if (!rooms.has(attachment.voiceChannelId)) continue;
         const room = attachment.voiceChannelId;
-        socket.serializeAttachment({
+        this.saveAttachment(socket, {
           ...attachment,
           voiceChannelId: null,
           voiceJoinedAt: null,
@@ -378,9 +413,17 @@ export class HuddleHub extends DurableObject {
       const body = (await request.json()) as { userId: string; invisible: boolean };
       for (const { socket, attachment } of this.sockets()) {
         if (attachment.userId !== body.userId || attachment.bot) continue;
-        socket.serializeAttachment({ ...attachment, invisible: body.invisible });
+        this.saveAttachment(socket, { ...attachment, invisible: body.invisible });
       }
       this.broadcastPresence();
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/achievement" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { userId?: string; ids?: unknown };
+      const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string").slice(0, 50) : [];
+      if (body.userId && ids.length) {
+        this.broadcast({ t: "achievement", ids, serverNow: Date.now() }, { audience: [body.userId] });
+      }
       return Response.json({ ok: true });
     }
     if (url.pathname === "/member" && request.method === "POST") {
@@ -429,6 +472,10 @@ export class HuddleHub extends DurableObject {
       };
       const state = await this.applyPlayerAction(body.channelId, body.action);
       return Response.json({ state, serverNow: Date.now() });
+    }
+    if (url.pathname === "/player-history" && request.method === "GET") {
+      const channelId = url.searchParams.get("channelId") || "";
+      return Response.json({ history: this.longHistory.get(channelId) || [] });
     }
     if (url.pathname === "/player" && request.method === "GET") {
       const channelId = url.searchParams.get("channelId") || "";
@@ -738,7 +785,7 @@ export class HuddleHub extends DurableObject {
           peer.loungeVenue = venue;
           // Everyone's spot belonged to the old room.
           peer.lounge = null;
-          other.serializeAttachment(peer);
+          this.saveAttachment(other, peer);
           other.send(payload);
         }
         return;
@@ -888,7 +935,7 @@ export class HuddleHub extends DurableObject {
             other.voiceJoinedAt = null;
             other.cameraStreamId = null;
             other.screenStreamId = null;
-            entry.socket.serializeAttachment(other);
+            this.saveAttachment(entry.socket, other);
             evicted.add(room);
             try {
               entry.socket.send(
@@ -965,11 +1012,16 @@ export class HuddleHub extends DurableObject {
         if (this.db && joinedAt && previous) {
           const durationMs = Date.now() - joinedAt;
           if (durationMs > 1000) {
-            void addVoiceSeconds(
-              this.db,
-              attachment.userId,
-              Math.floor(durationMs / 1000),
-            ).catch(() => undefined);
+            const db = this.db;
+            const userId = attachment.userId;
+            this.ctx.waitUntil(
+              addVoiceSeconds(db, userId, Math.floor(durationMs / 1000))
+                .then(() => evaluateAndAward(db, userId, { sources: ["voice"] }))
+                .then((ids) => {
+                  if (ids.length) this.broadcast({ t: "achievement", ids, serverNow: Date.now() }, { audience: [userId] });
+                })
+                .catch(() => undefined),
+            );
           }
         }
         return;
@@ -1248,11 +1300,18 @@ export class HuddleHub extends DurableObject {
       case "player": {
         // Only someone sitting in that room (or the bot) drives its player.
         if (!attachment.bot && attachment.voiceChannelId !== event.channelId) return;
-        // While the DJ booth is on air, play/pause/skip belong to the booth.
-        if (
-          liveTrack(this.players.get(event.channelId)) &&
-          LIVE_OWNED_ACTIONS.has(event.action.name)
-        ) {
+        // While the DJ booth is on air, play/pause/skip belong to the booth:
+        // the room's own player stays parked and the button goes to the booth.
+        const live = liveTrack(this.players.get(event.channelId));
+        if (live && LIVE_OWNED_ACTIONS.has(event.action.name)) {
+          const op = djControlFor(event.action.name, live.paused);
+          if (op) {
+            this.ctx.waitUntil(
+              djControl(event.channelId, op).catch((error) =>
+                console.warn("DJ booth control failed", op, String(error)),
+              ),
+            );
+          }
           return;
         }
         await this.applyPlayerAction(event.channelId, event.action);
@@ -1316,6 +1375,7 @@ export class HuddleHub extends DurableObject {
     return null;
   }
 
+  /** The only way to write an attachment: readAttachment trusts the cache first. */
   private saveAttachment(socket: WebSocket, attachment: Attachment): void {
     this.attachmentCache.set(socket, { ...attachment });
     socket.serializeAttachment(attachment);
@@ -1843,9 +1903,7 @@ export class HuddleHub extends DurableObject {
         if (!tracks.length) break;
         if (action.startNow || !state.track) {
           if (action.startNow) {
-            if (state.track) {
-              state.history = [state.track, ...(state.history || [])].slice(0, 25);
-            }
+            if (state.track) this.remember(state, state.track);
             state.queue = [];
           }
           state.track = tracks[0];
@@ -1970,9 +2028,7 @@ export class HuddleHub extends DurableObject {
 
   private advance(state: PlayerState, now: number): void {
     const finished = state.track;
-    if (finished) {
-      state.history = [finished, ...(state.history || [])].slice(0, 25);
-    }
+    if (finished) this.remember(state, finished);
     const next = state.queue.shift() || null;
     if (!next && state.loop === "queue" && finished) {
       state.track = finished;
@@ -2120,5 +2176,22 @@ export class HuddleHub extends DurableObject {
       const remaining = state.track.duration * 1000 - playbackPosition(state);
       if (remaining > 0) await this.armAlarm(Date.now() + remaining + 1500);
     }
+  }
+}
+
+/** What a room's transport button means to the DJ booth while it is on air (seek, stop and ended stay ignored). */
+function djControlFor(name: string, paused: boolean): DjControl | null {
+  switch (name) {
+    case "skip":
+    case "skipto":
+      return "skip";
+    case "pause":
+      return "pause";
+    case "resume":
+      return "resume";
+    case "toggle":
+      return paused ? "resume" : "pause";
+    default:
+      return null;
   }
 }

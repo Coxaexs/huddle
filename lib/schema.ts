@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -858,6 +858,8 @@ async function migrate(db: D1Database): Promise<void> {
     // accounts came from the same place. The address itself is never stored.
     ["signup_ip_hash", "ALTER TABLE users ADD COLUMN signup_ip_hash TEXT"],
     ["disabled_modules", "ALTER TABLE users ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT '[]'"],
+    // Earned achievements the member pinned to their profile (JSON id list).
+    ["achievement_showcase", "ALTER TABLE users ADD COLUMN achievement_showcase TEXT NOT NULL DEFAULT '[]'"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -1109,7 +1111,7 @@ async function migrate(db: D1Database): Promise<void> {
     )
     .run();
   const dndColumns = await columnNames(db, "server_dnd_settings");
-  for (const column of ["combat_music", "explore_music"]) {
+  for (const column of ["combat_music", "explore_music", "game_system"]) {
     if (!dndColumns.has(column)) {
       await db.prepare(`ALTER TABLE server_dnd_settings ADD COLUMN ${column} TEXT`).run();
     }
@@ -1260,6 +1262,18 @@ async function migrate(db: D1Database): Promise<void> {
       seconds INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     )`),
+    // Milestones only the client sees happen (a theme tried, a fish caught),
+    // one row per distinct value, for the explorer achievements.
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_achievement_marks (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, kind, value)
+    )`),
+    // Achievement stats read a member's own messages and reactions.
+    db.prepare("CREATE INDEX IF NOT EXISTS messages_user_time_idx ON messages(user_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS reactions_user_idx ON reactions(user_id)"),
   ]);
 
   await seedDefaultServer(db);

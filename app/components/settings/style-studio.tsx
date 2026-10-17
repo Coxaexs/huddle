@@ -75,6 +75,13 @@ const THEME_PAIRS: [string, string][] = [
   ["#ffd6ec", "#b9e2ff"],
   ["#d9f99d", "#3f6212"],
   ["#ff9f1c", "#2b0a3d"],
+  ["#5fa83f", "#1c3315"],
+  ["#79bd4f", "#6b4220"],
+  ["#3fb8c4", "#131c33"],
+  ["#8a1c1c", "#1a0505"],
+  ["#4d6b22", "#0b0f06"],
+  ["#5a0e0e", "#0a0303"],
+  ["#f5c400", "#1a1a1a"],
 ];
 
 const RING_SWATCHES = ["#23a55a", "#ffffff", "#ff7ab8", "#f43f5e", "#ff7a1a", "#fde047", "#a3ff12", "#2dd4bf", "#38bdf8", "#818cf8", "#b26bff", "#e879f9"];

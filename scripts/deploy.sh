@@ -34,6 +34,16 @@ STAGE="${HUDDLE_BUILD_DIR:-$HOME/.cache/huddle-build}"
 HEALTH_URL="${HUDDLE_HEALTH_URL:-http://127.0.0.1:8730/hangout/}"
 UNIT="${HUDDLE_UNIT:-huddle.service}"
 
+# One deploy at a time. A second one's copy step deletes the staging copy's
+# node_modules link while the first is still building, and that build then
+# fails with "Can't resolve 'tailwindcss'" (2026-10-16).
+mkdir -p "$(dirname "$STAGE")"
+exec 9>"$STAGE.lock"
+if ! flock -n 9; then
+  echo "Another deploy is running; waiting for it to finish ..."
+  flock 9
+fi
+
 touch "$ROOT/.deploying"
 trap 'rm -f "$ROOT/.deploying"' EXIT
 
@@ -71,7 +81,7 @@ echo "Copying the working tree to $STAGE ..."
 mkdir -p "$STAGE"
 rsync -a --delete \
   --exclude=/.git/ --exclude=/node_modules/ --exclude=/dist/ --exclude='/dist-*/' \
-  --exclude=/state/ --exclude='/state.*/' --exclude=/backups/ --exclude=/.wrangler/ \
+  --exclude=/node_modules --exclude=/state/ --exclude='/state.*/' --exclude=/backups/ --exclude=/.wrangler/ \
   --exclude=/.vinext/ --exclude=/mobile/ --exclude=/desktop/ --exclude=/desktop-tauri/ \
   --exclude=/native-qt/ --exclude='*/node_modules/' --exclude=/.deploying \
   "$ROOT/" "$STAGE/"

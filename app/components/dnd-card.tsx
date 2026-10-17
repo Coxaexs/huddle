@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BookOpen, Dices, EyeOff, Search, Sparkles, Swords } from "lucide-react";
 import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
+import type { RouseCard, V5Card } from "@/lib/v5-roll";
+import { RouseCheckCard, V5RollCard } from "./v5-card";
 
 export interface DndRollDie {
   sides: number;
@@ -43,6 +45,10 @@ export interface DndCardProps {
   verified?: boolean;
   /** Runs a slash command as the viewer: click-to-roll and suggestions. */
   onCommand?: (command: string) => void;
+  /** The message the card is in, and who is reading it: a V5 roller may spend Willpower on it. */
+  messageId?: string;
+  viewerId?: string;
+  voiceChannelId?: string | null;
 }
 
 const KIND_ICON: Record<string, ReactNode> = {
@@ -54,7 +60,17 @@ const KIND_ICON: Record<string, ReactNode> = {
 /** Past this many characters the full entry folds behind a button. */
 const FOLD_AT = 1100;
 
+const context = ({ messageId, viewerId, voiceChannelId, rollCommand, onCommand }: DndCardProps) => ({
+  messageId,
+  viewerId,
+  voiceChannelId,
+  rollCommand,
+  onCommand,
+});
+
 export function DndCard(props: DndCardProps) {
+  if (props.type === "v5") return <V5RollCard {...(props as unknown as V5Card)} {...context(props)} />;
+  if (props.type === "rouse") return <RouseCheckCard {...(props as unknown as RouseCard)} {...context(props)} />;
   if (props.type === "roll" && props.secret) return <SecretRollCard {...props} />;
   if (props.type === "roll") return <RollCard {...props} />;
   if (props.type === "suggest") return <SuggestCard {...props} />;
@@ -230,6 +246,10 @@ function SecretRollCard({ rollSeed, label, roller, onCommand }: DndCardProps) {
     return onSecretRoll(rollSeed, (card) => setMine(card as DndCardProps));
   }, [mine, rollSeed]);
 
+  // A /gmv: the roller's own V5 card. Willpower is for open rolls (this one isn't in the channel).
+  if (mine?.type === "v5") {
+    return <V5RollCard {...(mine as unknown as V5Card)} roller="only you can see this" label={label} rollCommand="gmv" onCommand={onCommand} />;
+  }
   if (mine) {
     return <RollCard {...mine} label={label} roller="only you can see this" rollCommand="gmroll" onCommand={onCommand} />;
   }

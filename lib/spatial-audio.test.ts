@@ -151,6 +151,31 @@ it("boosts a voice past 100% through Web Audio, and hands it back to the element
   playback.dispose();
 });
 
+it("turns a voice down through Web Audio where the element ignores volume (iOS)", async () => {
+  const { elements, gains } = environment();
+  // WebKit on iOS: volume is read-only and always reads back 1.
+  const Base = (globalThis as unknown as { Audio: new () => object }).Audio;
+  vi.stubGlobal("Audio", class extends Base {
+    constructor() {
+      super();
+      Object.defineProperty(this, "volume", { get: () => 1, set: () => undefined });
+    }
+  });
+  vi.resetModules();
+  const { SpatialAudioPlayback: Fresh } = await import("../app/lib/spatial-audio");
+  const playback = new Fresh();
+  const input = { key: "bot:music", stream: {} as MediaStream, volume: 0.25, muted: false, pan: null };
+  playback.update([input], false);
+  await Promise.resolve();
+  expect(elements.at(-1)!.muted).toBe(true);
+  expect(gains[0].gain.setTargetAtTime).toHaveBeenLastCalledWith(0.25, 0, 0.025);
+  // Full volume needs no gain, so the element plays it again.
+  playback.update([{ ...input, volume: 1 }], false);
+  expect(gains[0].gain.value).toBe(0);
+  expect(elements.at(-1)!.muted).toBe(false);
+  playback.dispose();
+});
+
 it("turns the listener rather than the table, keeping the seats orthonormal", () => {
   const ahead = listenerOrientation({ yaw: 0, pitch: 0, roll: 0 });
   expect(ahead.forward.z).toBeCloseTo(-1);

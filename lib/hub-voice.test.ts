@@ -84,3 +84,31 @@ it("reports when each seat was taken, and only restarts it on a real re-join", a
     vi.useRealTimers();
   }
 });
+
+it("drops a silent old connection from the room when the same person rejoins", async () => {
+  vi.stubGlobal("WebSocketRequestResponsePair", class {});
+  vi.stubGlobal("WebSocket", { OPEN: 1 });
+  const seat = (connectionId: string, voiceChannelId: string | null) => {
+    let attachment = { connectionId, userId: "u1", voiceChannelId, muted: false, deafened: false, important: false };
+    return {
+      readyState: 1,
+      deserializeAttachment: () => ({ ...attachment }),
+      serializeAttachment: (value: typeof attachment) => { attachment = value; },
+      send: vi.fn(),
+    };
+  };
+  // The old connection's network died without a close, so it still looks open.
+  const stale = seat("old", "room");
+  const fresh = seat("new", null);
+  const ctx = {
+    setWebSocketAutoResponse: vi.fn(), getWebSockets: () => [stale, fresh],
+    storage: { get: vi.fn(async () => undefined), put: vi.fn(async () => undefined) },
+  };
+  const hub = new HuddleHub(ctx as unknown as DurableObjectState, {});
+  // The hub has already read the old seat, so it is cached.
+  await hub.webSocketMessage(stale as unknown as WebSocket, JSON.stringify({ t: "voice-state", muted: false }));
+
+  await hub.webSocketMessage(fresh as unknown as WebSocket, JSON.stringify({ t: "voice-join", channelId: "room" }));
+  const roster = JSON.parse(fresh.send.mock.calls.at(-1)![0]);
+  expect(roster.participants.map((p: { connectionId: string }) => p.connectionId)).toEqual(["new"]);
+});

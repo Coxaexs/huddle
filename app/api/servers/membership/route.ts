@@ -1,3 +1,4 @@
+import { awardAndNotify } from "@/lib/achievements";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
       detail: `via invite ${code}`,
     });
     await publishStructureChange(server.id);
+    await awardAndNotify(db, user.id, { sources: ["people"] });
     return Response.json({
       serverId: server.id,
       servers: await listServers(db, user.id),

@@ -1,9 +1,11 @@
 /**
  * Per-server D&D settings (table server_dnd_settings, created in lib/schema):
- * which rules /spell, /monster and /condition look up by default (2014 SRD or
+ * which game the tabletop plays (D&D 5e or Vampire: The Masquerade V5), which rules /spell, /monster and /condition look up by default (2014 SRD or
  * the 2024 books), homebrew entries imported as JSON, and the music a
  * battlemap switches the call to when the GM starts or ends combat.
  */
+
+import { isGameSystem, type GameSystem } from "./v5-sheet";
 
 export type DndEdition = "2014" | "2024";
 
@@ -21,6 +23,8 @@ export interface HomebrewItem {
 }
 
 export interface DndSettings {
+  /** The game the tabletop plays: the sheet, the screen pages and whether rolls answer as the Storyteller. */
+  system: GameSystem;
   edition: DndEdition;
   homebrew: HomebrewItem[];
   /** A playlist link or a search, e.g. "epic battle music". Empty leaves the music alone. */
@@ -32,7 +36,7 @@ export interface DndSettings {
 export const MAX_HOMEBREW = 300;
 const MAX_DESCRIPTION = 4000;
 
-const DEFAULTS: DndSettings = { edition: "2014", homebrew: [], combatMusic: "", exploreMusic: "" };
+const DEFAULTS: DndSettings = { system: "dnd5e", edition: "2014", homebrew: [], combatMusic: "", exploreMusic: "" };
 
 function text(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -57,9 +61,9 @@ export function cleanHomebrew(raw: unknown): HomebrewItem | null {
 
 export async function getDndSettings(db: D1Database, serverId: string): Promise<DndSettings> {
   const row = await db
-    .prepare("SELECT edition, homebrew_json, combat_music, explore_music FROM server_dnd_settings WHERE server_id = ?")
+    .prepare("SELECT game_system, edition, homebrew_json, combat_music, explore_music FROM server_dnd_settings WHERE server_id = ?")
     .bind(serverId)
-    .first<{ edition: string | null; homebrew_json: string | null; combat_music: string | null; explore_music: string | null }>()
+    .first<{ game_system: string | null; edition: string | null; homebrew_json: string | null; combat_music: string | null; explore_music: string | null }>()
     .catch(() => null);
   if (!row) return { ...DEFAULTS };
   let homebrew: HomebrewItem[] = [];
@@ -70,6 +74,7 @@ export async function getDndSettings(db: D1Database, serverId: string): Promise<
     // A broken column reads as no homebrew.
   }
   return {
+    system: isGameSystem(row.game_system) ? row.game_system : "dnd5e",
     edition: row.edition === "2024" ? "2024" : "2014",
     homebrew,
     combatMusic: row.combat_music || "",
@@ -80,10 +85,10 @@ export async function getDndSettings(db: D1Database, serverId: string): Promise<
 export async function saveDndSettings(db: D1Database, serverId: string, settings: DndSettings): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO server_dnd_settings (server_id, edition, homebrew_json, combat_music, explore_music, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+      `INSERT INTO server_dnd_settings (server_id, edition, homebrew_json, combat_music, explore_music, updated_at, game_system)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
        ON CONFLICT(server_id) DO UPDATE SET edition = ?2, homebrew_json = ?3, combat_music = ?4,
-         explore_music = ?5, updated_at = ?6`,
+         explore_music = ?5, updated_at = ?6, game_system = ?7`,
     )
     .bind(
       serverId,
@@ -92,8 +97,26 @@ export async function saveDndSettings(db: D1Database, serverId: string, settings
       settings.combatMusic || null,
       settings.exploreMusic || null,
       Date.now(),
+      settings.system,
     )
     .run();
+}
+
+/** Just the server's game system (no homebrew to read): what a roll checks to pick its bot. */
+export async function getGameSystem(db: D1Database, serverId: string): Promise<GameSystem> {
+  const row = await db
+    .prepare("SELECT game_system FROM server_dnd_settings WHERE server_id = ?")
+    .bind(serverId)
+    .first<{ game_system: string | null }>()
+    .catch(() => null);
+  return isGameSystem(row?.game_system) ? row.game_system : "dnd5e";
+}
+
+/** Who answers a roll: the Storyteller at a Vampire table (and for V5 dice anywhere), else the D&D Bot. */
+export function rollBot(storyteller: boolean): { author: string; avatar: string; color: string } {
+  return storyteller
+    ? { author: "Storyteller", avatar: "🩸", color: "#b3122a" }
+    : { author: "D&D Bot", avatar: "⚔", color: "#b8a6ff" };
 }
 
 /**

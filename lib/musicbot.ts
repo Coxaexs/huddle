@@ -93,6 +93,22 @@ export async function botFetch(
   return data;
 }
 
+/** Transport controls the DJ booth takes over while it is on air ("skip" = mix into the next song). */
+export type DjControl = "skip" | "pause" | "resume";
+
+/**
+ * Send a transport control to a Hoffle room's DJ booth on the bot. While the
+ * booth is on air the room's own player is parked, so play/pause/skip have to
+ * reach the booth instead.
+ */
+export async function djControl(channelId: string, op: DjControl): Promise<Record<string, any>> {
+  return botFetch(
+    `/api/guilds/${encodeURIComponent(`huddle:${channelId}`)}/dj`,
+    await botSession(),
+    { method: "POST", body: JSON.stringify({ op }) },
+  );
+}
+
 export interface Lyrics {
   track: string | null;
   artist?: string | null;

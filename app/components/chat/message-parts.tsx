@@ -73,7 +73,14 @@ export function MusicPayloadCard({
         />
       );
     case "music-history":
-      return <MusicHistoryCard history={payload.history} disabled={disabled} onCommand={onCommand} />;
+      return (
+        <MusicHistoryCard
+          history={payload.history}
+          long={payload.long === true}
+          disabled={disabled}
+          onCommand={onCommand}
+        />
+      );
     case "music-search":
       return (
         <MusicSearchCard

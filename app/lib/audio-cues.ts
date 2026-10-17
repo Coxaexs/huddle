@@ -11,6 +11,26 @@ import { playThemedCue, themedLoop } from "./themed-cues";
 
 let audioCtx: AudioContext | null = null;
 
+/**
+ * A running context keeps an audio thread rendering silence for as long as the
+ * page is open, so it sleeps between cues and wakes on the next one. A ringtone
+ * reuses its context on a timer, so it stays awake while one rings.
+ */
+const IDLE_SUSPEND_MS = 10_000;
+let idleTimer: number | null = null;
+
+function sleepWhenIdle() {
+  if (idleTimer !== null) window.clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(() => {
+    idleTimer = null;
+    if (ringInterval !== null || incomingRingInterval !== null) {
+      sleepWhenIdle();
+      return;
+    }
+    if (audioCtx?.state === "running") void audioCtx.suspend().catch(() => undefined);
+  }, IDLE_SUSPEND_MS);
+}
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   try {
@@ -26,6 +46,7 @@ function getAudioContext(): AudioContext | null {
     if (audioCtx && audioCtx.state === "suspended") {
       void audioCtx.resume();
     }
+    if (audioCtx) sleepWhenIdle();
     return audioCtx;
   } catch {
     return null;

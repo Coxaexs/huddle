@@ -4,23 +4,41 @@
  * them, and to everyone else that side is plain wood. Each player can keep a
  * little screen of their own (their character, notes, rolls), drawn in their
  * view only. The choices and notes stay in this browser; the character is
- * the table's (lounge-shared).
+ * the table's (lounge-shared). A Vampire table (the server's game system)
+ * swaps the D&D reference pages for its own.
  */
 import type { Initiative, TableCharacter } from "@/lib/lounge-shared";
+import { V5_MAX_HUNGER, V5_WILLPOWER_DICE } from "@/lib/v5-dice";
+import { v5ScreenLines, type GameSystem, type V5Sheet } from "@/lib/v5-sheet";
 import type { ScreenPage } from "../components/tabletop-extras";
 
-export type ScreenPageId = "character" | "initiative" | "party" | "conditions" | "rules" | "notes" | "rolls" | "blank";
+export type ScreenPageId = "character" | "initiative" | "party" | "conditions" | "rules" | "hunger" | "difficulty" | "notes" | "rolls" | "blank";
 
-export const SCREEN_PAGES: Array<{ id: ScreenPageId; label: string }> = [
+/** Pages without a system show at every table. */
+export const SCREEN_PAGES: Array<{ id: ScreenPageId; label: string; system?: GameSystem }> = [
   { id: "character", label: "My character" },
   { id: "initiative", label: "Initiative order" },
   { id: "party", label: "Who is playing whom" },
-  { id: "conditions", label: "Conditions" },
-  { id: "rules", label: "DCs, cover and rules" },
+  { id: "conditions", label: "Conditions", system: "dnd5e" },
+  { id: "rules", label: "DCs, cover and rules", system: "dnd5e" },
+  { id: "hunger", label: "Everyone's Hunger", system: "vtm5" },
+  { id: "difficulty", label: "Difficulties and dice", system: "vtm5" },
   { id: "notes", label: "My notes" },
   { id: "rolls", label: "My hidden rolls" },
   { id: "blank", label: "Nothing" },
 ];
+
+/** Each system's page in the other's place, so a screen set up for one game shows the other's. */
+const SWAPS: Array<[ScreenPageId, ScreenPageId]> = [["conditions", "hunger"], ["rules", "difficulty"]];
+
+/** The page a panel shows at a table playing `system`: a D&D page becomes its Vampire twin, and back. */
+export function pageForSystem(id: ScreenPageId, system: GameSystem): ScreenPageId {
+  for (const [dnd, vtm] of SWAPS) {
+    if (system === "vtm5" && id === dnd) return vtm;
+    if (system === "dnd5e" && id === vtm) return dnd;
+  }
+  return id;
+}
 
 /** Whose screen: the game master's, or a player's own. */
 export type ScreenRole = "gm" | "player";
@@ -30,13 +48,14 @@ export const SCREEN_SIZES: Record<ScreenRole, { min: number; max: number; first:
   gm: { min: 3, max: 5, first: ["initiative", "conditions", "notes"], extra: ["rolls", "party"] },
   player: { min: 2, max: 4, first: ["character", "notes", "rolls"], extra: ["conditions"] },
 };
-/** The pages each kind of screen offers ("My character" is a player's). */
-export const pagesFor = (role: ScreenRole) => SCREEN_PAGES.filter((page) => role === "player" || page.id !== "character");
+/** The pages each kind of screen offers at a table playing `system` ("My character" is a player's). */
+export const pagesFor = (role: ScreenRole, system: GameSystem = "dnd5e") =>
+  SCREEN_PAGES.filter((page) => (role === "player" || page.id !== "character") && (!page.system || page.system === system));
 
 /** The screen at a given panel count: pages kept as far as they go, new panels filled with something useful. */
-export function resizeChoice(role: ScreenRole, choice: ScreenPageId[], count: number): ScreenPageId[] {
+export function resizeChoice(role: ScreenRole, choice: ScreenPageId[], count: number, system: GameSystem = "dnd5e"): ScreenPageId[] {
   const { first, extra } = SCREEN_SIZES[role];
-  const pool = [...first, ...extra].filter((id) => !choice.includes(id));
+  const pool = [...first, ...extra].map((id) => pageForSystem(id, system)).filter((id) => !choice.includes(id));
   const next = choice.slice(0, count);
   while (next.length < count) next.push(pool.shift() ?? "blank");
   return next;
@@ -169,9 +188,32 @@ const RULES = [
   "Short rest: 1 h, spend Hit Dice",
 ];
 
+/** Difficulties as the Storyteller sets them, and the dice rules played every scene. */
+const V5_DIFFICULTIES = [
+  "1: routine",
+  "2: straightforward",
+  "3: moderate",
+  "4: challenging",
+  "5: hard",
+  "6 and up: very hard to nearly impossible",
+  "Success: each die 6-10; ties win",
+  "Critical: each pair of 10s adds 2 more",
+  "Messy critical: a Hunger 10 in the pair",
+  "Bestial failure: a fail with a Hunger 1",
+  `Willpower: reroll up to ${V5_WILLPOWER_DICE} normal dice, once`,
+  "Rouse: 6+ keeps Hunger, else Hunger +1",
+  "Impaired: −2 dice, physical pools when Health is full, social and mental when Willpower is",
+];
+
+const hungerPips = (hunger: number) => "●".repeat(hunger) + "○".repeat(V5_MAX_HUNGER - hunger);
+
 export interface ScreenData {
-  /** The player's own character and sheet (a player's screen only). */
-  character?: { name: string; portraitUrl: string | null; sheet: CharacterSheet; extra?: string[] } | null;
+  /** The player's own character and sheet (a player's screen only); `v5` at a Vampire table. */
+  character?: { name: string; portraitUrl: string | null; sheet: CharacterSheet; extra?: string[]; v5?: V5Sheet } | null;
+  /** The game the table plays: which sheet "My character" shows. */
+  system?: GameSystem;
+  /** Each Vampire at the table and their Hunger. */
+  hunger?: Array<{ character: string; player: string; hunger: number }>;
   initiative: Initiative | null;
   /** Characters at the table: character name and who plays it. */
   party: Array<{ character: string; player: string }>;
@@ -184,6 +226,10 @@ export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage 
   switch (id) {
     case "character": {
       const me = data.character;
+      if (data.system === "vtm5") {
+        if (!me?.v5) return { title: "My character", lines: ["Make your Vampire with the person button: clan, Attributes, Skills, Disciplines."] };
+        return { title: me.name, image: me.portraitUrl, lines: v5ScreenLines(me.v5) };
+      }
       if (!me) return { title: "My character", lines: ["Make one with the person button: a name, class and level, and your spells."] };
       const sheet = me.sheet;
       const pairs = [0, 2, 4].map((i) => `${ABILITIES[i]} ${ability(sheet.abilities[i])} · ${ABILITIES[i + 1]} ${ability(sheet.abilities[i + 1])}`);
@@ -214,6 +260,17 @@ export function buildScreenPage(id: ScreenPageId, data: ScreenData): ScreenPage 
       return { title: "Conditions", lines: CONDITIONS };
     case "rules":
       return { title: "DCs and rules", lines: RULES };
+    case "hunger": {
+      const rows = [...(data.hunger ?? [])].sort((a, b) => b.hunger - a.hunger || a.character.localeCompare(b.character));
+      return {
+        title: "Hunger",
+        lines: rows.length
+          ? rows.map((row) => `${row.character}: ${hungerPips(row.hunger)} ${row.hunger}${row.hunger >= 4 ? " · close to the Beast" : ""}`)
+          : ["No Vampire sheets at the table yet (the person button)."],
+      };
+    }
+    case "difficulty":
+      return { title: "Difficulty", lines: V5_DIFFICULTIES };
     case "notes": {
       const lines = data.notes.split("\n").map((line) => line.trimEnd()).filter((line, i, all) => line || (i > 0 && all[i - 1]));
       return { title: "Notes", lines: lines.length ? lines : ["Write your notes in the panel that set up this screen."] };

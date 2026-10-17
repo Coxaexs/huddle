@@ -2,8 +2,8 @@
 
 import { VOICE_EFFECTS, type VoiceEffect } from "../../lib/voice-effects";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Download } from "lucide-react";
-import { registerMedia, unregisterMedia } from "../../lib/devices";
+import { Download, Headphones } from "lucide-react";
+import { registerMedia, saveDevice, supportsOutputSelection, unregisterMedia, type DeviceOption } from "../../lib/devices";
 import { canRecordMicTest, recordingExtension, recordMicTest, TEST_SECONDS } from "../../lib/mic-recording";
 import { GAIN_RANGE, openMicrophone, SENSITIVITY_RANGE, type MicChain, type MicSettings, type MicTelemetry } from "../../lib/mic-chain";
 
@@ -178,12 +178,12 @@ export function MicRecordTest({
             ? `Stop (${Math.ceil(TEST_SECONDS - elapsed)}s)`
             : phase === "ready"
               ? "Record again"
-              : "Record a test"}
+              : "Record a sample"}
         </button>
         <small className="modal-hint">
           {phase === "recording"
             ? "Talk normally — and try a swallow, a sip or a cough too."
-            : `Records ${TEST_SECONDS} seconds and plays you back exactly as other people hear you.`}
+            : `Records ${TEST_SECONDS} seconds you can play back or save — handy when someone says you sound odd.`}
         </small>
       </div>
       {phase === "recording" && (
@@ -203,284 +203,436 @@ export function MicRecordTest({
     </div>
   );
 }
+
+type InputMode = "activity" | "ptt" | "open";
+
 /**
- * The Voice input controls: sensitivity, gain and suppression.
+ * Devices, the mic check, how your mic opens, and noise suppression — the part
+ * of Voice & Video most people ever touch. Everything else sits folded away
+ * under "More voice options".
  *
  * Whenever you are in a call these read and steer the chain that is actually
- * running, so every change is audible to the room immediately. Outside a call
- * "Test microphone" opens a private chain with the same settings, which is the
- * only honest way to preview them.
+ * running, so every change is audible to the room immediately. "Let's check"
+ * opens a private chain with the same settings and plays it straight back to
+ * you, the way Discord does: no recording, no waiting. In a call you are
+ * deafened (and so muted) for as long as it runs, so you hear only yourself
+ * and the room does not hear the test.
  */
 export function VoiceInput({
   settings,
   onChange,
   subscribe,
   inCall,
+  micId,
+  onMicId,
+  microphones,
+  speakerId,
+  onSpeakerId,
+  speakers,
+  pushToTalk,
+  onPushToTalk,
+  pttKey,
+  onPttKey,
+  capturingKey,
+  setCapturingKey,
+  onMicTestHold,
 }: {
   settings: MicSettings;
   onChange: (next: Partial<MicSettings>) => void;
   subscribe?: (listener: (telemetry: MicTelemetry) => void) => () => void;
   inCall: boolean;
+  micId: string;
+  onMicId: (id: string) => void;
+  microphones: DeviceOption[];
+  speakerId: string;
+  onSpeakerId: (id: string) => void;
+  speakers: DeviceOption[];
+  pushToTalk: boolean;
+  onPushToTalk: ((enabled: boolean) => void) | undefined;
+  pttKey: string;
+  onPttKey: ((code: string) => void) | undefined;
+  capturingKey: boolean;
+  setCapturingKey: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Deafen for the length of a mic check, then put back what was there. */
+  onMicTestHold?: (active: boolean) => void;
 }) {
   const [telemetry, setTelemetry] = useState<MicTelemetry | null>(null);
-  const [testing, setTesting] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
   const testChainRef = useRef<MicChain | null>(null);
+  const loopbackRef = useRef<HTMLAudioElement | null>(null);
+  const holdRef = useRef(onMicTestHold);
+  holdRef.current = onMicTestHold;
+  const heldRef = useRef(false);
+
+  // The loopback is a registered element so it plays on the chosen output.
+  useEffect(() => {
+    const element = loopbackRef.current;
+    registerMedia(element);
+    return () => unregisterMedia(element);
+  }, []);
 
   useEffect(() => {
-    if (!inCall || !subscribe) return;
+    if (!inCall || !subscribe || checking) return;
     return subscribe(setTelemetry);
-  }, [inCall, subscribe]);
+  }, [inCall, subscribe, checking]);
 
   /** Bumped by every stop, so a microphone still opening knows it is too late. */
   const testRunRef = useRef(0);
-  const stopTest = useCallback(() => {
-    testRunRef.current += 1;
-    testChainRef.current?.stop();
-    testChainRef.current = null;
-    setTesting(false);
-    setTelemetry(null);
-  }, []);
-
-  useEffect(() => stopTest, [stopTest]);
-
-  const startTest = async () => {
-    if (testing) {
-      stopTest();
-      return;
-    }
-    try {
-      const chain = await openMicrophone();
-      chain.onTelemetry(setTelemetry);
-      testChainRef.current = chain;
-      setTesting(true);
-    } catch {
-      stopTest();
+  const attach = (chain: MicChain) => {
+    chain.onTelemetry(setTelemetry);
+    testChainRef.current = chain;
+    const element = loopbackRef.current;
+    if (element) {
+      element.srcObject = chain.stream;
+      void element.play().catch(() => undefined);
     }
   };
 
-  // Changes have to reach the preview chain as well as the saved settings, or
-  // the meter goes on showing the old behaviour while you drag the slider.
-  const change = (next: Partial<MicSettings>) => {
-    onChange(next);
-    if (next.echoCancellation !== undefined && testChainRef.current) {
-      // Part of the capture itself, so the preview needs a fresh microphone
-      // too — the same thing the call does.
-      testChainRef.current.stop();
-      testChainRef.current = null;
-      const run = testRunRef.current;
-      openMicrophone().then((chain) => {
-        // The dialog may have closed, or the test stopped, while it opened.
-        if (run !== testRunRef.current) return chain.stop();
-        chain.onTelemetry(setTelemetry);
-        testChainRef.current = chain;
-      }, stopTest);
+  const stopCheck = useCallback(() => {
+    testRunRef.current += 1;
+    testChainRef.current?.stop();
+    testChainRef.current = null;
+    const element = loopbackRef.current;
+    if (element) {
+      element.pause();
+      element.srcObject = null;
+    }
+    if (heldRef.current) {
+      heldRef.current = false;
+      holdRef.current?.(false);
+    }
+    setChecking(false);
+    setTelemetry(null);
+  }, []);
+
+  useEffect(() => stopCheck, [stopCheck]);
+
+  const startCheck = async () => {
+    if (checking) {
+      stopCheck();
       return;
     }
-    testChainRef.current?.update(next);
+    setCheckError("");
+    const run = testRunRef.current;
+    setChecking(true);
+    if (inCall && holdRef.current) {
+      heldRef.current = true;
+      holdRef.current(true);
+    }
+    try {
+      const chain = await openMicrophone();
+      if (run !== testRunRef.current) return chain.stop();
+      attach(chain);
+    } catch (error) {
+      stopCheck();
+      setCheckError(error instanceof Error ? error.message : "The microphone could not be opened.");
+    }
+  };
+
+  /** Some changes are part of the capture itself, so the check needs a fresh microphone. */
+  const reopen = () => {
+    if (!testChainRef.current) return;
+    testChainRef.current.stop();
+    testChainRef.current = null;
+    const run = testRunRef.current;
+    openMicrophone().then((chain) => {
+      // The dialog may have closed, or the check stopped, while it opened.
+      if (run !== testRunRef.current) return chain.stop();
+      attach(chain);
+    }, stopCheck);
+  };
+
+  // Picking another microphone mid-check switches what you hear.
+  useEffect(() => {
+    reopen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [micId]);
+
+  // Changes have to reach the check's chain as well as the saved settings, or
+  // you go on hearing the old behaviour while you drag the slider.
+  const change = (next: Partial<MicSettings>) => {
+    onChange(next);
+    if (next.echoCancellation !== undefined) reopen();
+    else testChainRef.current?.update(next);
   };
 
   const manual = settings.sensitivity !== "auto";
   const threshold = manual ? (settings.sensitivity as number) : null;
+  const mode: InputMode = pushToTalk ? "ptt" : settings.gate ? "activity" : "open";
+  const setMode = (next: InputMode) => {
+    if (next === "ptt") {
+      onPushToTalk?.(true);
+      return;
+    }
+    if (pushToTalk) onPushToTalk?.(false);
+    if (settings.gate !== (next === "activity")) change({ gate: next === "activity" });
+  };
+  const modes: Array<[InputMode, string]> = [
+    ["activity", "Voice activity"],
+    ...(onPushToTalk ? [["ptt", "Push to talk"] as [InputMode, string]] : []),
+    ["open", "Always on"],
+  ];
 
   return (
-    <div className="mic-test-container">
-      <div className="mic-test-header">
-        <label className="flex items-center gap-1.5 font-semibold text-sm">
-          <Mic size={16} /> Input
-        </label>
-        {inCall ? (
-          <span className="modal-hint">Live</span>
-        ) : (
+    <>
+      <section className="vs-section">
+        <h3 className="field-label">Devices</h3>
+        <div className="vs-device-grid">
+          <div>
+            <label htmlFor="settings-mic">Input device</label>
+            <select id="settings-mic" value={micId} onChange={(event) => onMicId(event.target.value)}>
+              <option value="">System default</option>
+              {microphones.map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="settings-speaker">Output device</label>
+            {supportsOutputSelection() ? (
+              <select
+                id="settings-speaker"
+                value={speakerId}
+                onChange={(event) => {
+                  onSpeakerId(event.target.value);
+                  saveDevice("speaker", event.target.value);
+                }}
+              >
+                <option value="">System default</option>
+                {speakers.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="modal-hint vs-device-note">
+                This browser uses whatever output your system picks — change it there.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="vs-section">
+        <h3 className="field-label">Mic test</h3>
+        <div className="vs-mic-check">
           <button
             type="button"
-            className={`discord-btn ${testing ? "danger-red" : "primary-indigo"}`}
-            onClick={() => void startTest()}
+            className={`discord-btn ${checking ? "danger-red" : "primary-indigo"}`}
+            onClick={() => void startCheck()}
           >
-            {testing ? "Stop Testing" : "Test Microphone"}
+            {checking ? "Stop checking" : "Let's check"}
+          </button>
+          <InputMeter telemetry={telemetry} threshold={mode === "activity" ? threshold : null} />
+        </div>
+        <p className="modal-hint">
+          {checking ? (
+            <>
+              <Headphones size={13} className="vs-inline-icon" /> You&apos;re hearing yourself the way
+              others do{inCall ? " — the call is deafened until you stop" : ""}. Use headphones,
+              or speakers will feed back.
+            </>
+          ) : inCall ? (
+            "The meter is your live call mic. Let's check deafens you and plays you back."
+          ) : (
+            "Plays your mic straight back to you, with all your settings applied."
+          )}
+        </p>
+        {checkError && <small className="mic-record-error">{checkError}</small>}
+        <audio ref={loopbackRef} hidden />
+      </section>
+
+      <section className="vs-section">
+        <h3 className="field-label">Input mode</h3>
+        <div className="appearance-choice-row vs-mode-row" role="radiogroup" aria-label="Input mode">
+          {modes.map(([id, label]) => (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === id}
+              key={id}
+              className={mode === id ? "active" : ""}
+              onClick={() => setMode(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "activity" && (
+          <>
+            <label className="appearance-switch">
+              <span>
+                <strong>Automatic sensitivity</strong>
+                <small>Works out what is you and what is the room</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={!manual}
+                onChange={(event) => change({ sensitivity: event.target.checked ? "auto" : -50 })}
+              />
+            </label>
+            {manual && (
+              <label className="appearance-range vs-sensitivity">
+                <span>
+                  Sensitivity <small>{threshold} dB · the red line on the meter</small>
+                </span>
+                <input
+                  type="range"
+                  min={SENSITIVITY_RANGE.min}
+                  max={SENSITIVITY_RANGE.max}
+                  step={1}
+                  value={threshold ?? -50}
+                  onChange={(event) => change({ sensitivity: Number(event.target.value) })}
+                />
+              </label>
+            )}
+          </>
+        )}
+
+        {mode === "ptt" && (
+          <button
+            type="button"
+            className="ptt-key-button"
+            onClick={() => setCapturingKey(true)}
+            onKeyDown={(event) => {
+              if (!capturingKey) return;
+              event.preventDefault();
+              onPttKey?.(event.code);
+              setCapturingKey(false);
+            }}
+          >
+            {capturingKey ? "Press a key…" : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
           </button>
         )}
-      </div>
 
-      <InputMeter telemetry={telemetry} threshold={threshold} />
+        {mode === "open" && (
+          <p className="modal-hint">Your mic sends all the time, including the room between sentences.</p>
+        )}
+      </section>
 
-      <MicRecordTest
-        settings={settings}
-        previewChain={testChainRef}
-        onTelemetry={inCall ? undefined : setTelemetry}
-      />
+      <section className="vs-section">
+        <label htmlFor="settings-suppression" className="field-label">Noise suppression</label>
+        <select
+          id="settings-suppression"
+          value={settings.mode}
+          onChange={(event) => change({ mode: event.target.value as MicSettings["mode"] })}
+        >
+          <option value="off">Off</option>
+          <option value="browser">Standard</option>
+          <option value="rnnoise">Enhanced — removes fans, keyboards, hum</option>
+          <option value="voice">Strong — also removes voices in the background</option>
+        </select>
+        <p className="modal-hint">
+          {settings.mode === "voice"
+            ? "Silences quieter, farther-away speech like a TV. If your first word gets cut off, use Enhanced."
+            : settings.mode === "rnnoise"
+              ? "Runs on your own device."
+              : settings.mode === "browser"
+                ? "Your browser's built-in filter."
+                : "Everything your mic picks up is sent."}
+        </p>
+      </section>
 
-      <label className="appearance-switch">
-        <span>
-          <strong>Automatic input volume</strong>
-          <small>
-            {settings.autoGain
-              ? `Levelling your voice for you${
-                  telemetry ? ` (${telemetry.gainDb.toFixed(0)} dB)` : ""
-                }`
-              : "Set the input gain yourself"}
-          </small>
-        </span>
-        <input
-          type="checkbox"
-          checked={settings.autoGain}
-          onChange={(event) => change({ autoGain: event.target.checked })}
-        />
-      </label>
-
-      {!settings.autoGain && (
-        <label className="appearance-range">
-          <span>
-            Input volume <small>{settings.gainDb > 0 ? "+" : ""}{settings.gainDb} dB</small>
-          </span>
-          <input
-            type="range"
-            min={GAIN_RANGE.min}
-            max={GAIN_RANGE.max}
-            step={1}
-            value={settings.gainDb}
-            onChange={(event) => change({ gainDb: Number(event.target.value) })}
-          />
-        </label>
-      )}
-
-      <label className="appearance-switch">
-        <span>
-          <strong>Noise gate</strong>
-          <small>Stay silent between sentences instead of sending the room</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={settings.gate}
-          onChange={(event) => change({ gate: event.target.checked })}
-        />
-      </label>
-
-      {settings.gate && (
-        <>
+      <details className="vs-more">
+        <summary>More voice options</summary>
+        <div className="vs-more-body">
           <label className="appearance-switch">
             <span>
-              <strong>Automatic sensitivity</strong>
-              <small>Work out what is you and what is the room</small>
+              <strong>Automatic input volume</strong>
+              <small>
+                {settings.autoGain
+                  ? `Levels your voice for you${telemetry ? ` (${telemetry.gainDb.toFixed(0)} dB)` : ""}`
+                  : "Set the input volume yourself"}
+              </small>
             </span>
             <input
               type="checkbox"
-              checked={!manual}
-              onChange={(event) =>
-                change({ sensitivity: event.target.checked ? "auto" : -50 })
-              }
+              checked={settings.autoGain}
+              onChange={(event) => change({ autoGain: event.target.checked })}
             />
           </label>
-
-          {manual && (
+          {!settings.autoGain && (
             <label className="appearance-range">
               <span>
-                Sensitivity <small>{threshold} dB</small>
+                Input volume <small>{settings.gainDb > 0 ? "+" : ""}{settings.gainDb} dB</small>
               </span>
               <input
                 type="range"
-                min={SENSITIVITY_RANGE.min}
-                max={SENSITIVITY_RANGE.max}
+                min={GAIN_RANGE.min}
+                max={GAIN_RANGE.max}
                 step={1}
-                value={threshold ?? -50}
-                onChange={(event) =>
-                  change({ sensitivity: Number(event.target.value) })
-                }
+                value={settings.gainDb}
+                onChange={(event) => change({ gainDb: Number(event.target.value) })}
               />
             </label>
           )}
-        </>
-      )}
 
-      <label className="appearance-switch voice-effect-row">
-        <span>
-          <strong>Voice effect</strong>
-          <small>
-            {VOICE_EFFECTS.find((effect) => effect.id === settings.voiceEffect)?.hint}
-            {settings.voiceEffect !== "none" && " · everyone in the call hears it"}
-          </small>
-        </span>
-        <select
-          className="voice-effect-select"
-          value={settings.voiceEffect}
-          onChange={(event) => change({ voiceEffect: event.target.value as VoiceEffect })}
-        >
-          {VOICE_EFFECTS.map((effect) => (
-            <option key={effect.id} value={effect.id}>
-              {effect.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          <label className="appearance-switch">
+            <span>
+              <strong>Echo cancellation</strong>
+              <small>Keep on with speakers. On headphones, off keeps your voice fuller.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={settings.echoCancellation}
+              onChange={(event) => change({ echoCancellation: event.target.checked })}
+            />
+          </label>
 
-      <label className="appearance-switch">
-        <span>
-          <strong>Voice clarity</strong>
-          <small>
-            Cuts desk thumps, fan rumble and mic pops from under your voice,
-            without thinning the voice itself.
-          </small>
-        </span>
-        <input
-          type="checkbox"
-          checked={settings.clarity}
-          onChange={(event) => change({ clarity: event.target.checked })}
-        />
-      </label>
+          <label className="appearance-switch">
+            <span>
+              <strong>Voice clarity</strong>
+              <small>Cuts desk thumps, fan rumble and mic pops</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={settings.clarity}
+              onChange={(event) => change({ clarity: event.target.checked })}
+            />
+          </label>
 
-      <label className="appearance-switch">
-        <span>
-          <strong>Echo cancellation</strong>
-          <small>
-            Keep this on with speakers. On headphones you can turn it off: there
-            is no echo to cancel, and your voice stays fuller when people talk
-            over each other.
-          </small>
-        </span>
-        <input
-          type="checkbox"
-          checked={settings.echoCancellation}
-          onChange={(event) => change({ echoCancellation: event.target.checked })}
-        />
-      </label>
+          <label className="appearance-switch voice-effect-row">
+            <span>
+              <strong>Voice effect</strong>
+              <small>
+                {VOICE_EFFECTS.find((effect) => effect.id === settings.voiceEffect)?.hint}
+                {settings.voiceEffect !== "none" && " · everyone in the call hears it"}
+              </small>
+            </span>
+            <select
+              className="voice-effect-select"
+              value={settings.voiceEffect}
+              onChange={(event) => change({ voiceEffect: event.target.value as VoiceEffect })}
+            >
+              {VOICE_EFFECTS.map((effect) => (
+                <option key={effect.id} value={effect.id}>{effect.label}</option>
+              ))}
+            </select>
+          </label>
 
-      <label className="appearance-range">
-        <span>
-          <strong>Stream / Voice Delay</strong> <small>{settings.delayMs || 0} ms</small>
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={2000}
-          step={25}
-          value={settings.delayMs || 0}
-          onChange={(event) => change({ delayMs: Number(event.target.value) })}
-        />
-      </label>
-      <p className="modal-hint">
-        Buffer outgoing microphone audio to synchronize voice with screenshare or add latency (0 - 2000 ms).
-      </p>
+          <label className="appearance-range">
+            <span>
+              <strong>Voice delay</strong> <small>{settings.delayMs || 0} ms</small>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={2000}
+              step={25}
+              value={settings.delayMs || 0}
+              onChange={(event) => change({ delayMs: Number(event.target.value) })}
+            />
+          </label>
+          <p className="modal-hint">Holds your voice back to line it up with a screen share. Leave at 0 otherwise.</p>
 
-      <label htmlFor="settings-suppression">Noise suppression</label>
-      <select
-        id="settings-suppression"
-        value={settings.mode}
-        onChange={(event) =>
-          change({ mode: event.target.value as MicSettings["mode"] })
-        }
-      >
-        <option value="off">Off</option>
-        <option value="browser">Standard — your browser&apos;s filter</option>
-        <option value="rnnoise">Enhanced — removes fans, keyboards, hum</option>
-        <option value="voice">Remove background noise &amp; voices — runs on your device</option>
-      </select>
-      <p className="modal-hint">
-        Enhanced and Remove background noise &amp; voices run a small neural
-        network on your own machine, so no GPU server is needed. The second one
-        also learns
-        how loud you are at the mic and silences quieter, farther-away speech —
-        a TV or someone across the room. If people say your first word gets
-        cut off, switch back to Enhanced.
-      </p>
-    </div>
+          <MicRecordTest
+            settings={settings}
+            previewChain={testChainRef}
+            onTelemetry={inCall ? undefined : setTelemetry}
+          />
+        </div>
+      </details>
+    </>
   );
 }

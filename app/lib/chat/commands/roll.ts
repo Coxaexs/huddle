@@ -6,6 +6,16 @@ import { inheritDiceStyle } from "@/lib/dice-styles";
 import type { Message } from "../types";
 import type { PostBotMessage } from "./types";
 
+/** Everything the roll route rolls: D&D notation, and Vampire V5 pools and Rouse checks. */
+export const ROLL_COMMANDS = new Set(["roll", "gmroll", "blindroll", "v", "vroll", "vtm", "gmv", "rouse"]);
+
+/** V5 rolls answer as the Storyteller, the rest as the D&D Bot. */
+function botFor(raw: string) {
+  return /^\/(?:v|vroll|vtm|gmv|rouse)\b/i.test(raw)
+    ? { author: "Storyteller", avatar: "🩸" }
+    : { author: "D&D Bot", avatar: "⚔" };
+}
+
 export interface RollContext {
   /** The voice room the 3D dice show in, if any. */
   voiceChannelId: string | null;
@@ -56,6 +66,8 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
       posted?: boolean;
       /** /gmroll: the real card, sent to the roller only. */
       secretCard?: Record<string, unknown>;
+      /** Who answers: the Storyteller at a Vampire table, else as botFor guesses. */
+      bot?: { author: string; avatar: string };
     }>("/api/integrations/dnd/roll", {
       method: "POST",
       body: JSON.stringify({
@@ -69,10 +81,7 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
       }),
     });
     if (data.error) {
-      await postBotMessage(data.error, {
-        author: "D&D Bot",
-        avatar: "⚔",
-      });
+      await postBotMessage(data.error, botFor(raw));
       return;
     }
     if (data.roll && data.secretCard) {
@@ -83,15 +92,14 @@ export async function runRollCommand(raw: string, ctx: RollContext): Promise<voi
     }
     if (data.posted) return;
     await postBotMessage(data.text || "The roll succeeded.", {
-      author: "D&D Bot",
-      avatar: "⚔",
+      ...(data.bot ?? botFor(raw)),
       kind: data.kind,
       payload: data.payload,
     });
   } catch (error) {
     await postBotMessage(
       error instanceof Error ? error.message : "The roll failed.",
-      { author: "D&D Bot", avatar: "⚔" },
+      botFor(raw),
     );
   }
   return;

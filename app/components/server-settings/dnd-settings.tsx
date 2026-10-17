@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/client";
 import type { DndSettings } from "@/lib/dnd-rules";
+import { GAME_SYSTEM_EVENT } from "../../lib/game-system";
 
 /**
- * Server Settings → Integrations: the server's D&D settings. Which books
+ * Server Settings → Integrations: the server's tabletop settings. Which game
+ * the table plays (D&D 5e or Vampire: The Masquerade V5), which books
  * /spell and /monster read by default, homebrew entries, and the music a
  * battlemap switches the call to when the GM starts or ends combat.
  */
@@ -52,6 +54,8 @@ export function DndSettingsPanel({
         { method: "POST", body: JSON.stringify({ serverId, ...change }) },
       );
       setSettings(data);
+      // An open tabletop in this tab switches sheets at once.
+      window.dispatchEvent(new CustomEvent(GAME_SYSTEM_EVENT, { detail: { serverId, system: data.system } }));
       onNotice(
         data.imported
           ? `Imported ${data.imported.added} homebrew ${data.imported.added === 1 ? "entry" : "entries"}${
@@ -91,7 +95,31 @@ export function DndSettingsPanel({
   const musicChanged = combatMusic !== settings.combatMusic || exploreMusic !== settings.exploreMusic;
   return (
     <section className="dnd-settings">
-      <h2>D&amp;D</h2>
+      <h2>Tabletop</h2>
+
+      <div className="dnd-settings-row">
+        <div>
+          <strong>Game system</strong>
+          <p>
+            Which sheet &quot;My character&quot; opens, what the screens show, and who answers rolls (the D&amp;D Bot or
+            the Storyteller). /v and /rouse work either way.
+          </p>
+        </div>
+        <div className="dnd-settings-toggle" role="group" aria-label="Game system">
+          {(["dnd5e", "vtm5"] as const).map((system) => (
+            <button
+              key={system}
+              type="button"
+              className={`discord-btn ${settings.system === system ? "primary-indigo" : "secondary"}`}
+              aria-pressed={settings.system === system}
+              disabled={saving}
+              onClick={() => void save({ system }, system === "vtm5" ? "The table now plays Vampire: The Masquerade (V5)." : "The table now plays D&D 5e.")}
+            >
+              {system === "dnd5e" ? "D&D 5e" : "Vampire V5"}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="dnd-settings-row">
         <div>

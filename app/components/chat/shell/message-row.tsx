@@ -25,10 +25,12 @@ import type { MusicSettings } from "../../music-cards";
 import { NowPlaying } from "../../now-playing";
 import { OutlineEmoji } from "../../outline-emoji";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
-import { QUICK_VOTES } from "../../../lib/chat/constants";
+import { DM_HOME, QUICK_VOTES } from "../../../lib/chat/constants";
+import { buildMessageLink, resolveMessageLink, type MessageLinkTarget } from "../../../lib/chat/message-links";
 import { apiFetch } from "../../../lib/client";
 import { dayDividerLabel, formatClientTime, formatClientDateTime } from "../../../lib/chat/format";
 import { extractInviteCodes } from "../../../lib/chat/invites";
+import { clampTtsVoice, detectLanguage, getTtsVoice, speakableText, speakMessage } from "../../../lib/tts/client";
 import { MessageReactions } from "../message-reactions";
 import { MessageEditor, MUSIC_CARD_KINDS, MusicPayloadCard } from "../message-parts";
 import { type VoicePref } from "../../user-menu";
@@ -67,6 +69,7 @@ function MessageRowImpl({
   openActionsId,
   reactionPicker,
   ttsSpeakingId,
+  setTtsSpeakingId,
   handleMessageTouchStart,
   handleMessageTouchMove,
   handleMessageTouchEnd,
@@ -156,6 +159,7 @@ function MessageRowImpl({
   openActionsId: string | number | null;
   reactionPicker: { messageId: string | number; top: number; right: number; mode?: "react" | "addToQuickReactions"; } | null;
   ttsSpeakingId: string | null;
+  setTtsSpeakingId: Dispatch<SetStateAction<string | null>>;
   handleMessageTouchStart: (messageId: string | number, e: React.TouchEvent) => void;
   handleMessageTouchMove: (e: React.TouchEvent) => void;
   handleMessageTouchEnd: () => void;
@@ -235,6 +239,18 @@ function MessageRowImpl({
   } | null>(null);
 
   const closeCtxMenu = () => setCtxMenu(null);
+
+  /** Opens a linked message: its server (or DMs), its channel, scrolled to it. */
+  const openMessageLink = (target: MessageLinkTarget) => {
+    void resolveMessageLink(target)
+      .then(({ serverId, channelId, messageId }) => {
+        setActiveServerId(serverId || DM_HOME);
+        jumpToMessage(channelId, messageId);
+      })
+      .catch((error) =>
+        setNotice(error instanceof Error ? error.message : "That message can't be opened."),
+      );
+  };
                   const dayLabel = dayDividerLabel(message, prev) ?? undefined;
                   if (message.kind?.startsWith("system-")) {
                     const pinnedId =
@@ -603,6 +619,9 @@ function MessageRowImpl({
                         ) : message.kind === "dnd" && message.payload ? (
                           <DndCard
                             {...message.payload}
+                            messageId={String(message.id)}
+                            viewerId={user.id}
+                            voiceChannelId={voiceChannelId}
                             onCommand={(command) => void runCommand(command)}
                           />
                         ) : MUSIC_CARD_KINDS.has(message.kind || "") && message.payload ? (
@@ -669,6 +688,7 @@ function MessageRowImpl({
                             channels={activeServer?.channels}
                             roles={activeServer?.roles}
                             onChannel={openMentionedChannel}
+                            onMessageLink={openMessageLink}
                           />
                         )}
 
@@ -1274,7 +1294,11 @@ function MessageRowImpl({
                         }}
                         onCopyLink={() => {
                           closeCtxMenu();
-                          const link = `${window.location.origin}/hangout?message=${message.id}`;
+                          const link = buildMessageLink({
+                            messageId: String(message.id),
+                            channelId: message.channelId || activeChannelId || undefined,
+                            serverId: inDmHome ? undefined : activeServer?.id,
+                          });
                           void navigator.clipboard.writeText(link);
                           setNotice("Message link copied.");
                           setOpenActionsId(null);
@@ -1282,7 +1306,24 @@ function MessageRowImpl({
                         }}
                         onSpeak={() => {
                           closeCtxMenu();
-                          setNotice("Speak message coming soon.");
+                          const text = speakableText(message.text || "");
+                          if (!text) {
+                            setNotice("There is nothing in that message to read aloud.");
+                          } else {
+                            // A /tts message keeps its sender's language and voice;
+                            // anything else is guessed and read in this device's voice.
+                            const tts = message.payload?.tts;
+                            const spokenId = String(message.id);
+                            void speakMessage(
+                              text,
+                              tts ? (tts.lang === "tr" ? "tr" : "en") : detectLanguage(text) ?? "en",
+                              {
+                                onStart: () => setTtsSpeakingId(spokenId),
+                                onEnd: () => setTtsSpeakingId((current) => (current === spokenId ? null : current)),
+                              },
+                              tts ? clampTtsVoice(tts.voice) : getTtsVoice(),
+                            ).catch(() => setNotice("Could not read that message aloud."));
+                          }
                           setOpenActionsId(null);
                           setMobileActionsMoreId(null);
                         }}
@@ -1338,8 +1379,21 @@ function MessageRowImpl({
                         }}
                         onAddReaction={() => {
                           closeCtxMenu();
+                          // The picker opens beside whatever it was clicked from; here
+                          // that is the message's right edge (where the hover bar's
+                          // react button sits), level with the right-click.
+                          const row = document.getElementById(`msg-${message.id}`)?.getBoundingClientRect();
+                          const anchor = new DOMRect(
+                            row ? row.right - 48 : window.innerWidth - 64,
+                            ctxMenu?.y ?? row?.top ?? 0,
+                            0,
+                            0,
+                          );
                           handleOpenReactionPicker(
-                            { clientX: ctxMenu?.x, clientY: ctxMenu?.y } as React.MouseEvent,
+                            {
+                              stopPropagation: () => undefined,
+                              currentTarget: { getBoundingClientRect: () => anchor },
+                            } as unknown as MouseEvent,
                             message.id,
                             "react",
                           );

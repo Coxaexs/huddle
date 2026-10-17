@@ -13,6 +13,7 @@ export function maskRoll(roll: DiceRollEvent): DiceRollEvent {
     expression: "",
     modifier: 0,
     total: 0,
+    summary: undefined,
     dice: roll.dice.map((term) => ({
       ...term,
       rolls: term.rolls.map(() => ({ value: 0, kept: true })),

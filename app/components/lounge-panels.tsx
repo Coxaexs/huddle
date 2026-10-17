@@ -12,6 +12,7 @@ import { searchSpells } from "../lib/spell-book";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
+import type { GameSystem } from "@/lib/v5-sheet";
 
 const formatTime = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
@@ -30,7 +31,7 @@ interface YouTubeVideo {
 }
 
 /** Uploads a file to this server and returns the link everyone can load it from. */
-async function upload(file: File): Promise<string> {
+export async function upload(file: File): Promise<string> {
   const form = new FormData();
   form.append("file", file);
   const result = await apiFetch<{ url: string }>("/api/uploads", { method: "POST", body: form });
@@ -542,7 +543,7 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
  * What a screen's panels show, panel by panel, and how many it has: the game
  * master's three to five, a player's two to four.
  */
-function ScreenPagesPicker({ role, choice, setChoice }: { role: ScreenRole; choice: ScreenPageId[]; setChoice: (value: ScreenPageId[]) => void }) {
+export function ScreenPagesPicker({ role, choice, setChoice, system = "dnd5e" }: { role: ScreenRole; choice: ScreenPageId[]; setChoice: (value: ScreenPageId[]) => void; system?: GameSystem }) {
   const { min, max } = SCREEN_SIZES[role];
   const counts = Array.from({ length: max - min + 1 }, (_, i) => min + i);
   // As the owner sees them: Left, Middle, Right; with more, the ones between are numbered.
@@ -553,14 +554,14 @@ function ScreenPagesPicker({ role, choice, setChoice }: { role: ScreenRole; choi
       <div className="lr-row lr-panels" role="group" aria-label="Panels">
         <small>Panels</small>
         {counts.map((count) => (
-          <button key={count} type="button" className={choice.length === count ? "active" : ""} aria-pressed={choice.length === count} onClick={() => setChoice(resizeChoice(role, choice, count))}>{count}</button>
+          <button key={count} type="button" className={choice.length === count ? "active" : ""} aria-pressed={choice.length === count} onClick={() => setChoice(resizeChoice(role, choice, count, system))}>{count}</button>
         ))}
       </div>
       {choice.map((id, index) => (
         <label key={index} className="lr-field lr-inline">
           <small>{label(index)}</small>
           <select value={id} onChange={(event) => setChoice(choice.map((old, i) => (i === index ? (event.target.value as ScreenPageId) : old)))}>
-            {pagesFor(role).map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
+            {pagesFor(role, system).map((page) => <option key={page.id} value={page.id}>{page.label}</option>)}
           </select>
         </label>
       ))}
@@ -763,7 +764,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, on
  * The tabletop's game master: who it is and their chair, the battle map on
  * the table, and what the inside of their screen shows.
  */
-export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, squares, setSquares, choice, setChoice, folded, setFolded, notes, setNotes, onClose }: {
+export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, squares, setSquares, choice, setChoice, folded, setFolded, notes, setNotes, onClose, system = "dnd5e" }: {
   gm: GameMaster | null;
   myId: string | null;
   myName: string;
@@ -784,6 +785,8 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   notes: string;
   setNotes: (value: string) => void;
   onClose: () => void;
+  /** The game the table plays: which reference pages the screen offers. */
+  system?: GameSystem;
 }) {
   const isGm = Boolean(gm && gm.connectionId === myId);
   const [busy, setBusy] = useState(false);
@@ -858,7 +861,7 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
           {!folded && (
             <>
               <small className="lr-heading">Inside it (only you see this side)</small>
-              <ScreenPagesPicker role="gm" choice={choice} setChoice={setChoice} />
+              <ScreenPagesPicker role="gm" choice={choice} setChoice={setChoice} system={system} />
             </>
           )}
           <label className="lr-field">

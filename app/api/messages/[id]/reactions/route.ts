@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { messageAccess } from "@/lib/access";
+import { awardAndNotify } from "@/lib/achievements";
 import { channelAudience } from "@/lib/dms";
 import { dispatchReaction } from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
@@ -35,10 +36,10 @@ export async function POST(
 
   const message = await db
     .prepare(
-      "SELECT channel_id FROM messages WHERE id = ? AND deleted_at IS NULL",
+      "SELECT channel_id, user_id FROM messages WHERE id = ? AND deleted_at IS NULL",
     )
     .bind(id)
-    .first<{ channel_id: string | null }>();
+    .first<{ channel_id: string | null; user_id: string | null }>();
   if (!message) {
     return Response.json({ error: "That message is gone." }, { status: 404 });
   }
@@ -81,6 +82,15 @@ export async function POST(
       added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
       { messageId: id, channelId: message.channel_id, userId: user.id, emoji },
     );
+  }
+  if (added) {
+    // The reactor (Reactor, Emoji Sommelier…) and the author (Crowd Pleaser…).
+    await Promise.all([
+      awardAndNotify(db, user.id, { sources: ["reactions"] }),
+      message.user_id && message.user_id !== user.id
+        ? awardAndNotify(db, message.user_id, { sources: ["reactions"] })
+        : null,
+    ]);
   }
   return Response.json({ ok: true, added });
 }

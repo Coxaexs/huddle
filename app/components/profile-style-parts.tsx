@@ -183,6 +183,8 @@ const JOIN_PARTS: Record<string, number> = {
   petals: 12,
   bats: 8,
   pixels: 36,
+  creeper: 18,
+  grave: 12,
 };
 
 const CONFETTI = ["#ff4d6d", "#ffd23f", "#3bd5ff", "#7cff6b", "#c77dff", "#ff9f1c"];

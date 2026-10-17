@@ -1,13 +1,14 @@
 import { canSeeServer } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
-import { getDndSettings, mergeHomebrew, saveDndSettings, type DndSettings } from "@/lib/dnd-rules";
+import { getDndSettings, getGameSystem, mergeHomebrew, saveDndSettings, type DndSettings } from "@/lib/dnd-rules";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { isGameSystem } from "@/lib/v5-sheet";
 
 export const dynamic = "force-dynamic";
 
-/** A server's D&D settings, for its members: GET ?serverId= */
+/** A server's D&D settings, for its members: GET ?serverId= (&only=system: just `{ system }`, for the tabletop). */
 export async function GET(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage is not connected." }, { status: 503 });
@@ -18,11 +19,15 @@ export async function GET(request: Request) {
   if (!serverId || !(await canSeeServer(db, serverId, user))) {
     return Response.json({ error: "You are not a member of this server." }, { status: 403 });
   }
+  if (new URL(request.url).searchParams.get("only") === "system") {
+    return Response.json({ system: await getGameSystem(db, serverId) });
+  }
   return Response.json(await getDndSettings(db, serverId));
 }
 
 /**
  * Manage Server only. Any of:
+ *   { serverId, system: "dnd5e" | "vtm5" }    the game the tabletop plays
  *   { serverId, edition: "2014" | "2024" }
  *   { serverId, combatMusic, exploreMusic }   a playlist link or a search; "" clears
  *   { serverId, homebrew: [...] }             adds entries (same kind and name replaces)
@@ -36,6 +41,7 @@ export async function POST(request: Request) {
   await ensureSchema(db);
   const body = (await request.json().catch(() => ({}))) as {
     serverId?: string;
+    system?: unknown;
     edition?: unknown;
     combatMusic?: unknown;
     exploreMusic?: unknown;
@@ -51,6 +57,7 @@ export async function POST(request: Request) {
   }
 
   const settings: DndSettings = await getDndSettings(db, serverId);
+  if (isGameSystem(body.system)) settings.system = body.system;
   if (body.edition === "2014" || body.edition === "2024") settings.edition = body.edition;
   if (typeof body.combatMusic === "string") settings.combatMusic = body.combatMusic.trim().slice(0, 300);
   if (typeof body.exploreMusic === "string") settings.exploreMusic = body.exploreMusic.trim().slice(0, 300);

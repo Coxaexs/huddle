@@ -32,6 +32,8 @@ export interface HubState {
 }
 
 interface HubHandlers {
+  /** This account unlocked achievements (from any tab or the server). */
+  onAchievement?: (ids: string[]) => void;
   onMessage?: (channelId: string, message: unknown) => void;
   onSignal?: (from: string, data: unknown) => void;
   /** A seat in our voice room began or ended whispering to this tab. */
@@ -512,6 +514,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               return { ...current, forcedMutes };
             });
             handlersRef.current.onForceMute?.(payload.userId, payload.muted);
+            break;
+          case "achievement":
+            handlersRef.current.onAchievement?.(payload.ids);
             break;
           case "voice-evicted":
             handlersRef.current.onVoiceEvicted?.();

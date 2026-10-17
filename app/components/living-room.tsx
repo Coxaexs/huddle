@@ -1,6 +1,7 @@
 "use client";
 
 import "../lib/canvas-polyfill";
+import { markAchievement } from "../lib/achievement-client";
 import { apiUrl } from "../lib/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -29,10 +30,14 @@ import { TableOverlay, type AreaPreview } from "./tabletop-overlay";
 import { SpellFx } from "./tabletop-spellfx";
 import { fxCount, fxMode, healsWith } from "../lib/spell-fx-plan";
 import { HeldPawnCard, HeroCard, type CastResult } from "./table-hero";
+import { V5CharacterPanel, V5HeroCard, useCharacterDraft } from "./v5-sheet";
+import { useGameSystem } from "../lib/game-system";
+import { rouseRaisesHunger } from "@/lib/v5-sheet";
+import { V5_MAX_HUNGER } from "@/lib/v5-dice";
 import { areaColour, castDice, inArea, rangeFeet, type SpellInfo } from "@/lib/dnd-spells";
 import type { Terrain } from "../lib/map-terrain";
 import {
-  SCREEN_SIZES, buildScreenPage, readLegacySheet, readNotes, readPlayerScreenOpen, readScreenChoice, saveNotes, savePlayerScreenOpen, saveScreenChoice, sheetOf,
+  SCREEN_SIZES, buildScreenPage, pageForSystem, readLegacySheet, readNotes, readPlayerScreenOpen, readScreenChoice, saveNotes, savePlayerScreenOpen, saveScreenChoice, sheetOf,
   type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
@@ -70,6 +75,8 @@ interface Props {
   boardGameId?: string | null;
   /** Opens the room's DeepPixel game to play (starting one if there is none). */
   onPlayBoardGame?: () => void;
+  /** The call's server: its game system decides the tabletop's sheet and screen pages. */
+  serverId?: string | null;
 }
 
 const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices, boardhall: Landmark, meadow: Trees };
@@ -469,7 +476,11 @@ function useScreenNotes(role: ScreenRole) {
   return [value, (next: string) => { set(next); saveNotes(role, next); }] as const;
 }
 
-export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false, boardGameId = null, onPlayBoardGame }: Props) {
+/** A roll in the screens' logs: "d20+5 = 17", or a V5 pool's "7 dice (2 Hunger): 3 successes · win by 1". */
+const rollLine = (roll: DiceRollEvent) =>
+  roll.summary ? `${roll.expression}: ${roll.summary.toLowerCase()}` : `${roll.expression} = ${roll.total}`;
+
+export function LivingRoomView({ room, participants, connectionId, speaking, screens, cameras = [], deafened, nowPlaying = null, serverNow, diceRoll = null, onDiceRollDone, onCommand, canProject = false, boardGameId = null, onPlayBoardGame, serverId = null }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<CameraView>("overhead");
   const theme = room.theme;
@@ -546,6 +557,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [lastCatch, setLastCatch] = useState<{ name: string; emoji: string; weight: number; rarity: string; record: boolean } | null>(null);
   const rodRef = useRef<{ cast: () => void; reel: () => void } | null>(null);
   useEffect(() => { setFishing({ phase: "idle" }); setLastCatch(null); }, [venueId]);
+  useEffect(() => { markAchievement("venue", venueId); }, [venueId]);
   /** The room's DeepPixel game as the board hall last heard it, and whether my body walks to my pawn. */
   const [boardGame, setBoardGame] = useState<BoardGameState | null>(null);
   const [followPawn, setFollowPawn] = useState(true);
@@ -781,6 +793,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       ? new FishingRod(house, (phase) => {
         setFishing(phase);
         if (phase.phase === "caught") {
+          markAchievement(phase.fish.rarity === "junk" ? "fish_junk" : "fish", phase.fish.name);
+          if (phase.fish.rarity === "rare" || phase.fish.rarity === "legendary") markAchievement("fish_rare", phase.fish.name);
           const { log, record } = recordCatch(phase.fish);
           setTackle(log);
           setLastCatch({ ...phase.fish, record });
@@ -1802,7 +1816,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     void dice.roll(diceRoll, from);
     if (diceRoll.roller.id && diceRoll.roller.id === live.current.participants.find((p) => p.connectionId === live.current.connectionId)?.id) {
       const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setMyRolls((log) => [`${diceRoll.expression} = ${diceRoll.total} (${at})`, ...log].slice(0, 20));
+      setMyRolls((log) => [`${rollLine(diceRoll)} (${at})`, ...log].slice(0, 20));
     }
     // "Roll my initiative": my next roll goes into the order, tied to my chair.
     const me = live.current.participants.find((p) => p.connectionId === live.current.connectionId);
@@ -1989,6 +2003,24 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     return { x: Math.sin(toward) * 1.15, z: Math.cos(toward) * 1.15 };
   };
   const setMine = (value: TableCharacter | null) => room.setShared("character", value);
+  /** D&D 5e or Vampire V5: read again on walking up to the table. */
+  const gameSystem = useGameSystem(serverId, venueId === "tabletop");
+  const vampire = gameSystem === "vtm5";
+  // My Vampire as I click at it, shared by the sheet and the corner card.
+  const [myVampire, updateVampire] = useCharacterDraft(myCharacterNow ?? null, setMine);
+  const vampireRef = useRef({ character: myVampire, update: updateVampire, vampire });
+  vampireRef.current = { character: myVampire, update: updateVampire, vampire };
+  // A Rouse check of mine that failed: my Hunger rises by itself.
+  const rousedSeeds = useRef(new Set<string>());
+  useEffect(() => {
+    const me = participants.find((p) => p.connectionId === connectionId);
+    const { character, update, vampire: playing } = vampireRef.current;
+    if (!diceRoll || !playing || !me || diceRoll.roller.id !== me.id || !character?.v5 || !rouseRaisesHunger(diceRoll)) return;
+    if (rousedSeeds.current.has(diceRoll.animationSeed)) return;
+    rousedSeeds.current.add(diceRoll.animationSeed);
+    if (character.v5.hunger < V5_MAX_HUNGER) update({ ...character, v5: { ...character.v5, hunger: character.v5.hunger + 1 } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diceRoll?.animationSeed]);
   const spendSlot = (slotLevel: number) => {
     if (!slotLevel || !myCharacterNow) return;
     const used = Array.from({ length: 9 }, (_, i) => myCharacterNow.used?.[i] ?? 0);
@@ -2086,19 +2118,26 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   });
   const gmPanels = room.shared.gm?.panels ?? 3;
   const gmFolded = Boolean(room.shared.gm?.folded);
-  const screenData = { initiative: room.shared.initiative, party, notes: gmNotes, rolls: { title: "Hidden rolls", lines: hiddenLog, empty: "Roll with Hidden on and the results land here." } };
+  const hunger = participants.flatMap((p) => {
+    const sheet = room.shared.characters[p.id];
+    return sheet?.v5 && !p.bot && !p.recorder ? [{ character: sheet.name, player: p.displayName, hunger: sheet.v5.hunger }] : [];
+  });
+  const screenData = { initiative: room.shared.initiative, party, hunger, system: gameSystem, notes: gmNotes, rolls: { title: "Hidden rolls", lines: hiddenLog, empty: "Roll with Hidden on and the results land here." } };
+  // A screen set up at a D&D table shows the Vampire pages in their place, and back.
+  const gmPages = screenChoice.map((id) => pageForSystem(id, gameSystem));
+  const playerPages = playerChoice.map((id) => pageForSystem(id, gameSystem));
   screenPagesRef.current = isGm && venueId === "tabletop"
-    ? screenChoice.map((id) => buildScreenPage(id, screenData) ?? { title: "", lines: [] })
+    ? gmPages.map((id) => buildScreenPage(id, screenData) ?? { title: "", lines: [] })
     : null;
   const myCharacter = myPerson ? room.shared.characters[myPerson.id] : undefined;
   const playerData = {
     ...screenData,
-    character: myCharacter ? { name: myCharacter.name, portraitUrl: myCharacter.portraitUrl, ...sheetOf(myCharacter) } : null,
+    character: myCharacter ? { name: myCharacter.name, portraitUrl: myCharacter.portraitUrl, ...sheetOf(myCharacter), v5: myCharacter.v5 } : null,
     notes: playerNotes,
     rolls: { title: "My rolls", lines: myRolls, empty: "Your rolls at the table land here." },
   };
   playerPagesRef.current = playerScreenOpen && !isGm && venueId === "tabletop"
-    ? playerChoice.map((id) => buildScreenPage(id, playerData) ?? { title: "", lines: [] })
+    ? playerPages.map((id) => buildScreenPage(id, playerData) ?? { title: "", lines: [] })
     : null;
   // Everyone draws the game master's screen with as many panels as they picked.
   useEffect(() => {
@@ -2141,12 +2180,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       const roll = data.roll;
       const pose = connectionId ? room.poses.get(connectionId) : null;
       void diceRef.current?.roll(roll, new THREE.Vector3(pose?.x ?? TABLE_CENTRE.x, 1.1, pose?.z ?? TABLE_CENTRE.z + 2.4), {
-        ...behindScreen(seatOf(connectionId), gmPanels, gmFolded), label: `Hidden · ${roll.expression} = ${roll.total}`,
+        ...behindScreen(seatOf(connectionId), gmPanels, gmFolded), label: `Hidden · ${rollLine(roll)}`,
       });
       void playDiceRollSound({ theme: "default", diceCount: roll.dice.reduce((sum, term) => sum + term.rolls.length, 0), material: roll.material ?? "plastic" });
       room.setShared("hiddenroll", { dice: roll.dice.map((term) => ({ sides: term.sides, count: term.rolls.length })), seed: roll.animationSeed });
       const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setHiddenLog((log) => [`${roll.expression} = ${roll.total} (${at})`, ...log].slice(0, 20));
+      setHiddenLog((log) => [`${rollLine(roll)} (${at})`, ...log].slice(0, 20));
       setRollNote(null);
     } catch (error) {
       setRollNote(error instanceof Error ? error.message : "That roll did not work.");
@@ -2317,7 +2356,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               setGm={(value) => room.setShared("gm", value)}
               map={room.shared.tablemap} canEditMap={canEditMap} setMap={(value) => room.setShared("tablemap", value)}
               squares={squares} setSquares={(value) => room.setShared("grid", { squares: value })}
-              choice={screenChoice} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes}
+              choice={gmPages} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes} system={gameSystem}
               folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
             />
@@ -2329,7 +2368,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               onPutBack={(id) => sendPawn({ op: "remove", id })} onClear={() => sendPawn({ op: "clear" })} onClose={() => setPanel(null)}
             />
           )}
-          {panel === "character" && (
+          {panel === "character" && vampire && (
+            <V5CharacterPanel
+              character={myVampire} fallbackName={myName} onChange={updateVampire} onClear={() => updateVampire(null)}
+              onCommand={onCommand} onClose={() => setPanel(null)}
+              screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerPages, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes }}
+            />
+          )}
+          {panel === "character" && !vampire && (
             <CharacterPanel
               mine={myPerson ? room.shared.characters[myPerson.id] ?? null : null} fallbackName={myName}
               setMine={(value) => room.setShared("character", value)} onClose={() => setPanel(null)}
@@ -2362,7 +2408,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             />
           );
         })()}
-        {(myCharacterNow?.maxHp || myCharacterNow?.cls ? (
+        {vampire ? (myVampire?.v5 ? (
+          <V5HeroCard character={myVampire} onChange={updateVampire} onEdit={() => setPanel("character")} onCommand={onCommand} />
+        ) : !isGm && panel !== "character" ? (
+          <button type="button" className="lr-hero-make" onClick={() => setPanel("character")}><UserRound size={14} /> Make my Vampire</button>
+        ) : null) : (myCharacterNow?.maxHp || myCharacterNow?.cls ? (
           <HeroCard
             character={myCharacterNow} onChange={setMine} onEdit={() => setPanel("character")}
             onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}

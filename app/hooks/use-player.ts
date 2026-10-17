@@ -23,18 +23,24 @@ const DRIFT_TOLERANCE_MS = 1500;
 /** Four silent PCM samples. Playing it from a click unlocks this media element. */
 const SILENT_WAV =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA";
-
 /**
- * Plays the room's track locally, kept on the hub's clock.
- *
- * Nobody streams audio to anybody: every listener plays the same source and is
- * nudged back to the shared position, so a seek by one person moves everyone.
+ * How long a new track waits for the music bot to join before this tab plays it
+ * itself. The bot polls the hub and only joins a beat after the track starts.
  */
+const BOT_GRACE_MS = 8000;
+
 function volumeGain(percent: number): number {
   const normalized = Math.max(0, Math.min(1, percent / 100));
   return normalized * normalized;
 }
 
+/**
+ * Plays the room's track locally, kept on the hub's clock — the fallback for
+ * when no music bot is streaming it into the call.
+ *
+ * Every listener plays the same source and is nudged back to the shared
+ * position, so a seek by one person moves everyone.
+ */
 export function usePlayer({
   state,
   serverNow,
@@ -48,6 +54,23 @@ export function usePlayer({
   const trackIdRef = useRef<string | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [position, setPosition] = useState(0);
+
+  // Only play locally once the bot has had its chance to join. Starting the
+  // song here and tearing it down a few seconds later when the bot's stream
+  // arrives doubled the music everywhere, and in WebKit (Safari, the macOS
+  // app) it silenced every voice in the call along with it.
+  const hasTrack = Boolean(state?.track);
+  const [botAbsent, setBotAbsent] = useState(false);
+  useEffect(() => {
+    if (streamed) {
+      setBotAbsent(false);
+      return;
+    }
+    if (!hasTrack || botAbsent) return;
+    const timer = window.setTimeout(() => setBotAbsent(true), BOT_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [streamed, hasTrack, botAbsent]);
+  const local = botAbsent && !streamed;
 
   const ensureAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -74,8 +97,9 @@ export function usePlayer({
   // Track changes: load the new source and drop in at the shared position.
   useEffect(() => {
     const track = state?.track || null;
-    if (!track || streamed) {
-      if (audioRef.current) {
+    if (!track || !local) {
+      // Only unload a real track: a prime still in flight must not be aborted.
+      if (audioRef.current && trackIdRef.current) {
         audioRef.current.pause();
         audioRef.current.removeAttribute("src");
         audioRef.current.load();
@@ -95,7 +119,7 @@ export function usePlayer({
       audio.currentTime = playbackPosition(state!, serverNow()) / 1000;
       if (!state!.paused) attempt(audio);
     }
-  }, [state, serverNow, ensureAudio, attempt, streamed]);
+  }, [state, serverNow, ensureAudio, attempt, local]);
 
   const [duckingFactor, setDuckingFactor] = useState(1.0);
   const duckTimerRef = useRef<number | null>(null);
@@ -124,7 +148,7 @@ export function usePlayer({
   // Pause/resume and volume follow the room and personal preferences.
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !state?.track || streamed) return;
+    if (!audio || !state?.track || !local) return;
     const personal = personalMuted ? 0 : volumeGain(personalVolume ?? 100);
     const general = Math.max(0, Math.min(1, (state.volume ?? 100) / 100));
     audio.volume = deafened ? 0 : Math.max(0, Math.min(1, general * personal * duckingFactor));
@@ -134,7 +158,7 @@ export function usePlayer({
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
       attempt(audio);
     }
-  }, [state, deafened, personalVolume, personalMuted, duckingFactor, serverNow, attempt, streamed]);
+  }, [state, deafened, personalVolume, personalMuted, duckingFactor, serverNow, attempt, local]);
 
   // Ticks the visible position and corrects drift against the hub clock.
   useEffect(() => {
@@ -177,12 +201,12 @@ export function usePlayer({
 
   /** Called from a click, which is what the autoplay policy wants. */
   const unblock = useCallback(() => {
-    if (streamed) return;
+    if (!local) return;
     const audio = audioRef.current;
     if (!audio || !state?.track) return;
     audio.currentTime = playbackPosition(state, serverNow()) / 1000;
     attempt(audio);
-  }, [state, serverNow, attempt, streamed]);
+  }, [state, serverNow, attempt, local]);
 
   /**
    * Prime the permanent room audio element while a join/play click is still on
@@ -192,7 +216,7 @@ export function usePlayer({
   const prime = useCallback(() => {
     if (streamed) return;
     const audio = ensureAudio();
-    if (state?.track) {
+    if (state?.track && local) {
       audio.currentTime = playbackPosition(state, serverNow()) / 1000;
       attempt(audio);
       return;
@@ -213,7 +237,7 @@ export function usePlayer({
         }
       })
       .catch(() => setBlocked(true));
-  }, [ensureAudio, state, serverNow, attempt, streamed]);
+  }, [ensureAudio, state, serverNow, attempt, streamed, local]);
 
   return { position, blocked, unblock, prime };
 }

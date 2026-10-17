@@ -127,6 +127,7 @@ export function createDiceOverlay(width: number, height: number): DiceOverlay {
       value: string;
       kept: boolean;
       tone: "normal" | "critical" | "failure";
+      hunger?: boolean;
     }> = [];
     for (const term of roll.dice) {
       for (const entry of term.rolls) {
@@ -149,6 +150,7 @@ export function createDiceOverlay(width: number, height: number): DiceOverlay {
             sides: term.sides,
             value: String(entry.value),
             kept: entry.kept,
+            hunger: term.hunger,
             tone:
               term.sides === 20 && entry.value === 20
                 ? "critical"
@@ -160,9 +162,11 @@ export function createDiceOverlay(width: number, height: number): DiceOverlay {
       }
     }
     const shown = visual.slice(0, 16);
+    // A V5 roll: Hunger dice red, the rest black, as at the table.
+    const v5 = roll.dice.some((term) => term.hunger);
     shown.forEach((die, index) => {
       const material = new THREE.MeshStandardMaterial({
-        color: die.kept ? 0x8f2438 : 0x58525d,
+        color: !die.kept ? 0x58525d : die.hunger ? 0xc1121f : v5 ? 0x1d1a22 : 0x8f2438,
         roughness: 0.36,
         metalness: 0.14,
         transparent: !die.kept,
@@ -198,6 +202,7 @@ export function createDiceOverlay(width: number, height: number): DiceOverlay {
         ? "NAT 1 · "
         : "";
     const total = valueSprite(
+      roll.summary ||
       `${natural}${roll.rollType === "advantage" ? "ADV · " : roll.rollType === "disadvantage" ? "DIS · " : roll.rollType === "critical-damage" ? "CRITICAL · " : ""}TOTAL ${roll.total}`,
       false,
       natural === "NAT 20 · "

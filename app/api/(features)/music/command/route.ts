@@ -1,11 +1,12 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import {
   playerCommand,
+  playerLongHistory,
   playerState as rawPlayerState,
   publishMessage,
 } from "@/lib/hub-client";
 import { formatDuration, resolveTracks, trackLabel } from "@/lib/music";
-import { botFetch, botSession, fetchLyrics } from "@/lib/musicbot";
+import { botFetch, botSession, djControl, fetchLyrics } from "@/lib/musicbot";
 import { heard, liveTrack, playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { can, Permission } from "@/lib/permissions";
@@ -442,6 +443,15 @@ export async function POST(request: Request) {
       case "stop":
       case "shuffle":
       case "clear": {
+        if ((name === "pause" || name === "resume" || name === "skip") &&
+            liveTrack(await rawPlayerState(voiceChannelId!))) {
+          // The DJ booth is on air: it pauses, resumes, or mixes into the next song.
+          await djControl(voiceChannelId!, name);
+          const text =
+            name === "skip" ? "Mixing into the next song." : name === "pause" ? "Paused the DJ set." : "DJ set playing again.";
+          await say(db, textChannelId, text);
+          return Response.json({ text, state: await playerState(voiceChannelId!) });
+        }
         if (name !== "shuffle" && name !== "clear") await refuseWhileLive(voiceChannelId!);
         const state = await playerCommand(voiceChannelId!, { name });
         const text =
@@ -646,6 +656,48 @@ export async function POST(request: Request) {
           },
         });
         return Response.json({ text, state });
+      }
+
+      case "longhistory": {
+        // The bot's play log outlives restarts and has Smart Autoplay picks too;
+        // the hub's own list is only the fallback when the bot is unreachable.
+        const logged = (await botRoomAction(voiceChannelId!, { action: "longhistory" })
+          .then((result) => (Array.isArray(result.plays) ? result.plays : []))
+          .catch(() => [])) as Array<{
+          title?: string;
+          seconds?: number | null;
+          ts?: number;
+          requestedBy?: string | null;
+        }>;
+        const historyItems = logged.length
+          ? logged.map((play, index) => ({
+              index: index + 1,
+              title: play.title || "Unknown",
+              artist: null,
+              duration: play.seconds || null,
+              playedAt: play.ts ? play.ts * 1000 : null,
+              requestedBy: play.requestedBy || null,
+            }))
+          : (await playerLongHistory(voiceChannelId!)).map((track, index) => ({
+              index: index + 1,
+              title: track.artist ? `${track.title} — ${track.artist}` : track.title,
+              artist: track.artist || null,
+              duration: track.duration || null,
+              playedAt: track.playedAt,
+              requestedBy: null,
+            }));
+        const text = historyItems.length
+          ? `This room's last ${historyItems.length} track${historyItems.length === 1 ? "" : "s"}.`
+          : "This room has not played anything yet.";
+        await say(db, textChannelId, text, {
+          kind: "music-history",
+          payload: {
+            voiceChannelId,
+            history: historyItems,
+            long: true,
+          },
+        });
+        return Response.json({ text });
       }
 
       case "grab": {

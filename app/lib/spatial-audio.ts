@@ -75,6 +75,28 @@ export function personalTableLayout(
 /** Personal volume can boost a quiet voice up to twice its level (+6 dB). */
 export const MAX_VOLUME = 2;
 
+let elementVolumeWorks: boolean | undefined;
+/**
+ * iOS (Safari and the app's WKWebView) ignores `volume` on media elements: it
+ * always reads back 1, so a volume slider does nothing there.
+ */
+function canSetElementVolume(): boolean {
+  if (elementVolumeWorks !== undefined) return elementVolumeWorks;
+  try {
+    const probe = new Audio();
+    probe.volume = 0.5;
+    elementVolumeWorks = Math.abs(probe.volume - 0.5) < 0.01;
+  } catch {
+    elementVolumeWorks = true;
+  }
+  return elementVolumeWorks;
+}
+
+/** Whether this volume has to go through a Web Audio gain instead of the element. */
+function needsBoost(volume: number): boolean {
+  return volume > 1 || (volume < 1 && !canSetElementVolume());
+}
+
 export interface PlaybackInput {
   key: string;
   stream: MediaStream;
@@ -94,7 +116,7 @@ export interface PlaybackInput {
 }
 /**
  * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
- * "boost" is an unpanned gain for a stream turned up past what an <audio> element can play.
+ * "boost" is an unpanned gain for a level an <audio> element cannot play: above 1, or any level on iOS.
  */
 type Mode = "stereo" | "hrtf" | "boost";
 type Entry = {
@@ -353,7 +375,7 @@ export class SpatialAudioPlayback {
 
   update(inputs: PlaybackInput[], enabled: boolean) {
     this.enabled = enabled;
-    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || input.volume > 1);
+    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || needsBoost(input.volume));
     if (this.needsContext && !this.context) {
       try {
         this.context = new AudioContext({ latencyHint: "interactive" });
@@ -399,7 +421,7 @@ export class SpatialAudioPlayback {
     const spatialMode = this.mode();
     const wanted = this.spatialFor(input)
       ? spatialMode === "hrtf" && !this.hrtfAllowed.has(input.key) ? "stereo" : spatialMode
-      : input.volume > 1 ? "boost" : undefined;
+      : needsBoost(input.volume) ? "boost" : undefined;
     if (!wanted) return;
     const shaped = wanted !== "boost" && (input.cutoff !== undefined || input.wet !== undefined);
     if (entry.mode === wanted && Boolean(entry.shaped) === shaped) return;
@@ -518,7 +540,7 @@ export class SpatialAudioPlayback {
       const { input, element, panner, gain } = entry;
       const spatial = this.spatialFor(input);
       // Web Audio carries the stream when it is spatial or boosted; otherwise the element does.
-      const routed = live && !!gain && (spatial ? !!panner : input.volume > 1 && entry.mode === "boost");
+      const routed = live && !!gain && (spatial ? !!panner : needsBoost(input.volume) && entry.mode === "boost");
       const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1)
         * (spatial && !input.important ? Math.max(0, Math.min(1, (entry.mode === "hrtf" ? input.hrtfAttenuation : input.attenuation) ?? 1)) : 1);
       element.volume = Math.min(1, volume);

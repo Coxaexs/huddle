@@ -20,6 +20,7 @@ export type Tab =
   | "password"
   | "invites"
   | "appearance"
+  | "notifications"
   | "dice"
   | "custom_ui_css"
   | "accessibility"
@@ -30,3 +31,5 @@ export type Tab =
 export type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
 export type Density = "compact" | "cozy" | "roomy";
 export type Backdrop = "plain" | "aurora" | "dots";
+/** The Appearance page's sections. "installed" and "community" are both theme lists. */
+export type AppearanceSubtab = "installed" | "community" | "look" | "extras";

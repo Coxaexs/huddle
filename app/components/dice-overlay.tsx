@@ -12,17 +12,53 @@ import {
 import { getDiceStyle, inheritDiceStyle } from "@/lib/dice-styles";
 import { installHuddleDiceTextures } from "../lib/dice-textures";
 import { runCritFx, type CritFxHandle } from "./dice-crit-fx";
+import { isAchievementUser, markAchievement } from "../lib/achievement-client";
 import { fumbleSkinFor, THEME_FUMBLES } from "./dice-theme-fumbles";
+import { HUNGER_DIE_COLOR, HUNGER_DIE_INK } from "@/lib/v5-dice";
+
+type ShownDie = { sides: number; value: number; kept: boolean; hunger: boolean };
 
 /** Flatten the server's authoritative die values in roll order. */
-function flattenDice(roll: DiceRollEvent): Array<{ sides: number; value: number; kept: boolean }> {
-  const out: Array<{ sides: number; value: number; kept: boolean }> = [];
+function flattenDice(roll: DiceRollEvent): ShownDie[] {
+  const out: ShownDie[] = [];
   for (const term of roll.dice) {
     for (const entry of term.rolls) {
-      out.push({ sides: term.sides, value: entry.value, kept: entry.kept !== false });
+      out.push({ sides: term.sides, value: entry.value, kept: entry.kept !== false, hunger: term.hunger === true });
     }
   }
   return out;
+}
+
+/**
+ * dice-box-threejs paints every die with the box's one colour set. V5 Hunger
+ * dice are red: while the dice are made, those positions get a red set of the
+ * same material and texture. Each die is made just before it joins diceList,
+ * so its index there is its place in the roll.
+ */
+async function paintHungerDice(box: any, roll: DiceRollEvent, colorset: Record<string, unknown>) {
+  const hunger = new Set(flattenDice(roll).flatMap((die, index) => (die.hunger ? [index] : [])));
+  if (!hunger.size || !box.DiceFactory || !box.DiceColors) return;
+  const red = await box.DiceColors.makeColorSet({
+    ...colorset,
+    name: `hunger-${String(colorset.name)}`,
+    // A secret roll keeps its blank faces.
+    ...(roll.masked ? {} : { foreground: HUNGER_DIE_INK, outline: "none" }),
+    background: HUNGER_DIE_COLOR,
+    edge: HUNGER_DIE_COLOR,
+    texture: "none",
+  });
+  const factory = box.DiceFactory;
+  const create = factory.create.bind(factory);
+  factory.create = (type: string) => {
+    if (!hunger.has(box.diceList.length)) return create(type);
+    const own = factory.colordata;
+    factory.applyColorSet(red);
+    try {
+      return create(type);
+    } finally {
+      factory.applyColorSet(own);
+    }
+  };
 }
 
 /**
@@ -93,7 +129,7 @@ export function DiceOverlay({
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
-  const [values, setValues] = useState<Array<{ sides: number; value: number }>>([]);
+  const [values, setValues] = useState<ShownDie[]>([]);
   const [total, setTotal] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState<string>("default");
 
@@ -211,6 +247,7 @@ export function DiceOverlay({
       let initOk = false;
       try {
         await box.initialize();
+        await paintHungerDice(box, roll, customColorset);
         initOk = true;
       } catch (err) {
         console.warn("DiceBox initialization failed:", err);
@@ -229,7 +266,7 @@ export function DiceOverlay({
         if (failsafeTimer) clearTimeout(failsafeTimer);
         const f = flattenDice(roll);
         setValues(f);
-        setTotal(roll.masked ? "SECRET ROLL" : `TOTAL ${roll.total}`);
+        setTotal(roll.masked ? "SECRET ROLL" : roll.summary || `TOTAL ${roll.total}`);
         dismissTimer = window.setTimeout(() => {
           onDoneRef.current();
         }, 1800);
@@ -255,6 +292,11 @@ export function DiceOverlay({
         faces.flatMap((f, i) => (f.sides === 20 && f.value === value && f.kept ? [i] : []));
       const nat20 = natIndexes(20);
       const nat1 = natIndexes(1);
+      // Your own natural 20 / 1 counts toward the dice achievements.
+      if (!roll.masked && isAchievementUser(roll.roller?.id)) {
+        if (nat20.length) markAchievement("dice", "nat20");
+        if (nat1.length) markAchievement("dice", "nat1");
+      }
 
       if (!roll.masked && (nat20.length || nat1.length)) {
         const skin = fumbleSkinFor(theme, activeCustomTheme);
@@ -284,7 +326,7 @@ export function DiceOverlay({
             : roll.rollType === "critical-damage"
               ? "CRITICAL · "
               : "";
-      setTotal(roll.masked ? "SECRET ROLL" : `${mode}TOTAL ${roll.total}`);
+      setTotal(roll.masked ? "SECRET ROLL" : roll.summary || `${mode}TOTAL ${roll.total}`);
 
       const dismissDelay = Math.max(1600, critFx?.durationMs ?? 0);
       dismissTimer = window.setTimeout(() => {
@@ -335,7 +377,7 @@ export function DiceOverlay({
             {values.map((die, index) => (
               <span
                 key={index}
-                className={`dice-result-value sides-${die.sides} ${
+                className={`dice-result-value sides-${die.sides}${die.hunger ? " hunger" : ""} ${
                   die.sides === 20 && die.value === 20
                     ? "crit-20"
                     : die.sides === 20 && die.value === 1

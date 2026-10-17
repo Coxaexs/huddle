@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { acceptFriendRequest } from "@/lib/friends";
+import { awardAndNotify } from "@/lib/achievements";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -27,6 +28,10 @@ export async function POST(request: Request) {
   await ensureSchema(db);
   try {
     await acceptFriendRequest(db, user.id, body.requesterId);
+    await Promise.all([
+      awardAndNotify(db, user.id, { sources: ["people"] }),
+      awardAndNotify(db, body.requesterId, { sources: ["people"] }),
+    ]);
     return Response.json({ ok: true });
   } catch (err) {
     return Response.json(

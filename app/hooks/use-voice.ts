@@ -2860,6 +2860,30 @@ export function useVoice({
     send({ t: "voice-state", deafened: next, muted: next ? true : muted });
   }, [deafened, muted, send, micTracks]);
 
+  /**
+   * The Settings mic check: deafen (and so mute) while you listen to yourself,
+   * then put back exactly what was there. Toggling deafen off leaves you muted,
+   * so a plain toggle there and back would not restore an open mic.
+   */
+  const micTestHeld = useRef<{ muted: boolean } | null>(null);
+  const holdForMicTest = useCallback((active: boolean) => {
+    if (active) {
+      if (micTestHeld.current || deafenedRef.current) return;
+      micTestHeld.current = { muted };
+      setDeafened(true);
+      setMuted(true);
+      send({ t: "voice-state", deafened: true, muted: true });
+      return;
+    }
+    const held = micTestHeld.current;
+    if (!held) return;
+    micTestHeld.current = null;
+    const stayMuted = held.muted || forcedMute;
+    setDeafened(false);
+    setMuted(stayMuted);
+    send({ t: "voice-state", deafened: false, muted: stayMuted });
+  }, [muted, forcedMute, send]);
+
   const setMuteKey = useCallback((combo: string) => {
     setMuteKeyState(combo);
     window.localStorage.setItem("huddle-mute-key", combo);
@@ -2989,6 +3013,7 @@ export function useVoice({
     leave,
     toggleMute,
     toggleDeafen,
+    holdForMicTest,
     handleSignal,
     pushToTalk,
     pttKey,

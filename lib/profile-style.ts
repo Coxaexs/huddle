@@ -57,6 +57,8 @@ export const NAME_FONTS = [
   { id: "western", name: "Western", group: "Themed", family: "Rye", weight: 400, scale: 0.9 },
   { id: "typewriter", name: "Typewriter", group: "Themed", family: "Special Elite", weight: 400, scale: 1.02 },
   { id: "stencil", name: "Stencil", group: "Themed", family: "Black Ops One", weight: 400, scale: 0.98 },
+  { id: "blocky", name: "Blocky", group: "Themed", family: "Silkscreen", weight: 400, scale: 0.92, tracking: "0.02em" },
+  { id: "undead", name: "Undead", group: "Themed", family: "Eater", weight: 400, scale: 0.92 },
 ] as const satisfies readonly NameFontSpec[];
 
 export interface NameEffectSpec extends StyleOption {
@@ -92,6 +94,8 @@ export const NAME_EFFECTS = [
   { id: "liquid", name: "Liquid", group: "Wild", colors: [2, 2], defaults: ["#38bdf8", "#1e3a8a"], desc: "Filled with sloshing liquid." },
   { id: "wave", name: "Wave", group: "Wild", colors: [1, 2], defaults: ["#5eead4", "#818cf8"], letters: true, desc: "Letters riding a wave." },
   { id: "jelly", name: "Jelly", group: "Wild", colors: [1, 2], defaults: ["#86efac", "#22d3ee"], letters: true, desc: "Bouncy, squishy letters." },
+  { id: "enchanted", name: "Enchanted", group: "Shine", colors: [1, 1], defaults: ["#5ce1e6"], desc: "Minecraft's purple enchantment glint rolling over your name." },
+  { id: "infected", name: "Infected", group: "Wild", colors: [1, 1], defaults: ["#9be15d"], desc: "Sickly and rotting, with a pulse and the odd drip." },
 ] as const satisfies readonly NameEffectSpec[];
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +111,8 @@ export const CARD_FINISHES = [
   { id: "holo", name: "Holo Foil", desc: "Trading-card foil that catches the light as it tilts." },
   { id: "spotlight", name: "Spotlight", desc: "Dark stage, one light from above." },
   { id: "split", name: "Split", desc: "Two colours cut on a bold diagonal." },
+  { id: "pixel", name: "Pixel Bands", desc: "Hard-stepped bands of colour, like a blocky sky." },
+  { id: "grime", name: "Grime", desc: "Stained and dark, with a sickly glow seeping up from below." },
 ] as const satisfies readonly StyleOption[];
 
 export const CARD_PATTERNS = [
@@ -124,6 +130,10 @@ export const CARD_PATTERNS = [
   { id: "topo", name: "Contours" },
   { id: "circuit", name: "Circuit" },
   { id: "petals", name: "Petals" },
+  { id: "blocks", name: "Blocks" },
+  { id: "creeper", name: "Creeper" },
+  { id: "biohazard", name: "Biohazard" },
+  { id: "splatter", name: "Splatter" },
 ] as const satisfies readonly StyleOption[];
 
 export const CARD_EDGES = [
@@ -189,6 +199,8 @@ export const JOIN_FLOURISHES = [
   { id: "petals", name: "Petals", desc: "Blossoms swirl and settle." },
   { id: "bats", name: "Bats", desc: "A flutter of bats." },
   { id: "pixels", name: "Pixels", desc: "Assembled out of pixels." },
+  { id: "creeper", name: "Creeper", desc: "Hiss, flash... boom." },
+  { id: "grave", name: "Grave", desc: "Claw your way up out of the dirt." },
 ] as const satisfies readonly StyleOption[];
 
 export const VOICE_TILES = [
@@ -328,6 +340,36 @@ export const STYLE_LOOKS: StyleLook[] = [
     id: "comic",
     name: "Comic Book",
     style: { font: "comic", effect: "toon", nameColors: ["#ffffff", "#e11d48"], theme: ["#fde047", "#dc2626"], finish: "split", pattern: "dots", edge: "line", motion: "tilt", entrance: "swing", ring: "electric", ringColor: "#facc15", join: "confetti", tile: "theme" },
+  },
+  {
+    id: "creeper",
+    name: "Creeper",
+    style: { font: "blocky", effect: "pop", nameColors: ["#8be35f", "#1f4d14"], theme: ["#5fa83f", "#1c3315"], finish: "pixel", pattern: "creeper", edge: "line", motion: "tilt", entrance: "drop", ring: "soundwave", ringColor: "#7ddc5a", join: "creeper", tile: "theme" },
+  },
+  {
+    id: "diamond",
+    name: "Diamond",
+    style: { font: "blocky", effect: "enchanted", nameColors: ["#7ff3f0"], theme: ["#3fb8c4", "#131c33"], finish: "pixel", pattern: "blocks", edge: "glow", motion: "float", entrance: "zoom", ring: "sparkle", ringColor: "#7ff3f0", join: "pixels", tile: "theme" },
+  },
+  {
+    id: "nether",
+    name: "Nether",
+    style: { font: "blocky", effect: "fire", theme: ["#8a1c1c", "#1a0505"], finish: "spotlight", pattern: "blocks", edge: "glow", motion: "tilt", entrance: "drop", ring: "flame", ringColor: "#ff6a1a", join: "portal", tile: "theme" },
+  },
+  {
+    id: "outbreak",
+    name: "Outbreak",
+    style: { font: "undead", effect: "infected", nameColors: ["#a3e635"], theme: ["#4d6b22", "#0b0f06"], finish: "grime", pattern: "biohazard", edge: "glow", motion: "float", entrance: "glitch", ring: "aura", ringColor: "#a3e635", join: "grave", tile: "theme" },
+  },
+  {
+    id: "bitten",
+    name: "Bitten",
+    style: { font: "drip", effect: "infected", nameColors: ["#e23b3b"], theme: ["#5a0e0e", "#0a0303"], finish: "grime", pattern: "splatter", edge: "glow", motion: "float", entrance: "drop", ring: "aura", ringColor: "#e23b3b", join: "grave", tile: "theme" },
+  },
+  {
+    id: "quarantine",
+    name: "Quarantine",
+    style: { font: "stencil", effect: "solid", nameColors: ["#f5c400"], theme: ["#3a3410", "#0c0b06"], finish: "grime", pattern: "stripes", edge: "line", motion: "still", entrance: "swing", ring: "electric", ringColor: "#f5c400", join: "smoke", tile: "theme" },
   },
 ];
 

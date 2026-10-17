@@ -51,6 +51,7 @@ export function MessageList({
   openActionsId,
   reactionPicker,
   ttsSpeakingId,
+  setTtsSpeakingId,
   handleMessageTouchStart,
   handleMessageTouchMove,
   handleMessageTouchEnd,
@@ -148,6 +149,7 @@ export function MessageList({
   openActionsId: string | number | null;
   reactionPicker: { messageId: string | number; top: number; right: number; mode?: "react" | "addToQuickReactions"; } | null;
   ttsSpeakingId: string | null;
+  setTtsSpeakingId: Dispatch<SetStateAction<string | null>>;
   handleMessageTouchStart: (messageId: string | number, e: React.TouchEvent) => void;
   handleMessageTouchMove: (e: React.TouchEvent) => void;
   handleMessageTouchEnd: () => void;
@@ -233,6 +235,7 @@ export function MessageList({
       openActionsId,
       reactionPicker,
       ttsSpeakingId,
+      setTtsSpeakingId,
       handleMessageTouchStart,
       handleMessageTouchMove,
       handleMessageTouchEnd,

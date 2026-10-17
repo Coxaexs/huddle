@@ -11,6 +11,9 @@ import { bindings } from "@/lib/storage";
 import { channelAudience, isDmMember } from "@/lib/dms";
 import { snapshotBeforeEdit } from "@/lib/message-edits";
 import { postSystemMessage } from "@/lib/system-messages";
+import { messageAccess } from "@/lib/access";
+import { publicMessage } from "@/app/api/messages/route";
+import type { StoredMessage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,42 @@ async function loadMessage(
     )
     .bind(id)
     .first<MessageRow>();
+}
+
+/**
+ * One message and where it lives, for a copied message link: the embed that
+ * previews it and the jump that opens it. Readable by whoever can read its
+ * channel, like the channel's history.
+ */
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const db = bindings().DB;
+  if (!db) return Response.json({ error: "Message storage is not connected." }, { status: 503 });
+  const user = await currentUser(request);
+  if (!user) return unauthorized();
+  await ensureSchema(db);
+
+  const id = (await context.params).id.slice(0, 64);
+  const access = await messageAccess(db, id, user);
+  if (!access.ok) return access.response;
+  const row = await db
+    .prepare(
+      `SELECT id, channel_id, user_id, author, avatar, color, content, attachment_key,
+              is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
+              reply_to, edited_at, attachments, thread_id, command_text, command_by
+         FROM messages WHERE id = ? AND deleted_at IS NULL`,
+    )
+    .bind(id)
+    .first<StoredMessage>();
+  if (!row) return Response.json({ error: "That message is gone." }, { status: 404 });
+  return Response.json({
+    message: publicMessage(row),
+    serverId: access.channel.isDm ? null : access.channel.serverId,
+    channelId: row.channel_id,
+    channelName: access.channel.isDm ? null : access.channel.name,
+  });
 }
 
 /** Delete a message: your own always, anyone's if you own this Huddle. */

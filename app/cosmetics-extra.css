@@ -3,6 +3,8 @@
  * Every class here starts with cx- or names a cosmetic id.
  */
 
+@import "./cosmetics-mz.css";
+
 /* ================================================================== */
 /* Nameplates                                                          */
 /* ================================================================== */
@@ -108,6 +110,25 @@
 }
 html[data-motion="reduced"] .np-art *,
 html[data-motion="reduced"] .has-nameplate { animation-play-state: paused !important; }
+
+/*
+ * Cosmetics in lists (message avatars, member rows, your own footer) and text
+ * effects in messages hold still until you point at their row, the same rule
+ * display names follow (profile-style.css). A screen of animated decorations
+ * and nameplate shines repaints every frame for as long as it is open:
+ * measured at ~65% of a core idling in a busy channel, and well over 100% in
+ * the macOS app's WebKit. Profile cards and the pickers still animate freely.
+ * Pseudo-elements cannot go inside :is(), so each one is spelled out.
+ */
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx),
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx)::before,
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx)::after,
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx) *,
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx) *::before,
+:is(.message, .member, .voice-member, .user-footer-profile, .dp-member):not(:hover) :is(.avatar-deco-chat, .avatar-deco-ring, .np-art, .fx) *::after,
+:is(.member, .user-footer-profile).has-nameplate:not(:hover),
+:is(.member, .user-footer-profile).has-nameplate:not(:hover)::before,
+:is(.member, .user-footer-profile).has-nameplate:not(:hover)::after { animation-play-state: paused !important; }
 
 /* ================================================================== */
 /* Avatar decorations                                                  */

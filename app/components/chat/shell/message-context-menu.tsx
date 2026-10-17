@@ -154,7 +154,8 @@ export function MessageContextMenu({
     return (
       <button
         type="button"
-        className={`msg-ctx-item ${danger ? "msg-ctx-item-danger" : ""} ${disabled ? "msg-ctx-item-disabled" : ""}`}
+        className={`msg-ctx-item${danger ? " danger" : ""}`}
+        role="menuitem"
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
@@ -170,13 +171,13 @@ export function MessageContextMenu({
 
   function separator() {
     return (
-      <div className="msg-ctx-separator" role="separator" />
+      <div className="user-menu-divider msg-ctx-separator" role="separator" />
     );
   }
 
   return (
     <div
-      className="msg-ctx-menu"
+      className="user-menu msg-ctx-menu"
       ref={ref}
       style={{ left: pos.left, top: pos.top }}
       role="menu"

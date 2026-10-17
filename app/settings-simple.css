@@ -1,0 +1,210 @@
+/* Voice & Video and Appearance, simplified: a few short sections up top, the
+   rarely touched options folded into <details> below them. */
+.vs-section {
+  margin: 0 0 22px;
+}
+
+.vs-section > .field-label:first-child {
+  margin-top: 4px;
+}
+
+.vs-device-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vs-device-grid label {
+  margin-top: 0;
+}
+
+.vs-device-grid select {
+  width: 100%;
+}
+
+.vs-device-note {
+  margin: 6px 0 0;
+}
+
+.vs-mic-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vs-mic-check .discord-btn {
+  flex: none;
+  min-width: 128px;
+}
+
+.vs-mic-check .input-meter {
+  flex: 1;
+}
+
+.vs-mic-check .input-meter-track {
+  height: 12px;
+}
+
+.vs-inline-icon {
+  display: inline;
+  vertical-align: -2px;
+}
+
+.vs-mode-row {
+  margin-bottom: 10px;
+}
+
+.vs-section .vs-mode-row button {
+  text-transform: none;
+}
+
+.vs-section .appearance-switch + .appearance-switch,
+.vs-more-body .appearance-switch + .appearance-switch {
+  margin-top: 8px;
+}
+
+.vs-sensitivity {
+  margin: 12px 0 4px;
+}
+
+.vs-section-video .appearance-switch {
+  margin-top: 12px;
+}
+
+.vs-more {
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+}
+
+.vs-more > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vs-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vs-more > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.vs-more[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.vs-more-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vs-more-body .appearance-switch + .appearance-switch {
+  margin-top: 0;
+}
+
+.vs-more-body .appearance-range {
+  margin: 6px 0 0;
+}
+
+.vs-more-body .mic-record-test {
+  margin-top: 6px;
+}
+
+.vs-footnote {
+  margin-top: 18px;
+  opacity: 0.8;
+}
+
+.appearance-sections {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 640px) {
+  .vs-device-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vs-mic-check {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Device names under a section heading read as plain labels, not more headings. */
+.vs-section label:not(.appearance-switch):not(.appearance-range):not(.field-label) {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 10px 0 6px;
+}
+
+.vs-device-grid label:not(.appearance-switch) {
+  margin-top: 0;
+}
+
+.vs-section select {
+  width: 100%;
+}
+
+.vs-mode-row button {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-weight: 600;
+}
+
+.vs-mode-row button:not(.active):hover {
+  border-color: color-mix(in srgb, var(--lavender) 50%, var(--line));
+}
+
+.vs-mic-check .discord-btn.danger-red {
+  color: #fff;
+  background: #da373c;
+  border-color: #da373c;
+}
+
+/* .appearance-switch sizes its input as a checkbox; text fields inside one
+   (the ntfy URL and token) need their normal width back. */
+.appearance-switch input[type="url"],
+.appearance-switch input[type="password"],
+.appearance-switch input[type="text"] {
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+}
+
+/* The theme styles text and password fields in dialogs but not URL ones. */
+.settings-main input[type="url"],
+.modal-body input[type="url"] {
+  color: #fff;
+  background: #17181e;
+  border: 1px solid #4b4d5b;
+  border-radius: 10px;
+  outline: 0;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+}
+
+.vs-more + .vs-section {
+  margin-top: 22px;
+}

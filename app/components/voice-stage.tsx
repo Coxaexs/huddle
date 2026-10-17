@@ -720,6 +720,7 @@ export function VoiceStage({
           canProject={canProject}
           boardGameId={activity?.kind === "deeppixel" ? String(activity.state.gameId || "") || null : null}
           onPlayBoardGame={() => void playBoardGame()}
+          serverId={serverId}
         />
       )}
       {captions?.showing && <LiveCaptionsOverlay lines={captions.lines} />}

@@ -4,13 +4,10 @@ import { useState } from "react";
 import { Sparkles, Fish, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Layers } from "lucide-react";
 import { FEATURE_MODULES, FEATURE_MODULE_KEYS, normalizeDisabledModules, type FeatureModuleKey } from "@/lib/features";
 import { apiFetch } from "../../lib/client";
-import { PhonePushSettings } from "../phone-push-settings";
-import { DigestSettings } from "../digest-settings";
-import { disableWebPush, enableWebPush } from "../../lib/web-push";
 import { BUILTIN_THEMES, type Theme, getStoredThemes, saveCustomTheme } from "@/lib/themes";
 import { setRetroSoundThemeEnabled, playRetroSound } from "../../lib/msn-sounds";
 import { isParticlesEnabled, setParticlesEnabled, setThemeFxEnabled } from "../../lib/theme-fx";
-import { Tab, PrideTheme, Density, Backdrop } from "./types";
+import { Tab, PrideTheme, Density, Backdrop, type AppearanceSubtab } from "./types";
 
 export function AppearanceTab({
   tab,
@@ -51,16 +48,12 @@ export function AppearanceTab({
   setBackdrop,
   corners,
   setCorners,
-  motion,
-  setMotion,
   cute,
   setCute,
   blahaj,
   setBlahaj,
   clickParticles,
   setClickParticles,
-  notify,
-  setNotify,
   retroSounds,
   setRetroSounds,
 }: {
@@ -71,8 +64,8 @@ export function AppearanceTab({
   setImportParsedTheme: React.Dispatch<React.SetStateAction<Theme | null>>;
   setIsImportingTheme: React.Dispatch<React.SetStateAction<boolean>>;
   themeActionNotice: string;
-  appearanceSubtab: "installed" | "community";
-  setAppearanceSubtab: React.Dispatch<React.SetStateAction<"installed" | "community">>;
+  appearanceSubtab: AppearanceSubtab;
+  setAppearanceSubtab: React.Dispatch<React.SetStateAction<AppearanceSubtab>>;
   customThemes: Theme[];
   activeThemeId: string;
   theme: "cozy" | "legacy" | "light";
@@ -102,16 +95,12 @@ export function AppearanceTab({
   setBackdrop: React.Dispatch<React.SetStateAction<Backdrop>>;
   corners: number;
   setCorners: React.Dispatch<React.SetStateAction<number>>;
-  motion: boolean;
-  setMotion: React.Dispatch<React.SetStateAction<boolean>>;
   cute: boolean;
   setCute: React.Dispatch<React.SetStateAction<boolean>>;
   blahaj: boolean;
   setBlahaj: React.Dispatch<React.SetStateAction<boolean>>;
   clickParticles: boolean;
   setClickParticles: React.Dispatch<React.SetStateAction<boolean>>;
-  notify: boolean;
-  setNotify: React.Dispatch<React.SetStateAction<boolean>>;
   retroSounds: boolean;
   setRetroSounds: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
@@ -148,30 +137,24 @@ export function AppearanceTab({
     <>
       {tab === "appearance" && (
             <>
-              {/* Theme Manager Header */}
-              <div className="flex items-center justify-between mt-1 mb-3">
-                <span className="field-label" style={{ margin: 0 }}>Themes & Styling</span>
-                <div className="flex items-center gap-2">
+              <div className="appearance-choice-row vs-mode-row appearance-sections" role="tablist" aria-label="Appearance sections">
+                {([
+                  ["installed", "Themes"],
+                  ["community", "Community"],
+                  ["look", "Customize"],
+                  ["extras", "Extras"],
+                ] as const).map(([id, label]) => (
                   <button
                     type="button"
-                    className="discord-btn primary-indigo text-xs py-1 px-2.5 flex items-center gap-1.5"
-                    onClick={() => handleOpenCreateTheme()}
+                    role="tab"
+                    aria-selected={appearanceSubtab === id}
+                    key={id}
+                    className={appearanceSubtab === id ? "active" : ""}
+                    onClick={() => setAppearanceSubtab(id)}
                   >
-                    <Plus size={14} /> Create Theme
+                    {label}
                   </button>
-                  <button
-                    type="button"
-                    className="discord-btn secondary-gray text-xs py-1 px-2.5 flex items-center gap-1.5"
-                    onClick={() => {
-                      setImportCodeInput("");
-                      setImportError("");
-                      setImportParsedTheme(null);
-                      setIsImportingTheme(true);
-                    }}
-                  >
-                    <Download size={14} /> Import
-                  </button>
-                </div>
+                ))}
               </div>
 
               {themeActionNotice && (
@@ -181,23 +164,34 @@ export function AppearanceTab({
                 </div>
               )}
 
-              {/* Subtabs: Installed vs Community */}
-              <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
-                <button
-                  type="button"
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${appearanceSubtab === "installed" ? "bg-white/15 text-white" : "text-gray-400 hover:text-gray-200"}`}
-                  onClick={() => setAppearanceSubtab("installed")}
-                >
-                  Installed Themes ({BUILTIN_THEMES.length + customThemes.length})
-                </button>
-                <button
-                  type="button"
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${appearanceSubtab === "community" ? "bg-white/15 text-white" : "text-gray-400 hover:text-gray-200"}`}
-                  onClick={() => setAppearanceSubtab("community")}
-                >
-                  <Globe size={13} /> Community Library
-                </button>
-              </div>
+              {appearanceSubtab === "installed" && (
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="modal-hint" style={{ margin: 0 }}>
+                    Pick a theme. Fine-tune it under Customize.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="discord-btn primary-indigo text-xs py-1 px-2.5 flex items-center gap-1.5"
+                      onClick={() => handleOpenCreateTheme()}
+                    >
+                      <Plus size={14} /> Create
+                    </button>
+                    <button
+                      type="button"
+                      className="discord-btn secondary-gray text-xs py-1 px-2.5 flex items-center gap-1.5"
+                      onClick={() => {
+                        setImportCodeInput("");
+                        setImportError("");
+                        setImportParsedTheme(null);
+                        setIsImportingTheme(true);
+                      }}
+                    >
+                      <Download size={14} /> Import
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {appearanceSubtab === "installed" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-5">
@@ -421,6 +415,8 @@ export function AppearanceTab({
                 </div>
               )}
 
+              {appearanceSubtab === "look" && (
+                <>
               <span className="field-label">Accent colour</span>
               <div className="accent-picker-row">
                 {["#9d8cf5", "#e0a56a", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"].map(
@@ -464,7 +460,7 @@ export function AppearanceTab({
               </div>
 
               <span className="field-label">Message spacing</span>
-              <div className="appearance-choice-row">
+              <div className="appearance-choice-row vs-mode-row">
                 {(["compact", "cozy", "roomy"] as const).map((option) => (
                   <button
                     type="button"
@@ -478,7 +474,7 @@ export function AppearanceTab({
               </div>
 
               <span className="field-label">Chat backdrop</span>
-              <div className="appearance-choice-row">
+              <div className="appearance-choice-row vs-mode-row">
                 {(["plain", "aurora", "dots"] as const).map((option) => (
                   <button
                     type="button"
@@ -502,18 +498,12 @@ export function AppearanceTab({
                 />
               </label>
 
-              <label className="appearance-switch">
-                <span>
-                  <strong>Interface motion</strong>
-                  <small>Animations and smooth scrolling</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={motion}
-                  onChange={(event) => setMotion(event.target.checked)}
-                />
-              </label>
+              <p className="modal-hint">Animation and motion settings are under Accessibility.</p>
+                </>
+              )}
 
+              {appearanceSubtab === "extras" && (
+                <>
               <label className="appearance-switch cute-appearance-switch">
                 <span>
                   <strong className="inline-flex items-center gap-1.5">Cozy Hoffle <Sparkles size={14} /></strong>
@@ -529,7 +519,7 @@ export function AppearanceTab({
               <label className="appearance-switch blahaj-appearance-switch">
                 <span>
                   <strong className="inline-flex items-center gap-1.5">Desktop buddy <Fish size={14} /></strong>
-                  <small>Interactive companion (Blåhaj on Cozy, Bat on Vampire, Terminal Bot on Matrix, Owl on Dark Academia...) with draggable desk tools &amp; wellness timers</small>
+                  <small>A little companion that matches your theme, with desk tools and break timers</small>
                 </span>
                 <input
                   type="checkbox"
@@ -541,7 +531,7 @@ export function AppearanceTab({
               <label className="appearance-switch">
                 <span>
                   <strong className="inline-flex items-center gap-1.5">Button click particles <Sparkles size={14} /></strong>
-                  <small>Theme effects and sparks when clicking buttons (closed by default in Cozy & Light themes)</small>
+                  <small>Themed sparks when you click buttons</small>
                 </span>
                 <input
                   type="checkbox"
@@ -557,7 +547,7 @@ export function AppearanceTab({
               <label className="appearance-switch">
                 <span>
                   <strong className="inline-flex items-center gap-1.5">Profile &amp; background particles <Sparkles size={14} /></strong>
-                  <small>Animated particle scenes on profile cards and Matrix digital rain</small>
+                  <small>Animated scenes on profile cards and backgrounds</small>
                 </span>
                 <input
                   type="checkbox"
@@ -572,32 +562,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch">
                 <span>
-                  <strong>Desktop notifications</strong>
-                  <small>Mentions, DMs and calls — even with the tab closed</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={notify}
-                  onChange={(event) => {
-                    const on = event.target.checked;
-                    setNotify(on);
-                    window.localStorage.setItem(
-                      "huddle-notify",
-                      on ? "on" : "off",
-                    );
-                    // Subscribing asks for permission, so it has to happen
-                    // here in the click rather than on page load.
-                    void (on ? enableWebPush(true) : disableWebPush()).catch(
-                      () => undefined,
-                    );
-                  }}
-                />
-              </label>
-
-              <label className="appearance-switch">
-                <span>
                   <strong>Retro 2000s sound effects</strong>
-                  <small>Classic MSN Messenger chimes, nudges, and Windows Error / Ta-Da sounds across Huddle</small>
+                  <small>MSN-style chimes, nudges and old Windows sounds</small>
                 </span>
                 <input
                   type="checkbox"
@@ -613,15 +579,12 @@ export function AppearanceTab({
                 />
               </label>
 
-              <PhonePushSettings />
-              <DigestSettings />
-
               <div className="mt-4 pt-3 border-t border-white/10">
                 <span className="settings-label inline-flex items-center gap-1.5">
-                  <Layers size={14} /> Feature modules (Simple by default, deep when you want it)
+                  <Layers size={14} /> Features
                 </span>
                 <p className="text-xs opacity-70 mb-2">
-                  Hide optional features you don&apos;t use to keep your chat interface and slash commands focused.
+                  Hide what you don&apos;t use to keep chat and slash commands tidy.
                 </p>
                 {FEATURE_MODULE_KEYS.map((modKey) => {
                   const mod = FEATURE_MODULES[modKey];
@@ -641,6 +604,8 @@ export function AppearanceTab({
                   );
                 })}
               </div>
+                </>
+              )}
             </>
           )}
     </>

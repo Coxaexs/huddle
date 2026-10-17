@@ -1,5 +1,8 @@
 "use client";
 
+import { getAchievement } from "@/lib/achievement-defs";
+import { openAchievements } from "../lib/achievement-client";
+import { AchievementMedal } from "./achievement-medal";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MessageSquare,
@@ -458,6 +461,38 @@ export function UserProfileCard({
             {member.prideBadges && member.prideBadges.length > 0 && (
               <PrideBadges badges={member.prideBadges} compact />
             )}
+          </div>
+        )}
+
+        {member.achievementShowcase && member.achievementShowcase.length > 0 && (
+          <div className="profile-achievements-shelf">
+            <div className="profile-achievements-head">
+              <span>Achievements</span>
+              <button
+                type="button"
+                onClick={() => openAchievements({ userId: member.id, name: member.displayName })}
+              >
+                See all
+              </button>
+            </div>
+            <div className="profile-achievements-row">
+              {member.achievementShowcase.map((id) => {
+                const def = getAchievement(id);
+                if (!def) return null;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="profile-achievement"
+                    title={`${def.label}: ${def.description}`}
+                    onClick={() => openAchievements({ userId: member.id, name: member.displayName })}
+                  >
+                    <AchievementMedal def={def} size={34} />
+                    <span>{def.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

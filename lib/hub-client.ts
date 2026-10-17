@@ -1,4 +1,5 @@
 import type {
+  PlayedTrack,
   PlayerAction,
   PlayerState,
   RecordingState,
@@ -172,6 +173,19 @@ export async function publishMemberUpdate(userId: string): Promise<void> {
     .catch(() => undefined);
 }
 
+/** Tells one member's open tabs they just unlocked these achievements. */
+export async function publishAchievements(userId: string, ids: string[]): Promise<void> {
+  const stub = hub();
+  if (!stub || !ids.length) return;
+  await stub
+    .fetch(`${INTERNAL}/achievement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, ids }),
+    })
+    .catch(() => undefined);
+}
+
 /** Asks the hub to (re)schedule event reminders after an event changed. */
 export async function publishEventsChanged(): Promise<void> {
   const stub = hub();
@@ -259,6 +273,21 @@ export async function playerCommand(
     return ((await response.json()) as { state: PlayerState }).state;
   } catch {
     return null;
+  }
+}
+
+/** The room's /longhistory, newest first; [] when the hub is unreachable. */
+export async function playerLongHistory(channelId: string): Promise<PlayedTrack[]> {
+  const stub = hub();
+  if (!stub) return [];
+  try {
+    const response = await stub.fetch(
+      `${INTERNAL}/player-history?channelId=${encodeURIComponent(channelId)}`,
+    );
+    if (!response.ok) return [];
+    return ((await response.json()) as { history: PlayedTrack[] }).history || [];
+  } catch {
+    return [];
   }
 }
 

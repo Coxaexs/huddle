@@ -19,6 +19,8 @@ export async function apiFetch<T>(
         ...(init?.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
+        // Minutes east of UTC, for time-of-day achievements (Night Owl…).
+        "X-Hoffle-Tz": String(-new Date().getTimezoneOffset()),
         ...init?.headers,
       },
     });

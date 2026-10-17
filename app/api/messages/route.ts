@@ -11,7 +11,7 @@ import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { can, Permission } from "@/lib/permissions";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
-import { evaluateAndAward } from "@/lib/achievements";
+import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
@@ -494,7 +494,10 @@ export async function POST(request: Request) {
   if (limited) return limited;
 
   const body = (await request.json()) as PostBody;
-  return postMessageAs(db, user, body, { origin: new URL(request.url).origin });
+  return postMessageAs(db, user, body, {
+    origin: new URL(request.url).origin,
+    tzOffset: tzFromRequest(request),
+  });
 }
 
 /** What a message post needs from outside: the hub, when it posts for you. */
@@ -504,6 +507,8 @@ export interface PostOptions {
   publish?: typeof publishMessage;
   /** Who is online, for @here; defaults to asking the hub. */
   online?: () => Promise<string[]>;
+  /** The poster's minutes east of UTC, for time-of-day achievements. */
+  tzOffset?: number;
 }
 
 /**
@@ -840,7 +845,10 @@ export async function postMessageAs(
   // Best effort: a failure here never stops the message itself.
   let newAchievements: string[] = [];
   try {
-    newAchievements = await evaluateAndAward(db, user.id);
+    newAchievements = await evaluateAndAward(db, user.id, {
+      sources: ["messages", "days"],
+      tzOffset: options.tzOffset,
+    });
   } catch {
     // Ignored.
   }

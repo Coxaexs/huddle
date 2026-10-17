@@ -6,6 +6,7 @@ import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volum
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
+import { openAchievements } from "../../../lib/achievement-client";
 import { nextScreenQuality, screenQualityLabel } from "../../../hooks/use-voice";
 import type { Dispatch, SetStateAction } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
@@ -424,9 +425,7 @@ export function ChatHeader({
               </Icon>
               <Icon
                 label="Achievements"
-                onClick={() => {
-                  window.location.href = "/hangout/achievements";
-                }}
+                onClick={() => openAchievements()}
               >
                 <Award size={18} />
               </Icon>

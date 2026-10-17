@@ -24,6 +24,8 @@ import {
   RotateCcw,
   Trophy,
   Scroll,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export interface MusicSettings {
@@ -519,17 +521,56 @@ export function MusicQueueCard({
 }
 
 export interface MusicHistoryCardProps {
-  history?: Array<{ index: number; title: string; artist?: string | null; duration?: number | null }>;
+  history?: Array<{
+    index: number;
+    title: string;
+    artist?: string | null;
+    duration?: number | null;
+    /** /longhistory only: when it played (ms) and who asked for it. */
+    playedAt?: number | null;
+    requestedBy?: string | null;
+  }>;
+  /** /longhistory: up to 250 tracks, shown a page at a time. */
+  long?: boolean;
   disabled?: boolean;
   onCommand?: (command: string) => Promise<MusicSettings | void>;
 }
 
+const HISTORY_PAGE_SIZE = 25;
+
+function playedWhen(ms: number): string {
+  const when = new Date(ms);
+  const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const days = Math.round(
+    (new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000,
+  );
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${when.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
 export function MusicHistoryCard({
   history = [],
+  long,
   disabled,
   onCommand,
 }: MusicHistoryCardProps) {
   const [requestingTrack, setRequestingTrack] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState("");
+  const needle = filter.trim().toLocaleLowerCase();
+  const matching = long && needle
+    ? history.filter((item) =>
+        `${item.title} ${item.artist || ""} ${item.requestedBy || ""}`
+          .toLocaleLowerCase()
+          .includes(needle),
+      )
+    : history;
+  const pages = Math.max(1, Math.ceil(matching.length / HISTORY_PAGE_SIZE));
+  const currentPage = Math.min(page, pages - 1);
+  const shown = long
+    ? matching.slice(currentPage * HISTORY_PAGE_SIZE, (currentPage + 1) * HISTORY_PAGE_SIZE)
+    : history;
 
   async function handlePlay(title: string) {
     if (!onCommand || disabled) return;
@@ -548,20 +589,46 @@ export function MusicHistoryCard({
           <History size={18} />
         </span>
         <div>
-          <strong>Room Listening History</strong>
-          <small>Recently played tracks in this room</small>
+          <strong>{long ? "Long Listening History" : "Room Listening History"}</strong>
+          <small>
+            {long
+              ? `The last ${history.length} track${history.length === 1 ? "" : "s"} in this room`
+              : "Recently played tracks in this room"}
+          </small>
         </div>
         <span className="music-live-pill live">HISTORY</span>
       </header>
 
+      {long && history.length > HISTORY_PAGE_SIZE && (
+        <label className="music-history-filter">
+          <Search size={14} aria-hidden="true" />
+          <input
+            type="search"
+            value={filter}
+            placeholder="Find a song, artist or who played it"
+            onChange={(event) => {
+              setFilter(event.target.value);
+              setPage(0);
+            }}
+          />
+        </label>
+      )}
+
       <div className="music-chart">
-        {history.length ? (
-          history.map((item) => (
+        {shown.length ? (
+          shown.map((item) => (
             <div className="music-chart-row" key={`${item.title}-${item.index}`}>
               <span className="music-chart-rank">#{item.index}</span>
               <div className="music-chart-info">
                 <span title={item.title}>{item.title}</span>
                 {item.artist && <small>{item.artist}</small>}
+                {(item.playedAt || item.requestedBy) && (
+                  <small>
+                    {[item.playedAt ? playedWhen(item.playedAt) : null, item.requestedBy]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                )}
               </div>
               {onCommand && (
                 <button
@@ -576,9 +643,35 @@ export function MusicHistoryCard({
             </div>
           ))
         ) : (
-          <p className="music-empty">This room has not played anything yet.</p>
+          <p className="music-empty">
+            {needle ? "Nothing in this room's history matches that." : "This room has not played anything yet."}
+          </p>
         )}
       </div>
+
+      {long && pages > 1 && (
+        <div className="music-quick-actions music-history-pager">
+          <button
+            type="button"
+            className="flex items-center gap-1"
+            disabled={currentPage === 0}
+            onClick={() => setPage(Math.max(0, currentPage - 1))}
+          >
+            <ChevronLeft size={14} /> Newer
+          </button>
+          <span>
+            Page {currentPage + 1} / {pages}
+          </span>
+          <button
+            type="button"
+            className="flex items-center gap-1"
+            disabled={currentPage >= pages - 1}
+            onClick={() => setPage(Math.min(pages - 1, currentPage + 1))}
+          >
+            Older <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
       {onCommand && (
         <div className="music-quick-actions">

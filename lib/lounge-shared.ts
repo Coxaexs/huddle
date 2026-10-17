@@ -6,6 +6,7 @@
  * only ever store these.
  */
 import { CLASSES, type AreaShape } from "./dnd-spells";
+import { sanitizeV5Sheet, type V5Sheet } from "./v5-sheet";
 
 export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
 
@@ -141,6 +142,8 @@ export interface TableCharacter {
   used?: number[];
   /** The spells they know or prepared, by name. */
   spells?: string[];
+  /** A Vampire: The Masquerade 5th edition sheet, on a server that plays it (lib/v5-sheet). */
+  v5?: V5Sheet;
 }
 
 /**
@@ -377,6 +380,7 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         // Never more spent than there are.
         used: slots ? list(value.used, 9, 9)?.map((n, i) => Math.min(n, slots[i])) : undefined,
         spells,
+        v5: value.v5 && typeof value.v5 === "object" ? sanitizeV5Sheet(value.v5) : undefined,
       };
       return Object.fromEntries(Object.entries(sheet).filter(([, v]) => v !== undefined)) as unknown as TableCharacter;
     }

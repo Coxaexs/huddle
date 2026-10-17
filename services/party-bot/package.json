@@ -1,0 +1,10 @@
+{
+  "name": "hoffle-party-bot",
+  "version": "1.0.0",
+  "description": "Party Games & Community Minigames Bot for Hoffle",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}

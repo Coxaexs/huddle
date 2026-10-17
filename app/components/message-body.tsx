@@ -4,6 +4,8 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Check, Volume2 } from "lucide-react";
 import { highlight } from "../lib/highlight";
 import { LinkPreviewCard } from "./link-preview";
+import { MessageLinkCard } from "./message-link-card";
+import { parseMessageLink, type MessageLinkTarget } from "../lib/chat/message-links";
 import { extractInviteCodes } from "../lib/chat/invites";
 import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
 import { handleMatchesName } from "@/lib/mention-handles";
@@ -77,6 +79,8 @@ interface RenderOptions {
   channels?: MentionChannel[];
   roles?: MentionRole[];
   onChannel?: (channel: MentionChannel) => void;
+  /** Called when a link to a message here is clicked (opens it in-app). */
+  onMessageLink?: (target: MessageLinkTarget) => void;
 }
 
 /** Hidden until clicked, like Discord's ||spoiler||. */
@@ -154,10 +158,26 @@ function renderInline(
       if (!suppressed && options.links && !options.links.includes(token)) {
         options.links.push(token);
       }
+      // A link to a message here opens it in this tab instead of a new one.
+      const messageLink = options.onMessageLink ? parseMessageLink(token) : null;
       parts.push(
-        <a key={key} href={token} target="_blank" rel="noreferrer">
-          {token}
-        </a>,
+        messageLink ? (
+          <a
+            key={key}
+            href={token}
+            onClick={(event) => {
+              if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+              event.preventDefault();
+              options.onMessageLink?.(messageLink);
+            }}
+          >
+            {token}
+          </a>
+        ) : (
+          <a key={key} href={token} target="_blank" rel="noreferrer">
+            {token}
+          </a>
+        ),
       );
     } else if (match[2]) {
       const handle = token.slice(1);
@@ -420,6 +440,7 @@ export function MessageBody({
   channels,
   roles,
   onChannel,
+  onMessageLink,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
@@ -438,6 +459,8 @@ export function MessageBody({
   roles?: MentionRole[];
   /** Called when a #channel link is clicked. */
   onChannel?: (channel: MentionChannel) => void;
+  /** Called when a link to a message (or its preview card) is clicked. */
+  onMessageLink?: (target: MessageLinkTarget) => void;
 }) {
   const links: string[] = [];
   const options: RenderOptions = {
@@ -449,6 +472,7 @@ export function MessageBody({
     channels,
     roles,
     onChannel,
+    onMessageLink,
   };
   const trimmed = text.trim();
 
@@ -557,9 +581,14 @@ export function MessageBody({
       {links
         .filter((url) => extractInviteCodes(url).length === 0)
         .slice(0, MAX_PREVIEWS)
-        .map((url) => (
-        <LinkPreviewCard key={url} url={url} />
-      ))}
+        .map((url) => {
+          const target = parseMessageLink(url);
+          return target ? (
+            <MessageLinkCard key={url} target={target} onOpen={onMessageLink} />
+          ) : (
+            <LinkPreviewCard key={url} url={url} />
+          );
+        })}
     </>
   );
 }
