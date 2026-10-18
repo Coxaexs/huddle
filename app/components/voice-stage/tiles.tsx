@@ -2,147 +2,114 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { VideoTile } from "./types";
-import { EyeOff, Eye } from "lucide-react";
-import { captureVideoSnapshot, setStreamPreview, SNAPSHOT_INTERVAL_MS } from "../../lib/stream-preview";
+import { EyeOff, Eye, Film, Monitor, Play } from "lucide-react";
 import type { WatchState } from "@/lib/lounge-shared";
 import { watchPosition } from "@/lib/lounge-shared";
+import { attachWatchSource } from "../../lib/watch-source";
+import { partyPlayerOn } from "../../lib/tune-in";
+import { SubtitleOverlay } from "../watch-subtitles";
 
 export function hasLiveVideo(stream: MediaStream): boolean {
   return stream.getVideoTracks().some((track) => track.readyState === "live");
 }
 
+/** How the room's watch party plays in this tile. */
+export interface WatchPlayback {
+  state: WatchState;
+  hubNow: () => number;
+  /** 0..1, already including the viewer's mute. */
+  volume: number;
+  /** Only the one big picture plays sound; the rest stay silent. */
+  audible: boolean;
+  /** The film reached its end: the room moves on to the queue. */
+  onEnded?: () => void;
+}
+
 /**
- * A tile's picture, or a tune-in prompt ("Do you want to see...?") before watching,
- * or a placeholder once hidden.
+ * A tile's picture; a "Do you want to see…?" prompt before you tune in to a
+ * screen share or watch party (nothing is received until you do); or a
+ * placeholder once hidden, plus the corner button that switches between them.
  */
 export function TileVideo({
   tile,
   onHide,
-  tunedIn = false,
+  needsTuneIn = false,
   onTuneIn,
-  watchState,
-  serverNow,
+  preview,
+  watch,
+  compact = false,
 }: {
   tile: VideoTile;
   onHide?: (tile: VideoTile, hidden: boolean) => void;
-  tunedIn?: boolean;
-  onTuneIn?: (key: string) => void;
-  watchState?: WatchState | null;
-  serverNow?: () => number;
+  needsTuneIn?: boolean;
+  onTuneIn?: (tile: VideoTile) => void;
+  /** The streamer's latest preview frame, shown behind the prompt. */
+  preview?: string | null;
+  watch?: WatchPlayback | null;
+  /** A small copy of a tile shown big elsewhere (the filmstrip): no second player. */
+  compact?: boolean;
 }) {
   const what = tile.videoKind === "camera" ? "camera" : "screen share";
-  const isScreenOrWatch = tile.videoKind === "screen" || tile.videoKind === "watch";
-  const needsTuneIn = isScreenOrWatch && !tile.self && !tunedIn;
-  const streamerName = tile.watchTitle || tile.label.split(" · ")[0] || "Streamer";
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const name = tile.watchTitle || tile.label.split(" · ")[0] || "Streamer";
 
-  // Periodic 2-minute snapshot grabber for the sidebar preview
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el || !isScreenOrWatch) return;
-
-    const snap = () => {
-      const captured = captureVideoSnapshot(el);
-      if (captured) {
-        setStreamPreview({
-          key: tile.key,
-          title: tile.watchTitle || `${streamerName}'s screenshare`,
-          streamerName,
-          snapshotUrl: captured,
-          startedAt: Date.now(),
-          updatedAt: Date.now(),
-        });
-      }
-    };
-
-    // Initial snapshot once video metadata loads
-    const onLoaded = () => setTimeout(snap, 500);
-    el.addEventListener("loadeddata", onLoaded);
-
-    // Periodic 2-minute interval
-    const interval = setInterval(snap, SNAPSHOT_INTERVAL_MS);
-    return () => {
-      el.removeEventListener("loadeddata", onLoaded);
-      clearInterval(interval);
-    };
-  }, [tile.key, tile.watchTitle, streamerName, isScreenOrWatch]);
-
-  if (tile.hidden) {
+  if (needsTuneIn) {
     return (
-      <div className="video-hidden-placeholder">
-        <EyeOff size={22} aria-hidden="true" />
-        <span>{tile.videoKind === "camera" ? "Camera hidden" : "Screen share hidden"}</span>
-        <small>Not using your data</small>
+      <div
+        className="stream-tunein"
+        onClick={(event) => {
+          event.stopPropagation();
+          onTuneIn?.(tile);
+        }}
+      >
+        {preview ? (
+          <img className="stream-tunein-preview" src={preview} alt="" aria-hidden="true" />
+        ) : (
+          <div className="stream-tunein-preview stream-tunein-blank" aria-hidden="true">
+            {tile.videoKind === "watch" ? <Film size={40} /> : <Monitor size={40} />}
+          </div>
+        )}
+        <div className="stream-tunein-overlay">
+          <div className="stream-tunein-question">
+            {tile.videoKind === "watch" ? `Do you want to watch ${name}?` : `Do you want to see ${name}'s screen share?`}
+          </div>
+          <button
+            type="button"
+            className="stream-tunein-go"
+            onClick={(event) => {
+              event.stopPropagation();
+              onTuneIn?.(tile);
+            }}
+          >
+            Go Ahead
+          </button>
+          <div className="stream-tunein-label">
+            <span className="live-stream-dot" />
+            <span>{tile.label}</span>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden flex items-center justify-center">
-      {/* Video Surface (blurred if not yet tuned in) */}
-      <div
-        className="w-full h-full transition-all duration-300 flex items-center justify-center"
-        style={
-          needsTuneIn
-            ? { filter: "blur(18px) brightness(0.55)", transform: "scale(1.08)", pointerEvents: "none" }
-            : undefined
-        }
-      >
-        {tile.watchUrl ? (
-          <WatchSurface
-            url={tile.watchUrl}
-            paused={watchState?.paused ?? false}
-            position={watchState ? watchPosition(watchState, (serverNow ?? Date.now)()) : 0}
-            muted={needsTuneIn}
-            onVideoRef={(el) => {
-              videoRef.current = el;
-            }}
-          />
-        ) : tile.stream ? (
-          <VideoSurface
-            stream={tile.stream}
-            mirrored={tile.mirrored}
-            muted={needsTuneIn}
-            onVideoRef={(el) => {
-              videoRef.current = el;
-            }}
-          />
-        ) : null}
-      </div>
-
-      {/* Discord-style Tune-In Prompt Overlay (Screenshot 1) */}
-      {needsTuneIn && (
-        <div
-          className="stream-tunein-overlay absolute inset-0 z-10 flex flex-col items-center justify-center text-center p-4 select-none bg-black/30 cursor-pointer"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTuneIn?.(tile.key);
-          }}
-        >
-          <div className="text-white font-bold text-base md:text-lg mb-3.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] max-w-[90%] leading-snug">
-            Do you want to see {streamerName}'s screenshare?
-          </div>
-          <button
-            type="button"
-            className="stream-tunein-go-btn px-7 py-2 rounded-full bg-white text-black font-extrabold text-sm shadow-xl hover:bg-white/90 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              onTuneIn?.(tile.key);
-            }}
-          >
-            Go Ahead
-          </button>
-
-          {/* Bottom left label matching Screenshot 1 */}
-          <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 text-xs font-semibold text-rose-300 drop-shadow">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse inline-block" />
-            <span className="font-medieval tracking-wide">{tile.label}</span>
-          </div>
+    <>
+      {tile.hidden ? (
+        <div className="video-hidden-placeholder">
+          <EyeOff size={22} aria-hidden="true" />
+          <span>{tile.videoKind === "camera" ? "Camera hidden" : "Screen share hidden"}</span>
+          <small>Not using your data</small>
         </div>
-      )}
-
-      {/* Hide Video Button */}
-      {!tile.self && tile.remoteId && onHide && !needsTuneIn && (
+      ) : tile.watchUrl && watch && !compact ? (
+        <WatchSurface url={tile.watchUrl} {...watch} />
+      ) : tile.watchUrl ? (
+        <div className="video-hidden-placeholder">
+          <Film size={22} aria-hidden="true" />
+          <span>{name}</span>
+        </div>
+      ) : tile.stream ? (
+        <VideoSurface stream={tile.stream} mirrored={tile.mirrored} />
+      ) : null}
+      {!tile.self && tile.remoteId && onHide && tile.videoKind !== "watch" && (
         <span
           role="button"
           tabIndex={0}
@@ -164,31 +131,28 @@ export function TileVideo({
           {tile.hidden ? "Show" : "Hide"}
         </span>
       )}
-    </div>
+    </>
   );
 }
 
-/** Attaches a MediaStream to a <video>, replacing it only when it changes. */
+/**
+ * Attaches a MediaStream to a <video>, replacing it only when it changes.
+ * Always silent: a share's sound plays through the call's own audio path.
+ */
 export function VideoSurface({
   stream,
   mirrored,
-  muted = true,
-  onVideoRef,
 }: {
   stream: MediaStream;
   mirrored?: boolean;
-  muted?: boolean;
-  onVideoRef?: (el: HTMLVideoElement | null) => void;
 }) {
   return (
     <video
       autoPlay
       playsInline
-      muted={muted}
+      muted
       className={mirrored ? "mirrored" : ""}
-      style={{ width: "100%", height: "100%", objectFit: "contain" }}
       ref={(element) => {
-        onVideoRef?.(element);
         if (element && element.srcObject !== stream) {
           element.srcObject = stream;
           void element.play().catch(() => undefined);
@@ -198,56 +162,95 @@ export function VideoSurface({
   );
 }
 
-/** Video player surface for Living Room / Jellyfin synchronized watch streams */
+/**
+ * The room's watch party on the stage: the same film at the same moment as
+ * everyone else, kept in step with the hub clock like the living room screen.
+ */
 export function WatchSurface({
   url,
-  paused = false,
-  position = 0,
-  muted = true,
-  volume = 1,
-  onVideoRef,
-}: {
-  url: string;
-  paused?: boolean;
-  position?: number;
-  muted?: boolean;
-  volume?: number;
-  onVideoRef?: (el: HTMLVideoElement | null) => void;
-}) {
+  state,
+  hubNow,
+  volume,
+  audible,
+  onEnded,
+}: { url: string } & WatchPlayback) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const live = useRef({ state, hubNow, volume, audible, onEnded });
+  live.current = { state, hubNow, volume, audible, onEnded };
+  const [problem, setProblem] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
+  // A new film: a new source (and, for Jellyfin, maybe a new conversion).
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    el.volume = volume;
-    el.muted = muted;
-    if (paused) {
-      el.pause();
-    } else {
-      void el.play().catch(() => undefined);
-    }
-  }, [paused, muted, volume]);
+    const element = videoRef.current;
+    if (!element) return;
+    setProblem(null);
+    // Asking for CORS lets a frame be read for previews; watch-source asks
+    // plainly instead when a site does not allow it.
+    element.crossOrigin = "anonymous";
+    // Counts this viewer as watching the party while the player is up.
+    const counted = partyPlayerOn();
+    const detach = attachWatchSource(element, url, {
+      startAt: watchPosition(live.current.state, live.current.hubNow()),
+      onProblem: setProblem,
+      retryWithoutCors: true,
+      quality: live.current.state.quality,
+      session: live.current.state.session,
+    });
+    return () => {
+      counted();
+      detach();
+    };
+  }, [url, state.session, state.quality]);
 
+  // Stay on the room's clock: play, pause and seek with everyone else.
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el || !Number.isFinite(position)) return;
-    if (Math.abs(el.currentTime - position) > 2.5) {
-      el.currentTime = position;
-    }
-  }, [position]);
+    const sync = () => {
+      const element = videoRef.current;
+      if (!element) return;
+      const { state: w, hubNow: now, volume: level, audible: loud, onEnded: ended } = live.current;
+      element.volume = Math.max(0, Math.min(1, level));
+      element.muted = !loud || level <= 0;
+      const duration = Number.isFinite(element.duration) ? element.duration : 0;
+      let expected = watchPosition(w, now());
+      let paused = w.paused;
+      if (duration && expected >= duration) {
+        expected = duration;
+        paused = true;
+        ended?.();
+      }
+      if (element.readyState >= 1 && Math.abs(element.currentTime - expected) > (paused ? 0.3 : 2)) {
+        element.currentTime = expected;
+      }
+      if (paused && !element.paused) element.pause();
+      else if (!paused && element.paused) {
+        void element.play().then(() => setBlocked(false)).catch((error: unknown) => {
+          if ((error as DOMException)?.name === "NotAllowedError") setBlocked(true);
+        });
+      }
+    };
+    sync();
+    const timer = window.setInterval(sync, 1000);
+    return () => window.clearInterval(timer);
+  }, [url, state, audible, volume]);
 
   return (
-    <video
-      ref={(el) => {
-        videoRef.current = el;
-        onVideoRef?.(el);
-      }}
-      src={url}
-      crossOrigin="anonymous"
-      playsInline
-      autoPlay
-      muted={muted}
-      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-    />
+    <div className="watch-surface">
+      <video ref={videoRef} playsInline preload="auto" />
+      {blocked && !problem && (
+        <button
+          type="button"
+          className="watch-surface-play"
+          onClick={(event) => {
+            event.stopPropagation();
+            void videoRef.current?.play().then(() => setBlocked(false)).catch(() => undefined);
+          }}
+        >
+          <Play size={18} /> Click to play
+        </button>
+      )}
+      <SubtitleOverlay url={url} time={() => videoRef.current?.currentTime ?? null} />
+      {problem && <div className="watch-surface-problem">{problem}</div>}
+    </div>
   );
 }

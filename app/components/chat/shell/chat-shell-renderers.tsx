@@ -3,7 +3,7 @@ import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { shouldStartMuted } from "@/lib/stage";
 import { hasPermission, Permission } from "@/lib/permissions";
-import { Mic, MicOff, HeadphoneOff, AudioLines } from "lucide-react";
+import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
 import { type MentionChannel } from "../../message-body";
@@ -16,6 +16,7 @@ import { Speaking } from "./live-speaking";
 import { ringColor } from "../../../lib/profile-look";
 import { StyledName, VoiceAura } from "../../profile-style-parts";
 import type { ChatShellViewState } from "./chat-shell-view";
+import type { StageFocusRequest } from "../../../hooks/chat-shell/use-shell-state";
 
 export type ShellRenderState = ReturnType<typeof withShellRenderers>;
 
@@ -29,7 +30,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     player, prepareCommand, runCommand, serverDragProps, serverDropHint, servers,
     setActiveChannelId, setActiveServerId, setChannelMenu, setFolderMenu, setMobileNav, setNotice,
     setRailMenu, setStageChannelId, stageChannelId, toggleFolderOpen, touchInput, unread, user,
-    voice, voiceChannels, voiceRooms, queueStreamHover,
+    voice, voiceChannels, voiceRooms, queueStreamHover, setStageFocusRequest,
   } = s;
 
   const rawDisplayedMembers = inDmHome ? dmMembers : members;
@@ -87,6 +88,12 @@ export function withShellRenderers(s: ChatShellViewState) {
       const startMuted = shouldStartMuted(channel.kind, hasPermission(myPermissions, Permission.SPEAK));
       void voice.join(channel.id, { startMuted });
     }
+  }
+
+  /** "Watch Stream": join the room and open its stage on that stream, past the tune-in prompt. */
+  function watchStream(channel: PublicChannel, target: StageFocusRequest["target"]) {
+    openVoiceChannel(channel);
+    setStageFocusRequest({ channelId: channel.id, target, at: Date.now() });
   }
 
   /** Where a #channel link in a message takes you. */
@@ -148,6 +155,7 @@ export function withShellRenderers(s: ChatShellViewState) {
   function renderChannel(channel: PublicChannel) {
     if (channelKindInfo(channel.kind).appearsAsVoice) {
       const people = voiceRooms[channel.id] || [];
+      const roomWatch = hub.watching[channel.id];
       const playing = hub.players[channel.id]?.track;
       // Merge channel-reorder drag props with a drop zone that accepts a
       // dragged voice member (a moderator moving someone into this room).
@@ -236,6 +244,13 @@ export function withShellRenderers(s: ChatShellViewState) {
                   person.screenStreamId ||
                   (person.connectionId === hub.connectionId && voice.screenSharing)
                 );
+                const hoverInfo = {
+                  kind: "screen" as const,
+                  connectionId: person.connectionId,
+                  streamerName: person.displayName,
+                  startedAt: person.screenStartedAt,
+                  channel,
+                };
                 return (
                   <Speaking key={person.connectionId} store={voice.speakingStore} id={speakingId}>
                     {(isSpeaking) => (
@@ -244,26 +259,10 @@ export function withShellRenderers(s: ChatShellViewState) {
                       } ${isSpeaking ? "is-speaking" : ""}`}
                     draggable={canModerate && !person.bot}
                     onMouseEnter={(event) => {
-                      if (isStreaming) {
-                        const key = person.screenStreamId
-                          ? `${person.connectionId}:${person.screenStreamId}`
-                          : `self:${voice.screenQuality}`;
-                        queueStreamHover(
-                          {
-                            streamKey: key,
-                            streamerName: person.displayName,
-                            defaultTitle: `${person.displayName}'s Stream`,
-                            startedAt: person.joinedAt,
-                            channel,
-                          },
-                          event.currentTarget,
-                        );
-                      }
+                      if (isStreaming && !touchInput) queueStreamHover(hoverInfo, event.currentTarget);
                     }}
                     onMouseLeave={() => {
-                      if (isStreaming) {
-                        queueStreamHover(null);
-                      }
+                      if (isStreaming && !touchInput) queueStreamHover(null);
                     }}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
@@ -319,15 +318,28 @@ export function withShellRenderers(s: ChatShellViewState) {
                     <span className="voice-member-status">
                       {isStreaming && (
                         <span
-                          className="live-stream-badge text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white flex items-center gap-1 shadow-sm mr-1 cursor-pointer hover:bg-rose-600 transition-colors"
-                          title="Streaming Now — Click to view stream"
+                          className="live-stream-badge"
+                          role="button"
+                          title="Streaming now: click to watch"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openVoiceChannel(channel);
+                            // No hover on a touch screen: a tap shows the card instead.
+                            if (touchInput) {
+                              const row = (e.currentTarget as HTMLElement).closest(".voice-member") as HTMLElement | null;
+                              queueStreamHover(hoverInfo, row ?? (e.currentTarget as HTMLElement), true);
+                              return;
+                            }
+                            watchStream(channel, { kind: "screen", connectionId: person.connectionId });
                           }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          <span className="live-stream-dot" />
                           LIVE
+                        </span>
+                      )}
+                      {isStreaming && (person.screenViewers?.length ?? 0) > 0 && (
+                        <span className="live-viewers" title={`${person.screenViewers!.length} watching`}>
+                          <Eye size={11} aria-hidden="true" />
+                          {person.screenViewers!.length}
                         </span>
                       )}
                       {isSpeaking && (
@@ -368,6 +380,44 @@ export function withShellRenderers(s: ChatShellViewState) {
               })}
             </div>
           )}
+          {roomWatch && people.length > 0 && (() => {
+            const watchInfo = {
+              kind: "watch" as const,
+              streamerName: "Watch party",
+              title: roomWatch.title,
+              startedAt: roomWatch.startedAt,
+              channel,
+            };
+            return (
+              <button
+                type="button"
+                className="voice-watch-party"
+                title={`Watch party: ${roomWatch.title}`}
+                onMouseEnter={(event) => { if (!touchInput) queueStreamHover(watchInfo, event.currentTarget); }}
+                onMouseLeave={() => { if (!touchInput) queueStreamHover(null); }}
+                onClick={(event) => {
+                  if (touchInput) {
+                    queueStreamHover(watchInfo, event.currentTarget, true);
+                    return;
+                  }
+                  watchStream(channel, { kind: "watch" });
+                }}
+              >
+                <Film size={14} aria-hidden="true" />
+                <span className="voice-watch-party-title">{roomWatch.title}</span>
+                {roomWatch.viewers.length > 0 && (
+                  <span className="live-viewers" title={`${roomWatch.viewers.length} watching`}>
+                    <Eye size={11} aria-hidden="true" />
+                    {roomWatch.viewers.length}
+                  </span>
+                )}
+                <span className="live-stream-badge">
+                  <span className="live-stream-dot" />
+                  LIVE
+                </span>
+              </button>
+            );
+          })()}
         </div>
       );
     }
@@ -509,7 +559,7 @@ export function withShellRenderers(s: ChatShellViewState) {
   return {
     ...s,
     rawDisplayedMembers, filterQ, displayedMembers, onlineMembers, offlineMembers,
-    currentVoiceChannel, stageDm, stageChannel, openVoiceChannel, openMentionedChannel,
+    currentVoiceChannel, stageDm, stageChannel, openVoiceChannel, openMentionedChannel, watchStream,
     renderRailServer, renderRailFolder, renderChannel, currentPlayer, musicBotActions,
     dndBotActions,
   };

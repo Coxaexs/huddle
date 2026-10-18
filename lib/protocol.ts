@@ -57,6 +57,10 @@ export interface VoiceParticipant extends PresenceUser {
    */
   cameraStreamId?: string | null;
   screenStreamId?: string | null;
+  /** Hub-clock ms the current screen share started; null when not sharing. */
+  screenStartedAt?: number | null;
+  /** Seats (connection ids) in the room watching this person's screen share right now. */
+  screenViewers?: string[];
   /**
    * This seat sends and receives through the LiveKit media server. Two such
    * seats never connect directly; anyone else (bots, older clients, a client
@@ -311,6 +315,15 @@ export function playbackPosition(state: PlayerState, now = Date.now()): number {
   return state.positionMs + Math.max(0, now - state.updatedAt);
 }
 
+/** What the channel list shows of a room's watch party: the film and since when. */
+export interface RoomWatch {
+  title: string;
+  /** Hub-clock ms this film started. */
+  startedAt: number;
+  /** Seats (connection ids) with the film on a screen right now. */
+  viewers: string[];
+}
+
 export type ClientEvent =
   | { t: "subscribe"; channelId: string }
   | {
@@ -368,6 +381,12 @@ export type ClientEvent =
   /** Living room: pick the room the whole call hangs out in (living room, cinema, tabletop). */
   | { t: "lounge-venue"; venue: LoungeVenue }
   /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
+  /** A small JPEG of this seat's own screen share, for the "Streaming Now" hover card. */
+  | { t: "stream-preview"; image: string; title?: string | null }
+  /** What this seat is watching: whose screen shares (by seat), and the room's watch party. */
+  | { t: "watching"; screens: string[]; party: boolean }
+  /** Ask for a streamer's latest preview frame; answered to this socket only. */
+  | { t: "stream-preview-get"; connectionId: string }
   | { t: "lounge-set"; key: "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx"; value: unknown }
   | {
       t: "dm-call";
@@ -407,6 +426,14 @@ export type PlayerAction =
   | { name: "live"; live: Omit<LiveTrack, "updatedAt"> | null };
 
 export type ServerEvent =
+  | {
+      /** A streamer's latest preview frame (image null: none yet), answering stream-preview-get. */
+      t: "stream-preview";
+      connectionId: string;
+      image: string | null;
+      title: string | null;
+      at: number;
+    }
   | {
       /** Stage Q&A: one question's new state, or null with removedId. */
       t: "qa";
@@ -484,6 +511,15 @@ export type ServerEvent =
       recordings: Record<string, RecordingState>;
       /** Calls keeping session notes (/recap start). */
       sessionNotes?: Record<string, SessionNotesState>;
+      /** Voice rooms with a watch party on their screen. */
+      watching?: Record<string, RoomWatch>;
+    }
+  | {
+      /** A voice room's watch party started, changed film, or ended (null). */
+      t: "room-watch";
+      channelId: string;
+      watch: RoomWatch | null;
+      serverNow: number;
     }
   | { t: "presence"; online: string[]; serverNow: number }
   | { t: "message"; channelId: string; message: unknown; serverNow: number }

@@ -125,6 +125,20 @@ export async function sendFcm(token: string, payload: PushPayload): Promise<"ok"
               ...(payload.tag ? { tag: payload.tag } : {}),
             },
           },
+          apns: {
+            headers: {
+              "apns-priority": payload.urgent ? "10" : "5",
+              "apns-expiration": String(Math.floor(Date.now() / 1000) + (payload.urgent ? 60 : 3600)),
+              // A newer notification with the same tag replaces the older one.
+              ...(payload.tag ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}),
+            },
+            payload: {
+              aps: {
+                sound: "default",
+                ...(payload.tag ? { "thread-id": payload.tag } : {}),
+              },
+            },
+          },
         },
       }),
     },

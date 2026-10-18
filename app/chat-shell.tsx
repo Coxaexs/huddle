@@ -11,6 +11,7 @@ import { useShellCommands } from "./hooks/chat-shell/use-shell-commands";
 import { useShellMessaging } from "./hooks/chat-shell/use-shell-messaging";
 import { useShellComposer } from "./hooks/chat-shell/use-shell-composer";
 import { renderChatShell } from "./components/chat/shell/chat-shell-view";
+import { TermsConsent } from "./components/terms-consent";
 
 // The app's main screen. Its state and handlers live in a chain of hooks
 // (app/hooks/chat-shell/, called in this order every render) and its markup
@@ -60,5 +61,10 @@ export function ChatShell() {
     );
   }
 
-  return renderChatShell({ ...shell, user });
+  return (
+    <>
+      {renderChatShell({ ...shell, user })}
+      <TermsConsent />
+    </>
+  );
 }

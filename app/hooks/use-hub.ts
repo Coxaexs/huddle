@@ -9,11 +9,13 @@ import {
   type DiceRollEvent,
   type PlayerState,
   type RecordingState,
+  type RoomWatch,
   type ServerEvent,
   type VoiceParticipant,
 } from "@/lib/protocol";
 import { basePath } from "../lib/client";
 import type { SessionNotesState } from "@/lib/session-notes";
+import { pruneStreamPreviews } from "../lib/stream-preview";
 import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
 
 export interface HubState {
@@ -27,6 +29,8 @@ export interface HubState {
   recordings: Record<string, RecordingState>;
   /** Calls keeping session notes for a recap (/recap start). */
   sessionNotes: Record<string, SessionNotesState>;
+  /** Voice rooms with a watch party on their screen. */
+  watching: Record<string, RoomWatch>;
   /** People muted for everyone. */
   forcedMutes: Set<string>;
 }
@@ -140,6 +144,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     players: {},
     recordings: {},
     sessionNotes: {},
+    watching: {},
     forcedMutes: new Set(),
   });
 
@@ -306,6 +311,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               ),
               recordings: payload.recordings || {},
               sessionNotes: payload.sessionNotes || {},
+              watching: payload.watching || {},
               forcedMutes: new Set(payload.forcedMutes || []),
             }));
             break;
@@ -321,6 +327,12 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               ...freshVoiceRef.current,
               [payload.channelId]: payload.participants,
             };
+            // Hover-card frames of shares that have ended are dropped.
+            pruneStreamPreviews(new Set(
+              Object.values(freshVoiceRef.current).flat()
+                .filter((person) => person.screenStreamId)
+                .map((person) => person.connectionId),
+            ));
             const grace = graceRef.current && Date.now() < graceRef.current.until ? graceRef.current.voice : null;
             setState((current) => ({
               ...current,
@@ -464,6 +476,18 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
           case "synth":
             // Played by SynthJamAudio (see synth-jam.ts).
             window.dispatchEvent(new CustomEvent("huddle-synth", { detail: payload }));
+            break;
+          case "room-watch":
+            setState((current) => {
+              const watching = { ...current.watching };
+              if (payload.watch) watching[payload.channelId] = payload.watch;
+              else delete watching[payload.channelId];
+              return { ...current, watching };
+            });
+            break;
+          case "stream-preview":
+            // Read by the hover card's preview store (see stream-preview.ts).
+            window.dispatchEvent(new CustomEvent("huddle-stream-preview", { detail: payload }));
             break;
           case "lounge":
           case "lounge-state":

@@ -101,7 +101,10 @@ describe("AuthGate invite link autofill", () => {
 
       fireEvent.change(screen.getByLabelText("Username"), { target: { value: "newbie" } });
       fireEvent.change(screen.getByLabelText("Password"), { target: { value: "long-enough-pw" } });
-      fireEvent.click(screen.getByRole("button", { name: "Create my account" }));
+      const create = screen.getByRole("button", { name: "Create my account" }) as HTMLButtonElement;
+      expect(create.disabled).toBe(true);
+      fireEvent.click(screen.getByRole("checkbox"));
+      fireEvent.click(create);
 
       const call = vi.mocked(apiFetch).mock.calls.find(([path]) => path === "/api/auth/signup");
       expect(call).toBeTruthy();

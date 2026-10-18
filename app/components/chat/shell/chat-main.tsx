@@ -40,7 +40,7 @@ export function renderChatMain(v: ShellRenderState) {
     msnTheme, myPermissions, myTimeoutUntil, noteTyping, notice, nudgeCooling, onChannelDragOver,
     onChannelDrop, onComposerKeyDown, onLocalStroke, onLocalToken, openActionsId, openBattlemap,
     openBotMenu, openDm, openMention, openMentionedChannel, openProfile, openProfileByHandle,
-    openThread, openUserMenu, openVoiceChannel, pendingFiles, pendingInvite, personalEmoticons,
+    openThread, openUserMenu, openVoiceChannel, stageFocusRequest, setStageFocusRequest, pendingFiles, pendingInvite, personalEmoticons,
     pickCommand, pickEmojiShortcode, pickMention, pins, pinsOpen, player, pollCounts, pollVoters,
     prefFor, pressBotComponent, quickReactions, quickVoteId, reactionPicker, reactionViewer,
     removeQuickReaction, renameGroupDm, replyTarget, resolvedInvites, roleColorFor, roomActivity,
@@ -174,6 +174,10 @@ export function renderChatMain(v: ShellRenderState) {
               streamPreferenceFor={streamPreferenceFor}
               onSetStreamVolume={setStreamVolume}
               onToggleStreamMute={toggleStreamMute}
+              hubSend={hub.send}
+              partyViewers={hub.watching[stageChannel.id]?.viewers}
+              focusRequest={stageFocusRequest?.channelId === stageChannel.id ? stageFocusRequest : null}
+              onFocusRequestDone={() => setStageFocusRequest(null)}
               serverId={stageChannel.serverId}
               canManageSounds={canManageChannels}
               canProject={canManageChannels}
@@ -359,6 +363,7 @@ export function renderChatMain(v: ShellRenderState) {
                 </div>
               )}
               <MessageList
+      onOpenChannels={() => setMobileNav(true)}
       messagesScrollRef={messagesScrollRef}
       handleMessagesScroll={handleMessagesScroll}
       activeChannelInfo={activeChannelInfo}

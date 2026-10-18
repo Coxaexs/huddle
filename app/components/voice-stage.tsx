@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Megaphone, Volume2, Volume1, VolumeX, Play, Search, Users, X, ChevronUp as PeopleUp, ChevronDown as PeopleDown } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound } from "@/lib/soundboard-presets";
 import { loadCustomBackgrounds, saveCustomBackground, deleteCustomBackground, type CustomBackgroundItem } from "../lib/virtual-background";
-import type { PlayerState, VoiceParticipant } from "@/lib/protocol";
+import type { ClientEvent, PlayerState, VoiceParticipant } from "@/lib/protocol";
+import { watchPosition } from "@/lib/lounge-shared";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { DEEPPIXEL_FROM_GAME, type RoomActivity } from "@/lib/activities";
 import { videoAllowedFrom } from "../hooks/use-voice";
@@ -21,9 +22,13 @@ import { QaBanner, QaPanel } from "./qa-panel";
 import { useQa } from "../hooks/use-qa";
 import type { LiveCaptions } from "../hooks/use-live-captions";
 import type { LivingRoom } from "../hooks/use-living-room";
+import type { StageFocusRequest } from "../hooks/chat-shell/use-shell-state";
+import { getStreamPreview, requestStreamPreview, subscribeStreamPreviews } from "../lib/stream-preview";
+// Module-level so leaving the stage and coming back keeps the answer: a share is offered once.
+import { awaitingScreens, offeredScreens, subscribeTuneIn, tuneInChanged, tunedWatch } from "../lib/tune-in";
 import { LivingRoomView } from "./living-room";
 import { Sound, VoiceApi, VideoTile } from "./voice-stage/types";
-import { hasLiveVideo } from "./voice-stage/tiles";
+import { hasLiveVideo, type WatchPlayback } from "./voice-stage/tiles";
 import { StageRoster } from "./voice-stage/stage-roster";
 import { StageTopbar } from "./voice-stage/stage-topbar";
 import { StageBody } from "./voice-stage/stage-body";
@@ -101,7 +106,15 @@ interface VoiceStageProps {
   streamPreferenceFor?: (streamId: string, userId?: string) => { volume: number; muted: boolean };
   onSetStreamVolume?: (streamId: string, userId: string | undefined, volume: number) => void;
   onToggleStreamMute?: (streamId: string, userId: string | undefined) => void;
+  /** Seats watching the room's watch party (from the hub). */
+  partyViewers?: string[];
+  /** Sends to the hub (asks for streamers' preview frames). */
+  hubSend?: (event: ClientEvent) => void;
+  /** "Watch Stream" from the channel list: open on this stream, past the tune-in prompt. */
+  focusRequest?: StageFocusRequest | null;
+  onFocusRequestDone?: () => void;
 }
+
 
 
 
@@ -153,6 +166,10 @@ export function VoiceStage({
   onViewModeChange,
   onFocusedChange,
   streamPreferenceFor,
+  hubSend,
+  partyViewers,
+  focusRequest,
+  onFocusRequestDone,
   onSetStreamVolume,
   onToggleStreamMute,
 }: VoiceStageProps) {
@@ -339,14 +356,17 @@ export function VoiceStage({
     });
   }
 
-  // Active watch together / Jellyfin stream from living room
-  if (livingRoom?.shared?.watch?.url) {
-    const w = livingRoom.shared.watch;
+  // The room's watch party, unless the living room is open and already showing it on its screen.
+  const livingRoomShowing = Boolean(livingRoom?.open && joined && !stageMode);
+  const watchState = joined ? livingRoom?.shared?.watch ?? null : null;
+  if (watchState?.url && !livingRoomShowing) {
+    const w = watchState;
     videoTiles.push({
-      key: `watch:${w.url}`,
+      // One key per room, not per film: the queue moving on keeps you tuned in and focused.
+      key: `watch:${voice.channelId ?? ""}`,
       watchUrl: w.url,
       watchTitle: w.title || "Video Stream",
-      label: `${w.title || "Video Stream"} · watch`,
+      label: `${w.title || "Video Stream"} · watch party`,
       self: false,
       mirrored: false,
       connecting: false,
@@ -355,10 +375,99 @@ export function VoiceStage({
     });
   }
 
-  const [tunedInKeys, setTunedInKeys] = useState<Set<string>>(() => new Set());
-  const tuneIn = useCallback((key: string) => {
-    setTunedInKeys((prev) => new Set(prev).add(key));
+  // Tune-in: a remote screen share arrives paused (nothing received) until you
+  // choose to see it, as does a watch party film. The living room's cinema
+  // screen is its own way of watching, so there everything just plays.
+  const [, setTuneVersion] = useState(0);
+  useEffect(() => subscribeTuneIn(() => setTuneVersion((v) => v + 1)), []);
+  const bumpTune = tuneInChanged;
+  const needsTuneIn = useCallback((tile: VideoTile) => {
+    if (tile.self) return false;
+    if (tile.videoKind === "watch") return !tunedWatch.has(tile.key);
+    return tile.videoKind === "screen" && awaitingScreens.has(tile.key);
   }, []);
+  const tuneIn = useCallback((tile: VideoTile) => {
+    if (tile.videoKind === "watch") {
+      tunedWatch.add(tile.key);
+    } else if (tile.videoKind === "screen" && tile.remoteId) {
+      awaitingScreens.delete(tile.key);
+      voice.setVideoHidden(tile.remoteId, "screen", false);
+    }
+    bumpTune();
+  }, [voice, bumpTune]);
+  const remoteScreenKeys = videoTiles
+    .filter((tile) => tile.videoKind === "screen" && !tile.self && tile.remoteId)
+    .map((tile) => tile.key)
+    .join("|");
+  useEffect(() => {
+    let changed = false;
+    for (const tile of videoTiles) {
+      if (tile.videoKind !== "screen" || tile.self || !tile.remoteId) continue;
+      if (livingRoomShowing) {
+        if (awaitingScreens.delete(tile.key)) {
+          voice.setVideoHidden(tile.remoteId, "screen", false);
+          changed = true;
+        }
+        offeredScreens.add(tile.key);
+        continue;
+      }
+      if (offeredScreens.has(tile.key)) continue;
+      offeredScreens.add(tile.key);
+      const requested = focusRequest?.target.kind === "screen" && focusRequest.target.connectionId === tile.remoteId;
+      if (requested || tile.hidden) continue;
+      awaitingScreens.add(tile.key);
+      voice.setVideoHidden(tile.remoteId, "screen", true);
+      changed = true;
+    }
+    if (changed) bumpTune();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteScreenKeys, livingRoomShowing]);
+
+  // The prompt shows the streamer's latest preview frame, from the hub.
+  const [, setPreviewVersion] = useState(0);
+  useEffect(() => subscribeStreamPreviews(() => setPreviewVersion((v) => v + 1)), []);
+  const awaitingIds = videoTiles.filter((tile) => needsTuneIn(tile) && tile.remoteId).map((tile) => tile.remoteId!).join("|");
+  useEffect(() => {
+    if (!awaitingIds) return;
+    const ask = () => { if (hubSend) for (const id of awaitingIds.split("|")) requestStreamPreview(id, hubSend); };
+    ask();
+    const timer = window.setInterval(ask, 60_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingIds]);
+  /** Who is watching a tile's video: the hub's count of seats that tuned in. */
+  const viewersOfTile = (tile: VideoTile): string[] => {
+    if (tile.videoKind === "watch") return partyViewers ?? [];
+    if (tile.videoKind !== "screen") return [];
+    if (tile.self) return voice.streamViewers ?? [];
+    return participants.find((p) => p.connectionId === tile.remoteId)?.screenViewers ?? [];
+  };
+  const previewFor = (tile: VideoTile) => (tile.remoteId ? getStreamPreview(tile.remoteId)?.snapshotUrl ?? null : null);
+
+  // The watch party: its volume is the viewer's own, and its end starts the queue's next film.
+  const watchKey = videoTiles.find((tile) => tile.videoKind === "watch")?.key;
+  const watchPref = watchKey && streamPreferenceFor ? streamPreferenceFor(watchKey) : { volume: 100, muted: false };
+  const advancedFor = useRef("");
+  const watchPlayback = (audible: boolean): WatchPlayback | null => watchState ? {
+    state: watchState,
+    hubNow: serverNow ?? Date.now,
+    volume: voice.deafened || watchPref.muted ? 0 : watchPref.volume / 100,
+    audible,
+    onEnded: () => {
+      const top = livingRoom?.shared.queue?.films[0];
+      const key = top ? `${watchState.url}|${top.id}` : "";
+      if (key && key !== advancedFor.current) {
+        advancedFor.current = key;
+        livingRoom?.setShared("queue", { op: "next", from: watchState.url });
+      }
+    },
+  } : null;
+  const setWatchPaused = (paused: boolean) => {
+    if (!watchState || !livingRoom) return;
+    const here = watchPosition(watchState, (serverNow ?? Date.now)());
+    livingRoom.setShared("watch", { url: watchState.url, title: watchState.title, position: here, paused });
+  };
+  const stopWatch = () => livingRoom?.setShared("watch", null);
 
   const focused = focusedKey
     ? videoTiles.find((tile) => tile.key === focusedKey) || null
@@ -407,10 +516,37 @@ export function VoiceStage({
 
   function hideTile(tile: VideoTile, hidden: boolean) {
     if (!tile.remoteId || !tile.videoKind || tile.videoKind === "watch") return;
+    if (tile.videoKind === "screen") awaitingScreens.delete(tile.key);
     voice.setVideoHidden(tile.remoteId, tile.videoKind, hidden);
     // A hidden video has nothing to fill the big view with.
     if (hidden && focusedKey === tile.key) setFocusedKey(null);
   }
+
+  // "Watch Stream": once the asked-for stream is here, tune in and fill the view with it.
+  const tileKeys = videoTiles.map((tile) => tile.key).join("|");
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (Date.now() - focusRequest.at > 20_000) {
+      onFocusRequestDone?.();
+      return;
+    }
+    const target = focusRequest.target;
+    const tile = videoTiles.find((t) =>
+      target.kind === "watch"
+        ? t.videoKind === "watch"
+        : t.videoKind === "screen" && (t.self ? target.connectionId === connectionId : t.remoteId === target.connectionId),
+    );
+    if (target.kind === "watch" && livingRoomShowing && watchState) {
+      // Already on the living room's screen.
+      onFocusRequestDone?.();
+      return;
+    }
+    if (!tile) return;
+    if (needsTuneIn(tile) || (tile.hidden && tile.videoKind === "screen")) tuneIn(tile);
+    setFocusedKey(tile.key);
+    onFocusRequestDone?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest, tileKeys, livingRoomShowing]);
 
   // Esc leaves the focused view (the first Esc in fullscreen just exits that).
   useEffect(() => {
@@ -576,22 +712,20 @@ export function VoiceStage({
         };
       });
     }
-    if (focused?.remoteId) {
-      const viewers = participants.filter((p) => {
-        if (p.connectionId === focused.remoteId || p.bot) return false;
-        const paused = voice.hiddenVideo?.[p.connectionId]?.screen;
-        return !paused;
-      });
-      return viewers.map((p) => ({
-        connectionId: p.connectionId,
-        displayName: p.displayName,
-        avatar: p.avatar || "avatar-1",
-        avatarUrl: p.avatarUrl,
-        color: p.color || "#5865f2",
-      }));
-    }
-    return [];
-  }, [focused?.self, focused?.remoteId, voice.streamViewers, voice.hiddenVideo, participants]);
+    // Everyone else's share, and the watch party: who the hub says tuned in.
+    const ids = focused ? viewersOfTile(focused) : [];
+    return ids.map((connId) => {
+      const p = participants.find((person) => person.connectionId === connId);
+      return {
+        connectionId: connId,
+        displayName: p?.displayName || "Viewer",
+        avatar: p?.avatar || "avatar-1",
+        avatarUrl: p?.avatarUrl,
+        color: p?.color || "#5865f2",
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused?.key, focused?.self, voice.streamViewers, participants, partyViewers]);
 
   /** Fullscreens just the shared video — no filmstrip of people underneath. */
   function toggleFullscreen() {
@@ -614,6 +748,42 @@ export function VoiceStage({
     }
   }
 
+  // Phones: the control bar slides away a few seconds after the last touch
+  // and comes back on the next one. It stays while any of its menus is open.
+  // (CSS only hides it at phone width; desktop always shows it.)
+  const [controlsShown, setControlsShown] = useState(true);
+  const controlsTimer = useRef<number | null>(null);
+  const controlsMenuOpen = moreMenuOpen || cameraBgMenuOpen || screenSharePopoverOpen || tableMenuOpen;
+  const wakeControls = useCallback(() => {
+    setControlsShown(true);
+    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+    controlsTimer.current = window.setTimeout(() => setControlsShown(false), 4000);
+  }, []);
+  useEffect(() => {
+    if (controlsMenuOpen) {
+      if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+      setControlsShown(true);
+    } else {
+      wakeControls();
+    }
+  }, [controlsMenuOpen, wakeControls]);
+  useEffect(() => () => {
+    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+  }, []);
+  // Only a tap brings the bar back: a swipe (to the channel drawer or member
+  // list) or a scroll moves the finger, and that should not flash the controls.
+  const touchStart = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onStagePointerDown = (event: React.PointerEvent) => {
+    touchStart.current = { x: event.clientX, y: event.clientY, at: Date.now() };
+  };
+  const onStagePointerUp = (event: React.PointerEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+    if (moved < 10 && Date.now() - start.at < 600) wakeControls();
+  };
+
   function selfSpeaking(person: VoiceParticipant): boolean {
     const key = person.connectionId === connectionId ? "self" : person.connectionId;
     return speakingIds.has(key);
@@ -627,7 +797,12 @@ export function VoiceStage({
           : ""
       }${
         activityTakeover && peopleOpen ? " show-people" : ""
-      }${boardHall ? " board-hall" : ""}${boardDock ? " board-dock" : ""}`}
+      }${boardHall ? " board-hall" : ""}${boardDock ? " board-dock" : ""}${controlsShown ? "" : " controls-hidden"}`}
+      onPointerDown={onStagePointerDown}
+      onPointerUp={onStagePointerUp}
+      onPointerCancel={() => {
+        touchStart.current = null;
+      }}
     >
       {tableMenuOpen && <TableAudioMenu participants={participants} listenerId={connectionId} controls={voice} onClose={() => setTableMenuOpen(false)} />}
       {recording}
@@ -719,9 +894,14 @@ export function VoiceStage({
         focusedKey={focusedKey}
         onOpenParticipantMenu={onOpenParticipantMenu}
         wrapperRef={wrapperRef}
-        tunedInKeys={tunedInKeys}
+        needsTuneIn={needsTuneIn}
         onTuneIn={tuneIn}
-        watchState={livingRoom?.shared?.watch}
+        previewFor={previewFor}
+        viewersOfTile={viewersOfTile}
+        watchPlayback={watchPlayback}
+        watchPaused={watchState?.paused ?? false}
+        onWatchPaused={setWatchPaused}
+        onWatchStop={stopWatch}
       />
 
       {livingRoom?.open && joined && !stageMode && (

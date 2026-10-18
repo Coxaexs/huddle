@@ -1,6 +1,6 @@
 {
   "appId": "online.hoffle.huddle",
-  "appName": "Huddle",
+  "appName": "Hoffle",
   "webDir": "www",
   "server": {
     "url": "https://chat.hoffle.online",

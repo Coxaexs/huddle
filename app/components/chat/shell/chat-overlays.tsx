@@ -69,8 +69,9 @@ export function renderChatOverlays(v: ShellRenderState) {
     signOut, stageChannelId, streamPreferenceFor, theme, threadMessages, threadRoot, timeoutMember,
     toggleChannelSoundboard, togglePinDm, toggleReaction, toggleSignInAlert, toggleStreamMute,
     tutorial, unread, user, userMenu, userMenuVoiceJoinedAt, voice, voiceChannels,
-    voiceParticipants, voiceRooms, welcomeChecked, streamHover, setStreamHover,
+    voiceParticipants, voiceRooms, welcomeChecked, streamHover, setStreamHover, keepStreamHover, watchStream,
   } = v;
+  const closeStreamHover = () => setStreamHover(null);
 
   return (
     <>
@@ -695,18 +696,33 @@ export function renderChatOverlays(v: ShellRenderState) {
         setPipDismissed={setPipDismissed}
       />
 
-      {/* Discord-style Hover Stream Preview Popover */}
+      {/* "Streaming Now" card for a streaming member or a room's watch party. */}
       {streamHover && (
         <StreamPreviewPopover
-          streamKey={streamHover.streamKey}
+          key={`${streamHover.kind}:${streamHover.connectionId ?? streamHover.channel.id}`}
+          kind={streamHover.kind}
+          connectionId={streamHover.connectionId}
           streamerName={streamHover.streamerName}
-          defaultTitle={streamHover.defaultTitle}
+          title={streamHover.title}
           startedAt={streamHover.startedAt}
+          viewers={
+            streamHover.kind === "watch"
+              ? hub.watching[streamHover.channel.id]?.viewers.length ?? 0
+              : (voiceRooms[streamHover.channel.id] || []).find((p) => p.connectionId === streamHover.connectionId)?.screenViewers?.length ?? 0
+          }
+          hubNow={hub.serverNow}
           anchorRect={streamHover.anchorRect}
+          send={hub.send}
           onWatchStream={() => {
-            openVoiceChannel(streamHover.channel);
+            watchStream(
+              streamHover.channel,
+              streamHover.kind === "screen" && streamHover.connectionId
+                ? { kind: "screen", connectionId: streamHover.connectionId }
+                : { kind: "watch" },
+            );
           }}
-          onClose={() => setStreamHover(null)}
+          onKeep={keepStreamHover}
+          onClose={closeStreamHover}
         />
       )}
     </>
