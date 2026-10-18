@@ -13,6 +13,7 @@ import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
 import type { GameSystem } from "@/lib/v5-sheet";
+import { parseStreamUrl } from "../lib/stream-url";
 
 const formatTime = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
@@ -70,7 +71,8 @@ async function resolveVideo(raw: string): Promise<{ url: string; title: string }
     const { streamUrl, title } = await downloadYouTubeVideo(raw);
     return { url: streamUrl, title };
   }
-  return { url: raw, title: raw.split("/").pop()?.split("?")[0] || "Video" };
+  const parsed = parseStreamUrl(raw);
+  return { url: parsed.url, title: parsed.title };
 }
 
 /**
@@ -292,11 +294,12 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                     setBusyMessage(null);
                   }
                 } else {
-                  start(raw, raw.split("/").pop()?.split("?")[0] || "Video");
+                  const parsed = parseStreamUrl(raw);
+                  start(parsed.url, parsed.title);
                   setLink("");
                 }
               }}>
-                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="YouTube link or a name to search, or a direct .mp4/.webm link" aria-label="Video link" maxLength={600} disabled={busy} />
+                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="YouTube link, Jellyfin stream link, or direct .mp4/.webm" aria-label="Video link" maxLength={600} disabled={busy} />
                 <button type="submit" disabled={!link.trim() || busy}>{busy ? "Downloading…" : "Play"}</button>
               </form>
               {busy && busyMessage && (
@@ -310,7 +313,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 <input ref={file} type="file" accept="video/mp4,video/webm,.mp4,.webm" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
                 <button type="button" disabled={busy} onClick={() => setShowYouTube(true)} title="Search YouTube"><PlayCircle size={14} /> YouTube & more…</button>
               </div>
-              <p className="lr-note">YouTube videos are downloaded directly to server storage using yt-dlp and played on the screen for everyone in sync. Direct video links and uploads up to 40 MB also supported.</p>
+              <p className="lr-note">YouTube videos, Jellyfin streams, direct video links and uploads up to 40 MB supported.</p>
               {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
             </>
           ) : (

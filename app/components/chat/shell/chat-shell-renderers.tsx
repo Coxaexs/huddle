@@ -29,7 +29,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     player, prepareCommand, runCommand, serverDragProps, serverDropHint, servers,
     setActiveChannelId, setActiveServerId, setChannelMenu, setFolderMenu, setMobileNav, setNotice,
     setRailMenu, setStageChannelId, stageChannelId, toggleFolderOpen, touchInput, unread, user,
-    voice, voiceChannels, voiceRooms,
+    voice, voiceChannels, voiceRooms, queueStreamHover,
   } = s;
 
   const rawDisplayedMembers = inDmHome ? dmMembers : members;
@@ -232,6 +232,10 @@ export function withShellRenderers(s: ChatShellViewState) {
               {people.map((person) => {
                 const speakingId =
                   person.connectionId === hub.connectionId ? "self" : person.connectionId;
+                const isStreaming = Boolean(
+                  person.screenStreamId ||
+                  (person.connectionId === hub.connectionId && voice.screenSharing)
+                );
                 return (
                   <Speaking key={person.connectionId} store={voice.speakingStore} id={speakingId}>
                     {(isSpeaking) => (
@@ -239,6 +243,28 @@ export function withShellRenderers(s: ChatShellViewState) {
                     className={`voice-member ${canModerate && !person.bot ? "draggable-member" : ""
                       } ${isSpeaking ? "is-speaking" : ""}`}
                     draggable={canModerate && !person.bot}
+                    onMouseEnter={(event) => {
+                      if (isStreaming) {
+                        const key = person.screenStreamId
+                          ? `${person.connectionId}:${person.screenStreamId}`
+                          : `self:${voice.screenQuality}`;
+                        queueStreamHover(
+                          {
+                            streamKey: key,
+                            streamerName: person.displayName,
+                            defaultTitle: `${person.displayName}'s Stream`,
+                            startedAt: person.joinedAt,
+                            channel,
+                          },
+                          event.currentTarget,
+                        );
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (isStreaming) {
+                        queueStreamHover(null);
+                      }
+                    }}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
                       event.dataTransfer.setData(
@@ -291,6 +317,19 @@ export function withShellRenderers(s: ChatShellViewState) {
                     />
                     {/* One right-aligned slot so icons line up whatever the name length. */}
                     <span className="voice-member-status">
+                      {isStreaming && (
+                        <span
+                          className="live-stream-badge text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white flex items-center gap-1 shadow-sm mr-1 cursor-pointer hover:bg-rose-600 transition-colors"
+                          title="Streaming Now — Click to view stream"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openVoiceChannel(channel);
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          LIVE
+                        </span>
+                      )}
                       {isSpeaking && (
                         <Mic size={14} className="is-speaking-icon" aria-label="Speaking" />
                       )}

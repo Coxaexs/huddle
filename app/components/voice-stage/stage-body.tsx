@@ -5,10 +5,12 @@ import type { VoiceParticipant } from "@/lib/protocol";
 import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
 import { VoiceApi, VideoTile } from "./types";
-import { TileVideo, VideoSurface } from "./tiles";
+import { TileVideo, VideoSurface, WatchSurface } from "./tiles";
 import { useRef } from "react";
 import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-look";
 import { StyledName, VoiceAura } from "../profile-style-parts";
+import type { WatchState } from "@/lib/lounge-shared";
+import { watchPosition } from "@/lib/lounge-shared";
 
 /** A seat younger than this still gets its join flourish when the stage opens. */
 const JOIN_FRESH_MS = 6000;
@@ -60,6 +62,9 @@ export function StageBody({
   onOpenParticipantMenu,
   wrapperRef,
   serverNow,
+  tunedInKeys,
+  onTuneIn,
+  watchState,
 }: {
   joined: boolean | undefined;
   channelName: string;
@@ -103,6 +108,9 @@ export function StageBody({
   wrapperRef: React.RefObject<HTMLDivElement | null>;
   /** Hub clock, to tell who (yourself included) only just sat down. */
   serverNow?: () => number;
+  tunedInKeys?: Set<string>;
+  onTuneIn?: (key: string) => void;
+  watchState?: WatchState | null;
 }) {
   const styleOf = useProfileStyles();
   // Join flourishes are for people arriving while you watch, not for everyone
@@ -224,7 +232,16 @@ export function StageBody({
             }}
             title={isFullscreen || windowFull ? undefined : "Click to return to the grid"}
           >
-            <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
+            {focused.watchUrl ? (
+              <WatchSurface
+                url={focused.watchUrl}
+                paused={watchState?.paused ?? false}
+                position={watchState ? watchPosition(watchState, (serverNow ?? Date.now)()) : 0}
+                muted={false}
+              />
+            ) : focused.stream ? (
+              <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
+            ) : null}
 
             {/* Discord-style bottom-left pill on the video (Screenshot 3) */}
             <div
@@ -246,9 +263,10 @@ export function StageBody({
               <span className="voice-focus-stream-title truncate max-w-[200px]">{streamerName}'s Screen</span>
 
               {/* Watcher Stream Audio Volume Slider */}
-              {focused.videoKind === "screen" && !focused.self && (
+              {(focused.videoKind === "screen" || focused.videoKind === "watch") && !focused.self && (
                 (() => {
-                  const pref = streamPreferenceFor ? streamPreferenceFor(focused.stream.id, focusedPerson?.id) : { volume: 100, muted: false };
+                  const sId = focused.stream?.id || focused.key;
+                  const pref = streamPreferenceFor ? streamPreferenceFor(sId, focusedPerson?.id) : { volume: 100, muted: false };
                   return (
                     <div
                       className="voice-focus-volume flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white"
@@ -259,7 +277,7 @@ export function StageBody({
                         className="hover:text-[var(--lavender)] transition-colors p-0.5 cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleStreamMute?.(focused.stream.id, focusedPerson?.id);
+                          onToggleStreamMute?.(sId, focusedPerson?.id);
                         }}
                         title={pref.muted ? "Unmute stream audio" : `Stream audio: ${pref.volume}% (Click to mute)`}
                       >
@@ -279,7 +297,7 @@ export function StageBody({
                         value={pref.muted ? 0 : pref.volume}
                         onChange={(e) => {
                           e.stopPropagation();
-                          onSetStreamVolume?.(focused.stream.id, focusedPerson?.id, Number(e.target.value));
+                          onSetStreamVolume?.(sId, focusedPerson?.id, Number(e.target.value));
                         }}
                         className="w-16 accent-[var(--lavender)] h-1 cursor-pointer"
                         title={`Stream volume: ${pref.muted ? "Muted" : `${pref.volume}%`}`}
@@ -475,7 +493,14 @@ export function StageBody({
                   onClick={() => setFocusedKey(tile.key)}
                 >
                   <div className="film-video-wrap">
-                    <TileVideo tile={tile} onHide={hideTile} />
+                    <TileVideo
+                      tile={tile}
+                      onHide={hideTile}
+                      tunedIn={tunedInKeys?.has(tile.key)}
+                      onTuneIn={onTuneIn}
+                      watchState={watchState}
+                      serverNow={serverNow}
+                    />
                   </div>
                   <span className="film-live-pill">LIVE</span>
                   {tile.videoKind === "screen" && (
@@ -541,10 +566,17 @@ export function StageBody({
             <figure
               key={tile.key}
               className={`stage-tile video-tile ${tile.connecting ? "tile-connecting" : ""}`}
-              onClick={() => !tile.hidden && setFocusedKey(tile.key)}
-              title={tile.hidden ? undefined : "Click to focus"}
+              onClick={() => !tile.hidden && (tunedInKeys?.has(tile.key) || tile.self || tile.videoKind === "camera" ? setFocusedKey(tile.key) : onTuneIn?.(tile.key))}
+              title={tile.hidden ? undefined : "Click to view stream"}
             >
-              <TileVideo tile={tile} onHide={hideTile} />
+              <TileVideo
+                tile={tile}
+                onHide={hideTile}
+                tunedIn={tunedInKeys?.has(tile.key)}
+                onTuneIn={onTuneIn}
+                watchState={watchState}
+                serverNow={serverNow}
+              />
               {tile.videoKind === "screen" && (
                 <span className="film-viewers-pill" title={`${tile.self ? (voice.streamViewers?.length || 0) : 1} viewers`}>
                   <Eye size={10} />

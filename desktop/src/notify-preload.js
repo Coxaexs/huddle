@@ -28,6 +28,21 @@ contextBridge.exposeInMainWorld("huddle", {
   setInCall: (on) => ipcRenderer.send("set-in-call", Boolean(on)),
   /** What is running here: { activity: {name, kind}|null, music: {song, artist, albumArt}|null }. */
   scanActivity: () => ipcRenderer.invoke("activity:scan"),
+  /**
+   * Windows: the screen share's audio, captured per app by the shell instead
+   * of the whole output device (so not the room's own voices).
+   */
+  appAudio: {
+    /** Whether the share just started gets its audio from here. */
+    active: () => ipcRenderer.invoke("app-audio:active"),
+    /** Interleaved stereo float32 at 48 kHz, as bytes. Returns the unsubscribe. */
+    onData: (callback) => {
+      const listener = (_event, chunk) => callback(chunk);
+      ipcRenderer.on("app-audio:pcm", listener);
+      return () => ipcRenderer.removeListener("app-audio:pcm", listener);
+    },
+    stop: () => ipcRenderer.send("app-audio:stop"),
+  },
   /** Trigger native OS push notification */
   notify: (title, body) =>
     ipcRenderer.send("desktop-notification", { title, body }),

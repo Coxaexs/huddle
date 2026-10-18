@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win",
+    "dist:win": "bash native/build.sh && electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "pack": "electron-builder --dir"
   },
@@ -70,6 +70,12 @@
           "arch": [
             "x64"
           ]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "native/bin/hoffle-app-audio.exe",
+          "to": "hoffle-app-audio.exe"
         }
       ]
     },

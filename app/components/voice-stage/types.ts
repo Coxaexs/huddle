@@ -86,14 +86,16 @@ export interface VoiceApi extends TableControls {
 }
 export interface VideoTile {
   key: string;
-  stream: MediaStream;
+  stream?: MediaStream;
+  watchUrl?: string;
+  watchTitle?: string;
   label: string;
   self: boolean;
   mirrored: boolean;
   connecting: boolean;
   /** Remote tiles only: whose video it is and which one, for hiding it. */
   remoteId?: string;
-  videoKind?: "camera" | "screen";
+  videoKind?: "camera" | "screen" | "watch";
   /** This viewer stopped receiving it; the sender no longer sends it here. */
   hidden?: boolean;
 }

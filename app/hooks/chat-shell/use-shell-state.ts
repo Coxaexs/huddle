@@ -1156,6 +1156,41 @@ export function useShellState() {
     }, 550);
   }
 
+  /** Discord-style stream hover card for streaming members / watch parties */
+  const [streamHover, setStreamHover] = useState<{
+    streamKey: string;
+    streamerName: string;
+    defaultTitle?: string;
+    startedAt?: number;
+    anchorRect: DOMRect;
+    channel: PublicChannel;
+  } | null>(null);
+  const streamHoverTimer = useRef<number | null>(null);
+
+  function queueStreamHover(
+    info: {
+      streamKey: string;
+      streamerName: string;
+      defaultTitle?: string;
+      startedAt?: number;
+      channel: PublicChannel;
+    } | null,
+    anchor?: HTMLElement,
+  ) {
+    if (streamHoverTimer.current) window.clearTimeout(streamHoverTimer.current);
+    if (!info || !anchor) {
+      streamHoverTimer.current = window.setTimeout(() => setStreamHover(null), 200);
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    streamHoverTimer.current = window.setTimeout(() => {
+      setStreamHover({
+        ...info,
+        anchorRect: rect,
+      });
+    }, 250);
+  }
+
   /** Messenger's Display Picture dialog. */
   const [pictureOpen, setPictureOpen] = useState(false);
   function placeContact(userId: string, groupId: string | null) {
@@ -1330,6 +1365,6 @@ export function useShellState() {
     setUnreadBarVisible, lastSeenTailRef, unreadRef, initialChannelScrollRef, messagesLoadedFor,
     setMessagesLoadedFor, activeChannelRef, activeServerRef, pendingCommandRef, inDmHome,
     welcomeChecked, setWelcomeChecked, markWelcomeChecked, touchInput, setTouchInput, dragging,
-    setDragging, profileCardTarget, setProfileCardTarget,
+    setDragging, profileCardTarget, setProfileCardTarget, streamHover, setStreamHover, queueStreamHover,
   };
 }

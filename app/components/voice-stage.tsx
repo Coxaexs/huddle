@@ -339,6 +339,27 @@ export function VoiceStage({
     });
   }
 
+  // Active watch together / Jellyfin stream from living room
+  if (livingRoom?.shared?.watch?.url) {
+    const w = livingRoom.shared.watch;
+    videoTiles.push({
+      key: `watch:${w.url}`,
+      watchUrl: w.url,
+      watchTitle: w.title || "Video Stream",
+      label: `${w.title || "Video Stream"} · watch`,
+      self: false,
+      mirrored: false,
+      connecting: false,
+      videoKind: "watch",
+      hidden: false,
+    });
+  }
+
+  const [tunedInKeys, setTunedInKeys] = useState<Set<string>>(() => new Set());
+  const tuneIn = useCallback((key: string) => {
+    setTunedInKeys((prev) => new Set(prev).add(key));
+  }, []);
+
   const focused = focusedKey
     ? videoTiles.find((tile) => tile.key === focusedKey) || null
     : null;
@@ -353,8 +374,8 @@ export function VoiceStage({
   // Notify parent shell of focused streamer name and stream kind for unified topbar.
   // Depends on primitives only: `focused` is a fresh object every render, and the
   // parent re-renders us on each notify, so object deps would loop forever.
-  const focusedStreamId = focused?.stream.id;
-  const focusedIsScreen = focused?.videoKind === "screen";
+  const focusedStreamId = focused?.stream?.id || focused?.key;
+  const focusedIsScreen = focused?.videoKind === "screen" || focused?.videoKind === "watch";
   const focusedSelf = Boolean(focused?.self);
   const focusedParticipantId = focusedPerson?.id;
   useEffect(() => {
@@ -385,7 +406,7 @@ export function VoiceStage({
   }, [screenKeys]);
 
   function hideTile(tile: VideoTile, hidden: boolean) {
-    if (!tile.remoteId || !tile.videoKind) return;
+    if (!tile.remoteId || !tile.videoKind || tile.videoKind === "watch") return;
     voice.setVideoHidden(tile.remoteId, tile.videoKind, hidden);
     // A hidden video has nothing to fill the big view with.
     if (hidden && focusedKey === tile.key) setFocusedKey(null);
@@ -698,6 +719,9 @@ export function VoiceStage({
         focusedKey={focusedKey}
         onOpenParticipantMenu={onOpenParticipantMenu}
         wrapperRef={wrapperRef}
+        tunedInKeys={tunedInKeys}
+        onTuneIn={tuneIn}
+        watchState={livingRoom?.shared?.watch}
       />
 
       {livingRoom?.open && joined && !stageMode && (
@@ -709,10 +733,12 @@ export function VoiceStage({
           deafened={voice.deafened}
           nowPlaying={nowPlaying}
           cameras={videoTiles
-            .filter((tile) => !tile.hidden && (tile.self ? tile.mirrored : tile.videoKind === "camera"))
+            .filter((tile): tile is VideoTile & { stream: MediaStream } => Boolean(!tile.hidden && tile.stream && (tile.self ? tile.mirrored : tile.videoKind === "camera")))
             .map((tile) => ({ connectionId: tile.self ? connectionId ?? "" : tile.remoteId ?? "", stream: tile.stream, self: tile.self }))
             .filter((cam) => cam.connectionId)}
-          screens={videoTiles.filter((tile) => tile.videoKind === "screen" && !tile.hidden).map((tile) => ({ stream: tile.stream, name: tile.label }))}
+          screens={videoTiles
+            .filter((tile): tile is VideoTile & { stream: MediaStream } => Boolean(tile.videoKind === "screen" && tile.stream && !tile.hidden))
+            .map((tile) => ({ stream: tile.stream, name: tile.label }))}
           serverNow={serverNow}
           diceRoll={diceRoll}
           onDiceRollDone={onDiceRollDone}

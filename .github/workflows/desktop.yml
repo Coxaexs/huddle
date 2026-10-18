@@ -33,6 +33,12 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      # dist:win compiles native/app-audio.cpp (per-app screen-share audio)
+      # with Zig before packaging.
+      - if: matrix.os == 'windows-latest'
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
       # Unsigned builds. To sign/notarize, add CSC_LINK / CSC_KEY_PASSWORD
       # (and APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID for mac)
       # as repo secrets and electron-builder will pick them up automatically.

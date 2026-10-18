@@ -363,6 +363,8 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
         voiceChannelId: voice.channelId,
         channelTitle,
         postBotMessage,
+        streamUrl: name === "watch" && value ? value : undefined,
+        sendLoungeSet: (key, val) => hub.send({ t: "lounge-set", key, value: val }),
         onActivity: (activity, channelId) => {
           setRoomActivity(activity);
           setStageChannelId(channelId);
