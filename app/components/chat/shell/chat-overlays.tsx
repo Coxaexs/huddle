@@ -32,6 +32,7 @@ import { getActiveThemeId } from "@/lib/themes";
 import { GroupDmContextMenu } from "../group-dm-context-menu";
 import { ImageLightbox, ProfileCardLayer, IncomingDmCall, MarkdownGuideModal, ReactionPickerLayer, ReactionViewerLayer, FloatingStreamPreview } from "./overlays";
 import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from "./menus";
+import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 
 /** Everything ChatShell layers over the page: voice audio, menus, dialogs, viewers, toasts and the floating stream preview. */
@@ -68,7 +69,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     signOut, stageChannelId, streamPreferenceFor, theme, threadMessages, threadRoot, timeoutMember,
     toggleChannelSoundboard, togglePinDm, toggleReaction, toggleSignInAlert, toggleStreamMute,
     tutorial, unread, user, userMenu, userMenuVoiceJoinedAt, voice, voiceChannels,
-    voiceParticipants, voiceRooms, welcomeChecked,
+    voiceParticipants, voiceRooms, welcomeChecked, streamHover, setStreamHover,
   } = v;
 
   return (
@@ -693,6 +694,21 @@ export function renderChatOverlays(v: ShellRenderState) {
         setStageChannelId={setStageChannelId}
         setPipDismissed={setPipDismissed}
       />
+
+      {/* Discord-style Hover Stream Preview Popover */}
+      {streamHover && (
+        <StreamPreviewPopover
+          streamKey={streamHover.streamKey}
+          streamerName={streamHover.streamerName}
+          defaultTitle={streamHover.defaultTitle}
+          startedAt={streamHover.startedAt}
+          anchorRect={streamHover.anchorRect}
+          onWatchStream={() => {
+            openVoiceChannel(streamHover.channel);
+          }}
+          onClose={() => setStreamHover(null)}
+        />
+      )}
     </>
   );
 }

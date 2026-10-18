@@ -17,8 +17,12 @@
 # rsync --delay-updates stages files in .~tmp~ folders inside dist/, the
 # watcher stats one just as it is renamed away and wrangler exits (every
 # deploy on 2026-10-14). Stopping the unit takes the polkit rule in
-# deploy/huddle-service/50-huddle-deploy.rules; without it this falls back to
-# the watcher.
+# deploy/huddle-service/50-huddle-deploy.rules; without it this swaps the
+# files in and kills the running server, and Restart=always starts it again.
+#
+# huddle.service runs workerd directly now, on dist/workerd/config.bin. Each
+# build gets its own config (scripts/workerd-config.sh), made in the staging
+# copy before the swap, so it lands and rolls back together with the build.
 #
 # While this runs, ROOT/.deploying exists, and the healthcheck leaves the
 # service alone.
@@ -61,12 +65,18 @@ healthy() {
 }
 
 land() {
+  # A build from before huddle.service ran workerd directly has no config.
+  if [[ ! -s "$1/workerd/config.bin" ]]; then
+    "$ROOT/scripts/workerd-config.sh" "$1"
+  fi
   if systemctl --no-ask-password stop "$UNIT" 2>/dev/null; then
     rsync -a --delete "$1/" "$ROOT/dist/"
     systemctl --no-ask-password start "$UNIT" || { echo "$UNIT did not start again; see: journalctl -u $UNIT" >&2; exit 1; }
   else
-    echo "(Cannot stop $UNIT without a password, so the running server reloads onto the new files.)"
+    echo "(Cannot stop $UNIT without a password; swapping the files in and killing the running server for systemd to restart.)"
     rsync -a --delete --delay-updates "$1/" "$ROOT/dist/"
+    pid="$(systemctl show -p MainPID --value "$UNIT" 2>/dev/null || echo 0)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 0 )); then kill -INT "$pid" 2>/dev/null || true; fi
   fi
 }
 
@@ -107,6 +117,9 @@ fi
 # The generated config records where it was built; point it at this checkout,
 # exactly as an in-place build would have.
 sed -i "s#$STAGE/#$ROOT/#g" "$STAGE/dist/server/wrangler.json"
+echo "Writing the workerd config ..."
+"$ROOT/scripts/workerd-config.sh" "$STAGE/dist"
+lap "workerd config"
 
 if [[ -d "$ROOT/dist" ]]; then
   rsync -a --delete "$ROOT/dist/" "$ROOT/dist-prev/"

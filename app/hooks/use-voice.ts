@@ -17,6 +17,8 @@ import { MAX_WHISPER_TARGETS } from "@/lib/whisper";
 export type HeadTrackingSource = "airpods" | "webcam";
 export type SpatialOutput = "headphones" | "speakers";
 import { nativePlatform } from "../lib/native-voice";
+import { cancelScreenEcho, type ScreenEcho } from "../lib/screen-echo";
+import { desktopAppAudio } from "../lib/app-audio";
 import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
 import {
   MIC_STATE_EVENT,
@@ -712,6 +714,8 @@ export function useVoice({
   const micListenersRef = useRef(new Set<(telemetry: MicTelemetry) => void>());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  /** What makes the published screen audio: the echo canceller, or the desktop app's per-app capture. */
+  const screenAudioRef = useRef<ScreenEcho | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const rawCameraStreamRef = useRef<MediaStream | null>(null);
   const cameraBgPipelineRef = useRef<VirtualBackgroundController | null>(null);
@@ -2196,6 +2200,8 @@ export function useVoice({
     const trackIds = new Set(stream.getTracks().map((track) => track.id));
     void sfuRef.current?.unpublish(stream.getTracks());
     stream.getTracks().forEach((track) => track.stop());
+    screenAudioRef.current?.stop();
+    screenAudioRef.current = null;
     screenStreamRef.current = null;
     setScreenSharing(false);
     setHasScreenAudio(false);
@@ -2540,7 +2546,8 @@ export function useVoice({
                 // Keep hearing it yourself while it is shared.
                 suppressLocalAudioPlayback: false,
                 // Leave this page's own playback (everyone's voices) out of
-                // system audio, or the room hears itself. Chromium only.
+                // system audio, or the room hears itself. Chromium only, and
+                // an audio router defeats it; cancelScreenEcho covers that.
                 restrictOwnAudio: true,
               } as MediaTrackConstraints,
               // Chromium hints: offer "Share system audio" for whole screens and
@@ -2582,6 +2589,20 @@ export function useVoice({
               frameRate: { ideal: profile.frameRate, max: profile.frameRate },
             },
           });
+        }
+        // The Windows desktop app captures the audio per app, which leaves the
+        // room's own voices out entirely (app-audio.ts). Anywhere else, take
+        // them back out of the browser's capture before it goes anywhere;
+        // screen-echo.ts explains why the browser cannot do it alone.
+        const rawAudio = stream.getAudioTracks()[0];
+        const shared = rawAudio
+          ? await cancelScreenEcho(rawAudio)
+          : shouldShareAudio
+            ? await desktopAppAudio()
+            : null;
+        if (shared) {
+          screenAudioRef.current = shared;
+          stream = new MediaStream([...stream.getVideoTracks(), shared.track]);
         }
         // Tells the encoder what it is looking at: a film wants smooth motion,
         // a desktop wants legible text. Applies to the mesh as well.
@@ -2922,6 +2943,7 @@ export function useVoice({
     sfuRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenAudioRef.current?.stop();
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     for (const peer of peersRef.current.values()) peer.close();
     peersRef.current.clear();

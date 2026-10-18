@@ -1306,11 +1306,12 @@ export class HuddleHub extends DurableObject {
         if (live && LIVE_OWNED_ACTIONS.has(event.action.name)) {
           const op = djControlFor(event.action.name, live.paused);
           if (op) {
-            this.ctx.waitUntil(
-              djControl(event.channelId, op).catch((error) =>
-                console.warn("DJ booth control failed", op, String(error)),
-              ),
+            const p = djControl(event.channelId, op).catch((error) =>
+              console.warn("DJ booth control failed", op, String(error)),
             );
+            if (this.ctx && typeof this.ctx.waitUntil === "function") {
+              this.ctx.waitUntil(p);
+            }
           }
           return;
         }

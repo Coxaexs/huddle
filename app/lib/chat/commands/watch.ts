@@ -1,7 +1,7 @@
-/** /watch and /reels: a synchronized Music + Watch room, shown inside the voice room for /watch. */
 import { apiFetch } from "../../client";
 import type { RoomActivity } from "@/lib/activities";
 import type { PostBotMessage } from "./types";
+import { parseStreamUrl } from "../../stream-url";
 
 export interface WatchContext {
   voiceChannelId: string | null;
@@ -10,13 +10,29 @@ export interface WatchContext {
   postBotMessage: PostBotMessage;
   /** The watch party opened as this voice room's activity. */
   onActivity: (activity: RoomActivity, voiceChannelId: string) => void;
+  streamUrl?: string;
+  sendLoungeSet?: (key: "watch", value: unknown) => void;
 }
 
 export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext): Promise<void> {
-  const { voiceChannelId, channelTitle, postBotMessage, onActivity } = ctx;
+  const { voiceChannelId, channelTitle, postBotMessage, onActivity, streamUrl, sendLoungeSet } = ctx;
   if (!voiceChannelId) {
     await postBotMessage(
       "Join a Huddle voice room first so everyone there gets the same activity.",
+    );
+    return;
+  }
+
+  if (name === "watch" && streamUrl && streamUrl.trim()) {
+    const parsed = parseStreamUrl(streamUrl.trim());
+    sendLoungeSet?.("watch", {
+      url: parsed.url,
+      title: parsed.title,
+      position: 0,
+      paused: false,
+    });
+    await postBotMessage(
+      `Now playing **${parsed.title}** for everyone in the voice room! Tune in on the stage or in the living room.`
     );
     return;
   }
