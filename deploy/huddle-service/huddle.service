@@ -1,0 +1,57 @@
+# /etc/systemd/system/huddle.service: Hoffle (chat.hoffle.online,
+# deeppixel.online/hangout) on 127.0.0.1:8730.
+#
+# Runs the app's workerd directly. It used to run `wrangler dev`, which is a
+# Node process plus a proxy workerd plus this one. The config comes from
+# scripts/workerd-config.sh (deploy.sh makes one for every build, in
+# dist/workerd/). It is what `wrangler dev` would run, persisted under state/.
+#
+# Install or update: sudo deploy/huddle-service/install.sh
+[Unit]
+Description=Huddle private friends chat
+After=network-online.target
+Wants=network-online.target
+# Never give up restarting it.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=coxaexs
+WorkingDirectory=/home/coxaexs/huddle
+# /run/huddle is the folder for miniflare's email store, which Hoffle does not
+# use but the config declares.
+RuntimeDirectory=huddle
+# --external-addr: miniflare's Node "loopback" server is gone. Nothing listens
+#   on port 9, so the few dev extras that call it (pretty error pages, local
+#   cf.image resizing) fail fast instead of hanging.
+# --directory-path assets: the config may have been made in the staging copy.
+ExecStart=/home/coxaexs/huddle/node_modules/@cloudflare/workerd-linux-64/bin/workerd serve \
+  --binary --experimental /home/coxaexs/huddle/dist/workerd/config.bin \
+  --socket-addr=entry=127.0.0.1:8730 \
+  --external-addr=loopback=127.0.0.1:9 \
+  --directory-path=assets:storage:huddle=/home/coxaexs/huddle/dist/client \
+  --directory-path=email:store-disk=/run/huddle
+ExecStartPost=/usr/local/bin/huddle-watchdog.sh
+
+# Restart on any exit after 1 s. workerd answers about half a second after it
+# starts.
+Restart=always
+RestartSec=1
+
+# huddle-watchdog.sh sends WATCHDOG=1 while the health endpoint answers. After
+# 60 s with no answer systemd kills workerd and Restart=always starts it again.
+WatchdogSec=60
+NotifyAccess=all
+WatchdogSignal=SIGKILL
+
+# SIGTERM makes workerd wait for open connections to close, and Hoffle always
+# has WebSockets open (39 s in a test). SIGINT exits at once. The databases
+# are SQLite in WAL mode, which survive that.
+KillSignal=SIGINT
+# SIGINT goes to workerd only; once it exits, the rest of the unit (the
+# watchdog loop, which as a background job ignores SIGINT) gets SIGKILL.
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
