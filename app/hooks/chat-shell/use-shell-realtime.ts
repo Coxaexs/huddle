@@ -228,6 +228,12 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
       }
       setMessages((current) => {
         if (current.some((existing) => existing.id === incoming.id)) return current;
+        // Our own message, back from the hub before the send call returned:
+        // it takes the place of the copy shown while it was on its way.
+        if (user && incoming.userId === user.id) {
+          const waiting = current.findIndex((existing) => existing.pending && existing.text === incoming.text);
+          if (waiting >= 0) return current.map((existing, index) => (index === waiting ? incoming : existing));
+        }
         const next = [...current, incoming];
         // A busy channel left open for hours would otherwise grow without
         // bound; drop the oldest while the reader is at the bottom.

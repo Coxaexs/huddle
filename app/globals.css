@@ -31985,3 +31985,12 @@ a.link-preview-author:hover {
   color: #14060a;
   text-shadow: none;
 }
+
+/* Your own message before the server confirms it: shown at once, faded, no actions. */
+.message.is-pending {
+  opacity: 0.55;
+}
+.message.is-pending .message-actions,
+.message.is-pending .message-actions-toggle {
+  display: none;
+}

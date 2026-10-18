@@ -12,7 +12,7 @@ import type { useShellHistory } from "./use-shell-history";
 /** ChatShell, part 6 of 9. Actions: theme, games, winks and nudges, DMs and group DMs, pins, moderation, bot buttons, sending text and voice messages. */
 export function useShellActions(s: ReturnType<typeof useShellHistory>) {
   const {
-    activeChannelId, activeChannelRef, activeServerId, composerRef, dmChannelIdsRef, hub, inDmHome,
+    activeChannelId, activeChannelRef, activeServerId, composerRef, detachedRef, dmChannelIdsRef, hub, inDmHome,
     loadDms, membersById, messages, msnTheme, nudgeCooling, pendingCommandRef, refreshPins,
     replyTarget, setActiveChannelId, setActiveServerId, setBannedIds, setDms, setDraft, setMembers,
     setMessages, setMobileNav, setNotice, setNudgeCooling, setReplyTarget, setStageChannelId,
@@ -646,17 +646,52 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
       typeof attachmentKeys === "string"
         ? [attachmentKeys]
         : attachmentKeys || [];
-    const res = await apiFetch<{ message: Message; newAchievements: string[] }>("/api/messages", {
-      method: "POST",
-      body: JSON.stringify({
+    // Plain text shows up at once; the real message replaces it when it lands.
+    let pendingId: string | null = null;
+    if (text && !keys.length && user && !detachedRef.current && activeChannelRef.current === activeChannelId) {
+      const now = new Date();
+      pendingId = `pending-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
+      const pending: Message = {
+        id: pendingId,
+        pending: true,
         channelId: activeChannelId,
-        content: text,
-        attachmentKey: keys[0],
-        attachmentKeys: keys.slice(1),
+        userId: user.id,
+        author: user.displayName || user.username,
+        avatar: user.avatar,
+        color: user.color,
+        text,
+        time: now.toISOString().slice(11, 16),
+        createdAt: now.toISOString(),
         replyTo,
-      }),
-    });
-    return res;
+        replyPreview: replyTarget && replyTo ? { author: replyTarget.author, text: replyTarget.text } : undefined,
+      };
+      setMessages((current) => [...current, pending]);
+    }
+    const dropPending = (real?: Message) =>
+      setMessages((current) => {
+        if (!current.some((message) => message.id === pendingId)) return current;
+        if (!real || current.some((message) => message.id === real.id)) {
+          return current.filter((message) => message.id !== pendingId);
+        }
+        return current.map((message) => (message.id === pendingId ? real : message));
+      });
+    try {
+      const res = await apiFetch<{ message: Message; newAchievements: string[] }>("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: activeChannelId,
+          content: text,
+          attachmentKey: keys[0],
+          attachmentKeys: keys.slice(1),
+          replyTo,
+        }),
+      });
+      if (pendingId) dropPending(res.message);
+      return res;
+    } catch (error) {
+      if (pendingId) dropPending();
+      throw error;
+    }
   }
 
   /** Wrapper for Composer: it doesn't need the achievement payload, only fire-and-forget. */

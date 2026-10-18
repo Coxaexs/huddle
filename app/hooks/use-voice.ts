@@ -11,7 +11,7 @@ import { isTypingTarget, matchesCombo } from "../lib/hotkeys";
 import { HEAD_RECENTER_EVENT, headTrackingPossible, type HeadTrackingStatus } from "../lib/head-tracking";
 import { webcamHeadTrackingPossible } from "../lib/webcam-head-tracking";
 import { privateAddress, turnOnly } from "../lib/ice";
-import { SfuVoice, type SfuPublishKind, type SfuRemoteStream, type SfuStreamKind } from "../lib/sfu-voice";
+import type { SfuVoice, SfuPublishKind, SfuRemoteStream, SfuStreamKind } from "../lib/sfu-voice";
 import { MAX_WHISPER_TARGETS } from "@/lib/whisper";
 
 export type HeadTrackingSource = "airpods" | "webcam";
@@ -294,12 +294,20 @@ export function videoAllowedFrom(person: VoiceParticipant | undefined): boolean 
   return person?.speakAllowed !== false;
 }
 
+/**
+ * The LiveKit client is most of the voice code, and only people who join a
+ * room need it: fetched alongside the first voice token, not on page load.
+ */
+let sfuModule: Promise<typeof import("../lib/sfu-voice")> | null = null;
+const loadSfu = () => (sfuModule ??= import("../lib/sfu-voice"));
+
 /** LiveKit's address and a token for one room, or null when this instance has none. */
 async function sfuGrant(
   channelId: string,
   connectionId: string,
   regionOverride?: "nl" | "de",
 ): Promise<{ url: string; token: string; region?: "nl" | "de" } | null> {
+  void loadSfu().catch(() => undefined);
   try {
     const params = new URLSearchParams({
       channelId,
@@ -1864,8 +1872,21 @@ export function useVoice({
       const activeRegion = grant.region || (grant.url.includes("-de.") ? "de" : "nl");
       voiceRegionRef.current = activeRegion;
       setVoiceRegion(activeRegion);
+      const room = channelIdRef.current;
+      let SfuVoiceClass: typeof SfuVoice;
+      try {
+        ({ SfuVoice: SfuVoiceClass } = await loadSfu());
+      } catch {
+        sfuModule = null;
+        if (channelIdRef.current === room) {
+          dropToMesh("Could not load the voice server client, so this call uses direct connections.");
+        }
+        return;
+      }
+      // Left (or moved) while the client was loading.
+      if (channelIdRef.current !== room) return;
       void sfuRef.current?.leave();
-      const sfu = new SfuVoice({
+      const sfu = new SfuVoiceClass({
         onStreams: (streams) => {
           if (sfuRef.current === sfu) setSfuStreams(streams);
         },

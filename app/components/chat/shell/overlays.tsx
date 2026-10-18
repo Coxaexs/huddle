@@ -16,11 +16,13 @@ import { EmojiPicker } from "../../emoji-picker";
 import { FloatingScreenPreview } from "../../floating-screen-preview";
 import { apiFetch } from "../../../lib/client";
 import { requestProfileEditor } from "@/lib/profile-editor-request";
-import { UserProfileCard } from "../../user-profile-card";
 import type { Dispatch, SetStateAction, RefObject } from "react";
 import type { MsnContacts } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../../../hooks/use-msn-extras";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
+import { deferred } from "./deferred";
+
+const UserProfileCard = deferred(() => import("../../user-profile-card").then((m) => m.UserProfileCard));
 
 export function MsnOverlays({
   msnTheme,

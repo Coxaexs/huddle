@@ -11,7 +11,6 @@ import { practiceRoll, TutorialPill, WelcomeTutorial } from "../../welcome-tutor
 import { ToastContainer } from "../../toast";
 import { AchievementCenter } from "../../achievement-center";
 import { DeviceSwitchPrompt } from "../../device-switch-prompt";
-import { ProfileCard } from "../../profile-card";
 import { RemoteVoiceAudio } from "../../remote-voice-audio";
 import { SynthJamAudio } from "../../synth-jam-audio";
 import { requestProfileEditor } from "@/lib/profile-editor-request";
@@ -32,6 +31,7 @@ import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
 
+const ProfileCard = deferred(() => import("../../profile-card").then((m) => m.ProfileCard));
 const PdfViewer = deferred(() => import("../../pdf-viewer").then((m) => m.PdfViewer));
 const SettingsDialog = deferred(() => import("../../settings-dialog").then((m) => m.SettingsDialog));
 const ServerSettingsDialog = deferred(() => import("../../server-settings-dialog").then((m) => m.ServerSettingsDialog));

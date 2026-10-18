@@ -435,13 +435,18 @@ function MessageRowImpl({
                           ? "actions-open reaction-picker-active"
                           : ""
                         } ${user && message.mentions?.includes(user.id) ? "mentions-me" : ""
-                        } ${ttsSpeakingId === String(message.id) ? "tts-speaking" : ""}`}
+                        } ${ttsSpeakingId === String(message.id) ? "tts-speaking" : ""} ${message.pending ? "is-pending" : ""}`}
                       key={message.id}
                       onTouchStart={(e) => handleMessageTouchStart(message.id, e)}
                       onTouchMove={handleMessageTouchMove}
                       onTouchEnd={handleMessageTouchEnd}
                       onTouchCancel={handleMessageTouchEnd}
                       onContextMenu={(event) => {
+                        // Nothing to act on until the server has it.
+                        if (message.pending) {
+                          event.preventDefault();
+                          return;
+                        }
                         if (longPressTriggeredRef.current || touchInput) {
                           event.preventDefault();
                           event.stopPropagation();

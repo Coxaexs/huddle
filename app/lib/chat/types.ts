@@ -17,6 +17,8 @@ export interface Message {
   avatar: string;
   color: string;
   time: string;
+  /** Your own message, shown before the server has it; its id starts with "pending-". */
+  pending?: boolean;
   /** ISO timestamp, used to group bursts of messages from the same author. */
   createdAt?: string;
   text: string;
