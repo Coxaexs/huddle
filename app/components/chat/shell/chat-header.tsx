@@ -2,13 +2,13 @@
 
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { Search, Pin, Bookmark, Settings, Users, Menu, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
+import { Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
 import { openAchievements } from "../../../lib/achievement-client";
 import { nextScreenQuality, screenQualityLabel } from "../../../hooks/use-voice";
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { Battlemap } from "@/lib/battlemap";
 
@@ -107,6 +107,25 @@ export function ChatHeader({
   voiceChatOpen: boolean;
   setVoiceChatOpen: (open: boolean) => void;
 }) {
+  // Phones keep only the essentials in the header; the rest sit behind "More".
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [moreOpen]);
+  const pick = (action: () => void) => () => {
+    setMoreOpen(false);
+    action();
+  };
+  const toggleSaved = () => {
+    setSavedOpen((open) => !open);
+    void loadSaved();
+  };
   return (
     <header className="chat-header">
             <button
@@ -382,12 +401,14 @@ export function ChatHeader({
                 </div>
               )}
               {!inDmHome && (
-                <Icon
-                  label="Find users"
-                  onClick={() => setGlobalSearchOpen(true)}
-                >
-                  <UserPlus size={18} />
-                </Icon>
+                <span className="header-extra">
+                  <Icon
+                    label="Find users"
+                    onClick={() => setGlobalSearchOpen(true)}
+                  >
+                    <UserPlus size={18} />
+                  </Icon>
+                </span>
               )}
               {!inDmHome && (
                 <Icon
@@ -406,29 +427,24 @@ export function ChatHeader({
               >
                 <AtSign size={18} />
               </Icon>
-              <Icon
-                label="Pinned messages"
-                active={pinsOpen}
-                onClick={() => setPinsOpen((open) => !open)}
-              >
-                <Pin size={18} />
-              </Icon>
-              <Icon
-                label="Saved messages"
-                active={savedOpen}
-                onClick={() => {
-                  setSavedOpen((open) => !open);
-                  void loadSaved();
-                }}
-              >
-                <Bookmark size={18} />
-              </Icon>
-              <Icon
-                label="Achievements"
-                onClick={() => openAchievements()}
-              >
-                <Award size={18} />
-              </Icon>
+              <span className="header-extra">
+                <Icon
+                  label="Pinned messages"
+                  active={pinsOpen}
+                  onClick={() => setPinsOpen((open) => !open)}
+                >
+                  <Pin size={18} />
+                </Icon>
+                <Icon label="Saved messages" active={savedOpen} onClick={toggleSaved}>
+                  <Bookmark size={18} />
+                </Icon>
+                <Icon
+                  label="Achievements"
+                  onClick={() => openAchievements()}
+                >
+                  <Award size={18} />
+                </Icon>
+              </span>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (
                 <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
@@ -442,6 +458,32 @@ export function ChatHeader({
               >
                 <Users size={18} />
               </Icon>
+              <div className="header-more" ref={moreRef}>
+                <Icon label="More" active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
+                  <MoreHorizontal size={18} />
+                </Icon>
+                {moreOpen && (
+                  <div className="header-more-menu" role="menu">
+                    {!inDmHome && (
+                      <button type="button" role="menuitem" onClick={pick(() => setGlobalSearchOpen(true))}>
+                        <UserPlus size={18} /> Find people
+                      </button>
+                    )}
+                    <button type="button" role="menuitem" onClick={pick(() => setPinsOpen((open) => !open))}>
+                      <Pin size={18} /> Pinned messages
+                    </button>
+                    <button type="button" role="menuitem" onClick={pick(toggleSaved)}>
+                      <Bookmark size={18} /> Saved messages
+                    </button>
+                    <button type="button" role="menuitem" onClick={pick(() => openAchievements())}>
+                      <Award size={18} /> Achievements
+                    </button>
+                    <button type="button" role="menuitem" onClick={pick(() => setSettingsOpen(true))}>
+                      <Settings size={18} /> Settings
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
   );

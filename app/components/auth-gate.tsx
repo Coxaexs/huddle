@@ -6,6 +6,8 @@ import { apiFetch } from "../lib/client";
 import { extractInviteCodeFromUrl } from "../lib/chat/invites";
 import type { PublicUser } from "@/lib/users";
 import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
+import { SITE } from "./site-chrome";
+import { rememberTermsAccepted } from "./terms-consent";
 
 interface AuthGateProps {
   /** True when nobody has signed up yet: the first account skips the invite. */
@@ -68,6 +70,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -208,6 +211,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         body: JSON.stringify(body),
       });
       if (mode === "signup") {
+        rememberTermsAccepted();
         // A brand-new account gets the welcome tutorial once it is in.
         try {
           window.localStorage.setItem(TUTORIAL_PENDING_KEY, "1");
@@ -252,7 +256,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
       <form className="username-card" onSubmit={submit}>
         <span className="username-mark">h</span>
         <p className="eyebrow">
-          {bootstrap ? "SET UP YOUR HOFFLE" : open && mode === "signup" ? "WELCOME TO HOFFLE" : "WELCOME BACK"}
+          {bootstrap ? "SET UP YOUR HOFFLE" : mode === "signup" ? "WELCOME TO HOFFLE" : "WELCOME BACK"}
         </p>
         <h2>
           {mode === "forgot"
@@ -393,6 +397,18 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           </>
         )}
 
+        {mode === "signup" && (
+          <label className="auth-agree">
+            <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
+            <span>
+              I agree to the{" "}
+              <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">Terms of Use</a> and{" "}
+              <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">Privacy Policy</a>. Hoffle has zero
+              tolerance for abusive users and objectionable content.
+            </span>
+          </label>
+        )}
+
         {error && <p className="auth-error">{error}</p>}
         {notice && <p className="modal-hint">{notice}</p>}
 
@@ -404,7 +420,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               ? !username
               : mode === "reset"
                 ? !password
-                : !username || !password || (needsChallenge && !challengeToken))
+                : !username || !password || (needsChallenge && !challengeToken) || (mode === "signup" && !agreed))
           }
         >
           {busy
@@ -415,7 +431,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
                 ? "Save and sign in"
                 : mode === "signup"
                   ? "Create my account"
-                  : "Enter the Huddle"}
+                  : "Sign in"}
         </button>
 
         {mode === "signin" && (
@@ -461,6 +477,13 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               <span>Mail us at info@hoffle.online to request a try</span>
             </a>
           </div>
+        )}
+        {mode === "signin" && (
+          <p className="auth-legal">
+            <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">Terms</a>
+            <span aria-hidden> · </span>
+            <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">Privacy</a>
+          </p>
         )}
       </form>
     </div>

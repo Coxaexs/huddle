@@ -3,6 +3,8 @@ import readme from "../../README.md?raw";
 import bots from "../../docs/bots.md?raw";
 import configuration from "../../docs/configuration.md?raw";
 import selfHosting from "../../docs/self-hosting.md?raw";
+import terms from "../../docs/legal/terms.md?raw";
+import privacy from "../../docs/legal/privacy.md?raw";
 
 /**
  * The repo's user-facing markdown, published at hoffle.online/docs. The
@@ -26,6 +28,8 @@ export interface Doc {
   /** For the meta description and search results; about 150 characters. */
   description: string;
   source: string;
+  /** Legal pages: no "suggest an edit" line. */
+  legal?: boolean;
 }
 
 export const DOCS: Doc[] = [
@@ -64,6 +68,26 @@ export const DOCS: Doc[] = [
     description:
       "Run unmodified discord.js and discord.py bots on Hoffle, switch on the built-in music and D&D bots, or post messages with a simple HTTP API.",
     source: bots,
+  },
+  {
+    slug: "terms",
+    path: "docs/legal/terms.md",
+    title: "Terms of Use",
+    navTitle: "Terms of Use",
+    description:
+      "The user agreement for chat.hoffle.online and the Hoffle apps: who can use it, zero tolerance for abuse, reporting and blocking, and your content.",
+    source: terms,
+    legal: true,
+  },
+  {
+    slug: "privacy",
+    path: "docs/legal/privacy.md",
+    title: "Privacy Policy",
+    navTitle: "Privacy Policy",
+    description:
+      "What Hoffle collects, why, which services help run it, how long data is kept, and how to delete your account or use your privacy rights.",
+    source: privacy,
+    legal: true,
   },
 ];
 

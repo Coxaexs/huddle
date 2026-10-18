@@ -108,6 +108,18 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync ios
 
+      # Push notifications go through Firebase. Without the secret an empty
+      # file keeps the build working; the app then just gets no notifications.
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            printf "%s" "$GOOGLE_SERVICE_INFO_PLIST" > ios/App/App/GoogleService-Info.plist
+          else
+            printf "%s\n" "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" "<plist version=\"1.0\"><dict/></plist>" > ios/App/App/GoogleService-Info.plist
+          fi
+
       - name: Build (unsigned)
         working-directory: mobile/ios/App
         run: |

@@ -1,10 +1,12 @@
 /**
- * Push notifications in the native Android app (mobile/), via Firebase Cloud
- * Messaging. Browser Web Push can't run inside the app's WebView, so the app
- * registers its FCM device token with the server instead (/api/push/native).
+ * Push notifications in the native Android and iOS apps (mobile/), via
+ * Firebase Cloud Messaging. Browser Web Push can't run inside the app's
+ * WebView, so the app registers its FCM device token with the server instead
+ * (/api/push/native). On iOS, AppDelegate.swift swaps the APNs token for an
+ * FCM one, so both platforms send the same kind of token.
  *
- * iOS is skipped: a sideloaded app has no push entitlement, so Apple won't
- * issue it a token. In a browser everything here is a no-op.
+ * A sideloaded iOS build has no push entitlement and never gets a token; that
+ * just means no notifications. In a browser everything here is a no-op.
  */
 import { apiFetch } from "./client";
 import { nativePlatform } from "./native-voice";
@@ -32,7 +34,8 @@ let token: string | null = null;
 let started = false;
 
 function pushPlugin(): PushPlugin | null {
-  if (nativePlatform() !== "android") return null;
+  const platform = nativePlatform();
+  if (platform !== "android" && platform !== "ios") return null;
   const cap = (window as unknown as {
     Capacitor?: { registerPlugin?: <T>(name: string) => T };
   }).Capacitor;
@@ -45,8 +48,9 @@ export async function registerNativePush(): Promise<void> {
   if (!push || started) return;
   started = true;
   try {
-    // Must match the channel ids lib/fcm.ts sends to.
-    await push.createChannel({
+    // Must match the channel ids lib/fcm.ts sends to. Channels are Android-only.
+    const android = nativePlatform() === "android";
+    if (android) await push.createChannel({
       id: "huddle-messages",
       name: "Messages",
       description: "Direct messages, mentions and replies",
@@ -54,7 +58,7 @@ export async function registerNativePush(): Promise<void> {
       visibility: 0,
       vibration: true,
     });
-    await push.createChannel({
+    if (android) await push.createChannel({
       id: "huddle-calls",
       name: "Calls",
       description: "Incoming voice calls",

@@ -31,6 +31,7 @@ const JOIN_LINKS: JoinLinks = {
   kofi: KOFI_URL,
   sponsors: GITHUB_SPONSORS_URL,
   selfHost: SELF_HOST_GUIDE,
+  app: APP_URL,
   email: "info@hoffle.online",
 };
 
@@ -134,7 +135,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "How do I get in?",
-    a: "chat.hoffle.online is invite-only for now. Ask someone who's on it for an invite code, support Hoffle with $5 on Ko-fi or GitHub Sponsors and you'll get one by email, or email info@hoffle.online and ask for one. Or run your own: the first account on a new server becomes the owner and can invite everyone else.",
+    a: "Anyone can make a free account on chat.hoffle.online: open it, pick a name and a password, and you're in. Or run your own: the first account on a new server becomes the owner and can invite everyone else.",
   },
   {
     q: "Do my friends have to install anything?",

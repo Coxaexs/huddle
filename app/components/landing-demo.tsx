@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Coffee, Heart, Mail, Server, X } from "./site-icons";
+import { ChevronLeft, ChevronRight, Coffee, Heart, Server, X } from "./site-icons";
 import type { EmbedToParent, ParentToEmbed } from "../landing/say-hi/say-hi-embed";
 import type { GuestbookMessage } from "@/app/api/(features)/guestbook/route";
 import type { DiceRollEvent } from "../../lib/protocol";
@@ -22,7 +22,9 @@ export interface JoinLinks {
   kofi: string;
   sponsors: string;
   selfHost: string;
-  /** For asking for a free invite by email. */
+  /** The web app, where anyone can create an account. */
+  app: string;
+  /** For questions by email. */
   email: string;
 }
 
@@ -78,24 +80,20 @@ function JoinDialog({ what, onClose, links }: { what: string | null; onClose: ()
       </p>
 
       <div className="mt-5 rounded-xl border border-(--line) bg-(--paper-2) p-4">
-        <h3 className="font-normal">Get an invite code</h3>
+        <h3 className="font-normal">Join chat.hoffle.online</h3>
         <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">
-          chat.hoffle.online is invite-only. Support Hoffle with $5 and you'll get an invite code: leave your email in the
-          message and the code comes by email. Know someone who's already on it? They can invite you too. Don't know
-          anyone yet and just want to try it? Mail me and ask.
+          Anyone can join: pick a name and a password and you're in. It's free. If you like it, you can support Hoffle on
+          Ko-fi or GitHub Sponsors, but you don't have to.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a href={links.kofi} target="_blank" rel="noopener noreferrer" className={`${dialogButton} bg-(--violet-fill) text-[14px] font-semibold text-white hover:bg-(--violet-fill-hover)`}>
-            <Coffee aria-hidden className="h-4 w-4" /> $5 on Ko-fi
+          <a href={links.app} className={`${dialogButton} bg-(--violet-fill) text-[14px] font-semibold text-white hover:bg-(--violet-fill-hover)`}>
+            Create an account
+          </a>
+          <a href={links.kofi} target="_blank" rel="noopener noreferrer" className={`${dialogButton} border border-(--line) bg-(--card) text-[14px] font-semibold text-(--ink) hover:border-(--ink)`}>
+            <Coffee aria-hidden className="h-4 w-4" /> Ko-fi
           </a>
           <a href={links.sponsors} target="_blank" rel="noopener noreferrer" className={`${dialogButton} border border-(--line) bg-(--card) text-[14px] font-semibold text-(--ink) hover:border-(--ink)`}>
-            <Heart aria-hidden className="h-4 w-4 text-[#ea4aaa]" /> $5 on GitHub Sponsors
-          </a>
-          <a
-            href={`mailto:${links.email}?subject=${encodeURIComponent("Hoffle invite")}&body=${encodeURIComponent("Hi! I'd like to try Hoffle. Could I have an invite code?")}`}
-            className={`${dialogButton} border border-(--line) bg-(--card) text-[14px] font-semibold text-(--ink) hover:border-(--ink)`}
-          >
-            <Mail aria-hidden className="h-4 w-4" /> Mail me
+            <Heart aria-hidden className="h-4 w-4 text-[#ea4aaa]" /> GitHub Sponsors
           </a>
         </div>
       </div>

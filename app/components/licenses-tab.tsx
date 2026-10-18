@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Scale, ExternalLink, ShieldCheck, Search, ChevronDown, ChevronUp, Code2, Heart, Coffee } from "lucide-react";
 import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
+import { isNativeApp } from "../lib/native-app";
 
 interface ThirdPartyPackage {
   name: string;
@@ -196,7 +197,7 @@ export function LicensesTab() {
             >
               <Code2 size={14} /> Source Code <ExternalLink size={12} className="opacity-70" />
             </a>
-            {KOFI_URL && (
+            {KOFI_URL && !isNativeApp() && (
               <a
                 href={KOFI_URL}
                 target="_blank"
@@ -206,7 +207,7 @@ export function LicensesTab() {
                 <Coffee size={14} /> Ko-fi <ExternalLink size={12} className="opacity-70" />
               </a>
             )}
-            {GITHUB_SPONSORS_URL && (
+            {GITHUB_SPONSORS_URL && !isNativeApp() && (
               <a
                 href={GITHUB_SPONSORS_URL}
                 target="_blank"
