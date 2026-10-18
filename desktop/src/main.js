@@ -15,6 +15,7 @@ const {
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { spawn } = require("node:child_process");
 
 /** Global hotkey that toggles your mic even when Hoffle isn't focused. */
 const MUTE_HOTKEY = "CommandOrControl+Shift+M";
@@ -204,7 +205,12 @@ function createWindow() {
     }
   });
   mainWindow.on("closed", () => {
+    stopAppAudio();
     mainWindow = null;
+  });
+  // A reload drops the share, so the capture behind it goes too.
+  mainWindow.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame && !details.isSameDocument) stopAppAudio();
   });
 
   // Target=_blank and external links open in the system browser, not in-app.
@@ -237,6 +243,81 @@ function supportsLoopbackAudio() {
   return false;
 }
 
+/**
+ * Windows: share audio per application rather than the whole output device.
+ * The device loopback carries Hoffle's own playback, so the room would hear
+ * itself, and Chromium's way of leaving that out fails behind audio routers
+ * such as SteelSeries Sonar. native/app-audio.cpp captures the shared window's
+ * app, or for a whole screen every app except Hoffle and the routers, and
+ * streams it here; the page turns it into the share's audio track.
+ */
+let appAudio = null;
+
+function appAudioHelper() {
+  if (process.platform !== "win32") return null;
+  const file = app.isPackaged
+    ? path.join(process.resourcesPath, "hoffle-app-audio.exe")
+    : path.join(__dirname, "../native/bin/hoffle-app-audio.exe");
+  return fs.existsSync(file) ? file : null;
+}
+
+function stopAppAudio() {
+  const current = appAudio;
+  appAudio = null;
+  if (!current) return;
+  current.proc.stdin.end();
+  // It exits on its own when stdin closes; this is in case it is stuck.
+  setTimeout(() => current.proc.kill(), 1000);
+}
+
+/** Starts capturing for `source`; resolves false when this Windows cannot. */
+function startAppAudio(source, target) {
+  stopAppAudio();
+  const helper = appAudioHelper();
+  if (!helper || !target || target.isDestroyed()) return Promise.resolve(false);
+  const windowId = /^window:(\d+):/.exec(source.id)?.[1];
+  const args = windowId
+    ? ["--window", windowId, "--self", String(process.pid)]
+    : ["--all-except", String(process.pid)];
+  return new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn(helper, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    } catch {
+      resolve(false);
+      return;
+    }
+    const current = { proc, target };
+    let settled = false;
+    const settle = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ok) appAudio = current;
+      else proc.kill();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => settle(false), 4000);
+    proc.on("error", () => settle(false));
+    proc.on("exit", () => {
+      settle(false);
+      if (appAudio === current) appAudio = null;
+    });
+    proc.stderr.on("data", (data) => {
+      if (String(data).includes("ready")) settle(true);
+    });
+    // Whole frames only (stereo float32), however the pipe splits them.
+    let rest = Buffer.alloc(0);
+    proc.stdout.on("data", (data) => {
+      if (appAudio !== current || target.isDestroyed()) return;
+      const all = rest.length ? Buffer.concat([rest, data]) : data;
+      const whole = all.length - (all.length % 8);
+      rest = all.subarray(whole);
+      if (whole) target.send("app-audio:pcm", all.subarray(0, whole));
+    });
+  });
+}
+
 /** Grant the media + display-capture permissions a call app needs. */
 function configureSession() {
   const ses = session.defaultSession;
@@ -261,7 +342,7 @@ function configureSession() {
 
   // Intercept getDisplayMedia() and show our own source picker.
   ses.setDisplayMediaRequestHandler(
-    async (_request, callback) => {
+    async (request, callback) => {
       try {
         // On Linux the portal shows the system's own picker, so ours would
         // just be a second, emptier dialog in front of it.
@@ -269,6 +350,13 @@ function configureSession() {
           process.platform === "linux" ? await portalSource() : await pickSource();
         if (!source) {
           callback({}); // user cancelled -> renderer gets NotAllowedError
+          return;
+        }
+        stopAppAudio();
+        // Per-app audio where the helper can run (see startAppAudio); the
+        // page picks it up through window.huddle.appAudio.
+        if (request.audioRequested && (await startAppAudio(source, mainWindow?.webContents))) {
+          callback({ video: source });
           return;
         }
         callback({
@@ -507,6 +595,12 @@ if (!app.requestSingleInstanceLock()) {
       if (!mainWindow || event.sender !== mainWindow.webContents) return;
       mainWindow.webContents.setBackgroundThrottling(!on);
     });
+    // Per-app screen-share audio (startAppAudio): is this share using it, and
+    // the page's stop when the share ends.
+    ipcMain.handle("app-audio:active", (event) => Boolean(appAudio && appAudio.target === event.sender));
+    ipcMain.on("app-audio:stop", (event) => {
+      if (appAudio && appAudio.target === event.sender) stopAppAudio();
+    });
     ipcMain.on("set-badge", (_event, count) => {
       const n = Number(count) || 0;
       if (typeof app.setBadgeCount === "function") app.setBadgeCount(n);
@@ -612,7 +706,10 @@ if (!app.requestSingleInstanceLock()) {
     isQuitting = true;
   });
 
-  app.on("will-quit", () => globalShortcut.unregisterAll());
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+    stopAppAudio();
+  });
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin" && (!tray || isQuitting)) {
