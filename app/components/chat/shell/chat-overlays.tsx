@@ -11,20 +11,16 @@ import { practiceRoll, TutorialPill, WelcomeTutorial } from "../../welcome-tutor
 import { ToastContainer } from "../../toast";
 import { AchievementCenter } from "../../achievement-center";
 import { DeviceSwitchPrompt } from "../../device-switch-prompt";
-import { PdfViewer } from "../../pdf-viewer";
 import { ProfileCard } from "../../profile-card";
 import { RemoteVoiceAudio } from "../../remote-voice-audio";
 import { SynthJamAudio } from "../../synth-jam-audio";
 import { requestProfileEditor } from "@/lib/profile-editor-request";
-import { SettingsDialog } from "../../settings-dialog";
 import { CustomDialog } from "../../custom-dialog";
 import { DM_HOME } from "../../../lib/chat/constants";
 import { volumeGain } from "../../../lib/chat/format";
-import { ServerSettingsDialog } from "../../server-settings-dialog";
 import { GlobalUserSearchDialog } from "../../global-user-search-dialog";
 import { apiFetch } from "../../../lib/client";
 import { PollDialog } from "../../poll-dialog";
-import { BlahajBuddy } from "../../blahaj-buddy";
 import { ForwardMessageDialog } from "../../forward-message-dialog";
 import { WelcomeGate } from "../../server-welcome";
 import { OnboardingDirectoryDialog } from "../../onboarding-directory-dialog";
@@ -34,6 +30,12 @@ import { ImageLightbox, ProfileCardLayer, IncomingDmCall, MarkdownGuideModal, Re
 import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from "./menus";
 import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
+import { deferred } from "./deferred";
+
+const PdfViewer = deferred(() => import("../../pdf-viewer").then((m) => m.PdfViewer));
+const SettingsDialog = deferred(() => import("../../settings-dialog").then((m) => m.SettingsDialog));
+const ServerSettingsDialog = deferred(() => import("../../server-settings-dialog").then((m) => m.ServerSettingsDialog));
+const BlahajBuddy = deferred(() => import("../../blahaj-buddy").then((m) => m.BlahajBuddy));
 
 /** Everything ChatShell layers over the page: voice audio, menus, dialogs, viewers, toasts and the floating stream preview. */
 export function renderChatOverlays(v: ShellRenderState) {

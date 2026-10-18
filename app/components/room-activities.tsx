@@ -46,7 +46,9 @@ import {
   Hand,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
-import { GestureSynth } from "./gesture-synth";
+import { deferred } from "./chat/shell/deferred";
+
+const GestureSynth = deferred(() => import("./gesture-synth").then((m) => m.GestureSynth));
 
 interface RoomActivitiesProps {
   channelId: string;

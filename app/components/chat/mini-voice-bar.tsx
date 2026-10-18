@@ -4,7 +4,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { Monitor, PhoneOff, Radio, Video, VideoOff, Volume2 } from "lucide-react";
 import { screenQualityLabel, type useVoice } from "../../hooks/use-voice";
 import { ScreenShareSetup } from "../screen-share-setup";
-import { SoundboardDrawer } from "../voice-stage";
+import { SoundboardDrawer } from "../voice-stage/soundboard-drawer";
 import { VoiceConnectionModal } from "./voice-connection-modal";
 
 /**

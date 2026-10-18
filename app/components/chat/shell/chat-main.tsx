@@ -6,9 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { SessionNotesBanner } from "../../session-notes-banner";
 import { DiceOverlay } from "../../dice-overlay";
 import { StyledText } from "../../message-body";
-import { BattlemapBoard } from "../../battlemap";
 import { ForumBoard } from "../../forum-board";
-import { VoiceStage } from "../../voice-stage";
 import { VoiceChatPanel } from "../../voice-chat-panel";
 import { FriendsView } from "../../friends-view";
 import { LiveRecordingDirector } from "./live-speaking";
@@ -18,6 +16,16 @@ import { MessageList } from "./message-list";
 import { Composer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import type { ShellRenderState } from "./chat-shell-renderers";
+import { deferred } from "./deferred";
+
+const VoiceStage = deferred(() => import("../../voice-stage").then((m) => m.VoiceStage));
+const BattlemapBoard = deferred(() => import("../../battlemap").then((m) => m.BattlemapBoard));
+
+// Most visits open a voice room sooner or later: fetch the stage once the page is idle.
+if (typeof window !== "undefined") {
+  const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 2000));
+  idle(() => void VoiceStage.preload());
+}
 
 /** ChatShell's middle column: the channel header, messages (or a voice stage / the friends page) and the composer. */
 export function renderChatMain(v: ShellRenderState) {
@@ -31,7 +39,7 @@ export function renderChatMain(v: ShellRenderState) {
     emojiActive, emojiIndex, emojiMap, emojiMatches, emojiOpen, emojiShortcodeMatch, emojis,
     endDmCall, expandedBlockedMessages, features, fileRef, formatOpen, gamesOpen, gifOpen,
     handleMessageTouchEnd, handleMessageTouchMove, handleMessageTouchStart, handleMessagesScroll,
-    handleOpenReactionPicker, handleOpenReactionViewer, handleUnblockUser, hasOlder,
+    handleOpenReactionPicker, handleOpenReactionViewer, handleUnblockUser, hasOlder, hasUnmounted, mountedMessages,
     hiddenServerEmojiIds, hideServerEmoji, hub, inDmHome, incomingDmCall, isDmBlocked, isSelfDm,
     joinServerDirect, jumpToFirstUnread, jumpToLatest, jumpToMessage, leaveGroupDm, livingRoom,
     loadEmojis, loadOlder, loadSaved, longPressTriggeredRef, membersById, membersOpen,
@@ -374,13 +382,13 @@ export function renderChatMain(v: ShellRenderState) {
       jumpToFirstUnread={jumpToFirstUnread}
       setUnreadBarVisible={setUnreadBarVisible}
       msnTheme={msnTheme}
-      hasOlder={hasOlder}
+      hasOlder={hasOlder || hasUnmounted}
       loadOlder={loadOlder}
       isSelfDm={isSelfDm}
       activeDm={activeDm}
       channelTitle={channelTitle}
       activeChannel={activeChannel}
-      messages={messages}
+      messages={mountedMessages}
       membersById={membersById}
       openUserMenu={openUserMenu}
       jumpToMessage={jumpToMessage}

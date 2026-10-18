@@ -1,10 +1,30 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Message, type MentionEntry } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { apiFetch, apiUrl } from "../../lib/client";
 import { getActiveThemeId, findThemeById, applyThemeToDocument, applyClientUiCss } from "@/lib/themes";
 import { mergeMessages } from "../../lib/chat/shell-helpers";
 import type { useShellVoice } from "./use-shell-voice";
+
+/**
+ * A channel opens with up to 200 messages, but only the newest ones are
+ * mounted; older ones mount a batch at a time as you scroll up, before any
+ * older page is fetched. Mounting 200 rich rows on every channel switch was
+ * the slowest part of switching, on phones especially.
+ */
+const MOUNTED_ON_OPEN = 60;
+const MOUNT_BATCH = 60;
+
+/** Where the first unread message is: the count skips your own messages, so walk back past only others'. */
+function firstUnreadIndex(messages: Message[], unreadCount: number, userId: string | undefined) {
+  let index = messages.length;
+  let others = 0;
+  while (index > 0 && others < unreadCount) {
+    index -= 1;
+    if (!userId || messages[index].userId !== userId) others += 1;
+  }
+  return { index, others };
+}
 
 /** ChatShell, part 5 of 9. Message history: loading pages, scrolling, jumping to a message, the unread bar. */
 export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
@@ -24,6 +44,23 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
   const pendingJumpRef = useRef<{ channelId: string; messageId: string } | null>(null);
   /** Set just before older messages are prepended, to keep the view still. */
   const prependAnchorRef = useRef<{ height: number; top: number } | null>(null);
+  /** The oldest mounted message; null mounts them all. */
+  const [mountedFrom, setMountedFrom] = useState<Message["id"] | null>(null);
+  const mountedStart = useMemo(() => {
+    if (mountedFrom === null) return 0;
+    // Gone (a jump replaced the list, or the 400 cap trimmed it): mount everything.
+    return Math.max(0, messages.findIndex((message) => message.id === mountedFrom));
+  }, [messages, mountedFrom]);
+  const mountedMessages = useMemo(
+    () => (mountedStart > 0 ? messages.slice(mountedStart) : messages),
+    [messages, mountedStart],
+  );
+  const mountedStartRef = useRef(mountedStart);
+  mountedStartRef.current = mountedStart;
+  /** Mounts the messages from `index` on. */
+  const mountFrom = useCallback((list: Message[], index: number) => {
+    setMountedFrom(index > 0 ? list[index].id : null);
+  }, []);
 
   const loadChannelPage = useCallback(
     async (channelId: string, around?: string) => {
@@ -53,7 +90,14 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     loadChannelPage(activeChannelId, jump)
       .then((data) => {
         if (cancelled) return;
-        setMessages(data.messages);
+        const list = data.messages;
+        let start = jump ? 0 : list.length - MOUNTED_ON_OPEN;
+        const initial = initialChannelScrollRef.current;
+        if (start > 0 && initial?.channelId === activeChannelId && initial.unreadCount > 0) {
+          start = Math.min(start, firstUnreadIndex(list, initial.unreadCount, user.id).index - 5);
+        }
+        mountFrom(list, Math.max(0, start));
+        setMessages(list);
         setHasOlder(Boolean(data.hasMore));
         setDetached(Boolean(jump && data.hasNewer));
         setMessagesLoadedFor(activeChannelId);
@@ -89,7 +133,15 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
   const loadOlder = useCallback(async () => {
     const channelId = activeChannelRef.current;
     const el = messagesScrollRef.current;
-    if (!channelId || loadingOlderRef.current || !hasOlder || !el) return;
+    if (!channelId || loadingOlderRef.current || !el) return;
+    const shownFrom = mountedStartRef.current;
+    if (shownFrom > 0) {
+      // Already loaded, just not mounted yet: mount the next batch first.
+      prependAnchorRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      mountFrom(messagesRef.current, Math.max(0, shownFrom - MOUNT_BATCH));
+      return;
+    }
+    if (!hasOlder) return;
     const oldest = messagesRef.current[0];
     if (!oldest) return;
     loadingOlderRef.current = true;
@@ -106,21 +158,26 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     } finally {
       loadingOlderRef.current = false;
     }
-  }, [hasOlder]);
+  }, [hasOlder, mountFrom]);
 
   // Scroll to a jumped-to message once it is on screen, and flash it.
   useEffect(() => {
     const jump = pendingJumpRef.current;
     if (!jump || jump.channelId !== activeChannelId || messagesLoadedFor !== activeChannelId) return;
     const element = document.getElementById(`msg-${jump.messageId}`);
-    if (!element) return;
+    if (!element) {
+      // Loaded but not mounted: mount down to it, and this runs again.
+      const index = messages.findIndex((message) => String(message.id) === jump.messageId);
+      if (index >= 0 && index < mountedStart) mountFrom(messages, Math.max(0, index - 10));
+      return;
+    }
     pendingJumpRef.current = null;
     window.requestAnimationFrame(() => {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
       element.classList.add("jump-flash");
       window.setTimeout(() => element.classList.remove("jump-flash"), 2000);
     });
-  }, [activeChannelId, messagesLoadedFor, messages]);
+  }, [activeChannelId, messagesLoadedFor, messages, mountedStart]);
 
   useLayoutEffect(() => {
     if (!activeChannelId || messagesLoadedFor !== activeChannelId) return;
@@ -137,14 +194,8 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     if (initial?.channelId === activeChannelId) {
       initialChannelScrollRef.current = null;
       if (initial.unreadCount > 0 && messages.length > 0) {
-        // The count skips your own messages, so walk back past only others'.
-        let firstUnreadIndex = messages.length;
-        let others = 0;
-        while (firstUnreadIndex > 0 && others < initial.unreadCount) {
-          firstUnreadIndex -= 1;
-          if (!user || messages[firstUnreadIndex].userId !== user.id) others += 1;
-        }
-        const first = messages[firstUnreadIndex];
+        const { index, others } = firstUnreadIndex(messages, initial.unreadCount, user?.id);
+        const first = messages[index];
         setUnreadMarker({
           channelId: activeChannelId,
           messageId: String(first.id),
@@ -187,7 +238,7 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
       lastSeenTailRef.current = tail.id;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChannelId, messages, messagesLoadedFor]);
+  }, [activeChannelId, messages, messagesLoadedFor, mountedStart]);
 
   useEffect(() => {
     nearBottomRef.current = true;
@@ -230,6 +281,7 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     // Further back than what is loaded: load the window around it.
     void loadChannelPage(channelId, messageId).then((data) => {
       if (activeChannelRef.current !== channelId) return;
+      setMountedFrom(null);
       setMessages(data.messages);
       setHasOlder(Boolean(data.hasMore));
       setDetached(Boolean(data.hasNewer));
@@ -375,6 +427,6 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     ...s,
     pendingJumpRef, prependAnchorRef, loadChannelPage, lastSessionRef, loadOlder,
     handleMessagesScroll, loadOlderRef, jumpToMessage, openMention, jumpToFirstUnread,
-    jumpToLatest,
+    jumpToLatest, mountedMessages, hasUnmounted: mountedStart > 0,
   };
 }

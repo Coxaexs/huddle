@@ -519,11 +519,12 @@ function MessageRowImpl({
                           <button
                             type="button"
                             className="reply-preview"
-                            onClick={() =>
-                              document
-                                .getElementById(`msg-${message.replyTo}`)
-                                ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                            }
+                            onClick={() => {
+                              const original = document.getElementById(`msg-${message.replyTo}`);
+                              if (original) original.scrollIntoView({ behavior: "smooth", block: "center" });
+                              // Not mounted (further up) or not loaded: jumping mounts or fetches it.
+                              else if (activeChannelId) jumpToMessage(activeChannelId, String(message.replyTo));
+                            }}
                           >
                             <span className="reply-arrow">↩</span>
                             <strong>{message.replyPreview?.author || "someone"}</strong>
