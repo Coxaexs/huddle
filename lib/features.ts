@@ -60,6 +60,7 @@ export const SIDE_FEATURES = {
   themes: "Community themes",
   tts: "Text-to-speech",
   unfurl: "Link previews",
+  watch: "Jellyfin watch-party streaming",
   webhooks: "Incoming webhooks",
   youtube: "YouTube",
 } as const;

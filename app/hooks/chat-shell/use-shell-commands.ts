@@ -21,7 +21,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
     dndUrl, features, hub, inDmHome, lastDiceRollSeedRef, members, openMusicDashboard,
     pendingCommandRef, player, postBotMessage, runCommandRef, sendText, setDialogCallback,
     setDialogCancel, setDialogOptions, setDiceRoll, setMarkdownModalOpen, setNotice,
-    setRoomActivity, setStageChannelId, showCustomConfirm, startGame, user, voice, voiceChannels,
+    setRoomActivity, setStageChannelId, setStageFocusRequest, showCustomConfirm, startGame, user, voice, voiceChannels,
     whisperNamesRef,
   } = s;
 
@@ -363,8 +363,13 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
         voiceChannelId: voice.channelId,
         channelTitle,
         postBotMessage,
-        streamUrl: name === "watch" && value ? value : undefined,
+        what: name === "watch" && value ? value : undefined,
         sendLoungeSet: (key, val) => hub.send({ t: "lounge-set", key, value: val }),
+        onWatchStarted: (channelId) => {
+          // You started it, so you are watching: open the stage on it, past the tune-in prompt.
+          setStageChannelId(channelId);
+          setStageFocusRequest({ channelId, target: { kind: "watch" }, at: Date.now() });
+        },
         onActivity: (activity, channelId) => {
           setRoomActivity(activity);
           setStageChannelId(channelId);

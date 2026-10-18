@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell } from "lucide-react";
+import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText } from "lucide-react";
 import { LicensesTab } from "./licenses-tab";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
-import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
+import { KOFI_URL, GITHUB_SPONSORS_URL, SITE } from "./site-chrome";
 import { Avatar } from "./avatar";
 import { DiceOverlay } from "./dice-overlay";
 import type { DiceRollEvent } from "@/lib/protocol";
@@ -38,6 +38,7 @@ import { ProfileEditorShell } from "./settings/profile-editor-shell";
 import { takeProfileEditorRequest } from "@/lib/profile-editor-request";
 import { VoiceTab } from "./settings/voice-tab";
 import { PasswordTab } from "./settings/password-tab";
+import { isNativeApp } from "../lib/native-app";
 import { InvitesTab } from "./settings/invites-tab";
 import { AppearanceTab } from "./settings/appearance-tab";
 import { NotificationsTab } from "./settings/notifications-tab";
@@ -1169,7 +1170,7 @@ export function SettingsDialog({
             })}
           </nav>
 
-          {KOFI_URL && (
+          {KOFI_URL && !isNativeApp() && (
             <a
               href={KOFI_URL}
               target="_blank"
@@ -1181,7 +1182,7 @@ export function SettingsDialog({
               <span className="truncate">Support on Ko-fi</span>
             </a>
           )}
-          {GITHUB_SPONSORS_URL && (
+          {GITHUB_SPONSORS_URL && !isNativeApp() && (
             <a
               href={GITHUB_SPONSORS_URL}
               target="_blank"
@@ -1193,6 +1194,17 @@ export function SettingsDialog({
               <span className="truncate">GitHub Sponsors</span>
             </a>
           )}
+
+          <a
+            href={`${SITE}/terms`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="settings-nav-btn"
+            title="Terms of Use and Privacy Policy"
+          >
+            <FileText size={16} className="shrink-0" />
+            <span className="truncate">Terms & Privacy</span>
+          </a>
 
           <button
             type="button"

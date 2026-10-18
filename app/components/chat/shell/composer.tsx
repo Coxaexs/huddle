@@ -646,7 +646,7 @@ export function Composer({
                               : activeChannelInfo.moderatorOnlyPosting
                                 ? `Post an announcement in #${channelTitle}`
                                 : `Message ${inDmHome ? "" : "#"}${channelTitle}`
-                          : "Pick a channel first"
+                          : "Pick a channel"
                       }
                       aria-label={
                         activeChannelInfo.threadContainer

@@ -19,6 +19,7 @@ export type SpatialOutput = "headphones" | "speakers";
 import { nativePlatform } from "../lib/native-voice";
 import { cancelScreenEcho, type ScreenEcho } from "../lib/screen-echo";
 import { desktopAppAudio } from "../lib/app-audio";
+import { startScreenPreviewCapture } from "../lib/stream-preview";
 import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
 import {
   MIC_STATE_EVENT,
@@ -716,6 +717,8 @@ export function useVoice({
   const screenStreamRef = useRef<MediaStream | null>(null);
   /** What makes the published screen audio: the echo canceller, or the desktop app's per-app capture. */
   const screenAudioRef = useRef<ScreenEcho | null>(null);
+  /** Stops the preview frames your screen share sends for the hover card. */
+  const screenPreviewStopRef = useRef<(() => void) | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const rawCameraStreamRef = useRef<MediaStream | null>(null);
   const cameraBgPipelineRef = useRef<VirtualBackgroundController | null>(null);
@@ -1043,20 +1046,12 @@ export function useVoice({
     [connectionId, send],
   );
 
-  /** All active viewers watching our screen share. */
+  /** Who is watching our screen share right now: the hub counts seats that tuned in. */
   const effectiveStreamWatchers = useMemo(() => {
     if (!screenSharing) return [];
-    const currentRoomParticipants = (channelId && rooms[channelId]) || [];
-    const watcherSet = new Set<string>(streamWatchers);
-    for (const p of currentRoomParticipants) {
-      if (p.connectionId === connectionId || p.bot) continue;
-      const paused = pausedByPeerRef.current.get(p.connectionId);
-      if (!paused?.screen) {
-        watcherSet.add(p.connectionId);
-      }
-    }
-    return Array.from(watcherSet);
-  }, [screenSharing, channelId, rooms, connectionId, streamWatchers]);
+    const me = ((channelId && rooms[channelId]) || []).find((p) => p.connectionId === connectionId);
+    return me?.screenViewers ?? [];
+  }, [screenSharing, channelId, rooms, connectionId]);
 
   /** Real-time WebRTC stats polling: ping, jitter, packet loss. */
   useEffect(() => {
@@ -2202,6 +2197,8 @@ export function useVoice({
     stream.getTracks().forEach((track) => track.stop());
     screenAudioRef.current?.stop();
     screenAudioRef.current = null;
+    screenPreviewStopRef.current?.();
+    screenPreviewStopRef.current = null;
     screenStreamRef.current = null;
     setScreenSharing(false);
     setHasScreenAudio(false);
@@ -2619,6 +2616,10 @@ export function useVoice({
         playScreenShareStartSound();
         // Publishes the stream id and puts it in your own view.
         announceVideo();
+        screenPreviewStopRef.current?.();
+        screenPreviewStopRef.current = startScreenPreviewCapture(stream, (image, title) => {
+          send({ t: "stream-preview", image, title });
+        });
         stream.getVideoTracks()[0].addEventListener("ended", stopScreenShare, {
           once: true,
         });
@@ -2649,7 +2650,7 @@ export function useVoice({
         }
       }
     },
-    [announceVideo, negotiatePeer, screenFilm, screenQuality, screenShareAudio, setScreenFilm, setScreenQuality, stopScreenShare],
+    [announceVideo, negotiatePeer, screenFilm, screenQuality, screenShareAudio, send, setScreenFilm, setScreenQuality, stopScreenShare],
   );
 
   // Sent back to a stage audience: everyone else already drops this seat's
@@ -2944,6 +2945,8 @@ export function useVoice({
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenAudioRef.current?.stop();
+    screenPreviewStopRef.current?.();
+    screenPreviewStopRef.current = null;
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     for (const peer of peersRef.current.values()) peer.close();
     peersRef.current.clear();

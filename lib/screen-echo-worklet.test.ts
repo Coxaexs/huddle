@@ -130,7 +130,10 @@ function energy(a: Float32Array, b: Float32Array | null, from: number, to: numbe
 
 const db = (ratio: number) => 10 * Math.log10(ratio);
 
-describe("screen-share echo canceller", () => {
+// Each case runs the canceller over ~25 seconds of 48 kHz audio: about 2.5 s
+// alone, and well past vitest's 5 s default while the whole suite shares the
+// CPU. The answers are deterministic (seeded noise); only the time varied.
+describe("screen-share echo canceller", { timeout: 30_000 }, () => {
   const seconds = 24;
   const samples = seconds * RATE;
   const ref = voices(samples);

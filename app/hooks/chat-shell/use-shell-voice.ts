@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
 import { canShowVoiceBubble, onNativeVoiceAction, requestVoiceBubblePermission, syncNativeVoice } from "../../lib/native-voice";
 import { registerNativePush } from "../../lib/native-push";
@@ -12,6 +12,7 @@ import { TUTORIAL_PENDING_KEY } from "../../components/welcome-tutorial";
 import { type MentionEntry } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { hasLiveVideo } from "../../components/voice-stage/tiles";
+import { awaitingScreen, subscribeTuneIn, tuneInVersion, watchingParty } from "../../lib/tune-in";
 import { useLiveCaptions } from "../use-live-captions";
 import { useLivingRoom } from "../use-living-room";
 import { usePlayer } from "../use-player";
@@ -225,6 +226,31 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     participants: voiceParticipants,
     send: hub.send,
   });
+
+  // Real viewer counts: tell the hub whose screen shares this tab is receiving
+  // (tuned in, not hidden) and whether a player is showing the watch party.
+  const tuneVersion = useSyncExternalStore(subscribeTuneIn, tuneInVersion, () => 0);
+  const watchingKey = useMemo(() => {
+    if (!voice.channelId) return "";
+    const screens = new Set<string>();
+    for (const remote of voice.remoteStreams) {
+      if (!hasLiveVideo(remote.stream)) continue;
+      const person = voiceParticipants.find((p) => p.connectionId === remote.connectionId);
+      const isScreen = remote.kind ? remote.kind === "screen" : person?.screenStreamId === remote.stream.id;
+      if (!isScreen || voice.hiddenVideo[remote.connectionId]?.screen) continue;
+      if (awaitingScreen(remote.connectionId, remote.stream.id)) continue;
+      screens.add(remote.connectionId);
+    }
+    return JSON.stringify({ screens: [...screens].sort(), party: watchingParty() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.channelId, voice.remoteStreams, voice.hiddenVideo, voiceParticipants, tuneVersion]);
+  useEffect(() => {
+    if (!watchingKey || !hub.connected) return;
+    const { screens, party } = JSON.parse(watchingKey) as { screens: string[]; party: boolean };
+    hub.send({ t: "watching", screens, party });
+    // hub.session: a reconnected hub has forgotten, so say it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchingKey, hub.connected, hub.session]);
 
   /** Active screenshare or camera stream in the joined room for floating PiP */
   const floatingStream = useMemo(() => {

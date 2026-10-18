@@ -5,6 +5,7 @@ import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipFor
 import {
   PAWNS_EACH, PAWNS_GM, PAWN_KINDS, QUEUE_MAX, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, skipVotesNeeded, stepTurn, watchPosition,
   type GameMaster, type HouseLights, type Initiative, type PawnKind, type QueueOp, type TableCharacter, type TableMap, type TablePawn, type WatchQueue, type WatchState,
+  WATCH_QUALITIES, type WatchQuality,
 } from "@/lib/lounge-shared";
 import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
 import { CLASSES, slotsFor } from "@/lib/dnd-spells";
@@ -13,7 +14,9 @@ import type { VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
 import type { LoungePose } from "../lib/living-room";
 import type { GameSystem } from "@/lib/v5-sheet";
-import { parseStreamUrl } from "../lib/stream-url";
+import { downloadYouTubeVideo, extractYouTubeId, needsYouTubeDownload, resolveVideo } from "../lib/watch-video";
+import { jellyfinLink } from "../lib/stream-url";
+import { SubtitlePicker } from "./watch-subtitles";
 
 const formatTime = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
@@ -49,31 +52,7 @@ async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
   }
 }
 
-/** Download YouTube video to server harddisk via yt-dlp */
-async function downloadYouTubeVideo(urlOrId: string): Promise<{ streamUrl: string; title: string }> {
-  const result = await apiFetch<{ ok: boolean; streamUrl: string; title: string }>("/api/youtube/download", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: urlOrId }),
-  });
-  if (!result.ok || !result.streamUrl) {
-    throw new Error("Failed to download video from YouTube.");
-  }
-  return { streamUrl: result.streamUrl, title: result.title };
-}
-
 export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null }
-
-/** Turns what someone typed (a YouTube link, a name to search, or a direct video link) into a link the screen can play. */
-async function resolveVideo(raw: string): Promise<{ url: string; title: string }> {
-  const isUrl = /^(https?:)?\/\//i.test(raw) || /^\/hangout\/api\//.test(raw);
-  if (extractYouTubeId(raw) || !isUrl) {
-    const { streamUrl, title } = await downloadYouTubeVideo(raw);
-    return { url: streamUrl, title };
-  }
-  const parsed = parseStreamUrl(raw);
-  return { url: parsed.url, title: parsed.title };
-}
 
 /**
  * The watch party's queue: what plays after this film, most votes first, a
@@ -95,6 +74,7 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
   const iSkipped = Boolean(myUserId && skipVotes.includes(myUserId));
   const needed = skipVotesNeeded(roomSize);
 
+  const [quality, setQuality] = useWatchQuality();
   const add = async () => {
     const raw = link.trim();
     if (!raw) return;
@@ -102,7 +82,7 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
     setBusy(true); setProblem(null);
     try {
       const { url, title } = await resolveVideo(raw);
-      sendQueue({ op: "add", url, title });
+      sendQueue({ op: "add", url, title, ...(jellyfinLink(url) ? { quality } : {}) });
       setLink("");
     } catch (error) {
       setProblem(error instanceof Error ? error.message : "That video could not be added.");
@@ -166,15 +146,61 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
         <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Add a YouTube link, a name, or a video link" aria-label="Add to the queue" maxLength={600} disabled={busy} />
         <button type="submit" disabled={!link.trim() || busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Queue</button>
       </form>
+      {jellyfinLink(link.trim()) && <QualityPicker value={quality} onChange={setQuality} />}
       {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
     </div>
   );
 }
 
-export function extractYouTubeId(url: string): string | null {
-  if (!url) return null;
-  const match = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+?&v=))([\w-]{11})/i);
-  return match ? match[1] : null;
+export { extractYouTubeId };
+
+const QUALITY_LABELS: Record<WatchQuality, string> = {
+  original: "Original",
+  "8": "8 Mbps",
+  "4": "4 Mbps",
+};
+
+/** The quality a Jellyfin film starts at, remembered for next time. */
+function useWatchQuality(): [WatchQuality, (quality: WatchQuality) => void] {
+  const [quality, setQuality] = useState<WatchQuality>(() => {
+    try {
+      const saved = localStorage.getItem("huddle-watch-quality");
+      return (WATCH_QUALITIES as readonly string[]).includes(saved ?? "") ? (saved as WatchQuality) : "original";
+    } catch {
+      return "original";
+    }
+  });
+  const choose = (next: WatchQuality) => {
+    setQuality(next);
+    try { localStorage.setItem("huddle-watch-quality", next); } catch { /* private mode */ }
+  };
+  return [quality, choose];
+}
+
+/**
+ * Original, 8 or 4 Mbps for a Jellyfin film. Whatever is picked, Jellyfin
+ * converts it once for the whole room ("Original" only converts when a
+ * browser cannot play the file as it is).
+ */
+function QualityPicker({ value, onChange, label = "Quality" }: { value: WatchQuality; onChange: (quality: WatchQuality) => void; label?: string }) {
+  return (
+    <div className="lr-row lr-quality" role="radiogroup" aria-label={label}>
+      <small title="Jellyfin converts the film once for everyone in the room">{label}</small>
+      {WATCH_QUALITIES.map((option) => (
+        <button
+          key={option}
+          type="button"
+          role="radio"
+          aria-checked={value === option}
+          className={value === option ? "lr-on" : undefined}
+          onClick={() => onChange(option)}
+          title={option === "original" ? "The file as it is; converted (once, at 8 Mbps) only if a browser cannot play it" : `Converted once for everyone, at ${option} Mbps`}
+        >
+          {QUALITY_LABELS[option]}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** Watch together: pick a video (a link, upload, or YouTube search) and the whole room sees it on the screen, in step. */
@@ -206,7 +232,9 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
   const file = useRef<HTMLInputElement | null>(null);
   const searchDebounce = useRef<NodeJS.Timeout | null>(null);
   const here = watch ? watchPosition(watch, hubNow()) : 0;
-  const start = (url: string, title: string) => setWatch({ url, title, position: 0, paused: false });
+  const [quality, setQuality] = useWatchQuality();
+  const start = (url: string, title: string) =>
+    setWatch({ url, title, position: 0, paused: false, ...(jellyfinLink(url) ? { quality } : {}) });
   const chooseFile = async (chosen: File | undefined) => {
     if (!chosen) return;
     setBusy(true); setProblem(null); setBusyMessage("Uploading video…");
@@ -266,6 +294,14 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
           <label className="lr-row"><small>Volume</small><input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => onVolume(Number(event.target.value))} aria-label="Film volume" /></label>
           {info.blocked && <button type="button" className="lr-wide" onClick={onStartSound}>Click to start the sound</button>}
           {info.error && <p className="lr-note">{info.error}</p>}
+          {jellyfinLink(watch.url) && <div className="lr-row"><small>Subtitles</small><SubtitlePicker url={watch.url} /></div>}
+          {jellyfinLink(watch.url) && (
+            <QualityPicker
+              value={watch.quality ?? "original"}
+              onChange={(next) => setWatch({ url: watch.url, title: watch.title, position: here, paused: watch.paused, quality: next })}
+              label="Quality for everyone"
+            />
+          )}
           <div className="lr-row"><button type="button" onClick={() => setWatch(null)}>Stop for everyone</button></div>
           {sendQueue && <QueueSection queue={queue} watch={watch} myUserId={myUserId} roomSize={roomSize} sendQueue={sendQueue} />}
         </>
@@ -277,31 +313,25 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 event.preventDefault();
                 const raw = link.trim();
                 if (!raw) return;
+                setBusy(true);
+                setProblem(null);
                 // A YouTube link, or anything that is not a web address (a name), goes through yt-dlp.
-                const isUrl = /^(https?:)?\/\//i.test(raw) || /^\/hangout\/api\//.test(raw);
-                if (extractYouTubeId(raw) || !isUrl) {
-                  setBusy(true);
-                  setProblem(null);
-                  setBusyMessage("Downloading YouTube video with yt-dlp to server storage…");
-                  try {
-                    const { streamUrl, title } = await downloadYouTubeVideo(raw);
-                    start(streamUrl, title);
-                    setLink("");
-                  } catch (err) {
-                    setProblem(err instanceof Error ? err.message : "YouTube download failed");
-                  } finally {
-                    setBusy(false);
-                    setBusyMessage(null);
-                  }
-                } else {
-                  const parsed = parseStreamUrl(raw);
-                  start(parsed.url, parsed.title);
+                setBusyMessage(needsYouTubeDownload(raw) ? "Downloading YouTube video with yt-dlp to server storage…" : null);
+                try {
+                  const { url, title } = await resolveVideo(raw);
+                  start(url, title);
                   setLink("");
+                } catch (err) {
+                  setProblem(err instanceof Error ? err.message : "That video could not be played.");
+                } finally {
+                  setBusy(false);
+                  setBusyMessage(null);
                 }
               }}>
                 <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="YouTube link, Jellyfin stream link, or direct .mp4/.webm" aria-label="Video link" maxLength={600} disabled={busy} />
                 <button type="submit" disabled={!link.trim() || busy}>{busy ? "Downloading…" : "Play"}</button>
               </form>
+              {jellyfinLink(link.trim()) && <QualityPicker value={quality} onChange={setQuality} />}
               {busy && busyMessage && (
                 <div className="lr-row" style={{ color: "var(--lr-accent, #ffd27a)", fontSize: 13, gap: 8 }}>
                   <Loader2 size={15} className="animate-spin" />

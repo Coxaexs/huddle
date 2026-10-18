@@ -1,16 +1,15 @@
 "use client";
 
-import { Mic, Megaphone, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity, Ear } from "lucide-react";
+import { Mic, Megaphone, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity, Ear, Play, Pause, Square } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
 import { VoiceApi, VideoTile } from "./types";
-import { TileVideo, VideoSurface, WatchSurface } from "./tiles";
+import { TileVideo, type WatchPlayback } from "./tiles";
+import { SubtitlePicker } from "../watch-subtitles";
 import { useRef } from "react";
 import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-look";
 import { StyledName, VoiceAura } from "../profile-style-parts";
-import type { WatchState } from "@/lib/lounge-shared";
-import { watchPosition } from "@/lib/lounge-shared";
 
 /** A seat younger than this still gets its join flourish when the stage opens. */
 const JOIN_FRESH_MS = 6000;
@@ -62,9 +61,14 @@ export function StageBody({
   onOpenParticipantMenu,
   wrapperRef,
   serverNow,
-  tunedInKeys,
+  needsTuneIn,
   onTuneIn,
-  watchState,
+  previewFor,
+  viewersOfTile,
+  watchPlayback,
+  watchPaused,
+  onWatchPaused,
+  onWatchStop,
 }: {
   joined: boolean | undefined;
   channelName: string;
@@ -108,9 +112,18 @@ export function StageBody({
   wrapperRef: React.RefObject<HTMLDivElement | null>;
   /** Hub clock, to tell who (yourself included) only just sat down. */
   serverNow?: () => number;
-  tunedInKeys?: Set<string>;
-  onTuneIn?: (key: string) => void;
-  watchState?: WatchState | null;
+  /** This tile is waiting for the viewer to choose to watch it. */
+  needsTuneIn: (tile: VideoTile) => boolean;
+  onTuneIn: (tile: VideoTile) => void;
+  /** The streamer's latest preview frame, for the tune-in prompt. */
+  previewFor: (tile: VideoTile) => string | null;
+  /** Seats watching a tile's video right now (from the hub). */
+  viewersOfTile: (tile: VideoTile) => string[];
+  /** How the watch party plays here (null when there is none). */
+  watchPlayback: (audible: boolean) => WatchPlayback | null;
+  watchPaused: boolean;
+  onWatchPaused: (paused: boolean) => void;
+  onWatchStop: () => void;
 }) {
   const styleOf = useProfileStyles();
   // Join flourishes are for people arriving while you watch, not for everyone
@@ -232,16 +245,14 @@ export function StageBody({
             }}
             title={isFullscreen || windowFull ? undefined : "Click to return to the grid"}
           >
-            {focused.watchUrl ? (
-              <WatchSurface
-                url={focused.watchUrl}
-                paused={watchState?.paused ?? false}
-                position={watchState ? watchPosition(watchState, (serverNow ?? Date.now)()) : 0}
-                muted={false}
-              />
-            ) : focused.stream ? (
-              <VideoSurface stream={focused.stream} mirrored={focused.mirrored} />
-            ) : null}
+            <TileVideo
+              tile={focused}
+              onHide={hideTile}
+              needsTuneIn={needsTuneIn(focused)}
+              onTuneIn={onTuneIn}
+              preview={previewFor(focused)}
+              watch={watchPlayback(true)}
+            />
 
             {/* Discord-style bottom-left pill on the video (Screenshot 3) */}
             <div
@@ -260,7 +271,40 @@ export function StageBody({
               onMouseLeave={handleFocusBarMouseLeave}
             >
               <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">LIVE</span>
-              <span className="voice-focus-stream-title truncate max-w-[200px]">{streamerName}'s Screen</span>
+              <span className="voice-focus-stream-title truncate max-w-[200px]">
+                {focused.videoKind === "watch" ? focused.watchTitle : `${streamerName}'s Screen`}
+              </span>
+
+              {/* The watch party is everyone's: anyone may pause it or take it off the screen. */}
+              {focused.videoKind === "watch" && (
+                <>
+                  <button
+                    type="button"
+                    className="voice-focus-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onWatchPaused(!watchPaused);
+                    }}
+                    aria-label={watchPaused ? "Play for everyone" : "Pause for everyone"}
+                    title={watchPaused ? "Play for everyone" : "Pause for everyone"}
+                  >
+                    {watchPaused ? <Play size={15} /> : <Pause size={15} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="voice-focus-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onWatchStop();
+                    }}
+                    aria-label="End the watch party"
+                    title="End the watch party"
+                  >
+                    <Square size={13} />
+                  </button>
+                  {focused.watchUrl && <SubtitlePicker url={focused.watchUrl} className="voice-focus-subtitles" />}
+                </>
+              )}
 
               {/* Watcher Stream Audio Volume Slider */}
               {(focused.videoKind === "screen" || focused.videoKind === "watch") && !focused.self && (
@@ -496,17 +540,17 @@ export function StageBody({
                     <TileVideo
                       tile={tile}
                       onHide={hideTile}
-                      tunedIn={tunedInKeys?.has(tile.key)}
+                      needsTuneIn={needsTuneIn(tile)}
                       onTuneIn={onTuneIn}
-                      watchState={watchState}
-                      serverNow={serverNow}
+                      preview={previewFor(tile)}
+                      compact
                     />
                   </div>
                   <span className="film-live-pill">LIVE</span>
-                  {tile.videoKind === "screen" && (
-                    <span className="film-viewers-pill" title={`${tile.self ? (voice.streamViewers?.length || 0) : 1} viewers`}>
+                  {(tile.videoKind === "screen" || tile.videoKind === "watch") && (
+                    <span className="film-viewers-pill" title={`${viewersOfTile(tile).length} watching`}>
                       <Eye size={10} />
-                      <span>{tile.self ? (voice.streamViewers?.length || 0) : 1}</span>
+                      <span>{viewersOfTile(tile).length}</span>
                     </span>
                   )}
                   <span className="film-tile-label truncate">
@@ -566,21 +610,25 @@ export function StageBody({
             <figure
               key={tile.key}
               className={`stage-tile video-tile ${tile.connecting ? "tile-connecting" : ""}`}
-              onClick={() => !tile.hidden && (tunedInKeys?.has(tile.key) || tile.self || tile.videoKind === "camera" ? setFocusedKey(tile.key) : onTuneIn?.(tile.key))}
-              title={tile.hidden ? undefined : "Click to view stream"}
+              onClick={() => {
+                if (tile.hidden) return;
+                if (needsTuneIn(tile)) onTuneIn(tile);
+                else setFocusedKey(tile.key);
+              }}
+              title={tile.hidden ? undefined : needsTuneIn(tile) ? "Click to watch" : "Click to focus"}
             >
               <TileVideo
                 tile={tile}
                 onHide={hideTile}
-                tunedIn={tunedInKeys?.has(tile.key)}
+                needsTuneIn={needsTuneIn(tile)}
                 onTuneIn={onTuneIn}
-                watchState={watchState}
-                serverNow={serverNow}
+                preview={previewFor(tile)}
+                watch={watchPlayback(true)}
               />
-              {tile.videoKind === "screen" && (
-                <span className="film-viewers-pill" title={`${tile.self ? (voice.streamViewers?.length || 0) : 1} viewers`}>
+              {(tile.videoKind === "screen" || tile.videoKind === "watch") && (
+                <span className="film-viewers-pill" title={`${viewersOfTile(tile).length} watching`}>
                   <Eye size={10} />
-                  <span>{tile.self ? (voice.streamViewers?.length || 0) : 1}</span>
+                  <span>{viewersOfTile(tile).length}</span>
                 </span>
               )}
               <figcaption>

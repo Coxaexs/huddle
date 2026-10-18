@@ -38,6 +38,7 @@ export function MessageList({
   activeDm,
   channelTitle,
   activeChannel,
+  onOpenChannels,
   messages,
   membersById,
   openUserMenu,
@@ -135,6 +136,8 @@ export function MessageList({
   isSelfDm: boolean;
   activeDm: DmSummary | null;
   channelTitle: string;
+  /** Opens the channel drawer (phones) when no channel is open yet. */
+  onOpenChannels?: () => void;
   activeChannel: PublicChannel | null;
   messages: Message[];
   membersById: Map<string, Member>;
@@ -342,7 +345,19 @@ export function MessageList({
                     Load earlier messages
                   </button>
                 )}
-                {!hasOlder && <div className="channel-intro">
+                {!hasOlder && !inDmHome && !activeChannelId && (
+                  <div className="channel-empty-state">
+                    <div className="intro-icon">#</div>
+                    <h2>No channel open</h2>
+                    <p>Pick a channel to start talking, or open your direct messages.</p>
+                    {onOpenChannels && (
+                      <button type="button" className="channel-empty-button" onClick={onOpenChannels}>
+                        Show channels
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!hasOlder && (inDmHome || activeChannelId) && <div className="channel-intro">
                   <div className="cozy-intro-pill">
                     <span className="cozy-intro-icon">
                       {inDmHome ? (

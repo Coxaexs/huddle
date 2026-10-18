@@ -117,7 +117,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
       <header className="border-b border-(--line)">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-          <a href="/" aria-label="Hoffle home">
+          <a href="/" aria-label="Hoffle home" className="shrink-0">
             <Wordmark className="text-[22px]" />
           </a>
           <nav aria-label="Main" className="hidden items-center gap-6 text-[15px] font-medium text-(--ink-2) lg:flex">
@@ -135,7 +135,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                 href={KOFI_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)"
+                className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
                 aria-label="Support Hoffle on Ko-fi"
                 title="Support Hoffle on Ko-fi"
               >
@@ -147,14 +147,14 @@ export function SiteShell({ children }: { children: ReactNode }) {
                 href={GITHUB_SPONSORS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)"
+                className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
                 aria-label="Sponsor Hoffle on GitHub"
                 title="Sponsor Hoffle on GitHub"
               >
                 <Heart className="h-5 w-5" />
               </a>
             )}
-            <a href={APP_URL} className="inline-flex h-10 items-center rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
+            <a href={APP_URL} className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
               Open Hoffle
             </a>
           </div>
@@ -184,6 +184,8 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <a href="/docs/self-hosting" className="hover:text-(--ink)">Self-hosting guide</a>
             <a href="/#faq" className="hover:text-(--ink)">FAQ</a>
             <a href={REPO} className="hover:text-(--ink)">GitHub</a>
+            <a href="/terms" className="hover:text-(--ink)">Terms</a>
+            <a href="/privacy" className="hover:text-(--ink)">Privacy</a>
             {KOFI_URL && <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Ko-fi</a>}
             {GITHUB_SPONSORS_URL && <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Sponsors</a>}
           </nav>

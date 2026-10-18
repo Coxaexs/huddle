@@ -11,7 +11,7 @@ What the native side adds on top of the website:
 | Voice keeps running when you switch apps | Foreground service | `audio` background mode |
 | Call controls outside the app | "In voice" notification: Mute / Deafen / Disconnect (lock screen too) | CallKit: status bar / Dynamic Island, mute + hang up from the lock screen |
 | Floating bubble over other apps | Yes: tap for Mute / Deafen / Open / Leave, drag to move | Not allowed by iOS |
-| Push notifications | Firebase Cloud Messaging (`app/lib/native-push.ts` → `/api/push/native` → `lib/fcm.ts`) | Not possible when sideloaded (needs a paid Apple developer account) |
+| Push notifications | Firebase Cloud Messaging (`app/lib/native-push.ts` → `/api/push/native` → `lib/fcm.ts`) | Same path: APNs token → FCM token in `AppDelegate.swift`. Needs the App Store build (sideloaded apps get no token) |
 
 The bridge is `HuddleVoice` (Android: `android/app/src/main/java/online/hoffle/huddle/`,
 iOS: `ios/App/App/HuddleVoice.swift`), driven by `app/lib/native-voice.ts` in the
@@ -52,13 +52,19 @@ upload the `.aab` to the Internal testing track first.
 2. **Add app → Android**, package name `online.hoffle.huddle`. Download
    `google-services.json`, then add its full contents as the GitHub secret
    `GOOGLE_SERVICES_JSON`. Skip the SDK steps: they're already done.
-3. **Project settings → Service accounts → Generate new private key**. Put that
+3. For iPhone: **Add app → iOS**, bundle ID `online.hoffle.huddle`. Download
+   `GoogleService-Info.plist` and add its full contents as the GitHub secret
+   `GOOGLE_SERVICE_INFO_PLIST` (for local Xcode builds, drop the file into
+   `ios/App/App/`). Then in Apple Developer → Keys, create an **APNs key**
+   (.p8) and upload it in Firebase → Project settings → **Cloud Messaging** →
+   Apple app configuration.
+4. **Project settings → Service accounts → Generate new private key**. Put that
    JSON on **one line** in the server's `.dev.vars` as `FCM_SERVICE_ACCOUNT=...`,
    then restart the server:
    ```bash
    python3 -c "import json,sys;print('FCM_SERVICE_ACCOUNT='+json.dumps(json.load(open(sys.argv[1]))))" ~/Downloads/your-key.json >> .dev.vars
    ```
-4. Rebuild the app. On first sign-in it asks to allow notifications.
+5. Rebuild the app. On first sign-in it asks to allow notifications.
 
 ### iOS sideloading
 

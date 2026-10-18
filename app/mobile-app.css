@@ -1,0 +1,343 @@
+/* Phone polish for the iOS/Android apps and mobile browsers: a header that
+   fits, finger-sized controls, and the sign-up agreement. */
+
+/* Sign-in card: room between fields, the terms checkbox, legal links. */
+.username-card input + label {
+  margin-top: 16px;
+}
+
+.username-card label.auth-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0 4px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #c9cad2;
+  cursor: pointer;
+}
+
+.username-card label.auth-agree input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  padding: 0;
+  accent-color: var(--lavender);
+}
+
+.auth-agree a,
+.auth-legal a {
+  color: var(--lavender);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-legal {
+  margin: 14px 0 0 !important;
+  text-align: center;
+  font-size: 12px;
+  color: #8d90a0;
+}
+
+/* Header overflow menu: desktop shows every icon, phones show "More". */
+.header-extra {
+  display: contents;
+}
+
+.header-more {
+  position: relative;
+  display: none;
+}
+
+.header-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel, #1e1b2b);
+  box-shadow: 0 14px 40px rgb(0 0 0 / .45);
+}
+
+.header-more-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.header-more-menu button:active,
+.header-more-menu button:hover {
+  background: color-mix(in srgb, var(--lavender) 16%, transparent);
+}
+
+/* No channel open yet. */
+.channel-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 18vh auto 0;
+  max-width: 300px;
+  padding: 0 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.channel-empty-state h2 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.channel-empty-state p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.channel-empty-button {
+  margin-top: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 12px;
+  background: var(--lavender);
+  color: #16131f;
+  font-weight: 800;
+}
+
+@media (min-width: 761px) {
+  .channel-empty-button {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .header-extra {
+    display: none;
+  }
+
+  .header-more {
+    display: inline-flex;
+  }
+
+  /* Give the channel name the room the icons used to take. */
+  .chat-header .header-actions {
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .chat-header .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mobile-menu {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Mic, deafen and settings in the drawer footer: 44pt touch targets. */
+  .user-footer-btn {
+    min-width: 40px;
+    min-height: 44px;
+  }
+
+  .user-footer-chevron {
+    min-width: 24px;
+    min-height: 44px;
+  }
+
+  /* DM header: icons only; the labels would push the name off screen. */
+  .dm-call-actions .dm-call-btn {
+    font-size: 0;
+  }
+
+  .dm-call-actions .dm-call-btn,
+  .dm-call-actions .dm-join-call-btn {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+    gap: 0;
+  }
+}
+
+/* The sign-up card is taller than a phone screen: let the overlay scroll,
+   and centre the card only while it fits. */
+.username-gate {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  place-items: start center;
+}
+
+.username-gate > .username-card {
+  margin-block: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Voice call on phones: people listed one under another, a one-row control
+   bar that hides itself, the rest in the More menu, and a long Leave button.
+--------------------------------------------------------------------------- */
+.vctrl-phone-only,
+.disconnect-label {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  /* People: full-width rows instead of a two-column grid. */
+  .voice-stage .voice-grid:not(:has(.video-tile)) {
+    grid-template-columns: 1fr !important;
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 8px;
+    padding-bottom: 150px;
+  }
+
+  .voice-stage .voice-grid .avatar-tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 68px;
+    height: auto;
+    aspect-ratio: auto;
+    padding: 10px 14px;
+  }
+
+  .voice-stage .voice-grid .avatar-tile .avatar-tile-inner {
+    flex: none;
+    width: 48px;
+    height: 48px;
+  }
+
+  .voice-stage .voice-grid .avatar-tile .stage-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+  }
+
+  .voice-stage .voice-grid .avatar-tile figcaption {
+    position: static;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
+    margin: 0;
+    padding: 0;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font-size: 15px;
+  }
+
+  .voice-stage .voice-grid .avatar-tile figcaption > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .voice-stage .voice-grid .avatar-tile .tile-whisper {
+    margin-left: auto;
+  }
+
+  /* The bar floats over the bottom so it can slide away. */
+  .voice-stage .voice-stage-bottom-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    padding: 8px 10px max(10px, var(--safe-bottom, 0px));
+    transition: transform .25s ease, opacity .25s ease;
+  }
+
+  /* The channels/servers panel slides over the call: the bar must not sit on
+     top of it, so it steps out of the way while the panel is open. */
+  .app-shell.nav-open .voice-stage .voice-stage-bottom-bar,
+  .voice-stage.controls-hidden .voice-stage-bottom-bar {
+    transform: translateY(110%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .voice-stage .voice-ctrls-centered {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .voice-stage .vctrl-wide-only,
+  .voice-stage .vctrl-divider {
+    display: none !important;
+  }
+
+  .voice-stage .vctrl-phone-only {
+    display: flex !important;
+  }
+
+  .vctrl-more-sep.vctrl-phone-only {
+    height: 1px;
+    margin: 2px 6px;
+    background: var(--line);
+  }
+
+  .voice-stage .vctrl-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  /* More menu: opens up from the right end of the row, sized for fingers. */
+  .voice-stage .vctrl-more-popover {
+    left: auto !important;
+    right: 0;
+    transform: none !important;
+    min-width: 230px !important;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .voice-stage .vctrl-more-item {
+    min-height: 44px;
+    font-size: 14px !important;
+  }
+
+  /* Leave call: its own full-width row at the very bottom. */
+  .voice-stage .disconnect-pill-btn {
+    order: 99;
+    flex: 1 0 100%;
+    width: 100% !important;
+    height: 48px;
+    border-radius: 14px;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .voice-stage .disconnect-label {
+    display: inline !important;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  /* Server bar: keep it clear of the home-indicator swipe area. */
+  .rail {
+    padding-bottom: calc(max(8px, var(--safe-bottom, 0px)) + 12px) !important;
+  }
+}

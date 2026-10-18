@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Monitor, Tv, Play, Gamepad2, Film, Sparkles } from "lucide-react";
-import { getStreamPreview, subscribeStreamPreviews, type StreamPreviewData } from "../../lib/stream-preview";
+import { useEffect, useRef, useState } from "react";
+import { Eye, Monitor, Tv, Film } from "lucide-react";
+import {
+  getStreamPreview,
+  requestStreamPreview,
+  subscribeStreamPreviews,
+  type StreamPreviewData,
+} from "../../lib/stream-preview";
 
 export function formatStreamDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -16,123 +21,159 @@ export function formatStreamDuration(ms: number): string {
 }
 
 export interface StreamPreviewPopoverProps {
-  streamKey: string;
+  kind: "screen" | "watch";
+  /** The streamer's seat, for a screen share's preview frame. */
+  connectionId?: string;
   streamerName: string;
-  defaultTitle?: string;
-  startedAt?: number;
+  /** A watch party's film. */
+  title?: string;
+  /** Hub-clock ms the stream started. */
+  startedAt?: number | null;
+  /** How many people are watching it right now. */
+  viewers?: number;
+  /** The hub clock. */
+  hubNow: () => number;
   anchorRect: DOMRect | null;
+  /** Asks the hub for a preview frame. */
+  send: (event: { t: "stream-preview-get"; connectionId: string }) => void;
   onWatchStream: () => void;
+  /** The pointer reached the card: cancel the pending close. */
+  onKeep: () => void;
   onClose: () => void;
 }
 
+/** "Streaming Now": what someone is sharing (or the room is watching), how long, and a way in. */
 export function StreamPreviewPopover({
-  streamKey,
+  kind,
+  connectionId,
   streamerName,
-  defaultTitle = "Live Stream",
-  startedAt = Date.now(),
+  title,
+  startedAt,
+  viewers = 0,
+  hubNow,
   anchorRect,
+  send,
   onWatchStream,
+  onKeep,
   onClose,
 }: StreamPreviewPopoverProps) {
-  const [preview, setPreview] = useState<StreamPreviewData | null>(() => getStreamPreview(streamKey));
-  const [now, setNow] = useState(Date.now());
+  const [preview, setPreview] = useState<StreamPreviewData | null>(() =>
+    connectionId ? getStreamPreview(connectionId) : null,
+  );
+  const [now, setNow] = useState(() => hubNow());
+  const cardRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
-  // Subscribe to 2-minute periodic snapshot updates
   useEffect(() => {
-    return subscribeStreamPreviews(() => {
-      setPreview(getStreamPreview(streamKey));
-    });
-  }, [streamKey]);
+    if (!connectionId) return;
+    setPreview(getStreamPreview(connectionId));
+    requestStreamPreview(connectionId, send);
+    return subscribeStreamPreviews(() => setPreview(getStreamPreview(connectionId)));
+  }, [connectionId, send]);
 
-  // Update elapsed duration timer every second
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(hubNow()), 1000);
     return () => clearInterval(timer);
+  }, [hubNow]);
+
+  // Opened by a tap (no hover to leave): a tap anywhere else, or Escape, closes it.
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) closeRef.current();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeRef.current();
+    };
+    const id = window.setTimeout(() => document.addEventListener("pointerdown", outside), 0);
+    document.addEventListener("keydown", escape);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
   }, []);
 
   if (!anchorRect) return null;
 
-  // Position to the right of the anchor element (or left if near screen edge)
-  const left = anchorRect.right + 12 + 340 > window.innerWidth
-    ? Math.max(10, anchorRect.left - 352)
+  const width = Math.min(340, window.innerWidth - 20);
+  const left = anchorRect.right + 12 + width > window.innerWidth
+    ? Math.max(10, Math.min(anchorRect.left - width - 12, window.innerWidth - width - 10))
     : anchorRect.right + 12;
-  const top = Math.min(
-    Math.max(10, anchorRect.top - 20),
-    window.innerHeight - 340
-  );
+  const top = Math.min(Math.max(10, anchorRect.top - 20), window.innerHeight - 340);
 
-  const title = preview?.title || defaultTitle;
-  const snapshot = preview?.snapshotUrl || null;
-  const elapsed = formatStreamDuration(now - (preview?.startedAt || startedAt));
+  const heading = kind === "watch"
+    ? title || "Watch party"
+    : preview?.title || `${streamerName}'s screen`;
+  const snapshot = kind === "screen" ? preview?.snapshotUrl || null : null;
+  const elapsed = startedAt ? formatStreamDuration(now - startedAt) : null;
+  const Icon = kind === "watch" ? Film : Monitor;
 
   return (
     <div
-      className="fixed z-[9999] w-[340px] bg-[#111214] text-white rounded-xl shadow-2xl border border-[#2b2d31] p-3 flex flex-col gap-2.5 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-150"
-      style={{ left: `${left}px`, top: `${top}px` }}
+      ref={cardRef}
+      className="fixed z-[9999] bg-[#111214] text-white rounded-xl shadow-2xl border border-[#2b2d31] p-3 flex flex-col gap-2.5 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-150"
+      style={{ left: `${left}px`, top: `${top}px`, width: `${width}px` }}
+      role="dialog"
+      aria-label={`${heading}, streaming now`}
+      onMouseEnter={onKeep}
       onMouseLeave={onClose}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Header matching Screenshot 2 */}
       <div className="flex items-center justify-between px-1 pt-0.5">
         <span className="text-xs font-bold text-gray-300 tracking-wide">Streaming Now</span>
-        <span className="bg-[#ed4245] text-white text-[10px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        <span className="live-stream-badge">
+          <span className="live-stream-dot" />
           LIVE
         </span>
       </div>
 
-      {/* Snapshot Preview Container (16:9) */}
-      <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black/80 border border-white/10 flex items-center justify-center shadow-inner group">
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black/80 border border-white/10 flex items-center justify-center shadow-inner">
         {snapshot ? (
           <img
             src={snapshot}
             alt={`${streamerName}'s stream preview`}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="flex flex-col items-center justify-center p-4 text-center text-gray-400">
-            <Monitor size={36} className="text-[#ed4245] opacity-80 mb-2 animate-pulse" />
-            <span className="text-xs font-semibold text-gray-200">{streamerName}'s Stream</span>
-            <span className="text-[10px] text-gray-500 mt-0.5">Preview updates every 2 mins</span>
+            <Icon size={36} className="text-[#ed4245] opacity-80 mb-2" />
+            <span className="text-xs font-semibold text-gray-200">
+              {kind === "watch" ? "Watching together" : "No preview yet"}
+            </span>
+            {kind === "screen" && (
+              <span className="text-[10px] text-gray-500 mt-0.5">A preview shows up shortly after the stream starts</span>
+            )}
           </div>
         )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
       </div>
 
-      {/* Streamer & Game / Media Title Info */}
       <div className="flex items-center gap-2.5 px-1">
         <div className="w-9 h-9 rounded-lg bg-[#1e1f22] border border-white/10 flex items-center justify-center text-amber-400 shrink-0 shadow-sm">
-          {title.toLowerCase().includes("jellyfin") || title.toLowerCase().includes("video") ? (
-            <Film size={18} />
-          ) : (
-            <Gamepad2 size={18} />
-          )}
+          <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-sm text-white truncate leading-tight">
-            {title}
-          </div>
-          <div className="text-[11px] text-gray-400 flex items-center gap-1.5 font-mono mt-0.5">
-            <span>🎮</span>
-            <span>{elapsed}</span>
-            <span className="text-gray-600">·</span>
-            <span className="text-gray-400 font-sans truncate">{streamerName}</span>
+          <div className="font-bold text-sm text-white truncate leading-tight">{heading}</div>
+          <div className="text-[11px] text-gray-400 flex items-center gap-1.5 mt-0.5">
+            {elapsed && <span className="font-mono">{elapsed}</span>}
+            {elapsed && <span className="text-gray-600">·</span>}
+            <span className="truncate">{streamerName}</span>
+            {viewers > 0 && <span className="text-gray-600">·</span>}
+            {viewers > 0 && <span className="flex items-center gap-1 shrink-0"><Eye size={11} />{viewers} watching</span>}
           </div>
         </div>
       </div>
 
-      {/* Primary Watch Stream Button (Green Discord-style) */}
       <button
         type="button"
-        className="w-full py-2.5 px-4 bg-[#23a55a] hover:bg-[#1d8c4c] active:bg-[#187840] text-white font-bold rounded-lg flex items-center justify-center gap-2 text-sm shadow-md transition-all cursor-pointer hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
+        className="w-full py-2.5 px-4 bg-[#23a55a] hover:bg-[#1d8c4c] active:bg-[#187840] text-white font-bold rounded-lg flex items-center justify-center gap-2 text-sm shadow-md transition-colors cursor-pointer"
         onClick={() => {
           onWatchStream();
           onClose();
         }}
       >
         <Tv size={16} />
-        <span>Watch Stream</span>
+        <span>{kind === "watch" ? "Join Watch Party" : "Watch Stream"}</span>
       </button>
     </div>
   );
