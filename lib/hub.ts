@@ -26,6 +26,7 @@ import { addVoiceSeconds, evaluateAndAward } from "./achievements";
 import { allDisabledFeatures } from "./features";
 import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
+import { clearExpiredStatuses, nextStatusExpiryAlarm } from "./status-expiry";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
 import {
   NOTES_CHUNK,
@@ -2273,6 +2274,11 @@ export class HuddleHub extends DurableObject {
         { audience: [reminder.userId] },
       );
     }
+    // Custom statuses set to clear themselves: member lists refresh that person.
+    for (const userId of await clearExpiredStatuses(this.db).catch(() => [])) {
+      this.broadcast({ t: "member", userId, serverNow: Date.now() });
+    }
+    const nextStatusExpiry = await nextStatusExpiryAlarm(this.db).catch(() => null);
     const nextEvent = await nextEventAlarm(this.db).catch(() => null);
     const nextReminder = await nextReminderAlarm(this.db).catch(() => null);
     const nextScheduled = await nextScheduledAlarm(this.db).catch(() => null);
@@ -2282,7 +2288,7 @@ export class HuddleHub extends DurableObject {
     const bigUploads = (this.bindingsEnv as { BIG_UPLOADS?: R2Bucket }).BIG_UPLOADS;
     if (bigUploads) await sweepBigUploads(this.db, bigUploads).catch(() => undefined);
     const nextBigUpload = bigUploads ? await nextBigUploadAlarm(this.db).catch(() => null) : null;
-    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload, nextDigest].filter((at): at is number => at !== null);
+    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload, nextDigest, nextStatusExpiry].filter((at): at is number => at !== null);
     if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
   }
 

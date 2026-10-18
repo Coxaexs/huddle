@@ -15,6 +15,8 @@ export const BIG_UPLOAD_LIFETIME_MS = 12 * 60 * 60 * 1000;
 export const BIG_UPLOAD_PART_BYTES = 32 * 1024 * 1024;
 /** Files above this take the big-upload path (the normal upload limit). */
 export const NORMAL_UPLOAD_MAX_BYTES = 40 * 1024 * 1024;
+/** Pictures are capped lower; bigger photos are scaled down before upload. */
+export const IMAGE_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 const KEY_PATTERN = /^tmp(\d{9,11})-[0-9a-f-]{36}--./;
 

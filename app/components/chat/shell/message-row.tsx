@@ -847,6 +847,7 @@ function MessageRowImpl({
                           return (
                             <ImageGallery
                               images={allImages}
+                              alts={message.imageAlts}
                               onOpenLightbox={(imgs, idx) =>
                                 setLightbox({ images: imgs, index: idx })
                               }

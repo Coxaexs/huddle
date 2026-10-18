@@ -77,6 +77,12 @@ export function useMobileShell(options: {
         return;
       }
       const touch = event.touches[0];
+      // A right swipe on a message replies to it; only one from the screen's
+      // edge opens the channel list there (see SWIPE_EDGE_PX).
+      if (touch.clientX > 28 && event.target instanceof Element && event.target.closest(".messages .message")) {
+        start = null;
+        return;
+      }
       start = { x: touch.clientX, y: touch.clientY, at: Date.now() };
     };
 

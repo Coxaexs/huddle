@@ -15,7 +15,9 @@ import { Radio, Smile, Vote, Gamepad2, Type, ChevronUp, AtSign, Send, ShieldAler
 import { Avatar } from "../../avatar";
 import { GifPicker } from "../../gif-picker";
 import { StyledText } from "../../message-body";
-import { type Message, type DmSummary, type MentionOption } from "../../../lib/chat/types";
+import { type Message, type DmSummary, type MentionOption, type PendingFile } from "../../../lib/chat/types";
+import { canShrink } from "../../../lib/shrink-image";
+import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
 import { formatClientDateTime, msnLastReceived } from "../../../lib/chat/format";
 import { channelKindLabel, channelKindIcon } from "../channel-kind";
 import { EmojiPicker } from "../../emoji-picker";
@@ -72,6 +74,7 @@ export function Composer({
   setReplyTarget,
   pendingFiles,
   setPendingFiles,
+  showCustomPrompt,
   myTimeoutUntil,
   isDmBlocked,
   activeDm,
@@ -143,8 +146,9 @@ export function Composer({
   setEmojiOpen: Dispatch<SetStateAction<boolean>>;
   replyTarget: Message | null;
   setReplyTarget: Dispatch<SetStateAction<Message | null>>;
-  pendingFiles: { id: string; file: File; preview: string | null; }[];
-  setPendingFiles: Dispatch<SetStateAction<{ id: string; file: File; preview: string | null; }[]>>;
+  pendingFiles: PendingFile[];
+  setPendingFiles: Dispatch<SetStateAction<PendingFile[]>>;
+  showCustomPrompt: (options: { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmText?: string; maxLength?: number; onConfirm: (value?: string) => void }) => void;
   myTimeoutUntil: string | null;
   isDmBlocked: boolean;
   activeDm: DmSummary | null;
@@ -453,7 +457,7 @@ export function Composer({
                           }`}
                         >
                           {entry.preview ? (
-                            <img src={entry.preview} alt={entry.file.name} />
+                            <img src={entry.preview} alt={entry.alt || entry.file.name} />
                           ) : (
                             <>
                               <span className={`message-file-icon file-badge-${getFileBadgeColor(entry.file.name)}`}>
@@ -471,6 +475,48 @@ export function Composer({
                             <span className="absolute bottom-1 left-1 bg-amber-500 text-black font-extrabold text-[8px] px-1 rounded uppercase tracking-wider select-none pointer-events-none">
                               Spoiler
                             </span>
+                          )}
+                          {entry.preview && (
+                            <div className="attachment-image-options">
+                              <button
+                                type="button"
+                                className={entry.alt ? "active" : ""}
+                                title={entry.alt ? `Description: ${entry.alt}` : "Describe this image for people using screen readers"}
+                                aria-label={entry.alt ? "Edit image description" : "Add image description"}
+                                onClick={() =>
+                                  showCustomPrompt({
+                                    title: "Describe this image",
+                                    message: "Screen readers read this out for people who can't see the image.",
+                                    defaultValue: entry.alt || "",
+                                    placeholder: "A grey cat asleep on a keyboard",
+                                    confirmText: "Save",
+                                    maxLength: 1000,
+                                    onConfirm: (value) =>
+                                      setPendingFiles((current) =>
+                                        current.map((item) => (item.id === entry.id ? { ...item, alt: value?.trim() || undefined } : item)),
+                                      ),
+                                  })
+                                }
+                              >
+                                ALT
+                              </button>
+                              {/* Over the picture limit the original cannot go up at all: no choice to offer. */}
+                              {canShrink(entry.file) && entry.file.size <= IMAGE_UPLOAD_MAX_BYTES && (
+                                <button
+                                  type="button"
+                                  className={entry.original ? "active" : ""}
+                                  title={entry.original ? "Sending at full size. Click to send it smaller and faster." : "Sent smaller and faster. Click to send the original."}
+                                  aria-pressed={Boolean(entry.original)}
+                                  onClick={() =>
+                                    setPendingFiles((current) =>
+                                      current.map((item) => (item.id === entry.id ? { ...item, original: !item.original } : item)),
+                                    )
+                                  }
+                                >
+                                  HD
+                                </button>
+                              )}
+                            </div>
                           )}
                           <div className="absolute top-1 right-1 flex items-center gap-1">
                             <button

@@ -622,7 +622,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     });
   }
 
-  async function sendText(text: string, attachmentKeys?: string | string[]) {
+  async function sendText(text: string, attachmentKeys?: string | string[], payload?: { imageAlts?: Record<string, string> }) {
     if (!activeChannelId) return;
     const isDm = dmChannelIdsRef.current.has(activeChannelId) || inDmHome;
     if (isDm) {
@@ -684,6 +684,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           attachmentKey: keys[0],
           attachmentKeys: keys.slice(1),
           replyTo,
+          payload,
         }),
       });
       if (pendingId) dropPending(res.message);

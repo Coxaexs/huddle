@@ -291,7 +291,8 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
       if (!draft && !editingId && user) {
         const lastUserMessage = [...messages]
           .reverse()
-          .find((m) => m.userId === user.id && !m.bot);
+          // Not one still on its way: it has no id the server knows yet.
+          .find((m) => m.userId === user.id && !m.bot && !m.pending);
         if (lastUserMessage) {
           event.preventDefault();
           beginEdit(lastUserMessage);

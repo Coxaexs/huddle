@@ -39,7 +39,7 @@ export function renderChatMain(v: ShellRenderState) {
     emojiActive, emojiIndex, emojiMap, emojiMatches, emojiOpen, emojiShortcodeMatch, emojis,
     endDmCall, expandedBlockedMessages, features, fileRef, formatOpen, gamesOpen, gifOpen,
     handleMessageTouchEnd, handleMessageTouchMove, handleMessageTouchStart, handleMessagesScroll,
-    handleOpenReactionPicker, handleOpenReactionViewer, handleUnblockUser, hasOlder, hasUnmounted, mountedMessages,
+    handleOpenReactionPicker, handleOpenReactionViewer, handleUnblockUser, hasOlder, hasUnmounted, mountedMessages, showCustomPrompt,
     hiddenServerEmojiIds, hideServerEmoji, hub, inDmHome, incomingDmCall, isDmBlocked, isSelfDm,
     joinServerDirect, jumpToFirstUnread, jumpToLatest, jumpToMessage, leaveGroupDm, livingRoom,
     loadEmojis, loadOlder, loadSaved, longPressTriggeredRef, membersById, membersOpen,
@@ -547,6 +547,7 @@ export function renderChatMain(v: ShellRenderState) {
       setReplyTarget={setReplyTarget}
       pendingFiles={pendingFiles}
       setPendingFiles={setPendingFiles}
+      showCustomPrompt={showCustomPrompt}
       myTimeoutUntil={myTimeoutUntil}
       isDmBlocked={isDmBlocked}
       activeDm={activeDm}

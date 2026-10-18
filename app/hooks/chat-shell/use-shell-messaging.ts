@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type FormEvent } from "react";
+import { shrinkImage } from "../../lib/shrink-image";
 import { convertMsnEmoticons } from "@/lib/msn-emoticons";
 import { playSound as playMsnSound } from "../../lib/msn-sounds";
 import { applyPersonalEmoticons } from "@/lib/msn-contacts";
@@ -318,11 +319,13 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
     try {
       // Upload every staged file, then send one message carrying them all.
       const keys: string[] = [];
+      const imageAlts: Record<string, string> = {};
       for (const entry of files) {
-        if (entry.file.size > NORMAL_UPLOAD_MAX_BYTES) {
-          const name = entry.file.name;
+        const file = entry.original ? entry.file : await shrinkImage(entry.file);
+        if (file.size > NORMAL_UPLOAD_MAX_BYTES) {
+          const name = file.name;
           keys.push(
-            await uploadBigFile(entry.file, (sent, total) =>
+            await uploadBigFile(file, (sent, total) =>
               setNotice(`Uploading ${name}… ${Math.floor((sent / total) * 100)}% — keep this tab open.`),
             ),
           );
@@ -330,12 +333,13 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
           continue;
         }
         const form = new FormData();
-        form.append("file", entry.file);
+        form.append("file", file);
         const upload = await apiFetch<{ key: string }>("/api/uploads", {
           method: "POST",
           body: form,
         });
         keys.push(upload.key);
+        if (entry.alt) imageAlts[upload.key] = entry.alt;
       }
       const processedText = replaceEmojiShortcodes(text, emojiMap);
       // MSN sends everything in the font picked in its Font dialog (not a
@@ -345,7 +349,7 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
         msnTheme && !isImageUrl(processedText)
           ? applyMessageFont(applyPersonalEmoticons(processedText, personalEmoticons.emoticons), messageFont)
           : processedText;
-      const res = await sendText(styled, keys);
+      const res = await sendText(styled, keys, Object.keys(imageAlts).length ? { imageAlts } : undefined);
       announceUnlocked(res?.newAchievements);
       if (msnSoundsRef.current) {
         playMsnSound("send");

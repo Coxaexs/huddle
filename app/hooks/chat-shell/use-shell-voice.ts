@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { readStatusExpiresAt, writeStatusExpiresAt } from "../../lib/status-clear";
 import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
 import { canShowVoiceBubble, onNativeVoiceAction, requestVoiceBubblePermission, syncNativeVoice } from "../../lib/native-voice";
 import { registerNativePush } from "../../lib/native-push";
@@ -485,14 +486,39 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   async function savePresence(patch: {
     status?: PresenceStatus;
     customStatus?: string | null;
+    clearAfterMs?: number | null;
   }) {
     if (patch.status) setMyStatus(patch.status);
     if (patch.customStatus !== undefined) setMyCustomStatus(patch.customStatus);
-    await apiFetch("/api/settings/presence", {
+    const saved = await apiFetch<{ customStatusExpiresAt?: number | null }>("/api/settings/presence", {
       method: "POST",
       body: JSON.stringify(patch),
-    }).catch(() => undefined);
+    }).catch(() => null);
+    if (saved && "customStatusExpiresAt" in saved) {
+      setStatusExpiresAt(saved.customStatusExpiresAt ?? null);
+      writeStatusExpiresAt(saved.customStatusExpiresAt ?? null);
+    }
   }
+
+  // The server clears an expired status and tells everyone else; this tab
+  // clears its own copy at the same moment.
+  const [statusExpiresAt, setStatusExpiresAt] = useState<number | null>(() => readStatusExpiresAt());
+  useEffect(() => {
+    if (!statusExpiresAt || !myCustomStatus) return;
+    const clear = () => {
+      setMyCustomStatus(null);
+      setStatusExpiresAt(null);
+      writeStatusExpiresAt(null);
+    };
+    const wait = statusExpiresAt - Date.now();
+    if (wait <= 0) {
+      clear();
+      return;
+    }
+    // setTimeout tops out near 24.8 days; a status lasts a week at most.
+    const timer = window.setTimeout(clear, wait);
+    return () => window.clearTimeout(timer);
+  }, [statusExpiresAt, myCustomStatus, setMyCustomStatus]);
 
   /** Display names of everyone typing in the channel you are looking at. */
   const typingNames = Object.entries(typing[activeChannelId || ""] || {})

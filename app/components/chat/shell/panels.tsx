@@ -100,7 +100,7 @@ export function ServerRail({
   statusOpen: boolean;
   myStatus: PresenceStatus;
   myCustomStatus: string | null;
-  savePresence: (patch: { status?: PresenceStatus; customStatus?: string | null; }) => Promise<void>;
+  savePresence: (patch: { status?: PresenceStatus; customStatus?: string | null; clearAfterMs?: number | null }) => Promise<void>;
   autoIdleRef: RefObject<boolean>;
   setStatusOpen: Dispatch<SetStateAction<boolean>>;
   msnTheme: boolean;

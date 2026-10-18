@@ -5,6 +5,8 @@ import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import { Pencil, Settings, User } from "lucide-react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ShowCustomPrompt } from "../../lib/chat/types";
+import { useState } from "react";
+import { readStatusClearChoice, statusClearAfterMs, STATUS_CLEAR_CHOICES, writeStatusClearChoice, type StatusClearChoice } from "../../lib/status-clear";
 
 /**
  * The presence menu that opens from your avatar on the rail: online / idle /
@@ -31,7 +33,7 @@ export function StatusMenu({
 }: {
   myStatus: PresenceStatus;
   myCustomStatus: string | null;
-  savePresence: (patch: { status?: PresenceStatus; customStatus?: string | null }) => Promise<void>;
+  savePresence: (patch: { status?: PresenceStatus; customStatus?: string | null; clearAfterMs?: number | null }) => Promise<void>;
   autoIdleRef: MutableRefObject<boolean>;
   setStatusOpen: Dispatch<SetStateAction<boolean>>;
   msnTheme: boolean;
@@ -203,7 +205,8 @@ export function StatusMenu({
             confirmText: "Save Status",
             onConfirm: (text) => {
               if (text === undefined) return;
-              void savePresence({ customStatus: text });
+              // A status typed in clears itself as picked under "Clear after".
+              void savePresence({ customStatus: text, clearAfterMs: text.trim() ? statusClearAfterMs(readStatusClearChoice()) : null });
             },
           });
         }}
@@ -213,6 +216,12 @@ export function StatusMenu({
         </span>
         {myCustomStatus ? "Edit status" : "Set a status"}
       </button>
+      <StatusClearPicker
+        hasStatus={Boolean(myCustomStatus)}
+        onPick={(choice) => {
+          if (myCustomStatus) void savePresence({ clearAfterMs: statusClearAfterMs(choice) });
+        }}
+      />
       <button
         type="button"
         role="menuitem"
@@ -239,6 +248,34 @@ export function StatusMenu({
         </span>
         Settings
       </button>
+    </div>
+  );
+}
+
+/** "Clear after": applies to the status you have now, and to the next one you set. */
+function StatusClearPicker({ hasStatus, onPick }: { hasStatus: boolean; onPick: (choice: StatusClearChoice) => void }) {
+  const [choice, setChoice] = useState<StatusClearChoice>(() => readStatusClearChoice());
+  return (
+    <div className="status-clear-picker" role="group" aria-label="Clear status after">
+      <span aria-hidden="true">{hasStatus ? "Clear after" : "New status clears after"}</span>
+      <div role="none">
+        {STATUS_CLEAR_CHOICES.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="menuitemradio"
+            className={choice === option.id ? "active" : ""}
+            aria-checked={choice === option.id}
+            onClick={() => {
+              setChoice(option.id);
+              writeStatusClearChoice(option.id);
+              onPick(option.id);
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

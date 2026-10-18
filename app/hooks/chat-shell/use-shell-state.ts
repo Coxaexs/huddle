@@ -13,7 +13,7 @@ import { type ServerFolder } from "@/lib/server-folders";
 import { showToast } from "../../components/toast";
 import { announceUnlocked } from "../../lib/achievement-client";
 import { type DialogOptions } from "../../components/custom-dialog";
-import { type Message, type DmSummary, type MentionEntry } from "../../lib/chat/types";
+import { type Message, type DmSummary, type MentionEntry, type PendingFile } from "../../lib/chat/types";
 import { DM_HOME, DEFAULT_QUICK_REACTIONS } from "../../lib/chat/constants";
 import { notifyLevel } from "../../lib/chat/format";
 import { pickImageFile } from "../../lib/chat/browser";
@@ -48,6 +48,11 @@ export interface StageFocusRequest {
   target: { kind: "screen"; connectionId: string } | { kind: "watch" };
   at: number;
 }
+
+/** Swipe right on a message to reply: how far it must go, how far it follows, and the edge kept for the channel list. */
+const SWIPE_REPLY_PX = 64;
+const SWIPE_MAX_PX = 96;
+const SWIPE_EDGE_PX = 28;
 
 export function useShellState() {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -253,9 +258,7 @@ export function useShellState() {
     runSearch: runMessageSearch,
   } = useMessageSearch();
   /** Files staged in the composer; images carry a data-URL preview. */
-  const [pendingFiles, setPendingFiles] = useState<
-    Array<{ id: string; file: File; preview: string | null }>
-  >([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   /** On touch screens, which message's action bar is currently revealed. */
@@ -515,6 +518,8 @@ export function useShellState() {
   }, []);
 
   const touchStartRef = useRef<{ x: number; y: number; id: string | number } | null>(null);
+  /** A message being swiped right to reply to it (phones). */
+  const swipeRef = useRef<{ x: number; y: number; id: string | number; row: HTMLElement; dx: number; sideways: boolean | null } | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
 
@@ -553,6 +558,11 @@ export function useShellState() {
     const touch = e.touches[0];
     if (!touch) return;
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, id: messageId };
+    // From the very edge, a right swipe still opens the channel list.
+    swipeRef.current =
+      touch.clientX > SWIPE_EDGE_PX && !String(messageId).startsWith("pending-")
+        ? { x: touch.clientX, y: touch.clientY, id: messageId, row: e.currentTarget as HTMLElement, dx: 0, sideways: null }
+        : null;
     longPressTriggeredRef.current = false;
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
@@ -569,6 +579,22 @@ export function useShellState() {
   };
 
   const handleMessageTouchMove = (e: React.TouchEvent) => {
+    const swipe = swipeRef.current;
+    const moved = e.touches[0];
+    if (swipe && moved) {
+      const dx = moved.clientX - swipe.x;
+      const dy = moved.clientY - swipe.y;
+      // Decide once, after a few pixels: sideways means a reply swipe, otherwise a scroll.
+      if (swipe.sideways === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        swipe.sideways = dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.5;
+      }
+      if (swipe.sideways) {
+        swipe.dx = Math.max(0, Math.min(dx, SWIPE_MAX_PX));
+        swipe.row.classList.add("swiping");
+        swipe.row.classList.toggle("swipe-armed", swipe.dx >= SWIPE_REPLY_PX);
+        swipe.row.style.setProperty("--swipe-x", `${swipe.dx}px`);
+      }
+    }
     if (!touchStartRef.current || !longPressTimerRef.current) return;
     const touch = e.touches[0];
     if (!touch) return;
@@ -582,6 +608,20 @@ export function useShellState() {
   };
 
   const handleMessageTouchEnd = () => {
+    const swipe = swipeRef.current;
+    swipeRef.current = null;
+    if (swipe?.sideways) {
+      swipe.row.classList.remove("swiping", "swipe-armed");
+      swipe.row.style.removeProperty("--swipe-x");
+      const target = swipe.dx >= SWIPE_REPLY_PX ? messagesRef.current.find((m) => m.id === swipe.id) : undefined;
+      if (target && !target.pending) {
+        setReplyTarget(target);
+        composerRef.current?.focus();
+        try {
+          navigator.vibrate?.(20);
+        } catch { }
+      }
+    }
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;

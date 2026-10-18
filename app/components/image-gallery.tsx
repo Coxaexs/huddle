@@ -7,6 +7,8 @@ interface ImageGalleryProps {
   images: string[];
   onOpenLightbox: (images: string[], startIndex: number) => void;
   altPrefix?: string;
+  /** Descriptions by image URL. */
+  alts?: Record<string, string>;
 }
 
 export function isSpoilerUrl(src: string): boolean {
@@ -32,8 +34,10 @@ export function ImageGallery({
   images,
   onOpenLightbox,
   altPrefix = "Shared image",
+  alts,
 }: ImageGalleryProps) {
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
+  const [shownAlt, setShownAlt] = useState<string | null>(null);
 
   const validImages = useMemo(
     () => images.filter((img) => typeof img === "string" && img.trim().length > 0),
@@ -63,9 +67,31 @@ export function ImageGallery({
             isShielded ? "filter blur-xl saturate-50 scale-105 pointer-events-none select-none" : ""
           }`}
           src={src}
-          alt={`${altPrefix} ${index + 1}`}
+          alt={alts?.[src] || `${altPrefix} ${index + 1}`}
           loading="lazy"
         />
+
+        {alts?.[src] && !isShielded && (
+          <>
+            <button
+              type="button"
+              className="image-alt-badge"
+              aria-label="Show image description"
+              aria-expanded={shownAlt === src}
+              onClick={(event) => {
+                event.stopPropagation();
+                setShownAlt((current) => (current === src ? null : src));
+              }}
+            >
+              ALT
+            </button>
+            {shownAlt === src && (
+              <div className="image-alt-text" onClick={(event) => event.stopPropagation()}>
+                {alts[src]}
+              </div>
+            )}
+          </>
+        )}
 
         {isShielded && (
           <div

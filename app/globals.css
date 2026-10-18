@@ -31994,3 +31994,84 @@ a.link-preview-author:hover {
 .message.is-pending .message-actions-toggle {
   display: none;
 }
+
+/* Image descriptions: ALT and HD on a staged photo, and the ALT badge on a sent one. */
+.attachment-image-options {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  display: flex;
+  gap: 3px;
+}
+.attachment-preview .attachment-image-options button,
+.image-alt-badge {
+  font: 800 9px/1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+/* The chip's own buttons (remove, spoiler) are absolute circles; these sit in a row. */
+.attachment-preview .attachment-image-options button {
+  position: static;
+  width: auto;
+  height: auto;
+  border: 0;
+}
+.attachment-preview .attachment-image-options button.active {
+  background: var(--lavender, #b8a6ff);
+  color: #111;
+}
+.image-alt-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+}
+.image-alt-text {
+  position: absolute;
+  inset: 28px 6px auto 6px;
+  z-index: 3;
+  max-height: 60%;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: auto;
+}
+
+/* Status menu: "Clear after" chips for the custom status. */
+.status-clear-picker {
+  padding: 4px 10px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.status-clear-picker > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.status-menu .status-clear-picker button {
+  display: inline-flex;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.status-menu .status-clear-picker button.active {
+  background: var(--lavender, #b8a6ff);
+  border-color: transparent;
+  color: #111;
+}

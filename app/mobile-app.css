@@ -341,3 +341,30 @@
     padding-bottom: calc(max(8px, var(--safe-bottom, 0px)) + 12px) !important;
   }
 }
+
+/* Swipe right on a message to reply: the row follows the finger and a reply
+   arrow fades in behind it, solid once letting go would reply. */
+@media (max-width: 760px) {
+  .messages .message {
+    touch-action: pan-y;
+    transition: background-color 0.15s ease, transform 0.18s ease;
+  }
+  .messages .message.swiping {
+    transform: translateX(var(--swipe-x, 0));
+    transition: none;
+  }
+  .messages .message.swiping::after {
+    content: "↩";
+    position: absolute;
+    left: calc(-1 * var(--swipe-x, 0) + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+    color: var(--muted, #999);
+    opacity: 0.45;
+  }
+  .messages .message.swipe-armed::after {
+    opacity: 1;
+    color: var(--lavender, #b8a6ff);
+  }
+}

@@ -826,6 +826,8 @@ async function migrate(db: D1Database): Promise<void> {
       "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'online'",
     ],
     ["custom_status", "ALTER TABLE users ADD COLUMN custom_status TEXT"],
+    // When the custom status clears itself (ms since epoch); null keeps it.
+    ["custom_status_expires_at", "ALTER TABLE users ADD COLUMN custom_status_expires_at INTEGER"],
     ["bio", "ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"],
     ["banner_url", "ALTER TABLE users ADD COLUMN banner_url TEXT"],
     ["pronouns", "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''"],

@@ -9,6 +9,17 @@ import type { Theme } from "@/lib/themes";
 import type { Member } from "@/lib/users";
 import type { TtsLanguage } from "../tts/client";
 
+/** A file staged in the composer; images carry a data-URL preview. */
+export interface PendingFile {
+  id: string;
+  file: File;
+  preview: string | null;
+  /** Image description for screen readers (alt text). */
+  alt?: string;
+  /** Send this photo as it is instead of scaled down. */
+  original?: boolean;
+}
+
 export interface Message {
   id: string | number;
   channelId?: string | null;
@@ -19,6 +30,8 @@ export interface Message {
   time: string;
   /** Your own message, shown before the server has it; its id starts with "pending-". */
   pending?: boolean;
+  /** Image descriptions by image URL. */
+  imageAlts?: Record<string, string>;
   /** ISO timestamp, used to group bursts of messages from the same author. */
   createdAt?: string;
   text: string;

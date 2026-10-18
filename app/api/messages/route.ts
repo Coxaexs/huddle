@@ -36,6 +36,8 @@ export interface PublicMessage {
   image?: string;
   /** Additional image attachments beyond `image`. */
   images?: string[];
+  /** Image descriptions (alt text) by image URL. */
+  imageAlts?: Record<string, string>;
   file?: { url: string; name: string; type: string };
   /** All file attachments (including PPTX, TXT, MD, ZIP, RAR, JAR, PDF, etc.). */
   files?: Array<{ url: string; name: string; type: string }>;
@@ -125,6 +127,15 @@ export function publicMessage(message: StoredMessage): PublicMessage {
 
   const primaryImage = imageAttachments[0];
   const extraImages = imageAttachments.slice(1);
+  // Descriptions are stored by upload key; readers look them up by image URL.
+  let imageAlts: Record<string, string> | undefined;
+  const storedAlts = (payload as { imageAlts?: unknown } | undefined)?.imageAlts;
+  if (storedAlts && typeof storedAlts === "object") {
+    for (const [key, alt] of Object.entries(storedAlts as Record<string, unknown>)) {
+      if (typeof alt !== "string" || !alt) continue;
+      (imageAlts ??= {})[`/hangout/api/uploads/${encodeURIComponent(key)}`] = alt;
+    }
+  }
   const primaryFile = fileAttachments[0];
 
   return {
@@ -154,6 +165,7 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     editedAt: message.edited_at || undefined,
     replyTo: message.reply_to || undefined,
     images: extraImages.length ? extraImages : undefined,
+    imageAlts,
     files: fileAttachments.length ? fileAttachments : undefined,
     threadId: message.thread_id || undefined,
     commandText: message.command_text || undefined,
@@ -674,6 +686,7 @@ export async function postMessageAs(
     }
     payload = { ...(body.payload as Record<string, unknown>), forwardedFrom: forwarded };
   }
+  payload = withImageAlts(payload, allKeys);
 
   const stored: StoredMessage = {
     id: crypto.randomUUID(),
@@ -987,6 +1000,25 @@ function refusedPost(body: PostBody): string | null {
     return "That kind of message can't be posted directly.";
   }
   return null;
+}
+
+/**
+ * Image descriptions arrive keyed by upload key: keep only this message's own
+ * attachments, as trimmed text, and drop the field when nothing is left.
+ */
+function withImageAlts(payload: unknown, keys: string[]): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const { imageAlts: raw, ...rest } = payload as Record<string, unknown>;
+  if (raw === undefined) return payload;
+  const alts: Record<string, string> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const key of keys) {
+      const alt = (raw as Record<string, unknown>)[key];
+      if (typeof alt === "string" && alt.trim()) alts[key] = alt.trim().slice(0, 1000);
+    }
+  }
+  if (Object.keys(alts).length) return { ...rest, imageAlts: alts };
+  return Object.keys(rest).length ? rest : undefined;
 }
 
 /** Only web links and Hoffle's own pages make it onto a message button. */

@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
           ? 3 * 1024 * 1024
           : isFile
             ? 40 * 1024 * 1024
-            : 8 * 1024 * 1024;
+            : IMAGE_UPLOAD_MAX_BYTES;
   if (upload.size > maximum) {
     const megabytes = Math.round(maximum / 1024 / 1024);
     return Response.json(
