@@ -169,7 +169,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // ---- rooms and dashboards ----
   {
     name: "watch",
-    description: "Create a synchronized Watch Together room",
+    args: "[link or search] [original|8|4]",
+    description: "Play a YouTube, Jellyfin or video link for the whole voice room (no link: a Watch Together room)",
     group: "Rooms",
   },
   {

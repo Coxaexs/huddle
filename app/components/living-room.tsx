@@ -42,6 +42,9 @@ import {
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { DEFAULT_SQUARES, LOUNGE_SWITCHES, TABLE_MOODS, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type LoungeSwitches, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
+import { attachWatchSource } from "../lib/watch-source";
+import { partyPlayerOn } from "../lib/tune-in";
+import { SubtitleOverlay } from "./watch-subtitles";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
@@ -546,7 +549,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [watchVolume, setWatchVolume] = useState(0.8);
   const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null });
   /** Lets the panel's button start a film the browser would not start by itself. */
-  const watchApi = useRef<{ start: () => void }>({ start: () => undefined });
+  const watchApi = useRef<{ start: () => void; time: () => number | null }>({ start: () => undefined, time: () => null });
   const [hoverSeat, setHoverSeat] = useState<{ id: string; x: number; y: number } | null>(null);
   const [rollNote, setRollNote] = useState<string | null>(null);
   const [hiddenMode, setHiddenMode] = useState(false);
@@ -1343,6 +1346,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let watchVideo: HTMLVideoElement | null = null;
     let watchTexture: THREE.VideoTexture | null = null;
     let watchUrl = "";
+    /** Stops the film's source (and any Jellyfin conversion it started). */
+    let watchDetach: (() => void) | null = null;
+    /** Counts this viewer as watching the party while the film is on the screen. */
+    let watchCounted: (() => void) | null = null;
     let watchShowing = false;
     let watchBlocked = false;
     let watchError: string | null = null;
@@ -1351,7 +1358,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     /** The film and queue head this tab last asked the hub to move on from. */
     let advancedFor = "";
     const dropWatch = () => {
-      if (watchVideo) { watchVideo.pause(); watchVideo.removeAttribute("src"); watchVideo.load(); }
+      if (watchVideo) { watchVideo.pause(); watchDetach?.(); watchDetach = null; watchVideo.removeAttribute("src"); watchVideo.load(); }
+      watchCounted?.(); watchCounted = null;
       watchTexture?.dispose();
       if (parts.screenMaterial.map === watchTexture) {
         blankScreen();
@@ -1364,7 +1372,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         if ((error as DOMException)?.name === "NotAllowedError") watchBlocked = true;
       });
     };
-    watchApi.current = { start: () => { watchBlocked = false; tryPlay(); } };
+    watchApi.current = {
+      start: () => { watchBlocked = false; tryPlay(); },
+      // For this viewer's subtitles: the film's position while it is on the screen.
+      time: () => (watchVideo && watchShowing ? watchVideo.currentTime : null),
+    };
     const syncWatch = () => {
       const w = live.current.room.shared.watch;
       if (!w) {
@@ -1374,17 +1386,24 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
         return;
       }
-      if (watchUrl !== w.url) {
+      // A new film, or the room's conversion of it changed (another quality).
+      if (watchUrl !== `${w.url}|${w.session ?? ""}`) {
         dropWatch();
         const element = document.createElement("video");
         // A link has to allow this site to read it, or the browser will not hand its picture to the screen.
         element.crossOrigin = "anonymous";
         element.playsInline = true;
         element.preload = "auto";
-        element.onerror = () => { watchError = "This video could not be played: the link may not allow other sites to use it, or it is not an .mp4 or .webm file."; };
-        element.src = w.url;
+        // Jellyfin films the browser cannot play as they are get converted on the fly (watch-source.ts).
+        watchCounted = partyPlayerOn();
+        watchDetach = attachWatchSource(element, w.url, {
+          startAt: watchPosition(w, (live.current.serverNow ?? Date.now)()),
+          onProblem: (message) => { watchError = message; },
+          quality: w.quality,
+          session: w.session,
+        });
         watchVideo = element;
-        watchUrl = w.url;
+        watchUrl = `${w.url}|${w.session ?? ""}`;
         watchTexture = new THREE.VideoTexture(element);
         watchTexture.colorSpace = THREE.SRGBColorSpace;
         watchTexture.minFilter = THREE.LinearFilter;
@@ -2310,6 +2329,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title="Hide controls (H)" aria-label="Hide controls"><EyeOff size={16} /></button>
         </div>
       </div>}
+      {room.shared.watch?.url && <SubtitleOverlay url={room.shared.watch.url} time={() => watchApi.current.time()} className="watch-subtitles-room" />}
       {!controlsHidden && venueId === "meadow" && (canFish || fishing.phase !== "idle" || lastCatch) && (
         <FishingPanel
           phase={fishing} canFish={canFish} lastCatch={lastCatch} tackle={tackle}
@@ -2668,6 +2688,8 @@ const LIVING_ROOM_CSS = `
 .lr-queue-list small { opacity: 0.65; font-size: 11px; }
 .lr-queue-list button { display: inline-flex; align-items: center; gap: 3px; }
 .lr-queue button.lr-on { background: var(--lr-accent) !important; color: #1b1530 !important; }
+.lr-quality button[aria-checked="true"] { background: var(--lr-accent) !important; color: #1b1530 !important; }
+.lr-quality small { margin-right: 2px; opacity: 0.8; }
 .lr-queue form input { flex: 1; min-width: 0; }
 .lr-wide { width: 100%; justify-content: center; background: var(--lr-accent) !important; color: #1b1530 !important; }
 .lr-field { display: grid; gap: 3px; }

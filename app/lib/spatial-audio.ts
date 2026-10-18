@@ -1,4 +1,5 @@
 import { registerMedia, unregisterMedia, savedDevice } from "./devices";
+import { setEchoSources, type EchoSource } from "./echo-reference";
 import { NEUTRAL_POSE, type HeadPose } from "./head-tracking";
 
 export interface TableSeat { pan: number; x: number; y: number; z: number }
@@ -536,6 +537,7 @@ export class SpatialAudioPlayback {
   private refresh() {
     if (this.disposed) return;
     const live = this.sinkReady && this.context?.state === "running";
+    const heard: EchoSource[] = [];
     for (const entry of this.entries.values()) {
       const { input, element, panner, gain } = entry;
       const spatial = this.spatialFor(input);
@@ -545,6 +547,12 @@ export class SpatialAudioPlayback {
         * (spatial && !input.important ? Math.max(0, Math.min(1, (entry.mode === "hrtf" ? input.hrtfAttenuation : input.attenuation) ?? 1)) : 1);
       element.volume = Math.min(1, volume);
       element.muted = input.muted || routed;
+      heard.push({
+        key: input.key,
+        stream: input.stream,
+        gain: input.muted ? 0 : routed ? volume : Math.min(1, volume),
+        pan: routed && panner && !input.important ? input.pan ?? 0 : 0,
+      });
       if (gain && this.context) {
         const now = this.context.currentTime;
         // Mute/bypass is immediate; volume and position changes glide.
@@ -572,6 +580,7 @@ export class SpatialAudioPlayback {
         }
       }
     }
+    setEchoSources(heard);
   }
 
   /** Drops the spatial path but keeps the stream's source node for reuse. */
@@ -608,6 +617,7 @@ export class SpatialAudioPlayback {
     }
     for (const entry of this.entries.values()) this.remove(entry);
     this.entries.clear();
+    setEchoSources([]);
     this.room?.disconnect();
     this.room = null;
     this.reverb = null;

@@ -32,6 +32,7 @@ import { getActiveThemeId } from "@/lib/themes";
 import { GroupDmContextMenu } from "../group-dm-context-menu";
 import { ImageLightbox, ProfileCardLayer, IncomingDmCall, MarkdownGuideModal, ReactionPickerLayer, ReactionViewerLayer, FloatingStreamPreview } from "./overlays";
 import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from "./menus";
+import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 
 /** Everything ChatShell layers over the page: voice audio, menus, dialogs, viewers, toasts and the floating stream preview. */
@@ -68,8 +69,9 @@ export function renderChatOverlays(v: ShellRenderState) {
     signOut, stageChannelId, streamPreferenceFor, theme, threadMessages, threadRoot, timeoutMember,
     toggleChannelSoundboard, togglePinDm, toggleReaction, toggleSignInAlert, toggleStreamMute,
     tutorial, unread, user, userMenu, userMenuVoiceJoinedAt, voice, voiceChannels,
-    voiceParticipants, voiceRooms, welcomeChecked,
+    voiceParticipants, voiceRooms, welcomeChecked, streamHover, setStreamHover, keepStreamHover, watchStream,
   } = v;
+  const closeStreamHover = () => setStreamHover(null);
 
   return (
     <>
@@ -693,6 +695,36 @@ export function renderChatOverlays(v: ShellRenderState) {
         setStageChannelId={setStageChannelId}
         setPipDismissed={setPipDismissed}
       />
+
+      {/* "Streaming Now" card for a streaming member or a room's watch party. */}
+      {streamHover && (
+        <StreamPreviewPopover
+          key={`${streamHover.kind}:${streamHover.connectionId ?? streamHover.channel.id}`}
+          kind={streamHover.kind}
+          connectionId={streamHover.connectionId}
+          streamerName={streamHover.streamerName}
+          title={streamHover.title}
+          startedAt={streamHover.startedAt}
+          viewers={
+            streamHover.kind === "watch"
+              ? hub.watching[streamHover.channel.id]?.viewers.length ?? 0
+              : (voiceRooms[streamHover.channel.id] || []).find((p) => p.connectionId === streamHover.connectionId)?.screenViewers?.length ?? 0
+          }
+          hubNow={hub.serverNow}
+          anchorRect={streamHover.anchorRect}
+          send={hub.send}
+          onWatchStream={() => {
+            watchStream(
+              streamHover.channel,
+              streamHover.kind === "screen" && streamHover.connectionId
+                ? { kind: "screen", connectionId: streamHover.connectionId }
+                : { kind: "watch" },
+            );
+          }}
+          onKeep={keepStreamHover}
+          onClose={closeStreamHover}
+        />
+      )}
     </>
   );
 }

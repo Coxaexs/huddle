@@ -92,7 +92,7 @@ export function StageBottomBar({
       <div className="voice-ctrls-centered">
         <button
           type="button"
-          className={`vctrl-btn ${voice.tableMode ? "active" : ""}`}
+          className={`vctrl-btn vctrl-wide-only ${voice.tableMode ? "active" : ""}`}
           aria-label="Your table"
           onClick={() => setTableMenuOpen(true)}
           title="Your Table"
@@ -439,7 +439,7 @@ export function StageBottomBar({
           )}
         </div>
         {/* Screen Share Button & Options Popover */}
-        <div className="relative inline-flex items-center">
+        <div className="relative inline-flex items-center vctrl-wide-only">
           <button
             type="button"
             className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
@@ -497,7 +497,7 @@ export function StageBottomBar({
 
         <button
           type="button"
-          className={`vctrl-btn ${!focused ? "active" : ""}`}
+          className={`vctrl-btn vctrl-wide-only ${!focused ? "active" : ""}`}
           onClick={() => setFocusedKey(focused ? null : (videoTiles[0]?.key || null))}
           title={focused ? "Show all participants in grid" : "Focus active stream"}
         >
@@ -506,7 +506,7 @@ export function StageBottomBar({
 
         <button
           type="button"
-          className={`vctrl-btn ${activitiesOpen ? "active" : ""}`}
+          className={`vctrl-btn vctrl-wide-only ${activitiesOpen ? "active" : ""}`}
           onClick={() => setActivitiesOpen((open) => !open)}
           title="Activities"
         >
@@ -525,6 +525,82 @@ export function StageBottomBar({
           </button>
           {moreMenuOpen && (
             <div className="vctrl-more-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-1.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] shadow-xl flex flex-col gap-1 min-w-[180px]">
+              {/* Phones only: the controls that don't fit in the one-row bar. */}
+              <button
+                type="button"
+                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                onClick={() => {
+                  setTableMenuOpen(true);
+                  setMoreMenuOpen(false);
+                }}
+              >
+                <SlidersHorizontal size={15} className="text-[var(--lavender)]" />
+                <span>Your table</span>
+              </button>
+              {(voice.screenSharing || canShareScreen()) && (
+                <button
+                  type="button"
+                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  disabled={videoLocked && !voice.screenSharing}
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    if (voice.screenSharing) voice.stopScreenShare();
+                    else void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio ?? true, voice.screenFilm ?? false);
+                  }}
+                >
+                  <Monitor size={15} className="text-[var(--lavender)]" />
+                  <span>{voice.screenSharing ? "Stop sharing screen" : "Share screen"}</span>
+                </button>
+              )}
+              {videoTiles.length > 0 && (
+                <button
+                  type="button"
+                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  onClick={() => {
+                    setFocusedKey(focused ? null : (videoTiles[0]?.key || null));
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <LayoutGrid size={15} className="text-[var(--lavender)]" />
+                  <span>{focused ? "Show everyone" : "Focus the stream"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                onClick={() => {
+                  setActivitiesOpen((open) => !open);
+                  setMoreMenuOpen(false);
+                }}
+              >
+                <Sparkles size={15} className="text-[var(--coral)]" />
+                <span>Activities</span>
+              </button>
+              {onPopout && (
+                <button
+                  type="button"
+                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    onPopout();
+                  }}
+                >
+                  <ExternalLink size={15} className="text-[var(--lavender)]" />
+                  <span>Pop out</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  toggleFullscreen();
+                }}
+              >
+                {isFullscreen || windowFull ? <Minimize2 size={15} className="text-[var(--lavender)]" /> : <Maximize2 size={15} className="text-[var(--lavender)]" />}
+                <span>{isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}</span>
+              </button>
+              <div className="vctrl-more-sep vctrl-phone-only" />
               {soundboardAllowed && (
                 <button
                   type="button"
@@ -635,6 +711,7 @@ export function StageBottomBar({
           title={joined ? "Disconnect" : "Close"}
         >
           <PhoneOff size={18} />
+          <span className="disconnect-label">{joined ? "Leave call" : "Close"}</span>
         </button>
 
         <div className="vctrl-divider" />
@@ -642,7 +719,7 @@ export function StageBottomBar({
         {onPopout && (
           <button
             type="button"
-            className="vctrl-btn"
+            className="vctrl-btn vctrl-wide-only"
             onClick={onPopout}
             title="Pop out into floating movable preview"
           >
@@ -652,7 +729,7 @@ export function StageBottomBar({
 
         <button
           type="button"
-          className="vctrl-btn"
+          className="vctrl-btn vctrl-wide-only"
           onClick={toggleFullscreen}
           title={isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}
         >
@@ -661,4 +738,9 @@ export function StageBottomBar({
       </div>
     </div>
   );
+}
+
+/** iOS Safari and most phone browsers can't share the screen at all. */
+function canShareScreen(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
 }

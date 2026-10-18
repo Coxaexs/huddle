@@ -1,7 +1,9 @@
-/** /watch and /reels: a synchronized Music + Watch room, shown inside the voice room for /watch. */
+/** /watch and /reels: a synchronized Music + Watch room, or /watch <link or search> straight onto the room's screen. */
 import { apiFetch } from "../../client";
 import type { RoomActivity } from "@/lib/activities";
 import type { PostBotMessage } from "./types";
+import { needsYouTubeDownload, resolveVideo } from "../../watch-video";
+import type { WatchQuality } from "@/lib/lounge-shared";
 
 export interface WatchContext {
   voiceChannelId: string | null;
@@ -10,13 +12,42 @@ export interface WatchContext {
   postBotMessage: PostBotMessage;
   /** The watch party opened as this voice room's activity. */
   onActivity: (activity: RoomActivity, voiceChannelId: string) => void;
+  /** /watch <this>: a YouTube, Jellyfin or video link, or words to search YouTube for. */
+  what?: string;
+  sendLoungeSet?: (key: "watch", value: unknown) => void;
+  /** The film is on the room's screen. */
+  onWatchStarted?: (voiceChannelId: string) => void;
 }
 
 export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext): Promise<void> {
-  const { voiceChannelId, channelTitle, postBotMessage, onActivity } = ctx;
+  const { voiceChannelId, channelTitle, postBotMessage, onActivity, what, sendLoungeSet, onWatchStarted } = ctx;
   if (!voiceChannelId) {
     await postBotMessage(
       "Join a Huddle voice room first so everyone there gets the same activity.",
+    );
+    return;
+  }
+
+  if (name === "watch" && what?.trim() && sendLoungeSet) {
+    // "/watch <link> 4" (or 8, or original): the quality Jellyfin converts it at, once for everyone.
+    const words = what.trim().split(/\s+/);
+    const last = words.at(-1)?.toLowerCase().replace(/mbps$/, "");
+    const quality: WatchQuality | undefined = words.length > 1 && (last === "4" || last === "8" || last === "original") ? last : undefined;
+    const raw = quality ? words.slice(0, -1).join(" ") : what.trim();
+    if (needsYouTubeDownload(raw)) {
+      await postBotMessage("Getting that from YouTube… (the server downloads it first, which can take a minute)");
+    }
+    let video: { url: string; title: string };
+    try {
+      video = await resolveVideo(raw);
+    } catch (error) {
+      await postBotMessage(error instanceof Error ? error.message : "That video could not be played.");
+      return;
+    }
+    sendLoungeSet("watch", { url: video.url, title: video.title, position: 0, paused: false, ...(quality ? { quality } : {}) });
+    onWatchStarted?.(voiceChannelId);
+    await postBotMessage(
+      `Now playing **${video.title}** for everyone in the voice room. It's on the stage, and on the living room's screen.`,
     );
     return;
   }

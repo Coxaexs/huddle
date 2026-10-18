@@ -764,6 +764,15 @@ export function FloatingStreamPreview({
   setStageChannelId: Dispatch<SetStateAction<string | null>>;
   setPipDismissed: Dispatch<SetStateAction<boolean>>;
 }) {
+  // Who is watching this share: the hub counts seats that tuned in.
+  const streamer = floatingStream && !floatingStream.isSelf
+    ? voiceParticipants.find((p) => p.id === floatingStream.participantId && p.screenStreamId)
+    : null;
+  const floatingViewers: string[] = !floatingStream || floatingStream.kind !== "screen"
+    ? []
+    : floatingStream.isSelf
+      ? voice.streamViewers ?? []
+      : streamer?.screenViewers ?? [];
   return (
     <>
       {floatingStream && !pipDismissed && stageChannelId !== voice.channelId && (
@@ -776,31 +785,16 @@ export function FloatingStreamPreview({
           stream={floatingStream.stream}
           streamerName={floatingStream.streamerName}
           streamKind={floatingStream.kind}
-          viewerCount={
-            floatingStream.isSelf
-              ? (voice.streamViewers?.length || 0)
-              : Math.max(1, voiceParticipants.filter((p) => !p.bot).length - 1)
-          }
-          viewers={
-            floatingStream.isSelf
-              ? (voice.streamViewers || []).map((connId) => {
-                  const p = voiceParticipants.find((vp) => vp.connectionId === connId);
-                  return {
-                    id: p?.id,
-                    displayName: p?.displayName || "Viewer",
-                    avatar: p?.avatar,
-                    avatarUrl: p?.avatarUrl,
-                  };
-                })
-              : voiceParticipants
-                  .filter((p) => !p.bot && p.id !== floatingStream.participantId)
-                  .map((p) => ({
-                    id: p.id,
-                    displayName: p.displayName,
-                    avatar: p.avatar,
-                    avatarUrl: p.avatarUrl,
-                  }))
-          }
+          viewerCount={floatingViewers.length}
+          viewers={floatingViewers.map((connId) => {
+            const p = voiceParticipants.find((vp) => vp.connectionId === connId);
+            return {
+              id: p?.id,
+              displayName: p?.displayName || "Viewer",
+              avatar: p?.avatar,
+              avatarUrl: p?.avatarUrl,
+            };
+          })}
           latency={voice.latency}
           volume={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).volume}
           muted={streamPreferenceFor(floatingStream.stream.id, floatingStream.participantId).muted}

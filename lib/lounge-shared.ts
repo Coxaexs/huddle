@@ -11,6 +11,13 @@ import { sanitizeV5Sheet, type V5Sheet } from "./v5-sheet";
 export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
+/**
+ * How a Jellyfin film reaches the room: the file as it is, or one conversion
+ * everyone shares at 8 or 4 Mbps. The person who starts the film picks it.
+ */
+export type WatchQuality = "original" | "8" | "4";
+export const WATCH_QUALITIES: readonly WatchQuality[] = ["original", "8", "4"];
+
 export interface WatchState {
   url: string;
   title: string;
@@ -19,6 +26,26 @@ export interface WatchState {
   at: number;
   paused: boolean;
   by: string;
+  /** Jellyfin films: as picked by whoever started it (absent: the player decides). */
+  quality?: WatchQuality;
+  /**
+   * The one conversion everyone in the room shares, named by the hub when the
+   * film (or its quality) changes, so Jellyfin converts the film once.
+   */
+  session?: string;
+}
+
+/**
+ * Carries the shared conversion across a pause or seek, and names a new one
+ * when the film or its quality changes. The hub calls it on every new watch state.
+ */
+export function continueWatch(prev: WatchState | null | undefined, next: WatchState, newSession: () => string): WatchState {
+  if (prev && prev.url === next.url) {
+    const quality = next.quality ?? prev.quality;
+    if (quality === prev.quality && prev.session) return { ...next, quality, session: prev.session };
+    return { ...next, quality, session: newSession() };
+  }
+  return { ...next, session: newSession() };
 }
 
 /** A film waiting its turn on the screen. The room votes it up the queue. */
@@ -33,6 +60,7 @@ export interface QueuedFilm {
   votes: string[];
   /** Hub clock (ms) when it was added: ties play in the order they came. */
   at: number;
+  quality?: WatchQuality;
 }
 
 /** The watch party: what plays after the current film, and the votes to skip that film. */
@@ -43,7 +71,7 @@ export interface WatchQueue {
 
 /** A change to the queue, as a client asks for it; the hub applies it with applyQueue. */
 export type QueueOp =
-  | { op: "add"; url: string; title: string }
+  | { op: "add"; url: string; title: string; quality?: WatchQuality }
   | { op: "vote"; id: string }
   | { op: "remove"; id: string }
   /** Start the top film. `from` is the film the asker saw on the screen (null: none), so ten tabs seeing one film end start one film. */
@@ -311,6 +339,7 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
     case "watch": {
       const url = safeMediaUrl(value.url);
       if (!url) return null;
+      const quality = watchQuality(value.quality);
       return {
         url,
         title: str(value.title, 100),
@@ -318,6 +347,8 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         at: now,
         paused: value.paused === true,
         by,
+        // Never the session: only the hub names those (continueWatch).
+        ...(quality ? { quality } : {}),
       } satisfies WatchState;
     }
     case "house":
@@ -432,11 +463,17 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
 
 /* ---------- the watch party's queue ---------- */
 
+function watchQuality(value: unknown): WatchQuality | undefined {
+  return (WATCH_QUALITIES as readonly unknown[]).includes(value) ? (value as WatchQuality) : undefined;
+}
+
 export function sanitizeQueueOp(value: Record<string, unknown>): QueueOp | null {
   switch (value.op) {
     case "add": {
       const url = safeMediaUrl(value.url);
-      return url ? { op: "add", url, title: str(value.title, 100).trim() || "Video" } : null;
+      if (!url) return null;
+      const quality = watchQuality(value.quality);
+      return { op: "add", url, title: str(value.title, 100).trim() || "Video", ...(quality ? { quality } : {}) };
     }
     case "vote":
     case "remove": {
@@ -489,7 +526,7 @@ export function applyQueue(
   const startTop = (rest: QueuedFilm[]) => {
     const [top, ...after] = orderQueue(rest);
     if (!top) return done([], null, null);
-    return done(after, null, { url: top.url, title: top.title, position: 0, at: now, paused: false, by: top.by });
+    return done(after, null, { url: top.url, title: top.title, position: 0, at: now, paused: false, by: top.by, ...(top.quality ? { quality: top.quality } : {}) });
   };
 
   switch (op.op) {
@@ -506,6 +543,7 @@ export function applyQueue(
         userId: actor.userId,
         votes: [],
         at: now,
+        ...(op.quality ? { quality: op.quality } : {}),
       };
       // Nothing on the screen: no reason to wait.
       if (!watch) return startTop([...films, film]);

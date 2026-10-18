@@ -1834,6 +1834,83 @@ button {
   display: flex;
 }
 
+/* Someone is sharing their screen, or the room has a watch party: a red LIVE tag. */
+.live-stream-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ed4245;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.live-stream-badge:hover {
+  background: #d83c3e;
+}
+
+.live-stream-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  animation: live-stream-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-stream-pulse {
+  50% { opacity: 0.35; }
+}
+
+/* How many people are watching a stream or watch party. */
+.live-viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* The room's watch party, listed under the people in it. */
+.voice-watch-party {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 4px 0 30px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.voice-watch-party:hover {
+  opacity: 1;
+}
+
+.voice-watch-party-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-stream-dot { animation: none; }
+}
+
 /* A moderator can drag this person onto another voice room. */
 .voice-member.draggable-member {
   cursor: grab;
@@ -24169,6 +24246,204 @@ a.link-preview-author:hover {
 .video-hidden-placeholder small {
   font-size: 11px;
   opacity: 0.8;
+}
+
+/* Before tuning in to a screen share or watch party: its last preview frame,
+   blurred, and the question. Nothing is received until "Go Ahead". */
+.stream-tunein {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+}
+
+.stream-tunein-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) brightness(0.55);
+  transform: scale(1.08);
+}
+
+.stream-tunein-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ed4245;
+  filter: none;
+  transform: none;
+  background: radial-gradient(circle at 50% 40%, #2b2d31, #111214);
+  opacity: 0.8;
+}
+
+.stream-tunein-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.3);
+  user-select: none;
+}
+
+.stream-tunein-question {
+  max-width: 90%;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95);
+}
+
+.stream-tunein-go {
+  padding: 8px 28px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.stream-tunein-go:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.05);
+}
+
+.stream-tunein-label {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  color: #fecdd3;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.stream-tunein-label .live-stream-dot {
+  background: #f43f5e;
+  flex: none;
+}
+
+/* The filmstrip's small tiles: just the button, no question. */
+.film-video-wrap .stream-tunein-question,
+.film-video-wrap .stream-tunein-label {
+  display: none;
+}
+
+.film-video-wrap .stream-tunein-go {
+  padding: 4px 12px;
+  font-size: 11px;
+}
+
+/* The watch party's player on the stage. */
+.watch-surface {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+
+.watch-surface video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.watch-surface-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* This viewer's subtitles over the watch party (stage player and living room). */
+.watch-subtitles {
+  position: absolute;
+  left: 50%;
+  bottom: 7%;
+  z-index: 4;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 86%;
+  pointer-events: none;
+  text-align: center;
+}
+
+.watch-subtitles span {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: clamp(14px, 2.2vw, 26px);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  text-shadow: 0 1px 2px #000;
+}
+
+/* The living room: across the bottom of the view, clear of the emote bar. */
+.watch-subtitles-room {
+  bottom: 96px;
+}
+
+.watch-subtitle-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+}
+
+.watch-subtitle-picker select {
+  max-width: 150px;
+  padding: 2px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+}
+
+.watch-surface-problem {
+  position: absolute;
+  inset: auto 12px 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fca5a5;
+  font-size: 12px;
+  text-align: center;
 }
 
 .video-hide-btn {

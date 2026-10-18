@@ -30,6 +30,25 @@ import { DRAFTS_KEY } from "../../lib/chat/shell-helpers";
 import { registerProfileStyles } from "../../lib/profile-look";
 
 /** ChatShell, part 1 of 9. Everything ChatShell keeps in state: servers, channels, messages, drafts, menus, dialogs, panel sizes, quick reactions, contact extras. */
+/** Who or what a "Streaming Now" card is about. */
+export interface StreamHoverInfo {
+  kind: "screen" | "watch";
+  /** The streamer's seat (screen shares only). */
+  connectionId?: string;
+  streamerName: string;
+  title?: string;
+  /** Hub-clock ms the stream or film started. */
+  startedAt?: number | null;
+  channel: PublicChannel;
+}
+
+/** Open the stage on one stream: a seat's screen share, or the room's watch party. */
+export interface StageFocusRequest {
+  channelId: string;
+  target: { kind: "screen"; connectionId: string } | { kind: "watch" };
+  at: number;
+}
+
 export function useShellState() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [bootstrap, setBootstrap] = useState(false);
@@ -1156,6 +1175,33 @@ export function useShellState() {
     }, 550);
   }
 
+  /** The "Streaming Now" card for a streaming member or a room's watch party. */
+  const [streamHover, setStreamHover] = useState<(StreamHoverInfo & { anchorRect: DOMRect }) | null>(null);
+  const streamHoverTimer = useRef<number | null>(null);
+
+  /** Shows the card after a short hover (now, for a tap), or hides it shortly after leaving. */
+  function queueStreamHover(info: StreamHoverInfo | null, anchor?: HTMLElement, immediate = false) {
+    if (streamHoverTimer.current) window.clearTimeout(streamHoverTimer.current);
+    streamHoverTimer.current = null;
+    if (!info || !anchor) {
+      streamHoverTimer.current = window.setTimeout(() => setStreamHover(null), 200);
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    const show = () => setStreamHover({ ...info, anchorRect: rect });
+    if (immediate) show();
+    else streamHoverTimer.current = window.setTimeout(show, 250);
+  }
+
+  /** The pointer reached the card itself: keep it open. */
+  function keepStreamHover() {
+    if (streamHoverTimer.current) window.clearTimeout(streamHoverTimer.current);
+    streamHoverTimer.current = null;
+  }
+
+  /** "Watch Stream": the stage should open on this stream, past the tune-in prompt. */
+  const [stageFocusRequest, setStageFocusRequest] = useState<StageFocusRequest | null>(null);
+
   /** Messenger's Display Picture dialog. */
   const [pictureOpen, setPictureOpen] = useState(false);
   function placeContact(userId: string, groupId: string | null) {
@@ -1330,6 +1376,7 @@ export function useShellState() {
     setUnreadBarVisible, lastSeenTailRef, unreadRef, initialChannelScrollRef, messagesLoadedFor,
     setMessagesLoadedFor, activeChannelRef, activeServerRef, pendingCommandRef, inDmHome,
     welcomeChecked, setWelcomeChecked, markWelcomeChecked, touchInput, setTouchInput, dragging,
-    setDragging, profileCardTarget, setProfileCardTarget,
+    setDragging, profileCardTarget, setProfileCardTarget, streamHover, setStreamHover, queueStreamHover,
+    keepStreamHover, stageFocusRequest, setStageFocusRequest,
   };
 }

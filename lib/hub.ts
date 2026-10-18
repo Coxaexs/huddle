@@ -12,7 +12,8 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { applyArea, applyPawn, applyQueue, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
+import { stopSharedConversion } from "./jellyfin-proxy";
+import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, Permission } from "./permissions";
@@ -53,6 +54,7 @@ import {
   type PlayedTrack,
   type PlayerState,
   type RecordingState,
+  type RoomWatch,
   type ServerEvent,
   type Track,
   type VoiceParticipant,
@@ -89,6 +91,8 @@ interface Attachment {
   /** MediaStream ids so receivers can tell a camera from a screen share. */
   cameraStreamId: string | null;
   screenStreamId: string | null;
+  /** Hub-clock ms the current screen share started. */
+  screenStartedAt?: number | null;
   /** Media goes through LiveKit rather than the mesh; see VoiceParticipant.sfu. */
   sfu?: boolean;
   bot: boolean;
@@ -96,6 +100,13 @@ interface Attachment {
   /** Connected but appearing offline: left out of every presence list. */
   invisible?: boolean;
 }
+
+/** A name for a room's shared Jellyfin conversion. */
+const newWatchSession = () => crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+
+/** A stream preview frame: a base64 JPEG data URL, about 15-30 KB at 320×180. */
+const STREAM_PREVIEW_IMAGE = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+const STREAM_PREVIEW_MAX = 80_000;
 
 /** How long after the last track ends before the bot leaves the room. */
 const IDLE_LEAVE_MS = 60_000;
@@ -146,6 +157,15 @@ export class HuddleHub extends DurableObject {
   /** DM channelId -> its participants, cleared alongside memberships. */
   private readonly dmAudiences = new Map<string, Set<string>>();
   private readonly whisperBudget = new Map<string, { second: number; count: number }>();
+  /**
+   * The latest preview frame of each live screen share, by connection. Memory
+   * only: a frame is two minutes old at most and a restart just waits for the next.
+   */
+  /** Each room's current watch-party film and when it started, for the channel list. */
+  private readonly watchSince = new Map<string, { url: string; title: string; at: number; viewers: string[] }>();
+  /** What each seat is watching (see the "watching" event); memory only, clients resend on reconnect. */
+  private readonly watchingBy = new Map<string, { screens: Set<string>; party: boolean }>();
+  private readonly streamPreviews = new Map<string, { image: string; title: string | null; at: number }>();
   /** userId -> when they last rang someone, to stop push-notification spam. */
   private readonly lastRing = new Map<string, number>();
   /**
@@ -551,6 +571,7 @@ export class HuddleHub extends DurableObject {
       forcedMutes: [...this.forcedMutes],
       recordings: await this.visibleRecord(attachment, Object.fromEntries(this.recordings.entries())),
       sessionNotes: await this.visibleRecord(attachment, Object.fromEntries(this.sessionNotes.entries())),
+      watching: await this.visibleRecord(attachment, await this.roomWatches()),
     };
     socket.send(JSON.stringify(ready));
     this.broadcastPresence();
@@ -830,6 +851,7 @@ export class HuddleHub extends DurableObject {
         if ((key === "pawn" || key === "area") && clean === null) return;
         const all = await this.loadLoungeShared();
         const bag = (all[room] ??= {});
+        const watchBefore = bag.watch as WatchState | undefined;
         const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
         const gmHere = Boolean(gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room));
         if (key === "tablemap" || key === "grid") {
@@ -879,11 +901,14 @@ export class HuddleHub extends DurableObject {
           if (!result) return;
           if (result.queue) bag.queue = result.queue; else delete bag.queue;
           if (result.watch !== undefined) {
-            if (result.watch) bag.watch = result.watch; else delete bag.watch;
+            if (result.watch) bag.watch = continueWatch(bag.watch as WatchState | undefined, result.watch, newWatchSession);
+            else delete bag.watch;
+            this.endConversion(watchBefore, bag.watch as WatchState | undefined);
           }
           await this.saveLoungeShared();
           send("queue", result.queue, true);
           if (result.watch !== undefined) send("watch", result.watch, true);
+          this.noteRoomWatch(room);
           return;
         }
         if (key === "character") {
@@ -892,6 +917,15 @@ export class HuddleHub extends DurableObject {
           bag.characters = characters;
           await this.saveLoungeShared();
           send("characters", characters, true);
+          return;
+        }
+        if (key === "watch") {
+          const next = clean ? continueWatch(watchBefore, clean as WatchState, newWatchSession) : null;
+          if (next) bag.watch = next; else delete bag.watch;
+          await this.saveLoungeShared();
+          send("watch", next, true);
+          this.endConversion(watchBefore, next ?? undefined);
+          this.noteRoomWatch(room);
           return;
         }
         if (clean) bag[key] = clean; else delete bag[key];
@@ -935,6 +969,9 @@ export class HuddleHub extends DurableObject {
             other.voiceJoinedAt = null;
             other.cameraStreamId = null;
             other.screenStreamId = null;
+            other.screenStartedAt = null;
+            this.streamPreviews.delete(other.connectionId);
+            this.watchingBy.delete(other.connectionId);
             this.saveAttachment(entry.socket, other);
             evicted.add(room);
             try {
@@ -981,6 +1018,9 @@ export class HuddleHub extends DurableObject {
         attachment.deafened = event.deafened === true;
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
+        attachment.screenStartedAt = null;
+        this.streamPreviews.delete(attachment.connectionId);
+        this.watchingBy.delete(attachment.connectionId);
         this.saveAttachment(socket, attachment);
 
         if (previous && previous !== event.channelId) {
@@ -1005,6 +1045,9 @@ export class HuddleHub extends DurableObject {
         if (attachment.voiceChannelId === null && previous) queueMicrotask(() => void this.pruneLounge(previous));
         attachment.cameraStreamId = null;
         attachment.screenStreamId = null;
+        attachment.screenStartedAt = null;
+        this.streamPreviews.delete(attachment.connectionId);
+        this.watchingBy.delete(attachment.connectionId);
         this.saveAttachment(socket, attachment);
         if (previous) this.broadcastVoice(previous);
         // Persist lifetime voice time so achievements can reward it. A missed
@@ -1058,6 +1101,10 @@ export class HuddleHub extends DurableObject {
           attachment.cameraStreamId = event.cameraStreamId;
         }
         if (event.screenStreamId !== undefined) {
+          if (event.screenStreamId !== attachment.screenStreamId) {
+            attachment.screenStartedAt = event.screenStreamId ? Date.now() : null;
+            this.streamPreviews.delete(attachment.connectionId);
+          }
           attachment.screenStreamId = event.screenStreamId;
         }
         if (typeof event.sfu === "boolean") {
@@ -1067,6 +1114,53 @@ export class HuddleHub extends DurableObject {
         if (attachment.voiceChannelId) {
           this.broadcastVoice(attachment.voiceChannelId);
         }
+        return;
+      }
+
+      case "stream-preview": {
+        // Only a seat that is sharing its screen right now, and only a small JPEG.
+        if (!attachment.voiceChannelId || !attachment.screenStreamId) return;
+        if (typeof event.image !== "string" || !STREAM_PREVIEW_IMAGE.test(event.image)) return;
+        if (event.image.length > STREAM_PREVIEW_MAX) return;
+        const last = this.streamPreviews.get(attachment.connectionId);
+        if (last && Date.now() - last.at < 20_000) return;
+        const title = typeof event.title === "string" ? event.title.trim().slice(0, 80) || null : null;
+        this.streamPreviews.set(attachment.connectionId, { image: event.image, title, at: Date.now() });
+        return;
+      }
+
+      case "watching": {
+        const room = attachment.voiceChannelId;
+        if (!room) return;
+        const screens = new Set(
+          (Array.isArray(event.screens) ? event.screens : [])
+            .filter((id): id is string => typeof id === "string" && id.length <= 64 && id !== attachment.connectionId)
+            .slice(0, 24),
+        );
+        const party = event.party === true;
+        const old = this.watchingBy.get(attachment.connectionId);
+        if (old && old.party === party && old.screens.size === screens.size && [...screens].every((id) => old.screens.has(id))) return;
+        if (screens.size || party) this.watchingBy.set(attachment.connectionId, { screens, party });
+        else this.watchingBy.delete(attachment.connectionId);
+        this.broadcastVoice(room);
+        return;
+      }
+
+      case "stream-preview-get": {
+        const target = typeof event.connectionId === "string" ? this.seatFor(event.connectionId) : null;
+        const room = target?.attachment.voiceChannelId;
+        if (!target || !room || !target.attachment.screenStreamId) return;
+        // The same rule as seeing that room's voice list at all.
+        const allowed = await this.channelAudience(room);
+        if (!allowed(attachment)) return;
+        const preview = this.streamPreviews.get(target.attachment.connectionId);
+        socket.send(JSON.stringify({
+          t: "stream-preview",
+          connectionId: target.attachment.connectionId,
+          image: preview?.image ?? null,
+          title: preview?.title ?? null,
+          at: preview?.at ?? 0,
+        } satisfies ServerEvent));
         return;
       }
 
@@ -1306,11 +1400,12 @@ export class HuddleHub extends DurableObject {
         if (live && LIVE_OWNED_ACTIONS.has(event.action.name)) {
           const op = djControlFor(event.action.name, live.paused);
           if (op) {
-            this.ctx.waitUntil(
-              djControl(event.channelId, op).catch((error) =>
-                console.warn("DJ booth control failed", op, String(error)),
-              ),
+            const p = djControl(event.channelId, op).catch((error) =>
+              console.warn("DJ booth control failed", op, String(error)),
             );
+            if (this.ctx && typeof this.ctx.waitUntil === "function") {
+              this.ctx.waitUntil(p);
+            }
           }
           return;
         }
@@ -1329,6 +1424,8 @@ export class HuddleHub extends DurableObject {
     }
     if (attachment) this.loungeBudget.delete(attachment.connectionId);
     if (attachment) this.synthBudget.delete(attachment.connectionId);
+    if (attachment) this.streamPreviews.delete(attachment.connectionId);
+    if (attachment) this.watchingBy.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.
@@ -1623,6 +1720,8 @@ export class HuddleHub extends DurableObject {
           important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
           cameraStreamId: attachment.cameraStreamId,
           screenStreamId: attachment.screenStreamId,
+          screenStartedAt: attachment.screenStreamId ? attachment.screenStartedAt ?? null : null,
+          screenViewers: attachment.screenStreamId ? this.viewersOf(channelId, attachment.connectionId) : undefined,
           sfu: attachment.sfu || undefined,
           bot: attachment.bot || undefined,
           recorder: attachment.recorder || undefined,
@@ -1702,8 +1801,65 @@ export class HuddleHub extends DurableObject {
     this.venueChangedAt.delete(room);
     const all = await this.loadLoungeShared();
     if (!all[room]) return;
+    const watch = all[room].watch as WatchState | undefined;
     delete all[room];
     await this.saveLoungeShared();
+    this.endConversion(watch, undefined);
+    this.noteRoomWatch(room);
+  }
+
+  /** A film (or its quality) changed or ended: stop the room's old Jellyfin conversion now rather than when it times out. */
+  private endConversion(before: WatchState | undefined, after: WatchState | undefined): void {
+    if (!before?.session || before.session === after?.session) return;
+    this.ctx.waitUntil?.(stopSharedConversion(before).catch(() => undefined));
+  }
+
+  /** Rooms people are in that have a watch party going, for a fresh connection. */
+  private async roomWatches(): Promise<Record<string, RoomWatch>> {
+    const all = await this.loadLoungeShared();
+    const rooms = new Set(this.sockets().map(({ attachment }) => attachment.voiceChannelId).filter(Boolean));
+    const out: Record<string, RoomWatch> = {};
+    for (const room of rooms) {
+      const watch = all[room!]?.watch as WatchState | undefined;
+      if (!watch?.url) continue;
+      const since = this.watchSince.get(room!);
+      out[room!] = { title: watch.title || "Watch party", startedAt: since?.url === watch.url ? since.at : watch.at, viewers: this.viewersOf(room!, null) };
+    }
+    return out;
+  }
+
+  /** Tells everyone who can see a room when its watch party starts, changes film or ends. */
+  private noteRoomWatch(room: string): void {
+    const watch = this.loungeShared?.[room]?.watch as WatchState | undefined;
+    const known = this.watchSince.get(room);
+    const viewers = watch?.url ? this.viewersOf(room, null) : [];
+    if (
+      (watch?.url ?? "") === (known?.url ?? "") &&
+      (watch?.title ?? "") === (known?.title ?? "") &&
+      viewers.join() === (known?.viewers ?? []).join()
+    ) return;
+    const now = Date.now();
+    let value: RoomWatch | null = null;
+    if (watch?.url) {
+      const at = known?.url === watch.url ? known.at : now;
+      this.watchSince.set(room, { url: watch.url, title: watch.title, at, viewers });
+      value = { title: watch.title || "Watch party", startedAt: at, viewers };
+    } else {
+      this.watchSince.delete(room);
+    }
+    void this.broadcastTo(room, { t: "room-watch", channelId: room, watch: value, serverNow: now });
+  }
+
+  /** Seats in a room watching one seat's screen share, or (target null) the room's watch party. */
+  private viewersOf(room: string, target: string | null): string[] {
+    const viewers: string[] = [];
+    for (const { attachment } of this.sockets()) {
+      if (attachment.voiceChannelId !== room || attachment.connectionId === target) continue;
+      const watching = this.watchingBy.get(attachment.connectionId);
+      if (!watching) continue;
+      if (target === null ? watching.party : watching.screens.has(target)) viewers.push(attachment.connectionId);
+    }
+    return viewers.sort();
   }
 
   private broadcastVoice(channelId: string): void {
@@ -1714,6 +1870,8 @@ export class HuddleHub extends DurableObject {
       participants,
       serverNow: Date.now(),
     });
+    // The watch party's viewers may have come or gone with this change.
+    this.noteRoomWatch(channelId);
     // An emptied room's notes end after a grace period (see alarm()).
     const notes = this.sessionNotes.get(channelId);
     const empty = participants.length === 0;
