@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dist:mac": "electron-builder --mac",
-    "dist:win": "bash native/build.sh && electron-builder --win",
+    "dist:win": "node native/build.js && electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "pack": "electron-builder --dir"
   },
