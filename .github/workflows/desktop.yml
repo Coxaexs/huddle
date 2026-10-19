@@ -122,3 +122,74 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: desktop-tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+  # Native apps (desktop-native-*/): no Electron, no Tauri, just the system
+  # webview, attached to the same Release. Files carry the desktop version.
+  native-windows:
+    # Zig cross-compiles the WebView2 app, so a Linux runner is enough.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+      - run: bash desktop-native-windows/scripts/build.sh
+      - name: Name the file
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          mkdir -p out
+          cp desktop-native-windows/build/hoffle_native_windows.zip "out/Hoffle-Native-$v-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoffle-native-windows
+          path: out/*
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+
+  native-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ pkg-config libgtk-3-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libkeybinder-3.0-dev libnotify-dev
+      - run: bash desktop-native-linux/scripts/build.sh
+      - name: Name the file
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          mkdir -p out
+          cp desktop-native-linux/build/hoffle_native_linux_x86_64.tar.gz "out/Hoffle-Native-$v-linux-x86_64.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoffle-native-linux
+          path: out/*
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+
+  # Apple Silicon only. Ad-hoc signed like the Electron builds, so macOS asks
+  # to allow it on first open instead of calling it damaged.
+  native-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash desktop-native-macos/scripts/build.sh
+      - run: codesign --force --deep --sign - desktop-native-macos/build/Hoffle.app
+      - run: bash desktop-native-macos/scripts/create-dmg.sh
+      - name: Name the file
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          mkdir -p out
+          cp desktop-native-macos/build/Hoffle-macOS-arm64.dmg "out/Hoffle-Native-$v-mac-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoffle-native-mac
+          path: out/*
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

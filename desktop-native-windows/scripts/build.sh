@@ -5,6 +5,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(cd "$DIR/.." && pwd)"
 BUILD_DIR="$DIR/build"
 ZIG="$ROOT_DIR/.tools/zig/zig"
+[ -x "$ZIG" ] || ZIG=zig
 
 echo "=== Building Hoffle Native Windows App (x86_64-windows) ==="
 

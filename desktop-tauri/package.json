@@ -1,6 +1,6 @@
 {
   "name": "huddle-tauri",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Huddle lightweight desktop client powered by Tauri v2",
   "scripts": {
