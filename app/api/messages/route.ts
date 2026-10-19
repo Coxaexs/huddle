@@ -9,13 +9,14 @@ import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
-import { can, Permission } from "@/lib/permissions";
+import { can, canAny, Permission } from "@/lib/permissions";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
 import { blockIfUnverified } from "@/lib/verification-level";
+import { slowmodeResponse, slowmodeWait } from "@/lib/slowmode";
 import { stripTextStyle } from "@/lib/text-style";
 
 export const dynamic = "force-dynamic";
@@ -580,10 +581,10 @@ export async function postMessageAs(
   if (channelId) {
     const channel = await db
       .prepare(
-        `SELECT name, kind, server_id FROM channels WHERE id = ? AND kind IN (${postableChannelKindsSql()})`,
+        `SELECT name, kind, server_id, slowmode FROM channels WHERE id = ? AND kind IN (${postableChannelKindsSql()})`,
       )
       .bind(channelId)
-      .first<{ name: string; kind: string; server_id: string }>();
+      .first<{ name: string; kind: string; server_id: string; slowmode: number | null }>();
     if (!channel) {
       return Response.json({ error: "That channel is gone." }, { status: 404 });
     }
@@ -616,6 +617,18 @@ export async function postMessageAs(
       if (timedOut) return timedOut;
       const unverified = await blockIfUnverified(db, channel.server_id, user);
       if (unverified) return unverified;
+
+      // Slowmode: one post per cooldown in the channel itself. Thread replies
+      // and bot/command replies are not counted; moderators are exempt.
+      if (channel.slowmode && !body.threadId && !body.asBot) {
+        const wait = await slowmodeWait(db, channelId, user.id, channel.slowmode);
+        if (
+          wait > 0 &&
+          !(await canAny(db, user.id, channel.server_id, Permission.MANAGE_MESSAGES, Permission.MANAGE_CHANNELS))
+        ) {
+          return slowmodeResponse(wait);
+        }
+      }
 
       // The hoffle.online guestbook takes visitors through /api/guestbook;
       // through here, only its moderators may post.

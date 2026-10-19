@@ -330,12 +330,12 @@ export function useChannelServerActions({
   async function editChannelSlowmode(channel: PublicChannel) {
     showCustomPrompt({
       title: "Set Channel Slowmode Cooldown",
-      message: "Enter slowmode cooldown in seconds (0 to disable, e.g. 5, 10, 30):",
+      message: "Seconds each member waits between messages here (0 turns it off, up to 300). Moderators are not slowed down.",
       defaultValue: String(channel.slowmode || 0),
       placeholder: "0",
       confirmText: "Set Slowmode",
       onConfirm: async (val) => {
-        const sec = parseInt(val || "0", 10) || 0;
+        const sec = Math.max(0, Math.min(300, parseInt(val || "0", 10) || 0));
         try {
           const data = await apiFetch<{ servers: PublicServer[] }>(
             `/api/channels/${channel.id}`,

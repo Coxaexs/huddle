@@ -3,12 +3,9 @@
  * of "7KQ2M9XWPA"). It is stored as an ordinary invites row, so every place
  * that redeems a code (the invite page, joining) handles it without knowing
  * it is special; `servers.vanity_code` just remembers which row is the
- * server's. Like every new code it has a use limit (lib/invite-limits.ts):
- * the most there is. Setting the same code again after removing it starts
- * the count over.
+ * server's. Unlike other new codes it has no use limit (max_uses 0): a
+ * server manager chose it on purpose, and Raid Lockdown still pauses it.
  */
-
-import { MAX_INVITE_USES } from "./invite-limits";
 
 /** Matches the shortest code chat links recognise (app/lib/chat/invites.ts). */
 export const VANITY_MIN = 4;
@@ -63,10 +60,10 @@ export async function setVanityCode(
       db
         .prepare(
           `INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id)
-           VALUES (?1, ?2, ?3, ?5, 0, 0, 'Vanity URL', ?4)
-           ON CONFLICT(code) DO UPDATE SET revoked = 0, uses = 0, max_uses = ?5, created_by = ?2`,
+           VALUES (?1, ?2, ?3, 0, 0, 0, 'Vanity URL', ?4)
+           ON CONFLICT(code) DO UPDATE SET revoked = 0, max_uses = 0, created_by = ?2`,
         )
-        .bind(code, userId, new Date().toISOString(), serverId, MAX_INVITE_USES),
+        .bind(code, userId, new Date().toISOString(), serverId),
     );
   }
   statements.push(db.prepare("UPDATE servers SET vanity_code = ? WHERE id = ?").bind(code, serverId));

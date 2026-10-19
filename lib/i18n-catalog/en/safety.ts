@@ -36,7 +36,7 @@ export const safety = {
 
   // Server Settings → Invites → Vanity URL
   "vanity.title": "Vanity URL",
-  "vanity.desc": "An easy-to-remember invite code for this server. Like other invites it works for up to 1,000 joins; remove it and set it again to start the count over.",
+  "vanity.desc": "An easy-to-remember invite code for this server. It works for anyone, with no use limit, until you remove it.",
   "vanity.placeholder": "MY-SERVER",
   "vanity.save": "Save",
   "vanity.remove": "Remove",

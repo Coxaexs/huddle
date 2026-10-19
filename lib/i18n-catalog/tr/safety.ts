@@ -33,7 +33,7 @@ export const safety: Record<keyof typeof en, string> = {
 
   // Sunucu Ayarları → Davetler → Özel URL
   "vanity.title": "Özel URL",
-  "vanity.desc": "Bu sunucu için akılda kalıcı bir davet kodu. Diğer davetler gibi en fazla 1.000 katılım için çalışır; sayacı sıfırlamak için kaldırıp yeniden ayarla.",
+  "vanity.desc": "Bu sunucu için akılda kalıcı bir davet kodu. Sen kaldırana kadar herkes için, kullanım sınırı olmadan çalışır.",
   "vanity.placeholder": "SUNUCUM",
   "vanity.save": "Kaydet",
   "vanity.remove": "Kaldır",

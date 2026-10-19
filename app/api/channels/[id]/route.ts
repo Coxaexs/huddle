@@ -1,4 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { MAX_SLOWMODE_SECONDS } from "@/lib/slowmode";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
@@ -99,7 +100,7 @@ export async function PATCH(
     .bind(
       name || channel.name,
       body.topic?.trim().slice(0, 120) ?? channel.topic,
-      typeof body.slowmode === "number" ? Math.max(0, Math.min(300, body.slowmode)) : (channel as { slowmode?: number }).slowmode || 0,
+      typeof body.slowmode === "number" ? Math.max(0, Math.min(MAX_SLOWMODE_SECONDS, Math.trunc(body.slowmode))) : (channel as { slowmode?: number }).slowmode || 0,
       typeof body.bitrate === "number" ? clampVoiceBitrate(body.bitrate) : (channel as { bitrate?: number }).bitrate || 0,
       typeof body.soundboard === "boolean"
         ? (body.soundboard ? 1 : 0)

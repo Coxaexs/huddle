@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { clampVerificationLevel, verificationShortfall } from "./verification-level";
 import { dmPolicyAllows, normalizeDmPolicy } from "./dm-policy";
 import { normalizeVanityCode, VANITY_MAX } from "./vanity";
+import { slowmodeRemaining } from "./slowmode";
 import { normalizeRoleIcon, roleIconIsImage } from "./role-icon";
 import { Permission, ALL_PERMISSIONS, hasPermission } from "./permissions";
 import { talkingPriorityKey } from "../app/lib/priority-speaker";
@@ -139,5 +140,26 @@ describe("priority speaker", () => {
     expect(talkingPriorityKey(seats, new Set(["a", "c", "d"]))).toBe("a");
     expect(talkingPriorityKey(seats, new Set(["c"]))).toBe("");
     expect(talkingPriorityKey(seats, new Set(["b", "a"]))).toBe("a,b");
+  });
+});
+
+describe("slowmodeRemaining", () => {
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const ago = (s: number) => new Date(now - s * 1000).toISOString();
+
+  it("is free with slowmode off or no earlier post", () => {
+    expect(slowmodeRemaining(ago(1), 0, now)).toBe(0);
+    expect(slowmodeRemaining(null, 30, now)).toBe(0);
+  });
+
+  it("counts down whole seconds from the last post", () => {
+    expect(slowmodeRemaining(ago(0), 10, now)).toBe(10);
+    expect(slowmodeRemaining(ago(3.5), 10, now)).toBe(7);
+    expect(slowmodeRemaining(ago(10), 10, now)).toBe(0);
+    expect(slowmodeRemaining(ago(60), 10, now)).toBe(0);
+  });
+
+  it("ignores an unreadable date", () => {
+    expect(slowmodeRemaining("not a date", 10, now)).toBe(0);
   });
 });
