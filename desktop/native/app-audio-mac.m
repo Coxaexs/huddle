@@ -48,7 +48,7 @@ enum {
 };
 
 static const double kOutRate = 48000;
-static const int kChunkFrames = 480;  // 10 ms
+enum { kChunkFrames = 480 };  // 10 ms
 
 // ---------------------------------------------------------------------------
 // Processes

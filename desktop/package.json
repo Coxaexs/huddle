@@ -67,7 +67,7 @@
       ]
     },
     "dmg": {
-      "title": "Hoffle"
+      "title": "Hoffle${arch}"
     },
     "win": {
       "icon": "build/icon.ico",
