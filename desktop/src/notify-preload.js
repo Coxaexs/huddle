@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld("huddle", {
   /** What is running here: { activity: {name, kind}|null, music: {song, artist, albumArt}|null }. */
   scanActivity: () => ipcRenderer.invoke("activity:scan"),
   /**
-   * Windows: the screen share's audio, captured per app by the shell instead
-   * of the whole output device (so not the room's own voices).
+   * Windows and macOS: the screen share's audio, captured per app by the
+   * shell instead of the whole output device (so not the room's own voices).
    */
   appAudio: {
     /** Whether the share just started gets its audio from here. */

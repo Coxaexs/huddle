@@ -18,7 +18,7 @@ export type HeadTrackingSource = "airpods" | "webcam";
 export type SpatialOutput = "headphones" | "speakers";
 import { nativePlatform } from "../lib/native-voice";
 import { cancelScreenEcho, type ScreenEcho } from "../lib/screen-echo";
-import { desktopAppAudio } from "../lib/app-audio";
+import { desktopAppAudio, shellCapturesShareAudio } from "../lib/app-audio";
 import { startScreenPreviewCapture } from "../lib/stream-preview";
 import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
 import {
@@ -2546,7 +2546,9 @@ export function useVoice({
       try {
         const profile = screenConstraints(quality);
         let stream: MediaStream;
-        if (shouldShareAudio) {
+        // A shell that captures the audio per app itself gets asked for it
+        // below; the browser then only supplies the video.
+        if (shouldShareAudio && !(await shellCapturesShareAudio())) {
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
               video: {
@@ -2608,15 +2610,15 @@ export function useVoice({
             },
           });
         }
-        // The Windows desktop app captures the audio per app, which leaves the
-        // room's own voices out entirely (app-audio.ts). Anywhere else, take
+        // The desktop apps capture the audio per app, which leaves the room's
+        // own voices out entirely (app-audio.ts). Anywhere else, take
         // them back out of the browser's capture before it goes anywhere;
         // screen-echo.ts explains why the browser cannot do it alone.
         const rawAudio = stream.getAudioTracks()[0];
         const shared = rawAudio
           ? await cancelScreenEcho(rawAudio)
           : shouldShareAudio
-            ? await desktopAppAudio()
+            ? await desktopAppAudio(stream.getVideoTracks()[0])
             : null;
         if (shared) {
           screenAudioRef.current = shared;

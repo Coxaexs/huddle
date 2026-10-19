@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../../desktop/native/bin/hoffle-app-audio.exe": "hoffle-app-audio.exe"
+    }
+  }
+}

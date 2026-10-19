@@ -4,6 +4,7 @@ use tauri::{
     Emitter, Manager,
 };
 
+mod app_audio;
 mod head_tracking;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,7 +17,16 @@ pub fn run() {
             head_tracking::head_tracking_available,
             head_tracking::head_tracking_start,
             head_tracking::head_tracking_stop,
+            app_audio::app_audio_available,
+            app_audio::app_audio_start,
+            app_audio::app_audio_stop,
         ])
+        // A reload or new page drops the share, so the capture behind it goes too.
+        .on_page_load(|_webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                app_audio::stop();
+            }
+        })
         .setup(|app| {
             // System tray menu setup
             let quit_i = MenuItem::with_id(app, "quit", "Quit Huddle", true, None::<&str>)?;
@@ -101,6 +111,7 @@ pub fn run() {
             // Headphone motion keeps a sensor awake; never outlive the window that asked for it.
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
                 head_tracking::head_tracking_stop();
+                app_audio::stop();
             }
         })
         .run(tauri::generate_context!())

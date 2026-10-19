@@ -34,7 +34,8 @@ jobs:
           node-version: 22
       - run: npm install
       # dist:win compiles native/app-audio.cpp (per-app screen-share audio)
-      # with Zig before packaging.
+      # with Zig before packaging; dist:mac builds native/app-audio-mac.m with
+      # the runner's clang.
       - if: matrix.os == 'windows-latest'
         uses: mlugg/setup-zig@v1
         with:
@@ -83,6 +84,12 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri
       - run: npm install
+      # The per-app screen-share audio helper ships inside Lite too
+      # (tauri.windows.conf.json), built by Zig like the Electron one.
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+      - run: node ../desktop/native/build.js win
       - run: npx tauri build --bundles nsis
       - uses: actions/upload-artifact@v4
         with:

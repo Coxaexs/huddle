@@ -238,26 +238,28 @@ function supportsLoopbackAudio() {
   // Linux loopback goes through PulseAudio / pipewire-pulse's monitor source.
   if (process.platform === "win32" || process.platform === "linux") return true;
   // macOS: ScreenCaptureKit loopback (Electron 36+, macOS 13+) cuts all call
-  // audio in both directions while sharing, so screen shares go out silent
-  // there until that is fixed.
+  // audio in both directions while sharing, so it is never used. Share audio
+  // there comes from the per-app helper (macOS 14.2+), or there is none.
   return false;
 }
 
 /**
- * Windows: share audio per application rather than the whole output device.
- * The device loopback carries Hoffle's own playback, so the room would hear
- * itself, and Chromium's way of leaving that out fails behind audio routers
- * such as SteelSeries Sonar. native/app-audio.cpp captures the shared window's
- * app, or for a whole screen every app except Hoffle and the routers, and
+ * Windows and macOS: share audio per application rather than the whole output
+ * device. The device loopback carries Hoffle's own playback, so the room would
+ * hear itself, and Chromium's way of leaving that out fails behind audio
+ * routers such as SteelSeries Sonar. The helper (native/app-audio.cpp, and
+ * native/app-audio-mac.m with Core Audio process taps on macOS 14.2+) captures
+ * the shared window's app, or for a whole screen every app except Hoffle, and
  * streams it here; the page turns it into the share's audio track.
  */
 let appAudio = null;
 
 function appAudioHelper() {
-  if (process.platform !== "win32") return null;
+  const name = { win32: "hoffle-app-audio.exe", darwin: "hoffle-app-audio" }[process.platform];
+  if (!name) return null;
   const file = app.isPackaged
-    ? path.join(process.resourcesPath, "hoffle-app-audio.exe")
-    : path.join(__dirname, "../native/bin/hoffle-app-audio.exe");
+    ? path.join(process.resourcesPath, name)
+    : path.join(__dirname, "../native/bin", name);
   return fs.existsSync(file) ? file : null;
 }
 

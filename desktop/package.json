@@ -7,8 +7,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "node native/build.js && electron-builder --win",
+    "dist:mac": "node native/build.js mac && electron-builder --mac",
+    "dist:win": "node native/build.js win && electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "pack": "electron-builder --dir"
   },
@@ -56,8 +56,15 @@
       "extendInfo": {
         "NSCameraUsageDescription": "Hoffle uses your camera for video calls.",
         "NSMicrophoneUsageDescription": "Hoffle uses your microphone for voice chat.",
-        "NSScreenCaptureUsageDescription": "Hoffle needs screen recording to share your screen."
-      }
+        "NSScreenCaptureUsageDescription": "Hoffle needs screen recording to share your screen.",
+        "NSAudioCaptureUsageDescription": "Hoffle captures the audio of the apps you share, so it goes out with your screen share."
+      },
+      "extraResources": [
+        {
+          "from": "native/bin/hoffle-app-audio",
+          "to": "hoffle-app-audio"
+        }
+      ]
     },
     "dmg": {
       "title": "Hoffle"

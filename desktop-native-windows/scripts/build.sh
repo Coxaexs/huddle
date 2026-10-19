@@ -35,13 +35,19 @@ $CXX $CXXFLAGS $INCLUDES \
 echo "• Bundling WebView2Loader.dll..."
 cp "$DIR/vendor/webview2/build/native/x64/WebView2Loader.dll" "$BUILD_DIR/"
 
-# 4. Verify PE32+ executable
+# 4. The per-app screen-share audio helper, shared with the Electron app
+echo "• Building hoffle-app-audio.exe..."
+$ZIG c++ -target x86_64-windows-gnu -O2 -std=c++17 -municode \
+    "$ROOT_DIR/desktop/native/app-audio.cpp" -lole32 -lmmdevapi -luuid \
+    -o "$BUILD_DIR/hoffle-app-audio.exe"
+
+# 5. Verify PE32+ executable
 echo "• Verifying binary architecture:"
 file "$BUILD_DIR/Hoffle.exe"
 
-# 5. Create distribution ZIP package
+# 6. Create distribution ZIP package
 echo "• Packaging hoffle_native_windows.zip..."
-(cd "$BUILD_DIR" && zip -r -q "hoffle_native_windows.zip" "Hoffle.exe" "WebView2Loader.dll")
+(cd "$BUILD_DIR" && zip -r -q "hoffle_native_windows.zip" "Hoffle.exe" "WebView2Loader.dll" "hoffle-app-audio.exe")
 
 echo ""
 echo "=========================================================="
