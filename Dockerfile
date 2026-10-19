@@ -39,6 +39,9 @@ ENV HOST=0.0.0.0
 ENV PERSIST_DIR=/app/state
 # Headroom so wrangler dev (Miniflare) does not stall in GC under load
 ENV NODE_OPTIONS=--max-old-space-size=2048
+# Every V8 collection a full one, so workerd's memory levels off instead of
+# growing with every request (see scripts/workerd-config.sh)
+ENV MINIFLARE_WORKERD_V8_FLAGS=--gc-global
 
 # Persistent storage for SQLite (D1), uploads (R2) and generated secrets
 RUN mkdir -p /app/state
