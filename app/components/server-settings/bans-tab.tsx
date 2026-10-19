@@ -28,7 +28,7 @@ export function ServerBansTab({
           <div className="tab-pane bans-pane">
             <h1 className="pane-title">Server Ban List</h1>
             <p className="pane-subtitle">
-              Bans by default are by account and IP. A user can circumvent an IP ban by using a proxy. Ban circumvention can be made very hard by enabling phone verification in Moderation.
+              A ban applies to the account: it removes them from the server and stops that account rejoining. Someone could still come back with a new account, so a verification level in Safety Setup helps keep throwaway accounts out.
             </p>
 
             <div className="bans-search-row">

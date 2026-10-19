@@ -405,10 +405,15 @@ export function VoiceConnectionModal({
             </div>
           </div>
 
-          {/* Footer: End-to-end encrypted */}
-          <div className="connection-modal-footer">
+          {/* Footer: what the encryption covers. WebRTC encrypts the media
+              on the wire (DTLS-SRTP), but the LiveKit server decrypts it to
+              forward it, so this must not claim end-to-end. */}
+          <div
+            className="connection-modal-footer"
+            title="Voice and video are encrypted between your device and the Hoffle voice server, which can read them. They are not end-to-end encrypted."
+          >
             <ShieldCheck size={14} className="text-emerald-400" />
-            <span>End-to-end encrypted</span>
+            <span>Encrypted in transit</span>
           </div>
         </>
       ) : (
