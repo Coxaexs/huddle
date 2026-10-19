@@ -6,7 +6,7 @@ export const voice = {
   "voiceStage.startScreenShare": "Share Screen",
   "voiceStage.stopScreenShare": "Stop Sharing",
   "voiceStage.turnCameraOn": "Turn on Camera",
-  "voiceStage.turnCameraOff": "Turn off Camera",
+  "voiceStage.turnCameraOff": "Turn camera off",
   "voiceStage.disconnect": "Disconnect",
   "voiceStage.fullScreen": "Fullscreen",
   "voiceStage.exitFullScreen": "Exit Fullscreen",

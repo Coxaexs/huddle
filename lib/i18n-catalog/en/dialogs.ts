@@ -46,6 +46,6 @@ export const dialogs = {
   "dialog.save": "Save",
   "dialog.delete": "Delete",
   "dialog.leave": "Leave",
-  "dialog.close": "Close",
+  "dialog.close": "Close dialog",
   "dialog.ok": "OK",
 } as const;
