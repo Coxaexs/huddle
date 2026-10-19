@@ -68,6 +68,13 @@ port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); 
   cd "$ROOT"
   export CI=true WRANGLER_SEND_METRICS=false X_LOCAL_EXPLORER=false X_LOCAL_OBSERVABILITY=false
   export MINIFLARE_WORKERD_PATH="$tmp/workerd"
+  # V8 flags go into the config. --gc-global makes every collection a full
+  # one. Without it workerd's RSS climbs with every request (3.2 GB after 25k
+  # mixed requests in a test, still rising) until something restarts it: the
+  # garbage holds memory V8 does not count, so it rarely bothers with a full GC.
+  # With it the same test levels off at ~590 MB, for ~7% more CPU and a lower
+  # worst-case latency (no long GC pauses). Set it to "" to turn this off.
+  export MINIFLARE_WORKERD_V8_FLAGS="${MINIFLARE_WORKERD_V8_FLAGS---gc-global}"
   # Its own process group, so one kill stops wrangler and both workerds.
   exec setsid "$NODE" "$ROOT/node_modules/wrangler/bin/wrangler.js" dev \
     --config "$DIST/server/wrangler.json" \
