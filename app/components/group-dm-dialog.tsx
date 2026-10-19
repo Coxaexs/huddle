@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Search, Users, X } from "lucide-react";
 import { Avatar } from "./avatar";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "@/app/lib/i18n-context";
 import type { FriendUser } from "@/lib/friends";
 
 /** Most people a group DM can hold (matches GROUP_DM_LIMIT on the server). */
@@ -29,6 +30,7 @@ export function GroupDmDialog({
   onClose,
   onSubmit,
 }: GroupDmDialogProps) {
+  const { t } = useI18n();
   const adding = Boolean(existingMemberIds);
   const [friends, setFriends] = useState<FriendUser[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -113,19 +115,21 @@ export function GroupDmDialog({
             </div>
             <div>
               <h3 id="group-dm-dialog-title" className="forward-dialog-title">
-                {adding ? `Add friends to ${groupName || "the group"}` : "Create a group"}
+                {adding
+                  ? t("groupDmDialog.addTitleToGroup", { group: groupName || "the group" })
+                  : t("groupDmDialog.createGroupTitle")}
               </h3>
               <p className="forward-dialog-subtitle">
                 {seatsLeft > 0
-                  ? `You can add ${seatsLeft} more ${seatsLeft === 1 ? "friend" : "friends"}.`
-                  : "This group is full."}
+                  ? t("groupDmDialog.seatsLeft", { count: seatsLeft })
+                  : t("groupDmDialog.full")}
               </p>
             </div>
           </div>
           <button
             type="button"
             className="forward-dialog-close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={onClose}
           >
             <X size={18} />
@@ -136,7 +140,7 @@ export function GroupDmDialog({
           <div className="forward-comment-wrap">
             <input
               className="forward-comment-input"
-              placeholder="Group name (optional)"
+              placeholder={t("groupDmDialog.namePlaceholder")}
               maxLength={100}
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -149,7 +153,7 @@ export function GroupDmDialog({
           <input
             autoFocus
             className="forward-search-input"
-            placeholder="Type the username of a friend"
+            placeholder={t("groupDmDialog.placeholder")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -163,8 +167,8 @@ export function GroupDmDialog({
           ) : !shown.length ? (
             <div className="forward-dest-empty">
               {friends.length
-                ? "No friends match that."
-                : "Group DMs are made from your friends. Add some friends first."}
+                ? t("groupDmDialog.noMatch")
+                : t("groupDmDialog.noFriends")}
             </div>
           ) : (
             shown.map((friend) => {
@@ -189,7 +193,7 @@ export function GroupDmDialog({
                     <div className="flex flex-col text-left min-w-0 flex-1">
                       <span className="forward-dest-name truncate">{friend.displayName}</span>
                       <span className="forward-dest-sub truncate">
-                        {already ? "Already in the group" : `@${friend.username}`}
+                        {already ? t("groupDmDialog.alreadyInGroup") : `@${friend.username}`}
                       </span>
                     </div>
                   </div>
@@ -206,7 +210,7 @@ export function GroupDmDialog({
 
         <div className="forward-dialog-footer">
           <button type="button" className="forward-btn-cancel" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -215,7 +219,7 @@ export function GroupDmDialog({
             onClick={() => void submit()}
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-            {adding ? "Add" : picked.size === 1 ? "Create DM" : "Create Group DM"}
+            {adding ? t("groupDmDialog.add") : picked.size === 1 ? t("groupDmDialog.createDm") : t("groupDmDialog.createGroupDm")}
           </button>
         </div>
       </div>

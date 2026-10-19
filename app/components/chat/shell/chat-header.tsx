@@ -11,6 +11,7 @@ import { nextScreenQuality, screenQualityLabel } from "../../../hooks/use-voice"
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { Battlemap } from "@/lib/battlemap";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export function ChatHeader({
   setMobileNav,
@@ -107,6 +108,7 @@ export function ChatHeader({
   voiceChatOpen: boolean;
   setVoiceChatOpen: (open: boolean) => void;
 }) {
+  const { t } = useI18n();
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -130,7 +132,7 @@ export function ChatHeader({
     <header className="chat-header">
             <button
               className="mobile-menu"
-              aria-label="Open channels"
+              aria-label={t("header.openChannels")}
               onClick={() => setMobileNav((open) => !open)}
             >
               <Menu size={20} />
@@ -155,25 +157,25 @@ export function ChatHeader({
                   <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
                   <div className="voice-stage-stream-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--line)] text-xs text-[var(--ink)] font-semibold truncate">
                     <Monitor size={13} className="text-[var(--lavender)] flex-shrink-0" />
-                    <span className="truncate">{activeScreenShare.streamerName}'s Screen</span>
+                    <span className="truncate">{t("header.screenShare", { streamerName: activeScreenShare.streamerName })}</span>
                   </div>
                 </>
               )}
               <span className="text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
                 {stageChannel
-                  ? `· ${voiceParticipants.length === 1 ? "1 in call" : `${voiceParticipants.length} in call`}`
+                  ? `· ${t("header.inCall", { count: voiceParticipants.length })}`
                   : inDmHome
                     ? activeDm
                       ? isSelfDm
-                        ? "Your personal space for notes, drafts, and to-dos"
+                        ? t("header.dmNotes")
                         : activeDm.group
-                          ? `${activeDm.group.members.length} ${activeDm.group.members.length === 1 ? "member" : "members"}`
-                          : `Just you and ${activeDm.user.displayName}`
-                      : "Pick a conversation"
+                          ? t("header.dmGroupMembers", { count: activeDm.group.members.length })
+                          : t("header.dmJustYouAnd", { name: activeDm.user.displayName })
+                      : t("header.pickConversation")
                     : activeChannel?.topic ||
                     (activeChannel
-                      ? `Everything happening in ${activeChannel.name}`
-                      : "Create a channel to start talking")}
+                      ? t("header.channelDefaultTopic", { name: activeChannel.name })
+                      : t("header.createChannelHint"))}
               </span>
             </div>
             <div className="header-actions items-center">
@@ -185,7 +187,7 @@ export function ChatHeader({
                         <button
                           type="button"
                           className="voice-quality-btn text-[11px] font-bold text-[var(--ink)] hover:text-[var(--lavender)] transition-colors cursor-pointer"
-                          title="Click to cycle screen resolution & FPS"
+                          title={t("header.cycleQuality")}
                           onClick={() => {
                             const nextQ = nextScreenQuality(voice.screenQuality);
                             voice.setScreenQuality(nextQ);
@@ -194,7 +196,7 @@ export function ChatHeader({
                           {screenQualityLabel(voice.screenQuality)}
                         </button>
                         <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">
-                          LIVE
+                          {t("header.live")}
                         </span>
                       </div>
 
@@ -204,7 +206,7 @@ export function ChatHeader({
                           type="button"
                           className={`voice-stage-topbar-btn ${voice.screenAudioMuted ? "text-amber-400 bg-amber-500/10" : ""}`}
                           onClick={voice.toggleScreenAudio}
-                          title={voice.screenAudioMuted ? "Stream audio muted (click to unmute)" : "Mute stream audio"}
+                          title={voice.screenAudioMuted ? t("header.streamAudioMuted") : t("header.muteStreamAudio")}
                         >
                           {voice.screenAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
                         </button>
@@ -222,7 +224,7 @@ export function ChatHeader({
                                 type="button"
                                 className="hover:text-[var(--lavender)] transition-colors cursor-pointer p-0.5"
                                 onClick={() => toggleStreamMute(sId, pId)}
-                                title={pref.muted ? "Unmute stream audio" : `Stream audio: ${pref.volume}% (Click to mute)`}
+                                title={pref.muted ? t("header.unmuteStreamAudio") : t("header.streamAudioVolume", { volume: pref.volume })}
                               >
                                 {pref.muted || pref.volume === 0 ? (
                                   <VolumeX size={14} className="text-rose-400" />
@@ -240,7 +242,7 @@ export function ChatHeader({
                                 value={pref.muted ? 0 : pref.volume}
                                 onChange={(e) => setStreamVolume(sId, pId, Number(e.target.value))}
                                 className="w-16 accent-[var(--lavender)] h-1 cursor-pointer"
-                                title={`Stream volume: ${pref.muted ? "Muted" : `${pref.volume}%`}`}
+                                title={t("header.streamVolume", { volume: pref.muted ? 0 : pref.volume })}
                               />
                               <span className="text-[11px] font-mono text-[var(--ink)] w-7 text-right select-none">
                                 {pref.muted ? "0%" : `${pref.volume}%`}
@@ -257,7 +259,7 @@ export function ChatHeader({
                           setStageChannelId(null);
                           setPipDismissed(false);
                         }}
-                        title="Pop out to floating movable preview"
+                        title={t("header.popOutPreview")}
                       >
                         <ExternalLink size={15} />
                       </button>
@@ -279,7 +281,7 @@ export function ChatHeader({
                           }
                         }}
                       >
-                        {mode}
+                        {t(`header.view.${mode}` as const)}
                       </button>
                     ))}
                   </div>
@@ -289,8 +291,8 @@ export function ChatHeader({
                       type="button"
                       className={`voice-stage-topbar-btn ${voiceChatOpen ? "active" : ""}`}
                       onClick={() => setVoiceChatOpen(!voiceChatOpen)}
-                      title={voiceChatOpen ? "Hide chat" : "Show chat"}
-                      aria-label={voiceChatOpen ? "Hide chat" : "Show chat"}
+                      title={voiceChatOpen ? t("header.hideChat") : t("header.showChat")}
+                      aria-label={voiceChatOpen ? t("header.hideChat") : t("header.showChat")}
                       aria-pressed={voiceChatOpen}
                     >
                       <MessageCircle size={16} />
@@ -306,24 +308,24 @@ export function ChatHeader({
                     type="button"
                     className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
                     onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
-                    title={activeDm.pinned ? "Unpin group from top" : "Pin group to top"}
+                    title={activeDm.pinned ? t("header.unpinGroup") : t("header.pinGroup")}
                   >
                     <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
-                    <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
+                    <span>{activeDm.pinned ? t("header.pinned") : t("header.pin")}</span>
                   </button>
                   <button
                     type="button"
                     className="dm-call-btn flex items-center gap-1.5"
                     onClick={() => setGroupDialog({ mode: "add", channelId: activeDm.channelId })}
-                    title="Add friends to this group"
+                    title={t("header.addFriendsToGroup")}
                   >
-                    <UserPlus size={15} /> Add
+                    <UserPlus size={15} /> {t("header.add")}
                   </button>
                   <button
                     type="button"
                     className="dm-call-btn flex items-center gap-1.5"
                     onClick={() => renameGroupDm(activeDm)}
-                    title="Rename group"
+                    title={t("header.renameGroup")}
                   >
                     <Pencil size={15} />
                   </button>
@@ -331,7 +333,7 @@ export function ChatHeader({
                     type="button"
                     className="dm-call-btn flex items-center gap-1.5"
                     onClick={() => leaveGroupDm(activeDm)}
-                    title="Leave group"
+                    title={t("header.leaveGroup")}
                   >
                     <LogOut size={15} />
                   </button>
@@ -343,10 +345,10 @@ export function ChatHeader({
                     type="button"
                     className={`dm-call-btn flex items-center gap-1.5 ${activeDm.pinned ? "active" : ""}`}
                     onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
-                    title={activeDm.pinned ? "Unpin conversation from top" : "Pin conversation to top"}
+                    title={activeDm.pinned ? t("header.unpinConversation") : t("header.pinConversation")}
                   >
                     <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
-                    <span>{activeDm.pinned ? "Pinned" : "Pin"}</span>
+                    <span>{activeDm.pinned ? t("header.pinned") : t("header.pin")}</span>
                   </button>
                   {!isSelfDm && (
                     dmCall && dmCall.channelId === activeChannelId ? (
@@ -354,9 +356,9 @@ export function ChatHeader({
                         type="button"
                         className="dm-call-btn flex items-center gap-1.5"
                         onClick={() => setStageChannelId(activeChannelId)}
-                        title="Open Full Call View"
+                        title={t("header.openFullCallView")}
                       >
-                        <Maximize2 size={15} /> Call View
+                        <Maximize2 size={15} /> {t("header.callView")}
                       </button>
                     ) : voiceRooms[activeChannelId]?.length > 0 && voice.channelId !== activeChannelId ? (
                       <button
@@ -373,9 +375,9 @@ export function ChatHeader({
                             });
                           }
                         }}
-                        title="Join Ongoing Call"
+                        title={t("header.joinOngoingCall")}
                       >
-                        <PhoneCall size={15} /> Join Call
+                        <PhoneCall size={15} /> {t("header.joinCall")}
                       </button>
                     ) : (
                       <>
@@ -383,17 +385,17 @@ export function ChatHeader({
                           type="button"
                           className="dm-call-btn flex items-center gap-1.5"
                           onClick={() => startDmCall(false)}
-                          title="Start Voice Call"
+                          title={t("header.startVoiceCall")}
                         >
-                          <PhoneCall size={15} /> Start Call
+                          <PhoneCall size={15} /> {t("header.startCall")}
                         </button>
                         <button
                           type="button"
                           className="dm-call-btn flex items-center gap-1.5"
                           onClick={() => startDmCall(true)}
-                          title="Start Video Call"
+                          title={t("header.startVideoCall")}
                         >
-                          <Video size={15} /> Video Call
+                          <Video size={15} /> {t("header.videoCall")}
                         </button>
                       </>
                     )
@@ -403,7 +405,7 @@ export function ChatHeader({
               {!inDmHome && (
                 <span className="header-extra">
                   <Icon
-                    label="Find users"
+                    label={t("header.findUsers")}
                     onClick={() => setGlobalSearchOpen(true)}
                   >
                     <UserPlus size={18} />
@@ -412,7 +414,7 @@ export function ChatHeader({
               )}
               {!inDmHome && (
                 <Icon
-                  label="Search messages"
+                  label={t("header.searchMessages")}
                   active={searchOpen}
                   onClick={() => setSearchOpen((open) => !open)}
                 >
@@ -420,7 +422,7 @@ export function ChatHeader({
                 </Icon>
               )}
               <Icon
-                label="Mentions"
+                label={t("header.mentions")}
                 active={mentionsOpen}
                 badge={unreadMentionTotal}
                 onClick={() => setMentionsOpen((open) => !open)}
@@ -429,17 +431,17 @@ export function ChatHeader({
               </Icon>
               <span className="header-extra">
                 <Icon
-                  label="Pinned messages"
+                  label={t("header.pinnedMessages")}
                   active={pinsOpen}
                   onClick={() => setPinsOpen((open) => !open)}
                 >
                   <Pin size={18} />
                 </Icon>
-                <Icon label="Saved messages" active={savedOpen} onClick={toggleSaved}>
+                <Icon label={t("header.savedMessages")} active={savedOpen} onClick={toggleSaved}>
                   <Bookmark size={18} />
                 </Icon>
                 <Icon
-                  label="Achievements"
+                  label={t("header.achievements")}
                   onClick={() => openAchievements()}
                 >
                   <Award size={18} />
@@ -447,39 +449,39 @@ export function ChatHeader({
               </span>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (
-                <Icon label="Settings" onClick={() => setSettingsOpen(true)}>
+                <Icon label={t("common.settings")} onClick={() => setSettingsOpen(true)}>
                   <Settings size={18} />
                 </Icon>
               )}
               <Icon
-                label="Toggle member list"
+                label={t("header.toggleMemberList")}
                 active={membersOpen}
                 onClick={() => setMembersOpen((open) => !open)}
               >
                 <Users size={18} />
               </Icon>
               <div className="header-more" ref={moreRef}>
-                <Icon label="More" active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
+                <Icon label={t("header.more")} active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
                   <MoreHorizontal size={18} />
                 </Icon>
                 {moreOpen && (
                   <div className="header-more-menu" role="menu">
                     {!inDmHome && (
                       <button type="button" role="menuitem" onClick={pick(() => setGlobalSearchOpen(true))}>
-                        <UserPlus size={18} /> Find people
+                        <UserPlus size={18} /> {t("header.findPeople")}
                       </button>
                     )}
                     <button type="button" role="menuitem" onClick={pick(() => setPinsOpen((open) => !open))}>
-                      <Pin size={18} /> Pinned messages
+                      <Pin size={18} /> {t("header.pinnedMessages")}
                     </button>
                     <button type="button" role="menuitem" onClick={pick(toggleSaved)}>
-                      <Bookmark size={18} /> Saved messages
+                      <Bookmark size={18} /> {t("header.savedMessages")}
                     </button>
                     <button type="button" role="menuitem" onClick={pick(() => openAchievements())}>
-                      <Award size={18} /> Achievements
+                      <Award size={18} /> {t("header.achievements")}
                     </button>
                     <button type="button" role="menuitem" onClick={pick(() => setSettingsOpen(true))}>
-                      <Settings size={18} /> Settings
+                      <Settings size={18} /> {t("common.settings")}
                     </button>
                   </div>
                 )}

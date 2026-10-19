@@ -7,6 +7,7 @@ import type { LivingRoom } from "../../hooks/use-living-room";
 import { VoiceApi, VideoTile } from "./types";
 import type { QaQuestion } from "@/lib/qa";
 import type { CaptionLine } from "../../hooks/use-live-captions";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export function StageBottomBar({
   voice,
@@ -87,15 +88,16 @@ export function StageBottomBar({
   isFullscreen: boolean;
   windowFull: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="voice-stage-bottom-bar">
       <div className="voice-ctrls-centered">
         <button
           type="button"
           className={`vctrl-btn vctrl-wide-only ${voice.tableMode ? "active" : ""}`}
-          aria-label="Your table"
+          aria-label={t("voiceStage.table")}
           onClick={() => setTableMenuOpen(true)}
-          title="Your Table"
+          title={t("voiceStage.table")}
         >
           <SlidersHorizontal size={18} />
         </button>
@@ -114,10 +116,10 @@ export function StageBottomBar({
         <button
           type="button"
           className={`vctrl-btn ${voice.important ? "active" : ""}`}
-          aria-label="Speak important"
+          aria-label={t("voiceStage.speakImportant")}
           onClick={voice.toggleImportant}
           disabled={voice.muted || voice.deafened || voice.forcedMute}
-          title="Speak Important"
+          title={t("voiceStage.speakImportant")}
         >
           <Megaphone size={18} />
         </button>
@@ -129,7 +131,7 @@ export function StageBottomBar({
           className={`vctrl-btn ${voice.muted ? "danger" : ""}`}
           onClick={voice.toggleMute}
           disabled={voice.forcedMute}
-          title={voice.muted ? "Unmute" : "Mute"}
+          title={voice.muted ? t("voiceStage.unmute") : t("voiceStage.mute")}
         >
           {voice.muted ? <MicOff size={18} /> : <Mic size={18} />}
         </button>
@@ -137,7 +139,7 @@ export function StageBottomBar({
           type="button"
           className={`vctrl-btn ${voice.deafened ? "danger" : ""}`}
           onClick={voice.toggleDeafen}
-          title={voice.deafened ? "Undeafen" : "Deafen"}
+          title={voice.deafened ? t("voiceStage.undeafen") : t("voiceStage.deafen")}
         >
           {voice.deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
         </button>
@@ -151,10 +153,10 @@ export function StageBottomBar({
             disabled={videoLocked && !voice.cameraOn}
             title={
               voice.cameraOn
-                ? "Turn camera off"
+                ? t("voiceStage.turnCameraOff")
                 : videoLocked
-                  ? "Only people on stage can turn on a camera"
-                  : "Turn camera on"
+                  ? t("voiceStage.cameraStageOnly")
+                  : t("voiceStage.turnCameraOn")
             }
           >
             {voice.cameraOn ? <VideoOff size={18} /> : <Video size={18} />}
@@ -172,7 +174,7 @@ export function StageBottomBar({
               {/* Header */}
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel)]">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[var(--ink)]">Camera Effects</span>
+                  <span className="text-xs font-bold text-[var(--ink)]">{t("voiceStage.cameraEffects")}</span>
                 </div>
                 <button
                   type="button"
@@ -192,7 +194,7 @@ export function StageBottomBar({
                   onClick={() => setCameraTab("blur")}
                 >
                   <span>✨</span>
-                  <span>Bokeh Blur</span>
+                  <span>{t("voiceStage.bokehBlur")}</span>
                 </button>
                 <button
                   type="button"
@@ -200,7 +202,7 @@ export function StageBottomBar({
                   onClick={() => setCameraTab("images")}
                 >
                   <span>🖼️</span>
-                  <span>Backdrops</span>
+                  <span>{t("voiceStage.backdrops")}</span>
                 </button>
                 <button
                   type="button"
@@ -208,7 +210,7 @@ export function StageBottomBar({
                   onClick={() => setCameraTab("fx")}
                 >
                   <span>🎨</span>
-                  <span>FX</span>
+                  <span>{t("voiceStage.fx")}</span>
                 </button>
               </div>
 
@@ -313,7 +315,7 @@ export function StageBottomBar({
                         title="Upload custom image from your device"
                       >
                         <span className="text-lg">📁</span>
-                        <span className="text-[10px] font-semibold text-[var(--lavender)]">Upload Image</span>
+                        <span className="text-[10px] font-semibold text-[var(--lavender)]">{t("voiceStage.uploadImage")}</span>
                       </div>
 
                       {/* Custom User Uploaded Backgrounds */}
@@ -429,7 +431,7 @@ export function StageBottomBar({
                   disabled={voice.cameraBackground === "none"}
                   onClick={() => voice.setCameraBackground?.("none")}
                 >
-                  🚫 Turn Off Effects
+                  🚫 {t("voiceStage.turnOffEffects")}
                 </button>
                 <span className="text-[10px] text-[var(--muted)] font-mono">
                   Active: {voice.cameraBackground || "none"}
@@ -453,10 +455,10 @@ export function StageBottomBar({
             disabled={videoLocked && !voice.screenSharing}
             title={
               voice.screenSharing
-                ? "Stop sharing screen"
+                ? t("voiceStage.stopSharingScreen")
                 : videoLocked
-                  ? "Only people on stage can share their screen"
-                  : "Share screen"
+                  ? t("voiceStage.screenStageOnly")
+                  : t("voiceStage.startScreenShare")
             }
           >
             <Monitor size={18} />
@@ -468,7 +470,7 @@ export function StageBottomBar({
               type="button"
               className={`vctrl-btn ml-1 ${voice.screenAudioMuted ? "text-amber-400 bg-amber-500/10" : ""}`}
               onClick={voice.toggleScreenAudio}
-              title={voice.screenAudioMuted ? "Unmute stream audio" : "Mute stream audio"}
+              title={voice.screenAudioMuted ? t("voiceStage.unmuteStreamAudio") : t("voiceStage.muteStreamAudio")}
             >
               {voice.screenAudioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
@@ -499,7 +501,7 @@ export function StageBottomBar({
           type="button"
           className={`vctrl-btn vctrl-wide-only ${!focused ? "active" : ""}`}
           onClick={() => setFocusedKey(focused ? null : (videoTiles[0]?.key || null))}
-          title={focused ? "Show all participants in grid" : "Focus active stream"}
+          title={focused ? t("voiceStage.showGrid") : t("voiceStage.focusStream")}
         >
           <LayoutGrid size={18} />
         </button>
@@ -508,7 +510,7 @@ export function StageBottomBar({
           type="button"
           className={`vctrl-btn vctrl-wide-only ${activitiesOpen ? "active" : ""}`}
           onClick={() => setActivitiesOpen((open) => !open)}
-          title="Activities"
+          title={t("voiceStage.activities")}
         >
           <Sparkles size={18} />
         </button>
@@ -519,7 +521,7 @@ export function StageBottomBar({
             type="button"
             className={`vctrl-btn ${moreMenuOpen ? "active" : ""}`}
             onClick={() => setMoreMenuOpen((o) => !o)}
-            title="More call options"
+            title={t("voiceStage.moreOptions")}
           >
             <MoreHorizontal size={18} />
           </button>
@@ -535,7 +537,7 @@ export function StageBottomBar({
                 }}
               >
                 <SlidersHorizontal size={15} className="text-[var(--lavender)]" />
-                <span>Your table</span>
+                <span>{t("voiceStage.table")}</span>
               </button>
               {(voice.screenSharing || canShareScreen()) && (
                 <button
@@ -549,7 +551,7 @@ export function StageBottomBar({
                   }}
                 >
                   <Monitor size={15} className="text-[var(--lavender)]" />
-                  <span>{voice.screenSharing ? "Stop sharing screen" : "Share screen"}</span>
+                  <span>{voice.screenSharing ? t("voiceStage.stopSharingScreen") : t("voiceStage.startScreenShare")}</span>
                 </button>
               )}
               {videoTiles.length > 0 && (
@@ -562,7 +564,7 @@ export function StageBottomBar({
                   }}
                 >
                   <LayoutGrid size={15} className="text-[var(--lavender)]" />
-                  <span>{focused ? "Show everyone" : "Focus the stream"}</span>
+                  <span>{focused ? t("voiceStage.showEveryone") : t("voiceStage.focusTheStream")}</span>
                 </button>
               )}
               <button
@@ -574,7 +576,7 @@ export function StageBottomBar({
                 }}
               >
                 <Sparkles size={15} className="text-[var(--coral)]" />
-                <span>Activities</span>
+                <span>{t("voiceStage.activities")}</span>
               </button>
               {onPopout && (
                 <button
@@ -586,7 +588,7 @@ export function StageBottomBar({
                   }}
                 >
                   <ExternalLink size={15} className="text-[var(--lavender)]" />
-                  <span>Pop out</span>
+                  <span>{t("voiceStage.popout")}</span>
                 </button>
               )}
               <button
@@ -598,7 +600,7 @@ export function StageBottomBar({
                 }}
               >
                 {isFullscreen || windowFull ? <Minimize2 size={15} className="text-[var(--lavender)]" /> : <Maximize2 size={15} className="text-[var(--lavender)]" />}
-                <span>{isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}</span>
+                <span>{isFullscreen || windowFull ? t("voiceStage.exitFullScreen") : t("voiceStage.fullScreen")}</span>
               </button>
               <div className="vctrl-more-sep vctrl-phone-only" />
               {soundboardAllowed && (
@@ -611,7 +613,7 @@ export function StageBottomBar({
                   }}
                 >
                   <Volume2 size={15} className="text-[var(--lavender)]" />
-                  <span>{soundboardOpen ? "Close Soundboard" : "Soundboard"}</span>
+                  <span>{soundboardOpen ? t("voiceStage.closeSoundboard") : t("voiceStage.soundboard")}</span>
                 </button>
               )}
               {joined && !stageMode && (
@@ -624,7 +626,7 @@ export function StageBottomBar({
                   }}
                 >
                   <MessageCircleQuestionMark size={15} className="text-[var(--coral)]" />
-                  <span>Q&amp;A{qa.open ? ` (${qa.open})` : ""}</span>
+                  <span>{t("voiceStage.qa")}{qa.open ? ` (${qa.open})` : ""}</span>
                 </button>
               )}
               {captions && (
@@ -637,7 +639,7 @@ export function StageBottomBar({
                   }}
                 >
                   <Captions size={15} className="text-[var(--lavender)]" />
-                  <span>{captions.showing ? "Hide captions" : "Show captions"}</span>
+                  <span>{captions.showing ? t("voiceStage.hideCaptions") : t("voiceStage.showCaptions")}</span>
                 </button>
               )}
               {captions?.supported && (
@@ -655,7 +657,7 @@ export function StageBottomBar({
                   }}
                 >
                   <Captions size={15} className={captions.sharing ? "text-[var(--mint)]" : "text-[var(--muted)]"} />
-                  <span>{captions.sharing ? "Stop captioning my voice" : "Caption my voice"}</span>
+                  <span>{captions.sharing ? t("voiceStage.stopCaptioning") : t("voiceStage.captionMyVoice")}</span>
                 </button>
               )}
               <button
@@ -667,7 +669,7 @@ export function StageBottomBar({
                 }}
               >
                 <Volume1 size={15} className="text-[var(--mint)]" />
-                <span>Voice Table</span>
+                <span>{t("voiceStage.voiceTable")}</span>
               </button>
               {onToggleBattlemap && (
                 <button
@@ -681,7 +683,7 @@ export function StageBottomBar({
                   }}
                 >
                   <Map size={15} className="text-[var(--coral)]" />
-                  <span>Battlemap</span>
+                  <span>{t("voiceStage.battlemap")}</span>
                 </button>
               )}
             </div>
@@ -708,10 +710,10 @@ export function StageBottomBar({
           type="button"
           className="vctrl-btn danger active disconnect-pill-btn"
           onClick={() => (joined ? voice.leave() : onExit?.())}
-          title={joined ? "Disconnect" : "Close"}
+          title={joined ? t("voiceStage.disconnect") : t("voiceStage.close")}
         >
           <PhoneOff size={18} />
-          <span className="disconnect-label">{joined ? "Leave call" : "Close"}</span>
+          <span className="disconnect-label">{joined ? t("voiceStage.leaveCall") : t("voiceStage.close")}</span>
         </button>
 
         <div className="vctrl-divider" />
@@ -721,7 +723,7 @@ export function StageBottomBar({
             type="button"
             className="vctrl-btn vctrl-wide-only"
             onClick={onPopout}
-            title="Pop out into floating movable preview"
+            title={t("voiceStage.popout")}
           >
             <ExternalLink size={17} />
           </button>
@@ -731,7 +733,7 @@ export function StageBottomBar({
           type="button"
           className="vctrl-btn vctrl-wide-only"
           onClick={toggleFullscreen}
-          title={isFullscreen || windowFull ? "Exit fullscreen" : "Fullscreen"}
+          title={isFullscreen || windowFull ? t("voiceStage.exitFullScreen") : t("voiceStage.fullScreen")}
         >
           {isFullscreen || windowFull ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
         </button>

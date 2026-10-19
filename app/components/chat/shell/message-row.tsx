@@ -44,6 +44,7 @@ import { AiAnswerCard } from "../../ai-answer-card";
 import { ImageGallery } from "../../image-gallery";
 import { type Theme, importThemeCode } from "@/lib/themes";
 import { MessageContextMenu } from "./message-context-menu";
+import { useI18n } from "@/app/lib/i18n-context";
 import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { HeadTrackingSource, SpatialOutput, VideoPause, RemoteVoiceStream, VoiceLatencyStats, ScreenShareQuality, RelayStatus } from "../../../hooks/use-voice";
 import type { HeadTrackingStatus } from "../../../lib/head-tracking";
@@ -233,6 +234,7 @@ function MessageRowImpl({
   deleteMessage: (id: string | number) => Promise<void>;
   showCustomConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel?: () => void; }) => void;
 }): ReactNode {
+  const { t } = useI18n();
   const [ctxMenu, setCtxMenu] = useState<{
     x: number;
     y: number;
@@ -354,7 +356,7 @@ function MessageRowImpl({
                       <div key={message.id} className="blocked-message-notice">
                         <div className="flex items-center gap-2">
                           <ShieldAlert size={14} className="text-rose-400 shrink-0" />
-                          <span>1 Blocked message ({message.author})</span>
+                          <span>{t("message.blocked")} ({message.author})</span>
                         </div>
                         <button
                           type="button"
@@ -365,7 +367,7 @@ function MessageRowImpl({
                             );
                           }}
                         >
-                          Show message
+                          {t("message.showBlocked")}
                         </button>
                       </div>
                     );
@@ -376,8 +378,8 @@ function MessageRowImpl({
                       <div key={message.id} id={`msg-${message.id}`} className="nudge-line">
                         <span className="nudge-line-rule" aria-hidden="true" />
                         {message.userId === user.id
-                          ? "You have just sent a nudge."
-                          : `${stripTextStyle(author?.displayName || message.author)} has just sent you a nudge.`}
+                          ? t("msn.nudged")
+                          : t("msn.receivedNudge", { name: stripTextStyle(author?.displayName || message.author) })}
                         <span className="nudge-line-rule" aria-hidden="true" />
                       </div>
                     );
@@ -389,10 +391,10 @@ function MessageRowImpl({
                         <span className="nudge-line-rule" aria-hidden="true" />
                         <span className="wink-line-emoji" aria-hidden="true">{wink.emoji}</span>
                         {message.userId === user.id
-                          ? `You have just sent a wink: ${wink.name}.`
-                          : `${stripTextStyle(author?.displayName || message.author)} has just sent you a wink: ${wink.name}.`}
+                          ? t("msn.winkSent", { name: wink.name })
+                          : t("msn.winkReceived", { name: stripTextStyle(author?.displayName || message.author), wink: wink.name })}
                         <button type="button" className="wink-replay" onClick={() => playWink(wink.id)}>
-                          Play
+                          {t("msn.winkPlay")}
                         </button>
                         <span className="nudge-line-rule" aria-hidden="true" />
                       </div>
@@ -470,7 +472,7 @@ function MessageRowImpl({
                       {isBlockedUser && (
                         <div className="col-span-full flex items-center justify-between text-[11px] text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md mb-2">
                           <span className="flex items-center gap-1.5 font-bold">
-                            <ShieldAlert size={12} /> Message from blocked user
+                            <ShieldAlert size={12} /> {t("message.blocked")}
                           </span>
                           <button
                             type="button"
@@ -483,7 +485,7 @@ function MessageRowImpl({
                               });
                             }}
                           >
-                            Hide message
+                            {t("message.hideBlocked")}
                           </button>
                         </div>
                       )}
@@ -515,8 +517,8 @@ function MessageRowImpl({
                         {message.commandText && (
                           <div className="command-invocation">
                             <span className="reply-arrow">↩</span>
-                            <strong>{message.commandBy || "someone"}</strong>
-                            <span className="command-used">used</span>
+                            <strong>{message.commandBy || t("message.someone")}</strong>
+                            <span className="command-used">{t("message.commandUsed")}</span>
                             <code>{message.commandText}</code>
                           </div>
                         )}
@@ -560,7 +562,7 @@ function MessageRowImpl({
                             {message.payload?.tts && (
                               <span
                                 className={`tts-tag ${ttsSpeakingId === String(message.id) ? "speaking" : ""}`}
-                                title="Sent with /tts: read aloud to everyone in the channel"
+                                title={t("message.ttsNotice")}
                               >
                                 <Volume2 size={12} aria-hidden="true" /> TTS
                               </span>
@@ -575,11 +577,11 @@ function MessageRowImpl({
                                 title={`Edited ${formatClientDateTime(message.editedAt)} · show history`}
                                 onClick={() => setEditHistoryId(String(message.id))}
                               >
-                                (edited)
+                                {t("message.edited")}
                               </button>
                             )}
                             {message.pinned && (
-                              <span className="pin-tag flex items-center gap-1" title="Pinned">
+                              <span className="pin-tag flex items-center gap-1" title={t("message.pinned")}>
                                 <Pin size={12} />
                               </span>
                             )}
@@ -1005,7 +1007,7 @@ function MessageRowImpl({
                             })}
                           <button
                             type="button"
-                            title="Add reaction · Shift-click to add to quick reactions"
+                            title={t("message.addReaction")}
                             className={`add-reaction-action-btn ${reactionPicker?.messageId === message.id ? "active" : ""}`}
                             onClick={(e) => {
                               if (e.shiftKey) {
@@ -1022,7 +1024,7 @@ function MessageRowImpl({
                         </div>
                         <button
                           type="button"
-                          title="Reply"
+                          title={t("message.reply")}
                           onClick={() => {
                             setReplyTarget(message);
                             composerRef.current?.focus();
@@ -1037,7 +1039,7 @@ function MessageRowImpl({
                           <>
                             <button
                               type="button"
-                              title={savedIds.has(String(message.id)) ? "Remove from saved" : "Save for later"}
+                              title={savedIds.has(String(message.id)) ? t("message.removeBookmark") : t("message.bookmark")}
                               onClick={() => {
                                 void toggleSaved(String(message.id));
                                 setOpenActionsId(null);
@@ -1048,7 +1050,7 @@ function MessageRowImpl({
                             </button>
                             <button
                               type="button"
-                              title="Reply in thread"
+                              title={t("message.replyInThread")}
                               onClick={() => {
                                 void openThread(message);
                                 setOpenActionsId(null);
@@ -1059,7 +1061,7 @@ function MessageRowImpl({
                             </button>
                             <button
                               type="button"
-                              title="Forward"
+                              title={t("message.forward")}
                               onClick={() => {
                                 const chName = inDmHome
                                   ? activeDm?.user.displayName
@@ -1088,7 +1090,7 @@ function MessageRowImpl({
                             </button>
                             <button
                               type="button"
-                              title="Quick vote"
+                              title={t("message.quickVote")}
                               onClick={() => {
                                 setQuickVoteId((current) =>
                                   current === message.id ? null : message.id,
@@ -1102,7 +1104,7 @@ function MessageRowImpl({
                             {message.userId === user.id && !message.bot && (
                               <button
                                 type="button"
-                                title="Edit"
+                                title={t("message.edit")}
                                 onClick={() => {
                                   beginEdit(message);
                                   setOpenActionsId(null);
@@ -1115,7 +1117,7 @@ function MessageRowImpl({
                             {canPin && (
                               <button
                                 type="button"
-                                title={message.pinned ? "Unpin" : "Pin"}
+                                title={message.pinned ? t("message.unpinMessage") : t("message.pinMessage")}
                                 onClick={() => {
                                   void togglePin(message);
                                   setOpenActionsId(null);
@@ -1128,16 +1130,16 @@ function MessageRowImpl({
                             {!inDmHome && activeServer && message.userId !== user.id && !message.bot && (
                               <button
                                 type="button"
-                                title="Report message"
+                                title={t("message.report")}
                                 onClick={() => {
                                   setOpenActionsId(null);
                                   setMobileActionsMoreId(null);
                                   showCustomConfirm({
-                                    title: "Report Message",
+                                    title: t("menu.reportMessage"),
                                     message: "Report this message to the server moderators?",
                                     isDanger: true,
-                                    confirmText: "Report",
-                                    cancelText: "Cancel",
+                                    confirmText: t("menu.reportMessage"),
+                                    cancelText: t("common.cancel"),
                                     onConfirm: () => {
                                       void apiFetch("/api/reports", {
                                         method: "POST",
@@ -1182,7 +1184,7 @@ function MessageRowImpl({
                         {canDelete && (
                           <button
                             type="button"
-                            title="Delete (Hold Shift to skip confirmation)"
+                            title={t("message.delete")}
                             onClick={(event) => {
                               setOpenActionsId(null);
                               setMobileActionsMoreId(null);
@@ -1190,12 +1192,11 @@ function MessageRowImpl({
                                 void deleteMessage(message.id);
                               } else {
                                 showCustomConfirm({
-                                  title: "Delete Message",
-                                  message:
-                                    "Are you sure you want to delete this message? Pro tip: You can delete while pressing Shift to skip this confirmation.",
+                                  title: t("message.deleteConfirmTitle"),
+                                  message: t("message.deleteConfirmText"),
                                   isDanger: true,
-                                  confirmText: "Delete",
-                                  cancelText: "Cancel",
+                                  confirmText: t("common.delete"),
+                                  cancelText: t("common.cancel"),
                                   onConfirm: () => {
                                     void deleteMessage(message.id);
                                   },

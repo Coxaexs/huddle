@@ -165,23 +165,6 @@
   }
 }
 
-/* The sidebar heading text is now sentence case in markup; MSN keeps caps. */
-:root[data-custom-theme-id^="msn"] .channel-nav .section-label > span:first-child {
-  text-transform: uppercase;
-}
-
-/* MSN themes: pin the helper tokens to the exact literals these rules used
-   before they were tokenized, so MSN renders as it did. */
-:root[data-custom-theme-id^="msn"] {
-  --rail-bg: #0f0d18;
-  --surface-2: #252040;
-  --muted-2: #7a7296;
-  --faint: #5a5275;
-  --accent-strong: #7c5cbf;
-  --accent-hi: #c4b5fd;
-  --on-accent: #ffffff;
-}
-
 /* Layout: one calm canvas, one floating sheet ------------------------------
    Rail, sidebar and member list share the canvas colour with no dividers;
    the conversation sits on a raised, rounded sheet. Desktop only. */
@@ -705,123 +688,6 @@
   }
 }
 
-/* MSN: Messenger's own call pane — sky-blue glass, framed display pictures,
-   glossy XP buttons. */
-:root[data-custom-theme-id^="msn"] .dm-call-stage {
-  background: var(--msn-sky) !important;
-  border-bottom: 1px solid var(--msn-frame) !important;
-  font-family: var(--msn-font);
-  gap: 12px;
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-status {
-  color: var(--msn-title);
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0;
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person,
-:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
-  border-radius: 6px !important;
-}
-
-/* Display-picture frame. */
-:root[data-custom-theme-id^="msn"] .dm-call-person {
-  padding: 5px;
-  background: var(--msn-glass);
-  border: 1px solid var(--msn-edge);
-  box-shadow: 0 2px 6px rgba(15, 58, 130, 0.25);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
-  width: 88px !important;
-  height: 88px !important;
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking {
-  border-color: #3fa82f;
-  box-shadow: 0 0 0 2px #8fdc7c, 0 2px 6px rgba(15, 58, 130, 0.25);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking .avatar {
-  box-shadow: none;
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person-name {
-  position: static;
-  margin-top: 5px;
-  padding: 0;
-  background: none;
-  color: var(--msn-title);
-  font-size: 11px;
-  font-weight: 700;
-  opacity: 1;
-  transform: none;
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-person-badge {
-  right: -6px;
-  bottom: 18px;
-  border-radius: 3px;
-  box-shadow: none;
-  border: 1px solid #8f1d1d;
-  background: linear-gradient(180deg, #f07a6e, #c9302c);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-group {
-  border-radius: 4px;
-  padding: 2px;
-  background: var(--msn-glass);
-  border: 1px solid var(--msn-edge);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-ctrl {
-  width: 38px;
-  height: 32px;
-  border-radius: 3px;
-  color: var(--msn-title);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-ctrl:hover {
-  background: var(--msn-hover);
-  box-shadow: inset 0 0 0 1px var(--msn-edge);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-ctrl.on {
-  background: var(--msn-select);
-  color: var(--msn-title);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-ctrl.off {
-  color: #c9302c;
-}
-
-/* The classic red "End call" button, with its label. */
-:root[data-custom-theme-id^="msn"] .dm-call-hangup {
-  width: auto;
-  height: 32px;
-  padding: 0 14px 0 10px;
-  display: inline-flex;
-  gap: 6px;
-  border-radius: 3px;
-  border: 1px solid #8f1d1d;
-  background: linear-gradient(180deg, #f6a59c 0%, #e0574d 48%, #c9302c 52%, #d9453c 100%);
-  font-family: var(--msn-font);
-  font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-hangup::after {
-  content: "End call";
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-hangup svg {
-  width: 15px;
-  height: 15px;
-}
-
 .dm-call-join {
   height: 44px;
   padding: 0 22px;
@@ -843,17 +709,6 @@
 
 .dm-call-join:active {
   transform: scale(0.97);
-}
-
-:root[data-custom-theme-id^="msn"] .dm-call-join {
-  height: 32px;
-  border-radius: 3px;
-  border: 1px solid #2c7a1f;
-  background: linear-gradient(180deg, #a6e39a 0%, #5cbf4a 48%, #3fa82f 52%, #4fb83e 100%);
-  font-family: var(--msn-font);
-  font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 /* Member list legibility: offline people recede through their avatar, not by

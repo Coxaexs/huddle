@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Hash, Volume2, User, Server, X } from "lucide-react";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export interface QuickSwitcherTarget {
   type: "channel" | "dm" | "server";
@@ -31,6 +32,7 @@ export function QuickSwitcher({
   dms,
   onSelect,
 }: QuickSwitcherProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,14 +120,14 @@ export function QuickSwitcher({
             ref={inputRef}
             type="text"
             className="quick-switcher-input"
-            placeholder="Where would you like to go? (Type channel, DM, or server name)"
+            placeholder={t("quickSwitcher.placeholder")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
           />
-          <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="close-btn" onClick={onClose} aria-label={t("common.close")}>
             <X size={16} />
           </button>
         </div>
@@ -165,14 +167,14 @@ export function QuickSwitcher({
 
           {!items.length && (
             <div className="quick-switcher-empty">
-              No matching channels, DMs, or servers found.
+              {t("quickSwitcher.noResults")}
             </div>
           )}
         </div>
         <div className="quick-switcher-footer">
-          <span><kbd>↑</kbd> <kbd>↓</kbd> to navigate</span>
-          <span><kbd>↵</kbd> to select</span>
-          <span><kbd>ESC</kbd> to close</span>
+          <span><kbd>↑</kbd> <kbd>↓</kbd> {t("quickSwitcher.navigate")}</span>
+          <span><kbd>↵</kbd> {t("quickSwitcher.select")}</span>
+          <span><kbd>ESC</kbd> {t("quickSwitcher.close")}</span>
         </div>
       </div>
     </div>

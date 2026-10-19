@@ -2,11 +2,11 @@
 
 /** "Clear after" choices for a custom status, picked in the status menu. */
 export const STATUS_CLEAR_CHOICES = [
-  { id: "30m", label: "30 min" },
-  { id: "1h", label: "1 hour" },
-  { id: "4h", label: "4 hours" },
-  { id: "today", label: "Today" },
-  { id: "never", label: "Never" },
+  { id: "30m", labelKey: "status.clear.30m" },
+  { id: "1h", labelKey: "status.clear.1h" },
+  { id: "4h", labelKey: "status.clear.4h" },
+  { id: "today", labelKey: "status.clear.today" },
+  { id: "never", labelKey: "status.clear.never" },
 ] as const;
 export type StatusClearChoice = (typeof STATUS_CLEAR_CHOICES)[number]["id"];
 

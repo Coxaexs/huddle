@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "../lib/i18n-context";
 
 /**
  * Tells people when live updates have stopped. Without it, a dropped socket
@@ -10,6 +11,7 @@ import { useEffect, useState } from "react";
  * blips (a laptop lid, a wifi hop) do not flash a warning.
  */
 export function ConnectionBanner({ connected }: { connected: boolean }) {
+  const { t } = useI18n();
   const [online, setOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -40,8 +42,8 @@ export function ConnectionBanner({ connected }: { connected: boolean }) {
     <div className="connection-banner" role="status" aria-live="polite">
       <span className="connection-banner-dot" aria-hidden="true" />
       {online
-        ? "Reconnecting… new messages will appear once you're back."
-        : "You're offline. Huddle will reconnect when your network returns."}
+        ? t("shell.reconnecting")
+        : t("shell.offline")}
     </div>
   );
 }

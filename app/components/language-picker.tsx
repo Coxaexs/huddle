@@ -186,7 +186,10 @@ export function LanguagePicker({ className, label }: LanguagePickerProps) {
               onClick={() => choose(entry.code)}
             >
               {entry.code === locale && <Check size={14} aria-hidden="true" />}
-              <span className="language-picker-option-name">{entry.name}</span>
+              <span className="language-picker-option-name">
+                {entry.name}
+                {!entry.complete && <small className="language-picker-partial"> · {t("settings.language.partialTag")}</small>}
+              </span>
               {/* The tag is shown as a hint: someone hunting for "pt-BR" finds it
                   faster by code than by scanning endonyms for "Português". */}
               <span className="language-picker-option-code">{entry.code}</span>

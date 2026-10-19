@@ -90,6 +90,15 @@ export async function PUT(request: Request) {
   if (declared > BIG_UPLOAD_PART_BYTES) {
     return Response.json({ error: "That part is too large." }, { status: 413 });
   }
-  const bytes = await request.arrayBuffer();
-  return reply(await putBigUploadPart(ctx.db, ctx.bucket, ctx.user, key, part, bytes));
+  if (declared > 0) {
+    return reply(await putBigUploadPart(ctx.db, ctx.bucket, ctx.user, key, part, request.body, declared));
+  }
+  // A proxy that re-chunked the body leaves no length to stream with, so
+  // this part is read into memory first (at most one part, 32 MB).
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.byteLength > BIG_UPLOAD_PART_BYTES) {
+    return Response.json({ error: "That part is too large." }, { status: 413 });
+  }
+  const body = new Blob([bytes]).stream();
+  return reply(await putBigUploadPart(ctx.db, ctx.bucket, ctx.user, key, part, body, bytes.byteLength));
 }

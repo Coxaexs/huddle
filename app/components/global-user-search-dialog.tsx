@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Search, X, MessageSquare, UserPlus, Check, Clock, ShieldAlert, Loader2, Server } from "lucide-react";
 import { Avatar } from "./avatar";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "@/app/lib/i18n-context";
 import type { PublicServer } from "@/lib/servers";
 
 export interface SearchResultUser {
@@ -44,6 +45,7 @@ export function GlobalUserSearchDialog({
   onOpenDm,
   onSelectServer,
 }: GlobalUserSearchDialogProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -209,7 +211,7 @@ export function GlobalUserSearchDialog({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search users by name or @username..."
+            placeholder={t("searchDialog.placeholder")}
             className="flex-1 bg-transparent border-none text-[#e8e3f5] text-base placeholder-[#7c7599] focus:outline-none"
           />
           {loading ? (
@@ -218,7 +220,7 @@ export function GlobalUserSearchDialog({
             <button
               onClick={() => setQuery("")}
               className="text-[#9d95bc] hover:text-white p-1 rounded hover:bg-white/[0.05]"
-              title="Clear search"
+              title={t("searchDialog.clear")}
             >
               <X size={16} />
             </button>
@@ -236,7 +238,7 @@ export function GlobalUserSearchDialog({
               {servers.length > 0 && (
                 <div className="mb-1">
                   <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
-                    Your Servers
+                    {t("searchDialog.yourServers")}
                   </p>
                   {servers.map((s) => {
                     const initials =
@@ -279,14 +281,14 @@ export function GlobalUserSearchDialog({
                               </span>
                             </div>
                             <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
-                              {s.channels?.length || 0} channels
+                              {t("searchDialog.channelsCount", { count: s.channels?.length || 0 })}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
                             <Server size={12} />
-                            Server
+                            {t("searchDialog.server")}
                           </span>
                         </div>
                       </div>
@@ -295,9 +297,9 @@ export function GlobalUserSearchDialog({
                 </div>
               )}
               <div className="py-8 px-4 text-center text-[#9d95bc]">
-                <p className="text-sm font-medium">Type a name or @username to find any Hoffle user.</p>
+                <p className="text-sm font-medium">{t("searchDialog.emptyPrompt")}</p>
                 <p className="text-xs text-[#7c7599] mt-1">
-                  Direct message, send friend requests, or connect instantly.
+                  {t("searchDialog.emptyPromptSub")}
                 </p>
               </div>
             </>
@@ -307,7 +309,7 @@ export function GlobalUserSearchDialog({
               {matchedServers.length > 0 && (
                 <div className="mb-1">
                   <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
-                    Servers
+                    {t("searchDialog.servers")}
                   </p>
                   {matchedServers.map((s) => {
                     const initials =
@@ -350,14 +352,14 @@ export function GlobalUserSearchDialog({
                               </span>
                             </div>
                             <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
-                              {s.channels?.length || 0} channels
+                              {t("searchDialog.channelsCount", { count: s.channels?.length || 0 })}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
                             <Server size={12} />
-                            Server
+                            {t("searchDialog.server")}
                           </span>
                         </div>
                       </div>
@@ -370,7 +372,7 @@ export function GlobalUserSearchDialog({
               {results.length > 0 && (
                 <div className="mb-1">
                   <p className="px-2 pt-1 pb-1 text-[10px] uppercase font-bold tracking-wider text-[#7c7599]">
-                    People
+                    {t("searchDialog.people")}
                   </p>
                   {results.map((u) => {
                     const isOnline = onlineUserIds.has(u.id);
@@ -401,7 +403,7 @@ export function GlobalUserSearchDialog({
                               className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#1a1628] ${
                                 isOnline ? "bg-[#4ade80]" : "bg-neutral-500"
                               }`}
-                              title={isOnline ? "Online" : "Offline"}
+                              title={isOnline ? t("searchDialog.activeNow") : t("searchDialog.offline")}
                             />
                           </div>
 
@@ -415,7 +417,7 @@ export function GlobalUserSearchDialog({
                               </span>
                               {u.isSelf && (
                                 <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-white/[0.08] text-[var(--lavender)]">
-                                  You
+                                  {t("searchDialog.you")}
                                 </span>
                               )}
                             </div>
@@ -426,7 +428,7 @@ export function GlobalUserSearchDialog({
                               </p>
                             ) : (
                               <p className="text-[11px] text-[#7c7599] truncate mt-0.5">
-                                {isOnline ? "Active now" : "Offline"}
+                                {isOnline ? t("searchDialog.activeNow") : t("searchDialog.offline")}
                               </p>
                             )}
                           </div>
@@ -442,7 +444,7 @@ export function GlobalUserSearchDialog({
                               <button
                                 onClick={() => handleSelectUser(u)}
                                 className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[#e8e3f5] transition-colors"
-                                title="Open Direct Message"
+                                title={t("searchDialog.openDm")}
                               >
                                 <MessageSquare size={16} />
                               </button>
@@ -452,17 +454,17 @@ export function GlobalUserSearchDialog({
                                   onClick={() => handleSendFriendRequest(u)}
                                   disabled={isBusy}
                                   className="px-3 py-1.5 rounded-lg bg-[var(--lavender)]/20 hover:bg-[var(--lavender)]/30 text-[var(--accent-hi)] text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                                  title="Add Friend"
+                                  title={t("searchDialog.addFriend")}
                                 >
                                   <UserPlus size={14} />
-                                  <span>Add</span>
+                                  <span>{t("searchDialog.add")}</span>
                                 </button>
                               )}
 
                               {u.relationship === "outgoing" && (
                                 <span className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-[#9d95bc] text-xs font-semibold flex items-center gap-1">
                                   <Clock size={12} />
-                                  Sent
+                                  {t("searchDialog.sent")}
                                 </span>
                               )}
 
@@ -471,17 +473,17 @@ export function GlobalUserSearchDialog({
                                   onClick={() => handleAcceptRequest(u)}
                                   disabled={isBusy}
                                   className="px-3 py-1.5 rounded-lg bg-[#4ade80]/20 hover:bg-[#4ade80]/30 text-[#4ade80] text-xs font-bold transition-colors flex items-center gap-1 disabled:opacity-50"
-                                  title="Accept Friend Request"
+                                  title={t("searchDialog.acceptRequest")}
                                 >
                                   <Check size={14} />
-                                  <span>Accept</span>
+                                  <span>{t("searchDialog.accept")}</span>
                                 </button>
                               )}
 
                               {u.relationship === "friend" && (
                                 <span className="px-2.5 py-1.5 rounded-lg bg-[#4ade80]/15 text-[#4ade80] text-xs font-semibold flex items-center gap-1">
                                   <Check size={12} />
-                                  Friend
+                                  {t("searchDialog.friend")}
                                 </span>
                               )}
 
@@ -489,7 +491,7 @@ export function GlobalUserSearchDialog({
                                 <div className="flex items-center gap-1.5">
                                   <span className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-semibold flex items-center gap-1">
                                     <ShieldAlert size={12} />
-                                    Blocked
+                                    {t("searchDialog.blocked")}
                                   </span>
                                   <button
                                     type="button"
@@ -500,7 +502,7 @@ export function GlobalUserSearchDialog({
                                     disabled={isBusy}
                                     className="px-2.5 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-xs font-semibold text-white/80 transition-colors"
                                   >
-                                    Unblock
+                                    {t("searchDialog.unblock")}
                                   </button>
                                 </div>
                               ) : (
@@ -513,7 +515,7 @@ export function GlobalUserSearchDialog({
                                     }}
                                     disabled={isBusy}
                                     className="p-1.5 rounded-lg text-white/30 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                    title="Block User"
+                                    title={t("searchDialog.blockUser")}
                                   >
                                     <ShieldAlert size={14} />
                                   </button>
@@ -530,9 +532,9 @@ export function GlobalUserSearchDialog({
 
               {matchedServers.length === 0 && results.length === 0 && !loading && (
                 <div className="py-12 px-4 text-center text-[#9d95bc]">
-                  <p className="text-sm font-semibold">No results found</p>
+                  <p className="text-sm font-semibold">{t("searchDialog.noResultsFound")}</p>
                   <p className="text-xs text-[#7c7599] mt-1">
-                    We couldn&apos;t find anyone matching &ldquo;{query}&rdquo;.
+                    {t("searchDialog.noResultsMatching", { query })}
                   </p>
                 </div>
               )}
@@ -542,8 +544,8 @@ export function GlobalUserSearchDialog({
 
         {/* Footer info */}
         <div className="px-4 py-2.5 bg-[#16131f]/80 border-t border-white/[0.08] flex items-center justify-between text-xs text-[#7c7599]">
-          <span>Jump to a server, or find a user you know</span>
-          <span>Press ESC to exit</span>
+          <span>{t("searchDialog.footerHint")}</span>
+          <span>{t("searchDialog.escToExit")}</span>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { Volume2, Monitor, ExternalLink } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { nextScreenQuality, screenQualityLabel } from "../../hooks/use-voice";
 import { VoiceApi, VideoTile } from "./types";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export function StageTopbar({
   hideTopbar,
@@ -30,6 +31,7 @@ export function StageTopbar({
   onToggleBattlemap: (() => void) | undefined;
   battlemapOpen: boolean | undefined;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {!hideTopbar && (
@@ -43,11 +45,11 @@ export function StageTopbar({
                   <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
                   <div className="voice-stage-stream-badge flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--line)] text-xs text-[var(--ink)] font-semibold truncate">
                     <Monitor size={13} className="text-[var(--lavender)] flex-shrink-0" />
-                    <span className="truncate">{streamerName}'s Screen</span>
+                    <span className="truncate">{t("voiceStage.screenShare", { name: streamerName })}</span>
                   </div>
                 </>
               )}
-              <span className="voice-stage-sub text-xs text-[var(--muted)] flex-shrink-0">· {participants.length} in call</span>
+              <span className="voice-stage-sub text-xs text-[var(--muted)] flex-shrink-0">{t("voiceStage.inCall", { count: participants.length })}</span>
             </div>
           </div>
 
@@ -57,7 +59,7 @@ export function StageTopbar({
                 <button
                   type="button"
                   className="voice-quality-btn text-[11px] font-bold text-[var(--ink)] hover:text-[var(--lavender)] transition-colors cursor-pointer"
-                  title="Click to cycle screen resolution & FPS"
+                  title={t("voiceStage.cycleQuality")}
                   onClick={() => {
                     const nextQ = nextScreenQuality(voice.screenQuality);
                     voice.setScreenQuality(nextQ);
@@ -66,7 +68,7 @@ export function StageTopbar({
                   {screenQualityLabel(voice.screenQuality)}
                 </button>
                 <span className="voice-live-badge-red text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ed4245] text-white">
-                  LIVE
+                  {t("voiceStage.live")}
                 </span>
               </div>
             )}
@@ -76,7 +78,7 @@ export function StageTopbar({
                 type="button"
                 className="voice-stage-topbar-btn"
                 onClick={onPopout}
-                title="Pop out to floating movable preview"
+                title={t("voiceStage.popout")}
               >
                 <ExternalLink size={15} />
               </button>

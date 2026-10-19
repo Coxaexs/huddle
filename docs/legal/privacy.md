@@ -52,7 +52,7 @@ Go to **Settings → Account & Password → Delete account**. That removes your 
 
 ## Your rights
 
-Depending on where you live (for example under the GDPR in the EU), you can ask to see, correct, export or delete your data, object to or limit how we use it, and complain to your data protection authority (in the Netherlands, the Autoriteit Persoonsgegevens). Email [info@hoffle.online](mailto:info@hoffle.online) and we'll answer within 30 days. We process data to provide the service you asked for (the contract), for our legitimate interest in keeping Hoffle secure, and with your consent for optional things like notifications.
+Depending on where you live (for example under the GDPR in the EU), you can ask to see, correct, export or delete your data, object to or limit how we use it, and complain to your data protection authority (in the Netherlands, the Autoriteit Persoonsgegevens). To get a copy of your data yourself, go to **Settings → Account & Password → Your data → Download my data**. For anything else, email [info@hoffle.online](mailto:info@hoffle.online) and we'll answer within 30 days. We process data to provide the service you asked for (the contract), for our legitimate interest in keeping Hoffle secure, and with your consent for optional things like notifications.
 
 ## Children
 

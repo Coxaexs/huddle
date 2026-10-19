@@ -1,6 +1,7 @@
 "use client";
 
 import { Tab } from "./types";
+import { useI18n } from "../../lib/i18n-context";
 
 export type NameMotion = "hover" | "always" | "still";
 
@@ -40,6 +41,7 @@ export function AccessibilityTab({
   nameMotion?: NameMotion;
   setNameMotion?: (value: NameMotion) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {tab === "accessibility" && (
@@ -118,10 +120,10 @@ export function AccessibilityTab({
 
                 <div>
                   <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
-                    <span>Text size in chat</span>
+                    <span>{t("accessibilitySettings.fontSize")}</span>
                     <span className="font-bold text-indigo-400" data-testid="chat-font-size-value">{chatFontSize}px</span>
                   </div>
-                  <p className="text-xs text-gray-400 mb-3">Adjust the size of the chat font.</p>
+                  <p className="text-xs text-gray-400 mb-3">{t("accessibilitySettings.fontSizeDesc")}</p>
 
                   {/* Labeled tick slider matching Discord Screenshot 5 */}
                   <div className="relative pt-1 pb-4">
@@ -154,13 +156,13 @@ export function AccessibilityTab({
 
                 <div className="flex items-center justify-between py-3 border-t border-white/10">
                   <div>
-                    <div className="text-sm font-semibold text-white">Always underline links</div>
-                    <div className="text-xs text-gray-400">Make links stand out more across messages.</div>
+                    <div className="text-sm font-semibold text-white">{t("accessibilitySettings.underlineLinks")}</div>
+                    <div className="text-xs text-gray-400">{t("accessibilitySettings.underlineLinksDesc")}</div>
                   </div>
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      aria-label="Always underline links"
+                      aria-label={t("accessibilitySettings.underlineLinks")}
                       checked={alwaysUnderlineLinks}
                       onChange={(e) => setAlwaysUnderlineLinks(e.target.checked)}
                     />
@@ -170,13 +172,13 @@ export function AccessibilityTab({
 
                 <div className="flex items-center justify-between py-3 border-t border-white/10">
                   <div>
-                    <div className="text-sm font-semibold text-white">Display Name Styles</div>
-                    <div className="text-xs text-gray-400">Enable display name styles — including font, effect, and color — across Huddle.</div>
+                    <div className="text-sm font-semibold text-white">{t("accessibilitySettings.displayNameStyles")}</div>
+                    <div className="text-xs text-gray-400">{t("accessibilitySettings.displayNameStylesDesc")}</div>
                   </div>
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      aria-label="Display Name Styles"
+                      aria-label={t("accessibilitySettings.displayNameStyles")}
                       checked={displayNameStyles}
                       onChange={(e) => setDisplayNameStyles(e.target.checked)}
                     />
@@ -187,10 +189,10 @@ export function AccessibilityTab({
                 {setNameMotion && (
                   <div className="flex items-center justify-between gap-4 py-3 border-t border-white/10">
                     <div>
-                      <div className="text-sm font-semibold text-white">Animate name effects</div>
-                      <div className="text-xs text-gray-400">When styled names move in chat and the member list. Cards and voice tiles always animate.</div>
+                      <div className="text-sm font-semibold text-white">{t("accessibilitySettings.animateNameEffects")}</div>
+                      <div className="text-xs text-gray-400">{t("accessibilitySettings.animateNameEffectsDesc")}</div>
                     </div>
-                    <div className="flex shrink-0 rounded-lg bg-white/5 p-1" role="radiogroup" aria-label="Animate name effects">
+                    <div className="flex shrink-0 rounded-lg bg-white/5 p-1" role="radiogroup" aria-label={t("accessibilitySettings.animateNameEffects")}>
                       {NAME_MOTION_OPTIONS.map((option) => (
                         <button
                           key={option.id}
@@ -209,13 +211,13 @@ export function AccessibilityTab({
 
                 <div className="flex items-center justify-between py-3 border-t border-white/10">
                   <div>
-                    <div className="text-sm font-semibold text-white">Interface motion</div>
-                    <div className="text-xs text-gray-400">Smooth scrolling and interface micro-animations.</div>
+                    <div className="text-sm font-semibold text-white">{t("accessibilitySettings.interfaceMotion")}</div>
+                    <div className="text-xs text-gray-400">{t("accessibilitySettings.interfaceMotionDesc")}</div>
                   </div>
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      aria-label="Interface motion"
+                      aria-label={t("accessibilitySettings.interfaceMotion")}
                       checked={motion}
                       onChange={(e) => setMotion(e.target.checked)}
                     />

@@ -1,9 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Mail } from "lucide-react";
+import { KeyRound, Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { tNow, tRich, useI18n } from "../lib/i18n-context";
+import type { TranslatableKey, TranslateVars } from "@/lib/i18n";
 import { extractInviteCodeFromUrl } from "../lib/chat/invites";
+import {
+  passkeyCancelled,
+  passkeySecondFactor,
+  passkeysNeedBrowser,
+  passkeysSupported,
+  signInWithPasskey,
+  signInWithPasskeyInBrowser,
+  type PasskeyHandoff,
+} from "../lib/passkeys";
 import type { PublicUser } from "@/lib/users";
 import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
 import { SITE } from "./site-chrome";
@@ -51,6 +62,7 @@ function loadTurnstile(): Promise<TurnstileApi | null> {
 }
 
 export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = null, onSignedIn }: AuthGateProps) {
+  const { t } = useI18n();
   const open = openSignup && !bootstrap;
   const [mode, setMode] = useState<"signin" | "signup" | "forgot" | "reset">(
     bootstrap || open ? "signup" : "signin",
@@ -66,13 +78,25 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   const [resetToken, setResetToken] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [notice, setNotice] = useState("");
+  // A notice set before the language is known (on mount) is kept as a key and
+  // translated when shown.
+  const [notice, setNotice] = useState<string | { key: TranslatableKey; vars?: TranslateVars }>("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Set once the password was right on an account with two-factor on.
+  const [twoFactor, setTwoFactor] = useState<{ ticket: string; passkey: boolean } | null>(null);
+  const [code, setCode] = useState("");
+  // Read after mounting: the server render cannot know what the browser can do.
+  const [canPasskey, setCanPasskey] = useState(false);
+  useEffect(() => setCanPasskey(passkeysSupported()), []);
+  // A desktop app's passkey sign-in, waiting on the system browser.
+  const [handoff, setHandoff] = useState<PasskeyHandoff | null>(null);
+  const handoffStop = useRef<AbortController | null>(null);
+  useEffect(() => () => handoffStop.current?.abort(), []);
 
   // A password reset mail links back here with ?reset=<token>.
   // An invite link directs here with ?invite=<code>, ?code=<code>, or ?<code>.
@@ -93,7 +117,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         setInvite(inviteCode);
         setHaveInvite(true);
         setMode("signup");
-        setNotice(`Invite code applied: ${inviteCode}`);
+        setNotice({ key: "gate.inviteApplied", vars: { code: inviteCode } });
 
         void apiFetch<{
           valid: boolean;
@@ -103,16 +127,12 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         }>(`/api/invites/resolve?code=${encodeURIComponent(inviteCode)}`)
           .then((res) => {
             if (!res.valid) {
-              setError(res.error || "This invite code is invalid or has expired.");
+              setError(res.error || tNow("gate.inviteInvalid"));
               setNotice("");
             } else if (res.server) {
-              setNotice(
-                `This invite is for server "${res.server.name}". Account invites are required to register, but you can sign in if you already have an account.`,
-              );
+              setNotice({ key: "gate.inviteForServer", vars: { server: res.server.name } });
             } else if (res.inviter?.displayName) {
-              setNotice(
-                `${res.inviter.displayName} invited you! Choose your username to join.`,
-              );
+              setNotice({ key: "gate.invitedBy", vars: { name: res.inviter.displayName } });
             }
           })
           .catch(() => undefined);
@@ -177,17 +197,19 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           method: "POST",
           body: JSON.stringify({ identifier: username }),
         });
-        setNotice(
-          "If that account has an email, a reset link is on its way. It works for one hour.",
-        );
+        setNotice({ key: "gate.resetSent" });
         return;
       }
       if (mode === "reset") {
-        const data = await apiFetch<{ user: PublicUser }>("/api/auth/reset", {
-          method: "POST",
-          body: JSON.stringify({ token: resetToken, password }),
-        });
-        onSignedIn(data.user);
+        const data = await apiFetch<{ user?: PublicUser; twoFactor?: { ticket: string; passkey: boolean } }>(
+          "/api/auth/reset",
+          { method: "POST", body: JSON.stringify({ token: resetToken, password }) },
+        );
+        if (data.twoFactor) {
+          setTwoFactor(data.twoFactor);
+          return;
+        }
+        if (data.user) onSignedIn(data.user);
         return;
       }
       const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
@@ -204,12 +226,19 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             }
           : { username, password };
       const data = await apiFetch<{
-        user: PublicUser;
+        user?: PublicUser;
         defaultTheme?: string | null;
+        twoFactor?: { ticket: string; passkey: boolean };
       }>(path, {
         method: "POST",
         body: JSON.stringify(body),
       });
+      if (data.twoFactor) {
+        setTwoFactor(data.twoFactor);
+        setCode("");
+        return;
+      }
+      if (!data.user) throw new Error(t("gate.failed"));
       if (mode === "signup") {
         rememberTermsAccepted();
         // A brand-new account gets the welcome tutorial once it is in.
@@ -235,7 +264,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
       onSignedIn(data.user, data.defaultTheme || null);
     } catch (failure) {
       setError(
-        failure instanceof Error ? failure.message : "That did not work.",
+        failure instanceof Error ? failure.message : t("gate.failed"),
       );
       // A challenge token works once; ask for a new one.
       if (needsChallenge) {
@@ -251,47 +280,169 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
     }
   }
 
+  async function submitCode(event: FormEvent) {
+    event.preventDefault();
+    if (!twoFactor) return;
+    setError("");
+    setBusy(true);
+    try {
+      const data = await apiFetch<{ user: PublicUser }>("/api/auth/two-factor", {
+        method: "POST",
+        body: JSON.stringify({ ticket: twoFactor.ticket, code }),
+      });
+      onSignedIn(data.user);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : t("gate.failed"));
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function passkeySignIn(ticket?: string) {
+    setError("");
+    if (passkeysNeedBrowser()) return passkeySignInInBrowser();
+    setBusy(true);
+    try {
+      const data = ticket ? await passkeySecondFactor(ticket) : await signInWithPasskey();
+      onSignedIn(data.user);
+    } catch (failure) {
+      if (!passkeyCancelled(failure)) {
+        setError(failure instanceof Error ? failure.message : t("gate.passkeyFailed"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // A passkey signs in on its own, so from the two-step screen too this skips
+  // the ticket and the password before it.
+  async function passkeySignInInBrowser() {
+    handoffStop.current?.abort();
+    const stop = new AbortController();
+    handoffStop.current = stop;
+    setBusy(true);
+    try {
+      const started = await signInWithPasskeyInBrowser(stop.signal);
+      setHandoff(started);
+      const data = await started.done;
+      onSignedIn(data.user);
+    } catch (failure) {
+      if (!stop.signal.aborted) setError(failure instanceof Error ? failure.message : t("gate.passkeyFailed"));
+    } finally {
+      if (handoffStop.current === stop) {
+        handoffStop.current = null;
+        setHandoff(null);
+        setBusy(false);
+      }
+    }
+  }
+
+  if (handoff) {
+    return (
+      <div className="username-gate" role="dialog" aria-modal="true">
+        <div className="username-card">
+          <span className="username-mark">h</span>
+          <p className="eyebrow">{t("gate.eyebrow.back")}</p>
+          <h2>{t("gate.title.passkeyBrowser")}</h2>
+          <p>{t("gate.lead.passkeyBrowser")}</p>
+          <p className="auth-handoff-code" aria-label={t("gate.handoffCode")}>{handoff.code}</p>
+          <button type="button" onClick={handoff.reopen}>
+            {t("gate.button.openBrowserAgain")}
+          </button>
+          <button type="button" className="auth-switch" onClick={() => handoffStop.current?.abort()}>
+            {t("gate.link.back")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (twoFactor) {
+    const recovery = /[a-z]/i.test(code);
+    return (
+      <div className="username-gate" role="dialog" aria-modal="true">
+        <form className="username-card" onSubmit={submitCode}>
+          <span className="username-mark">h</span>
+          <p className="eyebrow">{t("gate.eyebrow.twoStep")}</p>
+          <h2>{t("gate.title.code")}</h2>
+          <p>{t("gate.lead.code")}</p>
+          <label htmlFor="huddle-2fa-code">{t("gate.label.code")}</label>
+          <input
+            id="huddle-2fa-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value.slice(0, 12))}
+            autoFocus
+            autoComplete="one-time-code"
+            inputMode={recovery ? "text" : "numeric"}
+            placeholder="123456"
+          />
+          {error && <p className="auth-error">{error}</p>}
+          <button type="submit" disabled={busy || code.replace(/[\s-]/g, "").length < 6}>
+            {busy ? t("gate.busy") : t("gate.button.continue")}
+          </button>
+          {twoFactor.passkey && canPasskey && (
+            <button type="button" className="auth-switch" disabled={busy} onClick={() => void passkeySignIn(twoFactor.ticket)}>
+              <KeyRound size={14} aria-hidden /> {t("gate.button.passkeyInstead")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="auth-switch"
+            onClick={() => {
+              setTwoFactor(null);
+              setError("");
+              switchMode("signin");
+            }}
+          >
+            {t("gate.link.back")}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="username-gate" role="dialog" aria-modal="true">
       <form className="username-card" onSubmit={submit}>
         <span className="username-mark">h</span>
         <p className="eyebrow">
-          {bootstrap ? "SET UP YOUR HOFFLE" : mode === "signup" ? "WELCOME TO HOFFLE" : "WELCOME BACK"}
+          {bootstrap ? t("gate.eyebrow.setup") : mode === "signup" ? t("gate.eyebrow.welcome") : t("gate.eyebrow.back")}
         </p>
         <h2>
           {mode === "forgot"
-            ? "Forgot your password?"
+            ? t("gate.title.forgot")
             : mode === "reset"
-              ? "Choose a new password"
+              ? t("gate.title.reset")
               : mode === "signup"
             ? bootstrap
-              ? "Claim this Hoffle"
+              ? t("gate.title.claim")
               : open && !haveInvite
-                ? "Create your account"
-                : "Join with an invite"
-            : "Sign in"}
+                ? t("gate.title.create")
+                : t("gate.title.invite")
+            : t("gate.title.signIn")}
         </h2>
         <p>
           {mode === "forgot"
-            ? "Enter your username or email and we'll mail you a reset link."
+            ? t("gate.lead.forgot")
             : mode === "reset"
-              ? "This signs you out everywhere else."
+              ? t("gate.lead.reset")
               : mode === "signup"
             ? bootstrap
-              ? "The first account owns this Hoffle and can invite everyone else."
+              ? t("gate.lead.claim")
               : open && !haveInvite
-                ? "Pick a name and a password. No invite needed."
-                : "Ask a friend already inside for an invite code."
-            : "Your name and messages stay on your own server."}
+                ? t("gate.lead.create")
+                : t("gate.lead.invite")
+            : t("gate.lead.signIn")}
         </p>
 
         {open && (mode === "signin" || mode === "signup") && (
-          <div className="auth-tabs" role="tablist" aria-label="How to get in">
+          <div className="auth-tabs" role="tablist" aria-label={t("gate.tabs")}>
             {(
               [
-                ["create", "Create account"],
-                ["signin", "Sign in"],
-                ["invite", "Invite code"],
+                ["create", t("gate.tab.create")],
+                ["signin", t("gate.tab.signIn")],
+                ["invite", t("gate.tab.invite")],
               ] as const
             ).map(([tab, label]) => {
               const active =
@@ -315,7 +466,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         {mode !== "reset" && (
           <>
             <label htmlFor="huddle-username">
-              {mode === "forgot" ? "Username or email" : "Username"}
+              {mode === "forgot" ? t("gate.label.identifier") : t("gate.label.username")}
             </label>
             <input
               id="huddle-username"
@@ -324,22 +475,22 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               maxLength={mode === "forgot" ? 254 : 24}
               autoFocus
               autoComplete={mode === "forgot" ? "email" : "username"}
-              placeholder={mode === "forgot" ? "yourname or you@example.com" : "yourname"}
+              placeholder={mode === "forgot" ? t("gate.placeholder.identifier") : t("gate.placeholder.username")}
             />
           </>
         )}
 
         {mode === "signup" && (
           <>
-            <label htmlFor="huddle-display">Display name</label>
+            <label htmlFor="huddle-display">{t("gate.label.displayName")}</label>
             <input
               id="huddle-display"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               maxLength={40}
-              placeholder="What friends should see"
+              placeholder={t("gate.placeholder.displayName")}
             />
-            <label htmlFor="huddle-email">Email (optional)</label>
+            <label htmlFor="huddle-email">{t("gate.label.email")}</label>
             <input
               id="huddle-email"
               type="email"
@@ -347,7 +498,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               onChange={(event) => setEmail(event.target.value)}
               maxLength={254}
               autoComplete="email"
-              placeholder="For password resets; we mail a code to confirm"
+              placeholder={t("gate.placeholder.email")}
             />
           </>
         )}
@@ -355,7 +506,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         {mode !== "forgot" && (
           <>
             <label htmlFor="huddle-password">
-              {mode === "reset" ? "New password" : "Password"}
+              {mode === "reset" ? t("gate.label.newPassword") : t("gate.label.password")}
             </label>
             <input
               id="huddle-password"
@@ -366,7 +517,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               autoComplete={
                 mode === "signin" ? "current-password" : "new-password"
               }
-              placeholder={mode === "signin" ? "••••••••" : "At least 8 characters"}
+              placeholder={mode === "signin" ? "••••••••" : t("gate.placeholder.newPassword")}
             />
           </>
         )}
@@ -374,7 +525,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         {mode === "signup" && showInviteField && (
           <>
             <label htmlFor="huddle-invite">
-              {bootstrap ? "Setup code" : "Invite code"}
+              {bootstrap ? t("gate.label.setupCode") : t("gate.label.inviteCode")}
             </label>
             <input
               id="huddle-invite"
@@ -390,9 +541,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           <>
             <div ref={challengeBox} className="auth-challenge" />
             {challengeFailed && (
-              <p className="auth-error">
-                The robot check could not load. Check your connection, or use an invite code instead.
-              </p>
+              <p className="auth-error">{t("gate.robotFailed")}</p>
             )}
           </>
         )}
@@ -401,16 +550,26 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           <label className="auth-agree">
             <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
             <span>
-              I agree to the{" "}
-              <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">Terms of Use</a> and{" "}
-              <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">Privacy Policy</a>. Hoffle has zero
-              tolerance for abusive users and objectionable content.
+              {tRich(t, "gate.agree", {
+                terms: (
+                  <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">
+                    {t("gate.terms")}
+                  </a>
+                ),
+                privacy: (
+                  <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">
+                    {t("gate.privacy")}
+                  </a>
+                ),
+              })}
             </span>
           </label>
         )}
 
         {error && <p className="auth-error">{error}</p>}
-        {notice && <p className="modal-hint">{notice}</p>}
+        {notice && (
+          <p className="modal-hint">{typeof notice === "string" ? notice : t(notice.key, notice.vars)}</p>
+        )}
 
         <button
           type="submit"
@@ -424,15 +583,26 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           }
         >
           {busy
-            ? "One moment…"
+            ? t("gate.busy")
             : mode === "forgot"
-              ? "Send reset link"
+              ? t("gate.button.sendReset")
               : mode === "reset"
-                ? "Save and sign in"
+                ? t("gate.button.saveSignIn")
                 : mode === "signup"
-                  ? "Create my account"
-                  : "Sign in"}
+                  ? t("gate.button.create")
+                  : t("gate.button.signIn")}
         </button>
+
+        {mode === "signin" && canPasskey && (
+          <button
+            type="button"
+            className="auth-passkey"
+            disabled={busy}
+            onClick={() => void passkeySignIn()}
+          >
+            <KeyRound size={16} aria-hidden /> {t("gate.button.passkey")}
+          </button>
+        )}
 
         {mode === "signin" && (
           <button
@@ -440,7 +610,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             className="auth-switch"
             onClick={() => switchMode("forgot")}
           >
-            I forgot my password
+            {t("gate.link.forgot")}
           </button>
         )}
 
@@ -450,7 +620,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             className="auth-switch"
             onClick={() => switchMode("signin")}
           >
-            Back to sign in
+            {t("gate.link.back")}
           </button>
         )}
 
@@ -460,29 +630,27 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             className="auth-switch"
             onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
           >
-            {mode === "signup"
-              ? "I already have an account"
-              : "I have an invite code"}
+            {mode === "signup" ? t("gate.link.haveAccount") : t("gate.link.haveInvite")}
           </button>
         )}
 
         {mode === "signup" && !bootstrap && !open && (
           <div className="auth-request-try">
-            <p className="auth-request-try-hint">Need an invite or want early access?</p>
+            <p className="auth-request-try-hint">{t("gate.requestHint")}</p>
             <a
               href="mailto:info@hoffle.online?subject=Requesting%20a%20try%20for%20Hoffle&body=Hello%20Hoffle%20Team%2C%0D%0A%0D%0AI%20would%20like%20to%20request%20access%20to%20try%20out%20Hoffle!%0D%0A%0D%0AThank%20you!"
               className="auth-request-try-link"
             >
               <Mail size={14} className="text-[var(--lavender)]" />
-              <span>Mail us at info@hoffle.online to request a try</span>
+              <span>{t("gate.requestLink")}</span>
             </a>
           </div>
         )}
         {mode === "signin" && (
           <p className="auth-legal">
-            <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">Terms</a>
+            <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">{t("gate.legal.terms")}</a>
             <span aria-hidden> · </span>
-            <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">Privacy</a>
+            <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">{t("gate.legal.privacy")}</a>
           </p>
         )}
       </form>

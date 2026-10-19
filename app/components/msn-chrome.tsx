@@ -32,6 +32,7 @@ import {
   type SoundEvent,
   type SoundPreset,
 } from "../lib/msn-sounds";
+import { useI18n } from "@/app/lib/i18n-context";
 
 /**
  * Extra furniture the MSN Messenger theme needs that CSS alone can't draw:
@@ -703,10 +704,11 @@ function GamesMenu({
   inVoice: boolean;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
-    <div className="msn-popover msn-games" role="dialog" aria-label="Games">
+    <div className="msn-popover msn-games" role="dialog" aria-label={t("games.title")}>
       <div className="msn-popover-title">
-        Games
+        {t("games.title")}
         <button type="button" onClick={onClose} aria-label="Close">×</button>
       </div>
       <p className="msn-games-lead">Invite everyone in this conversation to play:</p>
@@ -722,7 +724,7 @@ function GamesMenu({
             </button>
             {SOLO_GAMES.includes(kind) && (
               <button type="button" className="games-solo" onClick={() => onStart(kind, true)}>
-                Play alone
+                {t("games.solo")}
               </button>
             )}
           </div>
@@ -1354,6 +1356,7 @@ export function MsnFormatToolbar({
   channelId,
   nudgeCooling,
 }: ToolbarProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState<"ink" | "bg" | "font" | "fx" | "winks" | "smile" | "games" | null>(null);
   const toggle = (which: NonNullable<typeof open>) => setOpen((o) => (o === which ? null : which));
 
@@ -1462,7 +1465,7 @@ export function MsnFormatToolbar({
         type="button"
         className={open === "smile" ? "active" : ""}
         onClick={() => toggle("smile")}
-        title="Select an emoticon"
+        title={t("msn.emoticons")}
       >
         <span className="msn-fmt-smile">☺</span>
         <span className="msn-fmt-drop" />
@@ -1471,24 +1474,24 @@ export function MsnFormatToolbar({
         type="button"
         className={open === "winks" ? "active" : ""}
         onClick={() => toggle("winks")}
-        title="Send a wink"
+        title={t("msn.wink")}
       >
         <span className="msn-fmt-icon">😉</span>
-        <span>Winks</span>
+        <span>{t("msn.wink")}</span>
       </button>
       <span className="msn-fmt-sep" />
-      <button type="button" onClick={onVoiceClip} title="Voice clip">
+      <button type="button" onClick={onVoiceClip} title={t("msn.voiceClip")}>
         <span className="msn-fmt-icon">🎤</span>
-        <span>Voice Clip</span>
+        <span>{t("msn.voiceClip")}</span>
       </button>
       <button
         type="button"
         className={open === "ink" ? "active" : ""}
         onClick={() => toggle("ink")}
-        title="Handwriting"
+        title={t("msn.handwriting")}
       >
         <span className="msn-fmt-icon">✎</span>
-        <span>Handwriting</span>
+        <span>{t("msn.handwriting")}</span>
       </button>
       <button
         type="button"
@@ -1506,14 +1509,14 @@ export function MsnFormatToolbar({
         className={open === "games" ? "active" : ""}
         onClick={() => toggle("games")}
         disabled={!channelId}
-        title="Play a game"
+        title={t("games.title")}
       >
         <span className="msn-fmt-icon">🎲</span>
-        <span>Games</span>
+        <span>{t("games.title")}</span>
       </button>
-      <button type="button" onClick={onNudge} disabled={nudgeCooling} title="Send a nudge">
+      <button type="button" onClick={onNudge} disabled={nudgeCooling} title={t("msn.nudge")}>
         <span className="msn-fmt-icon msn-fmt-nudge">〰</span>
-        <span>Nudge</span>
+        <span>{t("msn.nudge")}</span>
       </button>
       </div>
     </div>
@@ -1668,8 +1671,9 @@ export function MsnSignInToasts({
 }
 
 /** Messenger's extra statuses, stored as a base presence plus a status line. */
+/** `labelKey` is both the menu label and the status text it sets. */
 export const MSN_EXTRA_STATUSES = [
-  { label: "Be Right Back", status: "idle", text: "Be Right Back" },
-  { label: "On the Phone", status: "dnd", text: "On the Phone" },
-  { label: "Out to Lunch", status: "idle", text: "Out to Lunch" },
+  { labelKey: "presence.msn.brb", status: "idle" },
+  { labelKey: "presence.msn.phone", status: "dnd" },
+  { labelKey: "presence.msn.lunch", status: "idle" },
 ] as const;

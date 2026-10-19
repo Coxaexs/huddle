@@ -1,13 +1,12 @@
 import {
-  createSession,
   hashPassword,
-  publicUser,
-  sessionCookie,
   sha256,
+  signedInResponse,
   userColumns,
   validatePassword,
   type User,
 } from "@/lib/auth";
+import { secondFactorPrompt, twoFactorEnabled } from "@/lib/account-security";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { checkRateLimit, clientIp, RateLimitError } from "@/lib/rate-limit";
@@ -61,9 +60,10 @@ export async function POST(request: Request) {
     .first<User>();
   if (!user) return Response.json({ error: "That account no longer exists." }, { status: 404 });
 
-  const token = await createSession(db, user.id);
-  return Response.json(
-    { user: publicUser(user) },
-    { headers: { "Set-Cookie": sessionCookie(request, token) } },
-  );
+  // A reset link proves the email, not the second factor: with two-factor on,
+  // the new password still has to be followed by a code or a passkey.
+  if (await twoFactorEnabled(db, user.id)) {
+    return Response.json(await secondFactorPrompt(db, user.id));
+  }
+  return signedInResponse(db, request, user);
 }

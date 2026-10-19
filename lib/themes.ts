@@ -2,6 +2,7 @@
  * Huddle Theme System & Custom Styling Engine
  * Provides custom CSS management, theme creation, switching, serialization, and sharing.
  */
+import { loadThemeCss } from "../app/lib/theme-css";
 
 export interface ThemeColors {
   ink?: string;
@@ -173,7 +174,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#d4352b",
       mint: "#3fa82f",
     },
-    // The look itself lives in globals.css under [data-custom-theme-id^="msn"].
+    // The look itself lives in app/theme-css/msn.css (loaded only while it is on).
   },
   {
     id: "msn-dark",
@@ -196,8 +197,8 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff6b5e",
       mint: "#5ed05a",
     },
-    // Shares every MSN rule with "msn"; colour overrides are in globals.css
-    // under [data-custom-theme-id="msn-dark"].
+    // Shares every MSN rule with "msn"; colour overrides are in
+    // app/theme-css/msn.css under [data-custom-theme-id="msn-dark"].
   },
   {
     id: "winamp",
@@ -266,7 +267,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff2a6d",
       mint: "#05ffa1",
     },
-    // Styling lives in theme-flavors.css under [data-custom-theme-id="cyberpunk"].
+    // Styling lives in app/theme-css/cyberpunk.css (loaded only while it is on).
   },
   {
     id: "matrix",
@@ -289,7 +290,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff4f4f",
       mint: "#00ff66",
     },
-    // Styling lives in theme-flavors.css under [data-custom-theme-id="matrix"];
+    // Styling lives in app/theme-css/matrix.css (loaded only while it is on);
     // the digital rain is components/matrix-rain.tsx.
   },
   {
@@ -339,7 +340,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff4d5e",
       mint: "#7fb98f",
     },
-    // Styling lives in theme-flavors.css under [data-custom-theme-id="vampire"].
+    // Styling lives in app/theme-css/vampire.css (loaded only while it is on).
   },
   {
     id: "sunset",
@@ -385,7 +386,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#c0392b",
       mint: "#9ad53b",
     },
-    // Styling lives in theme-flavors.css under [data-custom-theme-id="zombie"].
+    // Styling lives in app/theme-css/zombie.css (loaded only while it is on).
   },
   {
     id: "minecraft",
@@ -408,7 +409,7 @@ export const BUILTIN_THEMES: Theme[] = [
       coral: "#ff5555",
       mint: "#55ff55",
     },
-    // Styling lives in theme-flavors.css under [data-custom-theme-id="minecraft"].
+    // Styling lives in app/theme-css/minecraft.css (loaded only while it is on).
   },
 ];
 
@@ -572,6 +573,9 @@ export function readableOn(hex: string): string | null {
 export function applyThemeToDocument(theme: Theme): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
+
+  // Themes with a look of their own keep it in app/theme-css/, loaded now.
+  void loadThemeCss(theme.id);
 
   // Base dataset theme (controls fundamental structural stylesheets)
   root.dataset.theme = theme.baseTheme;

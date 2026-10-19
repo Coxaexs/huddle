@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Forward, Hash, Search, X, Check, MessageSquare, Loader2 } from "lucide-react";
 import { Avatar } from "./avatar";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export interface ForwardMessageTarget {
   id: string | number;
@@ -63,6 +64,7 @@ export function ForwardMessageDialog({
   onClose,
   onForward,
 }: ForwardMessageDialogProps) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [comment, setComment] = useState("");
   const [selectedDestId, setSelectedDestId] = useState<string | null>(null);
@@ -173,10 +175,10 @@ export function ForwardMessageDialog({
             </div>
             <div>
               <h3 id="forward-dialog-title" className="forward-dialog-title">
-                Forward Message
+                {t("forward.title")}
               </h3>
               <p className="forward-dialog-subtitle">
-                Share this message to another channel or conversation
+                {t("forward.subtitle")}
               </p>
             </div>
           </div>
@@ -184,7 +186,7 @@ export function ForwardMessageDialog({
             type="button"
             className="forward-dialog-close"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={16} />
           </button>
@@ -211,11 +213,11 @@ export function ForwardMessageDialog({
             {target.text ? (
               target.text.length > 220 ? `${target.text.slice(0, 220)}…` : target.text
             ) : target.file ? (
-              `Shared document: ${target.file.name}`
+              t("forward.sharedDoc", { name: target.file.name })
             ) : target.image || (target.images && target.images.length > 0) ? (
-              "Shared image attachment"
+              t("forward.sharedImage")
             ) : (
-              "Message content"
+              t("forward.content")
             )}
           </div>
         </div>
@@ -229,7 +231,7 @@ export function ForwardMessageDialog({
             className="forward-search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search channels or people…"
+            placeholder={t("forward.searchPlaceholder")}
           />
         </div>
 
@@ -237,7 +239,7 @@ export function ForwardMessageDialog({
         <div className="forward-dest-list">
           {filteredDestinations.length === 0 ? (
             <div className="forward-dest-empty">
-              No matching channels or conversations found.
+              {t("forward.empty")}
             </div>
           ) : (
             filteredDestinations.map((dest) => {
@@ -268,7 +270,7 @@ export function ForwardMessageDialog({
                       <div className="flex items-center gap-1.5">
                         <span className="forward-dest-name truncate">{dest.name}</span>
                         {isCurrent && (
-                          <span className="forward-dest-badge">Current</span>
+                          <span className="forward-dest-badge">{t("forward.current")}</span>
                         )}
                       </div>
                       {dest.subtext && (
@@ -295,7 +297,7 @@ export function ForwardMessageDialog({
             rows={2}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Add an optional comment… (Ctrl+Enter to send)"
+            placeholder={t("forward.commentPlaceholder")}
             maxLength={1000}
           />
         </div>
@@ -308,7 +310,7 @@ export function ForwardMessageDialog({
             onClick={onClose}
             disabled={isSubmitting}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -319,15 +321,15 @@ export function ForwardMessageDialog({
             {isSubmitting ? (
               <>
                 <Loader2 size={14} className="animate-spin" />
-                <span>Forwarding…</span>
+                <span>{t("forward.forwarding")}</span>
               </>
             ) : (
               <>
                 <Forward size={14} />
                 <span>
                   {selectedDest
-                    ? `Forward to ${selectedDest.kind === "dm" ? selectedDest.name : `#${selectedDest.name}`}`
-                    : "Forward"}
+                    ? t("forward.forwardTo", { target: selectedDest.kind === "dm" ? selectedDest.name : `#${selectedDest.name}` })
+                    : t("forward.action")}
                 </span>
               </>
             )}

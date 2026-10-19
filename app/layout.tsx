@@ -12,6 +12,7 @@ import "./cosmetics-extra.css";
 import "./profile-style.css";
 import "./theme-panels.css";
 import "./achievements.css";
+import { I18nProvider } from "./lib/i18n-context";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {
@@ -121,7 +122,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2" />
       </head>
-      <body>{children}</body>
+      <body>
+        <I18nProvider>{children}</I18nProvider>
+      </body>
     </html>
   );
 }

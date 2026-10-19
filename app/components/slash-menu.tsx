@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { matchCommands, type SlashCommand } from "../lib/commands";
+import { useI18n } from "@/app/lib/i18n-context";
 
 interface SlashMenuProps {
   query: string;
@@ -22,6 +23,7 @@ export function SlashMenu({
   onPick,
   inVoice,
 }: SlashMenuProps) {
+  const { t } = useI18n();
   const listRef = useRef<HTMLDivElement>(null);
   const commands = useMemo(() => matchCommands(query), [query]);
 
@@ -35,20 +37,32 @@ export function SlashMenu({
   if (!commands.length) {
     return (
       <div className="slash-menu">
-        <div className="slash-empty">No command matches that.</div>
+        <div className="slash-empty">{t("commands.empty")}</div>
       </div>
     );
   }
 
+  const groupKeyMap: Record<string, Parameters<typeof t>[0]> = {
+    Music: "commands.group.music",
+    "Discord music": "commands.group.discordMusic",
+    Rooms: "commands.group.rooms",
+    "D&D": "commands.group.dnd",
+    Huddle: "commands.group.huddle",
+    Bots: "commands.group.bots",
+  };
+
   let lastGroup = "";
   return (
-    <div className="slash-menu" ref={listRef} role="listbox" aria-label="Commands">
+    <div className="slash-menu" ref={listRef} role="listbox" aria-label={t("commands.label")}>
       {commands.map((command, index) => {
         const showGroup = command.group !== lastGroup;
         lastGroup = command.group;
+        const groupLabel = groupKeyMap[command.group] ? t(groupKeyMap[command.group]) : command.group;
+        const descKey = `command.${command.name}.desc` as Parameters<typeof t>[0];
+        const description = t(descKey) !== descKey ? t(descKey) : command.description;
         return (
           <div key={command.name}>
-            {showGroup && <div className="slash-group">{command.group}</div>}
+            {showGroup && <div className="slash-group">{groupLabel}</div>}
             <button
               type="button"
               role="option"
@@ -66,9 +80,9 @@ export function SlashMenu({
                 /{command.name}
                 {command.args && <em>{command.args}</em>}
               </span>
-              <span className="slash-description">{command.description}</span>
+              <span className="slash-description">{description}</span>
               {command.voice && !inVoice && (
-                <span className="slash-hint">needs voice</span>
+                <span className="slash-hint">{t("commands.needsVoice")}</span>
               )}
             </button>
           </div>

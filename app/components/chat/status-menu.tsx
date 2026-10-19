@@ -6,6 +6,7 @@ import { Pencil, Settings, User } from "lucide-react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ShowCustomPrompt } from "../../lib/chat/types";
 import { useState } from "react";
+import { useI18n } from "../../lib/i18n-context";
 import { readStatusClearChoice, statusClearAfterMs, STATUS_CLEAR_CHOICES, writeStatusClearChoice, type StatusClearChoice } from "../../lib/status-clear";
 
 /**
@@ -47,6 +48,7 @@ export function StatusMenu({
   setTodayOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 }) {
+  const { t } = useI18n();
   return (
     <div className="status-menu" role="menu">
       {(Object.keys(PRESENCE) as PresenceStatus[]).map((key) => (
@@ -65,19 +67,19 @@ export function StatusMenu({
             className="status-dot"
             style={{ background: PRESENCE[key].color }}
           />
-          {PRESENCE[key].label}
+          {t(PRESENCE[key].labelKey)}
         </button>
       ))}
       {msnTheme &&
         MSN_EXTRA_STATUSES.map((extra) => (
           <button
-            key={extra.label}
+            key={extra.labelKey}
             type="button"
             role="menuitem"
-            className={myStatus === extra.status && myCustomStatus === extra.text ? "active" : ""}
+            className={myStatus === extra.status && myCustomStatus === t(extra.labelKey) ? "active" : ""}
             onClick={() => {
               autoIdleRef.current = false;
-              void savePresence({ status: extra.status, customStatus: extra.text });
+              void savePresence({ status: extra.status, customStatus: t(extra.labelKey) });
               setStatusOpen(false);
             }}
           >
@@ -85,7 +87,7 @@ export function StatusMenu({
               className="status-dot"
               style={{ background: PRESENCE[extra.status].color }}
             />
-            {extra.label}
+            {t(extra.labelKey)}
           </button>
         ))}
       {msnTheme && (
@@ -108,7 +110,7 @@ export function StatusMenu({
           <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
             {shareListening ? "✓" : "♫"}
           </span>
-          Show what I&apos;m listening to
+          {t("status.listening")}
         </button>
       )}
       {msnTheme && (
@@ -123,7 +125,7 @@ export function StatusMenu({
           <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
             🔔
           </span>
-          Sounds…
+          {t("status.sounds")}
         </button>
       )}
       {msnTheme && (
@@ -135,11 +137,10 @@ export function StatusMenu({
           onClick={() => {
             setStatusOpen(false);
             showCustomPrompt({
-              title: "Auto-reply when away",
-              message:
-                "While you're Away or Busy, the first person to message you in each DM gets this reply. Leave it empty to turn it off.",
-              defaultValue: autoReply ?? "I'm away from my computer right now. I'll get back to you soon!",
-              confirmText: "Save",
+              title: t("status.autoReply.title"),
+              message: t("status.autoReply.message"),
+              defaultValue: autoReply ?? t("status.autoReply.default"),
+              confirmText: t("common.save"),
               maxLength: 200,
               onConfirm: (text) => {
                 if (text === undefined) return;
@@ -158,7 +159,7 @@ export function StatusMenu({
           <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
             {autoReply ? "✓" : "💬"}
           </span>
-          Auto-reply when away…
+          {t("status.autoReply")}
         </button>
       )}
       {msnTheme && (
@@ -173,7 +174,7 @@ export function StatusMenu({
           <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
             🖼
           </span>
-          Change display picture…
+          {t("status.picture")}
         </button>
       )}
       {msnTheme && (
@@ -188,7 +189,7 @@ export function StatusMenu({
           <span className="status-dot msn-listening-dot" style={{ background: "transparent" }}>
             ☀
           </span>
-          Open MSN Today
+          {t("status.today")}
         </button>
       )}
       <div className="status-menu-divider" />
@@ -198,11 +199,11 @@ export function StatusMenu({
         onClick={() => {
           setStatusOpen(false);
           showCustomPrompt({
-            title: "Set Custom Status",
-            message: "What's on your mind?",
+            title: t("status.custom.title"),
+            message: t("status.custom.message"),
             defaultValue: myCustomStatus || "",
-            placeholder: "e.g. In a meeting / Coding...",
-            confirmText: "Save Status",
+            placeholder: t("status.custom.placeholder"),
+            confirmText: t("status.custom.save"),
             onConfirm: (text) => {
               if (text === undefined) return;
               // A status typed in clears itself as picked under "Clear after".
@@ -214,7 +215,7 @@ export function StatusMenu({
         <span className="status-dot" style={{ background: "transparent" }}>
           <Pencil size={13} />
         </span>
-        {myCustomStatus ? "Edit status" : "Set a status"}
+        {myCustomStatus ? t("status.edit") : t("status.set")}
       </button>
       <StatusClearPicker
         hasStatus={Boolean(myCustomStatus)}
@@ -233,7 +234,7 @@ export function StatusMenu({
         <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
           <User size={14} />
         </span>
-        Edit Profile
+        {t("status.editProfile")}
       </button>
       <button
         type="button"
@@ -246,7 +247,7 @@ export function StatusMenu({
         <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
           <Settings size={14} />
         </span>
-        Settings
+        {t("common.settings")}
       </button>
     </div>
   );
@@ -254,10 +255,11 @@ export function StatusMenu({
 
 /** "Clear after": applies to the status you have now, and to the next one you set. */
 function StatusClearPicker({ hasStatus, onPick }: { hasStatus: boolean; onPick: (choice: StatusClearChoice) => void }) {
+  const { t } = useI18n();
   const [choice, setChoice] = useState<StatusClearChoice>(() => readStatusClearChoice());
   return (
-    <div className="status-clear-picker" role="group" aria-label="Clear status after">
-      <span aria-hidden="true">{hasStatus ? "Clear after" : "New status clears after"}</span>
+    <div className="status-clear-picker" role="group" aria-label={t("status.clear.group")}>
+      <span aria-hidden="true">{hasStatus ? t("status.clear.after") : t("status.clear.newAfter")}</span>
       <div role="none">
         {STATUS_CLEAR_CHOICES.map((option) => (
           <button
@@ -272,7 +274,7 @@ function StatusClearPicker({ hasStatus, onPick }: { hasStatus: boolean; onPick: 
               onPick(option.id);
             }}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>

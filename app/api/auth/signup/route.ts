@@ -287,7 +287,7 @@ export async function POST(request: Request) {
     pendingEmail = email;
   }
 
-  const token = await createSession(db, user.id);
+  const token = await createSession(db, user.id, request);
   return Response.json(
     { user: publicUser(user), defaultTheme, pendingEmail },
     { status: 201, headers: { "Set-Cookie": sessionCookie(request, token) } },

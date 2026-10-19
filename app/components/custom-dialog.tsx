@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export interface DialogOptions {
   title: string;
@@ -43,6 +44,7 @@ function focusableWithin(container: HTMLElement | null): HTMLElement[] {
 }
 
 export function CustomDialog({ options, onConfirm, onCancel, onDismiss }: CustomDialogProps) {
+  const { t } = useI18n();
   const dismiss = onDismiss ?? onCancel;
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -156,7 +158,7 @@ export function CustomDialog({ options, onConfirm, onCancel, onDismiss }: Custom
       >
         <div className="custom-dialog-header">
           <h3 id={titleId}>{options.title}</h3>
-          <button type="button" className="popup-close-x" onClick={dismiss} aria-label="Close dialog">
+          <button type="button" className="popup-close-x" onClick={dismiss} aria-label={t("dialog.close")}>
             <X size={18} aria-hidden="true" />
           </button>
         </div>
@@ -192,7 +194,7 @@ export function CustomDialog({ options, onConfirm, onCancel, onDismiss }: Custom
               className="custom-dialog-btn secondary"
               onClick={onCancel}
             >
-              {options.cancelText || "Cancel"}
+              {options.cancelText || t("dialog.cancel")}
             </button>
           )}
           <button
@@ -201,7 +203,7 @@ export function CustomDialog({ options, onConfirm, onCancel, onDismiss }: Custom
             className={`custom-dialog-btn primary ${options.isDanger ? "danger" : ""}`}
             onClick={() => onConfirm(options.type === "prompt" ? inputValue : undefined)}
           >
-            {options.confirmText || (options.type === "confirm" ? "Confirm" : "Save")}
+            {options.confirmText || (options.type === "confirm" ? t("dialog.confirm") : t("dialog.save"))}
           </button>
         </div>
       </div>

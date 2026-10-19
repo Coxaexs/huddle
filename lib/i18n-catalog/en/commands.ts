@@ -1,0 +1,45 @@
+/** Slash commands, descriptions, and server error messages. */
+export const commands = {
+  "command.roll.desc": "Roll dice using notation like /roll 2d20+5",
+  "command.shrug.desc": "Appends ¯\\_(ツ)_/¯ to your message",
+  "command.tableflip.desc": "Appends (╯°□°)╯︵ ┻━┻ to your message",
+  "command.unflip.desc": "Appends ┬─┬ノ( º _ ºノ) to your message",
+  "command.me.desc": "Displays text with emphasis for roleplay or action",
+  "command.tts.desc": "Speaks your message aloud in the channel",
+  "command.clear.desc": "Clears messages from your local view",
+  "command.help.desc": "Shows available commands and how to use them",
+  "command.nick.desc": "Change your nickname in this server",
+  "command.topic.desc": "View or set the channel topic",
+  "command.poll.desc": "Create an interactive poll in the channel",
+  "command.play.desc": "Play in your voice channel, or add to the queue",
+  "command.playnext.desc": "Queue something as the next track",
+  "command.pause.desc": "Pause playback",
+  "command.resume.desc": "Resume playback",
+  "command.skip.desc": "Skip to the next track",
+  "command.skipto.desc": "Jump straight to a queued track",
+  "command.stop.desc": "Stop and clear the queue",
+  "command.disconnect.desc": "Send the music bot away",
+  "command.queue.desc": "Show what is coming up",
+  "command.nowplaying.desc": "Show the player with a seek bar",
+  "command.loop.desc": "Repeat the track or the queue",
+
+  // Server error messages
+  "serverError.rateLimited": "You are sending messages too quickly. Slow down!",
+  "serverError.permissionDenied": "You do not have permission to perform this action.",
+  "serverError.channelNotFound": "Channel not found.",
+  "serverError.serverNotFound": "Server not found.",
+  "serverError.userNotFound": "User not found.",
+  "serverError.invalidPayload": "Invalid request. Please check your input.",
+
+  // Slash menu UI
+  "commands.label": "Commands",
+  "commands.empty": "No command matches that.",
+  "commands.needsVoice": "needs voice",
+  "commands.group.music": "Music",
+  "commands.group.discordMusic": "Discord music",
+  "commands.group.rooms": "Rooms",
+  "commands.group.dnd": "D&D",
+  "commands.group.huddle": "Huddle",
+  "commands.group.bots": "Bots",
+} as const;
+

@@ -21,6 +21,8 @@ import {
   X,
 } from "lucide-react";
 import type { DiceRollEvent } from "@/lib/protocol";
+import type { TranslateFn } from "@/lib/i18n";
+import { tRich, useI18n } from "../lib/i18n-context";
 import { BUILTIN_THEMES, type Theme } from "@/lib/themes";
 
 /**
@@ -110,16 +112,25 @@ const STYLE = `
 }
 `;
 
-function pages(actions: TutorialActions): Page[] {
+function pages(actions: TutorialActions, t: TranslateFn): Page[] {
+  const keys = (...names: string[]) => (
+    <>
+      {names.map((name, index) => (
+        <span key={name}>
+          {index > 0 && " + "}
+          <kbd>{name}</kbd>
+        </span>
+      ))}
+    </>
+  );
   return [
     {
       icon: <Palette size={24} />,
-      title: "Pick your look",
+      title: t("tutorial.look.title"),
       body: (
         <>
           <p className="tutorial-text">
-            Hoffle comes with twelve themes, and some change more than colours: MSN Messenger rebuilds the whole layout.
-            Click one to try it on. You can change it any time in <b>Settings → Appearance</b>.
+            {tRich(t, "tutorial.look.text", { path: <b>{t("tutorial.path.appearance")}</b> })}
           </p>
           <div className="tutorial-themes">
             {BUILTIN_THEMES.map((theme) => {
@@ -142,102 +153,94 @@ function pages(actions: TutorialActions): Page[] {
     },
     {
       icon: <Compass size={24} />,
-      title: "Getting around",
+      title: t("tutorial.around.title"),
       body: (
         <>
           <p className="tutorial-text">
-            Your servers sit down the far left. Each one has <b>text channels</b> for chatting and <b>voice rooms</b> for
-            talking. Direct messages live behind the <b>h</b> at the top.
+            {tRich(t, "tutorial.around.text", {
+              text: <b>{t("tutorial.around.textChannels")}</b>,
+              voice: <b>{t("tutorial.around.voiceRooms")}</b>,
+              h: <b>h</b>,
+            })}
           </p>
           <ul className="tutorial-list">
-            <li><kbd>Ctrl</kbd> + <kbd>K</kbd> jumps to any channel or DM by name.</li>
-            <li>Hover a message (or long-press it on a phone) to reply, start a thread, react or pin it.</li>
-            <li>The person icon at the top right shows who's around.</li>
+            <li>{tRich(t, "tutorial.around.switcher", { keys: keys("Ctrl", "K") })}</li>
+            <li>{t("tutorial.around.hover")}</li>
+            <li>{t("tutorial.around.people")}</li>
           </ul>
         </>
       ),
-      tries: [{ label: "Open the quick switcher", icon: <Command size={16} />, run: actions.openSwitcher }],
+      tries: [{ label: t("tutorial.around.try"), icon: <Command size={16} />, run: actions.openSwitcher }],
     },
     {
       icon: <Headphones size={24} />,
-      title: "Voice and screen sharing",
+      title: t("tutorial.voice.title"),
       body: (
         <>
-          <p className="tutorial-text">
-            Click a voice room to join it; click another to move. Noise suppression runs on your device, so the keyboard
-            and the fan stay out of the call.
-          </p>
+          <p className="tutorial-text">{t("tutorial.voice.text")}</p>
           <ul className="tutorial-list">
-            <li>Share your screen at up to 1080p and 60 fps, with the game or film sound.</li>
-            <li>Mute and deafen sit at the bottom left, next to your name.</li>
-            <li>The desktop app adds push-to-talk that works while a game has focus.</li>
+            <li>{t("tutorial.voice.share")}</li>
+            <li>{t("tutorial.voice.controls")}</li>
+            <li>{t("tutorial.voice.ptt")}</li>
           </ul>
         </>
       ),
       tries: actions.joinVoice
-        ? [{ label: `Join ${actions.joinVoice.name}`, icon: <Headphones size={16} />, run: actions.joinVoice.run }]
+        ? [{ label: t("tutorial.voice.try", { room: actions.joinVoice.name }), icon: <Headphones size={16} />, run: actions.joinVoice.run }]
         : undefined,
     },
     {
       icon: <MessageSquare size={24} />,
-      title: "Chat, your way",
+      title: t("tutorial.chat.title"),
       body: (
         <>
-          <p className="tutorial-text">
-            Messages can carry colours, fonts and effects, GIFs, stickers and voice messages. Type <kbd>/</kbd> for
-            commands, like <b>/tts</b> to have a message read aloud.
-          </p>
+          <p className="tutorial-text">{tRich(t, "tutorial.chat.text", { slash: <kbd>/</kbd>, tts: <b>/tts</b> })}</p>
           <ul className="tutorial-list">
-            <li>Polls and events with RSVPs, right in the channel.</li>
+            <li>{t("tutorial.chat.polls")}</li>
             <li>
-              <AtSign size={13} style={{ display: "inline", verticalAlign: "-2px" }} /> Mention someone with @ and they get a
-              notification.
+              <AtSign size={13} style={{ display: "inline", verticalAlign: "-2px" }} /> {t("tutorial.chat.mention")}
             </li>
           </ul>
         </>
       ),
       tries: [
-        { label: "Text effects", icon: <Sparkles size={16} />, run: actions.openFormat },
-        { label: "Make a poll", icon: <Vote size={16} />, run: actions.openPoll },
+        { label: t("tutorial.chat.tryEffects"), icon: <Sparkles size={16} />, run: actions.openFormat },
+        { label: t("tutorial.chat.tryPoll"), icon: <Vote size={16} />, run: actions.openPoll },
       ],
     },
     {
       icon: <Dices size={24} />,
-      title: "Game night",
+      title: t("tutorial.game.title"),
       body: (
         <>
-          <p className="tutorial-text">
-            <b>/roll d20+5</b> throws real 3D dice that everyone in the channel sees, with advantage, disadvantage and
-            labels. The controller button in the message box starts a game with friends.
-          </p>
+          <p className="tutorial-text">{tRich(t, "tutorial.game.text", { roll: <b>/roll d20+5</b> })}</p>
           <ul className="tutorial-list">
-            <li>Tic-Tac-Toe, Four in a Row, Rock Paper Scissors, Minesweeper Flags and Rota.</li>
-            <li>For D&amp;D: battlemaps with fog of war, and a spell and monster compendium.</li>
+            <li>{t("tutorial.game.games")}</li>
+            <li>{t("tutorial.game.dnd")}</li>
           </ul>
         </>
       ),
       tries: [
-        { label: "Roll a d20", icon: <Dices size={16} />, run: actions.rollDice },
-        { label: "Pick a game", icon: <Gamepad2 size={16} />, run: actions.openGames },
+        { label: t("tutorial.game.tryRoll"), icon: <Dices size={16} />, run: actions.rollDice },
+        { label: t("tutorial.game.tryGame"), icon: <Gamepad2 size={16} />, run: actions.openGames },
       ],
     },
     {
       icon: <GraduationCap size={24} />,
-      title: "Make it yours",
+      title: t("tutorial.yours.title"),
       body: (
         <>
           <p className="tutorial-text">
-            Set your avatar, banner, bio and pronouns in <b>Settings → Profile</b>. <kbd>Ctrl</kbd> + <kbd>/</kbd> lists
-            every keyboard shortcut.
+            {tRich(t, "tutorial.yours.text", { path: <b>{t("tutorial.path.profile")}</b>, keys: keys("Ctrl", "/") })}
           </p>
           <p className="tutorial-text" style={{ marginTop: 12 }}>
-            That's the tour. You can open this tutorial again any time from <b>Settings → Tutorial</b>.
+            {tRich(t, "tutorial.yours.end", { path: <b>{t("tutorial.path.tutorial")}</b> })}
           </p>
         </>
       ),
       tries: [
-        { label: "Edit your profile", icon: <UserRound size={16} />, run: actions.openProfile },
-        { label: "Keyboard shortcuts", icon: <Keyboard size={16} />, run: actions.openShortcuts },
+        { label: t("tutorial.yours.tryProfile"), icon: <UserRound size={16} />, run: actions.openProfile },
+        { label: t("tutorial.yours.tryShortcuts"), icon: <Keyboard size={16} />, run: actions.openShortcuts },
       ],
     },
   ];
@@ -278,7 +281,8 @@ export function WelcomeTutorial({
   onTry: () => void;
   actions: TutorialActions;
 }) {
-  const all = pages(actions);
+  const { t } = useI18n();
+  const all = pages(actions, t);
   const current = all[Math.min(page, all.length - 1)];
   const last = page >= all.length - 1;
 
@@ -296,9 +300,10 @@ export function WelcomeTutorial({
       <div className="tutorial-card">
         <div className="tutorial-head">
           <span className="tutorial-step">
-            {page === 0 ? "Welcome to Hoffle" : "Tutorial"} · {page + 1} of {all.length}
+            {page === 0 ? t("tutorial.step.welcome") : t("tutorial.step.tutorial")} ·{" "}
+            {t("tutorial.step.of", { page: page + 1, total: all.length })}
           </span>
-          <button type="button" className="tutorial-close" onClick={onClose} aria-label="Close the tutorial">
+          <button type="button" className="tutorial-close" onClick={onClose} aria-label={t("tutorial.close")}>
             <X size={18} />
           </button>
         </div>
@@ -334,11 +339,11 @@ export function WelcomeTutorial({
           <div className="tutorial-nav">
             {page > 0 && (
               <button type="button" className="tutorial-btn" onClick={() => onPage(page - 1)}>
-                <ChevronLeft size={16} /> Back
+                <ChevronLeft size={16} /> {t("common.back")}
               </button>
             )}
             <button type="button" className="tutorial-btn primary" onClick={() => (last ? onClose() : onPage(page + 1))}>
-              {last ? "Done" : "Next"} {!last && <ChevronRight size={16} />}
+              {last ? t("common.done") : t("common.next")} {!last && <ChevronRight size={16} />}
             </button>
           </div>
         </div>
@@ -349,14 +354,15 @@ export function WelcomeTutorial({
 
 /** Shown while a "Try it" runs: back to the same page of the tutorial, or close it. */
 export function TutorialPill({ page, onResume, onClose }: { page: number; onResume: () => void; onClose: () => void }) {
+  const { t } = useI18n();
   return (
-    <div className="tutorial-pill" role="group" aria-label="Tutorial">
+    <div className="tutorial-pill" role="group" aria-label={t("tutorial.step.tutorial")}>
       <style href="hoffle-tutorial" precedence="default">{STYLE}</style>
       <button type="button" className="tutorial-pill-resume" onClick={onResume}>
         <GraduationCap size={16} />
-        Back to the tutorial · {page + 1} of {TUTORIAL_PAGES}
+        {t("tutorial.resume", { page: page + 1, total: TUTORIAL_PAGES })}
       </button>
-      <button type="button" className="tutorial-pill-close" onClick={onClose} aria-label="Close the tutorial">
+      <button type="button" className="tutorial-pill-close" onClick={onClose} aria-label={t("tutorial.close")}>
         <X size={14} />
       </button>
     </div>

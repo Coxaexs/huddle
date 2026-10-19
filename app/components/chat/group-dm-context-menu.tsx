@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { StyledText } from "../message-body";
 import { type DmSummary } from "../../lib/chat/types";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export function GroupDmContextMenu({
   target,
@@ -21,6 +22,7 @@ export function GroupDmContextMenu({
   onLeave: () => void;
   onCloseDm: () => void;
 }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,22 +63,22 @@ export function GroupDmContextMenu({
     <div className="user-menu group-dm-menu" ref={ref} style={pos} role="menu">
       <div className="user-menu-head">
         <strong><StyledText text={target.dm.user.displayName} /></strong>
-        <span>{target.dm.group?.members.length} {target.dm.group?.members.length === 1 ? "member" : "members"}</span>
+        <span>{t("sidebar.groupMembers", { count: target.dm.group?.members.length ?? 0 })}</span>
       </div>
       <button type="button" role="menuitem" onClick={onTogglePin}>
-        {target.dm.pinned ? "Unpin group" : "Pin group"}
+        {target.dm.pinned ? t("groupDmMenu.unpin") : t("groupDmMenu.pin")}
       </button>
       <button type="button" role="menuitem" onClick={onRename}>
-        Rename group
+        {t("groupDmMenu.rename")}
       </button>
       <button type="button" role="menuitem" onClick={onAddMembers}>
-        Add members
+        {t("groupDmMenu.addMembers")}
       </button>
       <button type="button" role="menuitem" className="danger" onClick={onLeave}>
-        Leave group
+        {t("groupDmMenu.leave")}
       </button>
       <button type="button" role="menuitem" onClick={onCloseDm}>
-        Close conversation
+        {t("groupDmMenu.closeConversation")}
       </button>
     </div>
   );

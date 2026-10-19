@@ -1,0 +1,200 @@
+/* vampire theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from theme-flavors.css ---- */
+/* Vampire: gothic midnight ------------------------------------------------ */
+:root[data-custom-theme-id="vampire"] {
+  --rail-bg: #070405;
+  --surface-2: #1d0e12;
+  --muted-2: #a98a90;
+  --faint: #6d5357;
+  --accent-strong: #c8102e;
+  --accent-hi: #ff5a6e;
+  --on-accent: #ffffff;
+  --blood: #c8102e;
+  --font-display: "Pirata One", "UnifrakturMaguntia", Georgia, serif;
+  --ring: 0 0 0 2px rgba(200, 16, 46, 0.6);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, .7), 0 0 0 1px rgba(200, 16, 46, .08);
+}
+
+/* Black velvet page lit from below by a red glow. */
+:root[data-custom-theme-id="vampire"] .chat-panel {
+  background:
+    radial-gradient(90% 40% at 50% 110%, rgba(200, 16, 46, 0.16), transparent 70%),
+    radial-gradient(60% 30% at 0% 0%, rgba(120, 8, 24, 0.12), transparent 70%),
+    var(--chat-bg) !important;
+  border-color: rgba(200, 16, 46, 0.22) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .channel-heading strong {
+  font-size: 30px !important;
+}
+
+:root[data-custom-theme-id="vampire"] .space-header h1 {
+  font-size: 27px !important;
+}
+
+:root[data-custom-theme-id="vampire"] .channel.selected,
+:root[data-custom-theme-id="vampire"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(200, 16, 46, 0.3), rgba(200, 16, 46, 0.05)) !important;
+  box-shadow: inset 2px 0 0 var(--blood) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="vampire"] .composer {
+  background: rgba(18, 8, 11, 0.9) !important;
+  border-color: rgba(200, 16, 46, 0.28) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .composer:focus-within {
+  border-color: var(--blood) !important;
+  box-shadow: 0 0 22px rgba(200, 16, 46, 0.25) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px var(--blood), 0 0 14px rgba(200, 16, 46, 0.5) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .server-banner-header {
+  filter: saturate(0.6) contrast(1.1) brightness(0.85);
+}
+
+:root[data-custom-theme-id="vampire"] ::selection {
+  background: var(--blood);
+  color: #fff;
+}
+
+:root[data-custom-theme-id="vampire"] ::-webkit-scrollbar-thumb {
+  background: #4a0d18;
+  border-radius: 999px;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile {
+  background: linear-gradient(180deg, #170a0e 0%, #0e0709 100%) !important;
+  border: 1px solid rgba(200, 16, 46, 0.35) !important;
+  border-radius: 50% 50% 8px 8px / 26% 26% 8px 8px !important;
+  box-shadow: inset 0 0 0 4px #0b0608, inset 0 0 0 5px rgba(200, 16, 46, 0.18), inset 0 -30px 60px rgba(120, 8, 24, 0.18) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-avatar {
+  box-shadow: 0 0 0 2px #0b0608, 0 0 0 3px rgba(200, 16, 46, 0.7) !important;
+  filter: saturate(0.75) contrast(1.08);
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile.is-speaking {
+  border-color: #ff3b54 !important;
+  animation: vampire-pulse 1.4s ease-in-out infinite;
+}
+
+:root[data-custom-theme-id="vampire"] .stage-tile figcaption,
+:root[data-custom-theme-id="vampire"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-display) !important;
+  font-size: 19px;
+  letter-spacing: 0.03em;
+  color: #f3e7e7 !important;
+  text-shadow: 0 0 10px rgba(200, 16, 46, 0.5);
+}
+
+:root[data-custom-theme-id="vampire"] .vctrl-btn {
+  background: #160a0d !important;
+  border: 1px solid rgba(200, 16, 46, 0.3) !important;
+  color: #e9cfd2 !important;
+}
+
+:root[data-custom-theme-id="vampire"] .vctrl-btn:hover {
+  border-color: #c8102e !important;
+  box-shadow: 0 0 14px rgba(200, 16, 46, 0.35) !important;
+}
+
+:root[data-custom-theme-id="vampire"] .voice-active-contour {
+  background: rgba(22, 10, 13, 0.92) !important;
+  border: 1px solid rgba(200, 16, 46, 0.35) !important;
+  box-shadow: 0 0 18px rgba(200, 16, 46, 0.12) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="vampire"] .stage-tile.is-speaking {
+    animation: none;
+  }
+}
+
+/* User and bot menus ------------------------------------------------------
+   Both themes otherwise get the default grey popup. */
+
+/* Vampire: a black velvet card with a blood-red edge. */
+:root[data-custom-theme-id="vampire"] .user-menu {
+  color: #f3e7e7;
+  background:
+    radial-gradient(120% 60% at 50% 120%, rgba(200, 16, 46, 0.14), transparent 70%),
+    linear-gradient(180deg, #170a0d 0%, #0d0607 100%);
+  border: 1px solid rgba(200, 16, 46, 0.38);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 28px rgba(200, 16, 46, 0.16);
+  scrollbar-color: #5c1420 transparent;
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu::-webkit-scrollbar-thumb {
+  background: #5c1420;
+}
+
+:root[data-custom-theme-id="vampire"] .bot-menu .user-menu-head {
+  background: #170a0d;
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu-head {
+  border-bottom-color: rgba(200, 16, 46, 0.3);
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu-head strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+  letter-spacing: 0.02em;
+  color: #f3e7e7;
+  text-shadow: 0 0 14px rgba(200, 16, 46, 0.5);
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu button {
+  color: #ead9db;
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu button:hover {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(200, 16, 46, 0.32), rgba(200, 16, 46, 0.1));
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu button.danger {
+  color: #ff5a6e;
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu-divider {
+  background: linear-gradient(90deg, transparent, rgba(200, 16, 46, 0.55), transparent);
+}
+
+:root[data-custom-theme-id="vampire"] .user-menu input[type="range"] {
+  accent-color: #c8102e;
+}
+
+/* The selected channel's label keeps the white of its row. */
+:root[data-custom-theme-id="vampire"] .channel.selected span {
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="vampire"] .server-invite-card {
+  --invite-accent: #c8102e;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1d0e12, #0e080a);
+  border: 1px solid rgba(200, 16, 46, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 90, 110, 0.12);
+}
+
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-banner {
+  filter: saturate(0.6) contrast(1.1) sepia(0.4) hue-rotate(-30deg);
+}
+
+:root[data-custom-theme-id="vampire"] .server-invite-eyebrow { font-family: var(--font-display); font-size: 14px; letter-spacing: 0.08em; text-transform: none; color: #ff5a6e; }
+
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-name { font-size: 20px; letter-spacing: 0.02em; }
+
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-icon { border-radius: 50% 50% 50% 8px; }
+
+:root[data-custom-theme-id="vampire"] .server-invite-card .server-invite-btn { border-radius: 4px; background: linear-gradient(180deg, #e0183a, #8f0a20); font-family: var(--font-display); font-size: 15px; letter-spacing: 0.05em; }

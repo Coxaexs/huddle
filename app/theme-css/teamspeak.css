@@ -1,0 +1,845 @@
+/* teamspeak theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from retro-skins.css ---- */
+:root[data-custom-theme-id="teamspeak"] {
+  --ts-face: #ece9d8;
+  --ts-hi: #ffffff;
+  --ts-shadow: #aca899;
+  --ts-dark: #716f64;
+  --ts-navy: #0a246a;
+  --ts-font: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+  --font-ui: var(--ts-font);
+}
+
+:root[data-custom-theme-id="teamspeak"] body,
+:root[data-custom-theme-id="teamspeak"] .app-shell,
+:root[data-custom-theme-id="teamspeak"] .app-shell * {
+  font-family: var(--ts-font);
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .app-shell {
+    grid-template-columns:
+      max(var(--sidebar-w, 240px), 270px) minmax(320px, 1fr) var(--thread-w, 0px) var(--members-w, 0px) !important;
+    grid-template-rows: var(--xp-title-h, 24px) 22px 34px auto minmax(0, 1fr) 22px !important;
+    background: var(--ts-face) !important;
+    border: 1px solid #0831d9;
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .ts-titlebar { grid-column: 1 / -1; grid-row: 1; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .ts-menubar { grid-column: 1 / -1; grid-row: 2; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .ts-toolbar { grid-column: 1; grid-row: 3; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .rail { grid-column: 2 / -1; grid-row: 3; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .sidebar { grid-column: 1; grid-row: 4 / 6; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .ts-info { grid-column: 2; grid-row: 4; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .chat-panel { grid-column: 2; grid-row: 5; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .thread-panel { grid-column: 3; grid-row: 4 / 6; width: auto !important; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .member-panel { grid-column: 4; grid-row: 4 / 6; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .ts-statusbar { grid-column: 1 / -1; grid-row: 6; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .chat-panel {
+    margin-top: 0 !important;
+    background: #fff !important;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .member-panel {
+    padding: 0 0 6px !important;
+    background: #fff !important;
+  }
+}
+
+@media (min-width: 761px) {
+  /* The rail becomes the toolbar row of server buttons. */
+  :root[data-custom-theme-id="teamspeak"] .rail {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 2px !important;
+    height: 34px !important;
+    padding: 0 6px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    background: var(--ts-face) !important;
+    border: 0 !important;
+    border-left: 1px solid var(--ts-shadow) !important;
+    box-shadow: inset 1px 0 0 var(--ts-hi) !important;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .rail > * {
+    flex: 0 0 auto;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .rail .rail-item,
+  :root[data-custom-theme-id="teamspeak"] .rail .rail-folder {
+    width: auto !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id="teamspeak"] .rail .rail-item::before,
+  :root[data-custom-theme-id="teamspeak"] .rail .rail-pill {
+    display: none !important;
+  }
+}
+
+/* The TS2 icon: a little grey headset on a blue disc. */
+:root[data-custom-theme-id="teamspeak"] .ts-app-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 62%, #1d3f8f 0 4px, transparent 4.5px),
+    radial-gradient(circle at 50% 50%, transparent 0 5px, #d8dce4 5px 6.5px, transparent 7px),
+    radial-gradient(circle at 35% 30%, #8fc0ff, #2a5ad8 70%);
+  box-shadow: 0 0 0 1px #0a1e6e;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-app-icon.big {
+  width: 32px;
+  height: 32px;
+}
+
+/* ---- Toolbar ---- */
+:root[data-custom-theme-id="teamspeak"] .ts-toolbar {
+  align-items: center;
+  gap: 1px;
+  padding: 0 4px;
+  background: var(--ts-face);
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-toolbar button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #1d3f8f;
+  cursor: default;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-toolbar button:hover:not(:disabled) {
+  border-color: #c1d2ee;
+  background: linear-gradient(180deg, #fff, #e3e9f4);
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-toolbar button.pressed {
+  border-color: #aca899;
+  background: #e3e0d0;
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.2);
+  color: #c00;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-toolbar button:disabled {
+  color: #aca899;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: var(--ts-shadow);
+  box-shadow: 1px 0 0 var(--ts-hi);
+}
+
+:root[data-custom-theme-id="teamspeak"] .rail .active-space {
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* ---- Server info pane (TS2's HTML pane over the chat) ---- */
+:root[data-custom-theme-id="teamspeak"] .ts-info {
+  height: 128px;
+  margin-bottom: 4px !important;
+  background: #fff;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  color: #000;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #7f9db9;
+  color: var(--ts-navy);
+  font-size: 14px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info-head img {
+  width: 24px;
+  height: 24px;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info table {
+  border-collapse: collapse;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info th {
+  padding: 0 10px 1px 0;
+  font-weight: bold;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info td {
+  padding: 0 0 1px;
+  max-width: 420px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-info-banner {
+  flex: 0 1 300px;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;
+  border-left: 1px solid #7f9db9;
+}
+
+/* ---- Status bar ---- */
+:root[data-custom-theme-id="teamspeak"] .ts-statusbar {
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ts-face);
+  border-top: 1px solid var(--ts-hi);
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-statusbar span {
+  padding: 1px 6px;
+  border: 1px solid;
+  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow);
+  color: #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-custom-theme-id="teamspeak"] .ts-statusbar span:first-child {
+  flex: 1 1 auto;
+}
+
+/* ---- Channel tree ---- */
+:root[data-custom-theme-id="teamspeak"] .server-banner-header {
+  display: none !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .sidebar {
+  background: #fff !important;
+  color: #000;
+}
+
+:root[data-custom-theme-id="teamspeak"] .space-header {
+  min-height: 0 !important;
+  padding: 4px 6px 2px !important;
+  background: #fff !important;
+  border: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .space-header .eyebrow {
+  display: none;
+}
+
+/* The tree's root node: the server, with the TS globe. */
+:root[data-custom-theme-id="teamspeak"] .space-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: bold 11px/18px var(--ts-font) !important;
+  color: #000 !important;
+  letter-spacing: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .space-header h1::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 7px, rgba(255, 255, 255, 0.7) 7px 8px, transparent 8px),
+    linear-gradient(0deg, transparent 7px, rgba(255, 255, 255, 0.7) 7px 8px, transparent 8px),
+    radial-gradient(circle at 35% 30%, #9fe0ff, #1873c8 70%);
+  box-shadow: 0 0 0 1px #0d4c8c;
+}
+
+:root[data-custom-theme-id="teamspeak"] .space-header .icon-button {
+  width: 20px !important;
+  height: 18px !important;
+  border-radius: 0 !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav {
+  position: relative;
+  margin-left: 13px;
+  padding: 0 4px 6px 0 !important;
+  border-left: 1px dotted #a0a0a0;
+  scrollbar-color: #c1d2ee #f4f3ee;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .category-body {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .category .category-body {
+  margin-left: 18px !important;
+  border-left: 1px dotted #a0a0a0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .voice-room svg {
+  color: #3a8a1a !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .events-chip strong {
+  font: inherit !important;
+  color: inherit !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .voice-room-wrapper {
+  margin: 0 !important;
+}
+
+/* You, at the foot of the tree, in a raised grey strip. */
+:root[data-custom-theme-id="teamspeak"] .sidebar > .discord-user-footer,
+:root[data-custom-theme-id="teamspeak"] .sidebar > .mini-voice-bar {
+  position: relative !important;
+  inset: auto !important;
+  width: auto !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-top: 1px solid #7f9db9 !important;
+  border-radius: 0 !important;
+  background: var(--ts-face) !important;
+  color: #000 !important;
+}
+
+/* ---- Chat: the TS2 chat tab ---- */
+:root[data-custom-theme-id="teamspeak"] .chat-header {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: 26px !important;
+  padding: 0 4px 0 2px !important;
+  background: var(--ts-face) !important;
+  border-bottom: 1px solid #919b9c !important;
+  border-radius: 0 !important;
+}
+
+/* The channel name sits in a raised tab, like "Chat" in TS2. */
+:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading {
+  align-self: flex-end;
+  height: 22px;
+  padding: 0 10px;
+  margin-bottom: -1px;
+  background: #fff;
+  border: 1px solid #919b9c;
+  border-bottom: 0;
+  border-top: 2px solid #ffc83c;
+  border-radius: 3px 3px 0 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .big-hash {
+  display: none !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading strong {
+  font: 11px/20px var(--ts-font) !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading > span {
+  font: 11px/20px var(--ts-font) !important;
+  color: #555 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 3px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button svg {
+  width: 14px;
+  height: 14px;
+  color: #1d3f8f !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button:hover,
+:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button.active {
+  border-color: #aca899 !important;
+  background: linear-gradient(180deg, #fff, #e3e0d0) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-panel .messages {
+  background: #fff !important;
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .composer-wrap {
+  margin: 0 !important;
+  padding: 4px !important;
+  background: var(--ts-face) !important;
+  border-top: 1px solid #919b9c !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .composer {
+  border-radius: 0 !important;
+  border: 1px solid #7f9db9 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .composer textarea {
+  font: 12px/1.4 var(--ts-font) !important;
+  color: #000 !important;
+}
+
+/* XP push button for Send. */
+:root[data-custom-theme-id="teamspeak"] .composer .send-button {
+  width: auto !important;
+  min-width: 34px;
+  border-radius: 3px !important;
+  border: 1px solid #003c74 !important;
+  background: linear-gradient(180deg, #fff, #ece9d8 85%, #d6d0c5) !important;
+  color: #000 !important;
+}
+
+/* ---- Player list ---- */
+:root[data-custom-theme-id="teamspeak"] .member-panel::before {
+  content: "Players";
+  display: block;
+  padding: 3px 6px;
+  background: linear-gradient(180deg, #fff, #ece9d8);
+  border-bottom: 1px solid #919b9c;
+  font: bold 11px/16px var(--ts-font);
+  color: #000;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel input {
+  border-radius: 0 !important;
+  background: #fff !important;
+  border: 1px solid #7f9db9 !important;
+  color: #000 !important;
+  height: 22px !important;
+  font: 11px var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member-panel-title {
+  margin: 6px 8px 2px !important;
+  color: #000 !important;
+  font: bold 11px/16px var(--ts-font) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member {
+  min-height: 0 !important;
+  margin: 0 6px !important;
+  padding: 1px 4px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member:hover {
+  background: #316ac5 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member:hover strong {
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member strong {
+  color: #000 !important;
+  font: 11px var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .member-panel .member-avatar {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  border-radius: 2px !important;
+  font-size: 8px !important;
+}
+
+/* ---- Chat lines read like the TS2 log: "<2:26 PM> mewis:" ---- */
+:root[data-custom-theme-id="teamspeak"] .sidebar {
+  padding-bottom: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message > .avatar-base {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  border-radius: 2px !important;
+  font-size: 10px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message:hover {
+  background: #f1f4fb !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta {
+  gap: 4px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta time {
+  order: -1;
+  margin: 0 !important;
+  color: #808080 !important;
+  font: 11px var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta time::before { content: "<"; }
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta time::after { content: ">"; }
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta > strong {
+  color: var(--ts-navy) !important;
+  font: bold 12px var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .messages .message-meta > strong::after {
+  content: ":";
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button:not(.channel):not(.voice-room) {
+  min-height: 0 !important;
+  margin: 1px 0 !important;
+  padding: 0 4px 0 14px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #000 !important;
+  font: 11px/18px var(--ts-font) !important;
+  justify-content: flex-start !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button:not(.channel):not(.voice-room):hover {
+  text-decoration: underline;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button kbd {
+  display: none;
+}
+
+:root[data-custom-theme-id="teamspeak"] .channel-nav .dm-row {
+  min-height: 0 !important;
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .dm-call-btn {
+  height: 22px !important;
+  padding: 0 6px !important;
+  border-radius: 3px !important;
+  border: 1px solid #003c74 !important;
+  background: linear-gradient(180deg, #fff, #ece9d8 85%, #d6d0c5) !important;
+  box-shadow: none !important;
+  color: #000 !important;
+  font: 11px var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .chat-header .dm-call-btn svg {
+  color: #1d3f8f !important;
+}
+
+/* Message text at the old apps' sizes. */
+:root[data-custom-theme-id="teamspeak"] .messages .message-body > p {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+/* ---- from theme-panels.css ---- */
+:root[data-custom-theme-id="teamspeak"] {
+  --sp-frame: #0a246a;
+  --sp-side: #ece9d8;
+  --sp-main: #ece9d8;
+  --sp-ink: #000000;
+  --sp-muted: #4a4a44;
+  --sp-card: #ffffff;
+  --sp-card-edge: #aca899;
+  --sp-hover: #d8e4f8;
+  --sp-field: #ffffff;
+  --sp-field-edge: #7f9db9;
+  --sp-accent: #0a246a;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 0px;
+  --sp-title: #0a246a;
+}
+
+/* ==========================================================================
+   Settings: TeamSpeak 2 — a Windows dialog with tabs on the left
+   ========================================================================== */
+
+:root[data-custom-theme-id="teamspeak"] .modal.settings-modal {
+  font-family: var(--ts-font) !important;
+  border: 1px solid #0a246a !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding-top: 24px !important;
+  position: relative;
+  box-shadow: 2px 3px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .modal.settings-modal::before {
+  content: "TeamSpeak 2 - Options";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 24px;
+  padding-left: 26px;
+  display: flex;
+  align-items: center;
+  font: 700 12px/1 var(--ts-font);
+  color: #fff;
+  background:
+    radial-gradient(circle at 13px 12px, #c9c9c9 0 3px, #2a62d4 3.5px 7px, transparent 7.5px),
+    linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #003dd7 100%);
+  z-index: 2;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-control {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 3;
+  padding: 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-circle {
+  width: 21px !important;
+  height: 20px !important;
+  border-radius: 3px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-esc-text {
+  display: none;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-topbar {
+  padding: 12px 20px 10px;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-topbar h2 {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+/* The page sits in a sunken white well, like a property sheet. */
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-content-scroll {
+  margin: 0 12px 12px;
+  background: #fbfbf8;
+  border: 1px solid;
+  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow);
+  box-shadow: inset 1px 1px 0 var(--ts-dark);
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-nav-btn {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-nav-btn.active {
+  background: #316ac5 !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .settings-modal .settings-group-title {
+  color: #0a246a !important;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* TeamSpeak 2: the "Client Information" dialog. */
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: #ece9d8;
+  background: #ece9d8 !important;
+  color: #000 !important;
+  font-family: var(--ts-font) !important;
+  border: 1px solid #0a246a !important;
+  border-radius: 7px 7px 0 0 !important;
+  box-shadow: 2px 3px 12px rgba(0, 0, 0, 0.45) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) * {
+  font-family: var(--ts-font) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 64px !important;
+  border-bottom: 1px solid #aca899;
+  border-radius: 6px 6px 0 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner::before {
+  content: "Client Information";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 22px;
+  padding: 4px 30px 0 8px;
+  font: 700 12px var(--ts-font);
+  color: #fff;
+  text-shadow: 1px 1px 0 #0a246a;
+  background: linear-gradient(180deg, #0997ff 0%, #0053ee 10%, #0050ee 45%, #0066ff 90%, #003dd7 100%);
+  border-radius: 6px 6px 0 0;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-close {
+  top: 2px !important;
+  right: 3px !important;
+  width: 19px !important;
+  height: 18px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-copy {
+  right: 26px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  box-shadow: 0 0 0 1px #716f64, 0 0 0 3px #fff, 0 0 0 4px #aca899 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  color: #0a246a !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+/* Sections are group boxes: an etched frame with the title on the line. */
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: #fff !important;
+  border: 1px solid !important;
+  border-color: #aca899 #fff #fff #aca899 !important;
+  box-shadow: inset 1px 1px 0 #716f64 !important;
+  border-radius: 0 !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+}
+
+:root[data-custom-theme-id="teamspeak"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  box-shadow: inset 0 0 0 2px #f8b636 !important;
+}
+
+/* TeamSpeak 2: a "Voice" group box with raised push buttons. */
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar > .mini-voice-bar {
+  position: relative;
+  margin: 10px 6px 4px !important;
+  padding: 12px 8px 8px !important;
+  background: var(--ts-face) !important;
+  border: 1px solid !important;
+  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow) !important;
+  box-shadow: inset 1px 1px 0 var(--ts-hi), 1px 1px 0 var(--ts-shadow) !important;
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar > .mini-voice-bar::before {
+  content: "Voice";
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  padding: 0 4px;
+  font: 11px var(--ts-font);
+  color: #0a246a;
+  background: var(--ts-face);
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .mini-voice-name {
+  color: #000;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .mini-voice-status {
+  color: #006400 !important;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar .mini-voice-btn.on {
+  background: linear-gradient(180deg, #d8e4f8 0%, #b9cdef 100%) !important;
+}
+
+:root[data-custom-theme-id="teamspeak"]:not(#_) .sidebar .mini-voice-leave {
+  color: #a00000 !important;
+}

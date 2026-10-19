@@ -27,6 +27,7 @@ export type Tab =
   | "roles"
   | "requests"
   | "tutorial"
+  | "language"
   | "licenses";
 export type PrideTheme = "off" | "trans" | "pride" | "nonbinary";
 export type Density = "compact" | "cozy" | "roomy";

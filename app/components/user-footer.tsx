@@ -9,6 +9,7 @@ import type { PublicUser } from "@/lib/users";
 import { StyledText } from "./message-body";
 import { stripTextStyle } from "@/lib/text-style";
 import { StyledName } from "./profile-style-parts";
+import { useI18n } from "../lib/i18n-context";
 import {
   DEVICE_SAVED_EVENT,
   listDevices,
@@ -117,14 +118,16 @@ export function UserFooter({
     return () => window.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const { t } = useI18n();
   const presenceInfo = PRESENCE[status] || PRESENCE.online;
+  const presenceLabel = t(presenceInfo.labelKey);
 
   return (
     <footer className="discord-user-footer">
       <div
         className={`user-footer-profile${nameplateClass(user.nameplate)}`}
         onClick={onOpenStatusMenu}
-        title={stripTextStyle(`${user.displayName} · ${customStatus || presenceInfo.label}`)}
+        title={stripTextStyle(`${user.displayName} · ${customStatus || presenceLabel}`)}
         role="button"
         tabIndex={0}
       >
@@ -146,7 +149,7 @@ export function UserFooter({
         <div className="user-footer-info">
           <span className="user-footer-name"><StyledName name={user.displayName} style={user.profileStyle} /></span>
           <span className="user-footer-status">
-            <StyledText text={customStatus || presenceInfo.label} />
+            <StyledText text={customStatus || presenceLabel} />
           </span>
         </div>
       </div>
@@ -158,8 +161,8 @@ export function UserFooter({
             type="button"
             className={`user-footer-btn ${muted ? "off" : ""}`}
             onClick={onToggleMute}
-            title={muted ? "Unmute Microphone" : "Mute Microphone"}
-            aria-label={muted ? "Unmute Microphone" : "Mute Microphone"}
+            title={muted ? t("footer.unmute") : t("footer.mute")}
+            aria-label={muted ? t("footer.unmute") : t("footer.mute")}
           >
             {muted ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
@@ -171,16 +174,16 @@ export function UserFooter({
               setMicMenuOpen((o) => !o);
             }}
             aria-expanded={micMenuOpen}
-            aria-label="Input options"
-            title="Input options"
+            aria-label={t("footer.inputOptions")}
+            title={t("footer.inputOptions")}
           >
             <ChevronDown size={14} />
           </button>
 
           {micMenuOpen && (
             <div className="user-footer-dropdown-menu">
-              <div className="menu-header">INPUT DEVICE</div>
-              {[{ deviceId: "", label: "System default" }, ...devices.microphones.filter((mic) => mic.deviceId !== "default")].map((mic) => (
+              <div className="menu-header">{t("footer.inputDevice")}</div>
+              {[{ deviceId: "", label: t("footer.systemDefault") }, ...devices.microphones.filter((mic) => mic.deviceId !== "default")].map((mic) => (
                 <button
                   key={mic.deviceId || "default"}
                   type="button"
@@ -201,8 +204,8 @@ export function UserFooter({
             type="button"
             className={`user-footer-btn ${deafened ? "off" : ""}`}
             onClick={onToggleDeafen}
-            title={deafened ? "Undeafen" : "Deafen"}
-            aria-label={deafened ? "Undeafen" : "Deafen"}
+            title={deafened ? t("footer.undeafen") : t("footer.deafen")}
+            aria-label={deafened ? t("footer.undeafen") : t("footer.deafen")}
           >
             {deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
           </button>
@@ -214,17 +217,17 @@ export function UserFooter({
               setDeafenMenuOpen((o) => !o);
             }}
             aria-expanded={deafenMenuOpen}
-            aria-label="Output options"
-            title="Output options"
+            aria-label={t("footer.outputOptions")}
+            title={t("footer.outputOptions")}
           >
             <ChevronDown size={14} />
           </button>
 
           {deafenMenuOpen && (
             <div className="user-footer-dropdown-menu">
-              <div className="menu-header">OUTPUT DEVICE</div>
+              <div className="menu-header">{t("footer.outputDevice")}</div>
               {supportsOutputSelection() ? (
-                [{ deviceId: "", label: "System default" }, ...devices.speakers.filter((spk) => spk.deviceId !== "default")].map((spk) => (
+                [{ deviceId: "", label: t("footer.systemDefault") }, ...devices.speakers.filter((spk) => spk.deviceId !== "default")].map((spk) => (
                   <button
                     key={spk.deviceId || "default"}
                     type="button"
@@ -236,7 +239,7 @@ export function UserFooter({
                   </button>
                 ))
               ) : (
-                <div className="menu-item disabled">This browser plays through the system output</div>
+                <div className="menu-item disabled">{t("footer.systemOutputOnly")}</div>
               )}
             </div>
           )}
@@ -248,8 +251,8 @@ export function UserFooter({
           type="button"
           className="user-footer-btn settings-btn"
           onClick={onOpenSettings}
-          title="User Settings"
-          aria-label="User Settings"
+          title={t("footer.userSettings")}
+          aria-label={t("footer.userSettings")}
         >
           <Settings size={18} />
         </button>

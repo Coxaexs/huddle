@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMPLETE_LOCALES,
   DEFAULT_LOCALE,
   ENGLISH_CATALOG,
   LOCALES,
@@ -33,7 +34,10 @@ const withoutEnglish = { catalogs: { en: {} } };
  * against ENGLISH_CATALOG directly - running it through the "blank English"
  * trick below would only prove that blanking English works.
  */
-const translatedLocales = LOCALES.filter((entry) => entry.code !== "en");
+const translatedLocales = LOCALES.filter((entry) => entry.code !== "en" && entry.complete);
+
+/** Languages that only cover the first few dozen strings; picked by hand only. */
+const partialLocales = LOCALES.filter((entry) => !entry.complete);
 
 describe("translate interpolation", () => {
   it("substitutes a named value", () => {
@@ -364,8 +368,9 @@ describe("pickLocale / Accept-Language", () => {
 
 
 describe("locale registry", () => {
-  it("ships the six locales the foundation promises", () => {
-    expect(LOCALES.map((locale) => locale.code)).toEqual(["en", "es", "de", "fr", "pt-BR", "nl"]);
+  it("ships English, Turkish and the five foundation locales", () => {
+    expect(LOCALES.map((locale) => locale.code)).toEqual(["en", "tr", "es", "de", "fr", "pt-BR", "nl"]);
+    expect(COMPLETE_LOCALES).toEqual(["en", "tr"]);
   });
 
   it("starts with the default locale and recognizes it", () => {
@@ -418,7 +423,8 @@ describe("catalog integrity", () => {
   it("keeps every placeholder of the English string in every translation", () => {
     // The highest-value lint a catalog can have: `{name}` and `{count}` are the
     // only parts of a sentence a program can get wrong silently.
-    const placeholders = (text: string) => text.match(/\{[a-zA-Z0-9_]+\}/g) ?? [];
+    // Sorted: a translation may move a placeholder, never drop or add one.
+    const placeholders = (text: string) => (text.match(/\{[a-zA-Z0-9_]+\}/g) ?? []).sort();
     for (const { code } of translatedLocales) {
       for (const key of MESSAGE_KEYS) {
         const translated = translate(code, key, undefined, withoutEnglish);
@@ -427,6 +433,34 @@ describe("catalog integrity", () => {
         );
       }
     }
+  });
+
+  it("keeps the placeholders in the strings a partial language does have", () => {
+    // Sorted: a translation may move a placeholder, never drop or add one.
+    const placeholders = (text: string) => (text.match(/\{[a-zA-Z0-9_]+\}/g) ?? []).sort();
+    for (const { code } of partialLocales) {
+      for (const key of MESSAGE_KEYS) {
+        const translated = translate(code, key, undefined, withoutEnglish);
+        if (translated === key) continue; // not translated yet
+        expect(placeholders(translated), `${code}/${key} changed its placeholders`).toEqual(
+          placeholders(ENGLISH_CATALOG[key]),
+        );
+      }
+    }
+  });
+
+  it("has a .one and an .other for every plural family", () => {
+    for (const key of MESSAGE_KEYS) {
+      if (!key.endsWith(".other")) continue;
+      const base = key.slice(0, -".other".length);
+      expect(MESSAGE_KEYS, `${base} has no .one`).toContain(`${base}.one`);
+    }
+  });
+
+  it("only picks a finished language from the browser", () => {
+    expect(pickLocale("tr-TR,tr;q=0.9,en;q=0.8", COMPLETE_LOCALES)).toBe("tr");
+    expect(pickLocale("es-ES,es;q=0.9", COMPLETE_LOCALES)).toBe("en");
+    expect(pickLocale("es-ES,tr;q=0.5", COMPLETE_LOCALES)).toBe("tr");
   });
 
   it("translates rather than copies English for the ids that are sentences", () => {

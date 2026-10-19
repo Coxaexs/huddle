@@ -3,6 +3,7 @@
 import { PhonePushSettings } from "../phone-push-settings";
 import { DigestSettings } from "../digest-settings";
 import { disableWebPush, enableWebPush } from "../../lib/web-push";
+import { useI18n } from "../../lib/i18n-context";
 
 /** Desktop, phone and email notifications, which used to live under Appearance. */
 export function NotificationsTab({
@@ -12,13 +13,15 @@ export function NotificationsTab({
   notify: boolean;
   setNotify: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       <label className="appearance-switch">
         <span>
-          <strong>Desktop notifications</strong>
-          <small>Mentions, DMs and calls — even with the tab closed</small>
+          <strong>{t("notificationSettings.enableDesktop")}</strong>
+          <small>{t("notificationSettings.desktopDesc")}</small>
         </span>
+
         <input
           type="checkbox"
           checked={notify}

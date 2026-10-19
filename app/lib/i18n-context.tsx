@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   createContext,
   useCallback,
   useContext,
@@ -10,12 +11,15 @@ import {
   type ReactNode,
 } from "react";
 import {
+  COMPLETE_LOCALES,
   DEFAULT_LOCALE,
   createTranslator,
   pickLocale,
   resolveLocale,
   type Locale,
   type TranslateFn,
+  type TranslatableKey,
+  type TranslateVars,
 } from "@/lib/i18n";
 
 /**
@@ -90,7 +94,44 @@ function detectLocale(): Locale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   const languages = window.navigator?.languages;
   const header = languages && languages.length > 0 ? languages.join(",") : window.navigator?.language;
-  return pickLocale(header);
+  // Only finished translations are picked for you; a half-translated
+  // interface is worse than an English one. The others are in the picker.
+  return pickLocale(header, COMPLETE_LOCALES);
+}
+
+/**
+ * The language in use, for code outside React (hooks' toasts, formatters,
+ * apiFetch's header). The provider keeps it current.
+ */
+let activeLocale: Locale = DEFAULT_LOCALE;
+let activeT: TranslateFn = createTranslator(DEFAULT_LOCALE);
+
+export function currentLocale(): Locale {
+  return activeLocale;
+}
+
+/** Translates with the language in use, outside a component. */
+export function tNow(key: TranslatableKey, vars?: TranslateVars): string {
+  return activeT(key, vars);
+}
+
+/**
+ * A translated sentence with React pieces in it: `{terms}` in the string
+ * becomes `parts.terms`. Word order is the translation's, so a link can move
+ * to wherever the language puts it.
+ */
+export function tRich(
+  t: TranslateFn,
+  key: TranslatableKey,
+  parts: Record<string, ReactNode>,
+  vars?: TranslateVars,
+): ReactNode[] {
+  return t(key, vars)
+    .split(/(\{[a-zA-Z0-9_]+\})/)
+    .map((piece, index) => {
+      const name = /^\{([a-zA-Z0-9_]+)\}$/.exec(piece)?.[1];
+      return name && name in parts ? <Fragment key={index}>{parts[name]}</Fragment> : piece;
+    });
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -130,6 +171,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   // a context value that changes identity each render, every consumer re-renders
   // on every provider render.
   const t = useMemo(() => createTranslator(locale), [locale]);
+  activeLocale = locale;
+  activeT = t;
   const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

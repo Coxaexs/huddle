@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   SmilePlus,
 } from "lucide-react";
+import { useI18n } from "@/app/lib/i18n-context";
 
 interface MessageContextMenuAction {
   label: string;
@@ -92,6 +93,7 @@ export function MessageContextMenu({
   onReport,
   onAddReaction,
 }: MessageContextMenuProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(() => {
     const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -184,16 +186,16 @@ export function MessageContextMenu({
     >
       {/* Reaction */}
       {menuItem({
-        label: "Add Reaction",
+        label: t("menu.addReaction"),
         icon: SmilePlus,
         onSelect: onAddReaction,
       })}
       {isOwn ? (
         <>
-          {menuItem({ label: "Edit Message", icon: Edit, onSelect: onEdit })}
+          {menuItem({ label: t("menu.editMessage"), icon: Edit, onSelect: onEdit })}
           {separator()}
           {menuItem({
-            label: "Delete Message",
+            label: t("menu.deleteMessage"),
             icon: Trash2,
             onSelect: onDelete,
             danger: true,
@@ -201,43 +203,43 @@ export function MessageContextMenu({
         </>
       ) : (
         <>
-          {menuItem({ label: "Reply", icon: Reply, onSelect: onReply })}
+          {menuItem({ label: t("menu.reply"), icon: Reply, onSelect: onReply })}
           {separator()}
         </>
       )}
-      {menuItem({ label: "Forward", icon: Forward, onSelect: onForward })}
-      {menuItem({ label: "Create Thread", icon: MessageCircle, onSelect: onThread })}
+      {menuItem({ label: t("menu.forward"), icon: Forward, onSelect: onForward })}
+      {menuItem({ label: t("menu.createThread"), icon: MessageCircle, onSelect: onThread })}
       {separator()}
-      {menuItem({ label: "Copy Text", icon: Copy, onSelect: onCopyText })}
+      {menuItem({ label: t("menu.copyText"), icon: Copy, onSelect: onCopyText })}
       {menuItem({
-        label: isPinned ? "Unpin Message" : "Pin Message",
+        label: isPinned ? t("menu.unpinMessage") : t("menu.pinMessage"),
         icon: Pin,
         onSelect: onPin,
         disabled: !canPin,
       })}
       {menuItem({
-        label: isSaved ? "Remove Bookmark" : "Bookmark Message",
+        label: isSaved ? t("menu.removeBookmark") : t("menu.bookmarkMessage"),
         icon: Save,
         onSelect: onBookmark,
       })}
-      {menuItem({ label: "Create Reminder", icon: Clock, onSelect: onReminder })}
-      {menuItem({ label: "Apps", icon: MoreHorizontal, onSelect: onApps })}
+      {menuItem({ label: t("menu.createReminder"), icon: Clock, onSelect: onReminder })}
+      {menuItem({ label: t("menu.apps"), icon: MoreHorizontal, onSelect: onApps })}
       {separator()}
-      {menuItem({ label: "Mark Unread", icon: EyeOff, onSelect: onMarkUnread })}
-      {menuItem({ label: "Copy Message Link", icon: Link, onSelect: onCopyLink })}
-      {menuItem({ label: "Speak Message", icon: Speaker, onSelect: onSpeak })}
+      {menuItem({ label: t("menu.markUnread"), icon: EyeOff, onSelect: onMarkUnread })}
+      {menuItem({ label: t("menu.copyMessageLink"), icon: Link, onSelect: onCopyLink })}
+      {menuItem({ label: t("menu.speakMessage"), icon: Speaker, onSelect: onSpeak })}
       {!isOwn && !isBot && (
         <>
           {separator()}
           {menuItem({
-            label: "Report Message",
+            label: t("menu.reportMessage"),
             icon: ShieldAlert,
             onSelect: onReport,
           })}
         </>
       )}
       {separator()}
-      {menuItem({ label: "Copy Message ID", icon: Award, onSelect: onCopyId })}
+      {menuItem({ label: t("menu.copyMessageId"), icon: Award, onSelect: onCopyId })}
     </div>
   );
 }

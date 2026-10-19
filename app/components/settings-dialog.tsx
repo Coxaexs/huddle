@@ -1,7 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText } from "lucide-react";
+import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText, Languages } from "lucide-react";
 import { LicensesTab } from "./licenses-tab";
+import { LanguageTab } from "./settings/language-tab";
+import { useI18n } from "../lib/i18n-context";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
 import { KOFI_URL, GITHUB_SPONSORS_URL, SITE } from "./site-chrome";
@@ -180,6 +182,7 @@ export function SettingsDialog({
   onOpenDm,
   onOpenTutorial,
 }: SettingsDialogProps) {
+  const { t } = useI18n();
   const [capturingKey, setCapturingKey] = useState(false);
   // Kept locally so the dialog still works if it is rendered without a call.
   const [localMic, setLocalMic] = useState<MicSettings>(() => readMicSettings());
@@ -1038,34 +1041,35 @@ export function SettingsDialog({
 
   const NAV_CATEGORIES = [
     {
-      title: "USER SETTINGS",
+      title: t("userSettings.group.user"),
       items: [
-        { id: "password" as Tab, label: "Account & Password", icon: ShieldCheck, desc: "Username, email, password and account security" },
-        { id: "activities" as Tab, label: "Activities & Privacy", icon: Activity, desc: "Status sharing, games and Spotify" },
+        { id: "password" as Tab, label: t("userSettings.tab.password"), icon: ShieldCheck, desc: "Username, email, password and account security" },
+        { id: "activities" as Tab, label: t("userSettings.tab.activities"), icon: Activity, desc: "Status sharing, games and Spotify" },
       ],
     },
     {
-      title: "APP SETTINGS",
+      title: t("userSettings.group.app"),
       items: [
-        { id: "voice" as Tab, label: "Voice & Video", icon: Mic, desc: "Mic, speakers, mic test and camera" },
-        { id: "appearance" as Tab, label: "Appearance", icon: Palette, desc: "Themes, colours and extras" },
-        { id: "notifications" as Tab, label: "Notifications", icon: Bell, desc: "Desktop, phone and email digest" },
-        { id: "tts" as Tab, label: "Text-to-speech", icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
-        { id: "accessibility" as Tab, label: "Accessibility", icon: Eye, desc: "Font size, readability, preview and animation" },
-        { id: "dice" as Tab, label: "3D Dice", icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
-        { id: "custom_ui_css" as Tab, label: "Custom CSS", icon: Sparkles, desc: "Personal client-side UI styling" },
+        { id: "voice" as Tab, label: t("userSettings.tab.voice"), icon: Mic, desc: "Mic, speakers, mic test and camera" },
+        { id: "appearance" as Tab, label: t("userSettings.tab.appearance"), icon: Palette, desc: "Themes, colours and extras" },
+        { id: "language" as Tab, label: t("settings.nav.language"), icon: Languages, desc: t("settings.nav.language.desc") },
+        { id: "notifications" as Tab, label: t("userSettings.tab.notifications"), icon: Bell, desc: "Desktop, phone and email digest" },
+        { id: "tts" as Tab, label: t("userSettings.tab.tts"), icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
+        { id: "accessibility" as Tab, label: t("userSettings.tab.accessibility"), icon: Eye, desc: "Font size, readability, preview and animation" },
+        { id: "dice" as Tab, label: t("userSettings.tab.dice"), icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
+        { id: "custom_ui_css" as Tab, label: t("userSettings.tab.customUiCss"), icon: Sparkles, desc: "Personal client-side UI styling" },
       ],
     },
     ...(canCreateInvites || (canManageServer && server)
       ? [
           {
-            title: "SERVER / COMMUNITY",
+            title: t("userSettings.group.server"),
             items: [
               ...(canCreateInvites
-                ? [{ id: "invites" as Tab, label: "Invites", icon: Share2, desc: "Manage server invites and links" }]
+                ? [{ id: "invites" as Tab, label: t("userSettings.tab.invites"), icon: Share2, desc: "Manage server invites and links" }]
                 : []),
               ...(canManageServer && server
-                ? [{ id: "roles" as Tab, label: "Roles", icon: Layers, desc: "Configure server roles and permissions" }]
+                ? [{ id: "roles" as Tab, label: t("userSettings.tab.roles"), icon: Layers, desc: "Configure server roles and permissions" }]
                 : []),
             ],
           },
@@ -1073,16 +1077,16 @@ export function SettingsDialog({
       : []),
 
     {
-      title: "COMMUNITY & SUPPORT",
+      title: t("userSettings.group.community"),
       items: [
         {
           id: "requests" as Tab,
-          label: "Make a Request",
+          label: t("userSettings.tab.requests"),
           icon: MessageSquarePlus,
           desc: "Feature requests & suggestions sent directly to kiwi & flo",
         },
-        { id: "tutorial" as Tab, label: "Tutorial", icon: GraduationCap, desc: "Replay the welcome tour and theme picker any time" },
-        { id: "licenses" as Tab, label: "Licenses & About", icon: Globe, desc: "Software licenses and legal notices" },
+        { id: "tutorial" as Tab, label: t("userSettings.tab.tutorial"), icon: GraduationCap, desc: "Replay the welcome tour and theme picker any time" },
+        { id: "licenses" as Tab, label: t("userSettings.tab.licenses"), icon: Globe, desc: "Software licenses and legal notices" },
       ],
     },
   ];
@@ -1093,12 +1097,12 @@ export function SettingsDialog({
         {/* Discord Left Sidebar */}
         <aside className="settings-sidebar">
           <div className="settings-mobile-head">
-            <h2>Settings</h2>
+            <h2>{t("common.settings")}</h2>
             <button
               type="button"
               className="settings-mobile-close"
               onClick={onClose}
-              aria-label="Close settings"
+              aria-label={t("common.close")}
             >
               <X size={20} />
             </button>
@@ -1114,7 +1118,7 @@ export function SettingsDialog({
                 className="settings-sidebar-user-sub"
                 onClick={() => setProfileEditor(true)}
               >
-                <span>Edit Profiles</span>
+                <span>{t("userSettings.editProfiles")}</span>
                 <Edit3 size={11} />
               </button>
             </div>
@@ -1125,7 +1129,7 @@ export function SettingsDialog({
             <input
               type="text"
               className="settings-search-input"
-              placeholder="Search settings…"
+              placeholder={t("userSettings.search")}
               value={settingsSearch}
               onChange={(e) => setSettingsSearch(e.target.value)}
             />
@@ -1212,7 +1216,7 @@ export function SettingsDialog({
             onClick={onSignOut}
           >
             <LogOut size={16} />
-            <span>Log Out</span>
+            <span>{t("userSettings.logOut")}</span>
           </button>
         </aside>
 
@@ -1228,21 +1232,22 @@ export function SettingsDialog({
               <ChevronLeft size={22} />
             </button>
             <h2>
-              {tab === "profile" && "Profile"}
-              {tab === "password" && "Account & Password"}
-              {tab === "activities" && "Activities & Privacy"}
-              {tab === "appearance" && "Appearance"}
-              {tab === "notifications" && "Notifications"}
-              {tab === "dice" && "3D Dice"}
-              {tab === "custom_ui_css" && "Custom CSS"}
-              {tab === "voice" && "Voice & Video"}
-              {tab === "tts" && "Text-to-speech"}
-              {tab === "accessibility" && "Accessibility"}
-              {tab === "invites" && "Invites"}
-              {tab === "roles" && "Roles"}
-              {tab === "requests" && "Make a Request"}
-              {tab === "licenses" && "Licenses & About"}
-              {tab === "tutorial" && "Tutorial"}
+              {tab === "profile" && t("userSettings.tab.profile")}
+              {tab === "password" && t("userSettings.tab.password")}
+              {tab === "activities" && t("userSettings.tab.activities")}
+              {tab === "appearance" && t("userSettings.tab.appearance")}
+              {tab === "notifications" && t("userSettings.tab.notifications")}
+              {tab === "dice" && t("userSettings.tab.dice")}
+              {tab === "custom_ui_css" && t("userSettings.tab.customUiCss")}
+              {tab === "voice" && t("userSettings.tab.voice")}
+              {tab === "tts" && t("userSettings.tab.tts")}
+              {tab === "accessibility" && t("userSettings.tab.accessibility")}
+              {tab === "invites" && t("userSettings.tab.invites")}
+              {tab === "roles" && t("userSettings.tab.roles")}
+              {tab === "requests" && t("userSettings.tab.requests")}
+              {tab === "licenses" && t("userSettings.tab.licenses")}
+              {tab === "language" && t("settings.nav.language")}
+              {tab === "tutorial" && t("userSettings.tab.tutorial")}
             </h2>
             <button
               type="button"
@@ -1475,6 +1480,7 @@ export function SettingsDialog({
           )}
 
           {tab === "licenses" && <LicensesTab />}
+          {tab === "language" && <LanguageTab />}
           {tab === "tutorial" && (
             <div className="space-y-4">
               <p className="text-sm leading-relaxed text-gray-300">

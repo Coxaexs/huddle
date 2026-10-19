@@ -866,6 +866,21 @@ async function migrate(db: D1Database): Promise<void> {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
   if (userMigrations.length) await db.batch(userMigrations);
+
+  // What Settings → Security shows for each signed-in device: the browser it
+  // signed in from, the address, and when it was last used (updated at most
+  // every ten minutes, see `currentUser`).
+  const sessionColumns = await columnNames(db, "sessions");
+  const sessionMigrations: D1PreparedStatement[] = [];
+  for (const [column, ddl] of [
+    ["user_agent", "ALTER TABLE sessions ADD COLUMN user_agent TEXT"],
+    ["ip", "ALTER TABLE sessions ADD COLUMN ip TEXT"],
+    ["last_used_at", "ALTER TABLE sessions ADD COLUMN last_used_at TEXT"],
+  ] as const) {
+    if (!sessionColumns.has(column)) sessionMigrations.push(db.prepare(ddl));
+  }
+  if (sessionMigrations.length) await db.batch(sessionMigrations);
+
   await db.batch([
     // One person may run several accounts on the same address, so not UNIQUE.
     db.prepare("DROP INDEX IF EXISTS users_email_idx"),

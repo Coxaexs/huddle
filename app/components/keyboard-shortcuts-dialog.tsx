@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Command, X, Mic, Headphones, Monitor, Video, Search, MessageSquare, Terminal } from "lucide-react";
+import { useI18n } from "../lib/i18n-context";
 
 interface KeyboardShortcutsDialogProps {
   open: boolean;
@@ -9,6 +10,7 @@ interface KeyboardShortcutsDialogProps {
 }
 
 export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDialogProps) {
+  const { t } = useI18n();
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -22,34 +24,34 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
 
   const shortcutGroups = [
     {
-      title: "Navigation & Quick Actions",
+      title: t("shortcuts.group.nav"),
       icon: <Command size={18} />,
       shortcuts: [
-        { keys: ["Ctrl", "K"], description: "Quick Channel / DM Switcher" },
-        { keys: ["Ctrl", "Shift", "K"], description: "Find People" },
-        { keys: ["Alt", "↑ / ↓"], description: "Previous / Next Channel" },
-        { keys: ["Ctrl", "/"], description: "Open Keyboard Shortcuts" },
-        { keys: ["ESC"], description: "Close Modal or Popover" },
+        { keys: ["Ctrl", "K"], description: t("shortcuts.switcher") },
+        { keys: ["Ctrl", "Shift", "K"], description: t("shortcuts.findPeople") },
+        { keys: ["Alt", "↑ / ↓"], description: t("shortcuts.prevNext") },
+        { keys: ["Ctrl", "/"], description: t("shortcuts.open") },
+        { keys: ["ESC"], description: t("shortcuts.close") },
       ],
     },
     {
-      title: "Voice & Video Controls",
+      title: t("shortcuts.group.voice"),
       icon: <Mic size={18} />,
       shortcuts: [
-        { keys: ["Ctrl", "Shift", "M"], description: "Toggle Microphone Mute" },
-        { keys: ["Ctrl", "Shift", "D"], description: "Toggle Headphones Deafen" },
-        { keys: ["Ctrl", "Shift", "S"], description: "Toggle Screen Share" },
-        { keys: ["Ctrl", "Shift", "V"], description: "Toggle Camera" },
+        { keys: ["Ctrl", "Shift", "M"], description: t("shortcuts.mute") },
+        { keys: ["Ctrl", "Shift", "D"], description: t("shortcuts.deafen") },
+        { keys: ["Ctrl", "Shift", "S"], description: t("shortcuts.screen") },
+        { keys: ["Ctrl", "Shift", "V"], description: t("shortcuts.camera") },
       ],
     },
     {
-      title: "Chat & Messaging",
+      title: t("shortcuts.group.chat"),
       icon: <MessageSquare size={18} />,
       shortcuts: [
-        { keys: ["/"], description: "Open Slash Command Menu" },
-        { keys: ["↑"], description: "Edit your last sent message" },
-        { keys: ["Shift", "Enter"], description: "Insert a new line" },
-        { keys: ["Shift", "Delete"], description: "Bypass delete confirmation" },
+        { keys: ["/"], description: t("shortcuts.slash") },
+        { keys: ["↑"], description: t("shortcuts.editLast") },
+        { keys: ["Shift", "Enter"], description: t("shortcuts.newLine") },
+        { keys: ["Shift", "Delete"], description: t("shortcuts.skipConfirm") },
       ],
     },
   ];
@@ -60,9 +62,9 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
         <div className="shortcuts-dialog-header">
           <div className="flex items-center gap-2">
             <Command size={20} className="text-indigo-400" />
-            <h3>Keyboard Shortcuts Cheat Sheet</h3>
+            <h3>{t("shortcuts.title")}</h3>
           </div>
-          <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="close-btn" onClick={onClose} aria-label={t("common.close")}>
             <X size={18} />
           </button>
         </div>

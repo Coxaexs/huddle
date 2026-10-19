@@ -1,5 +1,7 @@
 "use client";
 
+import { currentLocale } from "./i18n-context";
+
 /** Huddle is mounted under /hangout, so every request needs the prefix. */
 export const basePath = "/hangout";
 
@@ -21,6 +23,8 @@ export async function apiFetch<T>(
           : {}),
         // Minutes east of UTC, for time-of-day achievements (Night Owl…).
         "X-Hoffle-Tz": String(-new Date().getTimezoneOffset()),
+        // The interface language, so errors come back in it.
+        "X-Hoffle-Locale": currentLocale(),
         ...init?.headers,
       },
     });

@@ -29,6 +29,7 @@ import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protoc
 import type { PersonalEmoticon } from "@/lib/msn-contacts";
 import type { RecorderState } from "../../voice-message";
 import type { ChannelKindInfo } from "@/lib/channel-kinds";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export function Composer({
   sendMessage,
@@ -179,6 +180,7 @@ export function Composer({
   messages: Message[];
   user: PublicUser;
 }) {
+  const { t } = useI18n();
   return (
     <form className="composer-wrap" onSubmit={sendMessage}>
                 {activeSlashCommand && draft.startsWith("/") && (
@@ -263,8 +265,8 @@ export function Composer({
                               <span className="mention-primary">@{option.name}</span>
                               <span className="mention-note">
                                 {option.name === "everyone"
-                                  ? "Notify every member of this server"
-                                  : "Notify everyone who is online"}
+                                  ? t("chat.notifyEveryone")
+                                  : t("chat.notifyHere")}
                               </span>
                             </button>
                           </div>
@@ -367,7 +369,7 @@ export function Composer({
                               ? `:+${item.name}:`
                               : `:${item.name}:`}
                           </span>
-                          {item.isCustom && <span className="mention-note">Server Emoji</span>}
+                          {item.isCustom && <span className="mention-note">{t("composer.serverEmoji")}</span>}
                         </button>
                       );
                     })}
@@ -433,12 +435,12 @@ export function Composer({
                 {replyTarget && (
                   <div className="reply-bar">
                     <span>
-                      Replying to <strong>{replyTarget.author}</strong>
+                      {t("composer.replyingTo", { author: replyTarget.author })}
                     </span>
                     <button
                       type="button"
                       onClick={() => setReplyTarget(null)}
-                      aria-label="Cancel reply"
+                      aria-label={t("composer.cancelReply")}
                     >
                       ×
                     </button>
@@ -473,7 +475,7 @@ export function Composer({
                           )}
                           {isSpoiler && (
                             <span className="absolute bottom-1 left-1 bg-amber-500 text-black font-extrabold text-[8px] px-1 rounded uppercase tracking-wider select-none pointer-events-none">
-                              Spoiler
+                              {t("composer.spoiler")}
                             </span>
                           )}
                           {entry.preview && (
@@ -481,15 +483,15 @@ export function Composer({
                               <button
                                 type="button"
                                 className={entry.alt ? "active" : ""}
-                                title={entry.alt ? `Description: ${entry.alt}` : "Describe this image for people using screen readers"}
-                                aria-label={entry.alt ? "Edit image description" : "Add image description"}
+                                title={entry.alt ? t("composer.imageDescriptionTooltip", { alt: entry.alt }) : t("composer.imageDescriptionAddTooltip")}
+                                aria-label={entry.alt ? t("composer.imageDescriptionEditAria") : t("composer.imageDescriptionAddAria")}
                                 onClick={() =>
                                   showCustomPrompt({
-                                    title: "Describe this image",
-                                    message: "Screen readers read this out for people who can't see the image.",
+                                    title: t("composer.describeImage"),
+                                    message: t("composer.describeImageA11y"),
                                     defaultValue: entry.alt || "",
-                                    placeholder: "A grey cat asleep on a keyboard",
-                                    confirmText: "Save",
+                                    placeholder: t("composer.imageDescriptionPlaceholder"),
+                                    confirmText: t("common.save"),
                                     maxLength: 1000,
                                     onConfirm: (value) =>
                                       setPendingFiles((current) =>
@@ -505,7 +507,7 @@ export function Composer({
                                 <button
                                   type="button"
                                   className={entry.original ? "active" : ""}
-                                  title={entry.original ? "Sending at full size. Click to send it smaller and faster." : "Sent smaller and faster. Click to send the original."}
+                                  title={entry.original ? t("composer.hdOn") : t("composer.hdOff")}
                                   aria-pressed={Boolean(entry.original)}
                                   onClick={() =>
                                     setPendingFiles((current) =>
@@ -526,8 +528,8 @@ export function Composer({
                                   ? "bg-amber-500 text-black font-bold hover:bg-amber-400"
                                   : "bg-black/60 text-white/70 hover:text-white hover:bg-black/80"
                               }`}
-                              title={isSpoiler ? "Remove spoiler tag" : "Mark attachment as spoiler"}
-                              aria-label={isSpoiler ? "Remove spoiler tag" : "Mark attachment as spoiler"}
+                              title={isSpoiler ? t("composer.removeSpoiler") : t("composer.markSpoiler")}
+                              aria-label={isSpoiler ? t("composer.removeSpoiler") : t("composer.markSpoiler")}
                               onClick={() => {
                                 setPendingFiles((current) =>
                                   current.map((item) => {
@@ -550,7 +552,7 @@ export function Composer({
                                   current.filter((item) => item.id !== entry.id),
                                 )
                               }
-                              aria-label={`Remove ${entry.file.name}`}
+                              aria-label={t("composer.removeAttachment", { name: entry.file.name })}
                               className="w-5 h-5 rounded bg-black/60 hover:bg-black/80 text-white/70 hover:text-white flex items-center justify-center text-xs cursor-pointer"
                             >
                               ×
@@ -566,27 +568,26 @@ export function Composer({
                   <div className="dm-blocked-banner">
                     <Timer size={16} className="text-amber-400 shrink-0" />
                     <span>
-                      You are timed out in this server until{" "}
-                      {formatClientDateTime(myTimeoutUntil)}. You can still read along.
+                      {t("composer.timedOut", { when: formatClientDateTime(myTimeoutUntil) })}
                     </span>
                   </div>
                 ) : isDmBlocked ? (
                   <div className="dm-blocked-banner">
                     <ShieldAlert size={16} className="text-rose-400 shrink-0" />
-                    <span>You have blocked this user. Unblock them to send messages.</span>
+                    <span>{t("composer.blockedUser")}</span>
                     <button
                       type="button"
                       className="dm-unblock-btn"
                       onClick={() => activeDm && handleUnblockUser(activeDm.user.id)}
                     >
-                      Unblock
+                      {t("composer.unblock")}
                     </button>
                   </div>
                 ) : composerBlocked ? (
                   <div className="dm-blocked-banner">
                     <Radio size={16} className="text-violet-400 shrink-0" />
                     <span>
-                      This is an announcement channel, so only moderators can post here.
+                      {t("composer.announcementOnly")}
                     </span>
                   </div>
                 ) : (
@@ -600,8 +601,7 @@ export function Composer({
                     !hub.online.has(activeDm.user.id) && (
                       <p className="msn-offline-note">
                         <span aria-hidden="true">ⓘ</span>
-                        <StyledText text={activeDm.user.displayName} /> appears to be offline. Messages you
-                        send will be delivered when they sign in.
+                        {t("composer.offlineNotice", { name: activeDm.user.displayName })}
                       </p>
                     )}
                   {msnTheme && (
@@ -652,7 +652,7 @@ export function Composer({
                       type="button"
                       className="attach-button"
                       onClick={() => fileRef.current?.click()}
-                      aria-label="Attach files or media"
+                      aria-label={t("composer.attachFiles")}
                     >
                       +
                     </button>
@@ -686,18 +686,20 @@ export function Composer({
                       placeholder={
                         activeChannelId
                           ? isSelfDm
-                            ? "Jot down a note or link to yourself..."
+                            ? t("composer.notePlaceholder")
                             : activeChannelInfo.threadContainer
-                              ? "Start a new post…"
+                              ? t("composer.threadPostPlaceholder")
                               : activeChannelInfo.moderatorOnlyPosting
-                                ? `Post an announcement in #${channelTitle}`
-                                : `Message ${inDmHome ? "" : "#"}${channelTitle}`
-                          : "Pick a channel"
+                                ? t("composer.announcementPlaceholder", { channel: channelTitle })
+                                : inDmHome
+                                  ? t("composer.dmPlaceholder", { channel: channelTitle })
+                                  : t("composer.channelPlaceholder", { channel: channelTitle })
+                          : t("composer.pickChannel")
                       }
                       aria-label={
                         activeChannelInfo.threadContainer
-                          ? `New post in ${channelTitle}`
-                          : `Message ${channelTitle}`
+                          ? t("composer.newPostAria", { channel: channelTitle })
+                          : t("composer.messageAria", { channel: channelTitle })
                       }
                       rows={1}
                       disabled={!activeChannelId}
@@ -720,7 +722,7 @@ export function Composer({
                           }}
                         >
                           <Type size={18} />
-                          <span>Text Formatting</span>
+                          <span>{t("composer.textFormatting")}</span>
                         </button>
                         <button
                           type="button"
@@ -731,7 +733,7 @@ export function Composer({
                           }}
                         >
                           <Vote size={18} />
-                          <span>Create Poll</span>
+                          <span>{t("composer.createPoll")}</span>
                         </button>
                         <button
                           type="button"
@@ -746,7 +748,7 @@ export function Composer({
                           disabled={!activeChannelId}
                         >
                           <Gamepad2 size={18} />
-                          <span>Play Games</span>
+                          <span>{t("composer.playGames")}</span>
                         </button>
                         <button
                           type="button"
@@ -759,7 +761,7 @@ export function Composer({
                           disabled={!activeChannelId}
                         >
                           <span className="inline-flex items-center justify-center w-[18px] h-[18px] font-mono font-bold text-[15px] text-[var(--lavender,#5865f2)]">/</span>
-                          <span>Slash Commands</span>
+                          <span>{t("composer.slashCommands")}</span>
                         </button>
                       </div>
                     )}
@@ -774,8 +776,8 @@ export function Composer({
                         setGifOpen(false);
                         setFormatOpen(false);
                       }}
-                      aria-label="More options"
-                      title="More tools"
+                      aria-label={t("composer.moreOptions")}
+                      title={t("composer.moreTools")}
                     >
                       <ChevronUp size={18} className={mobileComposerMenuOpen ? "rotate-180 transition-transform" : "transition-transform"} />
                     </button>
@@ -789,8 +791,8 @@ export function Composer({
                         setEmojiOpen(false);
                         setGifOpen(false);
                       }}
-                      aria-label="Text formatting"
-                      title="Colours, fonts and effects"
+                      aria-label={t("composer.textFormatting")}
+                      title={t("composer.formatTooltip")}
                       aria-expanded={formatOpen}
                     >
                       <Type size={18} />
@@ -806,8 +808,8 @@ export function Composer({
                         setFormatOpen(false);
                         setMobileComposerMenuOpen(false);
                       }}
-                      aria-label="Open Emoji Picker"
-                      title="Open Emoji Picker"
+                      aria-label={t("composer.openEmojiPicker")}
+                      title={t("composer.openEmojiPicker")}
                     >
                       <Smile size={18} />
                     </button>
@@ -821,7 +823,7 @@ export function Composer({
                         setEmojiOpen(false);
                         setMobileComposerMenuOpen(false);
                       }}
-                      aria-label="Add a GIF"
+                      aria-label={t("composer.addGif")}
                     >
                       GIF
                     </button>
@@ -831,8 +833,8 @@ export function Composer({
                       type="button"
                       className="composer-emoji-btn desktop-composer-item"
                       onClick={() => setPollDialogOpen(true)}
-                      aria-label="Create a Poll"
-                      title="Create a Poll"
+                      aria-label={t("composer.createPoll")}
+                      title={t("composer.createPoll")}
                     >
                       <Vote size={18} />
                     </button>
@@ -847,8 +849,8 @@ export function Composer({
                         setGifOpen(false);
                         setFormatOpen(false);
                       }}
-                      aria-label="Games"
-                      title="Play a game"
+                      aria-label={t("composer.gamesAria")}
+                      title={t("composer.playGameTooltip")}
                       aria-expanded={gamesOpen}
                       disabled={!activeChannelId}
                     >
@@ -863,7 +865,7 @@ export function Composer({
                         setDraft("/");
                         composerRef.current?.focus();
                       }}
-                      aria-label="Show commands"
+                      aria-label={t("composer.showCommands")}
                     >
                       /
                     </button>
@@ -876,7 +878,7 @@ export function Composer({
                       <button
                         className="send-button"
                         type="submit"
-                        aria-label="Send message"
+                        aria-label={t("composer.sendMessage")}
                       >
                         <Send size={15} />
                       </button>
@@ -897,13 +899,13 @@ export function Composer({
                       </span>
                       {msnTheme
                         ? typingNames.length === 1
-                          ? `${typingNames[0]} is writing a message...`
-                          : `${typingNames.slice(0, 3).join(", ")} are writing messages...`
+                          ? t("composer.msnTypingOne", { name: typingNames[0] })
+                          : t("composer.msnTypingMany", { names: typingNames.slice(0, 3).join(", ") })
                         : typingNames.length === 1
-                        ? `${typingNames[0]} is typing…`
+                        ? t("composer.typingOne", { name: typingNames[0] })
                         : typingNames.length === 2
-                          ? `${typingNames[0]} and ${typingNames[1]} are typing…`
-                          : `${typingNames.length} people are typing…`}
+                          ? t("composer.typingTwo", { name1: typingNames[0], name2: typingNames[1] })
+                          : t("composer.typingMany", { count: typingNames.length })}
                     </span>
                   ) : msnTheme ? (
                     <span className="msn-status-bar">{msnLastReceived(messages, user?.id)}</span>

@@ -32,6 +32,7 @@ import { type UserMenuTarget, type VoicePref } from "../../user-menu";
 import { screenQualityLabel } from "../../../hooks/use-voice";
 import { ScreenShareSetup } from "../../screen-share-setup";
 import { apiFetch } from "../../../lib/client";
+import { useI18n } from "../../../lib/i18n-context";
 import { PrideBadges } from "../../pride-badges";
 import { ForwardedMessageCard } from "../../forwarded-message-card";
 import { ThemeShareCard } from "../../theme-share-card";
@@ -114,14 +115,15 @@ export function ServerRail({
   setTodayOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 }) {
+  const { t } = useI18n();
   return (
-    <aside className="rail" aria-label="Servers">
+    <aside className="rail" aria-label={t("rail.servers")}>
       <div className="rail-item">
         {inDmHome && <span className="rail-active-pill" />}
         <button
           className={`brand-mark ${inDmHome ? "active-space" : ""}`}
-          aria-label="Direct messages"
-          title="Direct messages"
+          aria-label={t("rail.dms")}
+          title={t("rail.dms")}
           onClick={() => {
             setActiveServerId(DM_HOME);
             setActiveChannelId(visibleDms[0]?.channelId || null);
@@ -144,8 +146,8 @@ export function ServerRail({
       )}
       <button
         className="space-mark add-space"
-        aria-label="Create a server"
-        title="Create a server"
+        aria-label={t("rail.createServer")}
+        title={t("rail.createServer")}
         onClick={createServer}
       >
         +
@@ -153,8 +155,8 @@ export function ServerRail({
       {openDirectory && (
         <button
           className="space-mark add-space"
-          aria-label="Explore public servers"
-          title="Explore public servers"
+          aria-label={t("rail.explore")}
+          title={t("rail.explore")}
           onClick={openDirectory}
         >
           <Compass size={16} />
@@ -361,6 +363,7 @@ export function ChannelSidebar({
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
   onSidebarResizeDown: (e: React.MouseEvent) => void;
 }) {
+  const { t } = useI18n();
   return (
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
       {/* Mobile close button from Figma */}
@@ -369,7 +372,7 @@ export function ChannelSidebar({
           type="button"
           className="mobile-drawer-close"
           onClick={() => setMobileNav(false)}
-          aria-label="Close menu"
+          aria-label={t("sidebar.closeMenu")}
         >
           <X size={18} />
         </button>
@@ -390,12 +393,12 @@ export function ChannelSidebar({
       <header className="space-header" style={{ position: "relative" }}>
         <div>
           <span className="eyebrow">
-            {inDmHome ? "PRIVATE" : "PRIVATE SPACE"}
+            {inDmHome ? t("sidebar.private") : t("sidebar.privateSpace")}
           </span>
-          <h1>{inDmHome ? "Direct messages" : activeServer?.name || "Huddle"}</h1>
+          <h1>{inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}</h1>
         </div>
         {!inDmHome && (
-          <Icon label="Server settings" onClick={() => setServerMenuOpen((o) => !o)}>
+          <Icon label={t("sidebar.serverSettings")} onClick={() => setServerMenuOpen((o) => !o)}>
             •••
           </Icon>
         )}
@@ -411,7 +414,7 @@ export function ChannelSidebar({
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <Settings size={16} /> Server Settings
+                  <Settings size={16} /> {t("sidebar.menu.serverSettings")}
                 </span>
               </button>
             )}
@@ -430,23 +433,23 @@ export function ChannelSidebar({
                         ?.writeText(link)
                         .then(() => true)
                         .catch(() => false);
-                      if (copied) showToast(`Invite link copied: ${link}`);
+                      if (copied) showToast(t("sidebar.menu.inviteCopied", { link }));
                       else
                         showCustomPrompt({
-                          title: "Invite created",
-                          message: "Share this link:",
+                          title: t("sidebar.menu.inviteCreated"),
+                          message: t("sidebar.menu.shareLink"),
                           defaultValue: link,
-                          confirmText: "Done",
+                          confirmText: t("common.done"),
                           onConfirm: () => undefined,
                         });
                     })
                     .catch((error) =>
-                      showToast(error instanceof Error ? error.message : "Could not create an invite."),
+                      showToast(error instanceof Error ? error.message : t("sidebar.menu.inviteFailed")),
                     );
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <UserPlus size={16} /> Create Invite
+                  <UserPlus size={16} /> {t("sidebar.menu.createInvite")}
                 </span>
               </button>
             )}
@@ -456,10 +459,10 @@ export function ChannelSidebar({
                 onClick={() => {
                   setServerMenuOpen(false);
                   showCustomPrompt({
-                    title: "Rename Server",
-                    message: "Enter a new name for this server:",
+                    title: t("sidebar.menu.rename"),
+                    message: t("sidebar.menu.renamePrompt"),
                     defaultValue: activeServer.name,
-                    confirmText: "Save Name",
+                    confirmText: t("sidebar.menu.saveName"),
                     onConfirm: async (name) => {
                       if (!name?.trim()) return;
                       const data = await apiFetch<{ servers: PublicServer[] }>(
@@ -472,7 +475,7 @@ export function ChannelSidebar({
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <Pencil size={16} /> Rename Server
+                  <Pencil size={16} /> {t("sidebar.menu.rename")}
                 </span>
               </button>
             )}
@@ -486,7 +489,7 @@ export function ChannelSidebar({
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <Plus size={16} /> Create Channel
+                  <Plus size={16} /> {t("sidebar.menu.createChannel")}
                 </span>
               </button>
             )}
@@ -498,18 +501,18 @@ export function ChannelSidebar({
               }}
             >
               <span className="flex items-center gap-2">
-                <CheckCheck size={16} /> Mark as Read
+                <CheckCheck size={16} /> {t("sidebar.menu.markRead")}
               </span>
             </button>
             <div className="server-menu-divider" />
             <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-              Notifications
+              {t("sidebar.menu.notifications")}
             </div>
             {(
               [
-                ["all", "All messages"],
-                ["mentions", "Only @mentions"],
-                ["nothing", "Nothing (Muted)"],
+                ["all", t("notify.all")],
+                ["mentions", t("notify.mentions")],
+                ["nothing", t("notify.nothing")],
               ] as const
             ).map(([lvl, lbl]) => {
               const key = `server:${activeServer.id}`;
@@ -538,10 +541,10 @@ export function ChannelSidebar({
                 onClick={() => {
                   setServerMenuOpen(false);
                   showCustomConfirm({
-                    title: `Delete '${activeServer.name}'?`,
-                    message: "Are you sure? This will permanently delete the server and all channels.",
+                    title: t("sidebar.menu.deleteTitle", { name: activeServer.name }),
+                    message: t("sidebar.menu.deleteMessage"),
                     isDanger: true,
-                    confirmText: "Delete Server",
+                    confirmText: t("sidebar.menu.delete"),
                     onConfirm: async () => {
                       const data = await apiFetch<{ servers: PublicServer[] }>(
                         `/api/servers/${activeServer.id}`,
@@ -556,7 +559,7 @@ export function ChannelSidebar({
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <Trash2 size={16} /> Delete Server
+                  <Trash2 size={16} /> {t("sidebar.menu.delete")}
                 </span>
               </button>
             )}
@@ -565,17 +568,17 @@ export function ChannelSidebar({
       </header>
 
       {inDmHome ? (
-        <nav className="channel-nav" aria-label="Conversations">
+        <nav className="channel-nav" aria-label={t("sidebar.conversations")}>
           <div className="px-2 pt-1 pb-2">
             <button
               type="button"
               onClick={() => setGlobalSearchOpen(true)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[var(--muted)] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
-              title="Search all users (⌘K)"
+              title={t("sidebar.searchUsers")}
             >
               <span className="flex items-center gap-2">
                 <Search size={14} className="text-[var(--lavender)]" />
-                <span>Find conversation or user</span>
+                <span>{t("sidebar.findConversation")}</span>
               </span>
               <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
                 ⌘K
@@ -597,7 +600,7 @@ export function ChannelSidebar({
                 }`}
             >
               <Users size={18} className={!activeChannelId && !stageChannelId ? "text-[var(--lavender)]" : "text-[#7c7599]"} />
-              <span className="flex-1 text-left">Friends</span>
+              <span className="flex-1 text-left">{t("sidebar.friends")}</span>
               {pendingFriendCount > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[11px] leading-tight">
                   {pendingFriendCount}
@@ -607,14 +610,14 @@ export function ChannelSidebar({
           </div>
 
           <div className="section-label flex items-center justify-between">
-            <span>DIRECT MESSAGES</span>
+            <span>{t("sidebar.directMessages")}</span>
             {user && (
               <span className="flex items-center gap-2">
               <button
                 type="button"
                 className="hover:text-white transition-colors"
-                title="Create DM or group"
-                aria-label="Create DM or group"
+                title={t("sidebar.createDm")}
+                aria-label={t("sidebar.createDm")}
                 onClick={() => setGroupDialog({ mode: "create" })}
               >
                 <Plus size={14} />
@@ -622,7 +625,7 @@ export function ChannelSidebar({
               <button
                 type="button"
                 className="hover:text-white transition-colors"
-                title="Note to Self"
+                title={t("sidebar.noteToSelf")}
                 onClick={() => void openDm(user.id)}
               >
                 <StickyNote size={14} />
@@ -665,15 +668,12 @@ export function ChannelSidebar({
                 {dm.group ? (
                   <span className="dm-group-label">
                     <span className="truncate"><StyledText text={dm.user.displayName} /></span>
-                    <small>
-                      {dm.group.members.length}{" "}
-                      {dm.group.members.length === 1 ? "Member" : "Members"}
-                    </small>
+                    <small>{t("sidebar.groupMembers", { count: dm.group.members.length })}</small>
                   </span>
                 ) : (
                 <span className="flex items-center gap-1.5 truncate">
                   <StyledText text={dm.user.displayName} />
-                  {isSelf && " (Notes)"}
+                  {isSelf && t("sidebar.notes")}
                 </span>
                 )}
                 {dm.pinned && (
@@ -697,8 +697,8 @@ export function ChannelSidebar({
                 <button
                   type="button"
                   className={`dm-action-btn dm-pin-btn ${dm.pinned ? "is-pinned" : ""}`}
-                  aria-label={dm.pinned ? `Unpin conversation with ${dm.user.displayName}` : `Pin conversation with ${dm.user.displayName}`}
-                  title={dm.pinned ? "Unpin conversation" : "Pin conversation"}
+                  aria-label={dm.pinned ? t("sidebar.unpinWith", { name: dm.user.displayName }) : t("sidebar.pinWith", { name: dm.user.displayName })}
+                  title={dm.pinned ? t("sidebar.unpin") : t("sidebar.pin")}
                   onClick={(e) => {
                     e.stopPropagation();
                     void togglePinDm(dm.channelId, !dm.pinned);
@@ -709,8 +709,8 @@ export function ChannelSidebar({
                 <button
                   type="button"
                   className="dm-action-btn dm-close"
-                  aria-label={`Close conversation with ${dm.user.displayName}`}
-                  title="Close (messages are kept, reopen with Cmd+K)"
+                  aria-label={t("sidebar.closeWith", { name: dm.user.displayName })}
+                  title={t("sidebar.closeHint")}
                   onClick={(e) => {
                     e.stopPropagation();
                     void setDmClosed(dm.channelId, true);
@@ -724,19 +724,19 @@ export function ChannelSidebar({
           })}
           {!visibleDms.length && (
             <p className="sidebar-empty">
-              Right-click someone or click the note icon above to start a conversation.
+              {t("sidebar.noDms")}
             </p>
           )}
         </nav>
       ) : (
-        <nav className="channel-nav" aria-label="Channels">
+        <nav className="channel-nav" aria-label={t("sidebar.channels")}>
           <div className="section-label">
-            <span>Channels</span>
+            <span>{t("sidebar.channels")}</span>
             {canManageChannels && (
               <span className="section-actions">
                 <button
-                  aria-label="Add category"
-                  title="Add category"
+                  aria-label={t("sidebar.addCategory")}
+                  title={t("sidebar.addCategory")}
                   onClick={() => void addCategory()}
                 >
                   <ChevronDown size={14} /><Plus size={14} />
@@ -745,8 +745,8 @@ export function ChannelSidebar({
                     made the other three undiscoverable. */}
                 <span className="channel-kind-picker">
                   <button
-                    aria-label="Create channel"
-                    title="Create channel"
+                    aria-label={t("sidebar.createChannel")}
+                    title={t("sidebar.createChannel")}
                     aria-haspopup="menu"
                     aria-expanded={kindMenu?.categoryId === null}
                     onClick={() =>
@@ -765,7 +765,7 @@ export function ChannelSidebar({
             type="button"
             className={`events-chip ${nextEvent && eventIsOpen(nextEvent) ? "is-open" : ""}`}
             onClick={() => setEventsOpen(true)}
-            title={nextEvent ? `${nextEvent.title} · ${eventWhen(nextEvent)}` : "Plan an event"}
+            title={nextEvent ? `${nextEvent.title} · ${eventWhen(nextEvent)}` : t("sidebar.planEvent")}
           >
             <CalendarDays size={15} />
             {nextEvent ? (
@@ -775,7 +775,7 @@ export function ChannelSidebar({
               </span>
             ) : (
               <span className="events-chip-text">
-                <strong>Events</strong>
+                <strong>{t("sidebar.events")}</strong>
               </span>
             )}
             {serverEvents.length > 1 && <span className="events-chip-count">{serverEvents.length}</span>}
@@ -813,8 +813,8 @@ export function ChannelSidebar({
                     <span className="category-actions">
                       <span className="channel-kind-picker">
                         <button
-                          aria-label={`Add channel to ${category.name}`}
-                          title="Add channel here"
+                          aria-label={t("sidebar.addChannelTo", { name: category.name })}
+                          title={t("sidebar.addChannelHere")}
                           aria-haspopup="menu"
                           aria-expanded={kindMenu?.categoryId === category.id}
                           onClick={() =>
@@ -830,8 +830,8 @@ export function ChannelSidebar({
                         {kindMenu?.categoryId === category.id && renderKindMenu(category.id)}
                       </span>
                       <button
-                        aria-label={`Delete ${category.name}`}
-                        title="Delete category"
+                        aria-label={t("sidebar.deleteNamed", { name: category.name })}
+                        title={t("sidebar.deleteCategory")}
                         onClick={() => void deleteCategory(category.id, category.name)}
                       >
                         ×
@@ -843,7 +843,7 @@ export function ChannelSidebar({
                   <div className="category-body" {...categoryDropProps(category.id)}>
                     {channels.map((channel) => renderChannel(channel))}
                     {!channels.length && (
-                      <p className="category-empty">Drag channels here</p>
+                      <p className="category-empty">{t("sidebar.dragHere")}</p>
                     )}
                   </div>
                 )}
@@ -894,7 +894,7 @@ export function ChannelSidebar({
             servers.flatMap((s) => s.channels).find((c) => c.id === voice.channelId)?.name ||
             (dmCall && dmCall.channelId === voice.channelId
               ? dmCall.otherUser.displayName
-              : "Voice Connected")
+              : t("sidebar.voiceConnected"))
           }
           soundboardServerId={
             servers.find((s) => s.channels.some((c) => c.id === voice.channelId))?.id || null
@@ -928,7 +928,7 @@ export function ChannelSidebar({
       <div
         className="sidebar-resize-handle"
         onMouseDown={onSidebarResizeDown}
-        title="Drag to resize channels"
+        title={t("sidebar.resize")}
       />
     </aside>
   );
@@ -987,19 +987,20 @@ export function ThreadPanel({
   threadDraft: string;
   setThreadDraft: Dispatch<SetStateAction<string>>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {threadRoot && (
         <aside
           className="thread-panel"
-          aria-label="Thread"
+          aria-label={t("thread.label")}
           style={{ width: `${threadWidth}px` }}
         >
           {/* Resize handle for thread panel */}
           <div
             className="thread-resize-handle"
             onMouseDown={onThreadResizeDown}
-            title="Drag to resize thread"
+            title={t("thread.resize")}
           />
 
           <header className="thread-head">
@@ -1007,11 +1008,11 @@ export function ThreadPanel({
               <div className="thread-head-title-row">
                 <MessageSquare size={16} className="thread-icon" />
                 <span className="thread-title">
-                  {threadRoot.text?.slice(0, 36) || (threadRoot.image ? "Image" : "Thread")}
+                  {threadRoot.text?.slice(0, 36) || (threadRoot.image ? t("thread.image") : t("thread.label"))}
                 </span>
               </div>
               <span className="thread-head-channel">
-                #{activeChannel?.name || "channel"}
+                #{activeChannel?.name || t("thread.channel")}
               </span>
             </div>
             <div className="thread-head-actions">
@@ -1019,8 +1020,8 @@ export function ThreadPanel({
                 type="button"
                 className="thread-close-btn"
                 onClick={() => setThreadRoot(null)}
-                aria-label="Close thread"
-                title="Close thread"
+                aria-label={t("thread.close")}
+                title={t("thread.close")}
               >
                 <X size={18} />
               </button>
@@ -1120,17 +1121,14 @@ export function ThreadPanel({
             </article>
 
             <div className="thread-divider">
-              <span>
-                {threadMessages.length}{" "}
-                {threadMessages.length === 1 ? "reply" : "replies"}
-              </span>
+              <span>{t("thread.replies", { count: threadMessages.length })}</span>
             </div>
 
             {threadMessages.length === 0 && (
               <div className="thread-empty-state">
                 <MessageSquare size={24} className="thread-empty-icon" />
-                <p>No replies yet.</p>
-                <span>Be the first to reply in this thread!</span>
+                <p>{t("thread.empty")}</p>
+                <span>{t("thread.emptyHint")}</span>
               </div>
             )}
 
@@ -1260,8 +1258,8 @@ export function ThreadPanel({
                 ref={(node) => {
                   if (node) fitComposer(node);
                 }}
-                placeholder="Reply in thread…"
-                aria-label="Reply in thread"
+                placeholder={t("thread.placeholder")}
+                aria-label={t("thread.replyLabel")}
                 onChange={(event) => setThreadDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -1274,8 +1272,8 @@ export function ThreadPanel({
                 type="submit"
                 className={`thread-send-btn ${threadDraft.trim() ? "can-send" : ""}`}
                 disabled={!threadDraft.trim()}
-                aria-label="Send reply"
-                title="Send reply"
+                aria-label={t("thread.send")}
+                title={t("thread.send")}
               >
                 <Send size={15} />
               </button>
@@ -1358,6 +1356,7 @@ export function MemberPanel({
   whatsNewPeople: Member[];
   setGlobalSearchOpen: Dispatch<SetStateAction<boolean>>;
 }) {
+  const { t } = useI18n();
   return (
     <aside
       className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"} ${
@@ -1368,7 +1367,7 @@ export function MemberPanel({
       <div
         className="member-resize-handle"
         onMouseDown={onMembersResizeDown}
-        title="Drag to resize member list"
+        title={t("members.resize")}
       />
 
       {/* Outside MSN the sidebar voice bar already has these controls. */}
@@ -1387,7 +1386,7 @@ export function MemberPanel({
               }
             }}
           >
-            <span>IN VOICE — {voiceParticipants.length}</span>
+            <span>{t("members.inVoice", { count: voiceParticipants.length })}</span>
           </div>
           {!collapsedGroups.voice && (
           <>
@@ -1405,8 +1404,8 @@ export function MemberPanel({
             <strong>{currentVoiceChannel?.name}</strong>
             <p>
               {voiceParticipants.length === 1
-                ? "Just you so far"
-                : `${voiceParticipants.length} in the room`}
+                ? t("members.justYou")
+                : t("members.inRoom", { count: voiceParticipants.length })}
             </p>
             <div className="voice-controls">
               <button
@@ -1415,13 +1414,13 @@ export function MemberPanel({
                 disabled={voice.forcedMute}
               >
                 {voice.forcedMute
-                  ? "Server muted"
+                  ? t("members.serverMuted")
                   : voice.muted
-                    ? "Muted"
-                    : "Mic on"}
+                    ? t("members.muted")
+                    : t("members.micOn")}
               </button>
               <button className="leave-outline" onClick={voice.leave}>
-                Leave
+                {t("members.leave")}
               </button>
             </div>
             <div className="screen-share-controls compact">
@@ -1434,7 +1433,9 @@ export function MemberPanel({
                     : setSidebarShareSetupOpen((open) => !open)
                 }
               >
-                {voice.screenSharing ? `Stop · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
+                {voice.screenSharing
+                  ? t("members.stopShare", { quality: screenQualityLabel(voice.screenQuality) })
+                  : t("members.shareScreen")}
               </button>
               <button
                 className={voice.cameraOn ? "sharing" : ""}
@@ -1442,7 +1443,7 @@ export function MemberPanel({
                   voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
                 }
               >
-                {voice.cameraOn ? "Camera off" : "Camera"}
+                {voice.cameraOn ? t("members.cameraOff") : t("members.camera")}
               </button>
             </div>
             {sidebarShareSetupOpen && !voice.screenSharing && (
@@ -1469,7 +1470,7 @@ export function MemberPanel({
               className="open-stage-button"
               onClick={() => setStageChannelId(voice.channelId)}
             >
-              Open call view
+              {t("members.openCall")}
             </button>
           )}
           </>
@@ -1483,7 +1484,7 @@ export function MemberPanel({
             type="text"
             value={memberFilterQuery}
             onChange={(e) => setMemberFilterQuery(e.target.value)}
-            placeholder="Search members..."
+            placeholder={t("members.search")}
             className="w-full bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] text-xs text-white placeholder-white/40 rounded-lg px-2.5 py-1.5 outline-none transition-colors border border-white/5 focus:border-[var(--lavender)]/50"
           />
           {memberFilterQuery && (
@@ -1491,7 +1492,7 @@ export function MemberPanel({
               type="button"
               onClick={() => setMemberFilterQuery("")}
               className="absolute right-2 text-white/40 hover:text-white text-xs px-1"
-              title="Clear search"
+              title={t("members.clearSearch")}
             >
               ✕
             </button>
@@ -1530,8 +1531,8 @@ export function MemberPanel({
               {activeUntil(member.timeoutUntil) && (
                 <span
                   className="member-timeout-icon"
-                  title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
-                  aria-label="Timed out"
+                  title={t("members.timedOutUntil", { when: formatClientDateTime(member.timeoutUntil!) })}
+                  aria-label={t("members.timedOut")}
                 >
                   <Timer size={12} />
                 </span>
@@ -1558,13 +1559,13 @@ export function MemberPanel({
             <AvatarDecoration id={member.avatarFrame} inChat />
             <span
               className="presence-dot"
-              title={
+              title={t(
                 PRESENCE[
                   (presenceOf(member) === "offline"
                     ? "invisible"
                     : presenceOf(member)) as PresenceStatus
-                ].label
-              }
+                ].labelKey,
+              )}
               style={{
                 background:
                   presenceOf(member) === "offline"
@@ -1582,8 +1583,8 @@ export function MemberPanel({
               {activeUntil(member.timeoutUntil) && (
                 <span
                   className="member-timeout-icon"
-                  title={`Timed out until ${formatClientDateTime(member.timeoutUntil!)}`}
-                  aria-label="Timed out"
+                  title={t("members.timedOutUntil", { when: formatClientDateTime(member.timeoutUntil!) })}
+                  aria-label={t("members.timedOut")}
                 >
                   <Timer size={12} />
                 </span>
@@ -1591,18 +1592,18 @@ export function MemberPanel({
             </div>
             <span>
               <StyledText text={(member.id === user.id ? myCustomStatus : member.customStatus) ||
-                memberActivityLine(member) ||
+                memberActivityLine(member, t) ||
                 (member.id === user.id
-                  ? "Here now"
+                  ? t("members.hereNow")
                   : prefFor(member.id).muted
-                    ? "Muted for you"
+                    ? t("members.mutedForYou")
                     : hub.forcedMutes.has(member.id)
-                      ? "Server muted"
-                      : PRESENCE[
+                      ? t("members.serverMuted")
+                      : t(PRESENCE[
                         (presenceOf(member) === "offline"
                           ? "invisible"
                           : presenceOf(member)) as PresenceStatus
-                      ].label)} />
+                      ].labelKey))} />
             </span>
           </div>
         </div>
@@ -1646,10 +1647,10 @@ export function MemberPanel({
                     `${group.name} (${inGroupOnline.length}/${inGroupOnline.length + inGroupOffline.length})`,
                     "msn-group-title",
                     <span className="msn-group-tools" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" title="Rename group" onClick={() => renameContactGroup(group.id)}>
+                      <button type="button" title={t("members.renameGroup")} onClick={() => renameContactGroup(group.id)}>
                         ✎
                       </button>
-                      <button type="button" title="Delete group" onClick={() => deleteContactGroup(group.id)}>
+                      <button type="button" title={t("members.deleteGroup")} onClick={() => deleteContactGroup(group.id)}>
                         ×
                       </button>
                     </span>,
@@ -1666,19 +1667,23 @@ export function MemberPanel({
             })}
             {header(
               "online",
-              msnTheme ? `Online (${looseOnline.length})` : `Online — ${looseOnline.length}`,
+              msnTheme
+                ? t("members.msnOnline", { count: looseOnline.length })
+                : t("members.online", { count: looseOnline.length }),
               "online-title",
             )}
             {!(msnTheme && collapsedGroups.online) && rows(looseOnline.map((member) => row(member, false)))}
             {header(
               "offline",
-              msnTheme ? `Not Online (${looseOffline.length})` : `Offline — ${looseOffline.length}`,
+              msnTheme
+                ? t("members.msnOffline", { count: looseOffline.length })
+                : t("members.offline", { count: looseOffline.length }),
               "offline-title",
             )}
             {!(msnTheme && collapsedGroups.offline) && rows(looseOffline.map((member) => row(member, true)))}
             {msnTheme && (
               <button type="button" className="msn-add-group" onClick={() => createContactGroup()}>
-                + Create a group
+                {t("members.createGroup")}
               </button>
             )}
           </>

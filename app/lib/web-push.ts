@@ -10,13 +10,42 @@ import { apiFetch, basePath } from "./client";
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  const scope = workerScope();
   try {
-    return await navigator.serviceWorker.register(`${basePath}/sw.js`, {
-      scope: `${basePath}/`,
-    });
+    const registration = await navigator.serviceWorker.register(`${scope}sw.js`, { scope });
+    if (scope !== `${basePath}/`) await retireOldWorker();
+    return registration;
   } catch {
     return null;
   }
+}
+
+/**
+ * Where the service worker works: the whole site when Hoffle is served at its
+ * root (chat.hoffle.online, the phone app), just /hangout/ where Hoffle is
+ * part of a bigger site. It must cover the page for offline reading to work.
+ */
+export function workerScope(): string {
+  return window.location.pathname.startsWith(basePath) ? `${basePath}/` : "/";
+}
+
+/**
+ * Before offline reading, the worker was always registered for /hangout/
+ * only. Where it now covers the whole site, that older one is removed, and its
+ * push subscription with it (enableWebPush makes a new one on the new worker),
+ * so notifications do not arrive twice.
+ */
+async function retireOldWorker(): Promise<void> {
+  const old = await navigator.serviceWorker.getRegistration(`${basePath}/`);
+  if (!old || !old.scope.endsWith(`${basePath}/`)) return;
+  const subscription = await old.pushManager.getSubscription().catch(() => null);
+  if (subscription) {
+    await apiFetch(`/api/push/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`, {
+      method: "DELETE",
+    }).catch(() => undefined);
+    await subscription.unsubscribe().catch(() => undefined);
+  }
+  await old.unregister().catch(() => undefined);
 }
 
 /**
@@ -70,7 +99,7 @@ export async function enableWebPush(prompt = false): Promise<boolean> {
 
 export async function disableWebPush(): Promise<void> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-  const registration = await navigator.serviceWorker.getRegistration(`${basePath}/`);
+  const registration = await navigator.serviceWorker.getRegistration(workerScope());
   const subscription = await registration?.pushManager.getSubscription();
   if (!subscription) return;
   await apiFetch(
@@ -92,7 +121,7 @@ export async function showPageNotification(
 ): Promise<void> {
   const registration =
     "serviceWorker" in navigator
-      ? await navigator.serviceWorker.getRegistration(`${basePath}/`)
+      ? await navigator.serviceWorker.getRegistration(workerScope())
       : undefined;
   const options: NotificationOptions = {
     body,

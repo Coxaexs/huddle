@@ -1,0 +1,136 @@
+/* cyberpunk theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from theme-flavors.css ---- */
+/* Cyberpunk: Night City terminal ---------------------------------------- */
+:root[data-custom-theme-id="cyberpunk"] {
+  --rail-bg: #050508;
+  --surface-2: #14141e;
+  --muted-2: #7a8499;
+  --faint: #5c6478;
+  --accent-strong: #fcee0a;
+  --accent-hi: #fcee0a;
+  --on-accent: #07070b;
+  --cp-cyan: #00f0ff;
+  --cp-red: #ff2a6d;
+  --font-ui: "Rajdhani", "Instrument Sans", sans-serif;
+  --font-display: "Rajdhani", sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --ring: 0 0 0 2px #00f0ff;
+  --ui-corners: 2px;
+}
+
+:root[data-custom-theme-id="cyberpunk"] body,
+:root[data-custom-theme-id="cyberpunk"] .app-shell {
+  font-family: var(--font-ui) !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* CRT scanlines over everything, very faint. */
+:root[data-custom-theme-id="cyberpunk"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .rail {
+  border-right: 1px solid rgba(0, 240, 255, 0.25) !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-mark,
+:root[data-custom-theme-id="cyberpunk"] .brand-mark {
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px #fcee0a, 0 0 14px rgba(252, 238, 10, 0.5) !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel-heading strong,
+:root[data-custom-theme-id="cyberpunk"] .space-header h1 {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em !important;
+  color: #fcee0a !important;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.75), 1px 0 rgba(0, 240, 255, 0.75);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .space-header h1 {
+  font-size: 22px !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel-heading > span,
+:root[data-custom-theme-id="cyberpunk"] .member-panel-title,
+:root[data-custom-theme-id="cyberpunk"] .section-label > span:first-child {
+  font-family: var(--font-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: #00f0ff !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel,
+:root[data-custom-theme-id="cyberpunk"] .voice-room {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .channel.selected,
+:root[data-custom-theme-id="cyberpunk"] .voice-room.selected {
+  background: #fcee0a !important;
+  color: #07070b !important;
+  box-shadow: none !important;
+  clip-path: polygon(0 0, 100% 0, 100% 60%, calc(100% - 10px) 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .composer {
+  border-radius: 0 !important;
+  background: #0c0c14 !important;
+  border: 1px solid rgba(0, 240, 255, 0.45) !important;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.08) !important;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+:root[data-custom-theme-id="cyberpunk"] .composer:focus-within {
+  border-color: #fcee0a !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .message time {
+  color: #00f0ff;
+  opacity: 0.75;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .avatar {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] ::selection {
+  background: #ff2a6d;
+  color: #07070b;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .chat-panel {
+  border-radius: 0 !important;
+  border-color: rgba(0, 240, 255, 0.22) !important;
+}
+
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card {
+  --invite-accent: #fcee0a;
+  border-radius: 2px;
+  background: #0b0b12;
+  border: 1px solid #00f0ff;
+  box-shadow: 4px 4px 0 rgba(255, 42, 109, 0.8);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+
+:root[data-custom-theme-id="cyberpunk"] .server-invite-eyebrow { color: #00f0ff; }
+
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-icon,
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-btn { border-radius: 2px; }
+
+:root[data-custom-theme-id="cyberpunk"] .server-invite-card .server-invite-btn { text-transform: uppercase; font-weight: 700; }

@@ -5,6 +5,7 @@ import type { Member } from "@/lib/users";
 import { PrideBadges } from "./pride-badges";
 import { VoiceDuration } from "./voice-duration";
 import { TIMEOUT_CHOICES } from "@/lib/timeouts";
+import { useI18n } from "@/app/lib/i18n-context";
 
 export interface UserMenuTarget {
   member: Pick<Member, "id" | "displayName" | "username" | "prideBadges"> & {
@@ -109,6 +110,7 @@ export function UserMenu({
   onTogglePinDm,
   dmPinned = false,
 }: UserMenuProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -173,7 +175,7 @@ export function UserMenu({
         <>
           {!isBlocked && (
             <button type="button" role="menuitem" onClick={onMessage}>
-              Message
+              {t("userMenu.message")}
             </button>
           )}
           {onTogglePinDm && (
@@ -185,7 +187,7 @@ export function UserMenu({
                 onClose();
               }}
             >
-              {dmPinned ? "Unpin conversation" : "Pin conversation"}
+              {dmPinned ? t("userMenu.unpinConversation") : t("userMenu.pinConversation")}
             </button>
           )}
           {isBlocked ? (
@@ -198,7 +200,7 @@ export function UserMenu({
                   onClose();
                 }}
               >
-                Unblock
+                {t("userMenu.unblock")}
               </button>
             )
           ) : (
@@ -212,7 +214,7 @@ export function UserMenu({
                   onClose();
                 }}
               >
-                Block
+                {t("userMenu.block")}
               </button>
             )
           )}
@@ -221,11 +223,11 @@ export function UserMenu({
             role="menuitem"
             onClick={() => onLocalMute(!pref.muted)}
           >
-            {pref.muted ? "Unmute for me" : "Mute for me"}
+            {pref.muted ? t("userMenu.unmuteForMe") : t("userMenu.muteForMe")}
           </button>
 
           <label className="user-menu-volume">
-            <span>Their volume · {pref.volume}%</span>
+            <span>{t("userMenu.volumeLabel", { volume: pref.volume })}</span>
             <input
               type="range"
               min={0}
@@ -245,16 +247,16 @@ export function UserMenu({
                 className="danger"
                 onClick={() => onServerMute(!serverMuted)}
               >
-                {serverMuted ? "Unmute on server" : "Mute on server"}
+                {serverMuted ? t("userMenu.unmuteOnServer") : t("userMenu.muteOnServer")}
               </button>
               <p className="user-menu-note">
-                Server mute stops their microphone for everyone.
+                {t("userMenu.serverMuteNote")}
               </p>
             </>
           )}
           {canModerate && onMove && targetVoiceChannelId && (
             <div className="user-menu-move">
-              <span className="user-menu-move-label">Move to voice channel</span>
+              <span className="user-menu-move-label">{t("userMenu.moveToVoice")}</span>
               {voiceChannels
                 .filter((channel) => channel.id !== targetVoiceChannelId)
                 .map((channel) => (
@@ -270,7 +272,7 @@ export function UserMenu({
               {voiceChannels.filter(
                 (channel) => channel.id !== targetVoiceChannelId,
               ).length === 0 && (
-                <p className="user-menu-note">No other voice channels here.</p>
+                <p className="user-menu-note">{t("userMenu.noOtherVoiceChannels")}</p>
               )}
             </div>
           )}
@@ -278,17 +280,19 @@ export function UserMenu({
             <div className="user-menu-move">
               <span className="user-menu-move-label">
                 {timeoutUntil
-                  ? `Timed out until ${new Date(timeoutUntil).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}`
-                  : "Timeout"}
+                  ? t("userMenu.timedOutUntil", {
+                      when: new Date(timeoutUntil).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      }),
+                    })
+                  : t("userMenu.timeout")}
               </span>
               {timeoutUntil ? (
                 <button type="button" role="menuitem" onClick={() => onTimeout(0)}>
-                  Remove timeout
+                  {t("userMenu.removeTimeout")}
                 </button>
               ) : (
                 <div className="user-menu-chip-row">
@@ -309,19 +313,19 @@ export function UserMenu({
           )}
           {onRemoveFromGroup && (
             <button type="button" role="menuitem" className="danger" onClick={onRemoveFromGroup}>
-              Remove from group
+              {t("userMenu.removeFromGroup")}
             </button>
           )}
           {canManage && onKick && (
             <button type="button" role="menuitem" className="danger" onClick={onKick}>
-              Kick from server
+              {t("userMenu.kickFromServer")}
             </button>
           )}
           {canManage &&
             (banned
               ? onUnban && (
                   <button type="button" role="menuitem" onClick={onUnban}>
-                    Unban
+                    {t("userMenu.unbanFromServer")}
                   </button>
                 )
               : onBan && (
@@ -331,7 +335,7 @@ export function UserMenu({
                     className="danger"
                     onClick={onBan}
                   >
-                    Ban from server
+                    {t("userMenu.banFromServer")}
                   </button>
                 ))}
 
@@ -344,8 +348,8 @@ export function UserMenu({
                 onClick={onToggleInvitePermission}
               >
                 {target.member.canInvite
-                  ? "Revoke Invite Permission"
-                  : "Allow Creating Invites"}
+                  ? t("userMenu.revokeInvites")
+                  : t("userMenu.allowInvites")}
               </button>
             </>
           )}
@@ -362,7 +366,7 @@ export function UserMenu({
               onClose();
             }}
           >
-            Note to Self
+            {t("userMenu.noteToSelf")}
           </button>
           {onTogglePinDm && (
             <button
@@ -373,10 +377,10 @@ export function UserMenu({
                 onClose();
               }}
             >
-              {dmPinned ? "Unpin conversation" : "Pin conversation"}
+              {dmPinned ? t("userMenu.unpinConversation") : t("userMenu.pinConversation")}
             </button>
           )}
-          <p className="user-menu-note">This is you.</p>
+          <p className="user-menu-note">{t("userMenu.thisIsYou")}</p>
         </>
       )}
       {extra}

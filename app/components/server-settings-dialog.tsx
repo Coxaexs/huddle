@@ -5,6 +5,7 @@ import { Trash2, ExternalLink, LogOut } from "lucide-react";
 import { SoundboardTab, StickersTab } from "./expression-settings";
 import { WelcomeTab } from "./server-welcome";
 import { AutomodPanel } from "./automod-panel";
+import { useI18n } from "@/app/lib/i18n-context";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { apiFetch } from "../lib/client";
@@ -106,6 +107,7 @@ export function ServerSettingsDialog({
   onLeaveServer,
   canCreateInvites = true,
 }: ServerSettingsDialogProps) {
+  const { t } = useI18n();
   const canManageRolesEffective = Boolean(canManageRoles || canManageServer || isOwner);
   const canModerateEffective = Boolean(canModerate || canManageServer || isOwner);
   const canKickEffective = Boolean(canKickMembers || canModerate || canManageServer || isOwner);
@@ -811,7 +813,7 @@ export function ServerSettingsDialog({
           className={`sidebar-item ${tab === "profile" ? "active" : ""}`}
           onClick={() => setTab("profile")}
         >
-          Server Profile
+          {t("serverSettings.tab.profile")}
         </button>
         {isTabVisible("tag") && (
           <button
@@ -844,14 +846,14 @@ export function ServerSettingsDialog({
         {(isTabVisible("emoji") || isTabVisible("stickers") || isTabVisible("soundboard")) && (
           <>
             <div className="sidebar-divider" />
-            <div className="sidebar-group-header">EXPRESSION</div>
+            <div className="sidebar-group-header">{t("serverSettings.group.expression")}</div>
             {isTabVisible("emoji") && (
               <button
                 type="button"
                 className={`sidebar-item ${tab === "emoji" ? "active" : ""}`}
                 onClick={() => setTab("emoji")}
               >
-                Emoji
+                {t("serverSettings.tab.emoji")}
               </button>
             )}
             {isTabVisible("stickers") && (
@@ -860,7 +862,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "stickers" ? "active" : ""}`}
                 onClick={() => setTab("stickers")}
               >
-                Stickers
+                {t("serverSettings.tab.stickers")}
               </button>
             )}
             {isTabVisible("soundboard") && (
@@ -869,7 +871,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "soundboard" ? "active" : ""}`}
                 onClick={() => setTab("soundboard")}
               >
-                Soundboard
+                {t("serverSettings.tab.soundboard")}
               </button>
             )}
           </>
@@ -878,14 +880,14 @@ export function ServerSettingsDialog({
         {(isTabVisible("members") || isTabVisible("roles") || isTabVisible("invites") || isTabVisible("access") || isTabVisible("welcome")) && (
           <>
             <div className="sidebar-divider" />
-            <div className="sidebar-group-header">PEOPLE</div>
+            <div className="sidebar-group-header">{t("serverSettings.group.people")}</div>
             {isTabVisible("members") && (
               <button
                 type="button"
                 className={`sidebar-item ${tab === "members" ? "active" : ""}`}
                 onClick={() => setTab("members")}
               >
-                Members
+                {t("serverSettings.tab.members")}
               </button>
             )}
             {isTabVisible("roles") && (
@@ -894,7 +896,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "roles" ? "active" : ""}`}
                 onClick={() => setTab("roles")}
               >
-                Roles
+                {t("serverSettings.tab.roles")}
               </button>
             )}
             {isTabVisible("invites") && (
@@ -903,7 +905,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "invites" ? "active" : ""}`}
                 onClick={() => setTab("invites")}
               >
-                Invites
+                {t("serverSettings.tab.invites")}
               </button>
             )}
             {isTabVisible("access") && (
@@ -912,7 +914,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "access" ? "active" : ""}`}
                 onClick={() => setTab("access")}
               >
-                Access
+                {t("serverSettings.tab.access")}
               </button>
             )}
             {isTabVisible("welcome") && (
@@ -921,7 +923,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "welcome" ? "active" : ""}`}
                 onClick={() => setTab("welcome")}
               >
-                Welcome Screen
+                {t("serverSettings.tab.welcome")}
               </button>
             )}
           </>
@@ -930,14 +932,14 @@ export function ServerSettingsDialog({
         {(isTabVisible("integrations") || isTabVisible("app_directory")) && (
           <>
             <div className="sidebar-divider" />
-            <div className="sidebar-group-header">APPS</div>
+            <div className="sidebar-group-header">{t("serverSettings.group.apps")}</div>
             {isTabVisible("integrations") && (
               <button
                 type="button"
                 className={`sidebar-item ${tab === "integrations" ? "active" : ""}`}
                 onClick={() => setTab("integrations")}
               >
-                Integrations
+                {t("serverSettings.tab.integrations")}
               </button>
             )}
             {isTabVisible("app_directory") && (
@@ -955,14 +957,14 @@ export function ServerSettingsDialog({
         {(isTabVisible("safety") || isTabVisible("audit_log") || isTabVisible("bans") || isTabVisible("automod")) && (
           <>
             <div className="sidebar-divider" />
-            <div className="sidebar-group-header">MODERATION</div>
+            <div className="sidebar-group-header">{t("serverSettings.group.moderation")}</div>
             {isTabVisible("safety") && (
               <button
                 type="button"
                 className={`sidebar-item ${tab === "safety" ? "active" : ""}`}
                 onClick={() => setTab("safety")}
               >
-                Safety Setup
+                {t("serverSettings.tab.safety")}
               </button>
             )}
             {isTabVisible("audit_log") && (
@@ -971,7 +973,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "audit_log" ? "active" : ""}`}
                 onClick={() => setTab("audit_log")}
               >
-                Audit Log
+                {t("serverSettings.tab.auditLog")}
               </button>
             )}
             {isTabVisible("bans") && (
@@ -980,7 +982,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "bans" ? "active" : ""}`}
                 onClick={() => setTab("bans")}
               >
-                Bans
+                {t("serverSettings.tab.bans")}
               </button>
             )}
             {isTabVisible("automod") && (
@@ -989,7 +991,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "automod" ? "active" : ""}`}
                 onClick={() => setTab("automod")}
               >
-                AutoMod
+                {t("serverSettings.tab.automod")}
               </button>
             )}
           </>
@@ -1013,7 +1015,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "template" ? "active" : ""}`}
                 onClick={() => setTab("template")}
               >
-                Server Template
+                {t("serverSettings.tab.templates")}
               </button>
             )}
           </>
@@ -1028,7 +1030,7 @@ export function ServerSettingsDialog({
               className="sidebar-item danger-item flex items-center justify-between"
               onClick={handleDeleteServer}
             >
-              <span>Delete Server</span>
+              <span>{t("serverSettings.deleteServer")}</span>
               <Trash2 size={16} />
             </button>
           )
@@ -1042,12 +1044,12 @@ export function ServerSettingsDialog({
                 message:
                   "You will need a fresh invite to come back. Your messages stay.",
                 isDanger: true,
-                confirmText: "Leave Server",
+                confirmText: t("serverSettings.leaveServer"),
                 onConfirm: () => onLeaveServer?.(),
               })
             }
           >
-            Leave Server <LogOut size={14} />
+            {t("serverSettings.leaveServer")} <LogOut size={14} />
           </button>
         )}
       </aside>

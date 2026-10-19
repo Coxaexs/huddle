@@ -1,0 +1,219 @@
+/* dark-academia theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from theme-flavors.css ---- */
+/* Dark Academia: an old college library ---------------------------------
+   Green leather shelves around a page of aged paper, gilt hairlines,
+   everything set in Garamond. */
+:root[data-custom-theme-id="dark-academia"] {
+  --rail-bg: #0b0f0c;
+  --surface-2: #2a2219;
+  --muted-2: #95866b;
+  --faint: #7a6c56;
+  --accent-strong: #c9a45c;
+  --accent-hi: #e0c48b;
+  --on-accent: #1a1209;
+  --gilt: rgba(201, 164, 92, 0.38);
+  --font-ui: "EB Garamond", Georgia, serif;
+  --font-display: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+  --ring: 0 0 0 2px rgba(201, 164, 92, 0.45);
+  --shadow-sm: 0 1px 2px rgba(6, 4, 2, .5), 0 1px 3px rgba(6, 4, 2, .3);
+  --shadow-md: 0 10px 26px rgba(6, 4, 2, .55), 0 2px 6px rgba(6, 4, 2, .35);
+  --shadow-lg: 0 24px 56px rgba(6, 4, 2, .62), 0 4px 14px rgba(6, 4, 2, .42);
+}
+
+/* Garamond's small x-height reads tiny at UI sizes; size-adjust matches it
+   to the sans the layout was tuned for. */
+:root[data-custom-theme-id="dark-academia"] body,
+:root[data-custom-theme-id="dark-academia"] .app-shell {
+  font-family: var(--font-ui) !important;
+  font-size-adjust: 0.53;
+}
+
+/* The page: aged paper with a candle-warm top and darkened edges. */
+:root[data-custom-theme-id="dark-academia"] .chat-panel {
+  background:
+    radial-gradient(70% 45% at 50% 0%, rgba(214, 170, 100, 0.08), transparent 70%),
+    radial-gradient(140% 100% at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.35) 100%),
+    var(--chat-bg) !important;
+  border-color: var(--gilt) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Title page: italic Cormorant over a gilt double rule. */
+:root[data-custom-theme-id="dark-academia"] .chat-header {
+  border-bottom: 3px double var(--gilt) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .channel-heading strong {
+  font-size: 28px !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .space-header h1 {
+  font-size: 26px !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .channel-heading > span {
+  font-style: italic;
+}
+
+/* Body copy: book-sized text with an open line height. */
+:root[data-custom-theme-id="dark-academia"] .message p,
+:root[data-custom-theme-id="dark-academia"] .message .message-body {
+  font-size: var(--chat-font-size, 16px);
+  line-height: 1.6;
+  color: #e6d9bc;
+}
+
+:root[data-custom-theme-id="dark-academia"] .message .message-meta strong {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Bookmark ribbon for the open channel. */
+:root[data-custom-theme-id="dark-academia"] .channel.selected,
+:root[data-custom-theme-id="dark-academia"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(155, 48, 48, 0.28), rgba(155, 48, 48, 0.06)) !important;
+  box-shadow: inset 3px 0 0 #9b3030 !important;
+  font-style: italic;
+}
+
+:root[data-custom-theme-id="dark-academia"] .composer {
+  background: rgba(20, 16, 11, 0.85) !important;
+  border: 1px solid var(--gilt) !important;
+  box-shadow: inset 0 0 0 3px rgba(20, 16, 11, 0.85), inset 0 0 0 4px rgba(201, 164, 92, 0.16), var(--shadow-sm) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .server-banner-header {
+  filter: sepia(0.45) saturate(0.8) contrast(1.05);
+  border: 1px solid var(--gilt);
+}
+
+:root[data-custom-theme-id="dark-academia"] ::selection {
+  background: rgba(155, 48, 48, 0.6);
+  color: #f1e3c2;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-tile {
+  background:
+    radial-gradient(80% 70% at 50% 35%, rgba(234, 214, 170, 0.1), transparent 75%),
+    #221b13 !important;
+  border: 3px double rgba(201, 164, 92, 0.55) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 6px #1a140e, inset 0 0 40px rgba(0, 0, 0, 0.45), var(--shadow-md) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-avatar {
+  box-shadow: 0 0 0 2px #1a140e, 0 0 0 3px rgba(201, 164, 92, 0.7) !important;
+  filter: sepia(0.25) contrast(1.03);
+}
+
+/* Speaking: the candle flares rather than a green ring. */
+:root[data-custom-theme-id="dark-academia"] .stage-tile.is-speaking {
+  border-color: #e0c48b !important;
+  box-shadow: inset 0 0 0 6px #1a140e, inset 0 0 50px rgba(224, 180, 100, 0.18), 0 0 26px rgba(224, 180, 100, 0.35) !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .stage-tile figcaption,
+:root[data-custom-theme-id="dark-academia"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-display) !important;
+  font-style: italic;
+  font-size: 17px;
+  color: #ead9b3 !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .vctrl-btn {
+  background: radial-gradient(circle at 35% 30%, #3a2e1d, #241c12) !important;
+  border: 1px solid rgba(201, 164, 92, 0.4) !important;
+  color: #e0c48b !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .vctrl-btn:hover {
+  border-color: #e0c48b !important;
+}
+
+:root[data-custom-theme-id="dark-academia"] .voice-active-contour {
+  background: rgba(34, 27, 19, 0.9) !important;
+  border: 1px solid rgba(201, 164, 92, 0.4) !important;
+  box-shadow: inset 0 0 0 3px rgba(20, 16, 11, 0.9), inset 0 0 0 4px rgba(201, 164, 92, 0.15) !important;
+  border-radius: 6px !important;
+}
+
+/* Dark Academia: a green leather card with a gilt double rule, parchment text. */
+:root[data-custom-theme-id="dark-academia"] .user-menu {
+  color: #f1e3c2;
+  font-family: var(--font-ui);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #18211a 0%, #111712 100%);
+  border: 1px solid var(--gilt);
+  box-shadow:
+    inset 0 0 0 3px #131a14,
+    inset 0 0 0 4px rgba(201, 164, 92, 0.22),
+    var(--shadow-lg);
+  scrollbar-color: #5b4b2e transparent;
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu::-webkit-scrollbar-thumb {
+  background: #5b4b2e;
+}
+
+:root[data-custom-theme-id="dark-academia"] .bot-menu .user-menu-head {
+  background: #18211a;
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu-head {
+  border-bottom-color: rgba(201, 164, 92, 0.3);
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu-head strong {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.01em;
+  color: #e0c48b;
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu button {
+  color: #efe2c4;
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu button:hover {
+  color: #f8edd2;
+  background: rgba(201, 164, 92, 0.14);
+  box-shadow: inset 2px 0 0 rgba(201, 164, 92, 0.7);
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu button.danger {
+  color: #d9826b;
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu-divider {
+  background: linear-gradient(90deg, transparent, rgba(201, 164, 92, 0.55), transparent);
+}
+
+:root[data-custom-theme-id="dark-academia"] .user-menu input[type="range"] {
+  accent-color: #c9a45c;
+}
+
+:root[data-custom-theme-id="dark-academia"] .server-invite-card {
+  --invite-accent: #c9a45c;
+  border-radius: 4px;
+  border: 1px solid var(--gilt, rgba(201, 164, 92, 0.38));
+  background: linear-gradient(180deg, #2a2219, #1f1913);
+}
+
+:root[data-custom-theme-id="dark-academia"] .server-invite-eyebrow { font-style: italic; text-transform: none; letter-spacing: 0.02em; font-size: 13px; }
+
+:root[data-custom-theme-id="dark-academia"] .server-invite-card .server-invite-btn { border-radius: 3px; }

@@ -1,0 +1,3466 @@
+/* msn theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from globals.css ---- */
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-view-switcher {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid #9ab8e0;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-view-pill {
+  color: #1f3e80;
+  font-family: var(--msn-font);
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-view-pill.active {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-stage-topbar-btn {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid #9ab8e0;
+  color: #1f3e80;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-stage-topbar-btn:hover {
+  background: #ffffff;
+  color: #000;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-stream-quality-pill,
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-stream-volume-pill {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #9ab8e0;
+  color: #1f3e80;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-header-controls .voice-quality-btn {
+  color: #1f3e80;
+  font-family: var(--msn-font);
+}
+
+/* ==========================================================================
+   MSN Messenger theme (Windows Live Messenger 8.x / MSN 7.5 look).
+   Built on the light base; everything is keyed off the active theme id so it
+   switches off cleanly when another theme is picked.
+   ========================================================================== */
+:root[data-custom-theme-id^="msn"] {
+  --msn-font: "Segoe UI", Tahoma, Verdana, "DejaVu Sans", sans-serif;
+  --msn-edge: #7f9db9;
+  /* XP edit-box border */
+  --msn-frame: #6b8fbf;
+  --msn-title: #0f3a82;
+  /* group headings / links */
+  --msn-says: #595959;
+  --msn-sky: linear-gradient(180deg, #e9f2fc 0%, #cfe0f6 45%, #bcd4f1 50%, #d9e7f8 100%);
+  --msn-glass: linear-gradient(180deg, #ffffff 0%, #f0f5fc 48%, #dde8f7 52%, #eef4fc 100%);
+  --msn-hover: linear-gradient(180deg, #f2f8fe 0%, #d9ebfc 100%);
+  --msn-select: linear-gradient(180deg, #dcebfc 0%, #c1dbfa 100%);
+}
+
+:root[data-custom-theme-id^="msn"] body,
+:root[data-custom-theme-id^="msn"] .app-shell {
+  font-family: var(--msn-font) !important;
+  font-size: 12px;
+  color: #000;
+  background: #c9dcf4 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .app-shell * {
+  font-family: var(--msn-font);
+}
+
+/* ---- Server rail: the blue tab strip down the side of the contact list ---- */
+:root[data-custom-theme-id^="msn"] .rail {
+  background: linear-gradient(90deg, #2a5caa 0%, #3f7bd1 55%, #2f65b8 100%) !important;
+  border-right: 1px solid #1b3f7a;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .25);
+}
+
+:root[data-custom-theme-id^="msn"] .space-mark,
+:root[data-custom-theme-id^="msn"] .brand-mark {
+  border-radius: 4px !important;
+  background: var(--msn-glass) !important;
+  color: var(--msn-title) !important;
+  border: 1px solid #1b4a92 !important;
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(0, 0, 0, .3) !important;
+  font-weight: 700;
+}
+
+:root[data-custom-theme-id^="msn"] .space-mark:hover,
+:root[data-custom-theme-id^="msn"] .active-space {
+  background: linear-gradient(180deg, #fff9e6 0%, #ffe8a6 48%, #ffd66b 52%, #ffeaa8 100%) !important;
+  border-color: #c28a1c !important;
+}
+
+:root[data-custom-theme-id^="msn"] .rail-divider {
+  background: rgba(255, 255, 255, .45) !important;
+}
+
+/* ---- Sidebar: the contact list window ---- */
+:root[data-custom-theme-id^="msn"] .sidebar,
+:root[data-custom-theme-id^="msn"] .member-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f8fe 220px, #ffffff 100%) !important;
+  border-right: 1px solid var(--msn-frame);
+  border-left: 1px solid var(--msn-frame);
+  color: #000;
+}
+
+:root[data-custom-theme-id^="msn"] .space-header {
+  background: var(--msn-sky) !important;
+  border-bottom: 1px solid #9ab8e0 !important;
+  box-shadow: inset 0 -1px 0 #fff;
+}
+
+:root[data-custom-theme-id^="msn"] .space-header h1 {
+  font-family: var(--msn-font) !important;
+  font-size: 14px !important;
+  font-weight: 700;
+  color: #000 !important;
+  letter-spacing: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .eyebrow {
+  color: var(--msn-says) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  font-size: 11px !important;
+}
+
+/* Groups read like "Online (3)" with the little expand arrow. */
+:root[data-custom-theme-id^="msn"] .category-head,
+:root[data-custom-theme-id^="msn"] .member-panel-title {
+  color: var(--msn-title) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  border-bottom: 1px solid #d3e1f3;
+}
+
+:root[data-custom-theme-id^="msn"] .channel,
+:root[data-custom-theme-id^="msn"] .voice-room,
+:root[data-custom-theme-id^="msn"] .member {
+  border-radius: 2px !important;
+  border: 1px solid transparent !important;
+  color: #000 !important;
+  background: transparent !important;
+  font-size: 12px;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .channel:hover,
+:root[data-custom-theme-id^="msn"] .voice-room:hover,
+:root[data-custom-theme-id^="msn"] .member:hover {
+  background: var(--msn-hover) !important;
+  border-color: #b8d6fb !important;
+}
+
+:root[data-custom-theme-id^="msn"] .channel.selected,
+:root[data-custom-theme-id^="msn"] .voice-room.selected {
+  background: var(--msn-select) !important;
+  border-color: #7da2ce !important;
+  color: #000 !important;
+  font-weight: 600;
+}
+
+/* Buddy status "people" — glossy green / red / amber orbs. */
+:root[data-custom-theme-id^="msn"] .presence-dot,
+:root[data-custom-theme-id^="msn"] .status-dot,
+:root[data-custom-theme-id^="msn"] .user-footer-presence-dot {
+  border: 1px solid rgba(0, 0, 0, .35) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+/* "My status" panel at the bottom of the list. */
+:root[data-custom-theme-id^="msn"] .discord-user-footer {
+  background: var(--msn-sky) !important;
+  border-top: 1px solid #9ab8e0 !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .user-footer-name {
+  color: #000 !important;
+  font-weight: 700;
+}
+
+:root[data-custom-theme-id^="msn"] .user-footer-status {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-avatar,
+:root[data-custom-theme-id^="msn"] .tiny-avatar {
+  border-radius: 3px !important;
+  border: 1px solid #8aa9d3;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #b7cbe6;
+}
+
+/* ---- Conversation window ---- */
+:root[data-custom-theme-id^="msn"] .chat-panel {
+  background: #dce8f8 !important;
+  padding: 0 8px 8px;
+}
+
+/* Title bar: "To: <name>" on the glassy blue band. */
+:root[data-custom-theme-id^="msn"] .chat-header {
+  background: var(--msn-sky) !important;
+  border: 1px solid #9ab8e0 !important;
+  border-top: 0 !important;
+  border-radius: 0 0 4px 4px;
+  margin: 0 -8px 8px;
+  box-shadow: inset 0 -1px 0 #fff;
+  color: #000;
+}
+
+:root[data-custom-theme-id^="msn"] .channel-heading strong {
+  font-family: var(--msn-font) !important;
+  font-size: 13px !important;
+  font-weight: 700;
+  text-transform: none !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .channel-heading strong::before {
+  content: "To: ";
+  font-weight: 400;
+  color: var(--msn-says);
+}
+
+:root[data-custom-theme-id^="msn"] .channel-heading span,
+:root[data-custom-theme-id^="msn"] .big-hash {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions button {
+  color: var(--msn-title) !important;
+}
+
+/* History pane: the white inset box with the XP edit border. */
+:root[data-custom-theme-id^="msn"] .messages {
+  background: #fff !important;
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+  padding: 10px 12px 6px !important;
+  scrollbar-color: #b3cbeb #eef4fc;
+}
+
+:root[data-custom-theme-id^="msn"] .channel-intro h2 {
+  font-family: var(--msn-font) !important;
+  font-size: 14px !important;
+  color: var(--msn-title) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .channel-intro p,
+:root[data-custom-theme-id^="msn"] .day-divider {
+  color: var(--msn-says) !important;
+}
+
+/* Each message: "Alice says:" on one line, the text indented under it. */
+:root[data-custom-theme-id^="msn"] .message {
+  display: block !important;
+  margin: 0 !important;
+  padding: 2px 4px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message:hover {
+  background: #f3f8fe !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message>.avatar,
+:root[data-custom-theme-id^="msn"] .message>.message-gutter {
+  display: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message:not(.continuation) {
+  margin-top: 6px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta {
+  height: auto;
+  gap: 4px;
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta strong {
+  color: var(--msn-says) !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta strong::after {
+  content: " says:";
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta time {
+  order: -1;
+  color: var(--msn-says) !important;
+  font-size: 12px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta time::before {
+  content: "(";
+}
+
+:root[data-custom-theme-id^="msn"] .message-meta time::after {
+  content: ")";
+}
+
+:root[data-custom-theme-id^="msn"] .message-body> :not(.message-meta):not(.reply-preview):not(.command-invocation),
+:root[data-custom-theme-id^="msn"] .message p {
+  padding-left: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] {
+  --chat-font-size: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .message p {
+  color: #000 !important;
+  font-size: var(--chat-font-size, 12px) !important;
+  line-height: 1.4;
+}
+
+:root[data-custom-theme-id^="msn"] .bot-tag {
+  background: #fff4c2 !important;
+  color: #7a5a00 !important;
+  border: 1px solid #e3c35a;
+  border-radius: 2px;
+}
+
+:root[data-custom-theme-id^="msn"] .message-actions {
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .message a {
+  color: #0033cc !important;
+  text-decoration: underline;
+}
+
+/* ---- Composer: toolbar + white edit box + glossy Send button ---- */
+:root[data-custom-theme-id^="msn"] .composer-wrap {
+  background: transparent !important;
+  padding: 8px 0 0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer {
+  background: #fff !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer textarea {
+  background: #fff !important;
+  color: #000 !important;
+  font-size: 12px !important;
+  border-top: 1px solid #c7d7ec;
+}
+
+:root[data-custom-theme-id^="msn"] .composer textarea::placeholder {
+  color: #9aa7b8 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .send-button {
+  width: auto !important;
+  min-width: 60px;
+  height: 26px !important;
+  padding: 0 12px !important;
+  border-radius: 3px !important;
+  border: 1px solid #1b4a92 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #eef3fb 48%, #d5e2f5 52%, #e8f0fb 100%) !important;
+  color: #000 !important;
+  box-shadow: inset 0 1px 0 #fff !important;
+  transform: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .send-button svg {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .send-button:not(.voice-record-button)::after {
+  content: "Send";
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-record-button svg {
+  display: block;
+}
+
+:root[data-custom-theme-id^="msn"] .send-button:hover {
+  background: linear-gradient(180deg, #fffaf0 0%, #ffefc4 48%, #ffdc86 52%, #fff0c8 100%) !important;
+  border-color: #c28a1c !important;
+}
+
+:root[data-custom-theme-id^="msn"] .attach-button,
+:root[data-custom-theme-id^="msn"] .composer-emoji-btn {
+  color: var(--msn-title) !important;
+  background: transparent !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer-hint {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer-hint kbd,
+:root[data-custom-theme-id^="msn"] .composer-hint-keys>* {
+  background: var(--msn-glass) !important;
+  color: #000 !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .typing-line {
+  color: var(--msn-says) !important;
+  font-style: normal;
+}
+
+/* ---- MSN 6/7 conversation toolbar: big icons with a word underneath ---- */
+:root[data-custom-theme-id^="msn"] .chat-panel {
+  background: linear-gradient(180deg, #d9e3f6 0%, #eef2fb 120px, #e3eaf8 100%) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .chat-header {
+  min-height: 62px;
+  background: linear-gradient(180deg, #f7f9fe 0%, #e4ebf9 50%, #cfdbf2 100%) !important;
+  border-color: #9fb3dc !important;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions {
+  gap: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button {
+  width: auto !important;
+  min-width: 48px;
+  height: 52px !important;
+  padding: 4px 6px 2px !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 3px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #1b4a92 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button::after {
+  content: attr(aria-label);
+  font-size: 11px;
+  line-height: 1;
+  color: #000;
+  white-space: nowrap;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label="Find users"]::after {
+  content: "Invite";
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label="Search messages"]::after {
+  content: "Search";
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label="Pinned messages"]::after {
+  content: "Pins";
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label="Settings"]::after {
+  content: "Options";
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label="Toggle member list"]::after {
+  content: "Contacts";
+}
+
+/* The light/cozy toggle would silently leave the MSN theme. */
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button[aria-label^="Switch to"] {
+  display: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button:hover,
+:root[data-custom-theme-id^="msn"] .header-actions .icon-button.active {
+  background: linear-gradient(180deg, #ffffff 0%, #e6eefb 100%) !important;
+  border-color: #9fb3dc !important;
+}
+
+:root[data-custom-theme-id^="msn"] .messages {
+  border-color: #9fb3dc !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer {
+  border-left-color: #9fb3dc !important;
+  border-right-color: #9fb3dc !important;
+  border-bottom-color: #9fb3dc !important;
+}
+
+/* Tall Send button beside the typing box, like the 6.x window. */
+:root[data-custom-theme-id^="msn"] .send-button {
+  height: 40px !important;
+  min-width: 64px;
+  font-weight: 700;
+}
+
+/* ---- Buddy icons: presence dots become the little MSN person ---- */
+:root[data-custom-theme-id^="msn"] .presence-dot,
+:root[data-custom-theme-id^="msn"] .status-dot,
+:root[data-custom-theme-id^="msn"] .user-footer-presence-dot {
+  width: 14px !important;
+  height: 14px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .9));
+}
+
+/* ---- Contact list: your name + status sit at the top, like "Cole (Online)" ---- */
+:root[data-custom-theme-id^="msn"] .sidebar>.discord-user-footer {
+  order: -1;
+  border-top: 0 !important;
+  border-bottom: 1px solid #9fb3dc !important;
+  background: linear-gradient(180deg, #f7f9fe 0%, #dbe5f7 100%) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .sidebar>.mobile-drawer-header {
+  order: -2;
+}
+
+:root[data-custom-theme-id^="msn"] .sidebar,
+:root[data-custom-theme-id^="msn"] .member-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5fd 60%, #dde6f7 100%) !important;
+  border-color: #9fb3dc !important;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp-column {
+  position: absolute;
+  top: 72px;
+  right: 8px;
+  bottom: 30px;
+  width: 108px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp-frame {
+  padding: 5px;
+  background: linear-gradient(180deg, #ffffff 0%, #e9eff9 100%);
+  border: 1px solid #8ea7d6;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(31, 62, 128, .25);
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp-image {
+  display: grid !important;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  width: 96px !important;
+  height: 96px !important;
+  border-radius: 2px !important;
+  font-size: 40px !important;
+  overflow: hidden;
+  border: 1px solid #c3d1ea;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp-frame {
+  width: 108px;
+  height: 108px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0 !important;
+}
+
+/* The little drop-down arrow tab under each picture. */
+:root[data-custom-theme-id^="msn"] .msn-dp figcaption {
+  font-size: 0;
+  width: 22px;
+  height: 11px;
+  margin-top: -1px;
+  background: linear-gradient(180deg, #f7f9fe 0%, #d4e0f5 100%);
+  border: 1px solid #8ea7d6;
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  position: relative;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp figcaption::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  border: 4px solid transparent;
+  border-top: 4px solid #1b4a92;
+}
+
+:root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .messages,
+:root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .composer-wrap {
+  margin-right: 118px;
+}
+
+@media (max-width: 900px) {
+  :root[data-custom-theme-id^="msn"] .msn-dp-column {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  :root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .messages,
+  :root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .composer-wrap {
+    margin-right: 0;
+  }
+}
+
+/* ---- Contact list: "Online (1)" groups with the collapse arrow, "(Away)" after names ---- */
+:root[data-custom-theme-id^="msn"] .member-panel:not(.closed) {
+  padding: 8px 10px 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel-title {
+  border-bottom: 0 !important;
+  padding: 6px 2px 3px !important;
+  margin: 0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel-title span::before {
+  content: "";
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: 1px;
+  border: 4px solid transparent;
+  border-top: 5px solid #1b4a92;
+  border-bottom: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .member {
+  padding: 1px 4px 1px 18px !important;
+  min-height: 0 !important;
+  gap: 6px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-avatar {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  font-size: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: none !important;
+  overflow: visible !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-avatar img {
+  display: none !important;
+}
+
+/* In the list the buddy icon *is* the avatar, as in Messenger. */
+:root[data-custom-theme-id^="msn"] .member-avatar .presence-dot,
+:root[data-custom-theme-id^="msn"] .member-avatar .status-dot {
+  position: static !important;
+  display: block !important;
+  width: 16px !important;
+  height: 16px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .offline-member .member-avatar::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: #9a9a9a;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+:root[data-custom-theme-id^="msn"] .member>div:last-child {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .member>div:last-child>span:last-child {
+  color: #6d6d6d !important;
+  font-size: 12px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-custom-theme-id^="msn"] .offline-member>div:last-child>span:last-child {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .offline-member,
+:root[data-custom-theme-id^="msn"] .offline-member * {
+  opacity: 1 !important;
+  /* Messenger's offline grey, darkened just enough to read (was #808080, 2.8:1). */
+  color: #4d535e !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member>div:last-child> :first-child {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+/* ---- The banner strip pinned to the foot of the contact list ---- */
+:root[data-custom-theme-id^="msn"] .msn-ad {
+  position: sticky;
+  bottom: 0;
+  margin: auto -10px 0;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  background: linear-gradient(180deg, #ffffff 0%, #eef3fb 100%);
+  border: 0;
+  border-top: 1px solid #9fb3dc;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-art {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 36px;
+  position: relative;
+  border: 1px solid #8ea7d6;
+  background: linear-gradient(135deg, #7fb2ef 0%, #2e6ac4 100%);
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-art span {
+  position: absolute;
+  width: 12px;
+  height: 17px;
+  bottom: 3px;
+  background: #5ec43a;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='4.5' r='3.6'/%3E%3Cpath d='M1.2 16c0-4.6 2.9-7.2 6.8-7.2s6.8 2.6 6.8 7.2z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-art span:first-child {
+  left: 8px;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-art span:last-child {
+  left: 22px;
+  background: #3b8de0;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-copy {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-copy strong {
+  color: #0f3a82;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-ad-copy em {
+  color: #0033cc;
+  font-style: normal;
+  text-decoration: underline;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 26px;
+  padding: 0 4px;
+  background: linear-gradient(180deg, #f7fafe 0%, #e2ecf9 100%);
+  border: 1px solid #9fb3dc;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: #000;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff 0%, #e6eefb 100%);
+  border-color: #9fb3dc;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar button:active:not(:disabled) {
+  background: #cfdcf3;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-font {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1b4a92;
+  text-decoration: underline;
+  text-decoration-color: #d4352b;
+  text-decoration-thickness: 2px;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-smile {
+  font-size: 16px;
+  color: #e3a300;
+  text-shadow: 0 0 1px #9a6c00;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-drop {
+  border: 3px solid transparent;
+  border-top: 4px solid #1b4a92;
+  margin-top: 4px;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-icon {
+  font-size: 13px;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-nudge {
+  color: #1b4a92;
+  font-weight: 700;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fmt-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: #b7c8e6;
+  box-shadow: 1px 0 0 #fff;
+}
+
+/* ---- Collapsible contact groups ---- */
+:root[data-custom-theme-id^="msn"] .member-panel-title[role="button"] {
+  cursor: pointer;
+  user-select: none;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel-title[role="button"]:hover span {
+  text-decoration: underline;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel-title.msn-collapsed span::before {
+  transform: rotate(-90deg);
+}
+
+:root[data-custom-theme-id^="msn"] .nudge-line {
+  color: #595959;
+}
+
+:root[data-custom-theme-id^="msn"] .nudge-line-rule {
+  background: #b7c8e6;
+}
+
+/* ---- Handwriting pad and Backgrounds picker popovers ---- */
+:root[data-custom-theme-id^="msn"] .msn-format-bar {
+  position: relative;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar button.active {
+  background: #cfdcf3;
+  border-color: #9fb3dc;
+}
+
+/* Starry Night is dark: keep the history readable on it. */
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .messages .message p,
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .messages .message-meta strong,
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .messages .message-meta time,
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .messages .nudge-line,
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .messages .channel-intro * {
+  color: #eef3ff !important;
+}
+
+:root[data-custom-theme-id^="msn"][data-msn-bg="night"] .message:hover {
+  background: rgba(255, 255, 255, .08) !important;
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .chat-panel {
+    padding: 0 6px 6px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .chat-header {
+    min-height: 48px;
+    margin: 0 -6px 6px;
+    padding: 0 6px !important;
+    gap: 4px !important;
+    border-radius: 0;
+    background: linear-gradient(180deg, #5c8fd6 0%, #336fc9 48%, #1f58b3 52%, #3a78d0 100%) !important;
+    border: 0 !important;
+    border-bottom: 1px solid #16407f !important;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .chat-header .mobile-menu,
+  :root[data-custom-theme-id^="msn"] .chat-header .big-hash,
+  :root[data-custom-theme-id^="msn"] .chat-header .channel-heading strong,
+  :root[data-custom-theme-id^="msn"] .chat-header .channel-heading strong::before,
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button {
+    color: #fff !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .channel-heading {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .channel-heading strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .channel-heading span {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .header-actions {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button {
+    min-width: 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button::after {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button svg {
+    width: 19px;
+    height: 19px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button:hover,
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button.active {
+    background: rgba(255, 255, 255, .18) !important;
+    border-color: rgba(255, 255, 255, .45) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Too little room to spare 118px for pictures; the history gets it all. */
+  :root[data-custom-theme-id^="msn"] .messages {
+    padding: 8px 8px 4px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-format-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    height: 34px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-format-bar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-format-bar button {
+    flex: 0 0 auto;
+    height: 30px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-format-bar button span:not([class]) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-fmt-icon {
+    font-size: 17px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Popovers hang off the composer and span the screen instead of the strip. */
+  :root[data-custom-theme-id^="msn"] .msn-format-bar {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .composer-wrap {
+    position: relative;
+    padding: 6px 0 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-popover {
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 2px);
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-ink-canvas {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-bg-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .msn-bg-preview {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .send-button {
+    height: 36px !important;
+    min-width: 54px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Drawers: the contact list and channels slide in as Luna panels. */
+  :root[data-custom-theme-id^="msn"] .member-panel:not(.closed),
+  :root[data-custom-theme-id^="msn"] .sidebar {
+    box-shadow: 0 0 0 1px #6b8fbf, 0 8px 30px rgba(20, 45, 100, .35) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .member-panel:not(.closed) {
+    top: 48px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .mobile-drawer-header {
+    background: linear-gradient(180deg, #5c8fd6 0%, #336fc9 48%, #1f58b3 52%, #3a78d0 100%) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .mobile-drawer-close {
+    color: #fff !important;
+    background: linear-gradient(180deg, #e98a7a 0%, #c9412c 100%) !important;
+    border: 1px solid #fff !important;
+    border-radius: 3px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Bigger touch rows in the contact list. */
+  :root[data-custom-theme-id^="msn"] .member {
+    padding: 6px 4px 6px 18px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .member-panel-title {
+    padding: 10px 2px 6px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root[data-custom-theme-id^="msn"] .rail {
+    background: linear-gradient(180deg, #5c8fd6 0%, #336fc9 48%, #1f58b3 52%, #3a78d0 100%) !important;
+    border-top: 1px solid #16407f;
+  }
+}
+
+/* The strip already has Emoticons and Winks; don't show them twice. */
+:root[data-custom-theme-id^="msn"] .composer .composer-emoji-btn[aria-label="Open Emoji Picker"],
+:root[data-custom-theme-id^="msn"] .composer .gif-button[aria-label="Add a GIF"] {
+  display: none !important;
+}
+
+/* ---- "Last message received at…" status bar ---- */
+:root[data-custom-theme-id^="msn"] .msn-status-bar {
+  display: block;
+  padding: 1px 4px;
+  color: #3b3b3b;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (width<=760px) {
+  :root[data-custom-theme-id^="msn"] .member-panel:not(.closed) {
+    top: calc(48px + var(--safe-top)) !important;
+  }
+}
+
+@media (width<=760px) {
+  :root[data-custom-theme-id^="msn"] .member-panel:not(.closed) {
+    top: calc(54px + var(--safe-top)) !important;
+  }
+}
+
+/* ==========================================================================
+   MSN Messenger Dark: every rule above still applies ("msn" prefix); these
+   swap the light Luna surfaces for midnight glass.
+   ========================================================================== */
+:root[data-custom-theme-id="msn-dark"] {
+  color-scheme: dark;
+  --msn-edge: #34507f;
+  --msn-frame: #2b4a80;
+  --msn-title: #7fb8ff;
+  --msn-says: #9fb2d4;
+  --msn-sky: linear-gradient(180deg, #1c3462 0%, #14284d 48%, #0f2142 52%, #16305c 100%);
+  --msn-glass: linear-gradient(180deg, #243e6e 0%, #1a2f57 48%, #13264a 52%, #1b3460 100%);
+  --msn-hover: linear-gradient(180deg, #1a3160 0%, #152a52 100%);
+  --msn-select: linear-gradient(180deg, #25467f 0%, #1c3a6e 100%);
+}
+
+:root[data-custom-theme-id="msn-dark"] body,
+:root[data-custom-theme-id="msn-dark"] .app-shell {
+  color: #e6eefc;
+  background: #081021 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .rail {
+  background: linear-gradient(90deg, #0b1a36 0%, #13295a 55%, #0e2048 100%) !important;
+  border-right-color: #050c1a;
+}
+
+:root[data-custom-theme-id="msn-dark"] .space-mark,
+:root[data-custom-theme-id="msn-dark"] .brand-mark {
+  color: #cfe2ff !important;
+  border-color: #3b64a8 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15), 0 1px 3px rgba(0, 0, 0, .6) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .space-mark:hover,
+:root[data-custom-theme-id="msn-dark"] .active-space {
+  background: linear-gradient(180deg, #3d7be0 0%, #2a64c7 48%, #1d52b0 52%, #3471d6 100%) !important;
+  border-color: #7fb8ff !important;
+  color: #fff !important;
+}
+
+/* Contact list and channels */
+:root[data-custom-theme-id="msn-dark"] .sidebar,
+:root[data-custom-theme-id="msn-dark"] .member-panel {
+  background: linear-gradient(180deg, #0f1c36 0%, #0c172d 60%, #0a1427 100%) !important;
+  border-color: #22406f !important;
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .space-header,
+:root[data-custom-theme-id="msn-dark"] .discord-user-footer {
+  border-color: #2b4a80 !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .06);
+}
+
+:root[data-custom-theme-id="msn-dark"] .sidebar>.discord-user-footer {
+  background: var(--msn-sky) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .space-header h1,
+:root[data-custom-theme-id="msn-dark"] .user-footer-name,
+:root[data-custom-theme-id="msn-dark"] .channel,
+:root[data-custom-theme-id="msn-dark"] .voice-room,
+:root[data-custom-theme-id="msn-dark"] .member,
+:root[data-custom-theme-id="msn-dark"] .channel.selected,
+:root[data-custom-theme-id="msn-dark"] .voice-room.selected {
+  color: #e6eefc !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .channel:hover,
+:root[data-custom-theme-id="msn-dark"] .voice-room:hover,
+:root[data-custom-theme-id="msn-dark"] .member:hover {
+  border-color: #2f5596 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .channel.selected,
+:root[data-custom-theme-id="msn-dark"] .voice-room.selected {
+  border-color: #4c86e0 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .category-head,
+:root[data-custom-theme-id="msn-dark"] .member-panel-title {
+  border-color: #1d3563 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .member-panel-title span::before,
+:root[data-custom-theme-id="msn-dark"] .msn-fmt-drop,
+:root[data-custom-theme-id="msn-dark"] .msn-dp figcaption::after {
+  border-top-color: #7fb8ff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .offline-member,
+:root[data-custom-theme-id="msn-dark"] .offline-member * {
+  color: #6f82a6 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .member-avatar,
+:root[data-custom-theme-id="msn-dark"] .tiny-avatar {
+  border-color: #3b5f99;
+  box-shadow: 0 0 0 2px #0c172d, 0 0 0 3px #2b4a80;
+}
+
+/* The status beside a contact's name: the light theme's grey was dim here. */
+:root[data-custom-theme-id="msn-dark"] .member>div:last-child>span:last-child {
+  color: #9fb4d9 !important;
+}
+
+/* Conversation window */
+:root[data-custom-theme-id="msn-dark"] .chat-panel {
+  background: linear-gradient(180deg, #10204a 0%, #0b1733 120px, #0a142b 100%) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .chat-header {
+  background: linear-gradient(180deg, #1f3868 0%, #172d58 50%, #11244a 100%) !important;
+  border-color: #2b4a80 !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .06);
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .channel-heading strong {
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .header-actions .icon-button {
+  color: #8cc0ff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .header-actions .icon-button::after {
+  color: #dbe7fb;
+}
+
+:root[data-custom-theme-id="msn-dark"] .header-actions .icon-button:hover,
+:root[data-custom-theme-id="msn-dark"] .header-actions .icon-button.active {
+  background: linear-gradient(180deg, #2a4a84 0%, #1c3664 100%) !important;
+  border-color: #3f6bb3 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .messages {
+  background: #0d1831 !important;
+  border-color: #2b4a80 !important;
+  scrollbar-color: #2e4f86 #0d1831;
+}
+
+:root[data-custom-theme-id="msn-dark"] .message:hover {
+  background: #13234a !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .message p,
+:root[data-custom-theme-id="msn-dark"] .message-body {
+  color: #e6eefc !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .message a {
+  color: #7fb8ff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .bot-tag {
+  background: #3a3212 !important;
+  color: #ffd76a !important;
+  border-color: #7a6420;
+}
+
+:root[data-custom-theme-id="msn-dark"] .message-actions {
+  background: var(--msn-glass) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .nudge-line-rule {
+  background: #2b4a80;
+}
+
+/* Composer */
+:root[data-custom-theme-id="msn-dark"] .msn-format-bar {
+  background: linear-gradient(180deg, #1c3462 0%, #142a52 100%);
+  border-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-format-bar button {
+  color: #dbe7fb;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-format-bar button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2a4a84 0%, #1c3664 100%);
+  border-color: #3f6bb3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-format-bar button.active,
+:root[data-custom-theme-id="msn-dark"] .msn-format-bar button:active:not(:disabled) {
+  background: #25467f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-fmt-font,
+:root[data-custom-theme-id="msn-dark"] .msn-fmt-nudge {
+  color: #8cc0ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-fmt-sep {
+  background: #2b4a80;
+  box-shadow: 1px 0 0 rgba(0, 0, 0, .4);
+}
+
+:root[data-custom-theme-id="msn-dark"] .composer {
+  background: #0d1831 !important;
+  border-left-color: #2b4a80 !important;
+  border-right-color: #2b4a80 !important;
+  border-bottom-color: #2b4a80 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .composer textarea {
+  background: #0d1831 !important;
+  color: #e6eefc !important;
+  border-top-color: #1d3563;
+}
+
+:root[data-custom-theme-id="msn-dark"] .composer textarea::placeholder {
+  color: #5f7399 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .attach-button,
+:root[data-custom-theme-id="msn-dark"] .composer-emoji-btn {
+  color: #8cc0ff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .send-button {
+  background: linear-gradient(180deg, #3d7be0 0%, #2a64c7 48%, #1d52b0 52%, #3471d6 100%) !important;
+  border-color: #7fb8ff !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 0 8px rgba(76, 157, 255, .35) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .send-button:hover {
+  background: linear-gradient(180deg, #5b95f0 0%, #3a77dc 48%, #2a63c4 52%, #4a86e6 100%) !important;
+  border-color: #b5d6ff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-status-bar,
+:root[data-custom-theme-id="msn-dark"] .composer-hint {
+  color: #9fb2d4 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .composer-hint kbd,
+:root[data-custom-theme-id="msn-dark"] .composer-hint-keys>* {
+  color: #dbe7fb !important;
+}
+
+/* Display pictures, popovers, banner, toasts */
+:root[data-custom-theme-id="msn-dark"] .msn-dp-frame {
+  background: linear-gradient(180deg, #1c3462 0%, #10213f 100%);
+  border-color: #3b64a8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 10px rgba(76, 157, 255, .2);
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-dp-image {
+  border-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-dp figcaption {
+  background: linear-gradient(180deg, #1c3462 0%, #10213f 100%);
+  border-color: #3b64a8;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-popover,
+:root[data-custom-theme-id="msn-dark"] .msn-toast {
+  background: linear-gradient(180deg, #13264a 0%, #0c1a35 100%);
+  border-color: #3b64a8;
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-toast-body,
+:root[data-custom-theme-id="msn-dark"] .msn-bg-swatch,
+:root[data-custom-theme-id="msn-dark"] .msn-ink-text,
+:root[data-custom-theme-id="msn-dark"] .msn-ink-send {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-toast-body strong,
+:root[data-custom-theme-id="msn-dark"] .msn-ad-copy strong {
+  color: #8cc0ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-bg-swatch:hover {
+  background: #1a3160;
+  border-color: #3f6bb3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-bg-swatch.active {
+  background: #25467f;
+  border-color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-ink-text,
+:root[data-custom-theme-id="msn-dark"] .msn-ink-send,
+:root[data-custom-theme-id="msn-dark"] .msn-ink-width {
+  background: linear-gradient(180deg, #243e6e 0%, #172d58 100%);
+  border-color: #3b64a8;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-ink-width span {
+  background: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-ad {
+  background: linear-gradient(180deg, #13264a 0%, #0c1a35 100%);
+  border-top-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-ad-copy em {
+  color: #7fb8ff;
+}
+
+/* "None" background in the dark history pane. */
+:root[data-custom-theme-id="msn-dark"] [data-msn-bg-preview="none"] {
+  background-color: #0d1831;
+}
+
+/* MSN on tablets / narrow windows: icon-only toolbar, a scrollable format
+   strip, and no picture column where the member list floats over it. */
+:root[data-custom-theme-id^="msn"] .msn-format-bar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar::-webkit-scrollbar {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-bar>* {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (width<=1200px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button {
+    min-width: 36px !important;
+    height: 36px !important;
+  }
+}
+
+@media (width<=1200px) {
+  :root[data-custom-theme-id^="msn"] .header-actions .icon-button::after {
+    display: none;
+  }
+}
+
+@media (width<=1200px) {
+  :root[data-custom-theme-id^="msn"] .channel-heading strong {
+    white-space: nowrap;
+  }
+}
+
+@media (width<=1050px) {
+  :root[data-custom-theme-id^="msn"] .msn-dp-column {
+    display: none;
+  }
+}
+
+@media (width<=1050px) {
+  :root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .messages,
+  :root[data-custom-theme-id^="msn"] .chat-panel:has(.msn-dp-column) .composer-wrap {
+    margin-right: 0;
+  }
+}
+
+/* ==========================================================================
+   MSN: voice. The stage, the voice room in the channel list and the
+   "voice connected" bar, in Luna (light) and midnight glass (dark).
+   ========================================================================== */
+/* The picture column belongs to text conversations; a call fills the pane. */
+:root[data-custom-theme-id^="msn"] .chat-panel:has(.voice-stage) .msn-dp-column {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage {
+  background: linear-gradient(180deg, #eaf2fc 0%, #d6e4f7 100%) !important;
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+  color: #000;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-topbar {
+  background: var(--msn-sky) !important;
+  border-bottom: 1px solid #9ab8e0 !important;
+  box-shadow: inset 0 -1px 0 #fff;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-title {
+  color: #000 !important;
+  font-family: var(--msn-font) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-sub,
+:root[data-custom-theme-id^="msn"] .voice-stage-volume-icon {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-body {
+  background: transparent !important;
+}
+
+:root[data-custom-theme-id^="msn"] .stage-tile {
+  background: linear-gradient(180deg, #ffffff 0%, #e7eef9 100%) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 3px rgba(31, 62, 128, .2) !important;
+  color: #000;
+}
+
+:root[data-custom-theme-id^="msn"] .stage-tile.is-speaking {
+  border-color: #3fa82f !important;
+  box-shadow: 0 0 0 2px #7fd86a, 0 1px 3px rgba(31, 62, 128, .2) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .stage-tile,
+:root[data-custom-theme-id^="msn"] .stage-tile * {
+  text-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .avatar-tile-inner,
+:root[data-custom-theme-id^="msn"] .stage-tile span {
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .stage-avatar {
+  border-radius: 4px !important;
+  border: 1px solid #8ea7d6;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 4px #b7cbe6;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-stage-bottom-bar,
+:root[data-custom-theme-id^="msn"] .voice-stage-bar {
+  background: var(--msn-sky) !important;
+  border-top: 1px solid #9ab8e0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .vctrl-btn {
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 4px !important;
+  color: var(--msn-title) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .vctrl-btn:hover {
+  background: linear-gradient(180deg, #fffaf0 0%, #ffefc4 48%, #ffdc86 52%, #fff0c8 100%) !important;
+  border-color: #c28a1c !important;
+}
+
+:root[data-custom-theme-id^="msn"] .vctrl-btn.disconnect-btn,
+:root[data-custom-theme-id^="msn"] .vctrl-btn[title*="Disconnect"],
+:root[data-custom-theme-id^="msn"] .vctrl-btn[title*="Leave"] {
+  background: linear-gradient(180deg, #f59a8a 0%, #d8412c 48%, #c2321f 52%, #de5440 100%) !important;
+  border-color: #8f2112 !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .vctrl-divider {
+  background: #9ab8e0 !important;
+}
+
+/* The voice room you're in, in the channel list. */
+:root[data-custom-theme-id^="msn"] .voice-active-contour {
+  background: linear-gradient(180deg, #f2fbef 0%, #dff3d8 100%) !important;
+  border: 1px solid #8fcf7c !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-active-contour .voice-room,
+:root[data-custom-theme-id^="msn"] .voice-active-contour .voice-room span {
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-active-pill {
+  background: var(--msn-online-bg, #d6f2cc) !important;
+  color: #1d6b12 !important;
+  border-color: #8fcf7c !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-active-contour .voice-member,
+:root[data-custom-theme-id^="msn"] .voice-active-contour .voice-member *,
+:root[data-custom-theme-id^="msn"] .voice-member-timer {
+  color: #3b3b3b !important;
+}
+
+/* "Voice connected" bar above your status panel. */
+:root[data-custom-theme-id^="msn"] .mini-voice-bar {
+  background: linear-gradient(180deg, #f2fbef 0%, #dff3d8 100%) !important;
+  border-top: 1px solid #8fcf7c !important;
+  border-bottom: 1px solid #b7dcab !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-voice-name {
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-voice-status {
+  color: #1d6b12 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-voice-actions button {
+  color: var(--msn-title) !important;
+  border-radius: 3px !important;
+}
+
+/* Dark MSN versions. */
+:root[data-custom-theme-id="msn-dark"] .voice-stage {
+  background: linear-gradient(180deg, #0f1f3f 0%, #0a152c 100%) !important;
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-stage-topbar {
+  border-bottom-color: #2b4a80 !important;
+  box-shadow: none;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-stage-title,
+:root[data-custom-theme-id="msn-dark"] .avatar-tile-inner,
+:root[data-custom-theme-id="msn-dark"] .stage-tile span {
+  color: #e6eefc !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .stage-tile {
+  background: linear-gradient(180deg, #172d58 0%, #0f2044 100%) !important;
+  box-shadow: 0 0 12px rgba(76, 157, 255, .15) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .stage-avatar {
+  border-color: #3b64a8;
+  box-shadow: 0 0 0 3px #0f2044, 0 0 0 4px #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-stage-bottom-bar,
+:root[data-custom-theme-id="msn-dark"] .voice-stage-bar {
+  border-top-color: #2b4a80 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .vctrl-btn {
+  color: #8cc0ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .vctrl-btn:hover {
+  background: linear-gradient(180deg, #3d7be0 0%, #2a64c7 48%, #1d52b0 52%, #3471d6 100%) !important;
+  border-color: #7fb8ff !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .vctrl-divider {
+  background: #2b4a80 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-active-contour,
+:root[data-custom-theme-id="msn-dark"] .mini-voice-bar {
+  background: linear-gradient(180deg, #11321f 0%, #0b2415 100%) !important;
+  border-color: #2f7a3c !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-active-contour .voice-room,
+:root[data-custom-theme-id="msn-dark"] .voice-active-contour .voice-room span,
+:root[data-custom-theme-id="msn-dark"] .mini-voice-name {
+  color: #e6eefc !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-active-contour .voice-member,
+:root[data-custom-theme-id="msn-dark"] .voice-active-contour .voice-member *,
+:root[data-custom-theme-id="msn-dark"] .voice-member-timer {
+  color: #a8bfdc !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-active-pill {
+  background: #163f22 !important;
+  color: #7fe07a !important;
+  border-color: #2f7a3c !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .mini-voice-status {
+  color: #7fe07a !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .mini-voice-actions button {
+  color: #8cc0ff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-active-pill {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-view-switcher {
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 4px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-view-switcher button {
+  color: var(--msn-title) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-view-switcher button.active,
+:root[data-custom-theme-id^="msn"] .voice-view-switcher button[aria-pressed="true"] {
+  background: var(--msn-select) !important;
+  color: #000 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-view-switcher button.active,
+:root[data-custom-theme-id="msn-dark"] .voice-view-switcher button[aria-pressed="true"] {
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .jump-latest {
+  color: var(--msn-title);
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, .25);
+}
+
+:root[data-custom-theme-id^="msn"] .jump-latest:hover,
+:root[data-custom-theme-id^="msn"] .jump-latest.has-unseen {
+  color: var(--msn-title);
+  background: var(--msn-hover);
+}
+
+/* ==========================================================================
+   MSN: the rest of the furniture. Emoticon and Winks pickers, the slash and
+   mention menus, music cards, the voice table, dialogs, and the Font /
+   Effects popovers — all as Luna windows (light) or midnight glass (dark).
+   ========================================================================== */
+:root[data-custom-theme-id^="msn"] {
+  --msn-win: #ffffff;
+  --msn-win-ink: #000000;
+  --msn-win-face: linear-gradient(180deg, #f7f9fe 0%, #e3eaf8 100%);
+  --msn-titlebar: linear-gradient(180deg, #5c8fd6 0%, #336fc9 48%, #1f58b3 52%, #3a78d0 100%);
+  --msn-menu-hi: linear-gradient(180deg, #eaf3fd 0%, #cbe0f8 100%);
+  --msn-menu-hi-edge: #7da2ce;
+  --msn-field: #ffffff;
+  --msn-shadow: 2px 3px 8px rgba(20, 45, 100, .35);
+}
+
+:root[data-custom-theme-id="msn-dark"] {
+  --msn-win: #0e1930;
+  --msn-win-ink: #e6eefc;
+  --msn-win-face: linear-gradient(180deg, #172a4e 0%, #0f1f3c 100%);
+  --msn-titlebar: linear-gradient(180deg, #2f5aa3 0%, #1d4185 48%, #143472 52%, #214a8f 100%);
+  --msn-menu-hi: linear-gradient(180deg, #23457d 0%, #1a3766 100%);
+  --msn-menu-hi-edge: #3d6ab3;
+  --msn-field: #0a1428;
+  --msn-shadow: 2px 3px 10px rgba(0, 0, 0, .55);
+}
+
+/* A Luna window: face gradient, blue frame, and a glossy blue title bar
+   drawn with ::before when the component has no header of its own. */
+:root[data-custom-theme-id^="msn"] .discord-emoji-picker,
+:root[data-custom-theme-id^="msn"] .gif-picker,
+:root[data-custom-theme-id^="msn"] .slash-menu,
+:root[data-custom-theme-id^="msn"] .mention-menu,
+:root[data-custom-theme-id^="msn"] .text-style-menu {
+  background: var(--msn-win-face) !important;
+  color: var(--msn-win-ink) !important;
+  border: 1px solid var(--msn-frame) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--msn-shadow) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-picker::before,
+:root[data-custom-theme-id^="msn"] .discord-emoji-picker:not(:has(.emoji-picker-banner))::before,
+:root[data-custom-theme-id^="msn"] .slash-menu::before {
+  display: block;
+  margin: -1px -1px 6px;
+  padding: 3px 8px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  background: var(--msn-titlebar);
+  border-radius: 3px 3px 0 0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
+
+:root[data-custom-theme-id^="msn"] .discord-emoji-picker:not(:has(.emoji-picker-banner))::before {
+  content: "Emoticons";
+  margin: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-picker::before {
+  content: "Winks & GIFs";
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  margin: -10px -10px 8px;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-menu::before {
+  content: "Commands";
+  position: sticky;
+  top: -6px;
+  z-index: 2;
+  margin: -6px -6px 4px;
+}
+
+/* ---- Emoticons ---- */
+:root[data-custom-theme-id^="msn"] .emoji-picker-search-bar,
+:root[data-custom-theme-id^="msn"] .emoji-picker-footer {
+  background: transparent !important;
+  border-color: #b7c9e6 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .search-input-wrap,
+:root[data-custom-theme-id^="msn"] .gif-picker-head input,
+:root[data-custom-theme-id^="msn"] .gif-picker input[type="search"],
+:root[data-custom-theme-id^="msn"] .gif-picker input[type="text"] {
+  background: var(--msn-field) !important;
+  color: var(--msn-win-ink) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .search-input-wrap input {
+  color: var(--msn-win-ink) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-category-rail {
+  background: var(--msn-sky) !important;
+  border-right: 1px solid #b7c9e6 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .cat-rail-btn {
+  color: var(--msn-title) !important;
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"] .cat-rail-btn:hover,
+:root[data-custom-theme-id^="msn"] .cat-rail-btn.active {
+  background: var(--msn-menu-hi) !important;
+  box-shadow: inset 0 0 0 1px var(--msn-menu-hi-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-grid-scroll {
+  background: var(--msn-win);
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-section-header {
+  color: var(--msn-title) !important;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #c9d8ef;
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-btn {
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-btn:hover {
+  transform: none;
+  background: var(--msn-menu-hi) !important;
+  border-color: var(--msn-menu-hi-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-preview-row,
+:root[data-custom-theme-id^="msn"] .emoji-preview-row * {
+  color: var(--msn-win-ink) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .emoji-picker-banner {
+  background: var(--msn-titlebar) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .picker-close-x,
+:root[data-custom-theme-id^="msn"] .gif-picker-close {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e98a7a 0%, #c9412c 100%) !important;
+  border: 1px solid #fff !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .add-server-emoji-btn,
+:root[data-custom-theme-id^="msn"] .sticker-upload {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+/* ---- Winks (GIF / sticker picker) ---- */
+:root[data-custom-theme-id^="msn"] .gif-picker-tabs {
+  border-bottom: 1px solid var(--msn-edge);
+  gap: 2px;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-picker-tabs button {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-bottom: 0 !important;
+  border-radius: 3px 3px 0 0 !important;
+  padding: 3px 12px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-picker-tabs button.active {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win) !important;
+  font-weight: 700;
+  position: relative;
+  top: 1px;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-picker-hint {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-grid {
+  background: var(--msn-win);
+  border: 1px solid #c9d8ef;
+  padding: 4px;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-cell,
+:root[data-custom-theme-id^="msn"] .gif-cell img {
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-cell {
+  border: 1px solid #c9d8ef;
+}
+
+:root[data-custom-theme-id^="msn"] .gif-cell:hover {
+  border-color: var(--msn-menu-hi-edge);
+  box-shadow: 0 0 0 2px #cbe0f8;
+}
+
+/* ---- Slash commands and @ / # autocomplete: an XP context menu ---- */
+:root[data-custom-theme-id^="msn"] .slash-group,
+:root[data-custom-theme-id^="msn"] .mention-section {
+  color: var(--msn-title) !important;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  border-bottom: 1px solid #c9d8ef;
+  margin: 0 6px;
+  padding: 6px 4px 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-item,
+:root[data-custom-theme-id^="msn"] .mention-item {
+  color: var(--msn-win-ink) !important;
+  border: 1px solid transparent !important;
+  border-radius: 2px !important;
+  padding: 4px 10px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-item.active,
+:root[data-custom-theme-id^="msn"] .slash-item:hover,
+:root[data-custom-theme-id^="msn"] .mention-item.active,
+:root[data-custom-theme-id^="msn"] .mention-item:hover {
+  background: var(--msn-menu-hi) !important;
+  border-color: var(--msn-menu-hi-edge) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-name {
+  color: var(--msn-title) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-name em {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-description {
+  color: var(--msn-says) !important;
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .slash-hint {
+  color: #b35900 !important;
+  font-style: italic;
+}
+
+:root[data-custom-theme-id="msn-dark"] .slash-hint {
+  color: #ffb36b !important;
+}
+
+/* ---- Text Effects menu and the Font dialog ---- */
+:root[data-custom-theme-id^="msn"] .text-style-menu {
+  padding: 0 10px 10px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-menu .msn-popover-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 -10px 6px;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-fx-menu {
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(420px, 60vh);
+  margin: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-menu h4 {
+  color: var(--msn-title);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-row button {
+  color: var(--msn-win-ink);
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-row button:hover {
+  background: var(--msn-menu-hi);
+  border-color: var(--msn-menu-hi-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-row .text-style-swatch {
+  border-radius: 2px;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .text-style-hint {
+  color: var(--msn-says);
+}
+
+:root[data-custom-theme-id^="msn"] .msn-format-shell .msn-popover {
+  max-width: calc(100vw - 24px);
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-font-col>input,
+:root[data-custom-theme-id="msn-dark"] .msn-listbox,
+:root[data-custom-theme-id="msn-dark"] .msn-listbox button {
+  color: #e6eefc;
+  background-color: #0a1428;
+  border-color: #34507f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-listbox button:hover {
+  background: #1a3160;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-listbox button.active {
+  color: #fff;
+  background: #2f64c4;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-groupbox {
+  border-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-groupbox legend {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-dialog-buttons button {
+  color: #e6eefc;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%);
+  border-color: #4c7cc8;
+}
+
+/* The composer's Aa button: MSN has its own Font and Effects buttons. */
+:root[data-custom-theme-id^="msn"] .composer .composer-format-btn {
+  display: none !important;
+}
+
+/* ---- Welcome pill and the selected conversation in the list ---- */
+:root[data-custom-theme-id^="msn"] .channel-intro .cozy-intro-pill {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .channel-intro .cozy-intro-icon,
+:root[data-custom-theme-id^="msn"] .channel-intro .big-hash,
+:root[data-custom-theme-id^="msn"] .legacy-intro-icon {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id="msn"] .channel.selected svg,
+:root[data-custom-theme-id="msn"] .channel.selected span {
+  color: #000 !important;
+}
+
+/* ---- Music: the mini player, now-playing card, lyrics and bot cards ---- */
+:root[data-custom-theme-id^="msn"] .mini-music-bar {
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-music-bar>div:first-child {
+  color: var(--msn-title) !important;
+}
+
+/* "♫ What I'm listening to", in the green of WLM's music note. */
+:root[data-custom-theme-id^="msn"] .mini-music-bar svg {
+  color: #2e9a2a !important;
+  animation: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-music-bar button {
+  color: var(--msn-title) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-music-bar>div:last-child {
+  height: 6px !important;
+  background: #fff !important;
+  border: 1px solid var(--msn-edge);
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .mini-music-bar>div:last-child>div {
+  border-radius: 0 !important;
+  /* The XP progress bar: glossy green blocks. */
+  background: repeating-linear-gradient(90deg, #5fcf4f 0 7px, transparent 7px 9px),
+    linear-gradient(180deg, #b6f3a7, #3fae2f) !important;
+  background-blend-mode: multiply;
+}
+
+:root[data-custom-theme-id="msn-dark"] .mini-music-bar>div:last-child {
+  background: #0a1428 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .mini-music-bar>div:first-child,
+:root[data-custom-theme-id="msn-dark"] .mini-music-bar button {
+  color: #cfe0ff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing,
+:root[data-custom-theme-id^="msn"] .lyrics-now,
+:root[data-custom-theme-id^="msn"] .music-settings-card,
+:root[data-custom-theme-id^="msn"] .music-stats-card,
+:root[data-custom-theme-id^="msn"] .music-queue-card,
+:root[data-custom-theme-id^="msn"] .music-history-card,
+:root[data-custom-theme-id^="msn"] .music-search-card,
+:root[data-custom-theme-id^="msn"] .dnd-card,
+:root[data-custom-theme-id^="msn"] .bot-card {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win-face) !important;
+  border: 1px solid var(--msn-frame) !important;
+  border-radius: 4px !important;
+  box-shadow: 1px 2px 4px rgba(20, 45, 100, .18) !important;
+  transform: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .music-settings-card>header,
+:root[data-custom-theme-id^="msn"] .music-stats-card>header,
+:root[data-custom-theme-id^="msn"] .music-queue-card>header,
+:root[data-custom-theme-id^="msn"] .music-history-card>header,
+:root[data-custom-theme-id^="msn"] .music-search-card>header {
+  margin: -20px -20px 14px;
+  padding: 8px 14px;
+  background: var(--msn-sky);
+  border-bottom: 1px solid #9ab8e0;
+}
+
+:root[data-custom-theme-id^="msn"] .music-card-icon {
+  color: #fff !important;
+  background: linear-gradient(180deg, #7fd36b, #2e9a2a) !important;
+  border: 1px solid #1f7a1c;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5) !important;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+:root[data-custom-theme-id^="msn"] .music-settings-card header strong,
+:root[data-custom-theme-id^="msn"] .music-stats-card header strong,
+:root[data-custom-theme-id^="msn"] .music-queue-card header strong,
+:root[data-custom-theme-id^="msn"] .now-playing-title {
+  color: var(--msn-title) !important;
+  font-size: 13px;
+}
+
+:root[data-custom-theme-id^="msn"] .music-card-section-label {
+  color: var(--msn-title) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  font-size: 12px !important;
+  border-bottom: 1px solid #c9d8ef;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-artist,
+:root[data-custom-theme-id^="msn"] .now-playing-sub,
+:root[data-custom-theme-id^="msn"] .now-playing-times,
+:root[data-custom-theme-id^="msn"] .music-settings-card header small,
+:root[data-custom-theme-id^="msn"] .music-stats-card header small {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-art {
+  border-radius: 2px !important;
+  border: 1px solid var(--msn-edge);
+  padding: 2px;
+  background: #fff;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-bar {
+  height: 10px;
+  background: #fff !important;
+  border: 1px solid var(--msn-edge);
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-fill {
+  border-radius: 0 !important;
+  background: repeating-linear-gradient(90deg, #5fcf4f 0 7px, transparent 7px 9px),
+    linear-gradient(180deg, #b6f3a7, #3fae2f) !important;
+  background-blend-mode: multiply;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-knob {
+  border-radius: 2px !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-controls button,
+:root[data-custom-theme-id^="msn"] .music-quick-actions button,
+:root[data-custom-theme-id^="msn"] .music-np-quick-actions button,
+:root[data-custom-theme-id^="msn"] .music-play-track-btn,
+:root[data-custom-theme-id^="msn"] .music-filter-row button,
+:root[data-custom-theme-id^="msn"] .now-playing-unblock,
+:root[data-custom-theme-id^="msn"] .dnd-card button,
+:root[data-custom-theme-id^="msn"] .bot-card button {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .now-playing-controls button:hover,
+:root[data-custom-theme-id^="msn"] .music-quick-actions button:hover,
+:root[data-custom-theme-id^="msn"] .music-np-quick-actions button:hover,
+:root[data-custom-theme-id^="msn"] .music-play-track-btn:hover,
+:root[data-custom-theme-id^="msn"] .music-filter-row button:hover,
+:root[data-custom-theme-id^="msn"] .dnd-card button:hover,
+:root[data-custom-theme-id^="msn"] .bot-card button:hover {
+  background: var(--msn-hover) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .music-filter-row button.active,
+:root[data-custom-theme-id^="msn"] .music-filter-row button[aria-pressed="true"] {
+  background: var(--msn-select) !important;
+  font-weight: 700;
+}
+
+:root[data-custom-theme-id^="msn"] .music-now-playing-banner,
+:root[data-custom-theme-id^="msn"] .music-highlight-badge,
+:root[data-custom-theme-id^="msn"] .music-chart-row,
+:root[data-custom-theme-id^="msn"] .music-stat-totals>*,
+:root[data-custom-theme-id^="msn"] .music-requester-chip {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win) !important;
+  border: 1px solid #c9d8ef !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .music-live-pill {
+  border-radius: 2px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id^="msn"] .lyrics-now * {
+  color: inherit;
+}
+
+:root[data-custom-theme-id^="msn"] .dnd-card * {
+  border-radius: 3px;
+}
+
+/* ---- Voice table: a round meeting table seen from above ---- */
+:root[data-custom-theme-id^="msn"] .voice-table-surface {
+  background: radial-gradient(circle at 40% 35%, #ffffff 0%, #dbe8f8 55%, #b9cfee 100%) !important;
+  border: 2px solid var(--msn-frame) !important;
+  box-shadow: inset 0 2px 6px rgba(255, 255, 255, .9), 2px 4px 10px rgba(20, 45, 100, .25) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-table-ring {
+  border-color: #9ab8e0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-table-surface-center,
+:root[data-custom-theme-id^="msn"] .voice-table-heading {
+  color: var(--msn-title) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-table-seat-avatar,
+:root[data-custom-theme-id^="msn"] .table-seat-avatar {
+  border-radius: 3px !important;
+  border: 1px solid var(--msn-edge) !important;
+  background: #fff;
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, .25) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-table-seat-avatar.is-speaking,
+:root[data-custom-theme-id^="msn"] .table-seat-avatar.is-speaking {
+  border-color: #3fa82f !important;
+  box-shadow: 0 0 0 2px #9be08f !important;
+}
+
+:root[data-custom-theme-id^="msn"] .table-seat-name {
+  color: var(--msn-win-ink);
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  border-radius: 2px;
+}
+
+:root[data-custom-theme-id^="msn"] .voice-table-note,
+:root[data-custom-theme-id^="msn"] .table-seat-time {
+  color: var(--msn-says);
+}
+
+:root[data-custom-theme-id="msn-dark"] .voice-table-surface {
+  background: radial-gradient(circle at 40% 35%, #2b4a80 0%, #16305c 60%, #0f2142 100%) !important;
+}
+
+/* ---- Dialogs (prompts, confirms): an XP message box ---- */
+:root[data-custom-theme-id^="msn"] .custom-dialog-card {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win-face) !important;
+  border: 1px solid var(--msn-frame) !important;
+  border-radius: 6px 6px 3px 3px !important;
+  box-shadow: var(--msn-shadow) !important;
+  overflow: hidden;
+  padding-top: 0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-header {
+  margin: 0 -24px !important;
+  padding: 5px 8px 5px 12px !important;
+  align-items: center !important;
+  background: var(--msn-titlebar) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-header h3 {
+  color: #fff !important;
+  font-size: 13px !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .3);
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-header .popup-close-x {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e98a7a 0%, #c9412c 100%) !important;
+  border: 1px solid #fff !important;
+  border-radius: 3px !important;
+  width: 21px;
+  height: 21px;
+  margin: 0 0 0 auto !important;
+  display: grid;
+  place-items: center;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-body p {
+  color: var(--msn-win-ink) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-input {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-field) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-btn {
+  min-width: 75px;
+  color: #000 !important;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-btn:hover {
+  box-shadow: inset 0 0 0 2px #f8b636 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-btn.primary {
+  box-shadow: inset 0 0 0 1px #6f9ee6 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .custom-dialog-btn.primary.danger {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e98a7a 0%, #c9412c 100%) !important;
+  border-color: #8e1f10 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .custom-dialog-btn:not(.danger) {
+  color: #e6eefc !important;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%) !important;
+  border-color: #4c7cc8 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .wink-replay {
+  color: #0033cc;
+  border: 0;
+  text-decoration: underline;
+}
+
+:root[data-custom-theme-id="msn-dark"] .wink-replay {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-winks-grid,
+:root[data-custom-theme-id="msn-dark"] .msn-emoticon-grid {
+  background: #0a1428;
+  border-color: #34507f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-wink-tile {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-wink-tile:hover,
+:root[data-custom-theme-id="msn-dark"] .msn-emoticon-grid button:hover {
+  background: linear-gradient(180deg, #23457d 0%, #1a3766 100%);
+  border-color: #3d6ab3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-winks-more {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id^="msn"] .game-card {
+  color: var(--msn-win-ink);
+  background: var(--msn-win-face);
+  border: 1px solid var(--msn-frame);
+  border-radius: 4px;
+  padding: 0 10px 10px;
+  box-shadow: 1px 2px 4px rgba(20, 45, 100, .18);
+}
+
+:root[data-custom-theme-id^="msn"] .game-card-head {
+  margin: 0 -10px;
+  padding: 5px 10px;
+  background: var(--msn-sky);
+  border-bottom: 1px solid #9ab8e0;
+}
+
+:root[data-custom-theme-id^="msn"] .game-card-head strong {
+  color: var(--msn-title);
+  font-size: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .game-card-head small,
+:root[data-custom-theme-id^="msn"] .mines-goal {
+  color: var(--msn-says);
+}
+
+:root[data-custom-theme-id^="msn"] .game-card-icon {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  border-radius: 3px;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .game-player {
+  border-radius: 2px;
+}
+
+:root[data-custom-theme-id^="msn"] .game-player.to-move {
+  background: var(--msn-select);
+  border-color: var(--msn-menu-hi-edge);
+  color: var(--msn-win-ink);
+}
+
+:root[data-custom-theme-id^="msn"] .ttt-cell,
+:root[data-custom-theme-id^="msn"] .rps-throws button {
+  border-radius: 2px;
+  background: var(--msn-win) !important;
+  border: 1px solid #c9d8ef;
+  color: var(--msn-win-ink);
+}
+
+:root[data-custom-theme-id^="msn"] .ttt-cell:not(:disabled):hover,
+:root[data-custom-theme-id^="msn"] .rps-throws button:hover {
+  background: var(--msn-menu-hi) !important;
+  border-color: var(--msn-menu-hi-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .c4-grid {
+  border-radius: 3px;
+  background: linear-gradient(180deg, #3a78d0, #1f58b3);
+  border: 1px solid #103f8c;
+}
+
+:root[data-custom-theme-id^="msn"] .game-actions button {
+  min-width: 70px;
+  color: #000;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%);
+  border: 1px solid #003c74;
+  border-radius: 3px;
+  font-weight: 400;
+}
+
+:root[data-custom-theme-id^="msn"] .game-actions button:hover {
+  box-shadow: inset 0 0 0 2px #f8b636;
+}
+
+:root[data-custom-theme-id^="msn"] .game-actions button.primary {
+  box-shadow: inset 0 0 0 1px #6f9ee6;
+}
+
+:root[data-custom-theme-id="msn-dark"] .game-actions button {
+  color: #e6eefc;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%);
+  border-color: #4c7cc8;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-games-list {
+  background: #0a1428;
+  border-color: #34507f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-games-list button {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-games-list strong {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-games-list small {
+  color: #9fb2d4;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-games-list button:hover {
+  background: linear-gradient(180deg, #23457d 0%, #1a3766 100%);
+  border-color: #3d6ab3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-warning {
+  color: #9fb2d4;
+  border-bottom-color: #22395f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-offline-note {
+  color: #f1e6b5;
+  background: #3a3212;
+  border-color: #6b5b1c;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-transfer {
+  color: #e6eefc;
+  background: #13264a;
+  border-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-transfer-actions button,
+:root[data-custom-theme-id="msn-dark"] .msn-transfer-undo {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-transfer-line {
+  color: #9fb2d4 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today {
+  color: #e6eefc;
+  background: #0e1930;
+  border-color: #2f5aa3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-masthead {
+  background: linear-gradient(180deg, #1c3462 0%, #14284d 48%, #0f2142 52%, #16305c 100%);
+  border-bottom-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-masthead strong,
+:root[data-custom-theme-id="msn-dark"] .msn-today-body h3 {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-masthead span,
+:root[data-custom-theme-id="msn-dark"] .msn-today-list span {
+  color: #9fb2d4;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-body h3 {
+  border-bottom-color: #22395f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-list button {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-people button {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-people button:hover {
+  background: linear-gradient(180deg, #23457d 0%, #1a3766 100%);
+  border-color: #3d6ab3;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-tip p {
+  color: #f1e6b5;
+  background: #3a3212;
+  border-color: #6b5b1c;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-footer {
+  background: #13264a;
+  border-top-color: #2b4a80;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-today-footer button {
+  color: #e6eefc;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%);
+  border-color: #4c7cc8;
+}
+
+/* ---- Contact groups ---- */
+:root[data-custom-theme-id^="msn"] .member-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-add-group {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-whatsnew,
+:root[data-custom-theme-id="msn-dark"] .msn-whatsnew-head {
+  border-color: #22395f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-whatsnew-head .msn-whatsnew-clear {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-create-emoticon,
+:root[data-custom-theme-id="msn-dark"] .msn-create-shortcut input {
+  color: #e6eefc;
+  background: #0a1428;
+  border-color: #34507f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-emoticons-mine {
+  color: #7fb8ff;
+}
+
+/* ---- Display picture: clickable, and the picker ---- */
+:root[data-custom-theme-id^="msn"] .msn-dp.changeable {
+  cursor: pointer;
+}
+
+:root[data-custom-theme-id^="msn"] .msn-dp.changeable:hover .msn-dp-frame {
+  box-shadow: 0 0 0 2px #f8b636;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-picture-grid {
+  background: #0a1428;
+  border-color: #34507f;
+}
+
+/* The column ignores the pointer so it never blocks the chat; your own
+   picture opts back in to open the Display Picture dialog. */
+:root[data-custom-theme-id^="msn"] .msn-dp.changeable {
+  pointer-events: auto;
+}
+
+/* ---- MSN: the "in voice" card in the contact list, and the composer's
+   poll / commands buttons, which still wore the old theme ---- */
+:root[data-custom-theme-id^="msn"] .member-panel .voice-feature {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win-face) !important;
+  border: 1px solid var(--msn-frame) !important;
+  border-radius: 4px !important;
+  box-shadow: 1px 2px 4px rgba(20, 45, 100, .18) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .voice-feature * {
+  font-family: var(--msn-font);
+}
+
+:root[data-custom-theme-id^="msn"] .voice-feature-avatars>* {
+  border-radius: 3px !important;
+  border: 1px solid var(--msn-edge) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .voice-controls .leave-outline {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e98a7a 0%, #c9412c 100%) !important;
+  border-color: #8e1f10 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .voice-controls .mic-control.muted,
+:root[data-custom-theme-id^="msn"] .member-panel .voice-controls button.sharing {
+  background: var(--msn-select) !important;
+  border-color: var(--msn-menu-hi-edge) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .open-stage-button {
+  color: #fff !important;
+  background: linear-gradient(180deg, #7fd36b, #2e9a2a) !important;
+  border: 1px solid #1f7a1c !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45) !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel input[placeholder="Search members..."] {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-field) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel input[placeholder="Search members..."]::placeholder {
+  color: var(--msn-says) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer .composer-emoji-btn,
+:root[data-custom-theme-id^="msn"] .composer .gif-button {
+  color: var(--msn-title) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .composer .composer-emoji-btn:hover,
+:root[data-custom-theme-id^="msn"] .composer .gif-button:hover {
+  background: var(--msn-hover) !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sounds-list,
+:root[data-custom-theme-id="msn-dark"] .msn-sound-row select {
+  color: #e6eefc;
+  background: #0a1428;
+  border-color: #34507f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sound-row:hover {
+  background: #13264a;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sound-row strong {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row {
+  background: #0f1c34;
+  border-color: #2a416a;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row label {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-sound-volume-row input[type="range"] {
+  accent-color: #4f8fea;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-info-bar {
+  color: #f1e6b5;
+  background: linear-gradient(180deg, #3a3212 0%, #2c2610 100%);
+  border-color: #6b5b1c;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-info-bar button {
+  color: #7fb8ff;
+}
+
+:root[data-custom-theme-id^="msn"] .game-card.my-turn {
+  box-shadow: 0 0 0 2px #f8b636, 1px 2px 4px rgba(20, 45, 100, .18);
+}
+
+:root[data-custom-theme-id^="msn"] .game-banner {
+  margin: 0 -10px;
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-hover-actions {
+  border-top-color: #22395f;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-hover-actions button {
+  color: #7fb8ff;
+}
+
+/* ---- XP scrollbars in the MSN theme ---- */
+/* Chromium drops ::-webkit-scrollbar styling on any element with
+   scrollbar-width/-color set, so those are reset here and only Firefox
+   (which has no ::-webkit-scrollbar) gets the colour pair. */
+:root[data-custom-theme-id^="msn"] * {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  :root[data-custom-theme-id^="msn"] * {
+    scrollbar-color: #b9d0f1 #eef3fb !important;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  :root[data-custom-theme-id="msn-dark"] * {
+    scrollbar-color: #2f5aa3 #0e1930 !important;
+  }
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar {
+  width: 17px;
+  height: 17px;
+  background: #eef3fb;
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-track {
+  background: linear-gradient(90deg, #e6ecf7, #f4f7fc);
+  border-left: 1px solid #dbe4f3;
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 2px, rgba(255, 255, 255, .8) 2px 3px, transparent 3px 5px) center / 8px 10px no-repeat,
+    linear-gradient(90deg, #c9dcfa 0%, #b5ccf5 45%, #a6c1ef 55%, #bcd2f8 100%);
+  border: 1px solid #fff;
+  outline: 1px solid #9ab3dd;
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-thumb:hover {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 2px, rgba(255, 255, 255, .9) 2px 3px, transparent 3px 5px) center / 8px 10px no-repeat,
+    linear-gradient(90deg, #dbe8ff 0%, #c6d9fb 45%, #b6cdf6 55%, #cfe0fd 100%);
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 17px;
+  height: 17px;
+  background-color: #c9dcfa;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 1px solid #fff;
+  outline: 1px solid #9ab3dd;
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 5 L4 0 L8 5z' fill='%234d6185'/%3E%3C/svg%3E");
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0 L4 5 L8 0z' fill='%234d6185'/%3E%3C/svg%3E");
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='8'%3E%3Cpath d='M5 0 L0 4 L5 8z' fill='%234d6185'/%3E%3C/svg%3E");
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='8'%3E%3Cpath d='M0 0 L5 4 L0 8z' fill='%234d6185'/%3E%3C/svg%3E");
+}
+
+:root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-corner {
+  background: #eef3fb;
+}
+
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar,
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar-corner {
+  background: #0e1930;
+}
+
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar-track {
+  background: linear-gradient(90deg, #0b1528, #13213c);
+  border-left-color: #1a2c4f;
+}
+
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar-thumb,
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar-button:single-button {
+  background-color: #2a4f8f;
+  border-color: #3d6ab3;
+  outline-color: #102447;
+}
+
+:root[data-custom-theme-id="msn-dark"] ::-webkit-scrollbar-thumb {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 2px, rgba(255, 255, 255, .35) 2px 3px, transparent 3px 5px) center / 8px 10px no-repeat,
+    linear-gradient(90deg, #2f5aa3 0%, #25498a 50%, #2f5aa3 100%);
+}
+
+@media (pointer: coarse) {
+  :root[data-custom-theme-id^="msn"] ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root[data-custom-theme-id^="msn"] ::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
+/* …except strips that hide their scrollbar on purpose. */
+:root[data-custom-theme-id^="msn"] .msn-format-bar {
+  scrollbar-width: none !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup {
+  color: var(--msn-win-ink) !important;
+  background: var(--msn-win) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-chip.selected {
+  background: var(--msn-select) !important;
+  border-color: var(--msn-menu-hi-edge) !important;
+  font-weight: 700 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-close {
+  background: none !important;
+  border: 0 !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-options {
+  background: transparent !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-start {
+  color: #fff !important;
+  background: linear-gradient(180deg, #7fd36b, #2e9a2a) !important;
+  border: 1px solid #1f7a1c !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .member-panel .screen-share-setup .screen-setup-start span {
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .member-panel .screen-share-setup .screen-setup-chip {
+  color: #e6eefc !important;
+  background: linear-gradient(180deg, #2a4574 0%, #1a2f57 100%) !important;
+  border-color: #4c7cc8 !important;
+}
+
+:root[data-custom-theme-id="msn-dark"] .member-panel .screen-share-setup .screen-setup-chip.selected {
+  background: linear-gradient(180deg, #4d7fd0 0%, #2d5aa6 100%) !important;
+  border-color: #9cc0ff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .user-profile-card-popover .profile-card-close.profile-card-copy { right: 26px; }
+
+/* ---- from theme-flavors.css ---- */
+:root[data-custom-theme-id="msn"] .member > div:last-child > span:last-child {
+  color: #4d535e !important;
+}
+
+:root[data-custom-theme-id="msn"] .space-header .icon-button {
+  color: #34507f;
+}
+
+/* ---- from retro-skins.css ---- */
+/* ==========================================================================
+   MSN Messenger (+ Dark): the XP title bar and the File / Contacts / Actions /
+   Tools / Help menu bar across the top of the window.
+   ========================================================================== */
+:root[data-custom-theme-id^="msn"] {
+  --ts-face: #ece9d8;
+  --ts-hi: #ffffff;
+  --ts-shadow: #aca899;
+  --ts-font: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id^="msn"] .app-shell {
+    grid-template-rows: var(--xp-title-h, 24px) 22px minmax(0, 1fr) !important;
+  }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id^="msn"] .msn-titlebar { grid-column: 1 / -1; grid-row: 1; display: flex; }
+}
+
+@media (min-width: 761px) {
+  :root[data-custom-theme-id^="msn"] .msn-menubar { grid-column: 1 / -1; grid-row: 2; display: flex; }
+}
+
+:root[data-custom-theme-id^="msn"] .msn-menubar .xp-menu > button {
+  font-family: var(--ts-font);
+}
+
+/* The Messenger buddies: a green one in front of a blue one. */
+:root[data-custom-theme-id^="msn"] .msn-app-icon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  background:
+    radial-gradient(circle at 6px 4px, #6fd84a 0 2.6px, transparent 3px),
+    radial-gradient(ellipse 4.5px 4px at 6px 12px, #3fae2a 0 100%, transparent 100%),
+    radial-gradient(circle at 11px 5px, #5aa2ff 0 2.4px, transparent 2.8px),
+    radial-gradient(ellipse 4px 4px at 11px 12px, #2a6bd8 0 100%, transparent 100%);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
+}
+
+/* MSN Dark: the same window after hours. */
+:root[data-custom-theme-id="msn-dark"] {
+  --ts-face: #16233f;
+  --ts-hi: #2c4675;
+  --ts-shadow: #0b1426;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-titlebar {
+  background: linear-gradient(180deg, #2a4f8f 0%, #13305f 10%, #0f2a55 50%, #183a72 90%, #13305f 100%);
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-menu > button {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown {
+  background: #101d36;
+  border-color: #2c4675;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown button {
+  color: #e6eefc;
+}
+
+:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown button:disabled {
+  color: #5a6f96;
+}
+
+/* ---- from theme-panels.css ---- */
+:root[data-custom-theme-id="msn"] {
+  --sp-frame: #0831d9;
+  --sp-side: linear-gradient(180deg, #d6e4f7 0%, #b9cfee 100%);
+  --sp-main: #ffffff;
+  --sp-ink: #000000;
+  --sp-muted: #4d5a6e;
+  --sp-card: linear-gradient(180deg, #ffffff 0%, #eef4fc 100%);
+  --sp-card-edge: #9ab8e0;
+  --sp-hover: #dcebfc;
+  --sp-field: #ffffff;
+  --sp-field-edge: #7f9db9;
+  --sp-accent: #2a62d4;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 3px;
+  --sp-title: #0f3a82;
+}
+
+:root[data-custom-theme-id="msn-dark"] {
+  --sp-frame: #2b4a80;
+  --sp-side: linear-gradient(180deg, #172a4e 0%, #0f1f3c 100%);
+  --sp-main: #0e1930;
+  --sp-ink: #e6eefc;
+  --sp-muted: #9fb2d4;
+  --sp-card: linear-gradient(180deg, #172a4e 0%, #12223f 100%);
+  --sp-card-edge: #34507f;
+  --sp-hover: #1d3766;
+  --sp-field: #0b1426;
+  --sp-field-edge: #4c7cc8;
+  --sp-accent: #4c8cff;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 3px;
+  --sp-title: #7fb8ff;
+}
+
+/* ==========================================================================
+   Settings: MSN Messenger — an XP "Options" window
+   ========================================================================== */
+
+:root[data-custom-theme-id^="msn"] .modal.settings-modal {
+  font-family: var(--msn-font, Tahoma, sans-serif);
+  border-radius: 8px 8px 0 0 !important;
+  padding-top: 28px !important;
+  position: relative;
+  box-shadow: 4px 6px 24px rgba(10, 30, 80, 0.5) !important;
+}
+
+/* The blue title bar with the Messenger buddies. */
+:root[data-custom-theme-id^="msn"] .modal.settings-modal::before {
+  content: "Options";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28px;
+  padding: 0 0 0 32px;
+  display: flex;
+  align-items: center;
+  font: 700 13px/1 var(--msn-font, Tahoma, sans-serif);
+  color: #fff;
+  text-shadow: 1px 1px 0 #0a246a;
+  background:
+    radial-gradient(circle at 15px 11px, #4bc04b 0 4px, transparent 4.5px),
+    radial-gradient(circle at 15px 21px, #2fa82f 0 7px, transparent 7.5px),
+    radial-gradient(circle at 21px 10px, #3a7ce0 0 4px, transparent 4.5px),
+    radial-gradient(circle at 21px 20px, #2a62d4 0 7px, transparent 7.5px),
+    linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #005bff 95%, #003dd7 100%);
+  z-index: 2;
+}
+
+:root[data-custom-theme-id="msn-dark"] .modal.settings-modal::before {
+  background:
+    radial-gradient(circle at 15px 11px, #4bc04b 0 4px, transparent 4.5px),
+    radial-gradient(circle at 15px 21px, #2fa82f 0 7px, transparent 7.5px),
+    radial-gradient(circle at 21px 10px, #3a7ce0 0 4px, transparent 4.5px),
+    radial-gradient(circle at 21px 20px, #2a62d4 0 7px, transparent 7.5px),
+    linear-gradient(180deg, #2f5aa3 0%, #1d4185 48%, #143472 52%, #214a8f 100%);
+}
+
+/* The red XP close box sits on the title bar. */
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-control {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  z-index: 3;
+  padding: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-circle {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 3px !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #fff !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-esc-text {
+  display: none;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-topbar {
+  background: var(--msn-sky);
+  padding: 14px 24px 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-topbar h2 {
+  font: 700 18px var(--msn-font, Tahoma, sans-serif) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-nav-btn.active {
+  background: var(--msn-select) !important;
+  color: var(--msn-win-ink, #000) !important;
+  box-shadow: inset 0 0 0 1px var(--msn-menu-hi-edge, #7da2ce);
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-nav-btn:hover {
+  background: var(--msn-hover) !important;
+}
+
+:root[data-custom-theme-id^="msn"] .settings-modal .settings-group-title {
+  color: var(--msn-title) !important;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--sp-card-edge);
+  margin: 0 8px 2px;
+  padding-left: 4px;
+}
+
+/* XP push buttons. */
+:root[data-custom-theme-id="msn"] .settings-modal .discord-btn.secondary-gray {
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%) !important;
+  border: 1px solid #003c74 !important;
+}
+
+/* MSN: the "you are in a call" strip of a conversation window. */
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-bar {
+  margin: 0;
+  padding: 8px 10px 9px;
+  background: var(--msn-sky) !important;
+  border-top: 1px solid var(--msn-frame) !important;
+  border-bottom: 1px solid var(--msn-frame) !important;
+  font-family: var(--msn-font);
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-name {
+  color: var(--msn-title);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-status {
+  color: #2a8a2a !important;
+  font-size: 11px;
+}
+
+:root[data-custom-theme-id="msn-dark"]:not(#_) .mini-voice-status {
+  color: #6bd36b !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-signal-btn {
+  color: #2a8a2a !important;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  border-radius: 3px;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn {
+  color: var(--msn-win-ink, #000) !important;
+  background: var(--msn-glass) !important;
+  border: 1px solid var(--msn-edge) !important;
+  border-radius: 3px !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn:hover {
+  background: var(--msn-hover) !important;
+  box-shadow: inset 0 0 0 1px #f8b636;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-btn.on {
+  background: var(--msn-select) !important;
+}
+
+:root[data-custom-theme-id^="msn"]:not(#_) .mini-voice-leave {
+  color: #fff !important;
+  background: linear-gradient(180deg, #e97a5a 0%, #c4391b 100%) !important;
+  border: 1px solid #8b2410 !important;
+  border-radius: 3px !important;
+}
+
+/* ---- from redesign.css ---- */
+/* The sidebar heading text is now sentence case in markup; MSN keeps caps. */
+:root[data-custom-theme-id^="msn"] .channel-nav .section-label > span:first-child {
+  text-transform: uppercase;
+}
+
+/* MSN themes: pin the helper tokens to the exact literals these rules used
+   before they were tokenized, so MSN renders as it did. */
+:root[data-custom-theme-id^="msn"] {
+  --rail-bg: #0f0d18;
+  --surface-2: #252040;
+  --muted-2: #7a7296;
+  --faint: #5a5275;
+  --accent-strong: #7c5cbf;
+  --accent-hi: #c4b5fd;
+  --on-accent: #ffffff;
+}
+
+/* MSN: Messenger's own call pane — sky-blue glass, framed display pictures,
+   glossy XP buttons. */
+:root[data-custom-theme-id^="msn"] .dm-call-stage {
+  background: var(--msn-sky) !important;
+  border-bottom: 1px solid var(--msn-frame) !important;
+  font-family: var(--msn-font);
+  gap: 12px;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-status {
+  color: var(--msn-title);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person,
+:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
+  border-radius: 6px !important;
+}
+
+/* Display-picture frame. */
+:root[data-custom-theme-id^="msn"] .dm-call-person {
+  padding: 5px;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+  box-shadow: 0 2px 6px rgba(15, 58, 130, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person .avatar {
+  width: 88px !important;
+  height: 88px !important;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking {
+  border-color: #3fa82f;
+  box-shadow: 0 0 0 2px #8fdc7c, 0 2px 6px rgba(15, 58, 130, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person.is-speaking .avatar {
+  box-shadow: none;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person-name {
+  position: static;
+  margin-top: 5px;
+  padding: 0;
+  background: none;
+  color: var(--msn-title);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-person-badge {
+  right: -6px;
+  bottom: 18px;
+  border-radius: 3px;
+  box-shadow: none;
+  border: 1px solid #8f1d1d;
+  background: linear-gradient(180deg, #f07a6e, #c9302c);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-group {
+  border-radius: 4px;
+  padding: 2px;
+  background: var(--msn-glass);
+  border: 1px solid var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl {
+  width: 38px;
+  height: 32px;
+  border-radius: 3px;
+  color: var(--msn-title);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl:hover {
+  background: var(--msn-hover);
+  box-shadow: inset 0 0 0 1px var(--msn-edge);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl.on {
+  background: var(--msn-select);
+  color: var(--msn-title);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-ctrl.off {
+  color: #c9302c;
+}
+
+/* The classic red "End call" button, with its label. */
+:root[data-custom-theme-id^="msn"] .dm-call-hangup {
+  width: auto;
+  height: 32px;
+  padding: 0 14px 0 10px;
+  display: inline-flex;
+  gap: 6px;
+  border-radius: 3px;
+  border: 1px solid #8f1d1d;
+  background: linear-gradient(180deg, #f6a59c 0%, #e0574d 48%, #c9302c 52%, #d9453c 100%);
+  font-family: var(--msn-font);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-hangup::after {
+  content: "End call";
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-hangup svg {
+  width: 15px;
+  height: 15px;
+}
+
+:root[data-custom-theme-id^="msn"] .dm-call-join {
+  height: 32px;
+  border-radius: 3px;
+  border: 1px solid #2c7a1f;
+  background: linear-gradient(180deg, #a6e39a 0%, #5cbf4a 48%, #3fa82f 52%, #4fb83e 100%);
+  font-family: var(--msn-font);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}

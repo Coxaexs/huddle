@@ -7,6 +7,7 @@
  */
 
 import { normalizeShowcase } from "./achievement-defs";
+import { clientIp } from "./rate-limit";
 import { bindings } from "./storage";
 import { activeUntil } from "./timeouts";
 import { ensureSchema } from "./schema";
@@ -357,17 +358,61 @@ function isSecure(request: Request): boolean {
 export async function createSession(
   db: D1Database,
   userId: string,
+  /** The sign-in request, so Settings → Security can say which device this is. */
+  request?: Request,
 ): Promise<string> {
   const token = toHex(crypto.getRandomValues(new Uint8Array(32)).buffer);
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_TTL_DAYS * 86_400_000);
   await db
     .prepare(
-      "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+      `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent, ip, last_used_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(await sha256(token), userId, now.toISOString(), expires.toISOString())
+    .bind(
+      await sha256(token),
+      userId,
+      now.toISOString(),
+      expires.toISOString(),
+      request?.headers.get("user-agent")?.slice(0, 300) ?? null,
+      request ? clientIp(request) : null,
+      now.toISOString(),
+    )
     .run();
   return token;
+}
+
+/** How often a session's "last used" time is written: at most this often. */
+const SESSION_TOUCH_MS = 10 * 60_000;
+
+/**
+ * A session's public id: the first 16 hex digits of its token hash. Enough to
+ * tell sessions apart and sign one out, and useless as a cookie.
+ */
+export const SESSION_ID_LENGTH = 16;
+
+/** The public id of the session a request is signed in with, if any. */
+export async function currentSessionId(request: Request): Promise<string | null> {
+  const token = readCookie(request, SESSION_COOKIE) || readCookie(request, LEGACY_SESSION_COOKIE);
+  return token ? (await sha256(token)).slice(0, SESSION_ID_LENGTH) : null;
+}
+
+/**
+ * Signs a user in: a new session and the cookie for it. Every way of signing
+ * in (password, a second factor, a passkey, a reset link, signing up) ends here.
+ */
+export async function signedInResponse(
+  db: D1Database,
+  request: Request,
+  user: User,
+  extra: Record<string, unknown> = {},
+): Promise<Response> {
+  await touchUser(db, user.id);
+  const token = await createSession(db, user.id, request);
+  return Response.json(
+    { user: publicUser(user), ...extra },
+    { headers: { "Set-Cookie": sessionCookie(request, token) } },
+  );
 }
 
 export async function destroySession(
@@ -388,15 +433,16 @@ export async function currentUser(request: Request): Promise<User | null> {
   if (!token) return null;
 
   await ensureSchema(db);
+  const tokenHash = await sha256(token);
   const row = await db
     .prepare(
-      `SELECT ${userColumns("u")}, s.expires_at
+      `SELECT ${userColumns("u")}, s.expires_at, s.last_used_at AS session_used_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,
     )
-    .bind(await sha256(token))
-    .first<User & { expires_at: string }>();
+    .bind(tokenHash)
+    .first<User & { expires_at: string; session_used_at: string | null }>();
   if (!row) return null;
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
@@ -405,7 +451,16 @@ export async function currentUser(request: Request): Promise<User | null> {
   }
   // A suspended account is treated as signed out everywhere, sockets included.
   if (row.suspended_at) return null;
-  return row;
+  // Throttled so a busy tab does not write on every request.
+  const usedAt = row.session_used_at ? new Date(row.session_used_at).getTime() : 0;
+  if (Date.now() - usedAt > SESSION_TOUCH_MS) {
+    await db
+      .prepare("UPDATE sessions SET last_used_at = ? WHERE token_hash = ?")
+      .bind(new Date().toISOString(), tokenHash)
+      .run();
+  }
+  const { expires_at: _expires, session_used_at: _used, ...user } = row;
+  return user;
 }
 
 export async function touchUser(db: D1Database, userId: string): Promise<void> {

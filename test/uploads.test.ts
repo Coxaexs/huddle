@@ -21,7 +21,9 @@ vi.mock("@/lib/upload-quota", () => ({ consumeUploadQuota: async () => null }));
 vi.mock("@/lib/storage", () => ({
   bindings: () => ({
     UPLOADS: {
-      async put(key: string, bytes: ArrayBuffer, options: { httpMetadata: { contentType: string } }) {
+      async put(key: string, value: ArrayBuffer | Blob, options: { httpMetadata: { contentType: string } }) {
+        // Like R2, takes the uploaded File as it is as well as raw bytes.
+        const bytes = value instanceof Blob ? await value.arrayBuffer() : value;
         state.objects.set(key, { bytes, contentType: options.httpMetadata.contentType });
       },
       async get(key: string) {

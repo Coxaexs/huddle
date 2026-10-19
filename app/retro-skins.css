@@ -1,66 +1,4 @@
-/* Retro skins: Classic Winamp and TeamSpeak 2 -------------------------------
-   These two re-lay the whole app, not just its colours. The extra window
-   furniture (Winamp's main window + equalizer, TeamSpeak's title/menu/tool/
-   status bars and info pane) comes from components/retro-chrome.tsx; this file
-   places it on the app-shell grid and skins every panel to match. Layout
-   changes are desktop-only; phones keep the normal drawer layout, re-coloured. */
 
-/* ==========================================================================
-   Classic Winamp
-   ========================================================================== */
-:root[data-custom-theme-id="winamp"] {
-  --font-mono: "VT323", "Courier New", Courier, monospace;
-  --wa-face: #393948;
-  --wa-face-hi: #5b5b72;
-  --wa-face-lo: #1b1b26;
-  --wa-ink: #00e800;
-  --wa-ink-dim: #00a000;
-  --wa-select: #0000c6;
-  --wa-title-font: "Silkscreen", "Tahoma", sans-serif;
-  --wa-ui-font: Arial, Helvetica, sans-serif;
-}
-
-/* Windows (the chrome's own, and the app panels drawn as Winamp windows). */
-:root[data-custom-theme-id="winamp"] .wa-win {
-  display: none;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-titlebar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 14px;
-  padding: 0 3px 0 6px;
-  background: linear-gradient(180deg, #4a4a5e, #26263a);
-  border-bottom: 1px solid #10101a;
-  flex: 0 0 auto;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-title-ridge {
-  flex: 1 1 auto;
-  height: 6px;
-  background: repeating-linear-gradient(180deg, #d9c78a 0 1px, #6a5c2c 1px 2px, transparent 2px 3px);
-  opacity: 0.9;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-title-text {
-  font: 8px/14px var(--wa-title-font);
-  letter-spacing: 1.5px;
-  color: #e8e2c6;
-  white-space: nowrap;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-title-btns {
-  display: inline-flex;
-  gap: 2px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-title-btns i {
-  width: 8px;
-  height: 8px;
-  background: linear-gradient(180deg, #b8b8c8, #6d6d80);
-  border: 1px solid #12121a;
-}
 
 /* Every big panel: bevelled metal frame + a striped title bar on top. */
 :root[data-custom-theme-id="winamp"] :is(.sidebar, .chat-panel, .member-panel, .thread-panel)::before {
@@ -79,11 +17,6 @@
   text-align: center;
 }
 
-:root[data-custom-theme-id="winamp"] .sidebar::before { content: "WINAMP PLAYLIST"; }
-:root[data-custom-theme-id="winamp"] .chat-panel::before { content: "WINAMP CHAT"; }
-:root[data-custom-theme-id="winamp"] .member-panel::before { content: "WINAMP MEDIA LIBRARY"; }
-:root[data-custom-theme-id="winamp"] .thread-panel::before { content: "WINAMP THREAD"; }
-
 /* The fonts: Arial everywhere like the playlist, VT323 where Winamp has LCDs. */
 :root[data-custom-theme-id="winamp"] .app-shell,
 :root[data-custom-theme-id="winamp"] .app-shell :is(button, input, textarea) {
@@ -91,26 +24,6 @@
 }
 
 @media (min-width: 761px) {
-  :root[data-custom-theme-id="winamp"] .app-shell {
-    grid-template-columns:
-      40px max(var(--sidebar-w, 240px), 276px) minmax(320px, 1fr) var(--thread-w, 0px) var(--members-w, 0px) !important;
-    grid-template-rows: auto auto minmax(0, 1fr) !important;
-    background: #0d0d14 !important;
-  }
-
-  :root[data-custom-theme-id="winamp"] .rail { grid-column: 1; grid-row: 1 / -1; }
-  :root[data-custom-theme-id="winamp"] .wa-main { grid-column: 2; grid-row: 1; }
-  :root[data-custom-theme-id="winamp"] .wa-eq { grid-column: 2; grid-row: 2; }
-  :root[data-custom-theme-id="winamp"] .sidebar { grid-column: 2; grid-row: 3; }
-  :root[data-custom-theme-id="winamp"] .chat-panel { grid-column: 3; grid-row: 1 / -1; }
-  :root[data-custom-theme-id="winamp"] .thread-panel { grid-column: 4; grid-row: 1 / -1; width: auto !important; }
-  :root[data-custom-theme-id="winamp"] .member-panel { grid-column: 5; grid-row: 1 / -1; }
-
-  :root[data-custom-theme-id="winamp"] .wa-win {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
 
   :root[data-custom-theme-id="winamp"] :is(.wa-win, .sidebar, .chat-panel, .member-panel, .thread-panel) {
     background: var(--wa-face) !important;
@@ -128,79 +41,6 @@
     padding: 0 !important;
     overflow: hidden;
   }
-
-  :root[data-custom-theme-id="winamp"] .member-panel {
-    padding: 0 0 6px !important;
-  }
-
-  :root[data-custom-theme-id="winamp"] .member-panel > *:not(.member-resize-handle) {
-    margin-left: 6px;
-    margin-right: 6px;
-  }
-}
-
-/* ---- Main window ---- */
-:root[data-custom-theme-id="winamp"] .wa-main-body {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  grid-template-rows: auto auto auto;
-  gap: 4px 6px;
-  padding: 6px 7px 6px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-lcd {
-  position: relative;
-  height: 44px;
-  background: #000;
-  border: 1px solid #0a0a10;
-  box-shadow: inset 1px 1px 0 #000, 1px 1px 0 var(--wa-face-hi);
-  overflow: hidden;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-lcd-state {
-  position: absolute;
-  left: 5px;
-  top: 4px;
-  font-size: 9px;
-  color: #2a4a2a;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-lcd-state.on {
-  color: var(--wa-ink);
-  text-shadow: 0 0 4px rgba(0, 232, 0, 0.6);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-lcd-time {
-  position: absolute;
-  right: 6px;
-  top: -3px;
-  font: 26px/1 "VT323", monospace;
-  color: var(--wa-ink);
-  text-shadow: 0 0 6px rgba(0, 232, 0, 0.55);
-  letter-spacing: 1px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-viz {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 3px;
-  height: 16px;
-  display: flex;
-  align-items: flex-end;
-  gap: 1px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-viz i {
-  flex: 1 1 0;
-  height: 1px;
-  background: linear-gradient(0deg, #18a018 0, #2ce82c 45%, #e8e800 75%, #ff3b00 100%);
-  background-size: 100% 16px;
-  background-position: bottom;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-viz.live i {
-  animation: wa-bars 520ms ease-in-out infinite alternate;
 }
 
 @keyframes wa-bars {
@@ -210,300 +50,9 @@
   100% { height: 16px; }
 }
 
-:root[data-custom-theme-id="winamp"] .wa-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-marquee {
-  height: 16px;
-  overflow: hidden;
-  background: #000;
-  border: 1px solid #0a0a10;
-  box-shadow: 1px 1px 0 var(--wa-face-hi);
-  white-space: nowrap;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-marquee span {
-  display: inline-block;
-  vertical-align: top;
-  padding-left: 4px;
-  font: 16px/15px "VT323", monospace;
-  color: var(--wa-ink);
-  animation: wa-marquee 22s linear infinite;
-}
-
 @keyframes wa-marquee {
   0%, 8% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
-}
-
-:root[data-custom-theme-id="winamp"] .wa-stats {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font: 7px/1 var(--wa-title-font);
-  color: #c8c8d8;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-stats small {
-  font-size: 7px;
-  margin-right: 3px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-box {
-  min-width: 18px;
-  padding: 0 2px;
-  background: #000;
-  color: var(--wa-ink);
-  font: 13px/11px "VT323", monospace;
-  text-align: center;
-  border: 1px solid #0a0a10;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-light {
-  margin-left: auto;
-  color: #44445a;
-  font: 7px/1 var(--wa-title-font);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-light + .wa-light {
-  margin-left: 2px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-light.on {
-  color: var(--wa-ink);
-  text-shadow: 0 0 4px rgba(0, 232, 0, 0.6);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-toggles {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-slider {
-  position: relative;
-  flex: 1 1 auto;
-  height: 7px;
-  background: linear-gradient(90deg, #1d5a1d, #c8c814 60%, #c83214);
-  border: 1px solid #0a0a10;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-slider.short {
-  flex: 0 0 34px;
-  background: linear-gradient(90deg, #c83214, #1d5a1d 50%, #c83214);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-slider i,
-:root[data-custom-theme-id="winamp"] .wa-seek i {
-  position: absolute;
-  top: -2px;
-  width: 12px;
-  height: 9px;
-  margin-left: -6px;
-  background: linear-gradient(180deg, #e2e2ea, #8c8ca0);
-  border: 1px solid #12121a;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-mini {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 12px;
-  padding: 0 4px;
-  border: 1px solid #0a0a10;
-  background: linear-gradient(180deg, #6d6d82, #3c3c4c);
-  color: #9898aa;
-  font: 7px/1 var(--wa-title-font);
-  cursor: default;
-}
-
-:root[data-custom-theme-id="winamp"] button.wa-mini {
-  cursor: pointer;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-mini.on {
-  color: var(--wa-ink);
-  text-shadow: 0 0 4px rgba(0, 232, 0, 0.6);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-seek {
-  grid-column: 1 / -1;
-  position: relative;
-  height: 10px;
-  background: #121218;
-  border: 1px solid #0a0a10;
-  box-shadow: inset 0 1px 2px #000;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-seek i {
-  width: 28px;
-  margin-left: 0;
-  top: 0;
-  height: 8px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport button {
-  width: 23px;
-  height: 18px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #0a0a10;
-  background: linear-gradient(180deg, #d4d4de 0%, #a0a0b2 50%, #8a8a9c 100%);
-  box-shadow: inset 1px 1px 0 #f2f2f8, inset -1px -1px 0 #5c5c6c;
-  color: #1a1a24;
-  font-size: 9px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport button:active:not(:disabled) {
-  background: linear-gradient(180deg, #8a8a9c, #b4b4c4);
-  box-shadow: inset 1px 1px 0 #5c5c6c;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport button:disabled {
-  color: #6a6a7a;
-  cursor: default;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport .wa-eject {
-  margin-left: 6px;
-  width: 22px;
-  height: 16px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-shuffle {
-  margin-left: 8px;
-  padding: 2px 4px;
-  border: 1px solid #0a0a10;
-  background: linear-gradient(180deg, #6d6d82, #3c3c4c);
-  color: #9898aa;
-  font: 7px/1 var(--wa-title-font);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport .wa-rep {
-  width: 22px;
-  height: 14px;
-  margin-left: 2px;
-  background: linear-gradient(180deg, #6d6d82, #3c3c4c);
-  box-shadow: none;
-  color: #9898aa;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-transport .wa-rep.on {
-  color: var(--wa-ink);
-}
-
-:root[data-custom-theme-id="winamp"] .wa-bolt {
-  width: 15px;
-  height: 15px;
-  margin-left: auto;
-  fill: #f0b818;
-  stroke: #6a3a00;
-  stroke-width: 0.6;
-  filter: drop-shadow(0 0 2px rgba(255, 190, 0, 0.5));
-}
-
-/* ---- Equalizer ---- */
-:root[data-custom-theme-id="winamp"] .wa-eq-body {
-  padding: 5px 7px 6px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-top {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-top .wide {
-  margin-left: auto;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-graph {
-  flex: 0 0 110px;
-  height: 18px;
-  margin-left: 10px;
-  background: #000;
-  border: 1px solid #0a0a10;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-graph svg {
-  width: 100%;
-  height: 100%;
-  fill: none;
-  stroke: #d8b818;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-bands {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  margin-top: 6px;
-  height: 66px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-band {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-band.pre {
-  flex: 0 0 30px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-band small,
-:root[data-custom-theme-id="winamp"] .wa-eq-scale small {
-  font: 6px/1 var(--wa-title-font);
-  color: #b8b8c8;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-scale {
-  flex: 0 0 26px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 0 0 10px;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-band-track {
-  position: relative;
-  flex: 1 1 auto;
-  width: 6px;
-  background: linear-gradient(180deg, #c83214, #c8c814 45%, #1d8a1d 100%);
-  border: 1px solid #0a0a10;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-band-track i {
-  position: absolute;
-  left: -4px;
-  width: 12px;
-  height: 7px;
-  margin-top: -3px;
-  background: linear-gradient(180deg, #e2e2ea, #8c8ca0);
-  border: 1px solid #12121a;
-  transition: top 0.2s;
-}
-
-:root[data-custom-theme-id="winamp"] .wa-eq-bands.live .wa-band:not(.pre) .wa-band-track i {
-  animation: wa-eq 1.4s ease-in-out infinite alternate;
 }
 
 @keyframes wa-eq {
@@ -516,16 +65,6 @@
   :root[data-custom-theme-id="winamp"] :is(.wa-viz.live i, .wa-eq-bands.live i, .wa-marquee span) {
     animation: none !important;
   }
-  :root[data-custom-theme-id="winamp"] .wa-viz.live i { height: 8px; }
-}
-
-/* ---- Clutterbar: the server rail as a strip of tiny metal buttons ---- */
-:root[data-custom-theme-id="winamp"] .rail {
-  background: linear-gradient(90deg, #2a2a38, #393948 50%, #2a2a38) !important;
-  border-right: 1px solid #0a0a10 !important;
-  box-shadow: inset 1px 0 0 var(--wa-face-hi) !important;
-  gap: 6px !important;
-  padding: 8px 0 !important;
 }
 
 :root[data-custom-theme-id="winamp"] .rail :is(.space-mark, .brand-mark, .rail-dm, .rail-folder-mark) {
@@ -545,74 +84,6 @@
   width: 28px !important;
   height: 28px !important;
   border-radius: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .rail .active-space {
-  border-color: var(--wa-ink) !important;
-  box-shadow: 0 0 0 1px #000, 0 0 6px rgba(0, 232, 0, 0.6) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .rail .rail-item {
-  width: 40px !important;
-  height: 32px !important;
-  min-height: 0 !important;
-  justify-content: center;
-}
-
-:root[data-custom-theme-id="winamp"] .rail .rail-item::before {
-  display: none !important;
-}
-
-/* ---- Playlist editor: the channel list ---- */
-:root[data-custom-theme-id="winamp"] .server-banner-header {
-  display: none !important;
-}
-
-:root[data-custom-theme-id="winamp"] .sidebar {
-  counter-reset: wa-track;
-}
-
-:root[data-custom-theme-id="winamp"] .space-header {
-  min-height: 0 !important;
-  padding: 3px 8px !important;
-  margin: 4px 6px 0;
-  background: #000 !important;
-  border: 1px solid #0a0a10 !important;
-  border-bottom: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .space-header .eyebrow {
-  display: none;
-}
-
-:root[data-custom-theme-id="winamp"] .space-header h1 {
-  font: bold 12px/16px var(--wa-ui-font) !important;
-  color: #fff !important;
-  letter-spacing: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .space-header h1::before {
-  content: "Playlist: ";
-  color: var(--wa-ink);
-  font-weight: normal;
-}
-
-:root[data-custom-theme-id="winamp"] .space-header .icon-button {
-  width: 22px !important;
-  height: 16px !important;
-  border-radius: 0 !important;
-  border: 1px solid #0a0a10 !important;
-  background: linear-gradient(180deg, #6d6d82, #3c3c4c) !important;
-  color: #c8c8d8 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .channel-nav {
-  margin: 0 6px 4px;
-  padding: 2px 0 6px !important;
-  background: #000 !important;
-  border: 1px solid #0a0a10;
-  border-top: 0;
-  scrollbar-color: #5b5b72 #1b1b26;
 }
 
 :root[data-custom-theme-id="winamp"] .channel-nav :is(.section-label, .category-head) {
@@ -667,11 +138,6 @@
   display: none !important;
 }
 
-:root[data-custom-theme-id="winamp"] .channel-nav .events-chip strong {
-  font: inherit !important;
-  color: inherit !important;
-}
-
 :root[data-custom-theme-id="winamp"] .channel-nav :is(.channel, .voice-room):hover {
   color: #fff !important;
 }
@@ -682,29 +148,10 @@
   text-shadow: none;
 }
 
-:root[data-custom-theme-id="winamp"] .channel-nav .voice-room-wrapper {
-  margin: 0 !important;
-}
-
 :root[data-custom-theme-id="winamp"] .channel-nav .voice-room-wrapper :is(.voice-member, .voice-participant) {
   color: #b8ffb8 !important;
   font: 11px/15px var(--wa-ui-font) !important;
   padding-left: 34px !important;
-}
-
-/* Bottom of the playlist: the metal bar with ADD / REM / SEL buttons, which
-   here holds you, your mic and headphones. */
-:root[data-custom-theme-id="winamp"] .sidebar > .discord-user-footer,
-:root[data-custom-theme-id="winamp"] .sidebar > .mini-voice-bar {
-  position: relative !important;
-  inset: auto !important;
-  width: auto !important;
-  margin: 0 6px 6px !important;
-  border: 1px solid #0a0a10 !important;
-  border-radius: 0 !important;
-  background: linear-gradient(180deg, #4a4a5e, #2e2e3e) !important;
-  box-shadow: inset 1px 1px 0 var(--wa-face-hi) !important;
-  color: #c8c8d8 !important;
 }
 
 :root[data-custom-theme-id="winamp"] .sidebar :is(.user-footer-btn, .mini-voice-btn, .mini-voice-leave) {
@@ -716,102 +163,12 @@
   color: #d8d8e4 !important;
 }
 
-:root[data-custom-theme-id="winamp"] .sidebar .user-footer-name {
-  color: #fff !important;
-}
-
-:root[data-custom-theme-id="winamp"] .sidebar .user-footer-status {
-  color: var(--wa-ink) !important;
-  font-family: var(--wa-ui-font) !important;
-}
-
-/* ---- Chat window ---- */
-:root[data-custom-theme-id="winamp"] .chat-header {
-  flex: 0 0 auto !important;
-  min-height: 0 !important;
-  height: auto !important;
-  margin: 4px 6px 0 !important;
-  padding: 3px 6px !important;
-  background: #000 !important;
-  border: 1px solid #0a0a10 !important;
-  border-radius: 0 !important;
-  box-shadow: 1px 1px 0 var(--wa-face-hi);
-}
-
-:root[data-custom-theme-id="winamp"] .chat-header .channel-heading strong {
-  font: 20px/22px "VT323", monospace !important;
-  color: var(--wa-ink) !important;
-  text-shadow: 0 0 5px rgba(0, 232, 0, 0.5);
-}
-
-:root[data-custom-theme-id="winamp"] .chat-header .channel-heading > span {
-  font: 15px/1 "VT323", monospace !important;
-  color: var(--wa-ink-dim) !important;
-}
-
 :root[data-custom-theme-id="winamp"] .chat-header :is(svg, .channel-icon) {
   color: var(--wa-ink) !important;
 }
 
-:root[data-custom-theme-id="winamp"] .chat-header .header-actions {
-  gap: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .chat-header .icon-button {
-  width: 24px !important;
-  height: 20px !important;
-  border-radius: 0 !important;
-  border: 1px solid #0a0a10 !important;
-  background: linear-gradient(180deg, #d4d4de 0%, #a0a0b2 50%, #8a8a9c 100%) !important;
-  box-shadow: inset 1px 1px 0 #f2f2f8, inset -1px -1px 0 #5c5c6c !important;
-  opacity: 1 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .chat-header .icon-button svg {
-  width: 13px;
-  height: 13px;
-  color: #1a1a24 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .chat-header .icon-button.active {
-  background: linear-gradient(180deg, #8a8a9c, #b4b4c4) !important;
-  box-shadow: inset 1px 1px 0 #5c5c6c !important;
-}
-
-:root[data-custom-theme-id="winamp"] .chat-panel .messages {
-  margin: 4px 6px 0;
-  background: #000 !important;
-  border: 1px solid #0a0a10;
-  scrollbar-color: #5b5b72 #1b1b26;
-  font-family: var(--wa-ui-font);
-}
-
-:root[data-custom-theme-id="winamp"] .chat-panel .messages * {
-  font-family: var(--wa-ui-font);
-}
-
 :root[data-custom-theme-id="winamp"] .chat-panel .messages :is(.author, .message-author, .username, .msg-author) {
   color: #fff !important;
-}
-
-:root[data-custom-theme-id="winamp"] .composer-wrap {
-  margin: 0 !important;
-  padding: 4px 6px 6px !important;
-  background: transparent !important;
-  border: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .composer {
-  border-radius: 0 !important;
-  border: 1px solid #0a0a10 !important;
-  background: #000 !important;
-  box-shadow: 1px 1px 0 var(--wa-face-hi) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .composer textarea {
-  color: var(--wa-ink) !important;
-  font: 13px/1.4 var(--wa-ui-font) !important;
-  caret-color: var(--wa-ink);
 }
 
 :root[data-custom-theme-id="winamp"] .composer :is(.attach-button, .composer-emoji-btn, .send-button) {
@@ -822,53 +179,6 @@
   color: #1a1a24 !important;
 }
 
-/* ---- Media library: the member list ---- */
-:root[data-custom-theme-id="winamp"] .member-panel input {
-  border-radius: 0 !important;
-  background: #000 !important;
-  border: 1px solid #0a0a10 !important;
-  color: var(--wa-ink) !important;
-  height: 22px !important;
-  font: 12px var(--wa-ui-font) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member-panel-title {
-  margin-top: 8px !important;
-  color: #fff !important;
-  font: bold 11px/14px var(--wa-ui-font) !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member-panel-title > span::before {
-  content: "▾ ";
-  color: var(--wa-ink);
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member {
-  border-radius: 0 !important;
-  background: #000;
-  color: var(--wa-ink) !important;
-  padding: 2px 6px !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member strong {
-  color: var(--wa-ink) !important;
-  font: 12px var(--wa-ui-font) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member:hover {
-  background: var(--wa-select) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member:hover strong {
-  color: #fff !important;
-}
-
-:root[data-custom-theme-id="winamp"] .member-panel .member-avatar {
-  border-radius: 0 !important;
-}
-
 /* ==========================================================================
    TeamSpeak 2
    ========================================================================== */
@@ -876,46 +186,11 @@
   --xp-title-h: 28px;
 }
 
-:root[data-custom-theme-id="teamspeak"] {
-  --ts-face: #ece9d8;
-  --ts-hi: #ffffff;
-  --ts-shadow: #aca899;
-  --ts-dark: #716f64;
-  --ts-navy: #0a246a;
-  --ts-font: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
-  --font-ui: var(--ts-font);
-}
-
-:root[data-custom-theme-id="teamspeak"] body,
-:root[data-custom-theme-id="teamspeak"] .app-shell,
-:root[data-custom-theme-id="teamspeak"] .app-shell * {
-  font-family: var(--ts-font);
-}
-
 :root[data-custom-theme-id="teamspeak"] :is(.ts-titlebar, .ts-menubar, .ts-toolbar, .ts-info, .ts-statusbar) {
   display: none;
 }
 
 @media (min-width: 761px) {
-  :root[data-custom-theme-id="teamspeak"] .app-shell {
-    grid-template-columns:
-      max(var(--sidebar-w, 240px), 270px) minmax(320px, 1fr) var(--thread-w, 0px) var(--members-w, 0px) !important;
-    grid-template-rows: var(--xp-title-h, 24px) 22px 34px auto minmax(0, 1fr) 22px !important;
-    background: var(--ts-face) !important;
-    border: 1px solid #0831d9;
-    box-sizing: border-box;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .ts-titlebar { grid-column: 1 / -1; grid-row: 1; display: flex; }
-  :root[data-custom-theme-id="teamspeak"] .ts-menubar { grid-column: 1 / -1; grid-row: 2; display: flex; }
-  :root[data-custom-theme-id="teamspeak"] .ts-toolbar { grid-column: 1; grid-row: 3; display: flex; }
-  :root[data-custom-theme-id="teamspeak"] .rail { grid-column: 2 / -1; grid-row: 3; }
-  :root[data-custom-theme-id="teamspeak"] .sidebar { grid-column: 1; grid-row: 4 / 6; }
-  :root[data-custom-theme-id="teamspeak"] .ts-info { grid-column: 2; grid-row: 4; display: flex; }
-  :root[data-custom-theme-id="teamspeak"] .chat-panel { grid-column: 2; grid-row: 5; }
-  :root[data-custom-theme-id="teamspeak"] .thread-panel { grid-column: 3; grid-row: 4 / 6; width: auto !important; }
-  :root[data-custom-theme-id="teamspeak"] .member-panel { grid-column: 4; grid-row: 4 / 6; }
-  :root[data-custom-theme-id="teamspeak"] .ts-statusbar { grid-column: 1 / -1; grid-row: 6; display: flex; }
 
   /* Every pane is a sunken Windows well inside the grey window. */
   :root[data-custom-theme-id="teamspeak"] :is(.sidebar, .chat-panel, .member-panel, .thread-panel, .ts-info) {
@@ -925,50 +200,6 @@
     border-radius: 0 !important;
     border: 1px solid #7f9db9 !important;
     box-shadow: none !important;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .chat-panel {
-    margin-top: 0 !important;
-    background: #fff !important;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .member-panel {
-    padding: 0 0 6px !important;
-    background: #fff !important;
-  }
-
-  /* The rail becomes the toolbar row of server buttons. */
-  :root[data-custom-theme-id="teamspeak"] .rail {
-    flex-direction: row !important;
-    align-items: center !important;
-    gap: 2px !important;
-    height: 34px !important;
-    padding: 0 6px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    background: var(--ts-face) !important;
-    border: 0 !important;
-    border-left: 1px solid var(--ts-shadow) !important;
-    box-shadow: inset 1px 0 0 var(--ts-hi) !important;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .rail > * {
-    flex: 0 0 auto;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .rail .rail-item,
-  :root[data-custom-theme-id="teamspeak"] .rail .rail-folder {
-    width: auto !important;
-    height: 30px !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-  }
-
-  :root[data-custom-theme-id="teamspeak"] .rail .rail-item::before,
-  :root[data-custom-theme-id="teamspeak"] .rail .rail-pill {
-    display: none !important;
   }
 
   :root[data-custom-theme-id="teamspeak"] .rail :is(.rail-divider, hr) {
@@ -998,24 +229,6 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-/* The TS2 icon: a little grey headset on a blue disc. */
-:root[data-custom-theme-id="teamspeak"] .ts-app-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 62%, #1d3f8f 0 4px, transparent 4.5px),
-    radial-gradient(circle at 50% 50%, transparent 0 5px, #d8dce4 5px 6.5px, transparent 7px),
-    radial-gradient(circle at 35% 30%, #8fc0ff, #2a5ad8 70%);
-  box-shadow: 0 0 0 1px #0a1e6e;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-app-icon.big {
-  width: 32px;
-  height: 32px;
 }
 
 :root:is([data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .xp-caption {
@@ -1150,51 +363,6 @@
   border-top: 1px solid #aca899;
 }
 
-/* ---- Toolbar ---- */
-:root[data-custom-theme-id="teamspeak"] .ts-toolbar {
-  align-items: center;
-  gap: 1px;
-  padding: 0 4px;
-  background: var(--ts-face);
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-toolbar button {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: transparent;
-  color: #1d3f8f;
-  cursor: default;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-toolbar button:hover:not(:disabled) {
-  border-color: #c1d2ee;
-  background: linear-gradient(180deg, #fff, #e3e9f4);
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-toolbar button.pressed {
-  border-color: #aca899;
-  background: #e3e0d0;
-  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.2);
-  color: #c00;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-toolbar button:disabled {
-  color: #aca899;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-sep {
-  width: 1px;
-  height: 20px;
-  margin: 0 3px;
-  background: var(--ts-shadow);
-  box-shadow: 1px 0 0 var(--ts-hi);
-}
-
 /* Server buttons on the toolbar row. */
 :root[data-custom-theme-id="teamspeak"] .rail :is(.space-mark, .brand-mark, .rail-dm, .rail-folder-mark) {
   width: 26px !important;
@@ -1214,161 +382,12 @@
   background: linear-gradient(180deg, #fff, #e3e0d0) !important;
 }
 
-:root[data-custom-theme-id="teamspeak"] .rail .active-space {
-  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.25) !important;
-}
-
 :root[data-custom-theme-id="teamspeak"] .rail :is(.space-mark, .rail-dm) img,
 :root[data-custom-theme-id="teamspeak"] .rail .rail-dm-avatar {
   width: 20px !important;
   height: 20px !important;
   margin: 2px;
   border-radius: 2px !important;
-}
-
-/* ---- Server info pane (TS2's HTML pane over the chat) ---- */
-:root[data-custom-theme-id="teamspeak"] .ts-info {
-  height: 128px;
-  margin-bottom: 4px !important;
-  background: #fff;
-  overflow: hidden;
-  font-size: 11px;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 8px 10px;
-  color: #000;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #7f9db9;
-  color: var(--ts-navy);
-  font-size: 14px;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info-head img {
-  width: 24px;
-  height: 24px;
-  border-radius: 2px;
-  object-fit: cover;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info table {
-  border-collapse: collapse;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info th {
-  padding: 0 10px 1px 0;
-  font-weight: bold;
-  text-align: left;
-  white-space: nowrap;
-  vertical-align: top;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info td {
-  padding: 0 0 1px;
-  max-width: 420px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-info-banner {
-  flex: 0 1 300px;
-  min-width: 0;
-  height: 100%;
-  object-fit: cover;
-  border-left: 1px solid #7f9db9;
-}
-
-/* ---- Status bar ---- */
-:root[data-custom-theme-id="teamspeak"] .ts-statusbar {
-  align-items: stretch;
-  gap: 2px;
-  padding: 2px;
-  background: var(--ts-face);
-  border-top: 1px solid var(--ts-hi);
-  font-size: 11px;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-statusbar span {
-  padding: 1px 6px;
-  border: 1px solid;
-  border-color: var(--ts-shadow) var(--ts-hi) var(--ts-hi) var(--ts-shadow);
-  color: #000;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-:root[data-custom-theme-id="teamspeak"] .ts-statusbar span:first-child {
-  flex: 1 1 auto;
-}
-
-/* ---- Channel tree ---- */
-:root[data-custom-theme-id="teamspeak"] .server-banner-header {
-  display: none !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .sidebar {
-  background: #fff !important;
-  color: #000;
-}
-
-:root[data-custom-theme-id="teamspeak"] .space-header {
-  min-height: 0 !important;
-  padding: 4px 6px 2px !important;
-  background: #fff !important;
-  border: 0 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .space-header .eyebrow {
-  display: none;
-}
-
-/* The tree's root node: the server, with the TS globe. */
-:root[data-custom-theme-id="teamspeak"] .space-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font: bold 11px/18px var(--ts-font) !important;
-  color: #000 !important;
-  letter-spacing: 0 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .space-header h1::before {
-  content: "";
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background:
-    linear-gradient(90deg, transparent 7px, rgba(255, 255, 255, 0.7) 7px 8px, transparent 8px),
-    linear-gradient(0deg, transparent 7px, rgba(255, 255, 255, 0.7) 7px 8px, transparent 8px),
-    radial-gradient(circle at 35% 30%, #9fe0ff, #1873c8 70%);
-  box-shadow: 0 0 0 1px #0d4c8c;
-}
-
-:root[data-custom-theme-id="teamspeak"] .space-header .icon-button {
-  width: 20px !important;
-  height: 18px !important;
-  border-radius: 0 !important;
-  color: #000 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav {
-  position: relative;
-  margin-left: 13px;
-  padding: 0 4px 6px 0 !important;
-  border-left: 1px dotted #a0a0a0;
-  scrollbar-color: #c1d2ee #f4f3ee;
 }
 
 :root[data-custom-theme-id="teamspeak"] .channel-nav :is(.section-label, .category-head) {
@@ -1391,16 +410,6 @@
   top: 50%;
   width: 11px;
   border-top: 1px dotted #a0a0a0;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav .category-body {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav .category .category-body {
-  margin-left: 18px !important;
-  border-left: 1px dotted #a0a0a0;
 }
 
 :root[data-custom-theme-id="teamspeak"] .channel-nav :is(.channel, .voice-room, .events-chip) {
@@ -1426,17 +435,8 @@
   color: #2a6bd0 !important;
 }
 
-:root[data-custom-theme-id="teamspeak"] .channel-nav .voice-room svg {
-  color: #3a8a1a !important;
-}
-
 :root[data-custom-theme-id="teamspeak"] .channel-nav :is(.channel, .voice-room) span {
   font-weight: normal !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav .events-chip strong {
-  font: inherit !important;
-  color: inherit !important;
 }
 
 /* Selection is the text, not the row: navy with white letters, as in a Win32 tree. */
@@ -1449,10 +449,6 @@
 
 :root[data-custom-theme-id="teamspeak"] .channel-nav :is(.channel, .voice-room):hover span {
   text-decoration: underline;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav .voice-room-wrapper {
-  margin: 0 !important;
 }
 
 /* People in a voice room hang under it like TS players. */
@@ -1474,20 +470,6 @@
   font-size: 7px !important;
 }
 
-/* You, at the foot of the tree, in a raised grey strip. */
-:root[data-custom-theme-id="teamspeak"] .sidebar > .discord-user-footer,
-:root[data-custom-theme-id="teamspeak"] .sidebar > .mini-voice-bar {
-  position: relative !important;
-  inset: auto !important;
-  width: auto !important;
-  margin: 0 !important;
-  border: 0 !important;
-  border-top: 1px solid #7f9db9 !important;
-  border-radius: 0 !important;
-  background: var(--ts-face) !important;
-  color: #000 !important;
-}
-
 :root[data-custom-theme-id="teamspeak"] .sidebar :is(.user-footer-btn, .mini-voice-btn, .mini-voice-leave) {
   border-radius: 3px !important;
   color: #1d3f8f !important;
@@ -1498,325 +480,9 @@
   border: 1px solid #c1d2ee !important;
 }
 
-/* ---- Chat: the TS2 chat tab ---- */
-:root[data-custom-theme-id="teamspeak"] .chat-header {
-  flex: 0 0 auto !important;
-  min-height: 0 !important;
-  height: 26px !important;
-  padding: 0 4px 0 2px !important;
-  background: var(--ts-face) !important;
-  border-bottom: 1px solid #919b9c !important;
-  border-radius: 0 !important;
-}
-
-/* The channel name sits in a raised tab, like "Chat" in TS2. */
-:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading {
-  align-self: flex-end;
-  height: 22px;
-  padding: 0 10px;
-  margin-bottom: -1px;
-  background: #fff;
-  border: 1px solid #919b9c;
-  border-bottom: 0;
-  border-top: 2px solid #ffc83c;
-  border-radius: 3px 3px 0 0;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .big-hash {
-  display: none !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading strong {
-  font: 11px/20px var(--ts-font) !important;
-  color: #000 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .channel-heading > span {
-  font: 11px/20px var(--ts-font) !important;
-  color: #555 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button {
-  width: 22px !important;
-  height: 22px !important;
-  border-radius: 3px !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  opacity: 1 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button svg {
-  width: 14px;
-  height: 14px;
-  color: #1d3f8f !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button:hover,
-:root[data-custom-theme-id="teamspeak"] .chat-header .icon-button.active {
-  border-color: #aca899 !important;
-  background: linear-gradient(180deg, #fff, #e3e0d0) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-panel .messages {
-  background: #fff !important;
-  font-size: 12px;
-}
-
-:root[data-custom-theme-id="teamspeak"] .composer-wrap {
-  margin: 0 !important;
-  padding: 4px !important;
-  background: var(--ts-face) !important;
-  border-top: 1px solid #919b9c !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .composer {
-  border-radius: 0 !important;
-  border: 1px solid #7f9db9 !important;
-  background: #fff !important;
-  box-shadow: none !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .composer textarea {
-  font: 12px/1.4 var(--ts-font) !important;
-  color: #000 !important;
-}
-
 :root[data-custom-theme-id="teamspeak"] .composer :is(.attach-button, .composer-emoji-btn) {
   border-radius: 3px !important;
   color: #1d3f8f !important;
-}
-
-/* XP push button for Send. */
-:root[data-custom-theme-id="teamspeak"] .composer .send-button {
-  width: auto !important;
-  min-width: 34px;
-  border-radius: 3px !important;
-  border: 1px solid #003c74 !important;
-  background: linear-gradient(180deg, #fff, #ece9d8 85%, #d6d0c5) !important;
-  color: #000 !important;
-}
-
-/* ---- Player list ---- */
-:root[data-custom-theme-id="teamspeak"] .member-panel::before {
-  content: "Players";
-  display: block;
-  padding: 3px 6px;
-  background: linear-gradient(180deg, #fff, #ece9d8);
-  border-bottom: 1px solid #919b9c;
-  font: bold 11px/16px var(--ts-font);
-  color: #000;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel input {
-  border-radius: 0 !important;
-  background: #fff !important;
-  border: 1px solid #7f9db9 !important;
-  color: #000 !important;
-  height: 22px !important;
-  font: 11px var(--ts-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member-panel-title {
-  margin: 6px 8px 2px !important;
-  color: #000 !important;
-  font: bold 11px/16px var(--ts-font) !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member {
-  min-height: 0 !important;
-  margin: 0 6px !important;
-  padding: 1px 4px !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: #000 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member:hover {
-  background: #316ac5 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member:hover strong {
-  color: #fff !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member strong {
-  color: #000 !important;
-  font: 11px var(--ts-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .member-panel .member-avatar {
-  width: 16px !important;
-  height: 16px !important;
-  min-width: 16px !important;
-  border-radius: 2px !important;
-  font-size: 8px !important;
-}
-
-/* ---- Chat lines read like the TS2 log: "<2:26 PM> mewis:" ---- */
-:root[data-custom-theme-id="teamspeak"] .sidebar {
-  padding-bottom: 0 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message {
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
-  border-radius: 0 !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message > .avatar-base {
-  width: 20px !important;
-  height: 20px !important;
-  min-width: 20px !important;
-  border-radius: 2px !important;
-  font-size: 10px !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message:hover {
-  background: #f1f4fb !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta {
-  gap: 4px !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta time {
-  order: -1;
-  margin: 0 !important;
-  color: #808080 !important;
-  font: 11px var(--ts-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta time::before { content: "<"; }
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta time::after { content: ">"; }
-
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta > strong {
-  color: var(--ts-navy) !important;
-  font: bold 12px var(--ts-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .messages .message-meta > strong::after {
-  content: ":";
-}
-
-/* Winamp: playlist-style lines, white names and bracketed green times. */
-:root[data-custom-theme-id="winamp"] .messages .message {
-  border-radius: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message:hover {
-  background: #0a0a2e !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message > .avatar-base {
-  border-radius: 0 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message-meta > strong {
-  color: #fff !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message-meta time {
-  color: var(--wa-ink-dim) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message-meta time::before { content: "["; }
-:root[data-custom-theme-id="winamp"] .messages .message-meta time::after { content: "]"; }
-
-/* ---- DM home: the search and Friends buttons above the DM list ---- */
-:root[data-custom-theme-id="winamp"] .channel-nav > div > button:not(.channel):not(.voice-room) {
-  min-height: 0 !important;
-  margin: 2px 0 !important;
-  padding: 1px 6px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: var(--wa-ink) !important;
-  font: 12px/17px var(--wa-ui-font) !important;
-}
-
-:root[data-custom-theme-id="winamp"] .channel-nav > div > button:not(.channel):not(.voice-room):hover {
-  color: #fff !important;
-}
-
-:root[data-custom-theme-id="winamp"] .channel-nav > div > button kbd {
-  display: none;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button:not(.channel):not(.voice-room) {
-  min-height: 0 !important;
-  margin: 1px 0 !important;
-  padding: 0 4px 0 14px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: #000 !important;
-  font: 11px/18px var(--ts-font) !important;
-  justify-content: flex-start !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button:not(.channel):not(.voice-room):hover {
-  text-decoration: underline;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav > div > button kbd {
-  display: none;
-}
-
-:root[data-custom-theme-id="teamspeak"] .channel-nav .dm-row {
-  min-height: 0 !important;
-  border-radius: 0 !important;
-}
-
-/* Header buttons (Pin / Start Call / Video Call in a DM). */
-:root[data-custom-theme-id="winamp"] .chat-header .dm-call-btn {
-  height: 20px !important;
-  padding: 0 6px !important;
-  border-radius: 0 !important;
-  border: 1px solid #0a0a10 !important;
-  background: linear-gradient(180deg, #d4d4de 0%, #a0a0b2 50%, #8a8a9c 100%) !important;
-  box-shadow: inset 1px 1px 0 #f2f2f8, inset -1px -1px 0 #5c5c6c !important;
-  color: #1a1a24 !important;
-  font: 11px var(--wa-ui-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .dm-call-btn {
-  height: 22px !important;
-  padding: 0 6px !important;
-  border-radius: 3px !important;
-  border: 1px solid #003c74 !important;
-  background: linear-gradient(180deg, #fff, #ece9d8 85%, #d6d0c5) !important;
-  box-shadow: none !important;
-  color: #000 !important;
-  font: 11px var(--ts-font) !important;
-}
-
-:root[data-custom-theme-id="teamspeak"] .chat-header .dm-call-btn svg {
-  color: #1d3f8f !important;
-}
-
-/* Message text at the old apps' sizes. */
-:root[data-custom-theme-id="teamspeak"] .messages .message-body > p {
-  font-size: 12px !important;
-  line-height: 1.45 !important;
-}
-
-:root[data-custom-theme-id="winamp"] .messages .message-body > p {
-  font-size: 13px !important;
-  line-height: 1.45 !important;
-  color: var(--wa-ink);
-}
-
-/* ==========================================================================
-   MSN Messenger (+ Dark): the XP title bar and the File / Contacts / Actions /
-   Tools / Help menu bar across the top of the window.
-   ========================================================================== */
-:root[data-custom-theme-id^="msn"] {
-  --ts-face: #ece9d8;
-  --ts-hi: #ffffff;
-  --ts-shadow: #aca899;
-  --ts-font: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
 }
 
 :root[data-custom-theme-id^="msn"] :is(.msn-titlebar, .msn-menubar) {
@@ -1824,59 +490,7 @@
 }
 
 @media (min-width: 761px) {
-  :root[data-custom-theme-id^="msn"] .app-shell {
-    grid-template-rows: var(--xp-title-h, 24px) 22px minmax(0, 1fr) !important;
-  }
-
-  :root[data-custom-theme-id^="msn"] .msn-titlebar { grid-column: 1 / -1; grid-row: 1; display: flex; }
-  :root[data-custom-theme-id^="msn"] .msn-menubar { grid-column: 1 / -1; grid-row: 2; display: flex; }
   :root[data-custom-theme-id^="msn"] .app-shell > :is(.rail, .sidebar, .chat-panel, .thread-panel, .member-panel) {
     grid-row: 3;
   }
-}
-
-:root[data-custom-theme-id^="msn"] .msn-menubar .xp-menu > button {
-  font-family: var(--ts-font);
-}
-
-/* The Messenger buddies: a green one in front of a blue one. */
-:root[data-custom-theme-id^="msn"] .msn-app-icon {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  background:
-    radial-gradient(circle at 6px 4px, #6fd84a 0 2.6px, transparent 3px),
-    radial-gradient(ellipse 4.5px 4px at 6px 12px, #3fae2a 0 100%, transparent 100%),
-    radial-gradient(circle at 11px 5px, #5aa2ff 0 2.4px, transparent 2.8px),
-    radial-gradient(ellipse 4px 4px at 11px 12px, #2a6bd8 0 100%, transparent 100%);
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.45));
-}
-
-/* MSN Dark: the same window after hours. */
-:root[data-custom-theme-id="msn-dark"] {
-  --ts-face: #16233f;
-  --ts-hi: #2c4675;
-  --ts-shadow: #0b1426;
-}
-
-:root[data-custom-theme-id="msn-dark"] .msn-titlebar {
-  background: linear-gradient(180deg, #2a4f8f 0%, #13305f 10%, #0f2a55 50%, #183a72 90%, #13305f 100%);
-}
-
-:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-menu > button {
-  color: #e6eefc;
-}
-
-:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown {
-  background: #101d36;
-  border-color: #2c4675;
-}
-
-:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown button {
-  color: #e6eefc;
-}
-
-:root[data-custom-theme-id="msn-dark"] .msn-menubar .xp-dropdown button:disabled {
-  color: #5a6f96;
 }

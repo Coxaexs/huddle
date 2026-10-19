@@ -1,6 +1,7 @@
 /** Shapes and constants shared by the browser and the worker. */
 
 import type { ProfileStyle } from "./profile-style";
+import type { TranslateFn } from "./i18n";
 
 export type { ProfileStyle } from "./profile-style";
 export { normalizeProfileStyle } from "./profile-style";
@@ -220,12 +221,13 @@ export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";
 /** Label + dot colour for each presence status. */
 export const PRESENCE: Record<
   PresenceStatus,
-  { label: string; color: string }
+  /** `label` is English; the interface shows `t(labelKey)`. */
+  { label: string; labelKey: `presence.${PresenceStatus}`; color: string }
 > = {
-  online: { label: "Online", color: "#3ba55d" },
-  idle: { label: "Idle", color: "#faa81a" },
-  dnd: { label: "Do not disturb", color: "#ed4245" },
-  invisible: { label: "Invisible", color: "#80848e" },
+  online: { label: "Online", labelKey: "presence.online", color: "#3ba55d" },
+  idle: { label: "Idle", labelKey: "presence.idle", color: "#faa81a" },
+  dnd: { label: "Do not disturb", labelKey: "presence.dnd", color: "#ed4245" },
+  invisible: { label: "Invisible", labelKey: "presence.invisible", color: "#80848e" },
 };
 
 /** Colors new accounts cycle through, matching the existing palette. */
@@ -308,18 +310,23 @@ export function bannerBackground(bannerUrl: string | null | undefined, fallback:
 }
 
 /** "Last seen 5m ago" style text for an offline member, or null when unknown. */
-export function lastSeenLabel(iso: string | null | undefined, now = Date.now()): string | null {
+export function lastSeenLabel(
+  iso: string | null | undefined,
+  now = Date.now(),
+  t?: TranslateFn,
+): string | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) return null;
   const minutes = Math.max(0, Math.floor((now - then) / 60_000));
-  if (minutes < 1) return "Last seen just now";
-  if (minutes < 60) return `Last seen ${minutes}m ago`;
+  if (minutes < 1) return t ? t("lastSeen.justNow") : "Last seen just now";
+  if (minutes < 60) return t ? t("lastSeen.minutesAgo", { minutes }) : `Last seen ${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Last seen ${hours}h ago`;
+  if (hours < 24) return t ? t("lastSeen.hoursAgo", { hours }) : `Last seen ${hours}h ago`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `Last seen ${days}d ago`;
-  return `Last seen ${new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  if (days < 30) return t ? t("lastSeen.daysAgo", { days }) : `Last seen ${days}d ago`;
+  const dateStr = new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return t ? t("lastSeen.date", { date: dateStr }) : `Last seen ${dateStr}`;
 }
 
 const ACTIVITY_VERB: Record<ProfileActivityKind, string> = {
@@ -330,23 +337,38 @@ const ACTIVITY_VERB: Record<ProfileActivityKind, string> = {
 };
 
 /** "Playing Minecraft", "Coding in Visual Studio Code". */
-export function activityLabel(activity: ProfileActivity): string {
+export function activityLabel(
+  activity: ProfileActivity,
+  t?: TranslateFn,
+): string {
+  if (t) {
+    return t(`activity.${activity.kind}` as const, { name: activity.name });
+  }
   return `${ACTIVITY_VERB[activity.kind]} ${activity.name}`;
 }
 
 /** "for 2h 5m", or "" under a minute. */
-export function activityElapsed(activity: ProfileActivity, now = Date.now()): string {
+export function activityElapsed(
+  activity: ProfileActivity,
+  now = Date.now(),
+  t?: TranslateFn,
+): string {
   const minutes = Math.floor((now - activity.startedAt) / 60_000);
   if (minutes < 1) return "";
-  if (minutes < 60) return `for ${minutes}m`;
+  if (minutes < 60) return t ? t("activity.elapsed.minutes", { minutes }) : `for ${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  return `for ${hours}h ${minutes % 60}m`;
+  return t
+    ? t("activity.elapsed.hoursMinutes", { hours, minutes: minutes % 60 })
+    : `for ${hours}h ${minutes % 60}m`;
 }
 
 /** One line for the member list: the game you are in, else the song you are on. */
-export function memberActivityLine(member: Pick<Member, "activity" | "spotifyActivity">): string {
+export function memberActivityLine(
+  member: Pick<Member, "activity" | "spotifyActivity">,
+  t?: TranslateFn,
+): string {
   const activity = liveActivity(member.activity);
-  if (activity) return activityLabel(activity);
+  if (activity) return activityLabel(activity, t);
   const song = liveSpotify(member.spotifyActivity);
   return song ? `🎵 ${song.song} · ${song.artist}` : "";
 }

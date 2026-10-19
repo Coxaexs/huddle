@@ -22,6 +22,7 @@ import {
   isBigUploadKey,
 } from "./big-upload-key";
 import { bindings } from "./storage";
+import { peekStream } from "./stream-peek";
 import { sniffUpload } from "./upload-sniff";
 
 /** An upload nobody finished in this long is aborted and its parts freed. */
@@ -134,7 +135,10 @@ export async function putBigUploadPart(
   user: User,
   key: string,
   partNumber: number,
-  bytes: ArrayBuffer,
+  /** The part's body, passed on to R2 as it arrives. */
+  body: ReadableStream<Uint8Array> | null,
+  /** Its Content-Length. R2 needs the length of a streamed part up front. */
+  length: number,
 ): Promise<{ partNumber: number; etag: string } | Failure> {
   await ensureBigUploadTables(db);
   const row = await ownRow(db, user, key);
@@ -145,19 +149,33 @@ export async function putBigUploadPart(
     return { error: "Bad part number.", status: 400 };
   }
   const expected = partNumber < parts ? BIG_UPLOAD_PART_BYTES : row.size - BIG_UPLOAD_PART_BYTES * (parts - 1);
-  if (bytes.byteLength !== expected) {
-    return { error: `Part ${partNumber} should be ${expected} bytes, got ${bytes.byteLength}.`, status: 400 };
+  if (!body || length !== expected) {
+    return { error: `Part ${partNumber} should be ${expected} bytes, got ${body ? length : 0}.`, status: 400 };
   }
+  let stream = body;
   if (partNumber === 1) {
     // Served back as what the bytes are when that is something we know;
     // anything else downloads as application/octet-stream.
-    const sniffed = sniffUpload(bytes.slice(0, 512), row.name);
+    const peeked = await peekStream(body, 512);
+    stream = peeked.stream;
+    const sniffed = sniffUpload(peeked.head, row.name);
     await db
       .prepare("UPDATE big_uploads SET content_type = ? WHERE key = ?")
       .bind(sniffed?.contentType || "application/octet-stream", key)
       .run();
   }
-  const uploaded = await bucket.resumeMultipartUpload(key, row.upload_id).uploadPart(partNumber, bytes);
+  // A part is 32 MB, so it is streamed rather than read into memory first.
+  // The fixed length makes a body that is shorter or longer than it said fail.
+  const sized = new FixedLengthStream(expected);
+  const piped = stream.pipeTo(sized.writable);
+  let uploaded: R2UploadedPart;
+  try {
+    uploaded = await bucket.resumeMultipartUpload(key, row.upload_id).uploadPart(partNumber, sized.readable);
+    await piped;
+  } catch {
+    piped.catch(() => {});
+    return { error: `Part ${partNumber} did not arrive in full.`, status: 400 };
+  }
   return { partNumber: uploaded.partNumber, etag: uploaded.etag };
 }
 

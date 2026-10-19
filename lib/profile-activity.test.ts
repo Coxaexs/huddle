@@ -48,6 +48,12 @@ describe("profile activity", () => {
     expect(activityElapsed(a, NOW)).toBe("for 2h 5m");
     expect(activityElapsed({ ...a, startedAt: NOW - 1000 }, NOW)).toBe("");
   });
+  it("translates activity when translator is passed", () => {
+    const a = { kind: "playing" as const, name: "Minecraft", startedAt: NOW, updatedAt: NOW };
+    const trT = (k: string, v?: any) => (k === "activity.playing" ? `${v.name} Oynuyor` : "");
+    expect(activityLabel(a, trT as any)).toBe("Minecraft Oynuyor");
+    expect(memberActivityLine({ activity: a }, trT as any)).toBe("Minecraft Oynuyor");
+  });
   it("prefers the game over the song in the member list", () => {
     const now = Date.now();
     const activity = { kind: "playing" as const, name: "Factorio", startedAt: now, updatedAt: now };

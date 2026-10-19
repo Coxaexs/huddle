@@ -1,0 +1,411 @@
+/* minecraft theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from theme-flavors.css ---- */
+/* Minecraft: the overworld ------------------------------------------------
+   Cobblestone server rail, dark oak plank sidebars, a deepslate chat wall
+   with a grass-block header, stone buttons, square heads, pixel type and
+   the inventory GUI for menus. Textures are 16px tiles drawn at 3x. */
+:root[data-custom-theme-id="minecraft"] {
+  --mc-dirt: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAxUlEQVR42nWSyw3CQBBDXU5q4IZy58YNJErgmgJCCfRCdzh6kbE2QhqtZjwfz2f1eszL9cSLYrmfJ5TPejNoM17Ffj8vFkN+OxOXFV4lwkYKp3bIAa3sDGRbHAcPehjCplDbDVtIqBIGXCLUEAndQOtkOkapMUhmCCeIeqBebkdngVtL1mim7zD0QzT5aihocthM1r21BNQls5ycqEuojeO/6B2Ci3r/BsjJctlfSz0GSHebk2uYtf8ZeH+w/Q7DWD3A8fBfZEEe90ukoXkAAAAASUVORK5CYII=");
+  --mc-grass: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAA2ElEQVR42nWRMQ7CUAxDfRkkNnYWhJi6wMQGghvA2okJjsDCMZjYORhGr3Kjj5DSyHUc/+R/bR6zw3OeDDi9OwNnsDOxuExUdYAa6KpA/tzHz345vR1Xxs7w/XZoMOP4nmDKOgwMXtcdDcYwLt3P6zCilYIBNcKYM22aknA15YyOcoPptEbxaAIXR86EUTwAiAJQO6dNRgwT6e88qOlXpcKmxwNzjakKqlrmcsCNhepPvRC2rHcIL/z+LZAnQ+YYR6prwNRpwePS9QbjB58Jh6Wb10lk6ObhP5NgIg35AoJaAAAAAElFTkSuQmCC");
+  --mc-stone: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAApklEQVR42mWSwRFEIQhDKdcCvFPCtry4z83k53NgUBIiYO29Pz9ba+G7ey4nwHPEj1X/DcIEeEDcKxgrItiKyfXLroKKTW2powONNxM8CI5wEfEPQY16WjdeCyulA0HVaP30IC3QHNWSBLFDiEo+QY1O/DtWhkA6VqFa4lcsEoQT4s0V6koEWoCKqhqRNGNRFZt33Pt33E07VHP0xwjz6CGW7WQX+QLrpnDg4w7lrwAAAABJRU5ErkJggg==");
+  --mc-cobble: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAuklEQVR42nWSwQ1DIQxDPSJjMAD3jMDKzedVrvVRc0ABnNgxaIyx1honqorkPnGiOjHn3Hv32lBOqOkTtn0LTOsECBc31Ah6dTSgVwH1NeyuNwMkPwYEgDOnCa2wE40IzwpVJr5SjmWhbm+FnkeA2Ceaue2br8SeTedoYIx0mfZPQUUgOl3O6QEoX7F5/r2041tg71DinBZpt/wi6XrO/ZKnl8qE2sAkV7LbIqAYkH/kkZTPeX/m+8N/AH4yUGGHim96AAAAAElFTkSuQmCC");
+  --mc-deepslate: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAtElEQVR42mWSMQ7DMAwD9Z4MXbIUWbpl6v/fUxVnHGgFEAzZlkiKdp3n+7o+Hcfx6rW3Jl7d97fzXjsvjqjzlJWEarargetuAJv+wea2bBVGtizdGlKuPE2b8E5SygWVkIHb5Ckzx01PnFiIUkCawyHy0qJ/g1aMuRUDpyjFPpFSsZx6Mx9uiNGDrUFSRtRlx00zKrvzF+SsQnTB9jVg70jpmS9bJR1inp9quZQvnWC4x2r8AKcIqyfjpW+1AAAAAElFTkSuQmCC");
+  --mc-planks: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAArUlEQVR42qWSsQ7CMAxE/RGdmJA6sMAIEkslJFb+/3e46kmvbraCZDmO7eTunNTrfsbej9Wu8xT/WS7mLcWet1NRjqeQA2wpk0wQI1ksFOJFMC9CkitCOg5Zya8T67yBNVOJ4ApLuUKgT2LTQLcS6WZQA8IfGhKBIJqSiDcNbBg/Nek53P4sxa2wHDqGWXH1Txpk79MCBU/FEJRCPWNHH/9OdP9nw3vBu3+Cwxq+tI2I4Z7Cf7UAAAAASUVORK5CYII=");
+  --mc-yellow: #ffff55;
+  --mc-bevel: inset 2px 2px 0 rgba(255, 255, 255, 0.3), inset -2px -3px 0 rgba(0, 0, 0, 0.45);
+  --rail-bg: #3b3b3b;
+  --surface-2: #3a3a3a;
+  --muted-2: #a0a0a0;
+  --faint: #7a7a7a;
+  --accent-strong: #5fb33a;
+  --accent-hi: #80d65a;
+  --on-accent: #ffffff;
+  --font-ui: "Pixelify Sans", "Instrument Sans", sans-serif;
+  --font-display: "Pixelify Sans", sans-serif;
+  --ring: 0 0 0 2px #ffffff;
+  --ui-corners: 0px;
+}
+
+:root[data-custom-theme-id="minecraft"] body,
+:root[data-custom-theme-id="minecraft"] .app-shell {
+  font-family: var(--font-ui) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .rail {
+  background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.42)), var(--mc-cobble) 0 0 / 48px 48px !important;
+  border-right: 3px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .chat-panel {
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--mc-deepslate) 0 0 / 48px 48px !important;
+  border: 3px solid #000 !important;
+  border-radius: 0 !important;
+}
+
+/* The header is the side of a grass block. */
+:root[data-custom-theme-id="minecraft"] .chat-header {
+  background: linear-gradient(180deg, transparent 30%, rgba(0, 0, 0, 0.35)), var(--mc-grass) 0 0 / 48px 48px repeat-x, var(--mc-dirt) 0 0 / 48px 48px !important;
+  border-bottom: 3px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-header h1 {
+  font-size: 21px !important;
+}
+
+/* The open channel is the selected hotbar slot. */
+:root[data-custom-theme-id="minecraft"] .channel.selected,
+:root[data-custom-theme-id="minecraft"] .voice-room.selected {
+  background: rgba(0, 0, 0, 0.45) !important;
+  box-shadow: inset 0 0 0 2px #ffffff, inset 0 0 0 4px #000000 !important;
+  color: #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-mark {
+  box-shadow: 0 0 0 2px #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .member-panel input {
+  background: rgba(0, 0, 0, 0.62) !important;
+  border: 2px solid #a0a0a0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .discord-user-footer {
+  background: rgba(0, 0, 0, 0.55) !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px #000, 0 0 0 5px #ffffff !important;
+}
+
+/* Chat input: the game's translucent black chat line. */
+:root[data-custom-theme-id="minecraft"] .composer {
+  border-radius: 0 !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  border: 2px solid #a0a0a0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .composer:focus-within {
+  border-color: #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .message time {
+  color: #aaaaaa;
+}
+
+:root[data-custom-theme-id="minecraft"] ::selection {
+  background: rgba(85, 85, 255, 0.7);
+  color: #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] ::-webkit-scrollbar-thumb {
+  background: #8b8b8b;
+  border-radius: 0;
+  box-shadow: inset 2px 2px 0 #c6c6c6, inset -2px -2px 0 #555555;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile {
+  background: #8b8b8b !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #ffffff !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile.is-speaking {
+  box-shadow: inset 3px 3px 0 #373737, inset -3px -3px 0 #ffffff, 0 0 0 3px #55ff55, 0 0 18px rgba(85, 255, 85, 0.55) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-avatar {
+  border-radius: 0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .stage-tile figcaption,
+:root[data-custom-theme-id="minecraft"] .stage-tile figcaption span:first-child {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] .voice-active-contour {
+  border-radius: 0 !important;
+}
+
+/* Menus: the inventory window, grey with a raised bevel and dark text. */
+:root[data-custom-theme-id="minecraft"] .user-menu {
+  color: #3f3f3f;
+  background: #c6c6c6;
+  border: 2px solid #000;
+  border-radius: 0;
+  box-shadow: inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555, 0 18px 40px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-custom-theme-id="minecraft"] .bot-menu .user-menu-head {
+  background: #c6c6c6;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-head {
+  border-bottom-color: #8b8b8b;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-head strong {
+  color: #3f3f3f;
+  font-weight: 600;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button {
+  color: #3f3f3f;
+  border-radius: 0;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button:hover {
+  color: #000000;
+  background: #8b8b8b;
+  box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu button.danger {
+  color: #aa0000;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu-divider {
+  background: #8b8b8b;
+  box-shadow: 0 1px 0 #ffffff;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-menu input[type="range"] {
+  accent-color: #5fb33a;
+}
+
+/* ---- from theme-panels.css ---- */
+/* Themed panels: the Settings window, the profile card and the voice bar
+   for Minecraft, MSN Messenger (light and dark), TeamSpeak 2 and Zombie.
+
+   Settings: each theme sets a small palette (--sp-*) and the shared rules
+   below repaint the window with it, including the Tailwind colour utilities
+   the tabs use (written for a dark window, so on the light themes they had
+   white text on pale grey). Then each theme adds its own furniture: the
+   options screen of the game, an XP window, a Windows 98 dialog, a
+   quarantine terminal.
+
+   Profile cards: only cards without their owner's own card style or CSS
+   (.pst / data-has-custom-css), so a custom card always keeps its look. */
+
+/* ==========================================================================
+   Settings: palettes
+   ========================================================================== */
+
+:root[data-custom-theme-id="minecraft"] {
+  --sp-frame: #000000;
+  --sp-side: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), var(--mc-planks) 0 0 / 48px 48px;
+  --sp-main: linear-gradient(rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.62)), var(--mc-dirt) 0 0 / 64px 64px;
+  --sp-ink: #ffffff;
+  --sp-muted: #b4b4b4;
+  --sp-card: rgba(0, 0, 0, 0.55);
+  --sp-card-edge: #6b6b6b;
+  --sp-hover: rgba(255, 255, 255, 0.12);
+  --sp-field: #000000;
+  --sp-field-edge: #a0a0a0;
+  --sp-accent: #5fb33a;
+  --sp-on-accent: #ffffff;
+  --sp-radius: 0px;
+  --sp-title: #ffff55;
+}
+
+/* ==========================================================================
+   Settings: Minecraft — the game's Options screen
+   ========================================================================== */
+
+:root[data-custom-theme-id="minecraft"] .settings-modal {
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px #000, 0 30px 80px rgba(0, 0, 0, 0.8) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-topbar {
+  justify-content: center;
+  border-bottom: 2px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-topbar h2 {
+  font-family: var(--font-display) !important;
+  font-weight: 500 !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  letter-spacing: 0.03em;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-esc-control {
+  position: absolute;
+  right: 28px;
+}
+
+/* Every menu entry is a stone button; the open one is the pressed one. */
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn {
+  margin: 2px 0;
+  background: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel);
+  color: #e0e0e0 !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+  justify-content: center;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn:hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+  background: linear-gradient(rgba(70, 90, 200, 0.28), rgba(70, 90, 200, 0.28)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn.active {
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--mc-stone) 0 0 / 48px 48px !important;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.5), inset -2px -2px 0 rgba(255, 255, 255, 0.12);
+  color: #ffff55 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-nav-btn.signout {
+  margin-top: auto;
+  color: #ff5555 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-group-title {
+  color: #ffff55 !important;
+  text-shadow: 2px 2px 0 #3f3f15;
+  text-align: center;
+}
+
+:root[data-custom-theme-id="minecraft"] .settings-modal .settings-esc-circle {
+  border-radius: 0 !important;
+  border: 2px solid #000 !important;
+  background: var(--mc-stone) 0 0 / 48px 48px !important;
+  color: #fff !important;
+  box-shadow: var(--mc-bevel);
+}
+
+/* ==========================================================================
+   Profile cards
+   ========================================================================== */
+
+/* Minecraft: the item tooltip — near-black purple with the violet frame,
+   the name in the game's yellow and roles as aqua "enchantments". */
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: rgba(16, 0, 16, 0.96);
+  background: rgba(16, 0, 16, 0.96) !important;
+  border: 3px solid #000 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 2px #2d0a63, inset 0 0 0 3px #28007f, 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+  color: #ffffff;
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 84px !important;
+  border-bottom: 3px solid #000;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.3)), var(--mc-grass) 0 0 / 48px 48px repeat-x, var(--mc-dirt) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  box-shadow: 0 0 0 3px #000, 0 0 0 5px #8b8b8b !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-presence-dot {
+  border-radius: 0 !important;
+  border: 2px solid #000 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  color: #ffff55 !important;
+  text-shadow: 2px 2px 0 #3f3f15;
+  font-weight: 500 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-tagline {
+  color: #aa00aa !important;
+  font-style: italic;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-badge-item.badge-owner {
+  color: #ffaa00 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.6), inset -2px -2px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  border-radius: 0 !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08)), var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  box-shadow: var(--mc-bevel) !important;
+  color: #ffffff !important;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  border-color: #ffffff !important;
+  color: #ffffa0 !important;
+}
+
+:root[data-custom-theme-id="minecraft"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-close {
+  border-radius: 0 !important;
+  background: var(--mc-stone) 0 0 / 48px 48px !important;
+  border: 2px solid #000 !important;
+  color: #fff !important;
+}
+
+/* Minecraft: a hotbar strip — XP-green status over an XP bar, stone buttons. */
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-bar {
+  margin: 0 8px;
+  padding: 9px 9px 8px;
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 2px solid #000 !important;
+  border-bottom: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.12);
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-name {
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-status {
+  color: #80ff20 !important;
+  text-shadow: 1px 1px 0 #1f3f00;
+}
+
+/* The XP bar under the name, slowly filling while you are connected. */
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-info::after {
+  content: "";
+  align-self: stretch;
+  height: 5px;
+  margin-top: 4px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), #000 calc(10% - 1px) 10%),
+    linear-gradient(90deg, #80ff20 var(--mc-xp, 0%), #2b2b2b var(--mc-xp, 0%));
+  border: 1px solid #000;
+  animation: mc-xp 40s linear infinite;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-btn.on {
+  background: linear-gradient(rgba(60, 140, 30, 0.55), rgba(60, 140, 30, 0.55)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-leave {
+  background: linear-gradient(rgba(170, 0, 0, 0.55), rgba(170, 0, 0, 0.55)), var(--mc-stone) 0 0 / 48px 48px !important;
+}
+
+:root[data-custom-theme-id="minecraft"]:not(#_) .mini-voice-signal-btn {
+  color: #80ff20 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="minecraft"] .mini-voice-info::after {
+    animation: none;
+  }
+}

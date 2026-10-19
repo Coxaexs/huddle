@@ -27,6 +27,8 @@
     "@mediapipe/selfie_segmentation": "^0.1.1675465747",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@pdf-lib/fontkit": "^1.1.1",
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.3",
     "cannon-es": "^0.20.0",
     "hls.js": "^1.6.2",
     "livekit-client": "^2.22.3",
@@ -43,6 +45,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "three": "^0.180.0",
+    "uqr": "0.1.3",
     "web-push": "^3.6.7",
     "wrangler": "4.148.0"
   },

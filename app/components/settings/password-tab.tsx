@@ -1,6 +1,7 @@
 "use client";
 
 import { type PublicUser } from "@/lib/users";
+import { SecuritySection } from "./security-section";
 import { Tab } from "./types";
 
 export function PasswordTab({
@@ -194,6 +195,7 @@ export function PasswordTab({
                   Change password
                 </button>
               </section>
+              <SecuritySection />
               {!user.isAdmin && (
                 <section className="profile-studio-section danger-zone">
                   <h3 className="profile-studio-section-title">Delete account</h3>

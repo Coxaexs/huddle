@@ -16,6 +16,7 @@ import { apiFetch } from "../../../lib/client";
 import type { MsnContacts } from "@/lib/msn-contacts";
 import type { Dispatch, SetStateAction } from "react";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
+import { useI18n } from "@/app/lib/i18n-context";
 
 // Keeps a fixed-position menu fully on screen: flips upward near the bottom edge.
 function clampToViewport(el: HTMLDivElement | null) {
@@ -99,6 +100,7 @@ export function UserMenuLayer({
   canManageNicknames: boolean;
   editNickname: (userId: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {userMenu && (
@@ -109,7 +111,7 @@ export function UserMenuLayer({
             msnTheme && userMenu.member.id !== user.id ? (
               <div className="msn-menu-extra">
                 <div className="user-menu-divider" />
-                <p className="user-menu-note">Contact group</p>
+                <p className="user-menu-note">{t("userMenu.contactGroup")}</p>
                 {msnContacts.contacts.groups.map((group) => (
                   <button
                     key={group.id}
@@ -135,7 +137,7 @@ export function UserMenuLayer({
                       setUserMenu(null);
                     }}
                   >
-                    Remove from group
+                    {t("userMenu.removeFromGroup")}
                   </button>
                 )}
                 <button
@@ -147,7 +149,7 @@ export function UserMenuLayer({
                     createContactGroup(id);
                   }}
                 >
-                  New group…
+                  {t("userMenu.newGroup")}
                 </button>
                 <div className="user-menu-divider" />
                 <button
@@ -160,7 +162,7 @@ export function UserMenuLayer({
                   }}
                 >
                   {msnContacts.contacts.quiet.includes(userMenu.member.id) ? "" : "✓ "}
-                  Alert me when they sign in
+                  {t("userMenu.alertSignIn")}
                 </button>
               </div>
             ) : undefined
@@ -332,6 +334,7 @@ export function RailMenuLayer({
   channelPrefs: Record<string, string>;
   setNotifyLevel: (key: string, level: string, durationMs?: number) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {railMenu && (
@@ -365,7 +368,7 @@ export function RailMenuLayer({
                 setRailMenu(null);
               }}
             >
-              Mark as read
+              {t("railMenu.markServerRead")}
             </button>
             {folderIdOf(railMenu.server.id) && (
               <button
@@ -376,18 +379,18 @@ export function RailMenuLayer({
                   setRailMenu(null);
                 }}
               >
-                Remove from folder
+                {t("railMenu.removeFromFolder")}
               </button>
             )}
             <div className="user-menu-divider" />
             <div className="user-menu-head">
-              <span>Notifications</span>
+              <span>{t("railMenu.notifications")}</span>
             </div>
             {(
               [
-                ["all", "All messages"],
-                ["mentions", "Only @mentions"],
-                ["nothing", "Nothing"],
+                ["all", t("railMenu.allMessages")],
+                ["mentions", t("railMenu.onlyMentions")],
+                ["nothing", t("railMenu.nothing")],
               ] as const
             ).map(([level, label]) => {
               const key = `server:${railMenu.server.id}`;
@@ -408,7 +411,7 @@ export function RailMenuLayer({
                   </button>
                   {level === "nothing" && (
                     <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
-                      <span className="text-[10px] text-white/40 uppercase">Mute:</span>
+                      <span className="text-[10px] text-white/40 uppercase">{t("railMenu.mute")}</span>
                       {(
                         [
                           ["15m", 15 * 60 * 1000],
@@ -460,6 +463,7 @@ export function FolderMenuLayer({
   saveServerFolders: (next: ServerFolder[]) => void;
   serverFolders: ServerFolder[];
 }) {
+  const { t } = useI18n();
   return (
     <>
       {folderMenu && (
@@ -482,7 +486,7 @@ export function FolderMenuLayer({
             }}
           >
             <div className="user-menu-head">
-              <strong>{folderMenu.folder.name || "Server folder"}</strong>
+              <strong>{folderMenu.folder.name || t("folderMenu.defaultName")}</strong>
             </div>
             <button
               type="button"
@@ -494,7 +498,7 @@ export function FolderMenuLayer({
                 setFolderMenu(null);
               }}
             >
-              Mark folder as read
+              {t("folderMenu.markAsRead")}
             </button>
             <button
               type="button"
@@ -503,10 +507,10 @@ export function FolderMenuLayer({
                 const target = folderMenu.folder;
                 setFolderMenu(null);
                 showCustomPrompt({
-                  title: "Folder name",
-                  message: "Leave it empty to show the servers' names.",
+                  title: t("folderMenu.folderNameTitle"),
+                  message: t("folderMenu.folderNameHint"),
                   defaultValue: target.name,
-                  placeholder: "Games, Friends, Work…",
+                  placeholder: t("folderMenu.folderNamePlaceholder"),
                   confirmText: "Save",
                   maxLength: 40,
                   onConfirm: (value) =>
@@ -520,11 +524,11 @@ export function FolderMenuLayer({
                 });
               }}
             >
-              Rename folder
+              {t("folderMenu.renameFolder")}
             </button>
             <div className="user-menu-divider" />
             <div className="user-menu-head">
-              <span>Colour</span>
+              <span>{t("folderMenu.colour")}</span>
             </div>
             <div className="rail-folder-colors">
               {["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#9b59b6", "#1abc9c", "#747f8d"].map(
@@ -559,7 +563,7 @@ export function FolderMenuLayer({
                 setFolderMenu(null);
               }}
             >
-              Ungroup servers
+              {t("folderMenu.ungroup")}
             </button>
           </div>
         </>
@@ -597,6 +601,7 @@ export function ChannelMenuLayer({
   changeChannelKind: (channel: { id: string; name: string; }, kind: ChannelKind) => Promise<void>;
   deleteChannel: (channel: PublicChannel) => Promise<void>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {channelMenu && (
@@ -624,13 +629,13 @@ export function ChannelMenuLayer({
                 {" "}
                 {channelMenu.channel.name}
               </strong>
-              <span>Notifications</span>
+              <span>{t("railMenu.notifications")}</span>
             </div>
             {(
               [
-                ["all", "All messages"],
-                ["mentions", "Only @mentions"],
-                ["nothing", "Nothing"],
+                ["all", t("railMenu.allMessages")],
+                ["mentions", t("railMenu.onlyMentions")],
+                ["nothing", t("railMenu.nothing")],
               ] as const
             ).map(([level, label]) => {
               const current = channelPrefs[channelMenu.channel.id] || "all";
@@ -650,7 +655,7 @@ export function ChannelMenuLayer({
                   </button>
                   {level === "nothing" && (
                     <div className="flex items-center gap-1 px-3 py-1 bg-black/25 text-[11px] text-white/70">
-                      <span className="text-[10px] text-white/40 uppercase">Mute:</span>
+                      <span className="text-[10px] text-white/40 uppercase">{t("railMenu.mute")}</span>
                       {(
                         [
                           ["15m", 15 * 60 * 1000],
@@ -690,7 +695,7 @@ export function ChannelMenuLayer({
                     void renameChannel(channel);
                   }}
                 >
-                  Rename
+                  {t("channelMenu.rename")}
                 </button>
                 <button
                   type="button"
@@ -701,7 +706,7 @@ export function ChannelMenuLayer({
                     void editChannelTopic(channel);
                   }}
                 >
-                  Edit Topic
+                  {t("channelMenu.editTopic")}
                 </button>
                 <button
                   type="button"
@@ -712,7 +717,7 @@ export function ChannelMenuLayer({
                     void editChannelSlowmode(channel);
                   }}
                 >
-                  Set Slowmode
+                  {t("channelMenu.setSlowmode")}
                 </button>
                 {channelKindInfo(channelMenu.channel.kind).voice && (
                   <button
@@ -724,7 +729,9 @@ export function ChannelMenuLayer({
                       void editChannelBitrate(channel);
                     }}
                   >
-                    Voice Bitrate ({Math.round(clampVoiceBitrate(channelMenu.channel.bitrate) / 1000)} kbps)
+                    {t("channelMenu.voiceBitrate", {
+                      bitrate: Math.round(clampVoiceBitrate(channelMenu.channel.bitrate) / 1000),
+                    })}
                   </button>
                 )}
                 {channelKindInfo(channelMenu.channel.kind).voice && (
@@ -737,7 +744,9 @@ export function ChannelMenuLayer({
                       void toggleChannelSoundboard(channel);
                     }}
                   >
-                    {channelMenu.channel.soundboard === false ? "Turn soundboard on" : "Turn soundboard off"}
+                    {channelMenu.channel.soundboard === false
+                      ? t("channelMenu.soundboardOn")
+                      : t("channelMenu.soundboardOff")}
                   </button>
                 )}
                 {channelKindInfo(channelMenu.channel.kind).voice && (
@@ -750,7 +759,14 @@ export function ChannelMenuLayer({
                       void editChannelRegion(channel);
                     }}
                   >
-                    Region Override ({channelMenu.channel.rtcRegion === "de" ? "Germany" : channelMenu.channel.rtcRegion === "nl" ? "Netherlands" : "Automatic"})
+                    {t("channelMenu.regionOverride", {
+                      region:
+                        channelMenu.channel.rtcRegion === "de"
+                          ? t("channelMenu.region.de")
+                          : channelMenu.channel.rtcRegion === "nl"
+                            ? t("channelMenu.region.nl")
+                            : t("channelMenu.region.auto"),
+                    })}
                   </button>
                 )}
                 {convertibleKinds(channelMenu.channel.kind).map((kind) => (
@@ -765,7 +781,7 @@ export function ChannelMenuLayer({
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      {channelKindIcon(kind)} Make it {withArticle(channelKindLabel(kind))}
+                      {channelKindIcon(kind)} {t("channelMenu.makeKind", { kind: withArticle(channelKindLabel(kind)) })}
                     </span>
                   </button>
                 ))}
@@ -779,7 +795,7 @@ export function ChannelMenuLayer({
                     void deleteChannel(channel);
                   }}
                 >
-                  Delete channel
+                  {t("channelMenu.delete")}
                 </button>
               </>
             )}

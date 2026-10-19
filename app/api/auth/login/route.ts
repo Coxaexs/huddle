@@ -1,13 +1,11 @@
 import {
-  createSession,
   hashPassword,
-  publicUser,
-  sessionCookie,
-  touchUser,
+  signedInResponse,
   userColumns,
   verifyPassword,
   type User,
 } from "@/lib/auth";
+import { secondFactorPrompt, twoFactorEnabled } from "@/lib/account-security";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import {
@@ -110,10 +108,11 @@ export async function POST(request: Request) {
     );
   }
 
-  await touchUser(db, row.id);
-  const token = await createSession(db, row.id);
-  return Response.json(
-    { user: publicUser(row) },
-    { headers: { "Set-Cookie": sessionCookie(request, token) } },
-  );
+  // With two-factor on, the right password earns a ticket for the second step
+  // (/api/auth/two-factor), not a session.
+  if (await twoFactorEnabled(db, row.id)) {
+    return Response.json(await secondFactorPrompt(db, row.id));
+  }
+  const { password_hash: _hash, ...user } = row;
+  return signedInResponse(db, request, user);
 }

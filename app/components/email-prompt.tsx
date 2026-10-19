@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { apiFetch } from "../lib/client";
+import { tRich, useI18n } from "../lib/i18n-context";
 import type { PublicUser } from "@/lib/users";
 
 interface EmailPromptProps {
@@ -15,6 +16,7 @@ interface EmailPromptProps {
  * still be added under Settings → Account.
  */
 export function EmailPrompt({ onUser }: EmailPromptProps) {
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -49,7 +51,7 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
       setCode("");
       setPending(data.pending);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save your email.");
+      setError(failure instanceof Error ? failure.message : t("emailPrompt.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -64,7 +66,7 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
       });
       onUser(data.user);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "That did not work.");
+      setError(failure instanceof Error ? failure.message : t("gate.failed"));
     } finally {
       setBusy(false);
     }
@@ -74,16 +76,13 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
     <div className="username-gate" role="dialog" aria-modal="true">
       <form className="username-card" onSubmit={save}>
         <span className="username-mark">h</span>
-        <p className="eyebrow">ONE QUICK THING</p>
+        <p className="eyebrow">{t("emailPrompt.eyebrow")}</p>
         {pending ? (
           <>
-            <h2>Check your mail</h2>
-            <p>
-              We sent a 6-digit code to <strong>{pending}</strong>. Enter it to
-              finish adding the address.
-            </p>
+            <h2>{t("emailPrompt.checkMail")}</h2>
+            <p>{tRich(t, "emailPrompt.codeSent", { email: <strong>{pending}</strong> })}</p>
 
-            <label htmlFor="email-prompt-code">Code</label>
+            <label htmlFor="email-prompt-code">{t("gate.label.code")}</label>
             <input
               id="email-prompt-code"
               value={code}
@@ -96,13 +95,10 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
           </>
         ) : (
           <>
-            <h2>Add an email</h2>
-            <p>
-              If you ever forget your password, we'll send a reset link here. It is
-              never shown to anyone else.
-            </p>
+            <h2>{t("emailPrompt.title")}</h2>
+            <p>{t("emailPrompt.about")}</p>
 
-            <label htmlFor="email-prompt-email">Email</label>
+            <label htmlFor="email-prompt-email">{t("auth.email")}</label>
             <input
               id="email-prompt-email"
               type="email"
@@ -111,10 +107,10 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
               maxLength={254}
               autoFocus
               autoComplete="email"
-              placeholder="you@example.com"
+              placeholder={t("emailPrompt.placeholder")}
             />
 
-            <label htmlFor="email-prompt-password">Password to confirm</label>
+            <label htmlFor="email-prompt-password">{t("security.passwordToConfirm")}</label>
             <input
               id="email-prompt-password"
               type="password"
@@ -130,7 +126,7 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
         {pending ? (
           <>
             <button type="submit" disabled={busy || code.length !== 6}>
-              {busy ? "One moment…" : "Verify"}
+              {busy ? t("gate.busy") : t("emailPrompt.verify")}
             </button>
             <button
               type="button"
@@ -141,16 +137,16 @@ export function EmailPrompt({ onUser }: EmailPromptProps) {
               }}
               disabled={busy}
             >
-              Use another address or resend
+              {t("emailPrompt.another")}
             </button>
           </>
         ) : (
           <button type="submit" disabled={busy || !email || !password}>
-            {busy ? "One moment…" : "Send code"}
+            {busy ? t("gate.busy") : t("emailPrompt.sendCode")}
           </button>
         )}
         <button type="button" className="auth-switch" onClick={skip} disabled={busy}>
-          Skip for now
+          {t("emailPrompt.skip")}
         </button>
       </form>
     </div>

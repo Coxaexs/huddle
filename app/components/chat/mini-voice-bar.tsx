@@ -6,6 +6,7 @@ import { screenQualityLabel, type useVoice } from "../../hooks/use-voice";
 import { ScreenShareSetup } from "../screen-share-setup";
 import { SoundboardDrawer } from "../voice-stage/soundboard-drawer";
 import { VoiceConnectionModal } from "./voice-connection-modal";
+import { useI18n } from "@/app/lib/i18n-context";
 
 /**
  * The bar above the user footer while you are in a voice room: where you are,
@@ -37,6 +38,7 @@ export function MiniVoiceBar({
   /** False in a stage audience or a room with the soundboard switched off. */
   soundboardAllowed?: boolean;
 }) {
+  const { t } = useI18n();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
 
   return (
@@ -47,8 +49,8 @@ export function MiniVoiceBar({
             type="button"
             className="mini-voice-signal-btn group relative flex items-center justify-center p-1 rounded hover:bg-white/10 text-emerald-400 cursor-pointer transition-colors"
             onClick={() => setConnectionModalOpen((prev) => !prev)}
-            title="Voice Connection"
-            aria-label="Voice Connection"
+            title={t("voiceStage.voiceConnection")}
+            aria-label={t("voiceStage.voiceConnection")}
           >
             <Radio size={16} />
             <div className={`mini-voice-ping-bubble ${connectionModalOpen ? "visible" : ""}`}>
@@ -59,7 +61,7 @@ export function MiniVoiceBar({
           <div
             className="mini-voice-info min-w-0 cursor-pointer flex-1"
             onClick={() => setStageChannelId(voice.channelId)}
-            title="Open voice channel"
+            title={t("voiceStage.openVoiceChannel")}
           >
             <span className="mini-voice-name truncate">
               {roomName}
@@ -67,8 +69,8 @@ export function MiniVoiceBar({
             <span className="mini-voice-status">
               <span className="mini-voice-dot animate-pulse" aria-hidden="true" />
               {voice.isSfu && voice.voiceRegion
-                ? `voice connected · ${voice.voiceRegion === "de" ? "Germany" : "Netherlands"}`
-                : "voice connected"}
+                ? t("voiceStage.connectedRegion", { region: voice.voiceRegion === "de" ? "Germany" : "Netherlands" })
+                : t("voiceStage.connected")}
             </span>
           </div>
         </div>
@@ -78,7 +80,7 @@ export function MiniVoiceBar({
               type="button"
               className={`mini-voice-btn ${quickSoundboardOpen ? "on" : ""}`}
               onClick={() => setQuickSoundboardOpen((o) => !o)}
-              title={quickSoundboardOpen ? "Close soundboard" : "Soundboard"}
+              title={quickSoundboardOpen ? t("voiceStage.closeSoundboard") : t("voiceStage.soundboard")}
             >
               <Volume2 size={14} />
             </button>
@@ -92,7 +94,7 @@ export function MiniVoiceBar({
                 ? voice.stopScreenShare()
                 : setSidebarShareSetupOpen((open) => !open)
             }
-            title={voice.screenSharing ? `Stop sharing · ${screenQualityLabel(voice.screenQuality)}` : "Share screen"}
+            title={voice.screenSharing ? `Stop sharing · ${screenQualityLabel(voice.screenQuality)}` : t("voiceStage.startScreenShare")}
           >
             <Monitor size={14} />
           </button>
@@ -102,7 +104,7 @@ export function MiniVoiceBar({
             onClick={() =>
               voice.cameraOn ? voice.stopCamera() : void voice.startCamera()
             }
-            title={voice.cameraOn ? "Turn camera off" : "Camera"}
+            title={voice.cameraOn ? t("voiceStage.turnCameraOff") : t("voiceStage.cameraTitle")}
           >
             {voice.cameraOn ? <VideoOff size={14} /> : <Video size={14} />}
           </button>
@@ -110,7 +112,7 @@ export function MiniVoiceBar({
             type="button"
             className="mini-voice-leave"
             onClick={() => voice.leave()}
-            title="Disconnect"
+            title={t("voiceStage.disconnect")}
           >
             <PhoneOff size={14} />
           </button>

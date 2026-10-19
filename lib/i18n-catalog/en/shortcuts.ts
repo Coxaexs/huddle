@@ -1,0 +1,20 @@
+/** The keyboard shortcuts cheat sheet. */
+export const shortcuts = {
+  "shortcuts.title": "Keyboard Shortcuts Cheat Sheet",
+  "shortcuts.group.nav": "Navigation & Quick Actions",
+  "shortcuts.group.voice": "Voice & Video Controls",
+  "shortcuts.group.chat": "Chat & Messaging",
+  "shortcuts.switcher": "Quick Channel / DM Switcher",
+  "shortcuts.findPeople": "Find People",
+  "shortcuts.prevNext": "Previous / Next Channel",
+  "shortcuts.open": "Open Keyboard Shortcuts",
+  "shortcuts.close": "Close Modal or Popover",
+  "shortcuts.mute": "Toggle Microphone Mute",
+  "shortcuts.deafen": "Toggle Headphones Deafen",
+  "shortcuts.screen": "Toggle Screen Share",
+  "shortcuts.camera": "Toggle Camera",
+  "shortcuts.slash": "Open Slash Command Menu",
+  "shortcuts.editLast": "Edit your last sent message",
+  "shortcuts.newLine": "Insert a new line",
+  "shortcuts.skipConfirm": "Bypass delete confirmation",
+} as const;

@@ -4,6 +4,7 @@ import { getAchievement } from "@/lib/achievement-defs";
 import { openAchievements } from "../lib/achievement-client";
 import { AchievementMedal } from "./achievement-medal";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useI18n } from "@/app/lib/i18n-context";
 import {
   MessageSquare,
   AtSign,
@@ -169,6 +170,7 @@ export function UserProfileCard({
   presence,
   onToggleRole,
 }: UserProfileCardProps) {
+  const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const look = cardLook(member.profileStyle, member.color);
@@ -529,10 +531,10 @@ export function UserProfileCard({
               </div>
               <div className="overflow-hidden text-xs">
                 <div className="text-[10px] uppercase font-bold text-green-400 tracking-wider">
-                  LISTENING TO SPOTIFY
+                  {t("profile.spotifyListening")}
                 </div>
                 <div className="font-semibold text-white truncate">{song.song}</div>
-                <div className="text-gray-400 truncate">by {song.artist}</div>
+                <div className="text-gray-400 truncate">{t("profile.byArtist", { artist: song.artist })}</div>
               </div>
             </>
           );
@@ -549,7 +551,7 @@ export function UserProfileCard({
         {(() => {
           const activity = liveActivity(member.activity);
           if (!activity) return null;
-          const elapsed = activityElapsed(activity);
+          const elapsed = activityElapsed(activity, undefined, t);
           return (
             <div className="bg-indigo-950/40 border border-indigo-400/30 rounded-lg p-2.5 flex items-center gap-3 my-1">
               <div className="w-10 h-10 bg-indigo-900/60 rounded flex items-center justify-center text-indigo-300 flex-shrink-0">
@@ -557,7 +559,7 @@ export function UserProfileCard({
               </div>
               <div className="overflow-hidden text-xs">
                 <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider">
-                  {activity.kind === "playing" ? "PLAYING" : activity.kind === "coding" ? "CODING" : activity.kind === "streaming" ? "STREAMING" : "ACTIVE IN"}
+                  {activity.kind === "playing" ? t("profile.playing") : activity.kind === "coding" ? t("profile.coding") : activity.kind === "streaming" ? t("profile.streaming") : t("profile.activeIn")}
                 </div>
                 <div className="font-semibold text-white truncate">{activity.name}</div>
                 {(activity.details || elapsed) && (
@@ -575,7 +577,7 @@ export function UserProfileCard({
           <p className={`profile-bio ${hasLongBio && !bioExpanded ? "clamped" : ""}`}>
             {member.bio && member.bio.trim()
               ? member.bio
-              : "No bio written yet."}
+              : t("profile.noBio")}
           </p>
           {hasLongBio && (
             <button
@@ -583,7 +585,7 @@ export function UserProfileCard({
               className="profile-bio-toggle-btn"
               onClick={() => setBioExpanded(!bioExpanded)}
             >
-              {bioExpanded ? "Collapse Bio" : "View Full Bio"}
+              {bioExpanded ? t("profile.collapseBio") : t("profile.viewFullBio")}
             </button>
           )}
         </div>
@@ -603,8 +605,8 @@ export function UserProfileCard({
                       type="button"
                       className="role-badge-remove"
                       style={{ ["--role-color" as string]: role.color }}
-                      aria-label={`Remove ${role.name}`}
-                      title={`Remove ${role.name}`}
+                      aria-label={t("profile.removeRole", { name: role.name })}
+                      title={t("profile.removeRole", { name: role.name })}
                       onClick={() => void toggleRole(role.id, false)}
                     >
                       <X size={10} strokeWidth={3} />
@@ -623,8 +625,8 @@ export function UserProfileCard({
                   <button
                     type="button"
                     className="profile-role-add"
-                    aria-label="Add role"
-                    title="Add role"
+                    aria-label={t("profile.addRole")}
+                    title={t("profile.addRole")}
                     aria-expanded={rolePickerOpen}
                     onClick={() => setRolePickerOpen((open) => !open)}
                   >
@@ -699,17 +701,17 @@ export function UserProfileCard({
 
         <div className="profile-section profile-note">
           <h4>
-            NOTE
-            {noteStatus === "saving" && <span className="profile-note-status"> · saving…</span>}
+            {t("profile.note")}
+            {noteStatus === "saving" && <span className="profile-note-status"> · {t("profile.saving")}</span>}
             {noteStatus === "error" && (
-              <span className="profile-note-status is-error"> · couldn't save</span>
+              <span className="profile-note-status is-error"> · {t("profile.couldntSave")}</span>
             )}
           </h4>
           <textarea
             className="profile-note-input"
-            placeholder={note === null ? "Loading…" : "Click to add a note"}
-            aria-label={`Your private note about ${member.displayName}`}
-            title="Only you can see this note"
+            placeholder={note === null ? t("common.loading") : t("profile.addNotePlaceholder")}
+            aria-label={t("profile.privateNoteAria", { name: member.displayName })}
+            title={t("profile.privateNoteTitle")}
             maxLength={256}
             rows={1}
             disabled={note === null}
@@ -735,9 +737,9 @@ export function UserProfileCard({
 
         <div className="profile-section profile-since">
           <Calendar size={13} className="shrink-0" />
-          <span>Member since {joinedDate}</span>
-          {!isSelf && presence === "offline" && lastSeenLabel(member.lastSeenAt) && (
-            <span>· {lastSeenLabel(member.lastSeenAt)}</span>
+          <span>{t("profile.memberSince", { date: joinedDate })}</span>
+          {!isSelf && presence === "offline" && lastSeenLabel(member.lastSeenAt, undefined, t) && (
+            <span>· {lastSeenLabel(member.lastSeenAt, undefined, t)}</span>
           )}
         </div>
         </div>
@@ -769,15 +771,15 @@ export function UserProfileCard({
                       setFriendLoading(false);
                     }
                   }}
-                  title="Click to remove friend"
+                  title={t("profile.removeFriend")}
                 >
                   {friendHover ? (
                     <>
-                      <UserMinus size={14} className="text-rose-400 shrink-0" /> Remove Friend
+                      <UserMinus size={14} className="text-rose-400 shrink-0" /> {t("profile.removeFriend")}
                     </>
                   ) : (
                     <>
-                      <UserCheck size={14} className="text-emerald-400 shrink-0" /> Friends
+                      <UserCheck size={14} className="text-emerald-400 shrink-0" /> {t("sidebar.friends")}
                     </>
                   )}
                 </button>
@@ -786,9 +788,9 @@ export function UserProfileCard({
                   type="button"
                   className="discord-btn secondary-gray flex items-center gap-1.5 text-xs justify-center flex-1 h-8 min-h-[32px] whitespace-nowrap text-[var(--lavender,#818cf8)] opacity-90 cursor-default"
                   disabled
-                  title="Friend request pending"
+                  title={t("friends.outgoingRequest")}
                 >
-                  <Clock size={14} className="shrink-0" /> Request Sent
+                  <Clock size={14} className="shrink-0" /> {t("friends.outgoingRequest")}
                 </button>
               ) : currentFriendStatus === "incoming" ? (
                 <button
@@ -813,9 +815,9 @@ export function UserProfileCard({
                       setFriendLoading(false);
                     }
                   }}
-                  title="Accept friend request"
+                  title={t("profile.acceptRequest")}
                 >
-                  <UserCheck size={14} className="shrink-0" /> {friendLoading ? "Accepting…" : "Accept Request"}
+                  <UserCheck size={14} className="shrink-0" /> {friendLoading ? t("friends.sending") : t("profile.acceptRequest")}
                 </button>
               ) : (
                 <button
@@ -840,9 +842,9 @@ export function UserProfileCard({
                       setFriendLoading(false);
                     }
                   }}
-                  title="Add as friend"
+                  title={t("friends.tab.add")}
                 >
-                  <UserPlus size={14} className="shrink-0" /> {friendLoading ? "Sending…" : "Add Friend"}
+                  <UserPlus size={14} className="shrink-0" /> {friendLoading ? t("friends.sending") : t("profile.sendFriendRequest")}
                 </button>
               )}
             </>

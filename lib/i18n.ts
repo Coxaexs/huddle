@@ -21,6 +21,9 @@
  *    `en_US`, `es-MX`, `q=abc`, `*`) and always answer with something usable.
  */
 
+import { EN_APP } from "./i18n-catalog/en";
+import { TR } from "./i18n-catalog/tr";
+
 // ---------------------------------------------------------------------------
 // Supported locales
 // ---------------------------------------------------------------------------
@@ -36,13 +39,14 @@
  * not "Dutch". `englishName` carries the exonym for logs, docs and search.
  */
 const LOCALE_INFO = {
-  en: { name: "English", englishName: "English" },
-  es: { name: "Español", englishName: "Spanish" },
-  de: { name: "Deutsch", englishName: "German" },
-  fr: { name: "Français", englishName: "French" },
-  "pt-BR": { name: "Português (Brasil)", englishName: "Portuguese (Brazil)" },
-  nl: { name: "Nederlands", englishName: "Dutch" },
-} as const satisfies Record<string, { name: string; englishName: string }>;
+  en: { name: "English", englishName: "English", complete: true },
+  tr: { name: "Türkçe", englishName: "Turkish", complete: true },
+  es: { name: "Español", englishName: "Spanish", complete: false },
+  de: { name: "Deutsch", englishName: "German", complete: false },
+  fr: { name: "Français", englishName: "French", complete: false },
+  "pt-BR": { name: "Português (Brasil)", englishName: "Portuguese (Brazil)", complete: false },
+  nl: { name: "Nederlands", englishName: "Dutch", complete: false },
+} as const satisfies Record<string, { name: string; englishName: string; complete: boolean }>;
 
 export type Locale = keyof typeof LOCALE_INFO;
 
@@ -59,11 +63,22 @@ export interface LocaleInfo {
   name: string;
   /** Exonym in English, for logs, search and docs. */
   englishName: string;
+  /**
+   * Whether every string has a translation. Only complete languages are picked
+   * automatically from the browser; a partial one (it covers the first few
+   * dozen strings) is still there to choose by hand.
+   */
+  complete: boolean;
 }
 
 /** Picker-ready list, in declaration order (English first). */
 export const LOCALES: readonly LocaleInfo[] = (Object.keys(LOCALE_INFO) as Locale[]).map(
   (code) => ({ code, ...LOCALE_INFO[code] }),
+);
+
+/** The languages with every string translated: the ones picked automatically. */
+export const COMPLETE_LOCALES: readonly Locale[] = LOCALES.filter((entry) => entry.complete).map(
+  (entry) => entry.code,
 );
 
 /**
@@ -82,20 +97,19 @@ export function isSupportedLocale(value: string): value is Locale {
  * Plural families. A family is a base id (`members.count`) whose strings live
  * under `<base>.<plural category>` (`members.count.one`, `members.count.other`).
  *
- * The base id is declared here rather than duplicated in the catalogs so there
- * is no count-less third copy of every sentence for translators to keep in sync.
+ * A family exists wherever English has a `<base>.other` string, so there is no
+ * list to keep in sync and no count-less third copy of every sentence.
  * `translate` derives the category from `vars.count` and treats a family called
  * without a count as `other`. Only the categories a shipped language actually
  * needs are written out: a category we have no string for (`few`, `many`,
  * `zero`, `two`) degrades to `other`, which is the same escape hatch CLDR
  * recommends for a language whose rules we have not caught up with.
  */
-const PLURAL_FAMILIES = ["members.count", "messages.count"] as const;
-
-export type PluralFamily = (typeof PLURAL_FAMILIES)[number];
-
-/** The variants every plural family has to provide in a complete catalog. */
-type PluralVariantKey = `${PluralFamily}.${"one" | "other"}`;
+export type PluralFamily = MessageKey extends infer K
+  ? K extends `${infer Base}.other`
+    ? Base
+    : never
+  : never;
 
 /**
  * English is the source of truth. `MessageKey` is `keyof typeof en`, so every
@@ -176,12 +190,15 @@ const en = {
   "errors.generic": "Something went wrong. Please try again.",
   "errors.network": "Check your connection and try again.",
 
-  // Plural families; see PLURAL_FAMILIES above.
+  // Plural families; see PluralFamily above.
   "members.count.one": "{count} member",
   "members.count.other": "{count} members",
   "messages.count.one": "{count} message",
   "messages.count.other": "{count} messages",
-} as const satisfies Record<string, string> & Record<PluralVariantKey, string>;
+
+  // Everything else, by area: lib/i18n-catalog/en/.
+  ...EN_APP,
+} as const satisfies Record<string, string>;
 
 /** Every id a catalog can hold. */
 export type MessageKey = keyof typeof en;
@@ -598,6 +615,7 @@ export type CatalogMap = Record<string, Partial<Record<MessageKey, string>> | un
  */
 const CATALOGS: CatalogMap & Record<Locale, Partial<Record<MessageKey, string>>> = {
   en,
+  tr: TR satisfies Record<MessageKey, string>,
   es,
   de,
   fr,
@@ -727,12 +745,16 @@ function parseAcceptLanguage(header: string): LanguagePreference[] {
  * the wildcard as "you pick", is both the common server behaviour and the only
  * reading that cannot surprise a German speaker with English.
  */
-export function pickLocale(acceptLanguage: string | null | undefined): Locale {
+export function pickLocale(
+  acceptLanguage: string | null | undefined,
+  /** Only these count (browser detection passes COMPLETE_LOCALES). */
+  only?: readonly Locale[],
+): Locale {
   if (!acceptLanguage) return DEFAULT_LOCALE;
   for (const preference of parseAcceptLanguage(acceptLanguage)) {
     if (preference.tag === "*") continue;
     const resolved = resolveLocale(preference.tag);
-    if (resolved) return resolved;
+    if (resolved && (!only || only.includes(resolved))) return resolved;
   }
   return DEFAULT_LOCALE;
 }
@@ -820,7 +842,7 @@ export function formatNumber(locale: Locale | string | null | undefined, value: 
  * id `messages.count` only says the key exists.
  */
 function keyCandidates(language: string, key: string, vars: TranslateVars | undefined): string[] {
-  const isFamily = (PLURAL_FAMILIES as readonly string[]).includes(key);
+  const isFamily = lookup(en, `${key}.other`) !== undefined;
   const count = vars?.count;
   if (typeof count !== "number" || !Number.isFinite(count)) {
     return isFamily ? [`${key}.other`, key] : [key];

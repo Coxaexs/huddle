@@ -1,0 +1,385 @@
+/* zombie theme: loaded only while it is active (app/lib/theme-css.ts).
+   Split out of the global stylesheets; edit the rules here. */
+
+/* ---- from theme-flavors.css ---- */
+/* The rest of Winamp and all of TeamSpeak 2 live in retro-skins.css. */
+
+/* Zombie: outbreak night -------------------------------------------------
+   Toxic green on rotting black, hazard tape under the header, dripping
+   Creepster titles, quarantine-report labels and fog creeping up the page. */
+:root[data-custom-theme-id="zombie"] {
+  --rail-bg: #070906;
+  --surface-2: #19200f;
+  --muted-2: #8a957c;
+  --faint: #5c6650;
+  --accent-strong: #9ad53b;
+  --accent-hi: #c4f06a;
+  --on-accent: #0a0d08;
+  --toxic: #9ad53b;
+  --zombie-blood: #8e1b12;
+  --font-display: "Creepster", "Pirata One", Georgia, serif;
+  --font-label: "Special Elite", "Courier New", monospace;
+  --ring: 0 0 0 2px rgba(154, 213, 59, 0.6);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, .7), 0 0 0 1px rgba(154, 213, 59, .07);
+}
+
+/* Grimy glass with a toxic glow from below and a dried blood stain up top. */
+:root[data-custom-theme-id="zombie"] .chat-panel {
+  background:
+    radial-gradient(90% 38% at 50% 112%, rgba(154, 213, 59, 0.16), transparent 70%),
+    radial-gradient(28% 18% at 94% 4%, rgba(142, 27, 18, 0.16), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .45 0 0 0 0 .2 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    var(--chat-bg) !important;
+  border-color: rgba(154, 213, 59, 0.2) !important;
+}
+
+/* Hazard tape under the channel header. */
+:root[data-custom-theme-id="zombie"] .chat-header {
+  border-bottom: 0 !important;
+  background-image: repeating-linear-gradient(-45deg, #e3c21c 0 10px, #111 10px 20px) !important;
+  background-size: 100% 5px !important;
+  background-repeat: no-repeat !important;
+  background-position: bottom !important;
+}
+
+/* Fog rolling along the floor of the window. */
+:root[data-custom-theme-id="zombie"] body::after {
+  content: "";
+  position: fixed;
+  left: -20%;
+  right: -20%;
+  bottom: 0;
+  height: 30vh;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 60% at 20% 100%, rgba(150, 190, 110, 0.10), transparent 70%),
+    radial-gradient(35% 50% at 60% 100%, rgba(170, 200, 130, 0.08), transparent 70%),
+    radial-gradient(30% 55% at 90% 100%, rgba(140, 180, 100, 0.09), transparent 70%);
+  animation: zombie-fog 26s ease-in-out infinite alternate;
+}
+
+:root[data-custom-theme-id="zombie"] .channel-heading strong {
+  font-size: 28px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .space-header h1 {
+  font-size: 25px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .channel.selected,
+:root[data-custom-theme-id="zombie"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.24), rgba(154, 213, 59, 0.03)) !important;
+  box-shadow: inset 3px 0 0 var(--toxic) !important;
+  color: #f0f7e4 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .composer {
+  background: rgba(14, 18, 11, 0.92) !important;
+  border-color: rgba(154, 213, 59, 0.26) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .composer:focus-within {
+  border-color: var(--toxic) !important;
+  box-shadow: 0 0 22px rgba(154, 213, 59, 0.22) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .message time {
+  font-family: var(--font-label);
+  color: #7d8a6c;
+}
+
+:root[data-custom-theme-id="zombie"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px var(--toxic), 0 0 14px rgba(154, 213, 59, 0.45) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .server-banner-header {
+  filter: saturate(0.55) sepia(0.25) hue-rotate(35deg) brightness(0.85);
+}
+
+:root[data-custom-theme-id="zombie"] ::selection {
+  background: var(--toxic);
+  color: #0a0d08;
+}
+
+:root[data-custom-theme-id="zombie"] ::-webkit-scrollbar-thumb {
+  background: #2f4219;
+  border-radius: 999px;
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile {
+  background: linear-gradient(180deg, #141a10, #0d110a) !important;
+  border: 1px solid rgba(154, 213, 59, 0.22) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile.is-speaking {
+  border-color: var(--toxic) !important;
+  animation: zombie-twitch 0.9s steps(2) infinite;
+}
+
+:root[data-custom-theme-id="zombie"] .stage-tile figcaption,
+:root[data-custom-theme-id="zombie"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-label) !important;
+  color: #dfe8d2 !important;
+}
+
+:root[data-custom-theme-id="zombie"] .vctrl-btn {
+  background: #161d11 !important;
+  border: 1px solid rgba(154, 213, 59, 0.3) !important;
+  color: #c4f06a !important;
+}
+
+:root[data-custom-theme-id="zombie"] .vctrl-btn:hover {
+  border-color: var(--toxic) !important;
+}
+
+/* Menus: a grimy field-report card. */
+:root[data-custom-theme-id="zombie"] .user-menu {
+  color: #dfe8d2;
+  background:
+    radial-gradient(120% 60% at 50% 120%, rgba(154, 213, 59, 0.12), transparent 70%),
+    linear-gradient(180deg, #121810 0%, #0a0d08 100%);
+  border: 1px solid rgba(154, 213, 59, 0.32);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 26px rgba(154, 213, 59, 0.12);
+}
+
+:root[data-custom-theme-id="zombie"] .bot-menu .user-menu-head {
+  background: #121810;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-head {
+  border-bottom-color: rgba(154, 213, 59, 0.25);
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-head strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 19px;
+  letter-spacing: 0.04em;
+  color: var(--toxic);
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu button:hover {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.24), rgba(154, 213, 59, 0.05));
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu button.danger {
+  color: #e05a4a;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu-divider {
+  background: repeating-linear-gradient(-45deg, #e3c21c 0 5px, #111 5px 10px);
+  height: 3px;
+}
+
+:root[data-custom-theme-id="zombie"] .user-menu input[type="range"] {
+  accent-color: #9ad53b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="zombie"] body::after { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="zombie"] .stage-tile.is-speaking {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--toxic), 0 0 22px rgba(154, 213, 59, 0.4) !important;
+  }
+}
+
+/* ---- from theme-panels.css ---- */
+:root[data-custom-theme-id="zombie"] {
+  --sp-frame: rgba(154, 213, 59, 0.45);
+  --sp-side:
+    radial-gradient(120% 40% at 50% 110%, rgba(110, 160, 40, 0.16), transparent 70%),
+    linear-gradient(180deg, #080a07 0%, #10150c 100%);
+  --sp-main:
+    radial-gradient(80% 40% at 80% 0%, rgba(142, 27, 18, 0.12), transparent 70%),
+    linear-gradient(180deg, #0c100a 0%, #0a0d08 100%);
+  --sp-ink: #dfe8d2;
+  --sp-muted: #8f9c80;
+  --sp-card: rgba(25, 32, 15, 0.85);
+  --sp-card-edge: rgba(154, 213, 59, 0.22);
+  --sp-hover: rgba(154, 213, 59, 0.12);
+  --sp-field: #070906;
+  --sp-field-edge: rgba(154, 213, 59, 0.35);
+  --sp-accent: #9ad53b;
+  --sp-on-accent: #0a0d08;
+  --sp-radius: 2px;
+  --sp-title: #9ad53b;
+}
+
+/* ==========================================================================
+   Settings: Zombie — the quarantine terminal
+   ========================================================================== */
+
+:root[data-custom-theme-id="zombie"] .modal.settings-modal {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(154, 213, 59, 0.12) !important;
+}
+
+/* Hazard tape across the top of the page. */
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-topbar {
+  border-bottom: 0 !important;
+  background: repeating-linear-gradient(-45deg, #e3c21c 0 10px, #111 10px 20px) bottom / 100% 6px no-repeat;
+  padding-bottom: 22px;
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-topbar h2 {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  font-size: 30px !important;
+  letter-spacing: 0.04em;
+  color: var(--toxic) !important;
+  text-shadow: 0 0 14px rgba(154, 213, 59, 0.35);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-group-title::before {
+  content: "// ";
+  color: var(--zombie-blood);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-nav-btn.active {
+  background: linear-gradient(90deg, rgba(154, 213, 59, 0.9), rgba(154, 213, 59, 0.55)) !important;
+  box-shadow: 0 0 16px rgba(154, 213, 59, 0.25);
+}
+
+:root[data-custom-theme-id="zombie"] .settings-modal .settings-sidebar-user::after {
+  content: "INFECTED";
+  margin-left: auto;
+  padding: 1px 5px;
+  font: 700 9px/1.4 var(--font-label);
+  letter-spacing: 0.1em;
+  color: #e05a4a;
+  border: 1px solid #e05a4a;
+  transform: rotate(-6deg);
+}
+
+/* Zombie: a quarantine file — hazard tape for a banner, a mugshot, a stamp. */
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: #0d110b;
+  background:
+    radial-gradient(120% 50% at 50% 115%, rgba(154, 213, 59, 0.1), transparent 70%),
+    linear-gradient(180deg, #121810 0%, #0a0d08 100%) !important;
+  color: #dfe8d2 !important;
+  border: 1px solid rgba(154, 213, 59, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(154, 213, 59, 0.12) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 80px !important;
+  border-radius: 3px 3px 0 0;
+  background:
+    repeating-linear-gradient(-45deg, #e3c21c 0 14px, #111 14px 28px) bottom / 100% 12px no-repeat,
+    radial-gradient(60% 90% at 70% 20%, rgba(142, 27, 18, 0.55), transparent 70%),
+    linear-gradient(180deg, #1c2614 0%, #0d110b 100%) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner::before {
+  content: "QUARANTINE FILE";
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font: 700 10px/1 var(--font-label);
+  letter-spacing: 0.18em;
+  color: rgba(223, 232, 210, 0.75);
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  filter: sepia(0.25) hue-rotate(40deg) saturate(0.85);
+  box-shadow: 0 0 0 3px #0d110b, 0 0 0 4px rgba(154, 213, 59, 0.6) !important;
+}
+
+/* The stamp. */
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-header::after {
+  content: "INFECTED";
+  position: absolute;
+  right: 16px;
+  top: 96px;
+  padding: 2px 8px;
+  font: 700 13px/1.3 var(--font-label);
+  letter-spacing: 0.16em;
+  color: rgba(224, 90, 74, 0.85);
+  border: 2px solid rgba(224, 90, 74, 0.85);
+  border-radius: 3px;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  font-family: var(--font-display) !important;
+  font-weight: 400 !important;
+  font-size: 24px !important;
+  letter-spacing: 0.03em;
+  color: var(--toxic) !important;
+  text-shadow: 0 0 12px rgba(154, 213, 59, 0.35);
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: rgba(25, 32, 15, 0.85) !important;
+  border: 1px dashed rgba(154, 213, 59, 0.3) !important;
+  border-radius: 2px !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  color: #dfe8d2 !important;
+  background: #151c10 !important;
+  border: 1px solid rgba(154, 213, 59, 0.35) !important;
+  border-radius: 2px !important;
+  font-family: var(--font-label) !important;
+}
+
+:root[data-custom-theme-id="zombie"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  background: rgba(154, 213, 59, 0.18) !important;
+  color: #fff !important;
+}
+
+/* Zombie: a field radio — hazard tape on top, toxic readout, metal keys. */
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-bar {
+  margin: 0 8px;
+  padding: 14px 10px 9px;
+  background:
+    repeating-linear-gradient(-45deg, #e3c21c 0 7px, #111 7px 14px) top / 100% 5px no-repeat,
+    linear-gradient(180deg, #151c10 0%, #0d110b 100%) !important;
+  border: 1px solid rgba(154, 213, 59, 0.3) !important;
+  border-bottom: 0 !important;
+  border-radius: 4px 4px 0 0 !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-name {
+  font-family: var(--font-label);
+  color: #dfe8d2;
+  letter-spacing: 0.04em;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-status {
+  font-family: var(--font-label);
+  color: var(--toxic) !important;
+  text-shadow: 0 0 8px rgba(154, 213, 59, 0.45);
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-status .mini-voice-dot {
+  background: var(--toxic) !important;
+  box-shadow: 0 0 8px var(--toxic);
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-signal-btn {
+  color: var(--toxic) !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-btn:hover {
+  border-color: rgba(154, 213, 59, 0.6) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-btn.on {
+  color: var(--toxic) !important;
+  border-color: rgba(154, 213, 59, 0.7) !important;
+}
+
+:root[data-custom-theme-id="zombie"]:not(#_) .mini-voice-leave {
+  color: #ff8a7a !important;
+  border-color: rgba(142, 27, 18, 0.8) !important;
+  background: linear-gradient(180deg, #3a1410 0%, #200a08 100%) !important;
+}

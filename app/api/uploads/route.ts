@@ -81,12 +81,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const bytes = await upload.arrayBuffer();
   // The declared type only picked the size limit above. What gets stored and
   // served is what the bytes actually are, and it must match the family the
   // client claimed so a "PDF" cannot turn out to be something else.
   // Note: archives (ZIP, RAR, etc.) are never unzipped or decompressed on the server.
-  const sniffed = sniffUpload(bytes.slice(0, 512), upload.name);
+  // Only the first 512 bytes are copied out; the file itself goes to R2 as
+  // the parsed form holds it, not as a second copy of up to 40 MB.
+  const sniffed = sniffUpload(await upload.slice(0, 512).arrayBuffer(), upload.name);
   const claimed = isPdf
     ? "pdf"
     : isClip
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const overQuota = await consumeUploadQuota(db, user, bytes.byteLength);
+  const overQuota = await consumeUploadQuota(db, user, upload.size);
   if (overQuota) return overQuota;
   const fallbackName = `${
     sniffed.family === "pdf" ? "document" : sniffed.family === "file" ? "file" : sniffed.family
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
     .slice(-100);
   const key = `${crypto.randomUUID()}--${safeName || fallbackName}`;
   const contentType = sniffed.contentType;
-  await bucket.put(key, bytes, {
+  await bucket.put(key, upload, {
     httpMetadata: { contentType },
     // Read back by the media admin panel to show who posted a file.
     customMetadata: { uploader: user.id },
