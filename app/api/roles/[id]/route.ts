@@ -4,6 +4,7 @@ import { publishStructureChange } from "@/lib/hub-client";
 import { ALL_PERMISSIONS, roleAuthority, roleRefusal } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
+import { normalizeRoleIcon } from "@/lib/role-icon";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ function forbidden(): Response {
 async function loadRole(db: D1Database, id: string) {
   return db
     .prepare(
-      "SELECT id, server_id, name, color, permissions, position FROM roles WHERE id = ?",
+      "SELECT id, server_id, name, color, icon, permissions, position FROM roles WHERE id = ?",
     )
     .bind(id)
     .first<{
@@ -26,12 +27,13 @@ async function loadRole(db: D1Database, id: string) {
       server_id: string;
       name: string;
       color: string;
+      icon: string | null;
       permissions: number;
       position: number;
     }>();
 }
 
-/** Edit a role's name, colour, permissions or position. */
+/** Edit a role's name, colour, icon, permissions or position. */
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -59,10 +61,13 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     color?: string;
+    icon?: string | null;
     permissions?: number;
     position?: number;
   };
   const name = body.name?.trim().slice(0, 40) || role.name;
+  const iconResult = body.icon === undefined ? { ok: true as const, icon: role.icon } : normalizeRoleIcon(body.icon);
+  if (!iconResult.ok) return Response.json({ error: iconResult.error }, { status: 400 });
   const color = /^#[0-9a-fA-F]{6}$/.test(body.color || "")
     ? (body.color as string)
     : role.color;
@@ -80,9 +85,9 @@ export async function PATCH(
 
   await db
     .prepare(
-      "UPDATE roles SET name = ?, color = ?, permissions = ?, position = ? WHERE id = ?",
+      "UPDATE roles SET name = ?, color = ?, icon = ?, permissions = ?, position = ? WHERE id = ?",
     )
-    .bind(name, color, permissions, position, id)
+    .bind(name, color, iconResult.icon, permissions, position, id)
     .run();
 
   await recordAudit(db, {

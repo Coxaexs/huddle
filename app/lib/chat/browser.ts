@@ -3,6 +3,7 @@
 import { playPresetSound } from "@/lib/soundboard-presets";
 import { stripTextStyle } from "@/lib/text-style";
 import { showPageNotification } from "../web-push";
+import { streamerModeActive } from "../streamer-mode";
 
 /** Opens a one-shot file dialog and resolves with the chosen image. */
 export function pickImageFile(): Promise<File | null> {
@@ -29,6 +30,8 @@ export function showNotification(rawTitle: string, rawBody: string, tag?: string
   const body = stripTextStyle(rawBody);
   try {
     if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
+    // A popup with someone's message in it would show up on stream.
+    if (streamerModeActive()) return;
     // Don't pop a notification while the user is actively focused on the app; the
     // in-app unread badge is the cue there.
     if (typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus()) return;

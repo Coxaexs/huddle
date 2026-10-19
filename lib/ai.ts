@@ -213,6 +213,8 @@ export async function askGemini(options: {
   history: AiTurn[];
   question: string;
   fetchImpl?: typeof fetch;
+  /** Replaces the chat system prompt, for one-off jobs such as translating. */
+  system?: string;
 }): Promise<{ text: string; model: string }> {
   const doFetch = options.fetchImpl ?? fetch;
   const contents = [...options.history, { role: "user" as const, text: options.question }].map(
@@ -229,7 +231,7 @@ export async function askGemini(options: {
           method: "POST",
           headers: { "content-type": "application/json", "x-goog-api-key": options.apiKey },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt() }] },
+            systemInstruction: { parts: [{ text: options.system ?? systemPrompt() }] },
             contents,
             generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.6 },
           }),
@@ -280,6 +282,8 @@ export async function askClaude(options: {
   history: AiTurn[];
   question: string;
   fetchImpl?: typeof fetch;
+  /** Replaces the chat system prompt, for one-off jobs such as translating. */
+  system?: string;
 }): Promise<{ text: string; model: string }> {
   const client = new Anthropic({
     apiKey: options.apiKey,
@@ -293,7 +297,7 @@ export async function askClaude(options: {
     response = await client.messages.create({
       model,
       max_tokens: CLAUDE_MAX_TOKENS,
-      system: systemPrompt(),
+      system: options.system ?? systemPrompt(),
       // Short chat answers don't need reasoning; skipping it keeps replies fast.
       thinking: { type: "disabled" },
       output_config: { effort: "low" },
@@ -347,12 +351,13 @@ export async function askAi(
   history: AiTurn[],
   question: string,
   fetchImpl?: typeof fetch,
+  system?: string,
 ): Promise<{ text: string; model: string }> {
   const anthropicKey = keys.anthropicKey?.trim();
   const geminiKey = keys.geminiKey?.trim();
   if (anthropicKey) {
     try {
-      return await askClaude({ apiKey: anthropicKey, model: keys.anthropicModel, history, question, fetchImpl });
+      return await askClaude({ apiKey: anthropicKey, model: keys.anthropicModel, history, question, fetchImpl, system });
     } catch (error) {
       if (!geminiKey || (error instanceof AiError && error.status === 422)) throw error;
     }
@@ -364,6 +369,7 @@ export async function askAi(
     history,
     question,
     fetchImpl,
+    system,
   });
 }
 

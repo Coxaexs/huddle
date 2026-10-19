@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   // Escape LIKE wildcards so "_" and "%" in a search match themselves.
   const searchPattern = q ? `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
   const memberSelect = `SELECT ${userColumns("u")},
-                               m.nickname, m.timeout_until, m.joined_at, m.invite_code,
+                               m.nickname, m.avatar_url AS server_avatar_url, m.timeout_until, m.joined_at, m.invite_code,
                                i.created_by AS invite_creator_id,
                                inv_creator.display_name AS invite_creator_name,
                                inv_creator.username AS invite_creator_username

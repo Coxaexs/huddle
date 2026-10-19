@@ -5,6 +5,77 @@ import type { PublicRole } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { Tab } from "./types";
+import { useEffect, useRef, useState } from "react";
+import { roleIconIsImage } from "@/lib/role-icon";
+import { useI18n } from "../../lib/i18n-context";
+
+/** Emoji or uploaded image beside the names of this role's members. */
+function RoleIconEditor({
+  role,
+  updateRoleIcon,
+  uploadRoleIcon,
+}: {
+  role: PublicRole;
+  updateRoleIcon: (icon: string | null) => Promise<void>;
+  uploadRoleIcon: (file: File) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const isImage = roleIconIsImage(role.icon);
+  const [emoji, setEmoji] = useState(isImage ? "" : role.icon || "");
+  useEffect(() => setEmoji(roleIconIsImage(role.icon) ? "" : role.icon || ""), [role.id, role.icon]);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div className="role-icon-editor" style={{ margin: "12px 0 20px", display: "grid", gap: "8px" }}>
+      <h3>{t("roleIcon.title")}</h3>
+      <p className="pane-subtitle" style={{ margin: 0 }}>{t("roleIcon.desc")}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+        <span className="role-icon" style={{ width: 28, height: 28, fontSize: 22 }} aria-hidden="true">
+          {role.icon ? isImage ? <img src={role.icon} alt="" style={{ width: 28, height: 28 }} /> : role.icon : "—"}
+        </span>
+        <input
+          type="text"
+          className="discord-search-input"
+          style={{ width: 120 }}
+          placeholder={t("roleIcon.emoji")}
+          aria-label={t("roleIcon.emoji")}
+          value={emoji}
+          maxLength={16}
+          onChange={(e) => setEmoji(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && emoji.trim()) void updateRoleIcon(emoji.trim());
+          }}
+        />
+        <button
+          type="button"
+          className="discord-btn primary-indigo"
+          disabled={!emoji.trim() || emoji.trim() === role.icon}
+          onClick={() => void updateRoleIcon(emoji.trim())}
+        >
+          {t("roleIcon.save")}
+        </button>
+        <button type="button" className="discord-btn" onClick={() => fileRef.current?.click()}>
+          {t("roleIcon.upload")}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void uploadRoleIcon(file);
+          }}
+        />
+        {role.icon && (
+          <button type="button" className="discord-btn" onClick={() => void updateRoleIcon(null)}>
+            {t("roleIcon.remove")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function ServerRolesTab({
   tab,
@@ -17,6 +88,8 @@ export function ServerRolesTab({
   setActiveRole,
   members,
   toggleRolePermission,
+  updateRoleIcon,
+  uploadRoleIcon,
 }: {
   tab: Tab;
   roleSearch: string;
@@ -28,6 +101,8 @@ export function ServerRolesTab({
   setActiveRole: React.Dispatch<React.SetStateAction<PublicRole | null>>;
   members: Member[];
   toggleRolePermission: (flag: PermissionFlag) => Promise<void>;
+  updateRoleIcon: (icon: string | null) => Promise<void>;
+  uploadRoleIcon: (file: File) => Promise<void>;
 }) {
   return (
     <>
@@ -87,6 +162,9 @@ export function ServerRolesTab({
                       <Shield size={16} />
                     </span>
                     <strong>{role.name}</strong>
+                    {role.icon && (
+                      <span className="role-icon" aria-hidden="true">{roleIconIsImage(role.icon) ? <img src={role.icon} alt="" /> : role.icon}</span>
+                    )}
                   </div>
                   <div className="role-members-col flex items-center gap-1">
                     <span>{members.length}</span>
@@ -106,6 +184,7 @@ export function ServerRolesTab({
 
             {activeRole && canManageRolesEffective && (
               <div className="active-role-permissions-editor">
+                <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
                 <h3>Edit Permissions for {activeRole.name}</h3>
                 <div className="permissions-toggle-grid">
                   {PERMISSION_INFO.map((info) => {

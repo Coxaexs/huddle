@@ -629,6 +629,36 @@ export function ServerSettingsDialog({
     }
   };
 
+  const updateRoleIcon = async (icon: string | null) => {
+    if (!activeRole || !canManageRolesEffective) return;
+    try {
+      const res = await apiFetch<{ servers: PublicServer[] }>(`/api/roles/${activeRole.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ icon }),
+      });
+      const updatedServer = res.servers.find((s) => s.id === server.id);
+      if (updatedServer) {
+        setRoles(updatedServer.roles);
+        setActiveRole(updatedServer.roles.find((r) => r.id === activeRole.id) || null);
+      }
+      onServerUpdated();
+      setNotice(icon ? "Role icon saved." : "Role icon removed.");
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not change the role icon.");
+    }
+  };
+
+  const uploadRoleIcon = async (file: File) => {
+    try {
+      const form = new FormData();
+      form.append("image", file);
+      const upload = await apiFetch<{ key: string }>("/api/uploads", { method: "POST", body: form });
+      await updateRoleIcon(`/hangout/api/uploads/${encodeURIComponent(upload.key)}`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "That image did not upload.");
+    }
+  };
+
   const handleDeleteRole = (role: PublicRole) => {
     if (!canManageRolesEffective) return;
     onRequestConfirm({
@@ -1144,6 +1174,8 @@ export function ServerSettingsDialog({
         setActiveRole={setActiveRole}
         members={members}
         toggleRolePermission={toggleRolePermission}
+        updateRoleIcon={updateRoleIcon}
+        uploadRoleIcon={uploadRoleIcon}
       />
 
         {/* Tab 4: Bans (SS 4) */}
@@ -1180,6 +1212,8 @@ export function ServerSettingsDialog({
         invites={invites}
         setNotice={setNotice}
         revokeInvite={revokeInvite}
+        canManageServer={canManageServer}
+        onServerUpdated={onServerUpdated}
       />
 
         {/* Audit log: a real trail of moderation and structure changes. */}

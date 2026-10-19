@@ -43,6 +43,7 @@ export interface HoffleChannelRow {
   category_id?: string | null;
   created_at?: string;
   bitrate?: number | null;
+  nsfw?: number | null;
 }
 
 export interface HoffleServerRow {
@@ -53,6 +54,8 @@ export interface HoffleServerRow {
   created_by?: string | null;
   created_at?: string;
   banner_url?: string | null;
+  verification_level?: number | null;
+  vanity_code?: string | null;
 }
 
 export interface HoffleRoleRow {
@@ -60,6 +63,7 @@ export interface HoffleRoleRow {
   server_id: string;
   name: string;
   color: string;
+  icon?: string | null;
   permissions: number;
   position: number;
   created_at?: string;
@@ -247,7 +251,8 @@ export async function serializeRole(
     color: colorToInt(role.color),
     hoist: false,
     icon: null,
-    unicode_emoji: null,
+    // Uploaded role images have no Discord CDN hash; emoji icons map directly.
+    unicode_emoji: role.icon && !role.icon.startsWith("/") ? role.icon : null,
     position: role.position ?? 0,
     // Hoffle stores permissions as a 32-bit int; Discord wants the bitfield as
     // a decimal string because the full set no longer fits in a double.
@@ -307,7 +312,7 @@ export async function serializeChannel(
       ? await snowflakeFor("channel", channel.category_id)
       : null,
     permission_overwrites: [],
-    nsfw: false,
+    nsfw: Boolean(channel.nsfw),
     flags: 0,
   };
 
@@ -481,14 +486,14 @@ export async function serializeGuild(
     afk_timeout: 300,
     widget_enabled: false,
     widget_channel_id: null,
-    verification_level: 0,
+    verification_level: Math.max(0, Math.min(3, server.verification_level ?? 0)),
     default_message_notifications: 0,
     explicit_content_filter: 0,
     // @everyone must be present or clients cannot resolve base permissions.
     roles: roles.length ? roles : [everyoneRole(id)],
     emojis: parts.emojis ?? [],
     stickers: [],
-    features: [],
+    features: server.vanity_code ? ["VANITY_URL"] : [],
     mfa_level: 0,
     application_id: null,
     system_channel_id: null,
@@ -496,7 +501,7 @@ export async function serializeGuild(
     rules_channel_id: null,
     max_presences: null,
     max_members: 250000,
-    vanity_url_code: null,
+    vanity_url_code: server.vanity_code || null,
     description: null,
     premium_tier: 0,
     premium_subscription_count: 0,

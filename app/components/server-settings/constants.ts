@@ -25,6 +25,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   "invite.revoke": "revoked an invite",
   "moderation.raid_on": "enabled raid lockdown",
   "moderation.raid_off": "disabled raid lockdown",
+  "moderation.verification": "changed the verification level",
+  "server.vanity": "changed the vanity invite",
   "message.purge": "bulk-purged messages in",
   "report.resolve": "resolved a moderation report",
   "server.import": "imported server structure from",

@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ShieldAlert, Trash2, Flag, CheckCircle2, XCircle } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Trash2, Flag, CheckCircle2, XCircle } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
 import { apiFetch } from "../../lib/client";
 import type { ModerationReport } from "@/app/api/reports/route";
 import type { Tab } from "./types";
+import { useI18n } from "../../lib/i18n-context";
+import { VERIFICATION_LEVELS } from "@/lib/verification-level";
+
+const LEVEL_KEYS = ["none", "low", "medium", "high"] as const;
 
 export function ServerSafetyTab({
   tab,
@@ -22,7 +26,9 @@ export function ServerSafetyTab({
   onServerUpdated: () => void;
   setNotice: (msg: string) => void;
 }) {
+  const { t } = useI18n();
   const [raidMode, setRaidMode] = useState<boolean>(Boolean(server.raidMode));
+  const [verificationLevel, setVerificationLevel] = useState<number>(server.verificationLevel ?? 0);
   const [purgeChannelId, setPurgeChannelId] = useState<string>(
     () => server.channels.find((c) => c.kind !== "voice" && c.kind !== "stage")?.id || "",
   );
@@ -36,6 +42,9 @@ export function ServerSafetyTab({
   useEffect(() => {
     setRaidMode(Boolean(server.raidMode));
   }, [server.raidMode]);
+  useEffect(() => {
+    setVerificationLevel(server.verificationLevel ?? 0);
+  }, [server.verificationLevel]);
 
   const loadReports = useCallback(async () => {
     setLoadingReports(true);
@@ -75,6 +84,22 @@ export function ServerSafetyTab({
     } catch (err) {
       setRaidMode(!next);
       setNotice(err instanceof Error ? err.message : "Could not toggle raid mode.");
+    }
+  };
+
+  const changeVerificationLevel = async (next: number) => {
+    const previous = verificationLevel;
+    setVerificationLevel(next);
+    try {
+      await apiFetch(`/api/servers/${server.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ verificationLevel: next }),
+      });
+      onServerUpdated();
+      setNotice(t("verification.saved"));
+    } catch (err) {
+      setVerificationLevel(previous);
+      setNotice(err instanceof Error ? err.message : t("verification.failed"));
     }
   };
 
@@ -141,6 +166,34 @@ export function ServerSafetyTab({
           disabled={!canManageServer && !canModerate}
           onChange={(e) => void toggleRaidMode(e.target.checked)}
         />
+      </div>
+
+      {/* Verification Level */}
+      <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <ShieldCheck size={16} className="text-emerald-400" /> {t("serverSafety.verification")}
+          </h3>
+          <p className="text-xs opacity-75 mt-1">{t("verification.desc")}</p>
+        </div>
+        <div className="space-y-2" role="radiogroup" aria-label={t("serverSafety.verification")}>
+          {VERIFICATION_LEVELS.map((level) => (
+            <label key={level} className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="verification-level"
+                className="mt-1"
+                checked={verificationLevel === level}
+                disabled={!canManageServer}
+                onChange={() => void changeVerificationLevel(level)}
+              />
+              <span>
+                <strong>{t(`verification.${LEVEL_KEYS[level]}`)}</strong>
+                <span className="block text-xs opacity-70">{t(`verification.${LEVEL_KEYS[level]}.desc`)}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* Bulk Message Purge */}

@@ -18,6 +18,7 @@ export type Tab =
   | "voice"
   | "tts"
   | "password"
+  | "privacy"
   | "invites"
   | "appearance"
   | "notifications"

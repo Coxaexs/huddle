@@ -3,6 +3,7 @@ import { findOrCreateDm, listDms, setDmHidden, setDmPinned } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
 import { limitUser, SOCIAL_RATE_LIMITS } from "@/lib/rate-limit";
 import { isRestrictedAccount } from "@/lib/trust";
+import { DM_POLICY_REFUSAL, mayStartDm } from "@/lib/dm-policy";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -67,6 +68,10 @@ export async function POST(request: Request) {
       .bind(user.id, targetId)
       .first();
     if (!existing) {
+      // The other person's "who can message me" setting.
+      if (!(await mayStartDm(db, user, targetId))) {
+        return Response.json({ error: DM_POLICY_REFUSAL }, { status: 403 });
+      }
       const restricted = isRestrictedAccount(user);
       if (restricted) {
         const known = await db

@@ -1,6 +1,7 @@
 "use client";
 
 import { createSpeakingStore } from "../lib/speaking-store";
+import { setStreamerSharing } from "../lib/streamer-mode";
 import { installIdlePause, setIdlePauseCallActive } from "../lib/idle-pause";
 import { inTauriShell, installTauriHotkeys } from "../lib/tauri-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -557,9 +558,17 @@ export function useVoice({
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
   // Use the server's echoed state so failed sends/reconnects cannot leave a stale toggle.
-  const important = Boolean(channelId && connectionId && rooms[channelId]?.find(
-    (person) => person.connectionId === connectionId,
-  )?.important);
+  const ownSeat = channelId && connectionId
+    ? rooms[channelId]?.find((person) => person.connectionId === connectionId)
+    : undefined;
+  const important = Boolean(ownSeat?.important);
+  /** Priority Speaker: the hub sets both from this member's PRIORITY_SPEAKER. */
+  const prioritySpeaker = Boolean(ownSeat?.prioritySpeaker);
+  const priorityAllowed = Boolean(ownSeat?.priorityAllowed);
+  const togglePrioritySpeaker = useCallback(() => {
+    if (!channelId || !priorityAllowed) return;
+    send({ t: "voice-state", prioritySpeaker: !prioritySpeaker });
+  }, [channelId, priorityAllowed, prioritySpeaker, send]);
   const toggleImportant = useCallback(() => {
     if (!channelId || muted || deafened || forcedMute) return;
     send({ t: "voice-state", important: !important });
@@ -608,6 +617,10 @@ export function useVoice({
     ];
   }, [remoteStreams, sfuStreams, roster]);
   const [screenSharing, setScreenSharing] = useState(false);
+  // Streamer Mode's "automatically while I share my screen".
+  useEffect(() => {
+    setStreamerSharing(screenSharing);
+  }, [screenSharing]);
   const [screenShareAudio, setScreenShareAudioState] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("huddle:screenshare-audio") !== "false";
@@ -2979,6 +2992,9 @@ export function useVoice({
   return {
     important,
     toggleImportant,
+    prioritySpeaker,
+    priorityAllowed,
+    togglePrioritySpeaker,
     tableSeatOrder,
     tableSeatPans,
     setTableSeatPans,

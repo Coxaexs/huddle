@@ -342,7 +342,7 @@ async function resolveGuild(
   }
   const row = await context.db
     .prepare(
-      "SELECT id, name, icon, color, created_by, created_at, banner_url FROM servers WHERE id = ?",
+      "SELECT id, name, icon, color, created_by, created_at, banner_url, verification_level, vanity_code FROM servers WHERE id = ?",
     )
     .bind(nativeId)
     .first<Record<string, unknown>>();
@@ -382,7 +382,7 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
   if (sub === "channels") {
     const rows = await context.db
       .prepare(
-        `SELECT id, server_id, name, kind, topic, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, position, category_id, created_at, nsfw
          FROM channels WHERE server_id = ? ORDER BY position, created_at`,
       )
       .bind(nativeGuildId)
@@ -398,7 +398,7 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
     if (context.request.method === "GET") {
       const rows = await context.db
         .prepare(
-          `SELECT id, server_id, name, color, permissions, position, created_at
+          `SELECT id, server_id, name, color, icon, permissions, position, created_at
            FROM roles WHERE server_id = ? ORDER BY position`,
         )
         .bind(nativeGuildId)
@@ -474,7 +474,7 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
       };
       const existing = await context.db
         .prepare(
-          "SELECT id, server_id, name, color, permissions, position, created_at FROM roles WHERE id = ?",
+          "SELECT id, server_id, name, color, icon, permissions, position, created_at FROM roles WHERE id = ?",
         )
         .bind(nativeRoleId)
         .first<HoffleRoleRow>();
@@ -991,9 +991,9 @@ async function guildInviteRoute(
         uses: number;
       }>(),
     db
-      .prepare("SELECT id, name, icon FROM servers WHERE id = ?")
+      .prepare("SELECT id, name, icon, vanity_code FROM servers WHERE id = ?")
       .bind(nativeGuildId)
-      .first<{ id: string; name: string; icon: string }>(),
+      .first<{ id: string; name: string; icon: string; vanity_code: string | null }>(),
     db
       .prepare(
         `SELECT id, name, created_at FROM channels
@@ -1031,7 +1031,7 @@ async function guildInviteRoute(
         splash: null,
         banner: null,
         description: null,
-        vanity_url_code: null,
+        vanity_url_code: guild?.vanity_code || null,
       },
       channel: channel
         ? { id: channelSnowflake, name: channel.name, type: ChannelType.GuildText }

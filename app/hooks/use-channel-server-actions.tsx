@@ -350,6 +350,20 @@ export function useChannelServerActions({
     });
   }
 
+  /** Age-restricted channels ask members to confirm they are 18+ before opening. */
+  async function toggleChannelNsfw(channel: PublicChannel) {
+    try {
+      const data = await apiFetch<{ servers: PublicServer[] }>(
+        `/api/channels/${channel.id}`,
+        { method: "PATCH", body: JSON.stringify({ nsfw: !channel.nsfw }) },
+      );
+      setServers(data.servers);
+      setNotice(channel.nsfw ? `#${channel.name} is no longer age-restricted.` : `#${channel.name} is now age-restricted.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not change the age restriction.");
+    }
+  }
+
   async function editChannelBitrate(channel: PublicChannel) {
     const current = Math.round(clampVoiceBitrate(channel.bitrate) / 1000);
     showCustomPrompt({
@@ -777,6 +791,7 @@ export function useChannelServerActions({
     renameChannel,
     editChannelTopic,
     editChannelSlowmode,
+    toggleChannelNsfw,
     editChannelBitrate,
     toggleChannelSoundboard,
     editChannelRegion,

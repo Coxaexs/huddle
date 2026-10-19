@@ -76,6 +76,10 @@ interface Attachment {
   muted: boolean;
   deafened: boolean;
   important?: boolean;
+  /** Priority Speaker switched on (only ever true while priorityAllowed). */
+  prioritySpeaker?: boolean;
+  /** Holds PRIORITY_SPEAKER in this room's server; decided on join. */
+  priorityAllowed?: boolean;
   /** Stage rooms: this seat is asking for the floor. */
   handRaised?: boolean;
   /** When the hand went up (hub clock), so hosts can take hands in order. */
@@ -1011,6 +1015,9 @@ export class HuddleHub extends DurableObject {
           attachment.speakAllowed = true;
         }
         attachment.handRaised = false;
+        // Like the floor, decided from the database rather than the client.
+        attachment.prioritySpeaker = false;
+        attachment.priorityAllowed = await this.seatMayPrioritySpeak(info.serverId, attachment.userId);
         attachment.muted = resolveSeatMute({
           kind: info.kind,
           speakAllowed: attachment.speakAllowed,
@@ -1038,6 +1045,7 @@ export class HuddleHub extends DurableObject {
 
       case "voice-leave": {
         attachment.important = false;
+        attachment.prioritySpeaker = false;
         const previous = attachment.voiceChannelId;
         const joinedAt = attachment.voiceJoinedAt;
         attachment.voiceChannelId = null;
@@ -1074,6 +1082,9 @@ export class HuddleHub extends DurableObject {
       case "voice-state": {
         if (typeof event.important === "boolean" && attachment.voiceChannelId) {
           attachment.important = event.important;
+        }
+        if (typeof event.prioritySpeaker === "boolean" && attachment.voiceChannelId) {
+          attachment.prioritySpeaker = event.prioritySpeaker && attachment.priorityAllowed === true;
         }
         if (typeof event.muted === "boolean") {
           // A stage seat cannot unmute itself out of the audience. Without this
@@ -1667,6 +1678,12 @@ export class HuddleHub extends DurableObject {
     return can(this.db, userId, serverId, Permission.SPEAK).catch(() => false);
   }
 
+  /** Whether this member holds PRIORITY_SPEAKER in that server. */
+  private async seatMayPrioritySpeak(serverId: string, userId: string): Promise<boolean> {
+    if (!this.db || !serverId) return false;
+    return can(this.db, userId, serverId, Permission.PRIORITY_SPEAKER).catch(() => false);
+  }
+
   /** Whether this seat is in a stage and not allowed to be heard. */
   private async seatIsSilenced(attachment: Attachment): Promise<boolean> {
     if (!attachment.voiceChannelId) return false;
@@ -1719,6 +1736,8 @@ export class HuddleHub extends DurableObject {
           deafened: attachment.deafened,
           serverMuted: this.forcedMutes.has(attachment.userId),
           important: Boolean(attachment.important) && !attachment.muted && !attachment.deafened && !this.forcedMutes.has(attachment.userId),
+          prioritySpeaker: (attachment.prioritySpeaker && !this.forcedMutes.has(attachment.userId)) || undefined,
+          priorityAllowed: attachment.priorityAllowed || undefined,
           cameraStreamId: attachment.cameraStreamId,
           screenStreamId: attachment.screenStreamId,
           screenStartedAt: attachment.screenStreamId ? attachment.screenStartedAt ?? null : null,

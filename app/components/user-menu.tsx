@@ -59,6 +59,10 @@ interface UserMenuProps {
   onUnblock?: () => void;
   /** Change this person's nickname in the current server, when allowed. */
   onNickname?: () => void;
+  /** Pick your own picture for the current server. */
+  onServerAvatar?: () => void;
+  /** Go back to the account picture here (yours, or theirs as a moderator). */
+  onRemoveServerAvatar?: () => void;
   /** Time this person out (minutes; 0 lifts it), shown to moderators. */
   onTimeout?: (minutes: number) => void;
   /** When their current timeout ends, if they have one. */
@@ -104,6 +108,8 @@ export function UserMenu({
   onBlock,
   onUnblock,
   onNickname,
+  onServerAvatar,
+  onRemoveServerAvatar,
   onTimeout,
   timeoutUntil = null,
   extra,
@@ -168,6 +174,16 @@ export function UserMenu({
       {onNickname && (
         <button type="button" role="menuitem" onClick={onNickname}>
           {isSelf ? "Change nickname" : "Edit nickname"}
+        </button>
+      )}
+      {onServerAvatar && (
+        <button type="button" role="menuitem" onClick={onServerAvatar}>
+          {t("serverAvatar.change")}
+        </button>
+      )}
+      {onRemoveServerAvatar && (
+        <button type="button" role="menuitem" onClick={onRemoveServerAvatar}>
+          {t("serverAvatar.remove")}
         </button>
       )}
 

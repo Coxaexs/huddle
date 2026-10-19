@@ -269,6 +269,7 @@ export function renderChatShell(s: ChatShellViewState) {
 
       <MemberPanel
         membersOpen={membersOpen}
+        activeServer={inDmHome ? null : activeServer}
         inDmHome={inDmHome}
         activeChannelId={activeChannelId}
         voice={voice}

@@ -15,6 +15,7 @@ import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
+import { blockIfUnverified } from "@/lib/verification-level";
 import { stripTextStyle } from "@/lib/text-style";
 
 export const dynamic = "force-dynamic";
@@ -613,6 +614,8 @@ export async function postMessageAs(
       }
       const timedOut = await blockIfTimedOut(db, channelId, user.id);
       if (timedOut) return timedOut;
+      const unverified = await blockIfUnverified(db, channel.server_id, user);
+      if (unverified) return unverified;
 
       // The hoffle.online guestbook takes visitors through /api/guestbook;
       // through here, only its moderators may post.

@@ -16,6 +16,9 @@ export interface Sound {
 export interface VoiceApi extends TableControls {
   important: boolean;
   toggleImportant: () => void;
+  prioritySpeaker: boolean;
+  priorityAllowed: boolean;
+  togglePrioritySpeaker: () => void;
   channelId: string | null;
   muted: boolean;
   forcedMute: boolean;

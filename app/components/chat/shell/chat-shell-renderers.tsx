@@ -446,6 +446,7 @@ export function withShellRenderers(s: ChatShellViewState) {
         {unread[channel.id]?.unread && <span className="unread-pill" />}
         {channelKindIcon(channel.kind, 16, "channel-hash shrink-0")}
         <span>{channel.name}</span>
+        {channel.nsfw && <span className="nsfw-badge" title="Age-restricted">18+</span>}
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>
         )}

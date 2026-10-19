@@ -5,6 +5,7 @@ import { type Message, type DmSummary } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { formatClientDateTime } from "../../lib/chat/format";
 import { apiFetch } from "../../lib/client";
+import { pickImageFile } from "../../lib/chat/browser";
 import { formatDuration, type VoiceClip } from "../../components/voice-message";
 import { type Theme, findThemeById, applyThemeToDocument, exportThemeCode } from "@/lib/themes";
 import type { useShellHistory } from "./use-shell-history";
@@ -475,6 +476,39 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     });
   }
 
+  /**
+   * Your picture in the active server only: pick one, or clear it to go back
+   * to the account picture. Moderators can clear someone else's.
+   */
+  async function setServerAvatar(userId: string, clear: boolean) {
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    const serverId = activeServerId;
+    try {
+      let avatarKey: string | null = null;
+      if (!clear) {
+        const file = await pickImageFile();
+        if (!file) return;
+        const form = new FormData();
+        form.append("image", file);
+        avatarKey = (await apiFetch<{ key: string }>("/api/uploads", { method: "POST", body: form })).key;
+      }
+      const result = await apiFetch<{ avatarUrl: string | null }>(`/api/members/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ serverId, avatarKey }),
+      });
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === userId
+            ? { ...m, serverAvatarUrl: result.avatarUrl, avatarUrl: result.avatarUrl || m.globalAvatarUrl || null }
+            : m,
+        ),
+      );
+      setNotice(clear ? "Server avatar removed." : "Server avatar updated.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not change the server avatar.");
+    }
+  }
+
   /** Moderator action: time a member out of the active server (0 lifts it). */
   async function timeoutMember(userId: string, minutes: number) {
     if (!activeServerId || activeServerId === DM_HOME) return;
@@ -708,7 +742,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     applyTheme, wrapSelection, pendingInvite, answerInvite, startGame, sendWink, sendNudge,
     handleShareThemeToChat, postBotMessage, setDmClosed, togglePinDm, openDm, createGroupDm,
     addToGroupDm, renameGroupDm, removeFromGroupDm, leaveGroupDm, deleteMessage, togglePin,
-    saveVoicePref, moderateMember, editNickname, timeoutMember, moveMember, pressBotComponent,
+    saveVoicePref, moderateMember, editNickname, setServerAvatar, timeoutMember, moveMember, pressBotComponent,
     openMusicDashboard, sendVoiceMessage, sendText, sendTextComposer,
   };
 }

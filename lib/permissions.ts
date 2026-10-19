@@ -69,6 +69,8 @@ export const Permission = {
   DEAFEN_MEMBERS: 1 << 27,
   /** Move members between voice channels. */
   MOVE_MEMBERS: 1 << 28,
+  /** Be heard over everyone else: other voices are lowered while they talk. */
+  PRIORITY_SPEAKER: 1 << 29,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -252,6 +254,12 @@ export const PERMISSION_INFO: Array<{
     flag: Permission.MOVE_MEMBERS,
     label: "Move Members",
     description: "Move members between different voice channels.",
+    category: "Voice",
+  },
+  {
+    flag: Permission.PRIORITY_SPEAKER,
+    label: "Priority Speaker",
+    description: "Turn on Priority Speaker in voice to lower everyone else's volume while they talk.",
     category: "Voice",
   },
   {

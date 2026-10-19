@@ -47,7 +47,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     channelMenu, channelPrefs, closeTutorial, composerRef, createContactGroup, createGroupDm,
     declineIncomingCall, deleteChannel, dialogCallback, dialogCancel, dialogDismissRef,
     dialogOptions, directoryOpen, dms, dndBotActions, editChannelBitrate, editChannelRegion,
-    editChannelSlowmode, editChannelTopic, editHistoryId, editNickname, emojiMap, eventsOpen,
+    editChannelSlowmode, toggleChannelNsfw, editChannelTopic, editHistoryId, editNickname, setServerAvatar, emojiMap, eventsOpen,
     floatingStream, folderIdOf, folderMenu, forwardTarget, friendUserIds, globalSearchOpen,
     groupDialog, groupDmMenu, handleAcceptFriend, handleAddFriend, handleBlockUser,
     handleForwardMessage, handleRemoveFriend, handleShareThemeToChat, handleUnblockUser, hub,
@@ -112,6 +112,7 @@ export function renderChatOverlays(v: ShellRenderState) {
           spatialOff={livingRoom.spatialOff}
           roomShape={livingRoom.open && livingRoom.settings.spatial ? livingRoom.theme : "table"}
           deafened={voice.deafened}
+          speakingStore={voice.speakingStore}
           preferenceFor={(id) => {
             const pref = prefFor(id);
             if (id === "bot:music") {
@@ -200,6 +201,7 @@ export function renderChatOverlays(v: ShellRenderState) {
         timeoutMember={timeoutMember}
         canManageNicknames={canManageNicknames}
         editNickname={editNickname}
+        setServerAvatar={setServerAvatar}
       />
 
       {groupDmMenu && (
@@ -282,6 +284,7 @@ export function renderChatOverlays(v: ShellRenderState) {
         renameChannel={renameChannel}
         editChannelTopic={editChannelTopic}
         editChannelSlowmode={editChannelSlowmode}
+        toggleChannelNsfw={toggleChannelNsfw}
         editChannelBitrate={editChannelBitrate}
         toggleChannelSoundboard={toggleChannelSoundboard}
         editChannelRegion={editChannelRegion}

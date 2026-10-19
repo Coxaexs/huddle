@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -862,6 +862,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["disabled_modules", "ALTER TABLE users ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT '[]'"],
     // Earned achievements the member pinned to their profile (JSON id list).
     ["achievement_showcase", "ALTER TABLE users ADD COLUMN achievement_showcase TEXT NOT NULL DEFAULT '[]'"],
+    // Who may start a new conversation with this person (lib/dm-policy.ts).
+    ["dm_policy", "ALTER TABLE users ADD COLUMN dm_policy TEXT NOT NULL DEFAULT 'everyone'"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -950,6 +952,16 @@ async function migrate(db: D1Database): Promise<void> {
   if (!channelColumns.has("rtc_region")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN rtc_region TEXT NOT NULL DEFAULT 'auto'").run();
   }
+  // Age-restricted: members confirm they are 18+ before the channel opens.
+  if (!channelColumns.has("nsfw")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN nsfw INTEGER NOT NULL DEFAULT 0").run();
+  }
+
+  // A role's icon beside member names: an emoji or an uploaded image path.
+  const roleColumns = await columnNames(db, "roles");
+  if (!roleColumns.has("icon")) {
+    await db.prepare("ALTER TABLE roles ADD COLUMN icon TEXT").run();
+  }
 
   const pollColumns = await columnNames(db, "polls");
   if (!pollColumns.has("is_private")) {
@@ -965,6 +977,10 @@ async function migrate(db: D1Database): Promise<void> {
     ["description", "ALTER TABLE servers ADD COLUMN description TEXT NOT NULL DEFAULT ''"],
     ["disabled_modules", "ALTER TABLE servers ADD COLUMN disabled_modules TEXT NOT NULL DEFAULT '[]'"],
     ["raid_mode", "ALTER TABLE servers ADD COLUMN raid_mode INTEGER NOT NULL DEFAULT 0"],
+    // What an account needs before it may post here (lib/verification-level.ts).
+    ["verification_level", "ALTER TABLE servers ADD COLUMN verification_level INTEGER NOT NULL DEFAULT 0"],
+    // The server's custom invite code; an invites row with this code exists too.
+    ["vanity_code", "ALTER TABLE servers ADD COLUMN vanity_code TEXT"],
   ] as const) {
     if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
   }
@@ -1039,6 +1055,10 @@ async function migrate(db: D1Database): Promise<void> {
   // Timeouts: until this ISO time the member can read but not post, react or speak.
   if (!memberColumns.has("timeout_until")) {
     await db.prepare("ALTER TABLE server_members ADD COLUMN timeout_until TEXT").run();
+  }
+  // Per-server avatar, shown instead of the account picture in this server.
+  if (!memberColumns.has("avatar_url")) {
+    await db.prepare("ALTER TABLE server_members ADD COLUMN avatar_url TEXT").run();
   }
 
   // Feature and support requests submitted by users directly to Kiwi and Flo.

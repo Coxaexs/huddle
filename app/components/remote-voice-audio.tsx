@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { SpatialAudioPlayback, personalTableLayout, type RoomShapeName } from "../lib/spatial-audio";
 import type { HeardFrom } from "../lib/living-room";
 import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../lib/head-tracking";
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
+import type { SpeakingStore } from "../lib/speaking-store";
+import { PRIORITY_DUCK, talkingPriorityKey } from "../lib/priority-speaker";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false }: {
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false, speakingStore }: {
   streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
@@ -31,7 +33,20 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   roomShape?: RoomShapeName;
   /** The Living Room's "spatial voices" switch is off: play everything flat, table mode included. */
   spatialOff?: boolean;
+  /** Who is talking, so a Priority Speaker can lower everyone else. */
+  speakingStore?: SpeakingStore;
 }) {
+  // A string, so this re-renders only when a Priority Speaker starts or stops,
+  // not on every 200 ms change in who is talking.
+  const subscribe = useCallback(
+    (listener: () => void) => speakingStore?.subscribe(listener) ?? (() => undefined),
+    [speakingStore],
+  );
+  const talkingPriority = useSyncExternalStore(
+    subscribe,
+    () => (speakingStore ? talkingPriorityKey(participants, speakingStore.get()) : ""),
+    () => "",
+  );
   const playback = useRef<SpatialAudioPlayback | null>(null);
   const status = useRef(onHeadTracking);
   status.current = onHeadTracking;
@@ -61,6 +76,7 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   useEffect(() => { playback.current?.setRoomShape(roomShape); }, [roomShape]);
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
+    const priority = new Set(talkingPriority ? talkingPriority.split(",") : []);
     playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream, kind }) => {
       const person = participants.find((p) => p.connectionId === connectionId);
       const pref = person ? preferenceFor(person.id) : { volume: 1, muted: false };
@@ -88,6 +104,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         const tracksDisabled = !stream.getAudioTracks().some((t) => t.enabled);
         muted = deafened || Boolean(streamPref?.muted) || tracksDisabled;
       }
+      // Everyone but the Priority Speakers themselves steps back while they talk.
+      if (priority.size && !priority.has(connectionId)) volume *= PRIORITY_DUCK;
 
       return {
         key: `${connectionId}:${stream.id}`, stream,
@@ -102,6 +120,6 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         wet: seat?.wet,
       };
     }), !spatialOff && (enabled || Boolean(livingRoom)) || Boolean(tv));
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff]);
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff, talkingPriority]);
   return null;
 }

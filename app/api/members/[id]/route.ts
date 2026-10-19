@@ -6,6 +6,7 @@ import { can, canAny, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { MAX_TIMEOUT_MINUTES } from "@/lib/timeouts";
+import { normalizeProfileImage } from "@/lib/profile-media";
 
 export const dynamic = "force-dynamic";
 
@@ -161,9 +162,10 @@ export async function POST(
 }
 
 /**
- * Set or clear a per-server nickname. Anyone may set their own; changing
- * someone else's needs MANAGE_NICKNAMES, and owners and global admins can only
- * be renamed by themselves.
+ * Set or clear a per-server nickname or avatar. Anyone may set their own;
+ * changing someone else's nickname, or removing their server avatar, needs
+ * MANAGE_NICKNAMES, and owners and global admins can only be changed by
+ * themselves. Only the fields sent are touched.
  */
 export async function PATCH(
   request: Request,
@@ -184,14 +186,19 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     serverId?: string;
     nickname?: string | null;
+    /** A fresh upload's key, or null to go back to the account picture. */
+    avatarKey?: string | null;
+    avatarUrl?: string | null;
   };
   const serverId = body.serverId || "";
+  const changingNickname = "nickname" in body;
+  const changingAvatar = "avatarKey" in body || "avatarUrl" in body;
   const nickname =
     typeof body.nickname === "string" ? body.nickname.trim().slice(0, 32) || null : null;
 
   const membership = await db
     .prepare(
-      `SELECT m.nickname, u.display_name, u.is_admin, s.created_by
+      `SELECT m.nickname, m.avatar_url, u.display_name, u.is_admin, s.created_by
          FROM server_members m
          JOIN users u ON u.id = m.user_id
          JOIN servers s ON s.id = m.server_id
@@ -200,6 +207,7 @@ export async function PATCH(
     .bind(serverId, targetId)
     .first<{
       nickname: string | null;
+      avatar_url: string | null;
       display_name: string;
       is_admin: number;
       created_by: string | null;
@@ -223,6 +231,32 @@ export async function PATCH(
     }
   }
 
+  let avatarUrl = membership.avatar_url;
+  if (changingAvatar) {
+    const raw = body.avatarKey
+      ? `/hangout/api/uploads/${encodeURIComponent(body.avatarKey.slice(0, 240))}`
+      : body.avatarUrl ?? null;
+    // A moderator may take a server avatar down, but never put one up for someone.
+    if (raw && targetId !== user.id) {
+      return Response.json(
+        { error: "Only they can choose their own server avatar." },
+        { status: 403 },
+      );
+    }
+    const image = await normalizeProfileImage(db, raw, "Server avatar");
+    if (!image.ok) return Response.json({ error: image.error }, { status: 400 });
+    avatarUrl = image.url;
+    await db
+      .prepare("UPDATE server_members SET avatar_url = ? WHERE server_id = ? AND user_id = ?")
+      .bind(avatarUrl, serverId, targetId)
+      .run();
+  }
+
+  if (!changingNickname) {
+    await publishStructureChange(serverId);
+    return Response.json({ ok: true, nickname: membership.nickname, avatarUrl });
+  }
+
   await db
     .prepare("UPDATE server_members SET nickname = ? WHERE server_id = ? AND user_id = ?")
     .bind(nickname, serverId, targetId)
@@ -241,5 +275,5 @@ export async function PATCH(
     });
   }
   await publishStructureChange(serverId);
-  return Response.json({ ok: true, nickname });
+  return Response.json({ ok: true, nickname, avatarUrl });
 }

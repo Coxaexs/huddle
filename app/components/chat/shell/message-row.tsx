@@ -15,6 +15,8 @@ import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSq
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
+import { MessageTranslation } from "../../message-translation";
+import { RoleIcon } from "../../role-icon";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
@@ -554,6 +556,7 @@ function MessageRowImpl({
                             >
                               <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
                             </strong>
+                            {!inDmHome && <RoleIcon member={author} server={activeServer} />}
                             {!inDmHome && activeServer && author && (
                               <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
                             )}
@@ -699,6 +702,7 @@ function MessageRowImpl({
                             onMessageLink={openMessageLink}
                           />
                         )}
+                        <MessageTranslation messageId={String(message.id)} />
 
                         {!message.kind &&
                           (message.payload?.embeds?.length ||

@@ -6,6 +6,8 @@ import { normalizeDisabledModules } from "@/lib/features";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { deleteServerData, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { clampVerificationLevel } from "@/lib/verification-level";
+import { normalizeVanityCode, setVanityCode } from "@/lib/vanity";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,8 @@ export async function PATCH(
     description?: string;
     disabledModules?: unknown;
     raidMode?: boolean;
+    verificationLevel?: number;
+    vanityCode?: string | null;
   };
 
   const server = await db
@@ -58,6 +62,8 @@ export async function PATCH(
       description?: string;
       disabled_modules?: string;
       raid_mode?: number;
+      verification_level?: number;
+      vanity_code?: string | null;
     }>();
   if (!server) {
     return Response.json({ error: "That server is gone." }, { status: 404 });
@@ -70,10 +76,30 @@ export async function PATCH(
     ? JSON.stringify(normalizeDisabledModules(body.disabledModules))
     : (server.disabled_modules || "[]");
   const raidMode = body.raidMode !== undefined ? (body.raidMode ? 1 : 0) : (server.raid_mode ?? 0);
+  const verificationLevel = body.verificationLevel !== undefined
+    ? clampVerificationLevel(body.verificationLevel)
+    : (server.verification_level ?? 0);
+
+  if (body.vanityCode !== undefined) {
+    const vanity = normalizeVanityCode(body.vanityCode);
+    if (!vanity.ok) return Response.json({ error: vanity.error }, { status: 400 });
+    const previous = server.vanity_code || null;
+    const refused = await setVanityCode(db, id, user.id, vanity.code, previous);
+    if (refused) return Response.json({ error: refused }, { status: 409 });
+    if (vanity.code !== previous) {
+      await recordAudit(db, {
+        serverId: id,
+        actor: user,
+        action: "server.vanity",
+        targetName: server.name,
+        detail: vanity.code ? `Vanity invite set to ${vanity.code}` : "Vanity invite removed",
+      });
+    }
+  }
 
   await db
     .prepare(
-      "UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ?, is_public = ?, description = ?, disabled_modules = ?, raid_mode = ? WHERE id = ?",
+      "UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ?, is_public = ?, description = ?, disabled_modules = ?, raid_mode = ?, verification_level = ? WHERE id = ?",
     )
     .bind(
       body.name?.trim().slice(0, 50) || server.name,
@@ -85,6 +111,7 @@ export async function PATCH(
       description,
       disabledModules,
       raidMode,
+      verificationLevel,
       id,
     )
     .run();
@@ -96,6 +123,16 @@ export async function PATCH(
       action: raidMode ? "moderation.raid_on" : "moderation.raid_off",
       targetName: server.name,
       detail: raidMode ? "Enabled raid lockdown" : "Disabled raid lockdown",
+    });
+  }
+
+  if (verificationLevel !== (server.verification_level ?? 0)) {
+    await recordAudit(db, {
+      serverId: id,
+      actor: user,
+      action: "moderation.verification",
+      targetName: server.name,
+      detail: `Verification level ${server.verification_level ?? 0} → ${verificationLevel}`,
     });
   }
 

@@ -19,8 +19,10 @@ import {
   Trash2,
   ShieldAlert,
   SmilePlus,
+  Languages,
 } from "lucide-react";
 import { useI18n } from "@/app/lib/i18n-context";
+import { translateMessage } from "@/app/lib/message-translate";
 
 interface MessageContextMenuAction {
   label: string;
@@ -93,7 +95,7 @@ export function MessageContextMenu({
   onReport,
   onAddReaction,
 }: MessageContextMenuProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(() => {
     const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -211,6 +213,12 @@ export function MessageContextMenu({
       {menuItem({ label: t("menu.createThread"), icon: MessageCircle, onSelect: onThread })}
       {separator()}
       {menuItem({ label: t("menu.copyText"), icon: Copy, onSelect: onCopyText })}
+      {messageContent.trim() &&
+        menuItem({
+          label: t("menu.translate"),
+          icon: Languages,
+          onSelect: () => void translateMessage(String(messageId), locale),
+        })}
       {menuItem({
         label: isPinned ? t("menu.unpinMessage") : t("menu.pinMessage"),
         icon: Pin,

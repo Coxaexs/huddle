@@ -236,9 +236,10 @@ export async function DELETE(request: Request) {
     );
   }
 
-  await db
-    .prepare("UPDATE invites SET revoked = 1 WHERE code = ?")
-    .bind(code)
-    .run();
+  await db.batch([
+    db.prepare("UPDATE invites SET revoked = 1 WHERE code = ?").bind(code),
+    // Revoking a server's vanity code from the invite list retires it there too.
+    db.prepare("UPDATE servers SET vanity_code = NULL WHERE vanity_code = ?").bind(code),
+  ]);
   return Response.json({ ok: true });
 }

@@ -208,6 +208,8 @@ export function publicUser(user: User): PublicUser {
 /** A server_members row joined onto its user, as the member list reads it. */
 export interface MemberRow extends User {
   nickname?: string | null;
+  /** server_members.avatar_url: this server's picture, when the member set one. */
+  server_avatar_url?: string | null;
   timeout_until?: string | null;
   joined_at?: string | null;
   invite_code?: string | null;
@@ -218,8 +220,9 @@ export interface MemberRow extends User {
 
 /**
  * Someone as another member sees them in a server. A per-server nickname
- * replaces displayName (the account-wide name moves to globalName), and an
- * invisible status is masked unless the viewer is that person.
+ * replaces displayName (the account-wide name moves to globalName), a
+ * per-server avatar replaces avatarUrl the same way, and an invisible status
+ * is masked unless the viewer is that person.
  */
 export function memberFromRow(
   row: MemberRow,
@@ -228,11 +231,15 @@ export function memberFromRow(
 ): Member {
   const profile = profileFields(row);
   const nickname = row.nickname?.trim() || null;
+  const serverAvatarUrl = row.server_avatar_url || null;
   return {
     ...profile,
     displayName: nickname || profile.displayName,
     globalName: profile.displayName,
     nickname,
+    avatarUrl: serverAvatarUrl || profile.avatarUrl,
+    globalAvatarUrl: profile.avatarUrl ?? null,
+    serverAvatarUrl,
     lastSeenAt: row.last_seen_at,
     createdAt: row.created_at,
     isAdmin: Boolean(row.is_admin),

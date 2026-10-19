@@ -104,7 +104,7 @@ export function InvitesTab({
               <ul className="invite-list">
                 {invites.map((invite) => (
                   <li key={invite.code}>
-                    <code>{invite.code}</code>
+                    <code data-streamer-hide>{invite.code}</code>
                     {(invite.defaultTheme || invite.defaultServerId) && (
                       <span className="invite-defaults-tag">
                         {[

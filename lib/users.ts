@@ -173,6 +173,10 @@ export interface Member {
   globalName?: string;
   /** Per-server nickname, if this member set one in the current server. */
   nickname?: string | null;
+  /** The account-wide picture; avatarUrl is this server's when one is set. */
+  globalAvatarUrl?: string | null;
+  /** Per-server avatar, if this member set one in the current server. */
+  serverAvatarUrl?: string | null;
   /** While set (an ISO time in the future), this member is timed out here. */
   timeoutUntil?: string | null;
   avatar: string;

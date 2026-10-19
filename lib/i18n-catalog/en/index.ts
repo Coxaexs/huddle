@@ -23,6 +23,7 @@ import { features } from "./features";
 import { admin } from "./admin";
 import { landing } from "./landing";
 import { commands } from "./commands";
+import { safety } from "./safety";
 
 export const EN_APP = {
   ...auth,
@@ -44,4 +45,5 @@ export const EN_APP = {
   ...admin,
   ...landing,
   ...commands,
+  ...safety,
 } as const;

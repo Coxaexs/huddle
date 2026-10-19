@@ -21,6 +21,8 @@ export interface ChannelRow {
   soundboard?: number;
   /** Voice rooms: preferred voice server region ("auto", "nl", "de"). */
   rtc_region?: "auto" | "nl" | "de";
+  /** 1 when the channel is age-restricted. */
+  nsfw?: number;
   position: number;
   category_id: string | null;
   created_at: string;
@@ -38,6 +40,7 @@ interface RoleRow {
   server_id: string;
   name: string;
   color: string;
+  icon?: string | null;
   permissions: number;
   position: number;
 }
@@ -56,6 +59,8 @@ export interface ServerRow {
   description?: string | null;
   disabled_modules?: string | null;
   raid_mode?: number;
+  verification_level?: number;
+  vanity_code?: string | null;
 }
 
 export interface PublicChannel {
@@ -71,6 +76,8 @@ export interface PublicChannel {
   soundboard?: boolean;
   /** Voice channels: preferred voice server region ("auto", "nl", "de"). */
   rtcRegion?: "auto" | "nl" | "de";
+  /** Age-restricted: members confirm they are 18+ before it opens. */
+  nsfw?: boolean;
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -86,6 +93,8 @@ export interface PublicRole {
   id: string;
   name: string;
   color: string;
+  /** An emoji, or an uploaded image path (see lib/role-icon.ts). */
+  icon?: string | null;
   permissions: number;
   position: number;
 }
@@ -102,6 +111,10 @@ export interface PublicServer {
   description?: string;
   disabledModules?: string[];
   raidMode?: boolean;
+  /** 0 none, 1 verified email, 2 + account 5 min old, 3 + member 10 min (lib/verification-level.ts). */
+  verificationLevel?: number;
+  /** The server's custom invite code, if it set one. */
+  vanityCode?: string | null;
   channels: PublicChannel[];
   categories: PublicCategory[];
   roles: PublicRole[];
@@ -117,6 +130,7 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     kind: isChannelKind(channel.kind) ? channel.kind : "text",
     topic: channel.topic || "",
     slowmode: (channel as { slowmode?: number }).slowmode || 0,
+    ...(channel.nsfw ? { nsfw: true } : {}),
     ...(channelKindInfo(channel.kind).voice
       ? {
           bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate),
@@ -243,7 +257,7 @@ export async function listServers(
           .all(),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, soundboard, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, soundboard, nsfw, position, category_id, created_at
            FROM channels WHERE server_id != ?1 AND ${filter}
           ORDER BY position ASC, created_at ASC`,
     ),
@@ -255,7 +269,7 @@ export async function listServers(
     ),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, color, permissions, position
+        `SELECT id, server_id, name, color, icon, permissions, position
            FROM roles WHERE server_id != ?1 AND ${filter}
           ORDER BY position DESC, name ASC`,
     ),
@@ -282,6 +296,7 @@ export async function listServers(
       id: row.id,
       name: row.name,
       color: row.color,
+      icon: row.icon || null,
       permissions: row.permissions,
       position: row.position,
     });
@@ -308,6 +323,8 @@ export async function listServers(
       ...(server.description !== undefined ? { description: server.description || "" } : {}),
       ...(server.disabled_modules !== undefined ? { disabledModules } : {}),
       ...(server.raid_mode !== undefined ? { raidMode: Boolean(server.raid_mode) } : {}),
+      ...(server.verification_level !== undefined ? { verificationLevel: server.verification_level || 0 } : {}),
+      ...(server.vanity_code !== undefined ? { vanityCode: server.vanity_code || null } : {}),
       channels: channelsByServer.get(server.id) || [],
       categories: categoriesByServer.get(server.id) || [],
       roles: rolesByServer.get(server.id) || [],

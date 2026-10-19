@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { StreamerModeBadge } from "./streamer-mode-badge";
 import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check, User } from "lucide-react";
 import { Avatar } from "./avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "./cosmetics";
@@ -148,6 +149,7 @@ export function UserFooter({
         </div>
         <div className="user-footer-info">
           <span className="user-footer-name"><StyledName name={user.displayName} style={user.profileStyle} /></span>
+          <StreamerModeBadge />
           <span className="user-footer-status">
             <StyledText text={customStatus || presenceLabel} />
           </span>

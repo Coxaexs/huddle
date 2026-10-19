@@ -27,6 +27,7 @@ import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
+import { blockIfUnverified } from "@/lib/verification-level";
 import { publicMessage } from "@/app/api/messages/route";
 
 export const dynamic = "force-dynamic";
@@ -133,6 +134,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     const timedOut = await blockIfTimedOut(db, channelId, user.id);
     if (timedOut) return timedOut;
+    const unverified = await blockIfUnverified(db, channel.server_id, user);
+    if (unverified) return unverified;
     if (
       channelKindInfo(channel.kind).moderatorOnlyPosting &&
       !body.threadId &&

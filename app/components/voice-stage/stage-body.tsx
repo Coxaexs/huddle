@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Megaphone, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity, Ear, Play, Pause, Square } from "lucide-react";
+import { Mic, Megaphone, Crown, Hand, MicOff, Volume2, Volume1, VolumeX, Monitor, Maximize2, Minimize2, Users, EyeOff, Eye, Activity, Ear, Play, Pause, Square } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { Avatar } from "../avatar";
 import { VoiceConnectionModal } from "../chat/voice-connection-modal";
@@ -670,6 +670,7 @@ export function StageBody({
                   </span>
                   {seatTime(person, "tile-voice-time")}
                   {person.important && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Speaking important"><Megaphone size={13} /> Important</span>}
+                  {person.prioritySpeaker && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Priority Speaker: others are quieter while they talk"><Crown size={13} /> Priority</span>}
                   {person.muted && !person.bot && (
                     <span
                       className="tile-muted"

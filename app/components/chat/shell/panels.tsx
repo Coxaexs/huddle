@@ -43,6 +43,7 @@ import type { Dispatch, SetStateAction, RefObject } from "react";
 import type { VoiceParticipant, ClientEvent, RecordingState } from "@/lib/protocol";
 import type { PublicEvent } from "@/lib/events";
 import type { PublicCategory } from "@/lib/servers";
+import { RoleIcon } from "../../role-icon";
 import type { MsnContacts } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../../../hooks/use-msn-extras";
 
@@ -1287,6 +1288,7 @@ export function ThreadPanel({
 
 export function MemberPanel({
   membersOpen,
+  activeServer,
   inDmHome,
   activeChannelId,
   voice,
@@ -1341,6 +1343,8 @@ export function MemberPanel({
   openProfile: (member: Member, e?: React.MouseEvent) => void;
   queueHoverCard: (member: Member | null, anchor?: HTMLElement) => void;
   roleColorFor: (member: Member | undefined) => string | null;
+  /** For role icons beside names. */
+  activeServer?: PublicServer | null;
   presenceOf: (member: Member) => PresenceStatus | "offline";
   user: PublicUser;
   myCustomStatus: string | null;
@@ -1527,6 +1531,7 @@ export function MemberPanel({
               <strong style={{ color: roleColorFor(member) || undefined }}>
                 <StyledName name={member.displayName} style={member.profileStyle} />
               </strong>
+              <RoleIcon member={member} server={activeServer} />
               <PrideBadges badges={member.prideBadges} mini />
               {activeUntil(member.timeoutUntil) && (
                 <span
@@ -1579,6 +1584,7 @@ export function MemberPanel({
               <strong style={{ color: roleColorFor(member) || undefined }}>
                 <StyledName name={member.displayName} style={member.profileStyle} />
               </strong>
+              <RoleIcon member={member} server={activeServer} />
               <PrideBadges badges={member.prideBadges} mini />
               {activeUntil(member.timeoutUntil) && (
                 <span

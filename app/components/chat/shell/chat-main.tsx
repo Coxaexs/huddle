@@ -17,6 +17,7 @@ import { Composer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
+import { AgeGate, AgeGateHidden } from "../../age-gate";
 
 const VoiceStage = deferred(() => import("../../voice-stage").then((m) => m.VoiceStage));
 const BattlemapBoard = deferred(() => import("../../battlemap").then((m) => m.BattlemapBoard));
@@ -71,6 +72,13 @@ export function renderChatMain(v: ShellRenderState) {
     unreadMentionTotal, unseenCount, user, voice, voiceChannels, voiceChatOpen, voiceParticipants,
     voiceRecorder, voiceRooms, voiceViewMode, wrapSelection,
   } = v;
+  // Age-restricted channels show a confirmation instead of the messages and composer.
+  const ageRestricted = Boolean(!inDmHome && activeChannel?.nsfw);
+  const leaveAgeGate = () => {
+    const safe = activeServer?.channels.find((c) => c.kind === "text" && !c.nsfw);
+    if (safe) v.setActiveChannelId(safe.id);
+    setMobileNav(true);
+  };
 
   return (
     <section
@@ -370,6 +378,12 @@ export function renderChatMain(v: ShellRenderState) {
                   </span>
                 </div>
               )}
+              <AgeGate
+                channelId={activeChannel?.id}
+                channelName={activeChannel?.name || ""}
+                restricted={ageRestricted}
+                onBack={leaveAgeGate}
+              >
               <MessageList
       onOpenChannels={() => setMobileNav(true)}
       messagesScrollRef={messagesScrollRef}
@@ -470,6 +484,7 @@ export function renderChatMain(v: ShellRenderState) {
       showCustomConfirm={showCustomConfirm}
       messageEndRef={messageEndRef}
     />
+              </AgeGate>
 
               <div className={`jump-latest-anchor ${activeChannelInfo.threadContainer && !inDmHome ? "forum-list-hidden" : ""}`}>
                 <button
@@ -503,6 +518,7 @@ export function renderChatMain(v: ShellRenderState) {
                 </button>
               )}
 
+              <AgeGateHidden channelId={activeChannel?.id} restricted={ageRestricted}>
               <Composer
       sendMessage={sendMessage}
       activeSlashCommand={activeSlashCommand}
@@ -578,6 +594,7 @@ export function renderChatMain(v: ShellRenderState) {
       messages={messages}
       user={user}
     />
+              </AgeGateHidden>
             </>
           )}
           {msnTheme && (

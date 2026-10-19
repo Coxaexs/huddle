@@ -53,6 +53,8 @@ export async function PATCH(
     soundboard?: boolean;
     /** Voice rooms: preferred RTC region ("auto", "nl", "de"). */
     rtcRegion?: "auto" | "nl" | "de";
+    /** Age-restricted: members confirm they are 18+ before it opens. */
+    nsfw?: boolean;
   };
 
   let kind = channel.kind;
@@ -92,7 +94,7 @@ export async function PATCH(
 
   await db
     .prepare(
-      "UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, soundboard = ?, rtc_region = ?, kind = ? WHERE id = ?",
+      "UPDATE channels SET name = ?, topic = ?, slowmode = ?, bitrate = ?, soundboard = ?, rtc_region = ?, nsfw = ?, kind = ? WHERE id = ?",
     )
     .bind(
       name || channel.name,
@@ -103,6 +105,7 @@ export async function PATCH(
         ? (body.soundboard ? 1 : 0)
         : (channel as { soundboard?: number }).soundboard ?? 1,
       rtcRegion,
+      typeof body.nsfw === "boolean" ? (body.nsfw ? 1 : 0) : channel.nsfw ? 1 : 0,
       kind,
       id,
     )

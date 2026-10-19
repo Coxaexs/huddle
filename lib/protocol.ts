@@ -52,6 +52,13 @@ export interface VoiceParticipant extends PresenceUser {
   /** Speaker requests centred playback with a modest volume boost. */
   important?: boolean;
   /**
+   * Priority Speaker is on: while this seat talks, listeners lower everyone
+   * else. Only set when the member holds PRIORITY_SPEAKER (the hub checks).
+   */
+  prioritySpeaker?: boolean;
+  /** This seat holds PRIORITY_SPEAKER here, so its client may offer the toggle. */
+  priorityAllowed?: boolean;
+  /**
    * MediaStream ids for this person's video, so receivers can tell a camera
    * from a screen share without inspecting the tracks.
    */
@@ -339,6 +346,8 @@ export type ClientEvent =
   | {
       t: "voice-state";
       important?: boolean;
+      /** Priority Speaker on or off; ignored without the permission. */
+      prioritySpeaker?: boolean;
       muted?: boolean;
       deafened?: boolean;
       /** Stage only: whether this person's hand is up. */

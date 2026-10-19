@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText, Languages } from "lucide-react";
+import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText, Languages, Lock } from "lucide-react";
 import { LicensesTab } from "./licenses-tab";
 import { LanguageTab } from "./settings/language-tab";
+import { PrivacyTab } from "./settings/privacy-tab";
 import { useI18n } from "../lib/i18n-context";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
@@ -1044,6 +1045,7 @@ export function SettingsDialog({
       title: t("userSettings.group.user"),
       items: [
         { id: "password" as Tab, label: t("userSettings.tab.password"), icon: ShieldCheck, desc: "Username, email, password and account security" },
+        { id: "privacy" as Tab, label: t("privacy.tab"), icon: Lock, desc: t("privacy.navDesc") },
         { id: "activities" as Tab, label: t("userSettings.tab.activities"), icon: Activity, desc: "Status sharing, games and Spotify" },
       ],
     },
@@ -1234,6 +1236,7 @@ export function SettingsDialog({
             <h2>
               {tab === "profile" && t("userSettings.tab.profile")}
               {tab === "password" && t("userSettings.tab.password")}
+              {tab === "privacy" && t("privacy.tab")}
               {tab === "activities" && t("userSettings.tab.activities")}
               {tab === "appearance" && t("userSettings.tab.appearance")}
               {tab === "notifications" && t("userSettings.tab.notifications")}
@@ -1267,6 +1270,7 @@ export function SettingsDialog({
 
 
           {tab === "tts" && <TtsSettings />}
+          {tab === "privacy" && <PrivacyTab />}
 
           <VoiceTab
         tab={tab}

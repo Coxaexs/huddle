@@ -6,6 +6,7 @@ import {
   listDms,
 } from "@/lib/dms";
 import { isBlockedBetween } from "@/lib/friends";
+import { mayStartDm } from "@/lib/dm-policy";
 import { publishStructureChange } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -31,11 +32,18 @@ async function setup(request: Request) {
   return { db, user } as const;
 }
 
-/** Keeps the ids that are real people who have not blocked (or been blocked by) `me`. */
-async function reachableUsers(db: D1Database, me: string, ids: unknown): Promise<string[]> {
+/**
+ * Keeps the ids that are real people who have not blocked (or been blocked by)
+ * `me`, and whose message settings let `me` start a conversation with them.
+ */
+async function reachableUsers(
+  db: D1Database,
+  me: { id: string; is_admin?: number },
+  ids: unknown,
+): Promise<string[]> {
   if (!Array.isArray(ids)) return [];
   const wanted = [...new Set(ids.filter((id): id is string => typeof id === "string" && !!id))]
-    .filter((id) => id !== me)
+    .filter((id) => id !== me.id)
     .slice(0, GROUP_DM_LIMIT);
   if (!wanted.length) return [];
   const rows = await db
@@ -45,7 +53,7 @@ async function reachableUsers(db: D1Database, me: string, ids: unknown): Promise
   const existing = ((rows.results || []) as Array<{ id: string }>).map((row) => row.id);
   const allowed: string[] = [];
   for (const id of existing) {
-    if (!(await isBlockedBetween(db, me, id))) allowed.push(id);
+    if (!(await isBlockedBetween(db, me.id, id)) && (await mayStartDm(db, me, id))) allowed.push(id);
   }
   return allowed;
 }
@@ -71,7 +79,7 @@ export async function POST(request: Request) {
     userIds?: unknown;
     name?: unknown;
   };
-  const members = await reachableUsers(db, user.id, body.userIds);
+  const members = await reachableUsers(db, user, body.userIds);
   if (members.length < 1) {
     return Response.json({ error: "Pick at least one person to add." }, { status: 400 });
   }
@@ -130,7 +138,7 @@ export async function PATCH(request: Request) {
   }
 
   if (body.addUserIds !== undefined) {
-    const adding = (await reachableUsers(db, user.id, body.addUserIds)).filter(
+    const adding = (await reachableUsers(db, user, body.addUserIds)).filter(
       (id) => !group.members.includes(id),
     );
     if (group.members.length + adding.length > GROUP_DM_LIMIT) {

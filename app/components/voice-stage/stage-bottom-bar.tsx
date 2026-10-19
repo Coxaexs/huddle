@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, Megaphone, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
+import { Mic, Megaphone, Crown, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
 import { BUILTIN_BACKGROUND_IMAGES, type CustomBackgroundItem } from "../../lib/virtual-background";
 import { ScreenShareSetup } from "../screen-share-setup";
 import type { LivingRoom } from "../../hooks/use-living-room";
@@ -123,6 +123,18 @@ export function StageBottomBar({
         >
           <Megaphone size={18} />
         </button>
+        {voice.priorityAllowed && (
+          <button
+            type="button"
+            className={`vctrl-btn ${voice.prioritySpeaker ? "active" : ""}`}
+            aria-label={t("priority.toggle")}
+            aria-pressed={voice.prioritySpeaker}
+            onClick={voice.togglePrioritySpeaker}
+            title={voice.prioritySpeaker ? t("priority.on") : t("priority.toggle")}
+          >
+            <Crown size={18} />
+          </button>
+        )}
 
         <div className="vctrl-divider" />
 

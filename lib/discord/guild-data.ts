@@ -40,7 +40,7 @@ export async function botServers(
   if (bot.serverId) {
     const row = await db
       .prepare(
-        "SELECT id, name, icon, color, created_by, created_at, banner_url FROM servers WHERE id = ?",
+        "SELECT id, name, icon, color, created_by, created_at, banner_url, verification_level, vanity_code FROM servers WHERE id = ?",
       )
       .bind(bot.serverId)
       .first<HoffleServerRow>();
@@ -72,14 +72,14 @@ export async function loadGuild(
   const [channelRows, roleRows, categoryRows, emojiRows] = await Promise.all([
     db
       .prepare(
-        `SELECT id, server_id, name, kind, topic, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, position, category_id, created_at, nsfw
          FROM channels WHERE server_id = ? ORDER BY position, created_at`,
       )
       .bind(server.id)
       .all<HoffleChannelRow>(),
     db
       .prepare(
-        `SELECT id, server_id, name, color, permissions, position, created_at
+        `SELECT id, server_id, name, color, icon, permissions, position, created_at
          FROM roles WHERE server_id = ? ORDER BY position`,
       )
       .bind(server.id)
@@ -208,7 +208,7 @@ export async function channelWithGuild(
 } | null> {
   const channel = await db
     .prepare(
-      `SELECT id, server_id, name, kind, topic, position, category_id, created_at
+      `SELECT id, server_id, name, kind, topic, position, category_id, created_at, nsfw
        FROM channels WHERE id = ?`,
     )
     .bind(channelId)
@@ -221,7 +221,7 @@ export async function channelWithGuild(
 
   const server = await db
     .prepare(
-      "SELECT id, name, icon, color, created_by, created_at, banner_url FROM servers WHERE id = ?",
+      "SELECT id, name, icon, color, created_by, created_at, banner_url, verification_level, vanity_code FROM servers WHERE id = ?",
     )
     .bind(channel.server_id)
     .first<HoffleServerRow>();

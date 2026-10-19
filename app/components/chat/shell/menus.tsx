@@ -64,6 +64,7 @@ export function UserMenuLayer({
   timeoutMember,
   canManageNicknames,
   editNickname,
+  setServerAvatar,
 }: {
   userMenu: UserMenuTarget | null;
   user: PublicUser;
@@ -99,6 +100,7 @@ export function UserMenuLayer({
   timeoutMember: (userId: string, minutes: number) => Promise<void>;
   canManageNicknames: boolean;
   editNickname: (userId: string) => void;
+  setServerAvatar: (userId: string, clear: boolean) => Promise<void>;
 }) {
   const { t } = useI18n();
   return (
@@ -304,6 +306,28 @@ export function UserMenuLayer({
                   const id = userMenu.member.id;
                   setUserMenu(null);
                   editNickname(id);
+                }
+              : undefined
+          }
+          onServerAvatar={
+            !inDmHome && userMenu.member.id === user.id && membersById.has(user.id)
+              ? () => {
+                  setUserMenu(null);
+                  void setServerAvatar(user.id, false);
+                }
+              : undefined
+          }
+          onRemoveServerAvatar={
+            !inDmHome &&
+            membersById.get(userMenu.member.id)?.serverAvatarUrl &&
+            (userMenu.member.id === user.id ||
+              (canManageNicknames &&
+                !membersById.get(userMenu.member.id)?.isAdmin &&
+                activeServer?.ownerId !== userMenu.member.id))
+              ? () => {
+                  const id = userMenu.member.id;
+                  setUserMenu(null);
+                  void setServerAvatar(id, true);
                 }
               : undefined
           }
@@ -581,6 +605,7 @@ export function ChannelMenuLayer({
   renameChannel,
   editChannelTopic,
   editChannelSlowmode,
+  toggleChannelNsfw,
   editChannelBitrate,
   toggleChannelSoundboard,
   editChannelRegion,
@@ -595,6 +620,7 @@ export function ChannelMenuLayer({
   renameChannel: (channel: PublicChannel) => Promise<void>;
   editChannelTopic: (channel: PublicChannel) => Promise<void>;
   editChannelSlowmode: (channel: PublicChannel) => Promise<void>;
+  toggleChannelNsfw: (channel: PublicChannel) => Promise<void>;
   editChannelBitrate: (channel: PublicChannel) => Promise<void>;
   toggleChannelSoundboard: (channel: PublicChannel) => Promise<void>;
   editChannelRegion: (channel: PublicChannel) => Promise<void>;
@@ -719,6 +745,19 @@ export function ChannelMenuLayer({
                 >
                   {t("channelMenu.setSlowmode")}
                 </button>
+                {!channelKindInfo(channelMenu.channel.kind).voice && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const channel = channelMenu.channel;
+                      setChannelMenu(null);
+                      void toggleChannelNsfw(channel);
+                    }}
+                  >
+                    {channelMenu.channel.nsfw ? t("nsfw.unmark") : t("nsfw.mark")}
+                  </button>
+                )}
                 {channelKindInfo(channelMenu.channel.kind).voice && (
                   <button
                     type="button"

@@ -111,6 +111,7 @@ export function PasswordTab({
                 <input
                   id="settings-email"
                   type="email"
+                  data-streamer-hide
                   value={newEmail}
                   autoComplete="email"
                   maxLength={254}

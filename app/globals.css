@@ -29235,3 +29235,106 @@ a.link-preview-author:hover {
   align-self: flex-start;
   font-size: 13px;
 }
+
+/* Streamer Mode (app/lib/streamer-mode.ts): personal details stay off stream. */
+:root[data-streamer="on"] [data-streamer-hide] {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+}
+.streamer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #8e44ad;
+  white-space: nowrap;
+}
+
+/* Age-restricted channels. */
+.nsfw-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 14px;
+  color: #fff;
+  background: #da373c;
+  flex-shrink: 0;
+}
+.age-gate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+.age-gate h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.age-gate p {
+  max-width: 420px;
+  margin: 0;
+  opacity: 0.8;
+}
+.age-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Role icons beside member names. */
+.role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  font-size: 14px;
+  line-height: 1;
+  vertical-align: -2px;
+  flex-shrink: 0;
+}
+.role-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* "Translate" on a message. */
+.message-translation {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--accent, #5865f2);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  white-space: pre-wrap;
+}
+.message-translation small {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  opacity: 0.65;
+  font-size: 11px;
+}
+.message-translation button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
