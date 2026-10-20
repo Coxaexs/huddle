@@ -141,6 +141,10 @@ def main():
     ap.add_argument("--export", action="store_true")
     args = ap.parse_args()
     brain = json.load(open(f"{ROOT}/out/dj_brain.json"))["songs"]
+    local = f"{ROOT}/out/dj_brain_local.json"              # local_facts.py: songs Colab never analysed
+    if os.path.exists(local):
+        for vid, facts in json.load(open(local)).items():
+            brain.setdefault(vid, facts)
     models = args.models.split(",")
     songs, skipped = {}, 0
     for model in models:

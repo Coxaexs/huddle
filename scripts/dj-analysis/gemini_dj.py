@@ -85,7 +85,13 @@ def key():
 
 
 def brain():
-    return json.load(open(f"{ROOT}/out/dj_brain.json"))["songs"]
+    """Song facts: the Colab analysis, plus local_facts.py's for songs it never saw (streamed only)."""
+    songs = json.load(open(f"{ROOT}/out/dj_brain.json"))["songs"]
+    local = f"{ROOT}/out/dj_brain_local.json"
+    if os.path.exists(local):
+        for vid, facts in json.load(open(local)).items():
+            songs.setdefault(vid, facts)
+    return songs
 
 
 def facts_prompt(song):
