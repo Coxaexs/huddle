@@ -35,6 +35,9 @@ permissions:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    # A normal build takes 5-25 minutes. Stop a stuck one long before the
+    # 6-hour default.
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

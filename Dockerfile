@@ -2,23 +2,16 @@
 # Hoffle: Microservice Web App & Realtime Worker
 # ==========================================
 
-FROM node:22-bookworm-slim AS runner
-
-# Install ca-certificates, curl (for healthchecks), and tini (for PID 1 process supervision)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    sqlite3 \
-    tini \
-    && rm -rf /var/lib/apt/lists/*
+# The bundle is plain JavaScript, so it is built once on the build machine's
+# own platform and copied into every image. Built under QEMU for arm64, the
+# vite build sometimes hung until CI gave up after 6 hours.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
 
 WORKDIR /app
 
-# Copy package dependencies and install
 COPY package.json package-lock.json tsconfig.json vite.config.ts next.config.js wrangler.jsonc /app/
 RUN npm ci
 
-# Copy application source code
 COPY app/ /app/app/
 COPY lib/ /app/lib/
 COPY worker/ /app/worker/
@@ -31,6 +24,35 @@ COPY docs/ /app/docs/
 
 # Build client bundle and worker
 RUN npm run build
+
+FROM node:22-bookworm-slim AS runner
+
+# Install ca-certificates, curl (for healthchecks), and tini (for PID 1 process supervision)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    sqlite3 \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Dependencies for the target platform (wrangler runs a native workerd)
+COPY package.json package-lock.json tsconfig.json vite.config.ts next.config.js wrangler.jsonc /app/
+RUN npm ci
+
+# Copy application source code
+COPY app/ /app/app/
+COPY lib/ /app/lib/
+COPY worker/ /app/worker/
+COPY types/ /app/types/
+COPY scripts/ /app/scripts/
+COPY README.md /app/
+COPY docs/ /app/docs/
+
+# The built bundle, and public/ with the files the build generated into it
+COPY --from=build /app/public/ /app/public/
+COPY --from=build /app/dist/ /app/dist/
 
 # Default environment variables
 ENV NODE_ENV=production
