@@ -5,8 +5,8 @@
  * everyone; this file decides how it looks. Each Hoffle theme with a strong
  * mood gets its own room: a warm cabin by default, a candlelit gothic parlour
  * for Vampire, a green-lit hacker den for Matrix, a neon flat for Cyberpunk,
- * a block-built cabin for Minecraft and a year-2000 bedroom for the MSN,
- * TeamSpeak and Winamp themes.
+ * a block-built cabin for Minecraft, a year-2000 bedroom for the MSN,
+ * TeamSpeak and Winamp themes and a starship's lounge for Star Wars.
  * Everything is procedural (canvas textures, primitives) so nothing is fetched.
  */
 import * as THREE from "three";
@@ -15,13 +15,13 @@ import { addProps } from "./living-room-props";
 import { dress, fabric } from "./room-surfaces";
 import { ThingKit, type RoomThings } from "./room-things";
 import { contactShadows, lightShaft, mergeStatics, moteField, type Contact } from "./living-room-fx";
-import { playArcade, playBloop, playBoo, playChime, playCurtains, playData, playDouse, playGroan, playHiss, playIgnite, playNudge, playPops, playPurr, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
+import { playArcade, playBeeps, playBloop, playBoo, playChime, playCurtains, playData, playDouse, playGroan, playHiss, playHoloChess, playIgnite, playNudge, playPops, playPurr, playSaber, playSip, playSqueak, playStrum, playSwitch, playWhirr } from "./living-room-sounds";
 import { CIRCLES, LOUNGE_SEATS, NOOK, ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT, seatById } from "../lib/living-room";
 
 export interface Look {
   floor: [string, string]; // plank, grain
   wall: [string, string]; // base, pattern
-  wallPattern: "stripes" | "damask" | "code" | "panels" | "blocks" | "y2k" | "grime";
+  wallPattern: "stripes" | "damask" | "code" | "panels" | "blocks" | "y2k" | "grime" | "hull";
   wainscot: string;
   trim: string;
   ceiling: string;
@@ -42,7 +42,7 @@ export interface Look {
   fairy: string[];
   motes: string;
   exposure: number;
-  sky: "time" | "moon" | "code" | "city" | "overcast" | "outbreak";
+  sky: "time" | "moon" | "code" | "city" | "overcast" | "outbreak" | "space";
   shark: string;
 }
 
@@ -109,6 +109,15 @@ export const LOOKS: Record<RoomTheme, Look> = {
     wood: "#5a4026", woodDark: "#2e2014", fire: ["#ffcf6a", "#ff5a1a"], fireLight: "#ff8a3a", lamp: "#e8d890",
     hemi: ["#b8cca0", "#2a2c20", 0.62], fog: "#0a0d08", background: "#050704",
     fairy: ["#9ad53b", "#e8d890", "#ff8a3a"], motes: "#c4d8a0", exposure: 1.3, sky: "outbreak", shark: "#5a7a6a",
+  },
+  galaxy: {
+    floor: ["#4b4f58", "#2a2d34"], wall: ["#3c414c", "#262a32"], wallPattern: "hull",
+    wainscot: "#2a2e36", trim: "#8f98a8", ceiling: "#22252c", beam: "#30343c",
+    rug: ["#14171d", "#ffe81f", "#2a3140"], sofa: "#c9bfa8", sofaCushion: "#d8cfb8",
+    pillows: ["#d8742c", "#5b6b80", "#b9a98a", "#3a4a66"], blanket: ["#8a7a5a", "#d8cfb8"],
+    wood: "#5d6470", woodDark: "#30343c", fire: ["#d6f0ff", "#39a7ff"], fireLight: "#5ab8ff", lamp: "#cfe6ff",
+    hemi: ["#9fbcff", "#0c0e14", 0.5], fog: "#05070c", background: "#020309",
+    fairy: ["#39a7ff", "#ffe81f", "#ff3b30"], motes: "#bfe0ff", exposure: 1.2, sky: "space", shark: "#5a8fb8",
   },
   y2k: {
     floor: ["#c9a77c", "#9c7a52"], wall: ["#b9d4ff", "#e3c6ff"], wallPattern: "y2k",
@@ -309,6 +318,31 @@ export function wallTexture(look: Look) {
         }
         ctx.fill();
       }
+    } else if (look.wallPattern === "hull") {
+      // Starship plating: two bevelled panels across, rivets in their corners, a vent grille
+      // in the band above them and a lit strip just over the wainscot.
+      const rand = seeded(1977);
+      ctx.fillStyle = accent;
+      ctx.fillRect(0, 0, 256, 256);
+      for (const x0 of [0, 128]) {
+        ctx.fillStyle = `#${new THREE.Color(base).offsetHSL(0, 0, (rand() - 0.5) * 0.05).getHexString()}`;
+        ctx.fillRect(x0 + 4, 30, 120, 130);
+        ctx.fillStyle = "rgba(255,255,255,0.10)";
+        ctx.fillRect(x0 + 4, 30, 120, 3);
+        ctx.fillRect(x0 + 4, 30, 3, 130);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(x0 + 4, 157, 120, 3);
+        ctx.fillRect(x0 + 121, 30, 3, 130);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x0 + 16 + rand() * 20, 48 + rand() * 16, 40 + rand() * 34, 34 + rand() * 30);
+        ctx.fillStyle = "rgba(200,210,225,0.45)";
+        for (const [rx, ry] of [[10, 36], [118, 36], [10, 154], [118, 154]]) { ctx.beginPath(); ctx.arc(x0 + rx, ry, 2, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        for (let k = 0; k < 8; k++) ctx.fillRect(x0 + 20 + k * 11, 8, 6, 14);
+      }
+      ctx.fillStyle = "#7fc8ff";
+      ctx.fillRect(0, 168, 256, 3);
     } else if (look.wallPattern === "panels") {
       ctx.strokeStyle = accent;
       ctx.lineWidth = 4;
@@ -350,6 +384,112 @@ export function codeRain(width: number, height: number, columns: number) {
     }
     texture.needsUpdate = true;
   };
+  return { texture, step };
+}
+
+/**
+ * A starship's viewport: stars drifting by, and every minute or so the jump to
+ * lightspeed, dropping out of it over a different planet. `step` redraws it.
+ */
+export function spaceView(width: number, height: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const cx = width / 2;
+  const cy = height / 2;
+  const scale = width * 0.55;
+  const place = (star: { x: number; y: number; z: number }, far: boolean) => {
+    star.z = far ? 0.8 + Math.random() * 0.2 : 0.05 + Math.random() * 0.95;
+    star.x = (Math.random() * 2 - 1) * (cx / scale) * star.z;
+    star.y = (Math.random() * 2 - 1) * (cy / scale) * star.z;
+    return star;
+  };
+  const stars = Array.from({ length: 220 }, () => place({ x: 0, y: 0, z: 0 }, false));
+  // Lit side, night side, atmosphere: desert, ocean, ice, lava, forest.
+  const PLANETS: Array<[string, string, string]> = [
+    ["#e0b070", "#3a2008", "224,176,112"], ["#7ab0e8", "#0a1a40", "150,200,255"], ["#e8f0f4", "#3a4a5a", "230,240,255"],
+    ["#d07040", "#2a0a04", "255,140,80"], ["#6ab87a", "#0a2a14", "160,255,190"],
+  ];
+  let planet = Math.floor(Math.random() * PLANETS.length);
+  let jumpAt = 25 + Math.random() * 25;
+  let swapped = false;
+  let last = 0;
+  const step = (t: number) => {
+    const dt = Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    const k = (t - jumpAt) / 2.6;
+    const streak = k < 0 || k >= 1 ? 0 : k < 0.3 ? (k / 0.3) ** 2 : k < 0.7 ? 1 : ((1 - k) / 0.3) ** 1.5;
+    if (k >= 0.5 && !swapped) {
+      planet = (planet + 1 + Math.floor(Math.random() * (PLANETS.length - 1))) % PLANETS.length;
+      swapped = true;
+    }
+    if (k >= 1) {
+      jumpAt = t + 45 + Math.random() * 45;
+      swapped = false;
+    }
+    const speed = 0.015 + streak * 2.2;
+    ctx.fillStyle = "#010208";
+    ctx.fillRect(0, 0, width, height);
+    if (streak > 0) {
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, width * 0.6);
+      glow.addColorStop(0, `rgba(190,220,255,${0.35 * streak})`);
+      glow.addColorStop(1, "rgba(190,220,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+    }
+    ctx.lineCap = "round";
+    for (const star of stars) {
+      star.z -= speed * dt;
+      if (star.z <= 0.03) place(star, true);
+      const sx = cx + (star.x / star.z) * scale;
+      const sy = cy + (star.y / star.z) * scale;
+      if (sx < -20 || sx > width + 20 || sy < -20 || sy > height + 20) {
+        place(star, true);
+        continue;
+      }
+      const near = 1 - star.z;
+      if (streak > 0.05) {
+        const tz = Math.min(1.2, star.z + speed * 0.08);
+        ctx.strokeStyle = `rgba(215,232,255,${Math.min(1, 0.3 + near)})`;
+        ctx.lineWidth = 0.6 + near * 1.6;
+        ctx.beginPath();
+        ctx.moveTo(cx + (star.x / tz) * scale, cy + (star.y / tz) * scale);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+      } else {
+        const size = 0.8 + near * near * 1.8;
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.35 + near * 0.8)})`;
+        ctx.fillRect(sx - size / 2, sy - size / 2, size, size);
+      }
+    }
+    // The planet, rising out of the bottom corner; gone while the stars streak.
+    const show = 1 - streak;
+    if (show > 0) {
+      const [lit, night, air] = PLANETS[planet];
+      const px = width * 0.8;
+      const py = height * 1.02;
+      const r = height * 0.55;
+      ctx.globalAlpha = show;
+      const halo = ctx.createRadialGradient(px, py, r * 0.96, px, py, r * 1.18);
+      halo.addColorStop(0, `rgba(${air},0.55)`);
+      halo.addColorStop(1, `rgba(${air},0)`);
+      ctx.fillStyle = halo;
+      ctx.fillRect(px - r * 1.2, py - r * 1.2, r * 2.4, r * 2.4);
+      const body = ctx.createRadialGradient(px - r * 0.5, py - r * 0.55, r * 0.1, px - r * 0.1, py - r * 0.1, r * 1.05);
+      body.addColorStop(0, lit);
+      body.addColorStop(1, night);
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    texture.needsUpdate = true;
+  };
+  step(0);
   return { texture, step };
 }
 
@@ -591,7 +731,7 @@ function skyTexture(look: Look) {
         for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(fx + (rand() - 0.5) * 30 + k * 6, 320 - k * 30, 18 + k * 6, 0, Math.PI * 2); ctx.fill(); }
       }
       ctx.fillStyle = "rgba(154,213,59,0.07)"; ctx.fillRect(0, 250, 512, 150);
-    } else if (look.sky === "code") {
+    } else if (look.sky === "code" || look.sky === "space") {
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 512, 400);
     } else {
       const g = ctx.createLinearGradient(0, 0, 0, 400);
@@ -820,7 +960,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   // Walls: four inward planes, so whichever is between the overhead camera and the room is culled.
   const code = look.wallPattern === "code" ? codeRain(512, 256, 40) : null;
   const wallMaterial = mat("#ffffff", 0.95, { map: code ? code.texture : wallTexture(look), ...(code ? { emissive: "#ffffff", emissiveMap: code.texture, emissiveIntensity: 0.55 } : {}) });
-  if (!code) plasterOver(wallMaterial);
+  if (look.wallPattern === "hull") Object.assign(wallMaterial, { metalness: 0.35, roughness: 0.55 });
+  else if (!code) plasterOver(wallMaterial);
   const wainscotMaterial = woodMaterial(look.wainscot, 0.6, [6, 0.5]);
   const trimMaterial = mat(look.trim, 0.5, theme === "cyberpunk" ? { emissive: look.trim, emissiveIntensity: 1.6 } : {});
   const walls: Array<[number, number, number, number]> = [
@@ -861,7 +1002,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
 
   // Hearth: stone (or gothic marble, or a server rack, or a holo-fireplace) on the north wall.
   const hearthZ = -ROOM_HALF_Z;
-  const stoneColour = theme === "minecraft" ? "#9a9a9a" : theme === "y2k" ? "#d9d4e8" : theme === "zombie" ? "#4a4c44" : theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
+  const stoneColour = theme === "galaxy" ? "#3c414b" : theme === "minecraft" ? "#9a9a9a" : theme === "y2k" ? "#d9d4e8" : theme === "zombie" ? "#4a4c44" : theme === "cozy" ? "#9c8f80" : theme === "vampire" ? "#2a2226" : theme === "matrix" ? "#0b120d" : "#1d1838";
   const stone = mat(stoneColour, 0.95, theme === "cyberpunk" ? { metalness: 0.6, roughness: 0.3 } : {});
   // Real stonework for the stone hearths; the hacker's rack and the holo-fireplace stay smooth.
   if (theme !== "cyberpunk" && theme !== "matrix") dress(stone, "stone", { repeat: [1.6, 1], bump: 1.1 });
@@ -883,7 +1024,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   root.add(fireGroup);
   if (theme !== "cyberpunk") {
     for (let i = 0; i < 3; i++) {
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.75, 10), mat(theme === "matrix" ? "#0e1a12" : "#4a2e1c", 1));
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.75, 10), theme === "galaxy" ? mat("#3a3e47", 0.4, { metalness: 0.7 }) : mat(theme === "matrix" ? "#0e1a12" : "#4a2e1c", 1));
       log.rotation.z = Math.PI / 2;
       log.rotation.y = (i - 1) * 0.4;
       log.position.set(0, 0.1 + (i === 1 ? 0.09 : 0), 0);
@@ -1002,6 +1143,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const idleScreen = canvasTexture(768, 432, (ctx) => {
     const g = ctx.createLinearGradient(0, 0, 0, 432);
     const [top, bottom, ink] = theme === "vampire" ? ["#1a0509", "#3a0b16", "#b08a3e"] : theme === "matrix" ? ["#010603", "#03140a", "#00c853"]
+      : theme === "galaxy" ? ["#02030a", "#0a1430", "#ffe81f"]
       : theme === "cyberpunk" ? ["#0b0620", "#2a0f45", "#00f0ff"] : theme === "academia" ? ["#0d1210", "#2a2016", "#c9a45c"] : ["#14100c", "#3a2416", "#ffcf8a"];
     g.addColorStop(0, top); g.addColorStop(1, bottom);
     ctx.fillStyle = g;
@@ -1204,7 +1346,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       const seat = seatById(`${circle.id}-${i}`)!;
       const colour = look.pillows[(i + n) % look.pillows.length];
       // The dark themes light their cushions faintly, or they vanish into the floor.
-      const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie";
+      const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie" || theme === "galaxy";
       const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.32, 0.16, 28), fabric(colour, { repeat: [3, 1] }));
       if (dark) Object.assign(pouf.material, { emissive: new THREE.Color(colour), emissiveIntensity: 0.3 });
       pouf.position.set(seat.x, 0.09, seat.z);
@@ -1309,6 +1451,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       : theme === "vampire" ? ["#5e0b16", "#2d0a10", "#b08a3e", "#3b1f3d", "#14060a"]
       : theme === "matrix" ? ["#0a3d1c", "#14261a", "#00c853", "#1d2620"]
       : theme === "cyberpunk" ? ["#ff2fb4", "#00f0ff", "#9b5cff", "#ffe94a", "#2b2250"]
+      : theme === "galaxy" ? ["#5d6470", "#39a7ff", "#ffe81f", "#2a2e36", "#d8742c", "#8f98a8"]
       : ["#9c3f3a", "#3e5a6b", "#e6b86a", "#5a7d4f", "#8a5a83", "#d98a4a", "#2f4858"];
     for (let row = 0; row < 5; row++) {
       let z = zCentre - 0.7;
@@ -1349,6 +1492,8 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     windowCode = codeRain(256, 200, 22);
     (sky.material as THREE.MeshBasicMaterial).map = windowCode.texture;
   }
+  const windowSpace = look.sky === "space" ? spaceView(384, 300) : null;
+  if (windowSpace) (sky.material as THREE.MeshBasicMaterial).map = windowSpace.texture;
   const frameMaterial = mat(look.trim, 0.5, theme === "cyberpunk" ? { emissive: look.trim, emissiveIntensity: 1.4 } : {});
   for (const [h, w, y, z] of [[0.08, 2.4, 2.64, windowZ], [0.1, 2.5, 0.88, windowZ], [1.8, 0.08, 1.75, windowZ - 1.15], [1.8, 0.08, 1.75, windowZ + 1.15], [1.7, 0.04, 1.75, windowZ], [0.04, 2.2, 1.75, windowZ]] as const) {
     const bar = box(0.08, h, w, frameMaterial, false);
@@ -1359,7 +1504,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   sill.position.set(ROOM_HALF_X - 0.15, 0.86, windowZ);
   root.add(sill);
   // Curtains: wavy planes either side, tied back.
-  const curtainColour = theme === "zombie" ? "#3a3a2a" : theme === "vampire" ? "#4a0a14" : theme === "matrix" ? "#0b1a10" : theme === "cyberpunk" ? "#3a1a6a" : "#b9583f";
+  const curtainColour = theme === "galaxy" ? "#4a4f5a" : theme === "zombie" ? "#3a3a2a" : theme === "vampire" ? "#4a0a14" : theme === "matrix" ? "#0b1a10" : theme === "cyberpunk" ? "#3a1a6a" : "#b9583f";
   for (const side of [-1, 1]) {
     const geometry = new THREE.PlaneGeometry(0.6, 2.5, 12, 1);
     const pos = geometry.attributes.position;
@@ -1381,7 +1526,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
   const night = isNight();
   const [shaftColour, shaftStrength] = look.sky === "time" ? (night ? ["#8fa0ff", 0.05] : ["#ffe2b0", 0.2])
     : look.sky === "moon" ? ["#ff9aa8", 0.07] : look.sky === "overcast" ? (night ? ["#9fb0c8", 0.04] : ["#d6e0e6", 0.12])
-      : look.sky === "city" ? ["#ff7ad1", 0.09] : ["#3dff8a", 0.07];
+      : look.sky === "city" ? ["#ff7ad1", 0.09] : look.sky === "space" ? ["#9fc4ff", 0.06] : ["#3dff8a", 0.07];
   const glass = [
     new THREE.Vector3(ROOM_HALF_X - 0.03, 2.58, windowZ - 1.1), new THREE.Vector3(ROOM_HALF_X - 0.03, 2.58, windowZ + 1.1),
     new THREE.Vector3(ROOM_HALF_X - 0.03, 0.92, windowZ + 1.1), new THREE.Vector3(ROOM_HALF_X - 0.03, 0.92, windowZ - 1.1),
@@ -1592,7 +1737,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     art.rotation.y = ry;
     root.add(frame, art);
   };
-  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : theme === "minecraft" ? ["#6aa84f", "#e8c27a", "#4a7fc1"] : theme === "y2k" ? ["#4fc3ff", "#ff7ad9", "#c8ff5a"] : theme === "zombie" ? ["#1c2614", "#8e1b12", "#9ad53b"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
+  const paint = theme === "academia" ? ["#1d2a1e", "#6b1f1f", "#c9a45c"] : theme === "vampire" ? ["#1a0508", "#5e0b16", "#b08a3e"] : theme === "matrix" ? ["#000", "#0a3d1c", "#00e676"] : theme === "cyberpunk" ? ["#090322", "#ff2fb4", "#00f0ff"] : theme === "minecraft" ? ["#6aa84f", "#e8c27a", "#4a7fc1"] : theme === "y2k" ? ["#4fc3ff", "#ff7ad9", "#c8ff5a"] : theme === "zombie" ? ["#1c2614", "#8e1b12", "#9ad53b"] : theme === "galaxy" ? ["#020309", "#ffe81f", "#39a7ff"] : ["#f3a37a", "#e6b86a", "#3e5a6b"];
   picture(-3.0, 1.85, ROOM_HALF_Z - 0.03, Math.PI, 1.0, 0.7, paint);
   picture(-1.6, 1.75, ROOM_HALF_Z - 0.03, Math.PI, 0.5, 0.6, [...paint].reverse());
   picture(2.5, 1.85, -ROOM_HALF_Z + 0.03, 0, 0.8, 0.6, paint);
@@ -2504,6 +2649,296 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     });
   }
 
+  // Star Wars: a starship's lounge. Holochess in one corner, an astromech that talks back in the other,
+  // two sabers on the wall, cargo, a console and light strips along the deck.
+  if (theme === "galaxy") {
+    const metal = (colour: string, rough = 0.45) => mat(colour, rough, { metalness: 0.6 });
+    const lit = (colour: string) => new THREE.MeshBasicMaterial({ color: colour, toneMapped: false });
+
+    // Light strips low along the walls and two down the ceiling.
+    for (const [width, x, z, ry] of walls) {
+      const inward = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+      const strip = box(width - 0.4, 0.02, 0.015, lit("#7fc8ff"), false);
+      strip.position.set(x + inward.x * 0.05, 0.16, z + inward.z * 0.05);
+      strip.rotation.y = ry;
+      root.add(strip);
+    }
+    for (const z of [-2.2, 1.7]) {
+      const strip = box(W - 1.4, 0.02, 0.06, lit("#cfe6ff"), false);
+      strip.position.set(0, H - 0.26, z);
+      ceiling.add(strip);
+    }
+
+    // Holochess in the north-east corner: a round board on a pedestal, four little holograms on it.
+    const chessAt = new THREE.Vector3(4.75, 0, -2.75);
+    const chess = new THREE.Group();
+    chess.position.copy(chessAt);
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.32, 0.5, 24), metal("#4a4f5a"));
+    pedestal.position.y = 0.25;
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.5, 0.07, 40), metal("#5d6470", 0.35));
+    rim.position.y = 0.535;
+    pedestal.castShadow = rim.castShadow = true;
+    const boardFace = new THREE.Mesh(new THREE.CircleGeometry(0.48, 48), new THREE.MeshBasicMaterial({ toneMapped: false, color: "#9a9a9a", map: canvasTexture(256, 256, (ctx) => {
+      ctx.fillStyle = "#0d1014";
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.translate(128, 128);
+      for (const [r0, r1, n] of [[38, 80, 8], [80, 124, 12]] as const) {
+        for (let i = 0; i < n; i++) {
+          ctx.fillStyle = i % 2 ? "#c9b25a" : "#2f7a52";
+          ctx.beginPath();
+          ctx.arc(0, 0, r1, (i / n) * Math.PI * 2, ((i + 1) / n) * Math.PI * 2);
+          ctx.arc(0, 0, r0, ((i + 1) / n) * Math.PI * 2, (i / n) * Math.PI * 2, true);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = "#c9b25a";
+      ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.lineWidth = 3;
+      for (const r of [38, 80, 124]) { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke(); }
+    }) }));
+    boardFace.rotation.x = -Math.PI / 2;
+    boardFace.position.y = 0.572;
+    chess.add(pedestal, rim, boardFace);
+    const holo = (colour: string) => new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+    /** A piece: a four-legged beast (0), a horned biped (1), a squat brute (2) or a long-necked grazer (3). */
+    const creature = (colour: string, kind: number) => {
+      const group = new THREE.Group();
+      const skin = holo(colour);
+      const part = (geometry: THREE.BufferGeometry, x: number, y: number, z: number, rz = 0) => {
+        const mesh = new THREE.Mesh(geometry, skin);
+        mesh.position.set(x, y, z);
+        mesh.rotation.z = rz;
+        group.add(mesh);
+      };
+      const leg = new THREE.CylinderGeometry(0.009, 0.007, 0.06, 5);
+      if (kind === 0 || kind === 3) {
+        part(new THREE.CapsuleGeometry(0.032, 0.07, 4, 8), 0, 0.085, 0, Math.PI / 2);
+        part(new THREE.SphereGeometry(0.028, 10, 8), kind === 3 ? 0.09 : 0.075, kind === 3 ? 0.16 : 0.1, 0);
+        if (kind === 3) part(new THREE.CylinderGeometry(0.012, 0.016, 0.08, 6), 0.07, 0.12, 0, -0.6);
+        for (const [lx, lz] of [[-0.035, 0.018], [0.035, 0.018], [-0.035, -0.018], [0.035, -0.018]]) part(leg, lx, 0.03, lz);
+      } else {
+        part(new THREE.CapsuleGeometry(kind === 2 ? 0.045 : 0.03, kind === 2 ? 0.04 : 0.08, 4, 8), 0, 0.11, 0);
+        part(new THREE.SphereGeometry(kind === 2 ? 0.03 : 0.024, 10, 8), 0, kind === 2 ? 0.18 : 0.19, 0);
+        for (const side of [-1, 1]) {
+          part(leg, side * 0.02, 0.03, 0);
+          part(new THREE.CylinderGeometry(0.008, 0.006, 0.07, 5), side * (kind === 2 ? 0.06 : 0.045), 0.12, 0, side * 0.5);
+          if (kind === 1) part(new THREE.ConeGeometry(0.008, 0.035, 5), side * 0.016, 0.22, 0, -side * 0.4);
+        }
+      }
+      return { group, skin };
+    };
+    const pieces = [["#7fe0ff", 0, 0.3], ["#ff9a6a", 1, 0.62], ["#9affb0", 2, 0.3], ["#ffd56a", 3, 0.62]].map(([colour, kind, r], i) => {
+      const piece = creature(colour as string, kind as number);
+      const radius = (r as number) * 0.48 + 0.06;
+      chess.add(piece.group);
+      return { ...piece, radius, angle: i * (Math.PI / 2) + 0.4, from: 0, to: 0 };
+    });
+    const placePiece = (piece: (typeof pieces)[number], angle: number, lift = 0) => {
+      piece.group.position.set(Math.cos(angle) * piece.radius, 0.575 + lift, Math.sin(angle) * piece.radius);
+      // Each piece faces the middle of the board.
+      piece.group.rotation.y = -angle + Math.PI;
+    };
+    pieces.forEach((piece) => placePiece(piece, piece.angle));
+    root.add(tag(chess, "holochess"));
+    addGlow("#5fd0ff", 1.1, new THREE.Vector3(chessAt.x, 0.7, chessAt.z), 0.35);
+    addLight("#5fd0ff", 0.8, 3, new THREE.Vector3(chessAt.x, 1.0, chessAt.z), false, 0.05);
+    animated.push((t) => {
+      pieces.forEach((piece, i) => {
+        if (!playing.has("holochess")) placePiece(piece, piece.angle, Math.abs(Math.sin(t * 1.4 + i)) * 0.006);
+        piece.skin.opacity = 0.5 + Math.sin(t * 9 + i * 2) * 0.06 + (Math.random() < 0.02 ? -0.3 : 0);
+      });
+    });
+    // A move: every piece hops to a new square, then one lunges at another and the loser flickers out and back.
+    things.holochess = (since) => {
+      if (since === 0) pieces.forEach((piece) => { piece.from = piece.angle; piece.to = piece.angle + (Math.random() < 0.5 ? -1 : 1) * (Math.PI / 4 + Math.random() * 0.5); });
+      const hop = Math.min(1, since / 0.9);
+      pieces.forEach((piece, i) => {
+        const angle = piece.from + (piece.to - piece.from) * (hop * hop * (3 - 2 * hop));
+        let lift = Math.sin(hop * Math.PI) * 0.08;
+        if (i === 0 && since > 1.0 && since < 1.5) lift += Math.sin(((since - 1.0) / 0.5) * Math.PI) * 0.05;
+        placePiece(piece, angle, lift);
+        if (i === 0 && since > 1.0 && since < 1.5) {
+          const lunge = Math.sin(((since - 1.0) / 0.5) * Math.PI) * 0.12;
+          piece.group.position.x -= Math.cos(angle) * lunge;
+          piece.group.position.z -= Math.sin(angle) * lunge;
+        }
+        if (i === 1) piece.group.scale.setScalar(since > 1.3 && since < 2.2 ? 0.3 + Math.abs(Math.sin(since * 30)) * 0.5 : 1);
+      });
+      if (since >= 2.4) pieces.forEach((piece) => { piece.angle = piece.to; piece.group.scale.setScalar(1); });
+      return since < 2.4;
+    };
+
+    // The astromech in the north-west corner: white and blue, a silver dome that looks about.
+    const droid = new THREE.Group();
+    const white = mat("#e8eaee", 0.4, { metalness: 0.15 });
+    const blue = mat("#2a5bd7", 0.4, { metalness: 0.15 });
+    const silver = metal("#c4cad4", 0.28);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.48, 28), white);
+    body.position.y = 0.43;
+    body.castShadow = true;
+    droid.add(body);
+    for (const [y, w, h] of [[0.5, 0.14, 0.14], [0.33, 0.1, 0.07]] as const) {
+      const panel = box(w, h, 0.03, blue, false);
+      panel.position.set(0, y, 0.19);
+      droid.add(panel);
+    }
+    const vent = box(0.16, 0.025, 0.03, silver, false);
+    vent.position.set(0, 0.24, 0.19);
+    droid.add(vent);
+    const dome = new THREE.Group();
+    dome.position.y = 0.67;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.2, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), silver);
+    cap.castShadow = true;
+    dome.add(cap);
+    for (const a of [-0.9, 0.9, Math.PI]) {
+      const tile = box(0.06, 0.05, 0.02, blue, false);
+      tile.position.set(Math.sin(a) * 0.185, 0.06, Math.cos(a) * 0.185);
+      tile.rotation.y = a;
+      dome.add(tile);
+    }
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), mat("#111216", 0.2, { metalness: 0.5 }));
+    eye.position.set(0, 0.1, 0.165);
+    const eyeLight = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshBasicMaterial({ color: "#ff3a2a", toneMapped: false }));
+    eyeLight.position.set(0.07, 0.07, 0.175);
+    const projector = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.03, 10), silver);
+    projector.rotation.x = Math.PI / 2;
+    projector.position.set(-0.07, 0.12, 0.17);
+    dome.add(eye, eyeLight, projector);
+    droid.add(dome);
+    for (const side of [-1, 1]) {
+      const leg = box(0.06, 0.5, 0.1, white);
+      leg.position.set(side * 0.235, 0.32, 0);
+      leg.rotation.x = 0.12;
+      const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 16), blue);
+      shoulder.rotation.z = Math.PI / 2;
+      shoulder.position.set(side * 0.22, 0.56, 0);
+      const foot = box(0.1, 0.06, 0.2, silver);
+      foot.position.set(side * 0.235, 0.03, 0.03);
+      droid.add(leg, shoulder, foot);
+    }
+    const middleLeg = box(0.07, 0.16, 0.07, white);
+    middleLeg.position.set(0, 0.11, 0);
+    const middleFoot = box(0.1, 0.05, 0.14, silver);
+    middleFoot.position.set(0, 0.025, 0);
+    droid.add(middleLeg, middleFoot);
+    droid.position.set(-4.5, 0, -3.0);
+    droid.rotation.y = Math.atan2(4.5, 3.0);
+    root.add(tag(droid, "droid"));
+    let blink = 0;
+    animated.push((t, dt) => {
+      if (!playing.has("droid")) dome.rotation.y = Math.sin(t * 0.35) * 0.7 + Math.sin(t * 0.9) * 0.15;
+      blink = Math.max(0, blink - dt);
+      if (blink === 0 && Math.random() < dt * 0.5) blink = 0.15;
+      eyeLight.material.color.set(blink > 0 ? "#3a8aff" : "#ff3a2a");
+    });
+    // Poked: the dome spins round, the body rocks on its legs, the light flickers.
+    things.droid = (since) => {
+      const k = Math.min(1, since / 1.8);
+      dome.rotation.y = k * Math.PI * 2 * (k < 1 ? 1 : 0);
+      droid.rotation.z = Math.sin(since * 16) * 0.07 * (1 - k);
+      droid.position.y = Math.abs(Math.sin(since * 8)) * 0.02 * (1 - k);
+      eyeLight.material.color.set(Math.sin(since * 40) > 0 ? "#ff3a2a" : "#ffffff");
+      if (k >= 1) { droid.rotation.z = 0; droid.position.y = 0; }
+      return k < 1;
+    };
+
+    // Two sabers mounted on the west wall: they light when touched, hum a while and go out.
+    const plaque = box(0.04, 0.5, 1.0, metal("#1c1f25", 0.5));
+    plaque.position.set(-ROOM_HALF_X + 0.03, 1.75, -1.3);
+    root.add(plaque);
+    const sabers = new THREE.Group();
+    const blades = ([["#39a7ff", 1.86], ["#ff2b2b", 1.62]] as const).map(([colour, y], i) => {
+      const hilt = new THREE.Group();
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.25, 12), silver);
+      grip.rotation.x = Math.PI / 2;
+      hilt.add(grip);
+      for (let r = 0; r < 4; r++) {
+        const ridge = new THREE.Mesh(new THREE.TorusGeometry(0.019, 0.004, 6, 12), mat("#111216", 0.6));
+        ridge.position.z = -0.08 + r * 0.03;
+        hilt.add(ridge);
+      }
+      const emitter = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.05, 12), silver);
+      emitter.rotation.x = Math.PI / 2;
+      emitter.position.z = 0.15;
+      hilt.add(emitter);
+      const blade = new THREE.Group();
+      blade.position.z = 0.17;
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 1, 10).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false }));
+      const aura = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1, 12).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      blade.add(core, aura);
+      blade.rotation.x = Math.PI / 2;
+      blade.scale.set(1, 0.001, 1);
+      blade.visible = false;
+      hilt.add(blade);
+      // Hilts lie along the wall, one above the other, the red one pointing the other way.
+      hilt.position.set(-ROOM_HALF_X + 0.08, y, -1.3 + (i ? 0.38 : -0.38));
+      hilt.rotation.y = i ? Math.PI : 0;
+      sabers.add(hilt);
+      const light = addLight(colour, 0, 3, new THREE.Vector3(-ROOM_HALF_X + 0.4, y, -1.3));
+      return { blade, aura, light, delay: i * 0.25 };
+    });
+    root.add(tag(sabers, "saber"));
+    things.saber = (since) => {
+      for (const { blade, aura, light, delay } of blades) {
+        const s = since - delay;
+        const out = s < 0 ? 0 : s < 0.18 ? s / 0.18 : s < 2.5 ? 1 : s < 2.9 ? 1 - (s - 2.5) / 0.4 : 0;
+        blade.visible = out > 0.001;
+        blade.scale.y = Math.max(0.001, out * 0.85);
+        aura.material.opacity = 0.5 + Math.sin(since * 60 + delay * 10) * 0.08;
+        light.intensity = out * 1.6;
+      }
+      return since < 3.2;
+    };
+
+    // Cargo stacked in the corner behind the droid.
+    const cargo = canvasTexture(128, 128, (ctx) => {
+      ctx.fillStyle = "#6a707b"; ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = "#4a4f58"; ctx.fillRect(0, 0, 128, 10); ctx.fillRect(0, 118, 128, 10);
+      for (let x = -20; x < 140; x += 18) { ctx.fillStyle = "#e8c21c"; ctx.beginPath(); ctx.moveTo(x, 118); ctx.lineTo(x + 9, 118); ctx.lineTo(x + 19, 108); ctx.lineTo(x + 10, 108); ctx.fill(); }
+      ctx.fillStyle = "#1a1c20"; ctx.fillRect(0, 106, 128, 2);
+      ctx.fillStyle = "rgba(20,20,24,0.8)"; ctx.font = "bold 18px 'Share Tech Mono', monospace"; ctx.textAlign = "center";
+      ctx.fillText("CARGO 7-B", 64, 52);
+      ctx.font = "bold 11px 'Share Tech Mono', monospace"; ctx.fillText("HYPERDRIVE PARTS", 64, 72);
+    });
+    const crateMaterial = mat("#ffffff", 0.5, { map: cargo, metalness: 0.4 });
+    for (const [x, y, z, ry, s] of [[-5.3, 0, -3.95, 0.05, 0.7], [-4.55, 0, -4.05, -0.12, 0.55], [-5.25, 0.7, -3.95, 0.2, 0.5]] as const) {
+      const crate = box(s, s, s, crateMaterial);
+      crate.position.set(x, y + s / 2, z);
+      crate.rotation.y = ry;
+      root.add(crate);
+    }
+
+    // A console against the north wall: a slanted desk of screens and buttons that blink.
+    const desk = box(1.4, 0.8, 0.45, metal("#3a3e47"));
+    desk.position.set(4.6, 0.4, -ROOM_HALF_Z + 0.25);
+    const slope = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.42), new THREE.MeshBasicMaterial({ toneMapped: false, map: canvasTexture(272, 84, (ctx) => {
+      ctx.fillStyle = "#14171d"; ctx.fillRect(0, 0, 272, 84);
+      for (const [x, w] of [[10, 70], [96, 80], [192, 70]]) {
+        ctx.fillStyle = "#06223a"; ctx.fillRect(x, 10, w, 44);
+        ctx.strokeStyle = "#39a7ff"; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let k = 0; k <= w; k += 4) ctx.lineTo(x + k, 32 + Math.sin(k * 0.21 + x) * 12);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#ffe81f"; ctx.font = "9px 'Share Tech Mono', monospace"; ctx.fillText("NAV  ·  SHIELDS  ·  COMMS", 60, 72);
+    }) }));
+    slope.rotation.x = -Math.PI / 2 + 0.6;
+    slope.position.set(4.6, 0.86, -ROOM_HALF_Z + 0.3);
+    slope.userData.console = true;
+    root.add(desk, slope);
+    const buttons = Array.from({ length: 10 }, (_, i) => {
+      const button = box(0.05, 0.02, 0.04, new THREE.MeshBasicMaterial({ color: ["#ff3b30", "#39ff6a", "#ffe81f", "#39a7ff"][i % 4], toneMapped: false }), false);
+      button.position.set(4.0 + i * 0.13, 0.81, -ROOM_HALF_Z + 0.42);
+      button.userData.button = true;
+      root.add(button);
+      return button;
+    });
+    animated.push((t) => {
+      buttons.forEach((button, i) => { button.visible = Math.sin(t * (1.3 + i * 0.37) + i * 2.1) > -0.4; });
+    });
+  }
+
   // The room's daylight and sky glow, dimmed when the curtains are drawn.
   const [hemi, daylight, daylightTarget] = roomAmbience(theme) as [THREE.HemisphereLight, THREE.DirectionalLight, THREE.Object3D];
   root.add(hemi, daylight, daylightTarget);
@@ -2526,7 +2961,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     contacts.push([circle.x, circle.z, 0.95, 0.95, 0, true]);
     for (const i of CIRCLE_PILLOWS) { const seat = seatById(`${circle.id}-${i}`)!; contacts.push([seat.x, seat.z, 0.8, 0.8, 0, true]); }
   }
-  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie";
+  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie" || theme === "galaxy";
   root.add(contactShadows(contacts, 0.011, dark ? 0.6 : 0.5));
 
   // Dust turning in the light: before the fire, in the window's light and under the lamps.
@@ -2546,8 +2981,9 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
         case "lamp-couch": case "lamp-reading": return on ? "Switch off the lamp" : "Switch on the lamp";
         case "pendant": return on ? "Switch off the ceiling light" : "Switch on the ceiling light";
         case "fairy": return on ? "Switch off the fairy lights" : "Switch on the fairy lights";
-        case "fire": return theme === "cyberpunk" ? (on ? "Switch off the holo-fire" : "Switch on the holo-fire") : on ? "Put the fire out" : "Light the fire";
-        case "curtains": return on ? "Open the curtains" : "Draw the curtains";
+        case "fire": return theme === "cyberpunk" ? (on ? "Switch off the holo-fire" : "Switch on the holo-fire")
+          : theme === "galaxy" ? (on ? "Shut off the plasma fire" : "Light the plasma fire") : on ? "Put the fire out" : "Light the fire";
+        case "curtains": return theme === "galaxy" ? (on ? "Open the blast shield" : "Close the blast shield") : on ? "Open the curtains" : "Draw the curtains";
         case "cat": return "Pet the cat";
         case "shark": return "Squeeze Blåhaj";
         case "guitar": return "Strum the guitar";
@@ -2562,12 +2998,16 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
         case "computer": return "Nudge your contacts";
         case "lava": return "Stir the lava lamp";
         case "boards": return "Check the boards";
+        case "holochess": return "Play holochess";
+        case "droid": return "Poke the droid";
+        case "saber": return "Light the sabers";
         default: return null;
       }
     },
     sounds: {
       cat: playPurr, shark: playSqueak, guitar: playStrum, popcorn: () => playPops(), globe: playWhirr, clock: playChime,
       skull: playBoo, arcade: playArcade, crt: playData, mug: playSip, creeper: playHiss, computer: playNudge, lava: playBloop, boards: playGroan,
+      holochess: playHoloChess, droid: playBeeps, saber: playSaber,
     },
     switched: (id, on) => {
       if (id === "fire") {
@@ -2578,10 +3018,12 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
     played: (thing) => {
       if (thing === "cat") for (const at of hearts) kit.floatUp("heart", at, 3);
       if (thing === "guitar") kit.floatUp("note", new THREE.Vector3(ROOM_HALF_X - 0.5, 1.0, -0.9), 3, look.fairy[0]);
+      if (thing === "droid") kit.floatUp("note", new THREE.Vector3(-4.5, 0.95, -3.0), 3, "#7fc8ff");
     },
   });
 
   let codeNext = 0;
+  let spaceNext = 0;
   const update = (t: number, dt: number) => {
     kit.update(t, dt);
     for (const { mesh, phase } of flickers) {
@@ -2596,6 +3038,10 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       codeNext = t + 0.08;
       code?.step();
       windowCode?.step();
+    }
+    if (windowSpace && t > spaceNext) {
+      spaceNext = t + 1 / 30;
+      windowSpace.step(t);
     }
     for (const step of animated) step(t, dt);
     motes.update(t);

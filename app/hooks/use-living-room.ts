@@ -11,11 +11,12 @@ import {
 /** use-hub re-dispatches lounge traffic as this window event. */
 export const LOUNGE_EVENT = "huddle-lounge";
 
-export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk" | "academia" | "minecraft" | "y2k" | "zombie";
+export type RoomTheme = "cozy" | "vampire" | "matrix" | "cyberpunk" | "academia" | "minecraft" | "y2k" | "zombie" | "galaxy";
 
 export function roomThemeFor(customThemeId: string | undefined): RoomTheme {
   if (customThemeId === "vampire" || customThemeId === "matrix" || customThemeId === "cyberpunk" || customThemeId === "minecraft" || customThemeId === "zombie") return customThemeId;
   if (customThemeId === "dark-academia") return "academia";
+  if (customThemeId === "star-wars") return "galaxy";
   // The old-PC themes share a turn-of-the-millennium bedroom.
   if (customThemeId?.startsWith("msn") || customThemeId === "teamspeak" || customThemeId === "winamp") return "y2k";
   return "cozy";

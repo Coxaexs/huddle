@@ -473,6 +473,103 @@ export function playBloop() {
   });
 }
 
+/** The astromech: a run of chirps and whistles, then a happy warble. */
+export function playBeeps() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  let at = context.currentTime;
+  for (let i = 0; i < 9; i++) {
+    const osc = context.createOscillator();
+    osc.type = i % 3 === 2 ? "triangle" : "sine";
+    const from = 900 + Math.random() * 2200;
+    const length = 0.05 + Math.random() * 0.09;
+    osc.frequency.setValueAtTime(from, at);
+    osc.frequency.exponentialRampToValueAtTime(from * (0.6 + Math.random() * 1.2), at + length);
+    osc.connect(envelope(context, out, at, 0.005, 0.12, length));
+    osc.start(at);
+    osc.stop(at + length + 0.05);
+    at += length + 0.015 + Math.random() * 0.05;
+  }
+  const warble = context.createOscillator();
+  warble.type = "sine";
+  warble.frequency.setValueAtTime(1800, at);
+  const wobble = context.createOscillator();
+  const depth = context.createGain();
+  wobble.frequency.value = 18;
+  depth.gain.value = 420;
+  wobble.connect(depth).connect(warble.frequency);
+  warble.connect(envelope(context, out, at, 0.01, 0.1, 0.35));
+  warble.start(at);
+  wobble.start(at);
+  warble.stop(at + 0.4);
+  wobble.stop(at + 0.4);
+}
+
+/** The sabers on the wall: the snap-hiss of lighting, three seconds of hum with a swing in it, and the power-down. */
+export function playSaber() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  burst(context, out, now, "bandpass", 2400, 0.8, 0.35, 0.25);
+  const hum = context.createGain();
+  hum.gain.setValueAtTime(0.0001, now);
+  hum.gain.exponentialRampToValueAtTime(0.22, now + 0.12);
+  hum.gain.setValueAtTime(0.22, now + 2.5);
+  hum.gain.exponentialRampToValueAtTime(0.0001, now + 3.0);
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.Q.value = 3;
+  filter.frequency.setValueAtTime(380, now);
+  filter.frequency.linearRampToValueAtTime(900, now + 1.0);
+  filter.frequency.linearRampToValueAtTime(420, now + 1.6);
+  filter.connect(hum).connect(out);
+  for (const f of [90, 91.5, 180]) {
+    const osc = context.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(f * 0.8, now);
+    osc.frequency.exponentialRampToValueAtTime(f, now + 0.15);
+    osc.connect(filter);
+    osc.start(now);
+    osc.stop(now + 3.05);
+  }
+  const down = context.createOscillator();
+  down.type = "sawtooth";
+  down.frequency.setValueAtTime(180, now + 2.5);
+  down.frequency.exponentialRampToValueAtTime(40, now + 2.95);
+  down.connect(envelope(context, out, now + 2.5, 0.02, 0.08, 0.45));
+  down.start(now + 2.5);
+  down.stop(now + 3.0);
+}
+
+/** Holochess: the pieces flicker up with a shimmer, and one growls at another. */
+export function playHoloChess() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  for (let i = 0; i < 6; i++) tone(context, out, "sine", 3200 - i * 220, now + i * 0.04, 0.004, 0.06, 0.18);
+  const growl = context.createOscillator();
+  growl.type = "sawtooth";
+  growl.frequency.setValueAtTime(150, now + 0.5);
+  growl.frequency.linearRampToValueAtTime(85, now + 1.1);
+  const wobble = context.createOscillator();
+  const depth = context.createGain();
+  wobble.frequency.value = 11;
+  depth.gain.value = 14;
+  wobble.connect(depth).connect(growl.frequency);
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 700;
+  filter.Q.value = 4;
+  growl.connect(filter).connect(envelope(context, out, now + 0.5, 0.05, 0.22, 0.6));
+  growl.start(now + 0.5);
+  wobble.start(now + 0.5);
+  growl.stop(now + 1.2);
+  wobble.stop(now + 1.2);
+}
+
 /** The zombie at the boarded window: three thumps on the planks and a long groan. */
 export function playGroan() {
   const a = audio();

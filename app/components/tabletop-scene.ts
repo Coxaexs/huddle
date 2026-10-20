@@ -42,6 +42,7 @@ const MAP_INKS: Record<RoomTheme, MapInk> = {
   minecraft: { paper: ["#e0cfa0", "#b89f6a"], ink: "#3a2a1a", wall: "#4a4a4a", floor: "#cbb88a", water: ["#3f76e4", "#7fa8ff"], wood: "#6b5130", tree: ["#5fa83a", "#3f7a28"], grass: "rgba(95,168,58,0.25)", accent: "#a83232", label: "#2a1a0a" },
   zombie: { paper: ["#c9c0a0", "#7d7458"], ink: "#2a2414", wall: "#1e1a10", floor: "#b3a888", water: ["#4a6a3a", "#7a9a5a"], wood: "#5a4026", tree: ["#4a5a2a", "#2a3418"], grass: "rgba(90,110,40,0.25)", accent: "#8e1b12", label: "#3a1a0a" },
   y2k: { paper: ["#eef2ff", "#c6d0f5"], ink: "#2a3aa8", wall: "#3a3f6a", floor: "#e3e8ff", water: ["#4fc3ff", "#a8e4ff"], wood: "#b0806a", tree: ["#5ab85a", "#2f7a3a"], grass: "rgba(120,200,90,0.2)", accent: "#ff4fa8", label: "#1a237e" },
+  galaxy: { paper: ["#06142a", "#020812"], ink: "#7fd8ff", wall: "#7fd8ff", floor: "#0a2040", water: ["#2a6aaa", "#5aa8e8"], wood: "#3a7ab8", tree: ["#4ac8a0", "#1a6a5a"], grass: "rgba(127,216,255,0.08)", accent: "#ffe81f", label: "#ffe81f" },
   cyberpunk: { paper: ["#1b0f40", "#08041a"], ink: "#00f0ff", wall: "#00f0ff", floor: "#241a52", water: ["#9b5cff", "#ff7ad1"], wood: "#ff2fb4", tree: ["#2fbf8f", "#13705a"], grass: "rgba(0,240,255,0.08)", accent: "#ff2fb4", label: "#ffe94a" },
 };
 
@@ -52,7 +53,7 @@ const MAP_INKS: Record<RoomTheme, MapInk> = {
  */
 function mapTexture(theme: RoomTheme) {
   const k = MAP_INKS[theme];
-  const neon = theme === "matrix" || theme === "cyberpunk";
+  const neon = theme === "matrix" || theme === "cyberpunk" || theme === "galaxy";
   return canvasTexture(1024, 1024, (ctx) => {
     const size = 1024;
     const rand = seeded(42);
@@ -184,7 +185,7 @@ function mapTexture(theme: RoomTheme) {
 
 /** What the wall screen shows until someone shares: the night's adventure, and how to put a map up. */
 function idleTexture(theme: RoomTheme, look: Look) {
-  const neon = theme === "matrix" || theme === "cyberpunk";
+  const neon = theme === "matrix" || theme === "cyberpunk" || theme === "galaxy";
   const gold = neon ? look.trim : theme === "vampire" ? "#b08a3e" : "#d9b45c";
   return canvasTexture(1024, 576, (ctx) => {
     const g = ctx.createRadialGradient(512, 260, 40, 512, 288, 620);
@@ -398,7 +399,7 @@ export function buildTabletop(theme: RoomTheme): BuiltRoom {
   const candles: THREE.Object3D[] = [];
   const candleGlows: THREE.Sprite[] = [];
   const rand = seeded(11);
-  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie";
+  const dark = theme === "vampire" || theme === "matrix" || theme === "cyberpunk" || theme === "zombie" || theme === "galaxy";
 
   // Floor
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMaterial(look, W, D));

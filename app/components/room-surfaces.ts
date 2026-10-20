@@ -66,10 +66,12 @@ const clone = (texture: THREE.Texture, repeat: [number, number]) => {
 
 /**
  * "pixel" swaps the scans for 16x16 block textures drawn here (oak planks,
- * cobblestone, wool, grass, logs), sharp-edged, for the Minecraft rooms. Set
- * before a room is built; materials made after it follow.
+ * cobblestone, wool, grass, logs), sharp-edged, for the Minecraft rooms.
+ * "metal" turns the hard surfaces (floor, wood, stone) into deck plates and
+ * brushed panels for the starship rooms; cloth keeps its scans. Set before a
+ * room is built; materials made after it follow.
  */
-export type SurfaceStyle = "real" | "pixel";
+export type SurfaceStyle = "real" | "pixel" | "metal";
 let surfaceStyle: SurfaceStyle = "real";
 export function setSurfaceStyle(style: SurfaceStyle) {
   surfaceStyle = style;
@@ -136,12 +138,66 @@ function pixelMap(kind: Surface): THREE.Texture | null {
   return texture;
 }
 
+/** The surfaces a starship is made of: everything hard. */
+const METAL_KINDS: Partial<Record<Surface, true>> = { floor: true, wood: true, stone: true, bark: true };
+const metalMaps = new Map<string, THREE.Texture>();
+
+/** Grey deck plates (the floor) or brushed panels (everything else), tinted by the material's colour. */
+function metalMap(kind: Surface): THREE.Texture {
+  const key = kind === "floor" ? "deck" : "panel";
+  let texture = metalMaps.get(key);
+  if (texture) return texture;
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const grey = (v: number) => `rgb(${Math.round(v)},${Math.round(v)},${Math.round(v)})`;
+  if (key === "deck") {
+    // Four plates with a raised tread, rivets in the corners and dark seams between.
+    ctx.fillStyle = grey(70);
+    ctx.fillRect(0, 0, size, size);
+    for (const [x, y] of [[0, 0], [64, 0], [0, 64], [64, 64]]) {
+      ctx.fillStyle = grey(168 + pixelNoise(x, y, 5) * 26);
+      ctx.fillRect(x + 2, y + 2, 60, 60);
+      ctx.fillStyle = "rgba(255,255,255,0.10)";
+      for (let ty = y + 7; ty < y + 58; ty += 6) for (let tx = x + 7 + ((ty / 6) % 2) * 3; tx < x + 58; tx += 6) ctx.fillRect(tx, ty, 2, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      for (const [rx, ry] of [[5, 5], [57, 5], [5, 57], [57, 57]]) ctx.fillRect(x + rx, y + ry, 2, 2);
+    }
+  } else {
+    // Brushed: fine horizontal streaks, a few scuffs, a seam along two edges.
+    for (let y = 0; y < size; y++) {
+      ctx.fillStyle = grey(186 + (pixelNoise(0, y, 9) - 0.5) * 24);
+      ctx.fillRect(0, y, size, 1);
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    for (let i = 0; i < 40; i++) ctx.fillRect(pixelNoise(i, 1, 2) * size, pixelNoise(i, 2, 3) * size, 8 + pixelNoise(i, 3, 4) * 30, 1);
+    ctx.fillStyle = grey(96);
+    ctx.fillRect(0, 0, size, 2);
+    ctx.fillRect(0, 0, 2, size);
+  }
+  texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 8;
+  metalMaps.set(key, texture);
+  return texture;
+}
+
 /**
  * Gives `material` a surface. Marks it at once (so materials meant to look
  * different are never merged together) and fills in the maps when they arrive.
  */
 export function dress<T extends THREE.MeshStandardMaterial>(material: T, kind: Surface, options: Dress = {}): T {
   const { repeat = [1, 1], detail = true, bump = 1, rough = true } = options;
+  if (surfaceStyle === "metal" && METAL_KINDS[kind]) {
+    material.userData.surface = `metal|${kind}|${repeat.join("x")}|${detail}`;
+    if (detail && !material.map) material.map = clone(metalMap(kind), repeat);
+    material.metalness = Math.max(material.metalness, 0.45);
+    material.roughness = Math.min(material.roughness, 0.5);
+    material.needsUpdate = true;
+    return material;
+  }
   if (surfaceStyle === "pixel") {
     material.userData.surface = `pixel|${kind}|${repeat.join("x")}|${detail}`;
     const map = pixelMap(kind);

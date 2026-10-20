@@ -51,6 +51,12 @@ export function ambienceFor(theme: RoomTheme, night = isNight()): Placed[] {
         { clip: "wind", at: WINDOW, gain: 0.8, muffle: 2600 },
         { clip: "rain", at: WINDOW, gain: 0.35, muffle: 2000 },
       ];
+    case "galaxy":
+      // The ship: its systems humming at the console and under the deck; the plasma fire is silent.
+      return [
+        { clip: "computer", at: [4.6, 0.8, -ROOM_HALF_Z + 0.3], gain: 0.75 },
+        { clip: "computer", at: [-4.5, 0.4, -3.0], gain: 0.35 },
+      ];
     case "cyberpunk":
       return [
         { clip: "city", at: WINDOW, gain: 0.85, muffle: 3200 },
