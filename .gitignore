@@ -59,3 +59,10 @@ desktop-native-windows/vendor/*.zip
 desktop-native-linux/build/
 public/hoffle_native.dmg
 .dice-sound-preview/
+
+# Build output and stamps that are not source: .next/ is left by next build in
+# older checkouts (the app builds with vinext now), and the standby builder
+# (huddle-ops/failover/thinkpad/hoffle-standby-build.sh) records the commit
+# it built in .standby-built.
+.next/
+/.standby-built
