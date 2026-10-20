@@ -179,7 +179,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "web", description: "Open the music dashboard", group: "Rooms" },
   {
     name: "dj",
-    description: "Open the DJ booth: two decks, mixer, FX and Auto DJ",
+    description: "Open the DJ booth: stems, two decks, mixer, FX and Auto DJ",
     group: "Rooms",
   },
 
