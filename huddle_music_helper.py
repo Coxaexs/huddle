@@ -232,6 +232,12 @@ def _installed_ytdlp_version() -> str:
         return yt_dlp.version.__version__
 
 
+# What pip had installed when this process loaded yt-dlp. Compare against this,
+# not yt_dlp.version.__version__: pip normalises "2026.08.19" to "2026.8.19",
+# so the two never matched and the helper restarted after every check.
+_started_ytdlp = _installed_ytdlp_version()
+
+
 async def update_ytdlp() -> dict:
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-m", "pip", "install", "--quiet", "--no-cache-dir", "--upgrade", "yt-dlp",
@@ -245,7 +251,7 @@ async def update_ytdlp() -> dict:
         installed=installed,
         result="ok" if proc.returncode == 0 else "pip failed: " + stderr.decode(errors="replace").strip()[-200:],
     )
-    if proc.returncode == 0 and installed != yt_dlp.version.__version__:
+    if proc.returncode == 0 and installed != _started_ytdlp:
         print(f"[music-helper] yt-dlp {yt_dlp.version.__version__} -> {installed}; restarting onto it", flush=True)
         asyncio.get_running_loop().call_later(1, os._exit, 0)
     return dict(_ytdlp_status)
