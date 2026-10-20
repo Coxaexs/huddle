@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isInlineSafe, sniffUpload } from "@/lib/upload-sniff";
+import { isInlineSafe, isSafeSvg, looksLikeSvg, sniffUpload } from "@/lib/upload-sniff";
 
 // Route-level tests: the upload route is where untrusted bytes become content
 // served from our own origin, so it is exercised through its real handler.
@@ -57,6 +57,8 @@ const { GET } = await import("@/app/api/uploads/[key]/route");
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0];
 const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+const LOGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" style="fill:#7b63e6"/></svg>';
+const encode = (text: string) => Array.from(new TextEncoder().encode(text));
 
 function upload(bytes: ArrayLike<number>, name: string, type: string, purpose?: string) {
   const form = new FormData();
@@ -100,7 +102,8 @@ describe("sniffUpload", () => {
   it("only renders known media inline", () => {
     expect(isInlineSafe("image/png")).toBe(true);
     expect(isInlineSafe("audio/webm")).toBe(true);
-    expect(isInlineSafe("image/svg+xml")).toBe(false);
+    // Served under its own script-less sandbox (see the GET tests below).
+    expect(isInlineSafe("image/svg+xml")).toBe(true);
     expect(isInlineSafe("text/html")).toBe(false);
   });
   it("recognises files like pptx, txt, md, zip, rar, jar", () => {
@@ -127,6 +130,50 @@ describe("sniffUpload", () => {
     expect(sniffUpload(MD_BYTES, "readme.md")?.contentType).toBe(
       "text/markdown; charset=utf-8",
     );
+  });
+});
+
+describe("SVG", () => {
+  it("recognises an SVG after an XML declaration, comments and a DOCTYPE", () => {
+    const exported =
+      '<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generator: Adobe Illustrator 27.0.0 -->\n' +
+      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n' +
+      '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h10v10z"/></svg>';
+    expect(looksLikeSvg(exported)).toBe(true);
+    expect(isSafeSvg(exported)).toBe(true);
+    expect(looksLikeSvg("\uFEFF" + LOGO)).toBe(true);
+    expect(looksLikeSvg("<html><svg></svg></html>")).toBe(false);
+    expect(looksLikeSvg("<svgfoo/>")).toBe(false);
+  });
+
+  it("accepts drawings: styles, gradients, metadata, links, embedded bitmaps", () => {
+    const drawing =
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10">' +
+      "<metadata><rdf:RDF/></metadata><style>.a{fill:url(#g)}</style>" +
+      '<linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient>' +
+      '<a href="https://hoffle.online"><text font-family="Fredoka">Online</text></a>' +
+      '<image href="data:image/png;base64,iVBORw0KGgo="/><use xlink:href="#g"/>' +
+      '<animate attributeName="opacity" values="0;1" dur="1s"/></svg>';
+    expect(isSafeSvg(drawing)).toBe(true);
+  });
+
+  it.each([
+    ["a script element", '<svg><script>alert(1)</script></svg>'],
+    ["a namespaced script", '<svg><svg:script>alert(1)</svg:script></svg>'],
+    ["an event handler", '<svg onload="alert(1)"></svg>'],
+    ["a handler on a child", '<svg><rect\n  onclick = "alert(1)"/></svg>'],
+    ["a javascript: link", '<svg><a href="javascript:alert(1)"><text>x</text></a></svg>'],
+    ["a javascript: link in character references", '<svg><a href="&#106;&#x61;vascript:alert(1)">x</a></svg>'],
+    ["a javascript: link split by a tab", '<svg><a href="java&#9;script:alert(1)">x</a></svg>'],
+    ["an HTML data URL", '<svg><a href="data:text/html,<b>hi</b>">x</a></svg>'],
+    ["an entity declaration", '<!DOCTYPE svg [<!ENTITY x "&#60;script&#62;alert(1)&#60;/script&#62;">]><svg>&x;</svg>'],
+    ["an XSLT stylesheet", '<?xml-stylesheet type="text/xsl" href="x.xsl"?><svg></svg>'],
+    ["a frame in a foreignObject", '<svg><foreignObject><iframe src="https://x"/></foreignObject></svg>'],
+    ["a form", '<svg><foreignObject><form action="https://x"><input name="p"/></form></foreignObject></svg>'],
+    ["an animated link", '<svg><a><set attributeName="href" to="https://x"/></a></svg>'],
+    ["an animated handler", '<svg><set attributeName="onclick" to="alert(1)"/></svg>'],
+  ])("refuses %s", (_, svg) => {
+    expect(isSafeSvg(svg)).toBe(false);
   });
 });
 
@@ -184,10 +231,40 @@ describe("POST /api/uploads", () => {
     expect(jarBody.name).toContain("app.jar");
   });
 
-  it("rejects an SVG even though it claims to be an image", async () => {
+  it("rejects an SVG with a script even though it claims to be an image", async () => {
     const response = await upload(SVG, "x.svg", "image/svg+xml");
     expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toMatch(/active content/);
     expect(state.objects.size).toBe(0);
+  });
+
+  it("stores a safe SVG as an image, untouched", async () => {
+    const response = await upload(encode(LOGO), "logo.svg", "image/svg+xml");
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { key: string; name: string; type: string };
+    expect(body.type).toBe("image/svg+xml");
+    expect(body.name).toBe("logo.svg");
+    expect(new TextDecoder().decode(state.objects.get(body.key)?.bytes)).toBe(LOGO);
+  });
+
+  it("takes an SVG sent with no type, and names it .svg", async () => {
+    const response = await upload(encode(LOGO), "logo", "");
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { name: string; type: string };
+    expect(body.type).toBe("image/svg+xml");
+    expect(body.name).toBe("logo.svg");
+  });
+
+  it("keeps .svg for real SVGs, so chat never shows other bytes as a picture", async () => {
+    const png = (await (await upload(PNG, "cat.svg", "image/svg+xml")).json()) as { name: string; type: string };
+    expect(png).toMatchObject({ name: "cat.svg.png", type: "image/png" });
+    const text = (await (await upload(encode("just some notes"), "notes.svg", "")).json()) as { name: string; type: string };
+    expect(text.name).toBe("notes.svg.txt");
+  });
+
+  it("refuses an SVG that is not UTF-8", async () => {
+    const utf16 = [0xff, 0xfe, ...Array.from(LOGO).flatMap((c) => [c.charCodeAt(0), 0])];
+    expect((await upload(utf16, "logo.svg", "image/svg+xml")).status).toBe(400);
   });
 
   it("rejects bytes that do not match the claimed family", async () => {
@@ -230,11 +307,17 @@ describe("GET /api/uploads/:key", () => {
     expect(response.headers.get("content-security-policy")).toContain("sandbox");
   });
 
-  it("forces an old SVG upload to download instead of rendering", async () => {
+  it("serves an SVG inline under a sandbox with no script and no fetches", async () => {
+    // Even an old, unchecked upload: opened on its own it gets an opaque origin and cannot run script.
     state.objects.set("k--x.svg", { bytes: SVG.buffer as ArrayBuffer, contentType: "image/svg+xml" });
     const response = await get("k--x.svg");
-    expect(response.headers.get("content-type")).toBe("application/octet-stream");
-    expect(response.headers.get("content-disposition")).toMatch(/^attachment/);
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    expect(response.headers.get("content-disposition")).toMatch(/^inline/);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    const csp = response.headers.get("content-security-policy") || "";
+    expect(csp).toMatch(/^sandbox;/);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toMatch(/script-src|allow-scripts|allow-same-origin/);
   });
 
   it("serves archives and documents as attachments with download headers", async () => {

@@ -5,7 +5,8 @@
  * served back from Huddle's own origin. Trusting it would let someone upload an
  * SVG (or HTML labelled `image/png`) that runs script as whoever opens it. So
  * the stored content type always comes from here, and anything not on this list
- * is refused. SVG is deliberately absent: it is a script-capable document.
+ * is refused. SVG is deliberately absent: it is a script-capable document, and
+ * only the regular upload route lets it in, through isSafeSvg below.
  */
 
 export type UploadFamily = "image" | "pdf" | "audio" | "clip" | "file";
@@ -237,9 +238,55 @@ export function sniffUpload(
   return null;
 }
 
+/** What an SVG that passed isSafeSvg is stored as. */
+export const SVG_TYPE: SniffedType = { family: "image", contentType: "image/svg+xml", extension: "svg" };
+
+/**
+ * An SVG document's opening: an optional XML declaration, comments and a
+ * DOCTYPE (with or without an internal subset), then the <svg> root.
+ */
+const SVG_START =
+  /^\s*(?:(?:<\?xml\s[^>]*\?>|<!--[\s\S]*?-->|<!doctype\s+svg\b[^[>]*(?:\[[\s\S]*?\])?\s*>)\s*)*<svg[\s>/]/i;
+
+/** True when this text, or these first bytes, open an SVG document. */
+export function looksLikeSvg(content: string | ArrayBuffer | Uint8Array): boolean {
+  const text = typeof content === "string" ? content : new TextDecoder().decode(content);
+  return SVG_START.test(text.replace(/^﻿/, ""));
+}
+
+/**
+ * Whether a whole uploaded SVG may be stored. It must only draw: no script
+ * elements, on* handlers or script URLs (also when spelled with character
+ * references or split by whitespace), no entity declarations (they can smuggle
+ * markup past this check), no XSLT, no embedded frames or forms, and no
+ * animation that rewrites a handler or a link. This is the second line of
+ * defence: an SVG is only ever shown through <img>, which never runs script,
+ * and served under a sandbox that allows none (app/api/uploads/[key]).
+ */
+export function isSafeSvg(raw: string): boolean {
+  if (!looksLikeSvg(raw) || raw.includes("\u0000")) return false;
+  const text = raw
+    .replace(/&#x([0-9a-f]{1,6});?/gi, (_, hex: string) => fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d{1,7});?/g, (_, decimal: string) => fromCodePoint(parseInt(decimal, 10)))
+    .toLowerCase();
+  const squeezed = text.replace(/[\s\u0000-\u001f]+/g, "");
+  return !(
+    text.includes("<!entity") ||
+    text.includes("<?xml-stylesheet") ||
+    /<(?:[\w.-]+:)?(?:script|iframe|frame|frameset|object|embed|applet|portal|meta|base|link|form|input|button|textarea|select)[\s/>]/.test(text) ||
+    /[\s"'/:]on[a-z]+\s*=/.test(text) ||
+    /attributename\s*=\s*["']\s*(?:[\w.-]+:)?(?:on[a-z]+|href)\s*["']/.test(text) ||
+    /(?:javascript|vbscript|livescript):|data:(?:text\/html|text\/xml|application\/xhtml|application\/xml)/.test(squeezed)
+  );
+}
+
+function fromCodePoint(value: number): string {
+  return value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
+}
+
 /** Types the browser may render in place; everything else is sent as a download. */
 export function isInlineSafe(contentType: string): boolean {
-  return /^(image\/(png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/(webm|mp4|quicktime|ogg|x-matroska)|application\/pdf)$/.test(
+  return /^(image\/(png|jpeg|gif|webp|avif|svg\+xml)|audio\/[\w.+-]+|video\/(webm|mp4|quicktime|ogg|x-matroska)|application\/pdf)$/.test(
     contentType,
   );
 }

@@ -3,7 +3,7 @@ import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
-import { sniffUpload } from "@/lib/upload-sniff";
+import { isSafeSvg, looksLikeSvg, sniffUpload, SVG_TYPE } from "@/lib/upload-sniff";
 import { consumeUploadQuota } from "@/lib/upload-quota";
 
 export const dynamic = "force-dynamic";
@@ -86,8 +86,23 @@ export async function POST(request: Request) {
   // client claimed so a "PDF" cannot turn out to be something else.
   // Note: archives (ZIP, RAR, etc.) are never unzipped or decompressed on the server.
   // Only the first 512 bytes are copied out; the file itself goes to R2 as
-  // the parsed form holds it, not as a second copy of up to 40 MB.
-  const sniffed = sniffUpload(await upload.slice(0, 512).arrayBuffer(), upload.name);
+  // the parsed form holds it, not as a second copy of up to 40 MB. SVG is the
+  // exception: sniffUpload refuses it, so it is read whole and let in only
+  // when the entire document passes isSafeSvg.
+  const head = await upload.slice(0, 512).arrayBuffer();
+  const svgText =
+    upload.size <= IMAGE_UPLOAD_MAX_BYTES &&
+    (looksLikeSvg(head) || upload.type === "image/svg+xml" || /\.svg$/i.test(upload.name))
+      ? await utf8Text(upload)
+      : null;
+  const isSvg = svgText !== null && looksLikeSvg(svgText);
+  if (isSvg && !isSafeSvg(svgText)) {
+    return Response.json(
+      { error: "That SVG has scripts or other active content, so it can't be uploaded." },
+      { status: 400 },
+    );
+  }
+  const sniffed = isSvg ? SVG_TYPE : sniffUpload(head, upload.name);
   const claimed = isPdf
     ? "pdf"
     : isClip
@@ -102,7 +117,9 @@ export async function POST(request: Request) {
     (sniffed.family === claimed ||
       // MediaRecorder audio is webm/mp4, and m4a sniffs as audio either way.
       (claimed === "audio" && sniffed.family === "clip") ||
-      (claimed === "clip" && sniffed.family === "audio"));
+      (claimed === "clip" && sniffed.family === "audio") ||
+      // Some systems give an SVG no type at all.
+      (claimed === "file" && isSvg));
   if (!sniffed || !compatible) {
     return Response.json(
       { error: "That file's contents don't match a supported format." },
@@ -118,7 +135,11 @@ export async function POST(request: Request) {
     .replace(/[^a-zA-Z0-9._ -]+/g, "_")
     .replace(/\s+/g, " ")
     .slice(-100);
-  const key = `${crypto.randomUUID()}--${safeName || fallbackName}`;
+  // Chat shows an attachment as a picture by its extension, so the name has to
+  // agree with the bytes: only a checked SVG may end in .svg.
+  let name = safeName || fallbackName;
+  if (isSvg !== /\.svg$/i.test(name)) name += `.${sniffed.extension}`;
+  const key = `${crypto.randomUUID()}--${name}`;
   const contentType = sniffed.contentType;
   await bucket.put(key, upload, {
     httpMetadata: { contentType },
@@ -128,7 +149,16 @@ export async function POST(request: Request) {
 
   const url = `/hangout/api/uploads/${encodeURIComponent(key)}`;
   return Response.json(
-    { key, url, name: safeName || fallbackName, type: contentType },
+    { key, url, name, type: contentType },
     { status: 201 },
   );
+}
+
+/** The upload as UTF-8 text, or null when it is not valid UTF-8 (an SVG must be). */
+async function utf8Text(file: File): Promise<string | null> {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+  } catch {
+    return null;
+  }
 }

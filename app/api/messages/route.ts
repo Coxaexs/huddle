@@ -108,7 +108,7 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     }
   }
 
-  const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif"]);
+  const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"]);
   const imageAttachments: string[] = [];
   const fileAttachments: Array<{ url: string; name: string; type: string }> = [];
 
@@ -718,7 +718,7 @@ export async function postMessageAs(
       content ||
       (hasPayloadForward
         ? "Forwarded a message"
-        : /\.(png|jpe?g|gif|webp|avif)$/i.test(attachmentKey || "")
+        : /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(attachmentKey || "")
           ? "Shared an image"
           : attachmentKey?.toLowerCase().endsWith(".pdf")
             ? "Shared a PDF document"

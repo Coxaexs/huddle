@@ -19,8 +19,8 @@ export async function GET(
   const object = await bucket.get(key);
   if (!object) return new Response("Not found", { status: 404 });
 
-  // Older uploads stored the client's claimed type, which could be SVG or
-  // HTML. Anything outside the known-safe list is forced to download, and the
+  // Older uploads stored the client's claimed type, which could be HTML.
+  // Anything outside the known-safe list is forced to download, and the
   // sandbox CSP keeps even an opened file from running script on our origin.
   const stored = object.httpMetadata?.contentType || "application/octet-stream";
   let contentType = stored;
@@ -50,7 +50,14 @@ function servingHeaders(contentType: string, filename: string): Record<string, s
   };
   // Chrome's built-in PDF viewer refuses to load under a sandbox CSP, and it
   // runs in its own isolated process anyway.
-  if (contentType !== "application/pdf") {
+  if (contentType === "image/svg+xml") {
+    // An SVG is a document. Opened on its own, this sandbox gives it an opaque
+    // origin and no script at all (chat shows it through <img>, which never
+    // runs script either). Inline styles stay, since most exported SVGs use
+    // them; nothing may be fetched from anywhere.
+    headers["Content-Security-Policy"] =
+      "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:";
+  } else if (contentType !== "application/pdf") {
     headers["Content-Security-Policy"] =
       "sandbox; default-src 'none'; img-src 'self'; media-src 'self'";
   }

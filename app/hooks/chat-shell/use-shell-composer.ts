@@ -329,8 +329,8 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
 
     for (const file of list) {
       const lower = file.name.toLowerCase();
-      if (lower.endsWith(".svg") || lower.endsWith(".html") || lower.endsWith(".htm")) {
-        setNotice("For security, HTML and SVG files cannot be attached.");
+      if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+        setNotice("For security, HTML files cannot be attached.");
         continue;
       }
       if (file.size > NORMAL_UPLOAD_MAX_BYTES) {
