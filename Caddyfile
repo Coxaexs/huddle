@@ -1,0 +1,8 @@
+http://hoffle.online, http://chat.hoffle.online {
+    reverse_proxy 127.0.0.1:8730
+}
+
+https://hoffle.online, https://chat.hoffle.online {
+    tls internal
+    reverse_proxy 127.0.0.1:8730
+}

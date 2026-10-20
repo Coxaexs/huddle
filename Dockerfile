@@ -25,6 +25,8 @@ COPY worker/ /app/worker/
 COPY public/ /app/public/
 COPY types/ /app/types/
 COPY scripts/ /app/scripts/
+COPY docs/ /app/docs/
+COPY README.md /app/README.md
 
 # Build client bundle and worker
 RUN npm run build

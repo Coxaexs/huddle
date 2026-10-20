@@ -23,7 +23,7 @@ services:
     ports:
       - "${HOFFLE_PORT:-8730}:8730"
     volumes:
-      - ./state:/app/state
+      - ./state:/app/state:Z
     env_file:
       - path: .env
         required: false
