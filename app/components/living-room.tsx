@@ -113,6 +113,7 @@ const TV_COLOURS: Record<RoomTheme, { bg: [string, string]; ink: string; dim: st
   minecraft: { bg: ["#3b2a1a", "#1a120a"], ink: "#ffffff", dim: "#a0a0a0", accent: "#55ff55", font: "ui-monospace, monospace" },
   zombie: { bg: ["#151c10", "#070906"], ink: "#dfe8d2", dim: "#8f9c80", accent: "#9ad53b", font: "'Special Elite', 'Courier New', monospace" },
   y2k: { bg: ["#2a5bd8", "#0b1c5a"], ink: "#ffffff", dim: "#b9ccff", accent: "#ff7ad9", font: "Tahoma, Verdana, sans-serif" },
+  galaxy: { bg: ["#0a1020", "#02030a"], ink: "#e6ecf7", dim: "#8d99b3", accent: "#ffe81f", font: "'News Cycle', 'Franklin Gothic Medium', sans-serif" },
 };
 
 /** The TV's "now playing" screen: cover, title, artist, a progress bar and the time. */
@@ -657,8 +658,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const scene = new THREE.Scene();
     const house = new THREE.Group();
     scene.add(house);
-    // Minecraft's venues are built from pixel blocks, not scanned wood and stone.
-    setSurfaceStyle(theme === "minecraft" ? "pixel" : "real");
+    // Minecraft's venues are built from pixel blocks, not scanned wood and stone; the starship's from metal.
+    setSurfaceStyle(theme === "minecraft" ? "pixel" : theme === "galaxy" ? "metal" : "real");
     const parts: BuiltRoom & { cinemaLights?: any; board?: FloorBoard } = venueId === "cinema" ? buildCinema(theme)
       : venueId === "tabletop" ? buildTabletop(theme)
         : venueId === "boardhall" ? buildBoardHall(theme)

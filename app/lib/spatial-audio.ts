@@ -162,6 +162,8 @@ export const ROOM_SHAPES = {
   y2k: { seconds: 0.45, decay: 0.08, damp: 0.4, predelay: 0.01 },
   // A bare, boarded-up room: hard walls, a hollow ring.
   zombie: { seconds: 1.0, decay: 0.18, damp: 0.5, predelay: 0.02 },
+  // A starship's lounge: hard metal close by, a short bright ring.
+  galaxy: { seconds: 0.8, decay: 0.15, damp: 0.62, predelay: 0.012 },
 } satisfies Record<string, RoomShape>;
 export type RoomShapeName = keyof typeof ROOM_SHAPES;
 

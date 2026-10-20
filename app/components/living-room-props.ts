@@ -110,8 +110,9 @@ const ZOMBIE: Prop[] = [
 
 const SETS: Record<RoomTheme, Prop[]> = {
   zombie: ZOMBIE,
-  // The Minecraft room's corners are built from blocks in the scene itself.
+  // The Minecraft room's corners are built from blocks in the scene itself, the starship's from metal.
   minecraft: [],
+  galaxy: [],
   y2k: Y2K,
   cozy: COZY,
   academia: COZY,
@@ -161,6 +162,7 @@ export const TABLETOP_PROPS: Record<RoomTheme, Prop[]> = {
   zombie: TABLETOP_VAMPIRE.filter((prop) => prop.model !== "character-vampire"),
   minecraft: TABLETOP_COZY.filter((prop) => prop.model !== "lampRoundFloor"),
   y2k: TABLETOP_TECH("#4fc3ff"),
+  galaxy: TABLETOP_TECH("#39a7ff"),
   cozy: TABLETOP_COZY,
   academia: TABLETOP_COZY,
   vampire: TABLETOP_VAMPIRE,
