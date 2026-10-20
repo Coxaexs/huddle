@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Syne:wght@500&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Creepster&family=Special+Elite&family=Pixelify+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Syne:wght@500&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Creepster&family=Special+Elite&family=Pixelify+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&family=News+Cycle:wght@400;700&display=swap');
 @import "tailwindcss";
 
 /* Every avatar, whatever class its caller gives it: a letter tile is a centred
@@ -16149,7 +16149,7 @@ html[data-motion="reduced"] .typing-dots i {
 
 .dice-theme-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -16253,6 +16253,11 @@ html[data-motion="reduced"] .typing-dots i {
     linear-gradient(90deg, #3e4a22 0%, #6e7b45 45%, #55524a 75%, #4d5e2a 100%);
 }
 
+.dice-theme-row button.kyber .dice-theme-swatch {
+  background: linear-gradient(90deg, #39a7ff 0 20%, #39ff6a 20% 40%, #ff2b2b 40% 60%, #a855f7 60% 80%, #ffd21f 80%);
+  box-shadow: 0 0 6px rgba(57, 167, 255, 0.55);
+}
+
 .dice-theme-row button.minecraft .dice-theme-swatch {
   border-radius: 0;
   background: linear-gradient(90deg, #5d9c3a 0 20%, #866043 20% 40%, #7d7d7d 40% 60%, #5decf5 60% 80%, #a5834f 80%);
@@ -16261,7 +16266,7 @@ html[data-motion="reduced"] .typing-dots i {
 
 @media (max-width: 560px) {
   .dice-theme-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

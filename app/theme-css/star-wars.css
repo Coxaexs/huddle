@@ -1,0 +1,561 @@
+/* star-wars theme: loaded only while it is active (app/lib/theme-css.ts).
+
+   A galaxy far, far away: crawl-yellow titles in News Cycle on deep space,
+   a starfield behind slightly see-through panels (components/starfield.tsx,
+   which also makes the jump to lightspeed when you change servers), the
+   selected channel lit by a lightsaber, holographic voice tiles and a
+   comlink for a voice bar. Jedi blue for focus, Sith red for danger. */
+
+:root[data-custom-theme-id="star-wars"] {
+  --rail-bg: rgba(2, 3, 9, 0.7);
+  --surface-2: #0d1222;
+  --muted-2: #7f8aa3;
+  --faint: #56607a;
+  --accent-strong: #ffe81f;
+  --accent-hi: #fff27a;
+  --on-accent: #0b0a02;
+  --sw-yellow: #ffe81f;
+  --sw-blue: #4bd5ee;
+  --sw-saber: #39a7ff;
+  --sw-saber-core: #eaf6ff;
+  --sw-sith: #ff2b2b;
+  --sw-holo: #7fd8ff;
+  --font-ui: "News Cycle", "Instrument Sans", "Franklin Gothic Medium", sans-serif;
+  --font-display: "News Cycle", "Franklin Gothic Medium", sans-serif;
+  --font-label: "Share Tech Mono", ui-monospace, monospace;
+  --ring: 0 0 0 2px rgba(57, 167, 255, 0.75);
+  --sw-saber-glow: 0 0 2px var(--sw-saber-core), 0 0 6px var(--sw-saber), 0 0 14px rgba(57, 167, 255, 0.7);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 232, 31, 0.05);
+  color-scheme: dark;
+}
+
+/* Deep space: a faint nebula and a far-off planet glow, the stars on top. */
+:root[data-custom-theme-id="star-wars"] body {
+  background:
+    radial-gradient(60% 45% at 85% 105%, rgba(255, 140, 60, 0.10), transparent 70%),
+    radial-gradient(50% 40% at 8% 12%, rgba(70, 90, 210, 0.13), transparent 70%),
+    radial-gradient(40% 35% at 70% 30%, rgba(150, 60, 170, 0.07), transparent 70%),
+    #020309 !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+:root[data-custom-theme-id="star-wars"] .app-shell {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  font-family: var(--font-ui) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .sidebar {
+  background: rgba(5, 8, 18, 0.66) !important;
+  border-color: rgba(255, 232, 31, 0.1) !important;
+}
+
+/* A blue planet's rim along the bottom, seen from orbit. */
+:root[data-custom-theme-id="star-wars"] .chat-panel {
+  background:
+    radial-gradient(140% 90px at 50% calc(100% + 40px), rgba(120, 170, 255, 0.16), transparent 70%),
+    rgba(6, 9, 20, 0.6) !important;
+  border-color: rgba(255, 232, 31, 0.14) !important;
+  transition: background-color 0.35s ease;
+}
+
+:root[data-custom-theme-id="star-wars"] .member-panel {
+  background: rgba(5, 8, 18, 0.66) !important;
+}
+
+/* During the jump the glass clears so you can watch the stars stretch. */
+:root[data-custom-theme-id="star-wars"][data-hyperspace] .chat-panel {
+  background: rgba(6, 9, 20, 0.3) !important;
+}
+
+/* Titles: the crawl's yellow, set wide like an opening title card. */
+:root[data-custom-theme-id="star-wars"] .channel-heading strong,
+:root[data-custom-theme-id="star-wars"] .space-header h1 {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.11em !important;
+  color: var(--sw-yellow) !important;
+  text-shadow: 0 0 12px rgba(255, 232, 31, 0.28);
+}
+
+:root[data-custom-theme-id="star-wars"] .space-header h1 {
+  font-size: 17px !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .channel-heading > span,
+:root[data-custom-theme-id="star-wars"] .member-panel-title,
+:root[data-custom-theme-id="star-wars"] .section-label > span:first-child {
+  font-family: var(--font-label) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.14em !important;
+  color: var(--sw-blue) !important;
+}
+
+/* A thin gold rule under the header, fading out at both ends. */
+:root[data-custom-theme-id="star-wars"] .chat-header {
+  border-bottom: 0 !important;
+  background-image: linear-gradient(90deg, transparent, rgba(255, 232, 31, 0.55) 30%, rgba(255, 232, 31, 0.55) 70%, transparent) !important;
+  background-size: 100% 1px !important;
+  background-repeat: no-repeat !important;
+  background-position: bottom !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .space-mark.active-space {
+  box-shadow: 0 0 0 2px var(--sw-yellow), 0 0 16px rgba(255, 232, 31, 0.4) !important;
+}
+
+/* The selected channel: a lightsaber igniting along its bottom edge. */
+:root[data-custom-theme-id="star-wars"] .channel,
+:root[data-custom-theme-id="star-wars"] .voice-room {
+  position: relative;
+}
+
+:root[data-custom-theme-id="star-wars"] .channel.selected,
+:root[data-custom-theme-id="star-wars"] .voice-room.selected {
+  background: linear-gradient(90deg, rgba(57, 167, 255, 0.2), rgba(57, 167, 255, 0.04)) !important;
+  box-shadow: none !important;
+  color: #f2f8ff !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .channel.selected .channel-hash {
+  color: var(--sw-saber-core) !important;
+  text-shadow: 0 0 8px var(--sw-saber);
+}
+
+/* Hilt: a little ridged metal grip at the left end. */
+:root[data-custom-theme-id="star-wars"] .channel.selected::before,
+:root[data-custom-theme-id="star-wars"] .voice-room.selected::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  bottom: 0;
+  width: 18px;
+  height: 5px;
+  border-radius: 1.5px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.45) 3px 4px),
+    linear-gradient(180deg, #e2e6ee 0%, #8d94a3 55%, #4a505c 100%);
+  pointer-events: none;
+}
+
+/* Blade. */
+:root[data-custom-theme-id="star-wars"] .channel.selected::after,
+:root[data-custom-theme-id="star-wars"] .voice-room.selected::after {
+  content: "";
+  position: absolute;
+  left: 23px;
+  right: 8px;
+  bottom: 1.5px;
+  height: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--sw-saber-core);
+  box-shadow: var(--sw-saber-glow);
+  transform-origin: left center;
+  animation: sw-ignite 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both, sw-hum 2.4s 0.32s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sw-ignite {
+  from { transform: scaleX(0); opacity: 0.4; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes sw-hum {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.82; }
+}
+
+:root[data-custom-theme-id="star-wars"] .channel:hover:not(.selected),
+:root[data-custom-theme-id="star-wars"] .voice-room:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* The message box: dark glass, the saber's blue when you start typing. */
+:root[data-custom-theme-id="star-wars"] .composer {
+  background: rgba(8, 12, 26, 0.92) !important;
+  border: 1px solid rgba(127, 216, 255, 0.22) !important;
+}
+
+/* The box glows as a whole, so the field inside needs no ring of its own. */
+:root[data-custom-theme-id="star-wars"] .composer textarea:focus-visible {
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .composer:focus-within {
+  border-color: rgba(57, 167, 255, 0.85) !important;
+  box-shadow: 0 0 0 1px rgba(57, 167, 255, 0.35), 0 0 22px rgba(57, 167, 255, 0.22) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .message time {
+  font-family: var(--font-label);
+  color: #6d7a96;
+}
+
+:root[data-custom-theme-id="star-wars"] a {
+  color: var(--sw-blue);
+}
+
+/* The start of a channel opens like the films do. */
+:root[data-custom-theme-id="star-wars"] .channel-intro::before {
+  content: "A long time ago in a galaxy far, far away....";
+  display: block;
+  margin-bottom: 16px;
+  font: 400 15px/1.4 var(--font-display);
+  color: var(--sw-blue);
+  letter-spacing: 0.02em;
+}
+
+/* …and the welcome line reads like the crawl, tilted back into the stars. */
+:root[data-custom-theme-id="star-wars"] .cozy-intro-pill {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  transform: perspective(260px) rotateX(14deg);
+  transform-origin: 50% 100%;
+}
+
+:root[data-custom-theme-id="star-wars"] .cozy-intro-icon {
+  color: var(--sw-yellow) !important;
+  background: transparent !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .cozy-intro-text {
+  font: 700 18px/1.3 var(--font-display) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--sw-yellow) !important;
+  text-shadow: 0 0 14px rgba(255, 232, 31, 0.25);
+}
+
+:root[data-custom-theme-id="star-wars"] .channel-intro h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sw-yellow);
+}
+
+:root[data-custom-theme-id="star-wars"] .intro-icon {
+  color: var(--sw-yellow);
+  background: rgba(255, 232, 31, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 232, 31, 0.35);
+}
+
+:root[data-custom-theme-id="star-wars"] ::selection {
+  background: var(--sw-yellow);
+  color: #0b0a02;
+}
+
+:root[data-custom-theme-id="star-wars"] ::-webkit-scrollbar-thumb {
+  background: #2a3046;
+  border-radius: 999px;
+}
+
+:root[data-custom-theme-id="star-wars"] ::-webkit-scrollbar-thumb:hover {
+  background: #4b4415;
+}
+
+/* Voice: tiles are holograms; whoever talks gets a saber-blue outline. */
+:root[data-custom-theme-id="star-wars"] .stage-tile {
+  background:
+    repeating-linear-gradient(0deg, rgba(127, 216, 255, 0.035) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #0a1124 0%, #060a16 100%) !important;
+  border: 1px solid rgba(127, 216, 255, 0.2) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .stage-tile.is-speaking {
+  border-color: var(--sw-saber-core) !important;
+  box-shadow: 0 0 0 1px var(--sw-saber), 0 0 18px rgba(57, 167, 255, 0.55), inset 0 0 18px rgba(57, 167, 255, 0.15) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .stage-tile figcaption,
+:root[data-custom-theme-id="star-wars"] .stage-tile figcaption span:first-child {
+  font-family: var(--font-label) !important;
+  letter-spacing: 0.05em;
+}
+
+:root[data-custom-theme-id="star-wars"] .vctrl-btn {
+  background: #0c1222 !important;
+  border: 1px solid rgba(127, 216, 255, 0.25) !important;
+  color: #cfe9ff !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .vctrl-btn:hover {
+  border-color: var(--sw-saber) !important;
+  box-shadow: 0 0 12px rgba(57, 167, 255, 0.35);
+}
+
+/* Menus: a cockpit readout. */
+:root[data-custom-theme-id="star-wars"] .user-menu {
+  color: #e6ecf7;
+  background:
+    radial-gradient(120% 60% at 50% -20%, rgba(255, 232, 31, 0.08), transparent 70%),
+    linear-gradient(180deg, #0b1020 0%, #05070f 100%);
+  border: 1px solid rgba(255, 232, 31, 0.25);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 24px rgba(57, 167, 255, 0.1);
+}
+
+:root[data-custom-theme-id="star-wars"] .bot-menu .user-menu-head {
+  background: #0b1020;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu-head {
+  border-bottom-color: rgba(255, 232, 31, 0.2);
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu-head strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sw-yellow);
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu button:hover {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(57, 167, 255, 0.22), rgba(57, 167, 255, 0.04));
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu button.danger {
+  color: #ff5a4f;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu button.danger:hover {
+  background: linear-gradient(90deg, rgba(255, 43, 43, 0.22), rgba(255, 43, 43, 0.04));
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 232, 31, 0.45), transparent);
+}
+
+:root[data-custom-theme-id="star-wars"] .user-menu input[type="range"] {
+  accent-color: var(--sw-saber);
+}
+
+/* Invite cards in chat. */
+:root[data-custom-theme-id="star-wars"] .server-invite-card {
+  --invite-accent: #ffe81f;
+  background: rgba(6, 9, 20, 0.94);
+  border: 1px solid rgba(255, 232, 31, 0.3);
+  box-shadow: 0 0 24px rgba(57, 167, 255, 0.08);
+}
+
+:root[data-custom-theme-id="star-wars"] .server-invite-eyebrow {
+  font-family: var(--font-label);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--sw-blue);
+}
+
+:root[data-custom-theme-id="star-wars"] .server-invite-card .server-invite-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sw-yellow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-custom-theme-id="star-wars"] .channel.selected::after,
+  :root[data-custom-theme-id="star-wars"] .voice-room.selected::after {
+    animation: none;
+  }
+}
+
+/* ---- settings window ---- */
+:root[data-custom-theme-id="star-wars"] {
+  --sp-frame: rgba(255, 232, 31, 0.35);
+  --sp-side:
+    radial-gradient(120% 40% at 50% -10%, rgba(70, 90, 210, 0.16), transparent 70%),
+    linear-gradient(180deg, #04060e 0%, #080c1a 100%);
+  --sp-main:
+    radial-gradient(70% 40% at 90% 0%, rgba(255, 232, 31, 0.06), transparent 70%),
+    linear-gradient(180deg, #070a16 0%, #04060e 100%);
+  --sp-ink: #e6ecf7;
+  --sp-muted: #8d99b3;
+  --sp-card: rgba(13, 18, 34, 0.88);
+  --sp-card-edge: rgba(127, 216, 255, 0.16);
+  --sp-hover: rgba(57, 167, 255, 0.12);
+  --sp-field: #03050c;
+  --sp-field-edge: rgba(127, 216, 255, 0.3);
+  --sp-accent: #ffe81f;
+  --sp-on-accent: #0b0a02;
+  --sp-radius: 6px;
+  --sp-title: #ffe81f;
+}
+
+:root[data-custom-theme-id="star-wars"] .modal.settings-modal {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 40px rgba(57, 167, 255, 0.1) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .settings-modal .settings-topbar {
+  border-bottom: 0 !important;
+  background: linear-gradient(90deg, transparent, rgba(255, 232, 31, 0.55) 25%, rgba(255, 232, 31, 0.55) 75%, transparent) bottom / 100% 1px no-repeat;
+}
+
+:root[data-custom-theme-id="star-wars"] .settings-modal .settings-topbar h2 {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--sw-yellow) !important;
+  text-shadow: 0 0 14px rgba(255, 232, 31, 0.3);
+}
+
+:root[data-custom-theme-id="star-wars"] .settings-modal .settings-group-title {
+  font-family: var(--font-label) !important;
+  letter-spacing: 0.14em;
+  color: var(--sw-blue) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .settings-modal .settings-nav-btn.active {
+  background: linear-gradient(90deg, rgba(57, 167, 255, 0.32), rgba(57, 167, 255, 0.06)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 2px 0 0 var(--sw-saber-core), inset 4px 0 6px -2px var(--sw-saber);
+}
+
+:root[data-custom-theme-id="star-wars"] .settings-modal .settings-sidebar-user::after {
+  content: "JEDI";
+  margin-left: auto;
+  padding: 1px 6px;
+  font: 700 9px/1.5 var(--font-label);
+  letter-spacing: 0.16em;
+  color: var(--sw-yellow);
+  border: 1px solid rgba(255, 232, 31, 0.6);
+  border-radius: 2px;
+}
+
+/* ---- profile card: a holocron record ---- */
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) {
+  --pop-bg: #070a16;
+  background:
+    radial-gradient(120% 50% at 50% -10%, rgba(70, 90, 210, 0.14), transparent 70%),
+    linear-gradient(180deg, #0a0f1f 0%, #05070f 100%) !important;
+  color: #e6ecf7 !important;
+  border: 1px solid rgba(255, 232, 31, 0.3) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(57, 167, 255, 0.12) !important;
+}
+
+/* The banner is a slice of sky: stars, and a planet rising at the edge. */
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner {
+  height: 84px !important;
+  border-radius: 5px 5px 0 0;
+  background:
+    radial-gradient(1px 1px at 12% 30%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 28% 70%, #cfe0ff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 44% 22%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 58%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 66% 18%, #ffe9c4 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 8% 82%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 36% 46%, #b4cdff 50%, transparent 51%),
+    radial-gradient(1px 1px at 52% 88%, #fff 50%, transparent 51%),
+    radial-gradient(circle at 88% 330%, #0b0805 0 71%, #ffc27a 71.6%, rgba(243, 140, 70, 0.55) 72.6%, rgba(243, 140, 70, 0.12) 76%, transparent 80%),
+    radial-gradient(60% 120% at 20% 0%, rgba(70, 90, 210, 0.35), transparent 70%),
+    #03050c !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-banner::before {
+  content: "HOLOCRON RECORD";
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font: 400 10px/1 var(--font-label);
+  letter-spacing: 0.22em;
+  color: rgba(255, 232, 31, 0.8);
+}
+
+/* The avatar is projected: blue, with scanlines over it. */
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-avatar {
+  box-shadow: 0 0 0 3px #070a16, 0 0 0 4px rgba(127, 216, 255, 0.7), 0 0 18px rgba(57, 167, 255, 0.45) !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-display-name {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sw-yellow) !important;
+  text-shadow: 0 0 12px rgba(255, 232, 31, 0.3);
+}
+
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-panel {
+  background: rgba(13, 18, 34, 0.85) !important;
+  border: 1px solid rgba(127, 216, 255, 0.16) !important;
+  border-radius: 4px !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn {
+  color: #e6ecf7 !important;
+  background: #0c1222 !important;
+  border: 1px solid rgba(127, 216, 255, 0.28) !important;
+  border-radius: 4px !important;
+}
+
+:root[data-custom-theme-id="star-wars"] .user-profile-card-popover:not(.pst):not([data-has-custom-css="true"]) .profile-card-actions .discord-btn:hover {
+  background: rgba(57, 167, 255, 0.18) !important;
+  border-color: var(--sw-saber) !important;
+  color: #fff !important;
+}
+
+/* ---- voice bar: a comlink ---- */
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-bar {
+  margin: 0 8px;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 232, 31, 0.5), transparent) top / 100% 1px no-repeat,
+    linear-gradient(180deg, #0c1222 0%, #070a16 100%) !important;
+  border: 1px solid rgba(127, 216, 255, 0.22) !important;
+  border-bottom: 0 !important;
+  border-radius: 6px 6px 0 0 !important;
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-name {
+  font-family: var(--font-label);
+  letter-spacing: 0.05em;
+  color: #e6ecf7;
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-status {
+  font-family: var(--font-label);
+  color: var(--sw-holo) !important;
+  text-shadow: 0 0 8px rgba(57, 167, 255, 0.5);
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-status .mini-voice-dot {
+  background: var(--sw-holo) !important;
+  box-shadow: 0 0 8px var(--sw-saber);
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-signal-btn {
+  color: var(--sw-holo) !important;
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-btn:hover {
+  border-color: rgba(57, 167, 255, 0.7) !important;
+  color: #fff !important;
+}
+
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-btn.on {
+  color: var(--sw-holo) !important;
+  border-color: rgba(57, 167, 255, 0.7) !important;
+}
+
+/* Hanging up is the red blade. */
+:root[data-custom-theme-id="star-wars"]:not(#_) .mini-voice-leave {
+  color: #ffd6d2 !important;
+  border-color: rgba(255, 43, 43, 0.75) !important;
+  background: linear-gradient(180deg, #3a0c0c 0%, #1e0606 100%) !important;
+  box-shadow: 0 0 10px rgba(255, 43, 43, 0.3);
+}

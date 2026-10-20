@@ -292,6 +292,27 @@
 .fx-ooze-splat::before { width: 2.5px; height: 2px; left: -4px; top: 1px; }
 .fx-ooze-splat::after { width: 2px; height: 2px; right: -5px; top: 2px; }
 
+/* Star Wars: blaster bolts (white-hot core, coloured glow) and a muzzle flash. */
+.fx-bolt {
+  width: 28px;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 3px;
+  background: #fff4f2;
+  box-shadow: 0 0 2px #fff, 0 0 5px #ff3b2f, 0 0 11px #ff1a10;
+  transform-origin: 0 50%;
+}
+.fx-bolt-green {
+  background: #f2fff4;
+  box-shadow: 0 0 2px #fff, 0 0 5px #39ff6a, 0 0 11px #12d94a;
+}
+.fx-blaster-flash {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0, rgba(255, 170, 120, 0.85) 30%, rgba(255, 60, 40, 0.35) 55%, transparent 72%);
+}
+
 /* Minecraft: square block-break chips (size and colour set per particle). */
 .fx-block {
   box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.35);

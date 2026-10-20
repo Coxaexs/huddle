@@ -411,6 +411,30 @@ export const BUILTIN_THEMES: Theme[] = [
     },
     // Styling lives in app/theme-css/minecraft.css (loaded only while it is on).
   },
+  {
+    id: "star-wars",
+    name: "Star Wars",
+    description: "A galaxy far, far away: crawl-yellow titles on deep space, a drifting starfield, lightsaber highlights and a hyperspace jump between servers.",
+    baseTheme: "cozy",
+    isBuiltin: true,
+    corners: 6,
+    backdrop: "plain",
+    colors: {
+      ink: "#e6ecf7",
+      muted: "#8d99b3",
+      line: "rgba(255, 232, 31, 0.11)",
+      paper: "#020309",
+      panel: "#060914",
+      chatBg: "#080b18",
+      lavender: "#ffe81f",
+      lavenderSoft: "#25220a",
+      lavenderMuted: "#4d4510",
+      coral: "#ff3b30",
+      mint: "#39ff6a",
+    },
+    // Styling lives in app/theme-css/star-wars.css (loaded only while it is on);
+    // the starfield and hyperspace jump are components/starfield.tsx.
+  },
 ];
 
 const THEME_CODE_PREFIX = "huddle-theme:v1:";

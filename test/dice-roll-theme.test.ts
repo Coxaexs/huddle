@@ -38,9 +38,9 @@ describe("Dice Roll & Theme Features", () => {
   it("knows every dice style, its aliases and which app themes bring their own dice", async () => {
     const { DICE_STYLE_IDS, DICE_STYLES, resolveDiceStyle, inheritDiceStyle } = await import("../lib/dice-styles");
 
-    // Three rows of five in the settings menu.
-    expect(DICE_STYLE_IDS).toHaveLength(15);
-    for (const id of ["classic", "amber-resin", "shadowflame", "ocean-epoxy", "msn", "zombie", "minecraft"]) {
+    // Four rows of four in the settings menu.
+    expect(DICE_STYLE_IDS).toHaveLength(16);
+    for (const id of ["classic", "amber-resin", "shadowflame", "ocean-epoxy", "msn", "zombie", "minecraft", "kyber"]) {
       expect(resolveDiceStyle(id)).toBe(id);
     }
     expect(resolveDiceStyle("TeamSpeak")).toBe("msn");
@@ -63,6 +63,8 @@ describe("Dice Roll & Theme Features", () => {
     expect(inheritDiceStyle("nonsense", "matrix")).toBe("matrix");
     expect(inheritDiceStyle("default", "minecraft")).toBe("minecraft");
     expect(inheritDiceStyle(null, "zombie")).toBe("zombie");
+    expect(inheritDiceStyle("default", "star-wars")).toBe("kyber");
+    expect(resolveDiceStyle("lightsaber")).toBe("kyber");
 
     // A natural 1 in the Minecraft, Messenger, TeamSpeak and Zombie themes gets the theme's own fumble.
     const { fumbleSkinFor } = await import("../app/components/dice-theme-fumbles");

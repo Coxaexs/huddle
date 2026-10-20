@@ -1,7 +1,8 @@
 /**
  * Theme click effects: pressing a button (mute, deafen, send, anything) lets
  * a little of the theme spill out of it. Vampire drips blood, Matrix rains
- * glyphs, Cyberpunk glitches, and every other theme has its own.
+ * glyphs, Cyberpunk glitches, Star Wars fires blasters, and every other
+ * theme has its own.
  * Pure decoration: pointer-events none, capped in number, skipped when the
  * OS asks for reduced motion or `huddle-theme-fx` is "off" in localStorage.
  */
@@ -221,6 +222,26 @@ const ink: Spawn = (_layer, rect, x) => {
   floaters("fx-gold", ["✦", "·"], 2)(_layer, rect, x);
 };
 
+/** Blaster fire: two or three bolts leave the button in a muzzle flash and fly off. */
+const blaster: Spawn = (_layer, rect, x) => {
+  const y = rect.top + rect.height / 2;
+  particle("fx-blaster-flash", x, y, [
+    { transform: "translate(-50%, -50%) scale(0.3)", opacity: 1 },
+    { transform: "translate(-50%, -50%) scale(1.5)", opacity: 0 },
+  ], { duration: 280, easing: "ease-out" });
+  const count = 2 + Math.floor(Math.random() * 2);
+  const base = rand(0, 360);
+  for (let i = 0; i < count; i += 1) {
+    const angle = base + (360 / count) * i + rand(-25, 25);
+    const reach = rand(120, 220);
+    particle(Math.random() < 0.7 ? "fx-bolt" : "fx-bolt fx-bolt-green", x, y, [
+      { transform: `rotate(${angle}deg) translateX(0) scaleX(0.3)`, opacity: 1 },
+      { transform: `rotate(${angle}deg) translateX(${reach * 0.2}px) scaleX(1)`, opacity: 1, offset: 0.2 },
+      { transform: `rotate(${angle}deg) translateX(${reach}px) scaleX(1)`, opacity: 0 },
+    ], { duration: rand(260, 340), delay: i * 70, easing: "linear" });
+  }
+};
+
 const ripple: Spawn = (_layer, rect, x) => {
   particle("fx-ripple", x, rect.top + rect.height / 2, [
     { transform: "translate(-50%, -50%) scale(0)", opacity: 0.55 },
@@ -232,6 +253,7 @@ const EFFECTS: Record<string, Spawn> = {
   vampire: drip("blood"),
   zombie: drip("ooze"),
   minecraft: blockBreak,
+  "star-wars": blaster,
   matrix: glyphs,
   cyberpunk: neon,
   amber: embers,

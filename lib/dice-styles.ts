@@ -123,6 +123,15 @@ export const DICE_STYLES: DiceStyle[] = [
     material: "plastic",
   },
   {
+    // Kyber crystals in the four blade colours.
+    id: "kyber",
+    label: "Kyber Crystal ✨",
+    body: ["#1f7ae0", "#1fae4a", "#c81d25", "#7c3aed", "#e0b100"],
+    ink: "#f2f8ff",
+    outline: ["#0a2c5c", "#0a3d1a", "#4a070b", "#2a0f5c", "#4a3b00"],
+    material: "glass",
+  },
+  {
     // Every die a block: grass, dirt, stone, planks, diamond ore, gold ore, netherrack, obsidian.
     id: "minecraft",
     label: "Minecraft ⛏️",
@@ -176,6 +185,8 @@ const DICE_STYLE_ALIASES: Record<string, string> = {
   dicebag: "classic",
   ocean: "ocean-epoxy",
   epoxy: "ocean-epoxy",
+  lightsaber: "kyber",
+  starwars: "kyber",
 };
 
 export const DICE_STYLE_WORDS = [...DICE_STYLE_IDS, ...Object.keys(DICE_STYLE_ALIASES)];
@@ -204,6 +215,7 @@ const THEME_DICE: Record<string, string> = {
   teamspeak: "msn",
   minecraft: "minecraft",
   zombie: "zombie",
+  "star-wars": "kyber",
 };
 
 /** The dice style a roll uses: the player's pick, or their app theme's dice while on Solid Colour. */

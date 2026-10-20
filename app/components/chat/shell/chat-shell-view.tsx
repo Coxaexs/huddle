@@ -2,6 +2,7 @@ import { ConnectionBanner } from "../../connection-banner";
 import { RetroChrome } from "../../retro-chrome";
 import { type PublicUser } from "@/lib/users";
 import { MatrixRain } from "../../matrix-rain";
+import { Starfield } from "../../starfield";
 import { MsnOverlays } from "./overlays";
 import { ServerRail, ChannelSidebar, ThreadPanel, MemberPanel } from "./panels";
 import type { useShellComposer } from "../../../hooks/chat-shell/use-shell-composer";
@@ -45,6 +46,7 @@ export function renderChatShell(s: ChatShellViewState) {
   return (
     <>
     <MatrixRain />
+    <Starfield jumpKey={inDmHome ? "home" : activeServer?.id} />
     <main
       className={`app-shell ${mobileNav ? "nav-open" : ""} ${threadRoot ? "has-thread" : ""} ${membersOpen && !stageChannel ? "has-members" : ""}`}
       style={{

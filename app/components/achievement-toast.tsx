@@ -8,7 +8,7 @@ import { AchievementMedal, achievementIcon } from "./achievement-medal";
 /**
  * The unlock popup. Each theme gets its own delivery: a Minecraft advancement
  * toast, bats carrying a card for Vampire, an owl dropping a sealed letter for
- * Dark Academia, an MSN alert, and so on. Everything else gets a medal that
+ * Dark Academia, an MSN alert, an opening crawl for Star Wars, and so on. Everything else gets a medal that
  * pops and unrolls into a pill.
  */
 
@@ -20,6 +20,7 @@ export type ToastVariant =
   | "zombie"
   | "cyber"
   | "matrix"
+  | "galaxy"
   | "campfire"
   | "retro"
   | "pop";
@@ -32,6 +33,7 @@ export function toastVariantFor(themeId: string): ToastVariant {
   if (themeId === "zombie") return "zombie";
   if (themeId === "cyberpunk") return "cyber";
   if (themeId === "matrix") return "matrix";
+  if (themeId === "star-wars") return "galaxy";
   if (themeId === "amber") return "campfire";
   if (themeId === "winamp" || themeId === "teamspeak") return "retro";
   return "pop";
@@ -51,6 +53,7 @@ const DURATION: Record<ToastVariant, number> = {
   zombie: 7000,
   cyber: 6500,
   matrix: 7000,
+  galaxy: 7600,
   campfire: 7000,
   retro: 7000,
   pop: 6200,
@@ -91,6 +94,8 @@ const JINGLES: Record<ToastVariant, { wave: OscillatorType; gain: number; notes:
   zombie: { wave: "sawtooth", gain: 0.05, notes: [[110, 0, 0.5], [103.8, 0.25, 0.5], [146.8, 0.55, 0.7]] },
   cyber: { wave: "square", gain: 0.04, notes: [[1396.9, 0, 0.06], [1046.5, 0.07, 0.06], [1568, 0.14, 0.06], [2093, 0.21, 0.25]] },
   matrix: { wave: "square", gain: 0.03, notes: [[1200, 0, 0.04], [900, 0.06, 0.04], [1500, 0.12, 0.04], [600, 0.18, 0.04], [1800, 0.26, 0.2]] },
+  // A short brass call: up a fifth, then the octave.
+  galaxy: { wave: "sawtooth", gain: 0.04, notes: [[261.6, 0, 0.22], [392, 0.2, 0.22], [523.3, 0.4, 1.1], [659.3, 0.4, 1.1], [784, 0.4, 1.1]] },
   campfire: { wave: "triangle", gain: 0.12, notes: [[392, 0, 0.5], [493.9, 0.18, 0.5], [587.3, 0.36, 0.8]] },
   retro: { wave: "square", gain: 0.04, notes: [[659.3, 0, 0.1], [880, 0.1, 0.25]] },
   pop: { wave: "sine", gain: 0.14, notes: [[659.3, 0, 0.16], [987.8, 0.1, 0.5]] },
@@ -206,6 +211,9 @@ function useDecode(text: string, active: boolean): string {
 }
 
 // ---------- the toast ----------
+
+/** Star Wars numbers its achievements like films. */
+const EPISODES: Record<AchievementDef["tier"], string> = { bronze: "I", silver: "II", gold: "III", platinum: "IV" };
 
 export function AchievementToast({
   def,
@@ -398,6 +406,21 @@ export function AchievementToast({
             </div>
           </div>
           <div className="ach-matrix-line ach-matrix-ok">[ OK ] {tier.toLowerCase()} · wake up, achiever…<span className="ach-matrix-caret" /></div>
+          {moreChip}
+          {close}
+        </>,
+      );
+
+    case "galaxy":
+      return shell(
+        <>
+          <span className="ach-sw-saber" aria-hidden="true" />
+          <div className="ach-sw-kicker">A long time ago, in a channel far, far away....</div>
+          <div className="ach-sw-crawl">
+            <div className="ach-sw-episode">Episode {EPISODES[def.tier]}</div>
+            <div className="ach-sw-name">{def.label}</div>
+            <div className="ach-sw-desc">{def.description}</div>
+          </div>
           {moreChip}
           {close}
         </>,
