@@ -1,0 +1,10 @@
+[Unit]
+Description=Stop a runaway login-session job before the server runs out of memory
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/bin/hoffle-memguard
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
