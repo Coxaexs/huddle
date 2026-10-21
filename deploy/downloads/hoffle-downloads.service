@@ -1,0 +1,9 @@
+[Unit]
+Description=Copy the newest Hoffle desktop release onto this server
+After=huddle.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/huddle/scripts/sync-downloads.sh
+Nice=10
+IOSchedulingClass=idle

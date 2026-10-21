@@ -1,0 +1,10 @@
+[Unit]
+Description=Check GitHub for a new Hoffle desktop release every hour
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
