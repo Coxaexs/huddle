@@ -16,7 +16,7 @@ const OPEN_SERVER_KEY = "open_signup_server";
 
 export interface SignupSettings {
   open: boolean;
-  /** Server an open-signup account joins on arrival, or null for none. */
+  /** Server every new account joins on arrival (open signup or invite), or null for none. */
   serverId: string | null;
 }
 

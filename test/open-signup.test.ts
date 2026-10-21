@@ -136,7 +136,19 @@ describe("open signup and its guardrails", () => {
     expect(made.status).toBe(201);
     const member = await db.prepare("SELECT 1 AS ok FROM server_members sm JOIN users u ON u.id = sm.user_id WHERE sm.server_id = 'home' AND u.username = 'guest'").first();
     expect(member).toBeTruthy();
+    expect(await made.json()).toMatchObject({ joined: { id: "home", name: "Home" } });
     expect((await setOpen(true, "missing")).status).toBe(400);
+  });
+
+  it("joins invited accounts to the chosen server too, next to the invite's own", async () => {
+    await db.prepare("INSERT INTO servers (id, name, icon, color, created_by, created_at, position) VALUES ('home', 'Home', 'H', '#fff', NULL, '', 0), ('club', 'Club', 'C', '#fff', NULL, '', 1)").run();
+    await setOpen(false, "home");
+    await db.prepare("INSERT INTO invites (code, created_by, max_uses, uses, revoked, created_at, default_server_id) VALUES ('CLUBCODE', NULL, 1, 0, 0, '', 'club')").run();
+    expect((await open("friend", { invite: "CLUBCODE" })).status).toBe(201);
+    const servers = await db
+      .prepare("SELECT sm.server_id AS id FROM server_members sm JOIN users u ON u.id = sm.user_id WHERE u.username = 'friend' ORDER BY 1")
+      .all<{ id: string }>();
+    expect(servers.results.map((row) => row.id)).toEqual(["club", "home"]);
   });
 
   it("caps open signups per network per day", async () => {

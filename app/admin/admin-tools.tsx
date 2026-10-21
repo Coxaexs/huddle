@@ -652,7 +652,7 @@ function OpenSignupCard({ servers }: { servers: AdminServer[] }) {
                 value={state.serverId ?? ""}
                 onChange={(event) => void update({ serverId: event.target.value || null })}
                 disabled={busy}
-                aria-label="Server open-signup accounts join"
+                aria-label="Server every new account joins"
               >
                 <option value="">No server</option>
                 {servers.map((server) => (

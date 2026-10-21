@@ -16,7 +16,7 @@ import {
   type PasskeyHandoff,
 } from "../lib/passkeys";
 import type { PublicUser } from "@/lib/users";
-import { TUTORIAL_PENDING_KEY } from "./welcome-tutorial";
+import { FIRST_RUN_KEY, type FirstRun } from "./welcome-tutorial";
 import { SITE } from "./site-chrome";
 import { rememberTermsAccepted } from "./terms-consent";
 
@@ -233,6 +233,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         user?: PublicUser;
         defaultTheme?: string | null;
         twoFactor?: { ticket: string; passkey: boolean };
+        joined?: { id: string; name: string } | null;
       }>(path, {
         method: "POST",
         body: JSON.stringify(body),
@@ -247,7 +248,8 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         rememberTermsAccepted();
         // A brand-new account gets the welcome tutorial once it is in.
         try {
-          window.localStorage.setItem(TUTORIAL_PENDING_KEY, "1");
+          const firstRun: FirstRun = { invite: Boolean(serverInvite), joined: data.joined?.name ?? null };
+          window.localStorage.setItem(FIRST_RUN_KEY, JSON.stringify(firstRun));
         } catch {
           // Storage blocked: the tutorial is still in Settings.
         }

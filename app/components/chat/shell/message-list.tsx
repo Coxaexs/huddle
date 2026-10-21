@@ -73,6 +73,7 @@ export function MessageList({
   setLightboxImage,
   emojiMap,
   runCommand,
+  pressCommandButton,
   runMusicUiCommand,
   startGame,
   pollCounts,
@@ -173,6 +174,8 @@ export function MessageList({
   setLightboxImage: (img: string | null) => void;
   emojiMap: Record<string, string>;
   runCommand: (raw: string) => Promise<void>;
+  /** A command button in a message was pressed. */
+  pressCommandButton: (command: string) => Promise<void>;
   runMusicUiCommand: (raw: string, roomHint?: string) => Promise<MusicSettings | void>;
   startGame: (kind: GameKind, solo?: boolean) => Promise<void>;
   pollCounts: Record<string, number[]>;
@@ -257,6 +260,7 @@ export function MessageList({
       setLightboxImage,
       emojiMap,
       runCommand,
+      pressCommandButton,
       runMusicUiCommand,
       startGame,
       pollCounts,

@@ -1,3 +1,5 @@
+import { hubState } from "./hub-client";
+
 /**
  * What an invite code leads to, for people who are not signed in yet: the
  * /i/CODE page, its link preview, and /api/invites/resolve.
@@ -54,22 +56,24 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
 
   let server: InvitePreview["server"] = null;
   if (invite.server_id) {
-    const [counts, onlines] = await Promise.all([
+    // Online means connected right now (the hub's presence, which already
+    // leaves out invisible people), not a status someone picked once.
+    const [counts, hub] = await Promise.all([
       db
         .prepare("SELECT COUNT(*) AS total FROM server_members WHERE server_id = ?")
         .bind(invite.server_id)
         .first<{ total: number }>(),
-      db
-        .prepare(
-          `SELECT COUNT(*) AS online
-             FROM server_members sm
-             JOIN users u ON u.id = sm.user_id
-            WHERE sm.server_id = ?
-              AND (u.status IS NULL OR u.status IN ('online', 'idle', 'dnd'))`,
-        )
-        .bind(invite.server_id)
-        .first<{ online: number }>(),
+      hubState(),
     ]);
+    const onlineIds = hub?.online ?? [];
+    const onlines = onlineIds.length
+      ? await db
+          .prepare(
+            "SELECT COUNT(*) AS online FROM server_members WHERE server_id = ? AND user_id IN (SELECT value FROM json_each(?))",
+          )
+          .bind(invite.server_id, JSON.stringify(onlineIds))
+          .first<{ online: number }>()
+      : null;
     server = {
       id: invite.server_id,
       name: invite.server_name || "Hoffle server",
@@ -78,8 +82,8 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       color: invite.server_color || "#6a4ddb",
       bannerUrl: invite.server_banner_url || null,
       description: invite.server_description || null,
-      memberCount: counts?.total || 1,
-      onlineCount: Math.max(1, onlines?.online || 1),
+      memberCount: counts?.total ?? 0,
+      onlineCount: onlines?.online ?? 0,
     };
   }
 

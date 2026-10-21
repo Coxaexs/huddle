@@ -1,4 +1,5 @@
 import type { InvitePreview } from "@/lib/invite-preview";
+import { membersText, shownCounts } from "@/lib/member-counts";
 import { SiteShell } from "./site-chrome";
 
 /**
@@ -55,13 +56,16 @@ export function inviteMetaText(preview: InvitePreview | null) {
   }
   const who = preview.inviter?.displayName;
   if (preview.server) {
-    const { name, memberCount, onlineCount } = preview.server;
-    const counts = `${memberCount} ${memberCount === 1 ? "member" : "members"}, ${onlineCount} online.`;
+    const { name } = preview.server;
+    const { members, online } = shownCounts(preview.server);
+    const counts = members === null ? "" : online === null ? `${membersText(members)}.` : `${membersText(members)}, ${online} online.`;
     return {
       // "Join Hoffle on Hoffle" for the community server reads oddly.
       title: /hoffle/i.test(name) ? `Join ${name}` : `Join ${name} on Hoffle`,
       tabTitle: `Join ${name}`,
-      description: who ? `${who} invited you. ${counts}` : counts,
+      description: [who ? `${who} invited you.` : "", counts || "Voice, screen sharing, music and game night, in your browser."]
+        .filter(Boolean)
+        .join(" "),
     };
   }
   return {
@@ -91,6 +95,7 @@ const button =
 
 export function InvitePage({ preview, joinUrl, appUrl, lang }: { preview: InvitePreview | null; joinUrl: string; appUrl: string; lang: InviteLang }) {
   const t = COPY[lang];
+  const counts = preview?.server ? shownCounts(preview.server) : null;
   return (
     <SiteShell bare lang={lang}>
       <main className="grid min-h-[calc(100dvh-64px)] place-items-center px-4 py-12">
@@ -108,15 +113,17 @@ export function InvitePage({ preview, joinUrl, appUrl, lang }: { preview: Invite
               <h1 className="lp-display mt-1 text-[30px] leading-tight">
                 {preview.server ? preview.server.name : t.toHoffle}
               </h1>
-              {preview.server && (
+              {counts?.members != null && (
                 <p className="mt-2 flex items-center justify-center gap-4 text-[14px] text-(--muted)">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden className="h-2 w-2 rounded-full bg-[#3ba55d]" />
-                    {t.online(preview.server.onlineCount)}
-                  </span>
+                  {counts.online !== null && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden className="h-2 w-2 rounded-full bg-[#3ba55d]" />
+                      {t.online(counts.online)}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1.5">
                     <span aria-hidden className="h-2 w-2 rounded-full bg-(--muted)" />
-                    {t.members(preview.server.memberCount)}
+                    {t.members(counts.members)}
                   </span>
                 </p>
               )}

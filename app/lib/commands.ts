@@ -313,6 +313,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Hoffle",
   },
   { name: "flip", description: "Flip a coin", group: "Hoffle" },
+  { name: "8ball", args: "[question]", description: "Ask the magic 8-ball", group: "Hoffle" },
+  { name: "choose", args: "<a, b, c>", description: "Pick one for you: /choose pizza, tacos, sushi", group: "Hoffle" },
+  { name: "rps", args: "<rock|paper|scissors>", description: "Rock, paper, scissors against the bot", group: "Hoffle" },
   { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Hoffle" },
   {
     name: "markdown",

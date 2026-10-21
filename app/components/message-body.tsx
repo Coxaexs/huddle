@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { Copy, Check, Volume2 } from "lucide-react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Copy, Check, Volume2, Dices, Coins, Sparkles, BookOpen } from "lucide-react";
 import { highlight } from "../lib/highlight";
 import { LinkPreviewCard } from "./link-preview";
 import { MessageLinkCard } from "./message-link-card";
@@ -10,6 +10,14 @@ import { extractInviteCodes } from "../lib/chat/invites";
 import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { TAG_PATTERN, TAG_SOURCE, describeTag, PER_LETTER_EFFECTS } from "@/lib/text-style";
+import {
+  BUTTON_COOLDOWN_MS,
+  COMMAND_BUTTON_SOURCE,
+  MAX_BUTTONS_PER_MESSAGE,
+  readCommandButton,
+  type CommandButton,
+} from "@/lib/command-buttons";
+import { useI18n } from "@/app/lib/i18n-context";
 
 /** At most this many preview cards under one message. */
 const MAX_PREVIEWS = 3;
@@ -51,7 +59,9 @@ const INLINE_PATTERN = new RegExp(
     // 12+: [c=red]…[/c], [font=comic]…[/font], [rainbow]…[/rainbow] (lib/text-style.ts)
     `|(?:${TAG_SOURCE})` +
     // A personal emoticon (lib/msn-contacts.ts): [emo:<upload key>|(cat)]
-    `|(?:\\[emo:(?<emokey>[A-Za-z0-9._-]{1,160})\\|(?<emoname>[^\\]\\s|]{1,12})\\])`,
+    `|(?:\\[emo:(?<emokey>[A-Za-z0-9._-]{1,160})\\|(?<emoname>[^\\]\\s|]{1,12})\\])` +
+    // A command button (lib/command-buttons.ts): <button label="…">/roll 1d20</button>
+    `|(?:${COMMAND_BUTTON_SOURCE})`,
   "gi",
 );
 
@@ -81,6 +91,67 @@ interface RenderOptions {
   onChannel?: (channel: MentionChannel) => void;
   /** Called when a link to a message here is clicked (opens it in-app). */
   onMessageLink?: (target: MessageLinkTarget) => void;
+  /**
+   * Command buttons rendered so far in this message, and who runs them.
+   * Absent where buttons stay text (quotes); no `run` draws them inert.
+   */
+  buttons?: { count: number; run?: (command: string) => void };
+}
+
+const BUTTON_ICONS: Record<string, typeof Dices> = {
+  flip: Coins,
+  coinflip: Coins,
+  spell: BookOpen,
+  monster: BookOpen,
+  item: BookOpen,
+  feat: BookOpen,
+  race: BookOpen,
+  class: BookOpen,
+  subclass: BookOpen,
+  "8ball": Sparkles,
+  choose: Sparkles,
+  rps: Sparkles,
+};
+
+/**
+ * A `<button>/roll 1d20</button>` in a message. Pressing it runs the command
+ * as the viewer; the command is always on the button, never hidden.
+ */
+function CommandButtonChip({ button, run }: { button: CommandButton; run?: (command: string) => void }) {
+  const { t } = useI18n();
+  const [cooling, setCooling] = useState(false);
+  useEffect(() => {
+    if (!cooling) return;
+    const timer = window.setTimeout(() => setCooling(false), BUTTON_COOLDOWN_MS);
+    return () => window.clearTimeout(timer);
+  }, [cooling]);
+  const Icon = BUTTON_ICONS[button.name] ?? Dices;
+  return (
+    <button
+      type="button"
+      className={`cmd-button${run ? "" : " is-inert"}${cooling ? " is-cooling" : ""}`}
+      title={t(run ? "commandButton.title" : "commandButton.inert", { command: button.command })}
+      disabled={!run || cooling}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (!run || cooling) return;
+        setCooling(true);
+        run(button.command);
+      }}
+    >
+      <Icon size={14} aria-hidden className="cmd-button-icon" />
+      <span className="cmd-button-text">
+        {button.label ? (
+          <>
+            <span className="cmd-button-label">{button.label}</span>
+            <span className="cmd-button-cmd">{button.command}</span>
+          </>
+        ) : (
+          <span className="cmd-button-label cmd-button-mono">{button.command}</span>
+        )}
+      </span>
+    </button>
+  );
 }
 
 /** Hidden until clicked, like Discord's ||spoiler||. */
@@ -300,6 +371,19 @@ function renderInline(
           title={emoname}
         />,
       );
+    } else if (match.groups?.btncmd) {
+      const { buttons } = options;
+      const button =
+        buttons && buttons.count < MAX_BUTTONS_PER_MESSAGE
+          ? readCommandButton(match.groups.btnlabel, match.groups.btncmd)
+          : null;
+      if (!buttons || !button) {
+        // In a quote, past the cap, or not an allowed command: exactly what was typed.
+        parts.push(token);
+        continue;
+      }
+      buttons.count += 1;
+      parts.push(<CommandButtonChip key={key} button={button} run={buttons.run} />);
     } else if (match.groups?.tag) {
       const { tag, arg, body = "", end } = match.groups;
       const styled = describeTag(tag, arg, end);
@@ -441,6 +525,7 @@ export function MessageBody({
   roles,
   onChannel,
   onMessageLink,
+  onCommand,
 }: {
   text: string;
   /** The viewer's username, so a mention of them stands out more. */
@@ -461,6 +546,11 @@ export function MessageBody({
   onChannel?: (channel: MentionChannel) => void;
   /** Called when a link to a message (or its preview card) is clicked. */
   onMessageLink?: (target: MessageLinkTarget) => void;
+  /**
+   * Runs a command button's command as the viewer (lib/command-buttons.ts).
+   * Without it, buttons show but cannot be pressed.
+   */
+  onCommand?: (command: string) => void;
 }) {
   const links: string[] = [];
   const options: RenderOptions = {
@@ -473,6 +563,7 @@ export function MessageBody({
     roles,
     onChannel,
     onMessageLink,
+    buttons: { count: 0, run: onCommand },
   };
   const trimmed = text.trim();
 
@@ -551,7 +642,7 @@ export function MessageBody({
         flush(`p${key}`);
         blocks.push(
           <blockquote key={`q${key}`}>
-            {renderInline(line.replace(/^>\s?/, ""), options, images, key)}
+            {renderInline(line.replace(/^>\s?/, ""), { ...options, buttons: undefined }, images, key)}
           </blockquote>,
         );
         return;

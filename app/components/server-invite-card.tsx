@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, Users, Sparkles } from "lucide-react";
+import { shownCounts } from "@/lib/member-counts";
 
 export interface ResolvedInvite {
   valid: boolean;
@@ -99,6 +100,7 @@ export function ServerInviteCard({
   }
 
   const { server, inviter } = invite;
+  const counts = shownCounts(server);
 
   const handleAction = async () => {
     if (joined || isMember) {
@@ -158,16 +160,20 @@ export function ServerInviteCard({
           <div className="server-invite-name" title={server.name}>
             {server.name}
           </div>
-          <div className="server-invite-counts">
-            <span className="server-invite-count-item">
-              <span className="server-invite-dot online" />
-              <b>{server.onlineCount}</b> Online
-            </span>
-            <span className="server-invite-count-item">
-              <span className="server-invite-dot total" />
-              <b>{server.memberCount}</b> Members
-            </span>
-          </div>
+          {counts.members !== null && (
+            <div className="server-invite-counts">
+              {counts.online !== null && (
+                <span className="server-invite-count-item">
+                  <span className="server-invite-dot online" />
+                  <b>{counts.online}</b> Online
+                </span>
+              )}
+              <span className="server-invite-count-item">
+                <span className="server-invite-dot total" />
+                <b>{counts.members}</b> Members
+              </span>
+            </div>
+          )}
         </div>
 
         <button

@@ -136,7 +136,6 @@ export async function POST(request: Request) {
         }
       }
       source = "open";
-      defaultServerId = settings.serverId;
     } else {
       const invite = await db
         .prepare(
@@ -262,21 +261,26 @@ export async function POST(request: Request) {
     return Response.json({ error: "That username is taken." }, { status: 409 });
   }
 
-  // New accounts start with no servers unless the invite picked one.
-  if (defaultServerId) {
+  // Every new account joins the server an admin picked under "New accounts
+  // join" (/admin → Open signup), however it signed up, plus the one its
+  // invite names, if any. The first account owns the place and joins nothing.
+  const everyoneServerId = isFirstUser ? null : (await getSignupSettings(db)).serverId;
+  let joined: { id: string; name: string } | null = null;
+  for (const serverId of new Set([everyoneServerId, defaultServerId])) {
+    if (!serverId) continue;
     const server = await db
-      .prepare("SELECT id FROM servers WHERE id = ?")
-      .bind(defaultServerId)
-      .first();
-    if (server) {
-      await db
-        .prepare(
-          "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
-        )
-        .bind(defaultServerId, user.id, new Date().toISOString())
-        .run();
-      await markServerRead(db, defaultServerId, user.id);
-    }
+      .prepare("SELECT id, name FROM servers WHERE id = ?")
+      .bind(serverId)
+      .first<{ id: string; name: string }>();
+    if (!server) continue;
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)",
+      )
+      .bind(serverId, user.id, new Date().toISOString())
+      .run();
+    await markServerRead(db, serverId, user.id);
+    if (serverId === everyoneServerId) joined = server;
   }
 
   // Over the mail limit the account still exists; the address can be added
@@ -289,7 +293,8 @@ export async function POST(request: Request) {
 
   const token = await createSession(db, user.id, request);
   return Response.json(
-    { user: publicUser(user), defaultTheme, pendingEmail },
+    // `joined`: the everyone server, so the app can say how to leave it.
+    { user: publicUser(user), defaultTheme, pendingEmail, joined },
     { status: 201, headers: { "Set-Cookie": sessionCookie(request, token) } },
   );
 }

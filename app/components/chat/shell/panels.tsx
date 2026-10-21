@@ -9,7 +9,7 @@ import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass } from "lucide-react";
+import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -250,6 +250,7 @@ export function ChannelSidebar({
   setNotifyLevel,
   channelPrefs,
   showCustomConfirm,
+  leaveServer,
   setActiveServerId,
   setGlobalSearchOpen,
   setActiveChannelId,
@@ -316,6 +317,7 @@ export function ChannelSidebar({
   setNotifyLevel: (key: string, level: string, durationMs?: number) => void;
   channelPrefs: Record<string, string>;
   showCustomConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel?: () => void; }) => void;
+  leaveServer: (serverId: string) => void;
   setActiveServerId: Dispatch<SetStateAction<string | null>>;
   setGlobalSearchOpen: Dispatch<SetStateAction<boolean>>;
   setActiveChannelId: Dispatch<SetStateAction<string | null>>;
@@ -394,7 +396,11 @@ export function ChannelSidebar({
       <header className="space-header" style={{ position: "relative" }}>
         <div>
           <span className="eyebrow">
-            {inDmHome ? t("sidebar.private") : t("sidebar.privateSpace")}
+            {inDmHome
+              ? t("sidebar.private")
+              : activeServer
+                ? t(activeServer.isPublic ? "sidebar.publicSpace" : "sidebar.privateSpace")
+                : null}
           </span>
           <h1>{inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}</h1>
         </div>
@@ -535,6 +541,26 @@ export function ChannelSidebar({
               );
             })}
             <div className="server-menu-divider" />
+            {activeServer.ownerId !== user.id && (
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  showCustomConfirm({
+                    title: t("sidebar.menu.leaveTitle", { name: activeServer.name }),
+                    message: t("sidebar.menu.leaveMessage"),
+                    isDanger: true,
+                    confirmText: t("sidebar.menu.leave"),
+                    onConfirm: () => leaveServer(activeServer.id),
+                  });
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <LogOut size={16} /> {t("sidebar.menu.leave")}
+                </span>
+              </button>
+            )}
             {canManageServer && (
               <button
                 type="button"

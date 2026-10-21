@@ -28,14 +28,28 @@ import { BUILTIN_THEMES, type Theme } from "@/lib/themes";
 /**
  * The welcome tutorial: a theme picker, then five pages on how Hoffle works.
  *
- * It opens by itself right after signing up, and any time from Settings →
- * Tutorial. Every page can go back, forward, or close. The "Try it" buttons
+ * It opens by itself right after signing up (see FIRST_RUN_KEY), and any
+ * time from Settings → Tutorial. Every page can go back, forward, or close. The "Try it" buttons
  * do the real thing in the app; while you try something the tutorial folds
  * into a small pill (`TutorialPill`) that brings you back to the same page.
  */
 
-/** Set at signup, cleared once the tutorial is closed or finished. */
-export const TUTORIAL_PENDING_KEY = "hoffle-tutorial-pending";
+/**
+ * Set at signup and read once by the chat shell: JSON `FirstRun`. The first
+ * visit opens the tutorial; closing it opens the server directory only for an
+ * account that is in no server yet. The add-an-email prompt waits a day, so a
+ * newcomer isn't met by a stack of dialogs.
+ */
+export const FIRST_RUN_KEY = "hoffle-first-run";
+export interface FirstRun {
+  /** Signed up through a server invite, which the shell is joining. */
+  invite: boolean;
+  /** The server every new account joins, named so the shell can say how to leave it. */
+  joined: string | null;
+}
+
+/** When (ms) the add-an-email prompt may show again; set a day ahead at signup. */
+export const EMAIL_PROMPT_AFTER_KEY = "hoffle-email-prompt-after";
 
 export interface TutorialActions {
   activeThemeId: string;

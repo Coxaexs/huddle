@@ -61,7 +61,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     saveServerFolders, saveVoicePref, sendFileCopy, serverEvents, serverFolders,
     serverSettingsOpen, servers, setActiveChannelId, setActiveServerId, setBotMenu, setChannelMenu,
     setDialogCallback, setDialogCancel, setDialogOptions, setDiceRoll, setDirectoryOpen,
-    setDmClosed, setDraft, setEditHistoryId, setEventsOpen, setFolderMenu, setFormatOpen,
+    holdEmailPrompt, setDmClosed, setDraft, setEditHistoryId, setEventsOpen, setFolderMenu, setFormatOpen,
     setForwardTarget, setGamesOpen, setGlobalSearchOpen, setGroupDialog, setGroupDmMenu,
     setLightbox, setMarkdownModalOpen, setMembers, setMobileNav, setNotice, setNotifyLevel,
     setPdfViewer, setPipDismissed, setPollDialogOpen, setProfileCardTarget, setProfileMember,
@@ -318,7 +318,10 @@ export function renderChatOverlays(v: ShellRenderState) {
         />
       )}
 
-      {!user.email && !user.emailPromptSkipped && <EmailPrompt onUser={setUser} />}
+      {/* Never on top of another dialog, and not in a new account's first day. */}
+      {!user.email && !user.emailPromptSkipped && !holdEmailPrompt && !directoryOpen && !dialogOptions && !tutorial && (
+        <EmailPrompt onUser={setUser} />
+      )}
 
       {settingsOpen && (
         <SettingsDialog

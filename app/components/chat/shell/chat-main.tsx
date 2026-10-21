@@ -53,7 +53,7 @@ export function renderChatMain(v: ShellRenderState) {
     pickCommand, pickEmojiShortcode, pickMention, pins, pinsOpen, player, pollCounts, pollVoters,
     prefFor, pressBotComponent, quickReactions, quickVoteId, reactionPicker, reactionViewer,
     removeQuickReaction, renameGroupDm, replyTarget, resolvedInvites, roleColorFor, roomActivity,
-    roomPlayer, runCommand, runMusicUiCommand, runSearch, saveEdit, saveVoicePref, savedIds,
+    roomPlayer, runCommand, pressCommandButton, runMusicUiCommand, runSearch, saveEdit, saveVoicePref, savedIds,
     savedList, savedOpen, searchOpen, searchQuery, searchResults, sendMessage, sendNudge,
     sendTextComposer, sendWink, servers, setActiveServerId, setComposerCaret, setDiceRoll,
     setDmCall, setDraft, setDragging, setEditDraft, setEditHistoryId, setEditingId, setEmojiIndex,
@@ -436,6 +436,7 @@ export function renderChatMain(v: ShellRenderState) {
       setLightboxImage={setLightboxImage}
       emojiMap={emojiMap}
       runCommand={runCommand}
+      pressCommandButton={pressCommandButton}
       runMusicUiCommand={runMusicUiCommand}
       startGame={startGame}
       pollCounts={pollCounts}

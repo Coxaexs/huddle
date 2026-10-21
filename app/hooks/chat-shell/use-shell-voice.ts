@@ -9,7 +9,7 @@ import { stripTextStyle } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { type Member, type PresenceStatus } from "@/lib/users";
-import { TUTORIAL_PENDING_KEY } from "../../components/welcome-tutorial";
+import { EMAIL_PROMPT_AFTER_KEY, FIRST_RUN_KEY, type FirstRun } from "../../components/welcome-tutorial";
 import { type MentionEntry } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { hasLiveVideo } from "../../components/voice-stage/tiles";
@@ -588,24 +588,64 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** The welcome tutorial: which page, and whether it is folded away while a "Try it" runs. */
   const [tutorial, setTutorial] = useState<{ page: number; folded: boolean } | null>(null);
-  // Right after signing up (the sign-in screen leaves a note), the tutorial opens by itself.
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  /** The add-an-email prompt waits a day after signup, so it isn't part of the first visits. */
+  const [holdEmailPrompt, setHoldEmailPrompt] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem(EMAIL_PROMPT_AFTER_KEY) || 0) > Date.now();
+    } catch {
+      return false;
+    }
+  });
+  /** Set from the signup note while the first tutorial is open; read when it closes. */
+  const firstRunRef = useRef<(FirstRun & { pendingEmail: string | null }) | null>(null);
+  // Right after signing up (the sign-in screen leaves a note, see FIRST_RUN_KEY),
+  // the tutorial opens by itself. What comes after waits for it to close.
   useEffect(() => {
     if (!user) return;
+    let note: FirstRun | null = null;
     try {
-      if (window.localStorage.getItem(TUTORIAL_PENDING_KEY)) setTutorial({ page: 0, folded: false });
+      const raw = window.localStorage.getItem(FIRST_RUN_KEY);
+      window.localStorage.removeItem(FIRST_RUN_KEY);
+      if (raw) note = JSON.parse(raw) as FirstRun;
     } catch {
-      // Storage blocked: it won't open by itself, but Settings → Tutorial still works.
+      // Storage blocked or an unreadable note: no first-run steps.
     }
+    if (!note) return;
+    setHoldEmailPrompt(true);
+    try {
+      window.localStorage.setItem(EMAIL_PROMPT_AFTER_KEY, String(Date.now() + 24 * 60 * 60 * 1000));
+    } catch {
+      // Held for this visit only.
+    }
+    const firstRun = { invite: Boolean(note.invite), joined: note.joined || null, pendingEmail: null as string | null };
+    firstRunRef.current = firstRun;
+    void apiFetch<{ pending: string | null }>("/api/settings/email")
+      .then(({ pending }) => {
+        firstRun.pendingEmail = pending;
+      })
+      .catch(() => undefined);
+    setTutorial({ page: 0, folded: false });
   }, [user?.id]);
-  const [directoryOpen, setDirectoryOpen] = useState(false);
+  // Closing the first tutorial: one line on where things are (the server every
+  // account joins and how to leave it, a mailed code), and the directory if
+  // the account is in no server and no invite is bringing it into one.
   const closeTutorial = useCallback(() => {
     setTutorial(null);
-    try {
-      const wasOnboarding = Boolean(window.localStorage.getItem(TUTORIAL_PENDING_KEY));
-      window.localStorage.removeItem(TUTORIAL_PENDING_KEY);
-      if (wasOnboarding) setDirectoryOpen(true);
-    } catch {
-      // Nothing to clear.
+    const firstRun = firstRunRef.current;
+    firstRunRef.current = null;
+    if (!firstRun) return;
+    const lines = [
+      firstRun.joined ? `You're in ${firstRun.joined}. Leave it any time from the ••• menu next to its name.` : "",
+      firstRun.pendingEmail ? `We mailed a code to ${firstRun.pendingEmail}; enter it under Settings → Account whenever you like.` : "",
+    ].filter(Boolean);
+    if (lines.length) setNotice(lines.join(" "));
+    if (!firstRun.invite && !firstRun.joined) {
+      void apiFetch<{ servers: unknown[] }>("/api/servers")
+        .then(({ servers }) => {
+          if (!servers.length) setDirectoryOpen(true);
+        })
+        .catch(() => undefined);
     }
   }, []);
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
@@ -968,7 +1008,7 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     voiceRooms, voiceParticipants, livingRoom, floatingStream, activeScreenShare,
     userMenuVoiceJoinedAt, presenceOf, savePresence, typingNames, noteTyping, quickSwitcherOpen,
     setQuickSwitcherOpen, shortcutsOpen, setShortcutsOpen, tutorial, setTutorial, directoryOpen,
-    setDirectoryOpen, closeTutorial, pollDialogOpen, setPollDialogOpen, activeSlashCommand,
+    setDirectoryOpen, holdEmailPrompt, closeTutorial, pollDialogOpen, setPollDialogOpen, activeSlashCommand,
     voiceHotkeysRef, runCommandRef, unreadMentionTotal, badgeDmCount, badgeDot, todayOpen,
     setTodayOpen, todayCheckedRef, todayData, roomPlayer, shareListening, setShareListening,
     statusBeforeMusic, listeningTo, botStreaming, musicBotPref, player,

@@ -1,0 +1,126 @@
+/* ---------------------------------------------------------------------------
+   Command buttons in messages: <button label="…">/roll 1d20</button>
+   (lib/command-buttons.ts, app/components/message-body.tsx)
+--------------------------------------------------------------------------- */
+.cmd-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 30px;
+  margin: 2px 2px;
+  padding: 4px 11px 4px 9px;
+  vertical-align: middle;
+  font: inherit;
+  font-size: .92em;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--lavender) 16%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--lavender) 45%, var(--line));
+  border-radius: 9px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s ease, border-color .12s ease, transform .08s ease, opacity .2s ease;
+}
+
+.cmd-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lavender) 26%, var(--panel));
+  border-color: var(--lavender);
+}
+
+.cmd-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.cmd-button:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 2px;
+}
+
+.cmd-button-icon {
+  flex: none;
+  color: var(--lavender);
+}
+
+/* Label and command wrap under each other; the icon stays beside them. */
+.cmd-button-text {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+}
+
+.cmd-button-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cmd-button-mono,
+.cmd-button-cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.cmd-button-mono {
+  font-weight: 500;
+}
+
+/* The command a labelled button sends stays on the button, just quieter. */
+.cmd-button-cmd {
+  min-width: 0;
+  font-size: .82em;
+  font-weight: 400;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.cmd-button.is-cooling {
+  opacity: .55;
+  cursor: progress;
+}
+
+.cmd-button.is-inert {
+  cursor: default;
+  opacity: .75;
+}
+
+@media (max-width: 520px) {
+  .cmd-button {
+    min-height: 34px;
+  }
+}
+
+/* MSN: a Windows XP push button, like the ones in its dialogs. */
+:root[data-custom-theme-id^="msn"] .cmd-button {
+  min-height: 23px;
+  padding: 2px 9px 2px 6px;
+  gap: 5px;
+  font-size: inherit;
+  font-weight: 400;
+  color: #000;
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%);
+  border: 1px solid #003c74;
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+:root[data-custom-theme-id^="msn"] .cmd-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fff 0%, #ecebe6 86%, #d6d0c5 100%);
+  border-color: #003c74;
+  box-shadow: inset 0 0 0 2px #f8b636;
+}
+
+:root[data-custom-theme-id^="msn"] .cmd-button:active:not(:disabled) {
+  transform: none;
+  background: linear-gradient(180deg, #e3e2da 0%, #ecebe6 100%);
+}
+
+:root[data-custom-theme-id^="msn"] .cmd-button-icon {
+  color: #2a5db0;
+}
+
+:root[data-custom-theme-id^="msn"] .cmd-button-cmd {
+  color: #555;
+}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Compass, Globe, Plus, Ticket, Users, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { membersText, SHOW_MEMBERS_FROM } from "@/lib/member-counts";
 import type { PublicServer } from "@/lib/servers";
 import { showToast } from "./toast";
 
@@ -127,7 +128,7 @@ export function OnboardingDirectoryDialog({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-card max-w-xl w-full p-6 rounded-2xl bg-[var(--panel)] border border-white/10 shadow-2xl"
+        className="modal-card w-[min(36rem,calc(100vw-40px))] p-5 sm:p-6 rounded-2xl bg-[var(--panel)] border border-white/10 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -160,7 +161,7 @@ export function OnboardingDirectoryDialog({
                 : "text-white/70 hover:text-white"
             }`}
           >
-            <Globe size={14} /> Public Servers
+            <Globe size={14} className="hidden sm:block" /> Public Servers
           </button>
           <button
             type="button"
@@ -171,7 +172,7 @@ export function OnboardingDirectoryDialog({
                 : "text-white/70 hover:text-white"
             }`}
           >
-            <Ticket size={14} /> Have an Invite?
+            <Ticket size={14} className="hidden sm:block" /> Have an Invite?
           </button>
           <button
             type="button"
@@ -182,7 +183,7 @@ export function OnboardingDirectoryDialog({
                 : "text-white/70 hover:text-white"
             }`}
           >
-            <Plus size={14} /> Create a Server
+            <Plus size={14} className="hidden sm:block" /> Create a Server
           </button>
         </div>
 
@@ -228,9 +229,11 @@ export function OnboardingDirectoryDialog({
                       {srv.description && (
                         <div className="text-xs text-white/60 truncate">{srv.description}</div>
                       )}
-                      <div className="flex items-center gap-1 text-[11px] text-white/40 mt-0.5">
-                        <Users size={11} /> {srv.memberCount} member{srv.memberCount === 1 ? "" : "s"}
-                      </div>
+                      {srv.memberCount >= SHOW_MEMBERS_FROM && (
+                        <div className="flex items-center gap-1 text-[11px] text-white/40 mt-0.5">
+                          <Users size={11} /> {membersText(srv.memberCount)}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {srv.joined ? (

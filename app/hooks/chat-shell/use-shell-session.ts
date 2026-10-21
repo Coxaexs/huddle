@@ -15,6 +15,7 @@ import { ACCEPTED_INVITE_KEY, extractInviteCodes } from "../../lib/chat/invites"
 import { parseMessageLink, resolveMessageLink } from "../../lib/chat/message-links";
 import { type VoicePref } from "../../components/user-menu";
 import { apiFetch } from "../../lib/client";
+import { membersText, shownCounts } from "@/lib/member-counts";
 import type { useShellState } from "./use-shell-state";
 
 /** ChatShell, part 2 of 9. The signed-in session: loading servers, members, friends, prefs and unread counts; message and invite links; permissions and the active server/channel/DM. */
@@ -376,11 +377,15 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
               void joinServerDirectRef.current(inviteCode);
               return;
             }
+            const { members } = shownCounts(invite.server);
             showCustomConfirm({
               title: `Join ${invite.server.name}?`,
-              message: invite.inviter
-                ? `${invite.inviter.displayName} invited you. ${invite.server.memberCount} members.`
-                : `${invite.server.memberCount} members.`,
+              message: [
+                invite.inviter ? `${invite.inviter.displayName} invited you.` : "",
+                members === null ? "" : `${membersText(members)}.`,
+              ]
+                .filter(Boolean)
+                .join(" ") || "You've been invited to this server.",
               confirmText: "Join server",
               cancelText: "Not now",
               onConfirm: () => void joinServerDirectRef.current(inviteCode),

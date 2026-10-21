@@ -9,6 +9,7 @@ import { runMusicCommand } from "../../lib/chat/commands/music";
 import { runWatchCommand } from "../../lib/chat/commands/watch";
 import { runRecordCommand } from "../../lib/chat/commands/record";
 import { ROLL_COMMANDS, runRollCommand } from "../../lib/chat/commands/roll";
+import { FUN_COMMANDS, funCommandReply } from "@/lib/fun-commands";
 import { type TtsLanguage } from "../../lib/tts/client";
 import { apiFetch } from "../../lib/client";
 import { COMMAND_ALIASES, DISCORD_ONLY_COMMANDS, DND_LINK_COMMANDS, LOOKUP_COMMANDS, MUSIC_COMMANDS } from "../../lib/commands";
@@ -18,8 +19,8 @@ import type { useShellActions } from "./use-shell-actions";
 export function useShellCommands(s: ReturnType<typeof useShellActions>) {
   const {
     activeChannelId, activeChannelRef, botCommands, channelTitle, dialogDismissRef, dndOnline,
-    dndUrl, features, hub, inDmHome, lastDiceRollSeedRef, members, openMusicDashboard,
-    pendingCommandRef, player, postBotMessage, runCommandRef, sendText, setDialogCallback,
+    dndUrl, draftRef, features, hub, inDmHome, lastDiceRollSeedRef, members, openMusicDashboard,
+    pendingCommandRef, player, postBotMessage, runCommandRef, sendText, setDialogCallback, setDraft,
     setDialogCancel, setDialogOptions, setDiceRoll, setMarkdownModalOpen, setNotice,
     setRoomActivity, setStageChannelId, setStageFocusRequest, showCustomConfirm, startGame, user, voice, voiceChannels,
     whisperNamesRef,
@@ -436,6 +437,11 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
+    if (FUN_COMMANDS.has(name)) {
+      await postBotMessage(funCommandReply(name, value));
+      return;
+    }
+
     if (name === "shrug") {
       await sendText("¯\\_(ツ)_/¯");
       return;
@@ -559,8 +565,18 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
     }
   }
 
+  /**
+   * A `<button>` in a message: runs its command as you and, when your message
+   * box was empty, leaves the command there to tweak or send again.
+   */
+  async function pressCommandButton(command: string) {
+    const boxWasEmpty = !draftRef.current.trim();
+    await runCommand(command);
+    if (boxWasEmpty && !draftRef.current.trim()) setDraft(command);
+  }
+
   return {
     ...s,
-    runCommand, askTtsLanguage, runBotSlashCommand, runMusicUiCommand,
+    runCommand, pressCommandButton, askTtsLanguage, runBotSlashCommand, runMusicUiCommand,
   };
 }

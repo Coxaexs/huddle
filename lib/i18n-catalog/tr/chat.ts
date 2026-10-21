@@ -155,4 +155,8 @@ export const chat: Record<keyof typeof en, string> = {
   "forward.sharedDoc": "Paylaşılan belge: {name}",
   "forward.sharedImage": "Paylaşılan görsel eki",
   "forward.content": "Mesaj içeriği",
+
+  // Mesajlardaki komut düğmeleri (<button>/roll 1d20</button>)
+  "commandButton.title": "{command} komutunu senin adınla gönderir",
+  "commandButton.inert": "{command}: göndermek için kanalda bas",
 };

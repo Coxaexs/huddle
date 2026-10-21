@@ -35,7 +35,7 @@ export function renderChatShell(s: ChatShellViewState) {
     setNotifyLevel, setPdfViewer, setPictureOpen, setQuickSoundboardOpen, setServerMenuOpen,
     setServerSettingsOpen, setServers, setSettingsOpen, setShareListening, setShortcutsOpen,
     setSidebarShareSetupOpen, setSoundsOpen, setStageChannelId, setStatusOpen, setStockPicture,
-    setThreadDraft, setThreadRoot, setTodayOpen, setUserMenu, shareListening, showCustomConfirm,
+    setThreadDraft, setThreadRoot, setTodayOpen, setUserMenu, shareListening, showCustomConfirm, leaveServer,
     showCustomPrompt, sidebarShareSetupOpen, sidebarWidth, signOut, soundsOpen, stageChannel,
     stageChannelId, statusOpen, textChannels, threadBottomRef, threadDraft, threadMessages,
     threadRoot, threadWidth, todayData, todayOpen, toggleCategory, togglePinDm, unread, user,
@@ -190,6 +190,7 @@ export function renderChatShell(s: ChatShellViewState) {
         setNotifyLevel={setNotifyLevel}
         channelPrefs={channelPrefs}
         showCustomConfirm={showCustomConfirm}
+        leaveServer={(serverId) => void leaveServer(serverId)}
         setActiveServerId={setActiveServerId}
         setGlobalSearchOpen={setGlobalSearchOpen}
         setActiveChannelId={setActiveChannelId}

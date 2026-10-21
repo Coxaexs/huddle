@@ -97,6 +97,7 @@ function MessageRowImpl({
   setLightboxImage,
   emojiMap,
   runCommand,
+  pressCommandButton,
   runMusicUiCommand,
   startGame,
   pollCounts,
@@ -188,6 +189,7 @@ function MessageRowImpl({
   setLightboxImage: (img: string | null) => void;
   emojiMap: Record<string, string>;
   runCommand: (raw: string) => Promise<void>;
+  pressCommandButton: (command: string) => Promise<void>;
   runMusicUiCommand: (raw: string, roomHint?: string) => Promise<MusicSettings | void>;
   startGame: (kind: GameKind, solo?: boolean) => Promise<void>;
   pollCounts: Record<string, number[]>;
@@ -700,6 +702,7 @@ function MessageRowImpl({
                             roles={activeServer?.roles}
                             onChannel={openMentionedChannel}
                             onMessageLink={openMessageLink}
+                            onCommand={(command) => void pressCommandButton(command)}
                           />
                         )}
                         <MessageTranslation messageId={String(message.id)} />

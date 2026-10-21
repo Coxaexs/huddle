@@ -154,4 +154,8 @@ export const chat = {
   "forward.sharedDoc": "Shared document: {name}",
   "forward.sharedImage": "Shared image attachment",
   "forward.content": "Message content",
+
+  // Command buttons in messages (<button>/roll 1d20</button>)
+  "commandButton.title": "Sends {command} as you",
+  "commandButton.inert": "{command}: press it in the channel to send it",
 } as const;
