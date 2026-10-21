@@ -8,6 +8,7 @@ export const auth = {
   "gate.title.reset": "Choose a new password",
   "gate.title.claim": "Claim this Hoffle",
   "gate.title.create": "Create your account",
+  "gate.title.joinServer": "Join {server}",
   "gate.title.invite": "Join with an invite",
   "gate.title.signIn": "Sign in",
   "gate.title.code": "Enter your code",
@@ -15,6 +16,7 @@ export const auth = {
   "gate.lead.reset": "This signs you out everywhere else.",
   "gate.lead.claim": "The first account owns this Hoffle and can invite everyone else.",
   "gate.lead.create": "Pick a name and a password. No invite needed.",
+  "gate.lead.serverInvite": "Pick a name and a password, and you're in.",
   "gate.lead.invite": "Ask a friend already inside for an invite code.",
   "gate.lead.signIn": "Your name and messages stay on your own server.",
   "gate.lead.code":

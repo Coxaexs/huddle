@@ -7,11 +7,11 @@ import { apiFetch } from "../lib/client";
 import { buildUserInviteLink } from "../lib/chat/invites";
 import { useI18n } from "@/app/lib/i18n-context";
 import type { FriendUser } from "@/lib/friends";
-import { INVITE_USE_CHOICES } from "@/lib/invite-limits";
+import { GROUP_INVITE_USES, INVITE_USE_CHOICES } from "@/lib/invite-limits";
 import type { DmSummary } from "../lib/chat/types";
 
 /** How many joins a link from this dialog allows until someone picks otherwise. */
-const DEFAULT_USES = 100;
+const DEFAULT_USES = GROUP_INVITE_USES;
 
 interface InviteDialogProps {
   open: boolean;

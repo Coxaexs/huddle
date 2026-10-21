@@ -49,10 +49,13 @@ export function extractInviteCodes(text: string): string[] {
  */
 export function buildUserInviteLink(code: string): string {
   const cleanCode = (code || "").trim().toUpperCase();
+  // On Hoffle's own hosts the link goes on hoffle.online: shorter, and it is
+  // the name people see in a preview. The page there sends "Join" to the app.
+  const here = typeof window !== "undefined" ? window.location?.host?.toLowerCase() || "" : "";
   const origin =
-    typeof window !== "undefined" && window.location?.origin
-      ? window.location.origin
-      : "https://chat.hoffle.online";
+    typeof window === "undefined" || ROOT_INVITE_HOSTS.includes(here)
+      ? "https://hoffle.online"
+      : window.location.origin;
   // Hoffle's own hosts serve /i/ at the root; elsewhere (deeppixel.online)
   // the app, and so the invite page, only lives under /hangout.
   const host = typeof window !== "undefined" ? window.location?.host?.toLowerCase() || "" : "";

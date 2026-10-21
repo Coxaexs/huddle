@@ -28,8 +28,8 @@ describe("buildUserInviteLink and extractInviteCodeFromUrl", () => {
         vi.unstubAllGlobals();
       }
     };
-    expect(at("https://chat.hoffle.online/hangout")).toBe("https://chat.hoffle.online/i/S5A7FDQHYE");
-    expect(at("https://chat.hoffle.online/")).toBe("https://chat.hoffle.online/i/S5A7FDQHYE");
+    expect(at("https://chat.hoffle.online/hangout")).toBe("https://hoffle.online/i/S5A7FDQHYE");
+    expect(at("https://chat.hoffle.online/")).toBe("https://hoffle.online/i/S5A7FDQHYE");
     expect(at("https://deeppixel.online/hangout")).toBe("https://deeppixel.online/hangout/i/S5A7FDQHYE");
   });
 

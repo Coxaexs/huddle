@@ -72,6 +72,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   // The invite in the link is for a server, not for an account: on an open
   // Hoffle the account is made like any other and the server joined after.
   const [serverInvite, setServerInvite] = useState<string | null>(null);
+  const [serverInviteName, setServerInviteName] = useState("");
   const [challengeToken, setChallengeToken] = useState("");
   const [challengeFailed, setChallengeFailed] = useState(false);
   const challengeBox = useRef<HTMLDivElement | null>(null);
@@ -133,7 +134,10 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               setError(res.error || tNow("gate.inviteInvalid"));
               setNotice("");
             } else if (res.server) {
-              if (open) setServerInvite(inviteCode);
+              if (open) {
+                setServerInvite(inviteCode);
+                setServerInviteName(res.server.name);
+              }
               setNotice({ key: open ? "gate.inviteForServerOpen" : "gate.inviteForServer", vars: { server: res.server.name } });
             } else if (res.inviter?.displayName) {
               setNotice({ key: "gate.invitedBy", vars: { name: res.inviter.displayName } });
@@ -433,9 +437,11 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               : mode === "signup"
             ? bootstrap
               ? t("gate.title.claim")
-              : open && !haveInvite
-                ? t("gate.title.create")
-                : t("gate.title.invite")
+              : serverInvite
+                ? t("gate.title.joinServer", { server: serverInviteName })
+                : open && !haveInvite
+                  ? t("gate.title.create")
+                  : t("gate.title.invite")
             : t("gate.title.signIn")}
         </h2>
         <p>
@@ -446,7 +452,9 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               : mode === "signup"
             ? bootstrap
               ? t("gate.lead.claim")
-              : open && (!haveInvite || serverInvite)
+              : serverInvite
+                ? t("gate.lead.serverInvite")
+                : open && !haveInvite
                 ? t("gate.lead.create")
                 : t("gate.lead.invite")
             : t("gate.lead.signIn")}
@@ -462,7 +470,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               ] as const
             ).map(([tab, label]) => {
               const active =
-                tab === "signin" ? mode === "signin" : mode === "signup" && haveInvite === (tab === "invite");
+                tab === "signin" ? mode === "signin" : mode === "signup" && (haveInvite && !serverInvite) === (tab === "invite");
               return (
                 <button
                   key={tab}

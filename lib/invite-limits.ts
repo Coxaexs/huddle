@@ -8,6 +8,13 @@
  */
 export const MAX_INVITE_USES = 1000;
 
+/**
+ * Server invites made in one click (the invite dialog, Server Settings) are
+ * for a whole group chat. Asking for 0 got 1 use, so the second friend to tap
+ * a group's link found it expired.
+ */
+export const GROUP_INVITE_USES = 100;
+
 /** Choices offered when making an account invite, smallest first. */
 export const INVITE_USE_CHOICES = [1, 5, 10, 25, 50, 100, 200, 500, 1000] as const;
 

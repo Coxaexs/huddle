@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GROUP_INVITE_USES } from "@/lib/invite-limits";
 import { Trash2, ExternalLink, LogOut } from "lucide-react";
 import { SoundboardTab, StickersTab } from "./expression-settings";
 import { WelcomeTab } from "./server-welcome";
@@ -344,7 +345,7 @@ export function ServerSettingsDialog({
     try {
       await apiFetch("/api/invites", {
         method: "POST",
-        body: JSON.stringify({ serverId: server.id, maxUses: 0 }),
+        body: JSON.stringify({ serverId: server.id, maxUses: GROUP_INVITE_USES }),
       });
       await loadInvites();
     } catch (error) {

@@ -9,6 +9,7 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.title.reset": "Yeni bir şifre seç",
   "gate.title.claim": "Bu Hoffle'ı sahiplen",
   "gate.title.create": "Hesabını oluştur",
+  "gate.title.joinServer": "{server} sunucusuna katıl",
   "gate.title.invite": "Davetle katıl",
   "gate.title.signIn": "Giriş yap",
   "gate.title.code": "Kodunu gir",
@@ -16,6 +17,7 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.lead.reset": "Bu, diğer her yerdeki oturumlarını kapatır.",
   "gate.lead.claim": "İlk hesap bu Hoffle'ın sahibi olur ve herkesi davet edebilir.",
   "gate.lead.create": "Bir ad ve şifre seç. Davet gerekmiyor.",
+  "gate.lead.serverInvite": "Bir ad ve şifre seç, içeridesin.",
   "gate.lead.invite": "İçerideki bir arkadaşından davet kodu iste.",
   "gate.lead.signIn": "Adın ve mesajların kendi sunucunda kalır.",
   "gate.lead.code":
