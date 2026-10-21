@@ -80,6 +80,40 @@ const STARTER_TEMPLATES: Record<string, TemplateStructure> = {
       { name: "Adventurer", color: "#9b59b6" },
     ],
   },
+  // An open server for strangers: a place to land, rules up front, a way to
+  // report bugs and find people to play with.
+  community: {
+    categories: [
+      {
+        name: "Start here",
+        channels: [
+          { name: "welcome-and-rules", kind: "announcement", topic: "Read this first: what this place is and the few rules" },
+          { name: "say-hi", kind: "text", topic: "New here? Tell us who you are and what you play" },
+        ],
+      },
+      {
+        name: "Hang out",
+        channels: [
+          { name: "general", kind: "text", topic: "Anything goes (within the rules)" },
+          { name: "looking-for-group", kind: "text", topic: "Find people for a game, a D&D table or a movie night" },
+          { name: "show-your-setup", kind: "text", topic: "Themes, profiles, battlemaps: show it off" },
+          { name: "Lounge", kind: "voice" },
+          { name: "Game night", kind: "voice" },
+        ],
+      },
+      {
+        name: "Help",
+        channels: [
+          { name: "questions", kind: "text", topic: "Stuck on something? Ask here" },
+          { name: "feedback-and-bugs", kind: "forum", topic: "One post per bug or idea, with steps or a screenshot" },
+        ],
+      },
+    ],
+    roles: [
+      { name: "Moderator", color: "#e74c3c" },
+      { name: "Helper", color: "#2ecc71" },
+    ],
+  },
   study: {
     categories: [
       {
@@ -222,20 +256,43 @@ export async function POST(
   let catPos = 100;
   let chanPos = 100;
 
+  // What the server already has, so applying a template to a server that has
+  // some of it (or applying it twice) only adds what's missing.
+  const [haveCategories, haveChannels, haveRoles] = await Promise.all([
+    db.prepare("SELECT id, name FROM categories WHERE server_id = ?").bind(serverId).all<{ id: string; name: string }>(),
+    db.prepare("SELECT name, kind FROM channels WHERE server_id = ?").bind(serverId).all<{ name: string; kind: string }>(),
+    db.prepare("SELECT name FROM roles WHERE server_id = ?").bind(serverId).all<{ name: string }>(),
+  ]);
+  const categoryIds = new Map(haveCategories.results.map((c) => [c.name.toLowerCase(), c.id]));
+  const channelKeys = new Set(haveChannels.results.map((c) => `${c.kind}:${c.name.toLowerCase()}`));
+  const roleNames = new Set(haveRoles.results.map((r) => r.name.toLowerCase()));
+  /** True the first time a channel of this name and kind comes up. */
+  const newChannel = (name: string, kind: string) => {
+    const key = `${kind}:${name.toLowerCase()}`;
+    if (channelKeys.has(key)) return false;
+    channelKeys.add(key);
+    return true;
+  };
+
   for (const cat of (structure.categories || []).slice(0, 15)) {
     const catName = String(cat.name || "").trim().slice(0, 50);
     if (!catName) continue;
-    const catId = crypto.randomUUID();
-    statements.push(
-      db
-        .prepare("INSERT INTO categories (id, server_id, name, position) VALUES (?, ?, ?, ?)")
-        .bind(catId, serverId, catName, catPos++),
-    );
-    createdCategories++;
+    let catId = categoryIds.get(catName.toLowerCase());
+    if (!catId) {
+      catId = crypto.randomUUID();
+      categoryIds.set(catName.toLowerCase(), catId);
+      statements.push(
+        db
+          .prepare("INSERT INTO categories (id, server_id, name, position) VALUES (?, ?, ?, ?)")
+          .bind(catId, serverId, catName, catPos++),
+      );
+      createdCategories++;
+    }
     for (const ch of (cat.channels || []).slice(0, 20)) {
       const chName = String(ch.name || "").trim().slice(0, 50);
       if (!chName) continue;
       const kind = sanitizeChannelKind(ch.kind);
+      if (!newChannel(chName, kind)) continue;
       statements.push(
         db
           .prepare(
@@ -251,6 +308,7 @@ export async function POST(
     const chName = String(ch.name || "").trim().slice(0, 50);
     if (!chName) continue;
     const kind = sanitizeChannelKind(ch.kind);
+    if (!newChannel(chName, kind)) continue;
     statements.push(
       db
         .prepare(
@@ -264,7 +322,8 @@ export async function POST(
   let rolePos = 10;
   for (const role of (structure.roles || []).slice(0, 20)) {
     const roleName = String(role.name || "").trim().slice(0, 40);
-    if (!roleName) continue;
+    if (!roleName || roleNames.has(roleName.toLowerCase())) continue;
+    roleNames.add(roleName.toLowerCase());
     const color = typeof role.color === "string" && /^#[0-9a-fA-F]{6}$/.test(role.color) ? role.color : "#9d8cf5";
     statements.push(
       db

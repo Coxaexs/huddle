@@ -13,6 +13,9 @@ export const REPO = "https://github.com/Coxaexs/huddle";
 export const RELEASES = `${REPO}/releases/latest`;
 export const APP_URL = "https://chat.hoffle.online";
 export const STATUS_URL = "https://status.hoffle.online";
+/** The public Hoffle community server's vanity invite; the site links to it once it exists. */
+export const COMMUNITY_INVITE = "HOFFLE";
+export const COMMUNITY_URL = `${APP_URL}/i/${COMMUNITY_INVITE}`;
 
 export const KOFI_URL = "https://ko-fi.com/abdullahturk";
 export const GITHUB_SPONSORS_URL = "https://github.com/sponsors/Coxaexs";

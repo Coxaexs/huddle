@@ -83,6 +83,7 @@ export function ServerTemplateTab({
             { id: "gaming", title: "Gaming Hangout", desc: "Announcements, clips, squad voice rooms & roles" },
             { id: "dnd", title: "D&D Campaign Hub", desc: "Lore forum, session recaps, dice chat & GM rooms" },
             { id: "study", title: "Study & Co-working", desc: "Daily goals, resource forum & quiet focus voice" },
+            { id: "community", title: "Public Community", desc: "Welcome & rules, say-hi, looking-for-group, questions & a bug forum" },
           ].map((tpl) => (
             <button
               key={tpl.id}

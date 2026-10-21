@@ -12,8 +12,11 @@ import {
   KOFI_URL,
   GITHUB_SPONSORS_URL,
   STATUS_URL,
+  COMMUNITY_INVITE,
+  COMMUNITY_URL,
   sectionHref,
 } from "./site-chrome";
+import { loadInvitePreview, type InvitePreview } from "@/lib/invite-preview";
 import { readDownloadManifest, RELEASES_PAGE, type DownloadManifest, type DownloadPlatform } from "@/lib/downloads";
 import { bindings } from "@/lib/storage";
 import { BUILTIN_THEMES } from "@/lib/themes";
@@ -401,12 +404,22 @@ function downloadRows(copy: LandingCopy["download"], manifest: DownloadManifest 
   ];
 }
 
+/** The community server, once its invite exists; until then the site doesn't mention it. */
+async function community(): Promise<NonNullable<InvitePreview["server"]> | null> {
+  try {
+    const db = bindings().DB;
+    return db ? ((await loadInvitePreview(db, COMMUNITY_INVITE))?.server ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ─── Page ─────────────────────────────────────────────────────────────── */
 
 export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
   const copy = LANDING_COPY[lang];
   const other: LandingLang = lang === "en" ? "tr" : "en";
-  const manifest = await downloads();
+  const [manifest, lounge] = await Promise.all([downloads(), community()]);
   const themeNames = BUILTIN_THEMES.map((theme) => theme.name);
   const themesLine = copy.themesLine(
     themeNames.length,
@@ -453,6 +466,12 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
             <div className="mt-12 sm:mt-14">
               <LiveChannel links={JOIN_LINKS} copy={copy.live} />
             </div>
+            {lounge && (
+              <div className="mt-5 flex flex-col gap-4 rounded-xl border border-(--line) bg-(--paper-2) p-5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-[70ch] leading-relaxed text-(--ink-2)">{copy.community.line(lounge.memberCount, lounge.onlineCount)}</p>
+                <a href={COMMUNITY_URL} className={`${primaryButton} shrink-0`}>{copy.community.button}</a>
+              </div>
+            )}
           </div>
         </section>
 
@@ -665,6 +684,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <p className="max-w-2xl leading-relaxed text-(--ink-2)">{copy.about.body}</p>
             <div className="flex flex-wrap gap-3">
+              {lounge && <a href={COMMUNITY_URL} className={secondaryButton}>{copy.community.button}</a>}
               <a href={REPO} className={secondaryButton}>
                 <GithubMark className="h-4 w-4" /> {copy.about.github}
               </a>
