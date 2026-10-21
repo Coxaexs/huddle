@@ -11,7 +11,7 @@ import { type ServerFolder } from "@/lib/server-folders";
 import { type DmSummary, compareDms } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { commandArgsHint } from "../../lib/chat/format";
-import { extractInviteCodes } from "../../lib/chat/invites";
+import { ACCEPTED_INVITE_KEY, extractInviteCodes } from "../../lib/chat/invites";
 import { parseMessageLink, resolveMessageLink } from "../../lib/chat/message-links";
 import { type VoicePref } from "../../components/user-menu";
 import { apiFetch } from "../../lib/client";
@@ -363,6 +363,17 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
             }
             if (invite.isMember) {
               setActiveServerId(invite.server.id);
+              return;
+            }
+            let accepted = false;
+            try {
+              accepted = window.sessionStorage.getItem(ACCEPTED_INVITE_KEY) === inviteCode;
+              window.sessionStorage.removeItem(ACCEPTED_INVITE_KEY);
+            } catch {
+              // Ask, as for any other link.
+            }
+            if (accepted) {
+              void joinServerDirectRef.current(inviteCode);
               return;
             }
             showCustomConfirm({

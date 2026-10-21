@@ -1,32 +1,60 @@
-/** Finding Hangout invite codes in message text and URLs. */
+/** Finding invite codes in message text and URLs, and building invite links. */
 
-/** Extracts server invite codes from text that contain hangout invite links or codes. */
+/**
+ * sessionStorage: a server invite someone accepted on the sign-up screen, so
+ * the shell joins it after the account is made instead of asking again.
+ */
+export const ACCEPTED_INVITE_KEY = "hoffle-accepted-invite";
+
+/** Hosts whose /i/CODE links are Hoffle invites (plus whatever host this page is on). */
+const INVITE_HOSTS = ["hoffle.online", "www.hoffle.online", "chat.hoffle.online", "deeppixel.online"];
+
+function inviteHosts(): string[] {
+  const here = typeof window !== "undefined" ? window.location?.host?.toLowerCase() : "";
+  return here && !INVITE_HOSTS.includes(here) ? [...INVITE_HOSTS, here] : INVITE_HOSTS;
+}
+
+const escapeHost = (host: string) => host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Extracts server invite codes from text that contain invite links or codes:
+ * the short form (https://hoffle.online/i/CODE) and the older
+ * .../hangout?invite=CODE. Short links only count on Hoffle's own hosts, so
+ * someone else's /i/ URL never turns into an invite card.
+ */
 export function extractInviteCodes(text: string): string[] {
   if (!text) return [];
-  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})(?![\w=-])/gi;
   const codes: string[] = [];
+  const add = (code: string | undefined) => {
+    const upper = code?.toUpperCase();
+    if (upper && !codes.includes(upper)) codes.push(upper);
+  };
+  const inviteRegex = /(?:https?:\/\/[^\s/?#]+|[a-zA-Z0-9.-]+)?\/hangout\?(?:(?:servercode|code|invite)=)?([A-Za-z0-9_-]{4,24})(?![\w=-])/gi;
   let match: RegExpExecArray | null;
-  while ((match = inviteRegex.exec(text)) !== null) {
-    const code = match[1]?.toUpperCase();
-    if (code && !codes.includes(code)) {
-      codes.push(code);
-    }
-  }
+  while ((match = inviteRegex.exec(text)) !== null) add(match[1]);
+  const hosts = inviteHosts().map(escapeHost).join("|");
+  // The lookbehind keeps "evilhoffle.online" from passing for "hoffle.online".
+  const shortRegex = new RegExp(`(?<![\\w.-])(?:https?:\\/\\/)?(?:${hosts})(?:\\/hangout)?\\/i\\/([A-Za-z0-9_-]{4,24})(?![\\w-])`, "gi");
+  while ((match = shortRegex.exec(text)) !== null) add(match[1]);
   return codes;
 }
 
-/** Builds a full user registration invite link for a given code. */
+/**
+ * The link to hand out for an invite code: /i/CODE on this instance, which
+ * shows who invited you and to what (also to link previews in WhatsApp,
+ * iMessage or Discord) before it sends you into the app.
+ */
 export function buildUserInviteLink(code: string): string {
   const cleanCode = (code || "").trim().toUpperCase();
   const origin =
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin
-      : "https://deeppixel.online";
+      : "https://chat.hoffle.online";
   const path =
     typeof window !== "undefined" && window.location?.pathname?.startsWith("/hangout")
       ? "/hangout"
       : "";
-  return `${origin}${path || "/hangout"}?invite=${encodeURIComponent(cleanCode)}`;
+  return `${origin}${path}/i/${encodeURIComponent(cleanCode)}`;
 }
 
 /** Extracts an invite code from a URL or query string if present. */

@@ -80,5 +80,6 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.inviteInvalid": "Bu davet kodu geçersiz ya da süresi dolmuş.",
   "gate.inviteForServer":
     "Bu davet \"{server}\" sunucusu için. Kayıt olmak için hesap daveti gerekir, ama hesabın varsa giriş yapabilirsin.",
+  "gate.inviteForServerOpen": "{server} sunucusuna davet edildin. Hesabını aç, doğrudan içeri gir.",
   "gate.invitedBy": "{name} seni davet etti! Katılmak için kullanıcı adını seç.",
 };

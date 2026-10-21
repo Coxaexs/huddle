@@ -79,5 +79,6 @@ export const auth = {
   "gate.inviteInvalid": "This invite code is invalid or has expired.",
   "gate.inviteForServer":
     "This invite is for server \"{server}\". Account invites are required to register, but you can sign in if you already have an account.",
+  "gate.inviteForServerOpen": "You're invited to {server}. Make an account and you'll land right in it.",
   "gate.invitedBy": "{name} invited you! Choose your username to join.",
 } as const;

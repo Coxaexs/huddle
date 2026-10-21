@@ -13,9 +13,20 @@ vi.mock("cloudflare:workers", () => ({
 import { canUserCreateInvites, isFirstUserOrOwner } from "./auth";
 
 describe("buildUserInviteLink and extractInviteCodeFromUrl", () => {
-  it("builds a link with ?invite= parameter", () => {
+  it("builds a short /i/ link", () => {
     const link = buildUserInviteLink("myinvite123");
-    expect(link).toContain("?invite=MYINVITE123");
+    expect(link).toMatch(/\/i\/MYINVITE123$/);
+  });
+
+  it("finds short links on Hoffle's hosts and old ?invite= links", () => {
+    expect(extractInviteCodes("come join https://hoffle.online/i/ab12cd34 tonight")).toEqual(["AB12CD34"]);
+    expect(extractInviteCodes("chat.hoffle.online/i/HX3F-9K2Q")).toEqual(["HX3F-9K2Q"]);
+    expect(extractInviteCodes("https://chat.hoffle.online/hangout?invite=code123")).toEqual(["CODE123"]);
+  });
+
+  it("ignores /i/ links on other sites", () => {
+    expect(extractInviteCodes("https://imgur.com/i/abcdef")).toEqual([]);
+    expect(extractInviteCodes("https://evilhoffle.online/i/abcdef")).toEqual([]);
   });
 
   it("extracts code from ?invite= query param", () => {

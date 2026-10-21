@@ -6,6 +6,7 @@
  * Vary to whatever it gets back, so the socket is answered here instead.
  */
 import handler from "vinext/server/app-router-entry";
+import { extractInviteCodeFromUrl } from "../app/lib/chat/invites";
 import { currentUser } from "../lib/auth";
 import { hub, roomHub } from "../lib/hub-client";
 import { allDisabledFeatures, disabledFeatureFor, featureFlags, SIDE_FEATURES } from "../lib/features";
@@ -118,6 +119,9 @@ async function handleRequest(
       }
       return env.ASSETS.fetch(new Request(target, request));
     }
+
+    const previewInvite = invitePreviewRedirect(request, url, effectiveBasePath);
+    if (previewInvite) return previewInvite;
 
     if (realtimePaths.has(url.pathname)) {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
@@ -273,11 +277,33 @@ async function handleRequest(
         const sub = url.pathname.startsWith("/") ? url.pathname : `/${url.pathname}`;
         target.pathname = `${effectiveBasePath}${sub}`;
       }
-      return handler.fetch(new Request(target, request), env as never, ctx as never);
+      const forwarded = new Request(target, request);
+      // The root layout sets <html lang> from this; it can't see the path.
+      if (isLanding && /^\/tr(\/|$)/.test(url.pathname)) forwarded.headers.set("x-hoffle-lang", "tr");
+      return handler.fetch(forwarded, env as never, ctx as never);
     }
 
     return handler.fetch(request, env as never, ctx as never);
   }
+}
+
+/** User agents of the services that draw link previews in chats and feeds. */
+const PREVIEW_BOTS =
+  /facebookexternalhit|Facebot|WhatsApp|Twitterbot|Slackbot|Discordbot|TelegramBot|LinkedInBot|Applebot|SkypeUriPreview|redditbot|Iframely|Embedly|vkShare|Pinterest|Mastodon|Bluesky|Googlebot|bingbot/i;
+
+/**
+ * Invite links from before /i/CODE point at the app with ?invite=CODE, which
+ * is a sign-in screen to a link preview. Preview bots are sent to the invite
+ * page instead, so those links show the server's name and picture too.
+ */
+function invitePreviewRedirect(request: Request, url: URL, basePath: string): Response | null {
+  if (request.method !== "GET" || !PREVIEW_BOTS.test(request.headers.get("user-agent") || "")) return null;
+  if (url.pathname !== "/" && url.pathname !== basePath && url.pathname !== `${basePath}/`) return null;
+  const code = extractInviteCodeFromUrl(url.search);
+  if (!code) return null;
+  const prefix = url.pathname.startsWith(basePath) ? basePath : "";
+  // Relative, so it keeps https: the worker itself only sees plain http.
+  return new Response(null, { status: 302, headers: { Location: `${prefix}/i/${encodeURIComponent(code)}` } });
 }
 
 /**

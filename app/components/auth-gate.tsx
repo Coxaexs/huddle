@@ -5,7 +5,7 @@ import { KeyRound, Mail } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { tNow, tRich, useI18n } from "../lib/i18n-context";
 import type { TranslatableKey, TranslateVars } from "@/lib/i18n";
-import { extractInviteCodeFromUrl } from "../lib/chat/invites";
+import { ACCEPTED_INVITE_KEY, extractInviteCodeFromUrl } from "../lib/chat/invites";
 import {
   passkeyCancelled,
   passkeySecondFactor,
@@ -69,12 +69,15 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   );
   // With open signup on, "signup" is Create account; this is the Invite code tab.
   const [haveInvite, setHaveInvite] = useState(false);
+  // The invite in the link is for a server, not for an account: on an open
+  // Hoffle the account is made like any other and the server joined after.
+  const [serverInvite, setServerInvite] = useState<string | null>(null);
   const [challengeToken, setChallengeToken] = useState("");
   const [challengeFailed, setChallengeFailed] = useState(false);
   const challengeBox = useRef<HTMLDivElement | null>(null);
   const challengeWidget = useRef<{ api: TurnstileApi; id: string } | null>(null);
-  const showInviteField = bootstrap || !open || haveInvite;
-  const needsChallenge = open && !haveInvite && mode === "signup" && Boolean(turnstileSiteKey);
+  const showInviteField = bootstrap || !open || (haveInvite && !serverInvite);
+  const needsChallenge = open && (!haveInvite || Boolean(serverInvite)) && mode === "signup" && Boolean(turnstileSiteKey);
   const [resetToken, setResetToken] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -130,7 +133,8 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               setError(res.error || tNow("gate.inviteInvalid"));
               setNotice("");
             } else if (res.server) {
-              setNotice({ key: "gate.inviteForServer", vars: { server: res.server.name } });
+              if (open) setServerInvite(inviteCode);
+              setNotice({ key: open ? "gate.inviteForServerOpen" : "gate.inviteForServer", vars: { server: res.server.name } });
             } else if (res.inviter?.displayName) {
               setNotice({ key: "gate.invitedBy", vars: { name: res.inviter.displayName } });
             }
@@ -247,18 +251,28 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         } catch {
           // Storage blocked: the tutorial is still in Settings.
         }
-        // Clean invite parameters from URL so that subsequent chat-shell checks don't treat this used code as an expired server invite
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("invite");
-          url.searchParams.delete("code");
-          url.searchParams.delete("servercode");
-          if (url.search && !url.search.includes("=")) {
-            url.search = "";
+        if (serverInvite) {
+          // A server invite stays in the address bar so the chat shell joins
+          // it once the account exists; it was seen here, so no second question.
+          try {
+            window.sessionStorage.setItem(ACCEPTED_INVITE_KEY, serverInvite);
+          } catch {
+            // The shell asks before joining instead.
           }
-          window.history.replaceState(null, "", url.toString());
-        } catch {
-          // ignore
+        } else {
+          // Clean invite parameters from URL so that subsequent chat-shell checks don't treat this used code as an expired server invite
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("invite");
+            url.searchParams.delete("code");
+            url.searchParams.delete("servercode");
+            if (url.search && !url.search.includes("=")) {
+              url.search = "";
+            }
+            window.history.replaceState(null, "", url.toString());
+          } catch {
+            // ignore
+          }
         }
       }
       onSignedIn(data.user, data.defaultTheme || null);
@@ -430,7 +444,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               : mode === "signup"
             ? bootstrap
               ? t("gate.lead.claim")
-              : open && !haveInvite
+              : open && (!haveInvite || serverInvite)
                 ? t("gate.lead.create")
                 : t("gate.lead.invite")
             : t("gate.lead.signIn")}
