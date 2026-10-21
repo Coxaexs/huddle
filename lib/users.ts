@@ -124,6 +124,8 @@ export type AvatarFrameId = "none" | "neon" | "rainbow" | "cyber" | "gold" | "sa
 
 export interface PublicUser {
   id: string;
+  /** When the account was made (ISO). */
+  createdAt?: string;
   username: string;
   displayName: string;
   avatar: string;

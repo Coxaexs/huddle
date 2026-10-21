@@ -39,6 +39,12 @@ const ServerSettingsDialog = deferred(() => import("../../server-settings-dialog
 const BlahajBuddy = deferred(() => import("../../blahaj-buddy").then((m) => m.BlahajBuddy));
 
 /** Everything ChatShell layers over the page: voice audio, menus, dialogs, viewers, toasts and the floating stream preview. */
+/** Made less than a day ago: too soon to ask for an email. */
+function accountIsNew(createdAt: string | undefined): boolean {
+  const made = createdAt ? Date.parse(createdAt) : Number.NaN;
+  return Number.isFinite(made) && Date.now() - made < 86_400_000;
+}
+
 export function renderChatOverlays(v: ShellRenderState) {
   const {
     acceptIncomingCall, activeChannelId, activeDm, activeServer, activeServerId, addQuickReaction,
@@ -319,8 +325,9 @@ export function renderChatOverlays(v: ShellRenderState) {
         />
       )}
 
-      {/* Never on top of another dialog, and not in a new account's first day. */}
-      {!user.email && !user.emailPromptSkipped && !holdEmailPrompt && !directoryOpen && !dialogOptions && !tutorial && (
+      {/* Never on top of another dialog, and not in a new account's first day:
+          holdEmailPrompt covers the device it signed up on, createdAt every other. */}
+      {!user.email && !user.emailPromptSkipped && !holdEmailPrompt && !accountIsNew(user.createdAt) && !directoryOpen && !dialogOptions && !tutorial && (
         <EmailPrompt onUser={setUser} />
       )}
 

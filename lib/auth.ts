@@ -202,6 +202,7 @@ export function publicUser(user: User): PublicUser {
     lastfmUsername: user.lastfm_username || null,
     email: user.email || null,
     emailPromptSkipped: Boolean(user.email_prompt_skipped),
+    createdAt: user.created_at,
   };
 }
 
