@@ -58,7 +58,8 @@ export function inviteMetaText(preview: InvitePreview | null) {
     const { name, memberCount, onlineCount } = preview.server;
     const counts = `${memberCount} ${memberCount === 1 ? "member" : "members"}, ${onlineCount} online.`;
     return {
-      title: `Join ${name} on Hoffle`,
+      // "Join Hoffle on Hoffle" for the community server reads oddly.
+      title: /hoffle/i.test(name) ? `Join ${name}` : `Join ${name} on Hoffle`,
       tabTitle: `Join ${name}`,
       description: who ? `${who} invited you. ${counts}` : counts,
     };

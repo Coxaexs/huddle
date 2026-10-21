@@ -25,7 +25,8 @@ export interface LandingCopy {
     join: { title: string; partOfThing: string | null; partOfPlain: string; joinTitle: string; joinBody: string; create: string; hostTitle: string; hostBody: string; guide: string };
   };
   /** Shown only once the community's invite (COMMUNITY_INVITE) exists. */
-  community: { line: (members: number, online: number) => string; button: string };
+  /** `members` is null while the community is too small for a number to help. */
+  community: { line: (members: number | null, online: number) => string; button: string };
   features: { title: string; lead: string; groups: { title: string; items: string[]; lead?: "musicBot" | "themes" }[]; musicBotLink: string; musicBotLead: string; musicBotTail: string };
   themesLine: (count: number, names: string) => string;
   tour: {
@@ -137,7 +138,7 @@ const en: LandingCopy = {
   },
   community: {
     line: (members, online) =>
-      `There's also the Hoffle community, where people who use Hoffle hang out, swap themes and find people to play with: ${members} ${members === 1 ? "member" : "members"}, ${online} online right now.`,
+      `There's also the Hoffle community, where people who use Hoffle hang out, swap themes and find people to play with${members === null ? "." : `: ${members} members, ${online} online right now.`}`,
     button: "Join the community",
   },
   features: {
@@ -479,7 +480,7 @@ const tr: LandingCopy = {
   },
   community: {
     line: (members, online) =>
-      `Bir de Hoffle topluluğu var: Hoffle kullananlar orada takılıyor, tema paylaşıyor, birlikte oynayacak birilerini buluyor. ${members} üye, şu an ${online} kişi çevrimiçi.`,
+      `Bir de Hoffle topluluğu var: Hoffle kullananlar orada takılıyor, tema paylaşıyor, birlikte oynayacak birilerini buluyor.${members === null ? "" : ` ${members} üye, şu an ${online} kişi çevrimiçi.`}`,
     button: "Topluluğa katıl",
   },
   features: {

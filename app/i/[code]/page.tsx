@@ -38,7 +38,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "hoffle.online";
   const origin = `${requestHeaders.get("x-forwarded-proto") || "https"}://${host}`;
-  const image = absolute(found?.server?.iconUrl || found?.server?.bannerUrl || null, origin);
+  // WhatsApp, Instagram and most others can't draw an SVG preview, so those fall back to Hoffle's card.
+  const picture = [found?.server?.iconUrl, found?.server?.bannerUrl].find((url) => url && !/\.svg(\?|$)/i.test(url)) || null;
+  const image = absolute(picture, origin);
   return {
     // The layout adds " · Hoffle" to the tab title.
     title: tabTitle,

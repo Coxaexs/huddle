@@ -404,6 +404,9 @@ function downloadRows(copy: LandingCopy["download"], manifest: DownloadManifest 
   ];
 }
 
+/** Below this many members "3 members" reads as empty, so the line leaves the numbers out. */
+const COMMUNITY_COUNT_FROM = 25;
+
 /** The community server, once its invite exists; until then the site doesn't mention it. */
 async function community(): Promise<NonNullable<InvitePreview["server"]> | null> {
   try {
@@ -468,7 +471,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
             </div>
             {lounge && (
               <div className="mt-5 flex flex-col gap-4 rounded-xl border border-(--line) bg-(--paper-2) p-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-[70ch] leading-relaxed text-(--ink-2)">{copy.community.line(lounge.memberCount, lounge.onlineCount)}</p>
+                <p className="max-w-[70ch] leading-relaxed text-(--ink-2)">{copy.community.line(lounge.memberCount >= COMMUNITY_COUNT_FROM ? lounge.memberCount : null, lounge.onlineCount)}</p>
                 <a href={COMMUNITY_URL} className={`${primaryButton} shrink-0`}>{copy.community.button}</a>
               </div>
             )}
