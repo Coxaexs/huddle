@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   if (!featureFlags(bindings()).recordSessions) {
     return Response.json(
-      { error: "Session recording is disabled on this Huddle." },
+      { error: "Session recording is disabled on this Hoffle." },
       { status: 404 },
     );
   }

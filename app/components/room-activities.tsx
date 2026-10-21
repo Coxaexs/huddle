@@ -881,7 +881,7 @@ export function RoomActivities({
           method: "POST",
           body: JSON.stringify({
             mode: "watch",
-            name: `${channelName} · Huddle`,
+            name: `${channelName} · Hoffle`,
           }),
         });
         const next = await postActivity({

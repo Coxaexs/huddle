@@ -167,7 +167,7 @@ const COMPANIONS: Record<string, CompanionProfile> = {
     specialActionDesc: "Send a wave of cozy pastel hearts & sparkles across your screen",
     specialParticle: "♥",
     dialogues: [
-      "You belong in this Huddle.",
+      "You belong in this Hoffle.",
       "Hydration check! Tiny sip of water for your shark friend? 💧",
       "Having a rough day? Sending a giant, fluffy shark hug!",
       "Your identity and journey are yours to define and celebrate.",
@@ -212,7 +212,7 @@ const COMPANIONS: Record<string, CompanionProfile> = {
     specialActionDesc: "Inject a digital phosphor glitch and matrix rain burst",
     specialParticle: "01",
     dialogues: [
-      "Wake up, user... the Huddle has you.",
+      "Wake up, user... the Hoffle has you.",
       "There is no spoon. Only CSS custom properties.",
       "Take the red pill for focus; take the blue pill for memes.",
       "Firewall status: impenetrable. Emotional bandwidth: nominal.",
@@ -318,7 +318,7 @@ const COMPANIONS: Record<string, CompanionProfile> = {
       "*tap tap on glass* Hey! Just checking in to see if you need any assistance!",
       "It looks like you've been focused for a while. Remember to stretch & hydrate! 💧",
       "Personal status: (8) Listening to: Evanescence - Bring Me To Life (8)",
-      "It looks like you're having an awesome time on Huddle! 📎✨",
+      "It looks like you're having an awesome time on Hoffle! 📎✨",
     ],
   },
   "msn-dark": {
@@ -339,7 +339,7 @@ const COMPANIONS: Record<string, CompanionProfile> = {
       "*tap tap on glass* Hey! Just checking in to see if you need any assistance!",
       "It looks like you've been focused for a while. Remember to stretch & hydrate! 💧",
       "Personal status: (8) Listening to: Evanescence - Bring Me To Life (8)",
-      "It looks like you're having an awesome time on Huddle! 📎✨",
+      "It looks like you're having an awesome time on Hoffle! 📎✨",
     ],
   },
 };

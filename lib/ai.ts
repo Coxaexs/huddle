@@ -27,7 +27,7 @@ export const DEFAULT_AI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lit
 /** Haiku: fast and cheap enough for short chat answers. */
 export const DEFAULT_CLAUDE_MODEL = "claude-haiku-5-5";
 
-export const AI_AUTHOR = "Huddle AI";
+export const AI_AUTHOR = "Hoffle AI";
 export const AI_AVATAR = "✦";
 export const AI_COLOR = "#8b7cf6";
 export const AI_KIND = "ai";

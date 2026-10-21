@@ -17,7 +17,7 @@ function authorized(request: Request): boolean {
 
 function disabled(): Response {
   return Response.json(
-    { error: "Session recording is disabled on this Huddle." },
+    { error: "Session recording is disabled on this Hoffle." },
     { status: 404 },
   );
 }

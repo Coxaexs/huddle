@@ -29,7 +29,7 @@ function error(message: string, status: number): Response {
 
 /** The D&D recorder is a per-host feature; return 404 while it is off. */
 function recorderDisabled(): Response {
-  return error("Session recording is disabled on this Huddle.", 404);
+  return error("Session recording is disabled on this Hoffle.", 404);
 }
 
 async function publish(db: D1Database, row: RecordingRow): Promise<RecordingState> {

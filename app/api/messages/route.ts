@@ -999,11 +999,12 @@ export async function postMessageAs(
 }
 
 /** The names a signed-in member's browser may post bot answers under. */
-const BOT_NAMES = new Set(["Music + Watch", "D&D Bot", "Huddle Bot"]);
+// "Huddle Bot" is the old name, still on older messages and older bot builds.
+const BOT_NAMES = new Set(["Music + Watch", "D&D Bot", "Hoffle Bot", "Huddle Bot"]);
 
 function botName(raw: string | undefined): string {
   const name = raw?.trim() || "";
-  return BOT_NAMES.has(name) ? name : "Huddle Bot";
+  return BOT_NAMES.has(name) ? name : "Hoffle Bot";
 }
 
 /**

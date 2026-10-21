@@ -4,7 +4,7 @@ export interface SlashCommand {
   name: string;
   args?: string;
   description: string;
-  group: "Music" | "Discord music" | "Rooms" | "D&D" | "Huddle" | "Bots";
+  group: "Music" | "Discord music" | "Rooms" | "D&D" | "Hoffle" | "Bots";
   /** Needs the caller to be sitting in a voice channel. */
   voice?: boolean;
 }
@@ -220,7 +220,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "w",
     args: "<name> <message>",
     description: "Whisper: only they see it, and it is never saved (/w sam meet me at the door · /w sam,kit you hear a click)",
-    group: "Huddle",
+    group: "Hoffle",
   },
   { name: "coinflip", description: "Flip a coin", group: "D&D" },
   { name: "spell", args: "<fireball> [2024]", description: "Look up a spell", group: "D&D" },
@@ -250,82 +250,82 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "poll",
     description: "Start a poll: /poll Question? | option | option",
-    group: "Huddle",
+    group: "Hoffle",
     args: "Question? | option | option",
   },
   {
     name: "ask",
     args: "<question>",
     description: "Ask the AI; it searches the web when the question needs it",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "summarize",
     description: "Catch up: a private AI summary of this channel's recent messages",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "remind",
     args: "<10m | 2h | 1d | 18:30> <what>",
     description: "Remind yourself later; it arrives in your Notes even if you are offline",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "recap",
     args: "[weekly|start|stop]",
     description: "This server's week in numbers; /recap start keeps notes of your call and posts a recap here when it ends",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "schedule",
     args: "<10m | 2h | 18:30 | tomorrow 9:00> <message>",
     description: "Post a message here later, as you (/schedule alone lists and cancels them)",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "game",
     args: "<tictactoe | connect4 | rps | mines | rota>",
     description: "Invite the conversation to a game",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "tts",
     args: "<message>",
     description: "Send a message read aloud to everyone in the channel (/tts off to mute)",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "say",
     args: "<text>",
     description: "Speak text (up to 200 characters) aloud in your voice channel",
-    group: "Huddle",
+    group: "Hoffle",
     voice: true,
   },
   {
     name: "ttsvoice",
     args: "[tempo 0.6-1.3] [pitch 0.75-1.15] [robot] | reset",
     description: "How your /tts and /say sound: slower tempo, deeper pitch, a robot voice (e.g. /ttsvoice tempo 0.85 robot)",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "ttsstop",
     description: "Admins: stop every /tts and /say playing right now, for everyone",
-    group: "Huddle",
+    group: "Hoffle",
   },
-  { name: "flip", description: "Flip a coin", group: "Huddle" },
-  { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Huddle" },
+  { name: "flip", description: "Flip a coin", group: "Hoffle" },
+  { name: "shrug", description: "¯\\_(ツ)_/¯", group: "Hoffle" },
   {
     name: "markdown",
     description: "Toggle markdown tips and code snippet helpers (e.g. ```cpp)",
-    group: "Huddle",
+    group: "Hoffle",
   },
   {
     name: "purge",
     args: "<count 1-100> [@username]",
     description: "Moderators: bulk-delete recent messages in this channel",
-    group: "Huddle",
+    group: "Hoffle",
   },
-    { name: "help", description: "How commands work here", group: "Huddle" },
+    { name: "help", description: "How commands work here", group: "Hoffle" },
 ];
 
 export const MUSIC_COMMANDS = new Set(

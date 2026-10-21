@@ -102,7 +102,7 @@ export async function GET(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage unavailable." }, { status: 503 });
   if (!featureFlags(bindings()).recordSessions) {
-    return Response.json({ error: "Session recording is disabled on this Huddle." }, { status: 404 });
+    return Response.json({ error: "Session recording is disabled on this Hoffle." }, { status: 404 });
   }
   const recorder = recorderAuthorized(request);
   const user = recorder ? null : await currentUser(request);
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage unavailable." }, { status: 503 });
   if (!featureFlags(bindings()).recordSessions) {
-    return Response.json({ error: "Session recording is disabled on this Huddle." }, { status: 404 });
+    return Response.json({ error: "Session recording is disabled on this Hoffle." }, { status: 404 });
   }
   const user = await currentUser(request);
   if (!user) return unauthorized();

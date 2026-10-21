@@ -72,7 +72,7 @@ export function ServerAccessTab({
     <div className="tab-pane">
       <h1 className="pane-title">Access, Community &amp; Feature Modules</h1>
       <p className="pane-subtitle">
-        Control whether anyone on this Huddle can discover and join {server.name}, and choose which feature modules are active here.
+        Control whether anyone on this Hoffle can discover and join {server.name}, and choose which feature modules are active here.
       </p>
 
       <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">

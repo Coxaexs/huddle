@@ -39,7 +39,7 @@ export const commands = {
   "commands.group.discordMusic": "Discord music",
   "commands.group.rooms": "Rooms",
   "commands.group.dnd": "D&D",
-  "commands.group.huddle": "Huddle",
+  "commands.group.huddle": "Hoffle",
   "commands.group.bots": "Bots",
 } as const;
 

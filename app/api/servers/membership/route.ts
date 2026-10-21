@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     }
     if (!invite.server_id) {
       return Response.json(
-        { error: "That code is for joining the Huddle, not a server." },
+        { error: "That code is for joining Hoffle, not a server." },
         { status: 400 },
       );
     }

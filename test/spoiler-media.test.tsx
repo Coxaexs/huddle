@@ -88,11 +88,11 @@ describe("Spoiler & Media Enhancements", () => {
 
       // Initially hidden with spoiler banner
       expect(screen.getByText("Spoiler Attachment")).toBeTruthy();
-      expect(screen.queryByText("PDF document · view and fill in Huddle")).toBeNull();
+      expect(screen.queryByText("PDF document · view and fill in Hoffle")).toBeNull();
 
       // Click to reveal
       fireEvent.click(screen.getByText("Reveal"));
-      expect(screen.getByText("PDF document · view and fill in Huddle")).toBeTruthy();
+      expect(screen.getByText("PDF document · view and fill in Hoffle")).toBeTruthy();
     });
 
     it("renders inline video player for video attachments like mp4 or webm", () => {

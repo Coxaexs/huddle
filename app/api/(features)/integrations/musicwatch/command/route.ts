@@ -96,12 +96,12 @@ export async function POST(request: Request) {
   try {
     if (name === "join") {
       return Response.json({
-        text: "Huddle playback is browser-based, so no voice join is required. Use `/play song name or URL`, then use the audio controls in the bot message. To make the Discord bot join a Discord voice channel, run `/join` inside Discord.",
+        text: "Hoffle playback is browser-based, so no voice join is required. Use `/play song name or URL`, then use the audio controls in the bot message. To make the Discord bot join a Discord voice channel, run `/join` inside Discord.",
       });
     }
     if (name === "disconnect") {
       return Response.json({
-        text: "Use `/disconnect` in Discord for the connected voice channel. Huddle can control playback, but Discord decides which voice channel the bot joins.",
+        text: "Use `/disconnect` in Discord for the connected voice channel. Hoffle can control playback, but Discord decides which voice channel the bot joins.",
       });
     }
 
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
           any
         >;
         if (!helperResponse.ok || !helper.audio_url) {
-          throw new Error(helper.error || "The Huddle music resolver failed.");
+          throw new Error(helper.error || "The Hoffle music resolver failed.");
         }
         return Response.json({
           text: `Ready to play ${helper.title || value}${

@@ -59,7 +59,7 @@ describe("/record", () => {
   it("says so when recording is disabled or you are not in voice", async () => {
     const off = ctx({ enabled: false });
     await runRecordCommand("start", off);
-    expect(off.notify).toHaveBeenCalledWith("Session recording is disabled on this Huddle.");
+    expect(off.notify).toHaveBeenCalledWith("Session recording is disabled on this Hoffle.");
     const away = ctx({ voiceChannelId: null });
     await runRecordCommand("start", away);
     expect(away.notify).toHaveBeenCalledWith("Join the voice room you want to record first.");

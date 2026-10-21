@@ -40,7 +40,7 @@ export const commands: Record<keyof typeof en, string> = {
   "commands.group.discordMusic": "Discord müziği",
   "commands.group.rooms": "Odalar",
   "commands.group.dnd": "D&D",
-  "commands.group.huddle": "Huddle",
+  "commands.group.huddle": "Hoffle",
   "commands.group.bots": "Botlar",
 };
 

@@ -47,7 +47,7 @@ export function SlashMenu({
     "Discord music": "commands.group.discordMusic",
     Rooms: "commands.group.rooms",
     "D&D": "commands.group.dnd",
-    Huddle: "commands.group.huddle",
+    Hoffle: "commands.group.huddle",
     Bots: "commands.group.bots",
   };
 

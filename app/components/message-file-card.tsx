@@ -354,7 +354,7 @@ export function MessageAttachmentFiles({
               <span className={`message-file-icon file-badge-${colorClass}`}>PDF</span>
               <span>
                 <strong>{f.name}</strong>
-                <small>PDF document · view and fill in Huddle</small>
+                <small>PDF document · view and fill in Hoffle</small>
               </span>
               <b aria-hidden="true">Open</b>
             </button>

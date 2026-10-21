@@ -130,7 +130,7 @@ export function AiAnswerCard({
     <div className="ai-card">
       <div className="ai-card-head">
         <Sparkles size={14} aria-hidden="true" />
-        <span>{question ? question : "Huddle AI"}</span>
+        <span>{question ? question : "Hoffle AI"}</span>
       </div>
       <div className="ai-card-body">{children}</div>
       <AiSources sources={sources} />

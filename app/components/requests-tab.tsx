@@ -67,7 +67,7 @@ const CATEGORIES: Array<{
     id: "improvement",
     label: "Improvement",
     icon: Zap,
-    description: "Enhance or polish an existing part of Huddle",
+    description: "Enhance or polish an existing part of Hoffle",
     color: "#fbbf24",
   },
   {

@@ -95,7 +95,7 @@ export async function buildRecap(db: D1Database, serverId: string, since: number
   return lines.join("\n");
 }
 
-/** Posts a recap into a channel as Huddle Bot; returns false if there was nothing to say. */
+/** Posts a recap into a channel as Hoffle Bot; returns false if there was nothing to say. */
 export async function postRecap(
   db: D1Database,
   serverId: string,
@@ -111,7 +111,7 @@ export async function postRecap(
     id: crypto.randomUUID(),
     channelId,
     userId: null,
-    author: "Huddle Bot",
+    author: "Hoffle Bot",
     avatar: "✦",
     color: "#b8a6ff",
     text,

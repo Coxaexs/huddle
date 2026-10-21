@@ -39,7 +39,7 @@ export async function GET(
   const db = bindings().DB;
   if (!db) return new Response("Storage is not connected.", { status: 503 });
   if (!featureFlags(bindings()).recordSessions) {
-    return new Response("Session recording is disabled on this Huddle.", {
+    return new Response("Session recording is disabled on this Hoffle.", {
       status: 404,
     });
   }

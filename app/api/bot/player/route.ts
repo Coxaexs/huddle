@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const channel = await findChannel(db, channelId);
   if (!channel || channel.kind !== "voice") {
     return Response.json(
-      { error: "That is not a Huddle voice channel." },
+      { error: "That is not a Hoffle voice channel." },
       { status: 404 },
     );
   }

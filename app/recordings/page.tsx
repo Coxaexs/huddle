@@ -3,7 +3,7 @@ import { RecordingsPortal } from "./recordings-portal";
 
 export const metadata: Metadata = {
   title: "Recordings",
-  description: "Start, preview and manage Huddle session recordings.",
+  description: "Start, preview and manage Hoffle session recordings.",
 };
 
 export default function RecordingsPage() {

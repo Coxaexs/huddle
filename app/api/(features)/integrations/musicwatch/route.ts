@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const mode = body.mode === "reels" ? "reels" : "watch";
   const name =
     body.name?.trim().slice(0, 40) ||
-    (mode === "reels" ? "Huddle Reels Party" : "Huddle Watch Party");
+    (mode === "reels" ? "Hoffle Reels Party" : "Hoffle Watch Party");
 
   try {
     const response = await fetch(new URL("/watch/api/create", botBaseUrl()), {

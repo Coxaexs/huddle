@@ -220,7 +220,7 @@ export function RecordingsPortal() {
     return (
       <div className="recordings-portal">
         <div className="portal-card portal-empty">
-          <p>Session recording is currently disabled on this Huddle.</p>
+          <p>Session recording is currently disabled on this Hoffle.</p>
           <a className="portal-btn" href={`${basePath}/`}>
             <ArrowLeft size={16} /> Go to Huddle
           </a>
@@ -233,7 +233,7 @@ export function RecordingsPortal() {
     return (
       <div className="recordings-portal">
         <div className="portal-card portal-empty">
-          <p>Sign in to Huddle to manage recordings.</p>
+          <p>Sign in to Hoffle to manage recordings.</p>
           <a className="portal-btn" href={`${basePath}/`}>
             <ArrowLeft size={16} /> Go to Huddle
           </a>

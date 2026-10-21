@@ -16,7 +16,7 @@ export interface RecordContext {
 export async function runRecordCommand(value: string, ctx: RecordContext): Promise<void> {
   const { enabled, voiceChannelId, recordings, notify, openStage } = ctx;
   if (!enabled) {
-    notify("Session recording is disabled on this Huddle.");
+    notify("Session recording is disabled on this Hoffle.");
     return;
   }
   if (!voiceChannelId) {

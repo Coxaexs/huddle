@@ -145,7 +145,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
         return;
       }
       if (!activeChannelId) return;
-      setNotice("✦ Huddle AI is thinking…");
+      setNotice("✦ Hoffle AI is thinking…");
       try {
         await apiFetch("/api/ai/ask", {
           method: "POST",

@@ -55,7 +55,7 @@ export function ThemeShareCard({ theme, onApplyTheme }: ThemeShareCardProps) {
             <div>
               <div className="theme-share-title">{theme.name}</div>
               <div className="theme-share-author">
-                by {theme.author?.displayName || "Huddle User"}{" "}
+                by {theme.author?.displayName || "Hoffle User"}{" "}
                 {theme.author?.username && (
                   <span className="theme-share-handle">@{theme.author.username}</span>
                 )}

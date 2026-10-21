@@ -603,7 +603,7 @@ export function renderChatMain(v: ShellRenderState) {
                 inDmHome && activeDm
                   ? { ...activeDm.user, name: activeDm.user.displayName }
                   : {
-                      name: activeServer?.name || "Huddle",
+                      name: activeServer?.name || "Hoffle",
                       avatar: activeServer?.icon || "H",
                       avatarUrl: activeServer?.iconUrl,
                       color: "#3a6ea5",

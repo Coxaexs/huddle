@@ -1644,7 +1644,7 @@ export function MsnSignInToasts({
       {toasts.map((toast) => (
         <div key={toast.key} className="msn-toast">
           <div className="msn-toast-title">
-            <span>Huddle Messenger</span>
+            <span>Hoffle Messenger</span>
             <button
               type="button"
               aria-label="Close"

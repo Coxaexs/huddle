@@ -36,9 +36,9 @@ export function headTrackingHint({ headTracking, headTrackingStatus, headTrackin
     ? "Keeps the table still while you turn. Uses your camera on this device only — video never leaves it."
     : "Keeps the table still while you turn, like Apple spatial audio.";
   if (headTrackingStatus.status === "denied") return webcam
-    ? "Camera access is blocked for Huddle — allow it in your browser's site settings."
-    : "Motion access is off for Huddle — turn it on in System Settings › Privacy & Security › Motion & Fitness.";
-  if (!webcam && !airpodsOffered) return "AirPods head tracking needs the Huddle desktop app on a Mac. The camera stays off.";
+    ? "Camera access is blocked for Hoffle — allow it in your browser's site settings."
+    : "Motion access is off for Hoffle — turn it on in System Settings › Privacy & Security › Motion & Fitness.";
+  if (!webcam && !airpodsOffered) return "AirPods head tracking needs the Hoffle desktop app on a Mac. The camera stays off.";
   if (headTrackingStatus.status === "unsupported") return webcam
     ? "Couldn't start the camera or the face tracker. Check that a webcam is connected and not in use by another app."
     : "Needs AirPods (3rd gen or later), AirPods Pro, or AirPods Max.";

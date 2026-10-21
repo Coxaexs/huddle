@@ -97,7 +97,7 @@ export async function POST(request: Request) {
   const bootstrapCode = bindings().BOOTSTRAP_CODE?.trim().toUpperCase();
   if (isFirstUser && bootstrapCode && inviteCode !== bootstrapCode) {
     return Response.json(
-      { error: "This Huddle is waiting for its owner's setup code." },
+      { error: "This Hoffle is waiting for its owner's setup code." },
       { status: 403 },
     );
   }
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       const settings = await getSignupSettings(db);
       if (!settings.open) {
         return Response.json(
-          { error: "An invite code is required to join this Huddle." },
+          { error: "An invite code is required to join this Hoffle." },
           { status: 403 },
         );
       }
