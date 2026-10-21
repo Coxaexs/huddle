@@ -20,6 +20,12 @@
 # deploy/huddle-service/50-huddle-deploy.rules; without it this swaps the
 # files in and kills the running server, and Restart=always starts it again.
 #
+# With huddle.socket installed, systemd holds port 8730 and requests wait
+# through the restart instead of failing. A stopped service would then be
+# started again by the first request, perhaps halfway through the copy, so the
+# new build is made next to the live one (dist-next/), swapped in with one
+# atomic rename, and picked up by a single restart.
+#
 # huddle.service runs workerd directly now, on dist/workerd/config.bin. Each
 # build gets its own config (scripts/workerd-config.sh), made in the staging
 # copy before the swap, so it lands and rolls back together with the build.
@@ -69,7 +75,16 @@ land() {
   if [[ ! -s "$1/workerd/config.bin" ]]; then
     "$ROOT/scripts/workerd-config.sh" "$1"
   fi
-  if systemctl --no-ask-password stop "$UNIT" 2>/dev/null; then
+  if systemctl is-active --quiet huddle.socket 2>/dev/null; then
+    rsync -a --delete "$1/" "$ROOT/dist-next/"
+    if [[ -d "$ROOT/dist" ]]; then
+      mv -T --exchange "$ROOT/dist-next" "$ROOT/dist"
+    else
+      mv -T "$ROOT/dist-next" "$ROOT/dist"
+    fi
+    systemctl --no-ask-password restart "$UNIT" || { echo "$UNIT did not restart; see: journalctl -u $UNIT" >&2; exit 1; }
+    rm -rf "$ROOT/dist-next"
+  elif systemctl --no-ask-password stop "$UNIT" 2>/dev/null; then
     rsync -a --delete "$1/" "$ROOT/dist/"
     systemctl --no-ask-password start "$UNIT" || { echo "$UNIT did not start again; see: journalctl -u $UNIT" >&2; exit 1; }
   else

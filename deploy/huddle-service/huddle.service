@@ -5,11 +5,14 @@
 # Node process plus a proxy workerd plus this one. The config comes from
 # scripts/workerd-config.sh (deploy.sh makes one for every build, in
 # dist/workerd/). It is what `wrangler dev` would run, persisted under state/.
+# The port itself is held by huddle.socket, so requests wait through a
+# restart instead of being refused.
 #
 # Install or update: sudo deploy/huddle-service/install.sh
 [Unit]
 Description=Huddle private friends chat
-After=network-online.target
+Requires=huddle.socket
+After=huddle.socket network-online.target
 Wants=network-online.target
 # Never give up restarting it.
 StartLimitIntervalSec=0
@@ -25,9 +28,11 @@ RuntimeDirectory=huddle
 #   on port 9, so the few dev extras that call it (pretty error pages, local
 #   cf.image resizing) fail fast instead of hanging.
 # --directory-path assets: the config may have been made in the staging copy.
+# --socket-fd=entry=3: the listening socket huddle.socket passes in (systemd
+#   hands over the first one as file descriptor 3).
 ExecStart=/home/coxaexs/huddle/node_modules/@cloudflare/workerd-linux-64/bin/workerd serve \
   --binary --experimental /home/coxaexs/huddle/dist/workerd/config.bin \
-  --socket-addr=entry=127.0.0.1:8730 \
+  --socket-fd=entry=3 \
   --external-addr=loopback=127.0.0.1:9 \
   --directory-path=assets:storage:huddle=/home/coxaexs/huddle/dist/client \
   --directory-path=email:store-disk=/run/huddle

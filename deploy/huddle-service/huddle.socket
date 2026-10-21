@@ -1,0 +1,23 @@
+# /etc/systemd/system/huddle.socket: holds Hoffle's port, 127.0.0.1:8730, and
+# hands it to huddle.service.
+#
+# With systemd holding the port instead of workerd, a restart (every deploy)
+# no longer refuses connections: they wait in this socket's queue for the
+# second or so until the new workerd takes them. On a test copy, a restart in
+# the middle of a steady stream of requests failed 2 of 84 with workerd
+# holding the port and 0 of 84 with this socket. WebSockets still reconnect.
+#
+# The first connection also starts huddle.service when it is not running, so
+# to keep Hoffle down stop both: systemctl stop huddle.socket huddle.service
+#
+# Install or update: sudo deploy/huddle-service/install.sh
+[Unit]
+Description=Hoffle's port (127.0.0.1:8730), held across restarts
+
+[Socket]
+ListenStream=127.0.0.1:8730
+NoDelay=true
+Backlog=4096
+
+[Install]
+WantedBy=sockets.target
