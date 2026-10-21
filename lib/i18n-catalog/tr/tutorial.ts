@@ -2,7 +2,7 @@ import type { tutorial as en } from "../en/tutorial";
 
 export const tutorial: Record<keyof typeof en, string> = {
   "tutorial.look.title": "Görünümünü seç",
-  "tutorial.look.text": "Hoffle on iki temayla gelir ve bazıları renklerden fazlasını değiştirir: MSN Messenger tüm düzeni yeniden kurar. Denemek için birine tıkla. İstediğin zaman {path} kısmından değiştirebilirsin.",
+  "tutorial.look.text": "Hoffle bir sürü temayla gelir ve bazıları renklerden fazlasını değiştirir: MSN Messenger tüm düzeni yeniden kurar. Denemek için birine tıkla. İstediğin zaman {path} kısmından değiştirebilirsin.",
   "tutorial.path.appearance": "Ayarlar → Görünüm",
   "tutorial.around.title": "Etrafı tanı",
   "tutorial.around.text": "Sunucuların en solda durur. Her birinde sohbet için {text}, konuşmak için {voice} vardır. Doğrudan mesajlar en üstteki {h} harfinin arkasındadır.",

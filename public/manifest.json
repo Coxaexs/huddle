@@ -1,7 +1,7 @@
 {
-  "name": "Huddle",
-  "short_name": "Huddle",
-  "description": "A tiny private place for your favorite people.",
+  "name": "Hoffle",
+  "short_name": "Hoffle",
+  "description": "Voice, screen sharing and game night for your friend group.",
   "start_url": "/hangout",
   "scope": "/hangout",
   "display": "standalone",

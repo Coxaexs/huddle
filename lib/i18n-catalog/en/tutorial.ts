@@ -1,7 +1,7 @@
 /** The welcome tutorial. */
 export const tutorial = {
   "tutorial.look.title": "Pick your look",
-  "tutorial.look.text": "Hoffle comes with twelve themes, and some change more than colours: MSN Messenger rebuilds the whole layout. Click one to try it on. You can change it any time in {path}.",
+  "tutorial.look.text": "Hoffle comes with a pile of themes, and some change more than colours: MSN Messenger rebuilds the whole layout. Click one to try it on. You can change it any time in {path}.",
   "tutorial.path.appearance": "Settings → Appearance",
   "tutorial.around.title": "Getting around",
   "tutorial.around.text": "Your servers sit down the far left. Each one has {text} for chatting and {voice} for talking. Direct messages live behind the {h} at the top.",

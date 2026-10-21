@@ -7,6 +7,9 @@ import type { GuestbookMessage } from "@/app/api/(features)/guestbook/route";
 import type { DiceRollEvent } from "../../lib/protocol";
 import { checkGuestName, MAX_GUEST_NAME } from "../../lib/guestbook";
 import { BUILTIN_THEMES } from "../../lib/themes";
+import type { LandingCopy } from "./landing-copy";
+
+type LiveCopy = LandingCopy["live"];
 
 /**
  * The live parts of hoffle.online's landing page:
@@ -66,28 +69,23 @@ function CloseButton({ onClick }: { onClick: () => void }) {
 
 const dialogButton = "inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 transition";
 
-function JoinDialog({ what, onClose, links }: { what: string | null; onClose: () => void; links: JoinLinks }) {
-  const subject = what ? `${what.charAt(0).toUpperCase()}${what.slice(1)} is` : "That's";
+function JoinDialog({ what, onClose, links, copy }: { what: string | null; onClose: () => void; links: JoinLinks; copy: LiveCopy["join"] }) {
+  const thing = what ? `${what.charAt(0).toUpperCase()}${what.slice(1)}` : null;
+  const lead = thing && copy.partOfThing ? copy.partOfThing.replace("{What}", thing) : copy.partOfPlain;
   return (
     <Modal open={what !== null} onClose={onClose} labelledBy="join-title">
       <div className="flex items-start justify-between gap-4">
-        <h2 id="join-title" className="lp-display text-2xl font-normal leading-tight">Try the whole Hoffle</h2>
+        <h2 id="join-title" className="lp-display text-2xl font-normal leading-tight">{copy.title}</h2>
         <CloseButton onClick={onClose} />
       </div>
-      <p className="mt-2 leading-relaxed text-(--ink-2)">
-        {subject} part of the full app. This page only has #say-hi; the real thing has every channel, voice rooms,
-        1080p screen sharing and the music bot. Two ways in:
-      </p>
+      <p className="mt-2 leading-relaxed text-(--ink-2)">{lead}</p>
 
       <div className="mt-5 rounded-xl border border-(--line) bg-(--paper-2) p-4">
-        <h3 className="font-normal">Join chat.hoffle.online</h3>
-        <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">
-          Anyone can join: pick a name and a password and you're in. It's free. If you like it, you can support Hoffle on
-          Ko-fi or GitHub Sponsors, but you don't have to.
-        </p>
+        <h3 className="font-normal">{copy.joinTitle}</h3>
+        <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">{copy.joinBody}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <a href={links.app} className={`${dialogButton} bg-(--violet-fill) text-[14px] font-semibold text-white hover:bg-(--violet-fill-hover)`}>
-            Create an account
+            {copy.create}
           </a>
           <a href={links.kofi} target="_blank" rel="noopener noreferrer" className={`${dialogButton} border border-(--line) bg-(--card) text-[14px] font-semibold text-(--ink) hover:border-(--ink)`}>
             <Coffee aria-hidden className="h-4 w-4" /> Ko-fi
@@ -99,12 +97,10 @@ function JoinDialog({ what, onClose, links }: { what: string | null; onClose: ()
       </div>
 
       <div className="mt-3 rounded-xl border border-(--line) p-4">
-        <h3 className="font-normal">Host your own</h3>
-        <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">
-          Free, with Docker, on a spare PC or a small server. The first account becomes the owner and invites everyone else.
-        </p>
+        <h3 className="font-normal">{copy.hostTitle}</h3>
+        <p className="mt-1 text-[15px] leading-relaxed text-(--ink-2)">{copy.hostBody}</p>
         <a href={links.selfHost} className={`${dialogButton} mt-3 border border-(--line) bg-(--card) text-[14px] font-semibold text-(--ink) hover:border-(--ink)`}>
-          <Server aria-hidden className="h-4 w-4" /> Self-hosting guide
+          <Server aria-hidden className="h-4 w-4" /> {copy.guide}
         </a>
       </div>
     </Modal>
@@ -117,10 +113,12 @@ function NameDialog({
   text,
   onCancel,
   onSend,
+  copy,
 }: {
   text: string | null;
   onCancel: () => void;
   onSend: (name: string) => Promise<string | null>;
+  copy: LiveCopy["name"];
 }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -156,15 +154,15 @@ function NameDialog({
       <form onSubmit={submit}>
         <div className="flex items-start justify-between gap-4">
           <h2 id="name-title" className="lp-display text-2xl font-normal leading-tight">
-            {roll ? "What name should we roll this under?" : "What name should we send this with?"}
+            {roll ? copy.titleRoll : copy.titleSend}
           </h2>
           <CloseButton onClick={onCancel} />
         </div>
-        <p className="mt-2 text-[15px] leading-relaxed text-(--ink-2)">Everyone on this page will see it under this name.</p>
+        <p className="mt-2 text-[15px] leading-relaxed text-(--ink-2)">{copy.lead}</p>
         <blockquote className="mt-4 max-h-28 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-l-[3px] border-(--violet) bg-(--paper-2) px-3 py-2 text-[15px] text-(--ink-2)">
           {text}
         </blockquote>
-        <label htmlFor="say-hi-name" className="mt-5 block text-sm font-semibold">Your name</label>
+        <label htmlFor="say-hi-name" className="mt-5 block text-sm font-semibold">{copy.label}</label>
         <input
           id="say-hi-name"
           autoFocus
@@ -178,17 +176,17 @@ function NameDialog({
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "say-hi-name-error" : undefined}
           className="mt-1.5 h-11 w-full rounded-lg border border-(--line) bg-(--paper) px-3 text-[16px] text-(--ink) outline-none focus:border-(--violet)"
-          placeholder="e.g. Sam"
+          placeholder={copy.placeholder}
         />
         {error && (
           <p id="say-hi-name-error" role="alert" className="mt-2 text-sm font-semibold text-[#d2452f]">{error}</p>
         )}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onCancel} className={`${dialogButton} border border-(--line) bg-(--card) hover:border-(--ink)`}>
-            <span className="text-[14px] font-semibold text-(--ink)">Cancel</span>
+            <span className="text-[14px] font-semibold text-(--ink)">{copy.cancel}</span>
           </button>
           <button type="submit" disabled={busy} className={`${dialogButton} bg-(--violet-fill) hover:bg-(--violet-fill-hover) disabled:opacity-60`}>
-            <span className="text-[14px] font-semibold text-white">{busy ? "Sending…" : roll ? "Roll" : "Send message"}</span>
+            <span className="text-[14px] font-semibold text-white">{busy ? copy.sending : roll ? copy.roll : copy.send}</span>
           </button>
         </div>
       </form>
@@ -207,7 +205,7 @@ function isEmbedMessage(event: MessageEvent, frame: HTMLIFrameElement | null): e
   );
 }
 
-export function LiveChannel({ links }: { links: JoinLinks }) {
+export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [themeId, setThemeId] = useState("cozy");
   const themeRef = useRef(themeId);
@@ -260,10 +258,10 @@ export function LiveChannel({ links }: { links: JoinLinks }) {
         field?: string;
       };
       if (!response.ok || !data.message) {
-        if (data.field === "name") return data.error ?? "That name can't be used.";
+        if (data.field === "name") return data.error ?? copy.name.badName;
         // A problem with the message itself shows under the message box, as in the app.
         setPending(null);
-        toEmbed({ hoffle: "say-hi", type: "error", error: data.error ?? "That didn't go through. Try again in a moment." });
+        toEmbed({ hoffle: "say-hi", type: "error", error: data.error ?? copy.name.failed });
         return null;
       }
       try {
@@ -275,7 +273,7 @@ export function LiveChannel({ links }: { links: JoinLinks }) {
       toEmbed({ hoffle: "say-hi", type: "sent", message: data.message, roll: data.roll, name });
       return null;
     } catch {
-      return "Couldn't reach Hoffle. Check your connection and try again.";
+      return copy.name.offline;
     }
   }
 
@@ -283,8 +281,8 @@ export function LiveChannel({ links }: { links: JoinLinks }) {
     <div>
       <div className="mb-3 flex flex-col gap-3">
         <p className="text-sm text-(--muted)">
-          <b className="text-(--ink)">This is a real, public channel.</b> Say hi and everyone on this page sees it, or try{" "}
-          <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink)">/roll d20</code>. In any theme:
+          <b className="text-(--ink)">{copy.lead}</b> {copy.tryRoll}{" "}
+          <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink)">/roll d20</code>. {copy.anyTheme}
         </p>
         <div role="group" aria-label="Theme" className="flex flex-wrap gap-1.5">
           {BUILTIN_THEMES.map((theme) => {
@@ -319,12 +317,12 @@ export function LiveChannel({ links }: { links: JoinLinks }) {
         <iframe
           ref={frameRef}
           src={`${EMBED_PATH}?theme=cozy`}
-          title="#say-hi, a live Hoffle channel"
+          title={copy.frameTitle}
           className="block h-[600px] w-full sm:h-[620px]"
         />
       </div>
-      <NameDialog text={pending?.text ?? null} onCancel={() => setPending(null)} onSend={send} />
-      <JoinDialog what={locked} onClose={() => setLocked(null)} links={links} />
+      <NameDialog text={pending?.text ?? null} onCancel={() => setPending(null)} onSend={send} copy={copy.name} />
+      <JoinDialog what={locked} onClose={() => setLocked(null)} links={links} copy={copy.join} />
     </div>
   );
 }
@@ -366,7 +364,7 @@ export interface TourSlide {
 }
 
 /** Moves only when someone presses next, previous or a dot; never on a timer. */
-export function ThemeTour({ slides }: { slides: TourSlide[] }) {
+export function ThemeTour({ slides, controls }: { slides: TourSlide[]; controls: LandingCopy["tour"]["controls"] }) {
   const [index, setIndex] = useState(0);
   const count = slides.length;
   const go = (next: number) => setIndex((next + count) % count);
@@ -376,17 +374,17 @@ export function ThemeTour({ slides }: { slides: TourSlide[] }) {
     <section
       id="themes"
       aria-roledescription="carousel"
-      aria-label="Theme tour"
+      aria-label={controls.label}
       className="relative scroll-mt-4 overflow-hidden px-4 pb-24 pt-12 sm:px-6 sm:pt-14"
       style={{ background: slides[index].background }}
     >
       <span id="msn" aria-hidden className="absolute top-0" />
       <div className="relative z-10 mx-auto mb-10 flex max-w-6xl flex-wrap items-center justify-between gap-4">
         <p className="text-[13px] font-bold uppercase tracking-[.14em] text-white/85 [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">
-          Theme tour · {index + 1} of {count}
+          {controls.counter.replace("{i}", String(index + 1)).replace("{n}", String(count))}
         </p>
         <div className="flex items-center gap-2 rounded-full bg-black/30 p-1">
-          <button type="button" onClick={() => go(index - 1)} aria-label="Previous theme" className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/15">
+          <button type="button" onClick={() => go(index - 1)} aria-label={controls.prev} className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/15">
             <ChevronLeft aria-hidden className="h-5 w-5 text-white" />
           </button>
           <div className="flex items-center gap-1.5 px-1">
@@ -395,21 +393,21 @@ export function ThemeTour({ slides }: { slides: TourSlide[] }) {
                 key={slide.id}
                 type="button"
                 onClick={() => go(i)}
-                aria-label={`Show ${slide.label}`}
+                aria-label={controls.show.replace("{name}", slide.label)}
                 aria-current={i === index ? "true" : undefined}
                 className={`h-2.5 rounded-full transition-all ${i === index ? "w-6 bg-white" : "w-2.5 bg-white/45 hover:bg-white/70"}`}
               />
             ))}
           </div>
           <button type="button" onClick={() => go(index + 1)} className="inline-flex h-9 items-center gap-1 rounded-full bg-white/90 pl-3.5 pr-2 hover:bg-white">
-            <span className="text-[13px] font-semibold text-[#17151f]">Next: {nextLabel}</span>
+            <span className="text-[13px] font-semibold text-[#17151f]">{controls.next.replace("{name}", nextLabel)}</span>
             <ChevronRight aria-hidden className="h-4 w-4 text-[#17151f]" />
           </button>
         </div>
       </div>
       <div aria-live="polite">
         {slides.map((slide, i) => (
-          <div key={slide.id} role="group" aria-roledescription="slide" aria-label={`${i + 1} of ${count}: ${slide.label}`} hidden={i !== index}>
+          <div key={slide.id} role="group" aria-roledescription="slide" aria-label={`${i + 1} / ${count}: ${slide.label}`} hidden={i !== index}>
             {slide.content}
           </div>
         ))}

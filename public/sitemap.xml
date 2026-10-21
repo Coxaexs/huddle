@@ -1,13 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://hoffle.online/</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-21</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://hoffle.online/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://hoffle.online/tr"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://hoffle.online/"/>
     <image:image><image:loc>https://hoffle.online/shots/hoffle-cozy-theme-2560.webp</image:loc></image:image>
     <image:image><image:loc>https://hoffle.online/shots/hoffle-msn-messenger-theme-2560.webp</image:loc></image:image>
     <image:image><image:loc>https://hoffle.online/shots/hoffle-light-theme-2560.webp</image:loc></image:image>
     <image:image><image:loc>https://hoffle.online/shots/hoffle-classic-theme-2560.webp</image:loc></image:image>
     <image:image><image:loc>https://hoffle.online/shots/hoffle-phone-780.webp</image:loc></image:image>
+  </url>
+  <url>
+    <loc>https://hoffle.online/tr</loc>
+    <lastmod>2026-10-21</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://hoffle.online/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://hoffle.online/tr"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://hoffle.online/"/>
   </url>
   <url>
     <loc>https://hoffle.online/docs</loc>

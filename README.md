@@ -1,6 +1,8 @@
 # Hoffle
 
-Hoffle is a self-hosted chat app for friend groups and communities, like your own private Discord. Your server, your data, no subscriptions.
+Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, a shared music bot and D&D tools, like your own private Discord. Run it on your own server, or just use it at [chat.hoffle.online](https://chat.hoffle.online), free and with nothing to install. More at [hoffle.online](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)).
+
+![A Hoffle server in the Cozy theme: channels on the left, a friend group's chat in the middle, who's online on the right](https://hoffle.online/shots/hoffle-cozy-theme-1280.webp)
 
 - **Text channels and DMs** with replies, reactions, edits, polls, stickers, custom emoji and link previews
 - **Search** with operators: `from:`, `in:`, `has:`, `before:`, `after:`, `pinned:` and quoted phrases

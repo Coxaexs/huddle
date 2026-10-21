@@ -13,6 +13,8 @@ import "./profile-style.css";
 import "./theme-panels.css";
 import "./achievements.css";
 import { I18nProvider } from "./lib/i18n-context";
+import { InstallPrompt } from "./components/install-prompt";
+import { INSTALL_EVENT_SCRIPT } from "./lib/install-event";
 import { isLandingHost } from "./lib/landing-host";
 
 export const viewport = {
@@ -69,7 +71,10 @@ export async function generateMetadata(): Promise<Metadata> {
     description: LANDING_DESCRIPTION,
     authors: [{ name: "coxaexs", url: "https://github.com/Coxaexs" }],
     // www.hoffle.online and hoffle.com serve the same page; this is the one to index.
-    alternates: { canonical: `${site}/` },
+    alternates: {
+      canonical: `${site}/`,
+      languages: { en: `${site}/`, tr: `${site}/tr`, "x-default": `${site}/` },
+    },
     icons,
     openGraph: {
       title: LANDING_TITLE,
@@ -113,17 +118,26 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // The worker marks hoffle.online/tr (worker/index.ts); everything else is English
+  // until the app's own language setting takes over on the client.
+  const requestHeaders = await headers();
+  const lang = requestHeaders.get("x-hoffle-lang") === "tr" ? "tr" : "en";
+  const app = !isLandingHost(requestHeaders.get("host"));
   return (
-    <html lang="en">
+    <html lang={lang} data-site-lang={app ? undefined : lang}>
       <head>
-        <link rel="manifest" href="/hangout/manifest.json" />
+        <link rel="manifest" href="/hangout/app.webmanifest" />
         {/* Safari skips SVG favicons and falls back to a letter, so it gets PNGs. */}
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2" />
+        {app && <script dangerouslySetInnerHTML={{ __html: INSTALL_EVENT_SCRIPT }} />}
       </head>
       <body>
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider>
+          {children}
+          {app && <InstallPrompt />}
+        </I18nProvider>
       </body>
     </html>
   );

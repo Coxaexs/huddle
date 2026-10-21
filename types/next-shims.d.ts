@@ -30,4 +30,5 @@ declare module "next/headers" {
 
 declare module "next/navigation" {
   export function notFound(): never;
+  export function redirect(url: string): never;
 }

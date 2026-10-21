@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
  * from the system setting, so someone who flips back follows the system again.
  * The icons swap with CSS (see SiteShell), which keeps hydration consistent.
  */
-export function SiteThemeToggle() {
+export function SiteThemeToggle({ labels = { dark: "Dark", light: "Light", title: "Switch light or dark", aria: "Colour scheme" } }: { labels?: { dark: string; light: string; title: string; aria: string } }) {
   const [dark, setDark] = useState<boolean | null>(null);
   useEffect(() => {
     const read = () => setDark(document.documentElement.dataset.lpTheme === "dark");
@@ -39,25 +39,18 @@ export function SiteThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      aria-label="Colour scheme"
+      aria-label={labels.aria}
       aria-pressed={dark ?? undefined}
-      title="Switch light or dark"
+      title={labels.title}
       className="h-10 px-3 text-sm text-(--ink-2) underline-offset-4 hover:text-(--ink) hover:underline"
     >
-      <span aria-hidden className="lp-if-light">Dark</span>
-      <span aria-hidden className="lp-if-dark">Light</span>
+      <span aria-hidden className="lp-if-light">{labels.dark}</span>
+      <span aria-hidden className="lp-if-dark">{labels.light}</span>
     </button>
   );
 }
 
 type Platform = "windows" | "mac" | "linux" | "phone";
-
-const PLATFORM_LABEL: Record<Platform, string> = {
-  windows: "Windows",
-  mac: "macOS",
-  linux: "Linux",
-  phone: "your phone",
-};
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent;
@@ -67,20 +60,31 @@ function detectPlatform(): Platform {
   return "windows";
 }
 
-/** "Download for <your OS>"; phones get sent to the web app instead. */
-export function DownloadButton({ releases, appUrl, className = "" }: { releases: string; appUrl: string; className?: string }) {
+/**
+ * "Download for <your OS>", straight from this site (/download/<platform>).
+ * Macs go to the download list instead, since a browser can't tell an Apple
+ * chip from an Intel one; phones get the web app.
+ */
+export function DownloadButton({
+  labels,
+  hrefs,
+  className = "",
+}: {
+  labels: Record<Platform | "generic", string>;
+  hrefs: Record<Platform | "generic", string>;
+  className?: string;
+}) {
   const [platform, setPlatform] = useState<Platform | null>(null);
   useEffect(() => setPlatform(detectPlatform()), []);
 
-  const phone = platform === "phone";
   return (
-    <a href={phone ? appUrl : releases} className={className}>
-      {platform === null ? "Download the desktop app" : phone ? "Open it on your phone" : `Download for ${PLATFORM_LABEL[platform]}`}
+    <a href={hrefs[platform ?? "generic"]} className={className}>
+      {labels[platform ?? "generic"]}
     </a>
   );
 }
 
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, labels = { copy: "Copy", copied: "Copied" } }: { text: string; labels?: { copy: string; copied: string } }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -92,7 +96,7 @@ export function CopyButton({ text }: { text: string }) {
       }}
       className="rounded-md border border-white/15 px-2.5 py-1 transition hover:bg-white/10"
     >
-      <span className="text-xs font-semibold text-white/80">{copied ? "Copied" : "Copy"}</span>
+      <span className="text-xs font-semibold text-white/80">{copied ? labels.copied : labels.copy}</span>
     </button>
   );
 }

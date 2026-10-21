@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Coffee, Heart } from "./site-icons";
 import { SiteThemeToggle } from "./landing-client";
+import { LANDING_COPY, LANDING_PATH, type LandingLang } from "./landing-copy";
 
 /**
  * The frame shared by hoffle.online's pages (the landing page and /docs):
@@ -11,6 +12,7 @@ export const SITE = "https://hoffle.online";
 export const REPO = "https://github.com/Coxaexs/huddle";
 export const RELEASES = `${REPO}/releases/latest`;
 export const APP_URL = "https://chat.hoffle.online";
+export const STATUS_URL = "https://status.hoffle.online";
 
 export const KOFI_URL = "https://ko-fi.com/abdullahturk";
 export const GITHUB_SPONSORS_URL = "https://github.com/sponsors/Coxaexs";
@@ -34,14 +36,26 @@ function Wordmark({ className = "" }: { className?: string }) {
   );
 }
 
-const NAV = [
-  { href: "/#features", label: "Features" },
-  { href: "/#voice", label: "Voice" },
-  { href: "/#themes", label: "Themes" },
-  { href: "/#compare", label: "Compared to Discord" },
-  { href: "/#download", label: "Download" },
-  { href: "/docs", label: "Docs" },
-];
+/** A section of the landing page in `lang`: /#download or /tr#download. */
+export function sectionHref(lang: LandingLang, hash: string): string {
+  return lang === "en" ? `/#${hash}` : `${LANDING_PATH[lang]}#${hash}`;
+}
+
+function navFor(lang: LandingLang) {
+  const nav = LANDING_COPY[lang].nav;
+  return [
+    { href: sectionHref(lang, "features"), label: nav.features },
+    { href: sectionHref(lang, "themes"), label: nav.themes },
+    { href: sectionHref(lang, "staying"), label: nav.staying },
+    { href: sectionHref(lang, "download"), label: nav.download },
+    { href: "/docs", label: nav.docs },
+  ];
+}
+
+const THEME_TOGGLE_LABELS: Record<LandingLang, { dark: string; light: string; title: string; aria: string }> = {
+  en: { dark: "Dark", light: "Light", title: "Switch light or dark", aria: "Colour scheme" },
+  tr: { dark: "Koyu", light: "Açık", title: "Açık ya da koyu", aria: "Renk düzeni" },
+};
 
 const LIGHT_TOKENS = `
   --paper: #ffffff;
@@ -83,11 +97,63 @@ const SITE_THEME_KEY = "hoffle-site-theme";
  */
 const THEME_SCRIPT = `(function(){var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function saved(){try{var s=localStorage.getItem("${SITE_THEME_KEY}");return s==="light"||s==="dark"?s:null}catch(e){return null}}function apply(){d.dataset.lpTheme=saved()||(m.matches?"dark":"light")}apply();m.addEventListener&&m.addEventListener("change",function(){if(!saved()){apply();window.dispatchEvent(new Event("lp-theme-change"))}})})();`;
 
+/** GitHub, Ko-fi, Sponsors and the Open Hoffle button, on the right of the header. */
+function HeaderLinks({ label }: { label: string }) {
+  return (
+    <>
+      <a href={REPO} className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid" aria-label="Hoffle on GitHub">
+        <GithubMark className="h-5 w-5" />
+      </a>
+      {KOFI_URL && (
+        <a
+          href={KOFI_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
+          aria-label="Support Hoffle on Ko-fi"
+          title="Support Hoffle on Ko-fi"
+        >
+          <Coffee className="h-5 w-5" />
+        </a>
+      )}
+      {GITHUB_SPONSORS_URL && (
+        <a
+          href={GITHUB_SPONSORS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
+          aria-label="Sponsor Hoffle on GitHub"
+          title="Sponsor Hoffle on GitHub"
+        >
+          <Heart className="h-5 w-5" />
+        </a>
+      )}
+      <a href={APP_URL} className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
+        {label}
+      </a>
+    </>
+  );
+}
+
 /**
  * Wraps a page in the site frame. The `lp-root` class also switches off the
  * chat app's viewport scroll lock (see globals.css), before any JS runs.
+ * `bare` keeps only the logo and the light/dark switch, for pages with one
+ * job (an invite). `lang` picks the header and footer words; `alternate` is
+ * the same page in the other language, linked from the header.
  */
-export function SiteShell({ children }: { children: ReactNode }) {
+export function SiteShell({
+  children,
+  bare = false,
+  lang = "en",
+  alternate,
+}: {
+  children: ReactNode;
+  bare?: boolean;
+  lang?: LandingLang;
+  alternate?: { href: string; lang: LandingLang };
+}) {
+  const copy = LANDING_COPY[lang];
   return (
     <div className="lp-root min-h-screen w-full overflow-x-clip bg-(--paper) text-(--ink) antialiased selection:bg-(--violet) selection:text-white">
       {/* React hoists these into <head>. */}
@@ -117,80 +183,66 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
       <header className="border-b border-(--line)">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-          <a href="/" aria-label="Hoffle home" className="shrink-0">
+          <a href={LANDING_PATH[lang]} aria-label="Hoffle" className="shrink-0">
             <Wordmark className="text-[22px]" />
           </a>
-          <nav aria-label="Main" className="hidden items-center gap-6 text-[15px] font-medium text-(--ink-2) lg:flex">
-            {NAV.map((item) => (
-              <a key={item.href} href={item.href} className="hover:text-(--ink)">{item.label}</a>
-            ))}
-          </nav>
+          {!bare && (
+            <nav aria-label="Main" className="hidden items-center gap-6 text-[15px] font-medium text-(--ink-2) lg:flex">
+              {navFor(lang).map((item) => (
+                <a key={item.href} href={item.href} className="hover:text-(--ink)">{item.label}</a>
+              ))}
+            </nav>
+          )}
           <div className="flex items-center gap-1.5">
-            <SiteThemeToggle />
-            <a href={REPO} className="grid h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink)" aria-label="Hoffle on GitHub">
-              <GithubMark className="h-5 w-5" />
-            </a>
-            {KOFI_URL && (
+            {alternate && (
               <a
-                href={KOFI_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-                aria-label="Support Hoffle on Ko-fi"
-                title="Support Hoffle on Ko-fi"
+                href={alternate.href}
+                hrefLang={alternate.lang}
+                lang={alternate.lang}
+                title={copy.nav.otherLangLabel}
+                className="h-10 px-2 text-sm leading-10 text-(--ink-2) underline-offset-4 hover:text-(--ink) hover:underline"
               >
-                <Coffee className="h-5 w-5" />
+                <span className="sm:hidden">{copy.nav.otherLangShort}</span>
+                <span className="hidden sm:inline">{copy.nav.otherLang}</span>
               </a>
             )}
-            {GITHUB_SPONSORS_URL && (
-              <a
-                href={GITHUB_SPONSORS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-                aria-label="Sponsor Hoffle on GitHub"
-                title="Sponsor Hoffle on GitHub"
-              >
-                <Heart className="h-5 w-5" />
-              </a>
-            )}
-            <a href={APP_URL} className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
-              Open Hoffle
-            </a>
+            <SiteThemeToggle labels={THEME_TOGGLE_LABELS[lang]} />
+            {!bare && <HeaderLinks label={copy.nav.open} />}
           </div>
         </div>
       </header>
 
       {children}
 
-      <footer className="border-t border-(--line) px-4 py-10 text-sm text-(--muted) sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1.5">
-            <p>
-              Hoffle is open source under the AGPL-3.0. Made by{" "}
-              <a href="https://abdullahturk.com" rel="author" className="font-semibold text-(--ink) hover:underline">
-                Abdullah Türk
-              </a>
-              .
-            </p>
-            <p className="text-xs">
-              Hoffle is not affiliated with or endorsed by Discord Inc. Discord is a trademark of Discord Inc.
-            </p>
+      {!bare && (
+        <footer className="border-t border-(--line) px-4 py-10 text-sm text-(--muted) sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1.5">
+              <p>
+                {copy.footer.madeBy}{" "}
+                <a href="https://abdullahturk.com" rel="author" className="font-semibold text-(--ink) hover:underline">
+                  Abdullah Türk
+                </a>
+                .
+              </p>
+              <p className="text-xs">{copy.footer.notDiscord}</p>
+            </div>
+            <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 font-semibold">
+              <a href={APP_URL} className="hover:text-(--ink)">{copy.footer.webApp}</a>
+              <a href={sectionHref(lang, "download")} className="hover:text-(--ink)">{copy.footer.download}</a>
+              <a href="/docs" className="hover:text-(--ink)">{copy.footer.docs}</a>
+              <a href="/docs/self-hosting" className="hover:text-(--ink)">{copy.footer.selfHost}</a>
+              <a href={sectionHref(lang, "faq")} className="hover:text-(--ink)">{copy.footer.faq}</a>
+              <a href={STATUS_URL} className="hover:text-(--ink)">{copy.footer.status}</a>
+              <a href={REPO} className="hover:text-(--ink)">GitHub</a>
+              <a href="/terms" className="hover:text-(--ink)">{copy.footer.terms}</a>
+              <a href="/privacy" className="hover:text-(--ink)">{copy.footer.privacy}</a>
+              {KOFI_URL && <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Ko-fi</a>}
+              {GITHUB_SPONSORS_URL && <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Sponsors</a>}
+            </nav>
           </div>
-          <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 font-semibold">
-            <a href={APP_URL} className="hover:text-(--ink)">Web app</a>
-            <a href="/#download" className="hover:text-(--ink)">Download</a>
-            <a href="/docs" className="hover:text-(--ink)">Docs</a>
-            <a href="/docs/self-hosting" className="hover:text-(--ink)">Self-hosting guide</a>
-            <a href="/#faq" className="hover:text-(--ink)">FAQ</a>
-            <a href={REPO} className="hover:text-(--ink)">GitHub</a>
-            <a href="/terms" className="hover:text-(--ink)">Terms</a>
-            <a href="/privacy" className="hover:text-(--ink)">Privacy</a>
-            {KOFI_URL && <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Ko-fi</a>}
-            {GITHUB_SPONSORS_URL && <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className="hover:text-(--ink)">Sponsors</a>}
-          </nav>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

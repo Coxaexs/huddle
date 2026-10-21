@@ -152,7 +152,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // `<html lang>` is what screen readers use to pick a pronunciation, what
     // browsers use for spell-check and hyphenation, and what CSS `:lang()` sees.
-    // It has to follow the interface, not the operating system.
+    // It has to follow the interface, not the operating system. The public
+    // site (hoffle.online, /tr) is written in one language per page and says
+    // so itself (data-site-lang, from the root layout).
+    if (document.documentElement.dataset.siteLang) return;
     document.documentElement.lang = locale;
   }, [locale]);
 
