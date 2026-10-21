@@ -3,6 +3,7 @@ import readme from "../../README.md?raw";
 import bots from "../../docs/bots.md?raw";
 import configuration from "../../docs/configuration.md?raw";
 import selfHosting from "../../docs/self-hosting.md?raw";
+import codeSigning from "../../docs/code-signing.md?raw";
 import terms from "../../docs/legal/terms.md?raw";
 import privacy from "../../docs/legal/privacy.md?raw";
 
@@ -68,6 +69,15 @@ export const DOCS: Doc[] = [
     description:
       "Run unmodified discord.js and discord.py bots on Hoffle, switch on the built-in music and D&D bots, or post messages with a simple HTTP API.",
     source: bots,
+  },
+  {
+    slug: "code-signing",
+    path: "docs/code-signing.md",
+    title: "Code signing",
+    navTitle: "Code signing",
+    description:
+      "How the Hoffle desktop apps are built and signed: SignPath Foundation on Windows, Apple Developer ID on macOS, who approves releases, and privacy.",
+    source: codeSigning,
   },
   {
     slug: "terms",
