@@ -1,9 +1,35 @@
 import { hubState } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
-import { listServers } from "@/lib/servers";
+import { listServers, type PublicServer } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+// The music bot polls this every second while anyone is in voice. Servers and
+// channels rarely change, so the list is kept for a few seconds instead of
+// reading every server, channel, category and role again on each poll (most of
+// Hoffle's CPU while it was otherwise idle). Voice members and players come
+// fresh from the hub every time.
+const SERVER_LIST_TTL_MS = 10_000;
+let serverList: { at: number; servers: Promise<PublicServer[]> } | null = null;
+
+function serversForBot(db: D1Database): Promise<PublicServer[]> {
+  const now = Date.now();
+  if (!serverList || now - serverList.at >= SERVER_LIST_TTL_MS) {
+    const servers = listServers(db, null);
+    // A failed read must not be served from the cache for the next 10 s.
+    servers.catch(() => {
+      if (serverList?.servers === servers) serverList = null;
+    });
+    serverList = { at: now, servers };
+  }
+  return serverList.servers;
+}
+
+/** Tests only: forget the cached server list. */
+export function resetBotServerCache() {
+  serverList = null;
+}
 
 /**
  * The view the music bot's dashboard needs: Huddle servers presented the same
@@ -30,7 +56,7 @@ export async function GET(request: Request) {
   await ensureSchema(runtime.DB);
 
   const [servers, state] = await Promise.all([
-    listServers(runtime.DB, null),
+    serversForBot(runtime.DB),
     hubState(),
   ]);
 
