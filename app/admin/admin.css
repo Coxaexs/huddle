@@ -665,3 +665,10 @@ body.portal-page-active {
     border-bottom: 1px solid var(--line);
   }
 }
+
+.admin-row-buttons {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+  vertical-align: middle;
+}

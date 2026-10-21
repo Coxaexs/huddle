@@ -31,3 +31,14 @@ export function agentStatus() {
 export function agentBackup(kind: "replica" | "archive") {
   return call(`/backup/${kind}`, { method: "POST" });
 }
+
+export interface JobTarget {
+  host: "home" | "oracle";
+  scope: "system" | "user";
+  unit: string;
+}
+
+/** "run" starts or restarts an allowlisted job; "clear" resets a failed unit. The agent checks both. */
+export function agentJob(action: "run" | "clear", target: JobTarget) {
+  return call(`/jobs/${action}`, { method: "POST", body: JSON.stringify(target) });
+}

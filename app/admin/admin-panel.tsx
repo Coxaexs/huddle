@@ -42,6 +42,62 @@ interface AdminData {
   features: AdminFeature[];
 }
 
+interface FailedUnit {
+  unit: string;
+  scope: "system" | "user";
+  since: string | null;
+  description: string;
+}
+
+interface HostDisk {
+  mount: string;
+  size: number;
+  free: number;
+  usedPct: number;
+  level: "ok" | "warn" | "critical";
+}
+
+interface SmartDisk {
+  id: string;
+  model: string;
+  label: string;
+  mounts: string[];
+  passed: boolean;
+  failing: string[];
+  hours: number | null;
+  temp: number | null;
+  reallocated: number | null;
+  pending: number | null;
+  uncorrectable: number | null;
+  loadCycles: number | null;
+  checkedAt: string | null;
+}
+
+const SMART_STALE_MS = 2 * 86_400_000;
+
+interface OracleIdle {
+  level: "safe" | "close" | "risk";
+  cpuP95: number;
+  memory: number;
+  network: number;
+  days: number;
+}
+
+interface AgentJob {
+  host: "home" | "oracle";
+  scope: "system" | "user";
+  unit: string;
+  label: string;
+  how: "start" | "restart";
+  state: string | null;
+  result: string | null;
+  lastRun?: string | null;
+}
+
+type JobAction = "run" | "clear";
+type JobTarget = Pick<AgentJob, "host" | "scope" | "unit">;
+const jobKey = (target: JobTarget) => `${target.host}/${target.scope}/${target.unit}`;
+
 /** What the ops agent reports; every part is optional because a check can fail. */
 interface HostStatus {
   serving?: "home" | "oracle" | "thinkpad" | "standby";
@@ -73,6 +129,16 @@ interface HostStatus {
     coturn?: string;
   };
   services?: Record<string, { unit?: string; http: number }>;
+  /** systemd units failed right now, per machine; null = could not look. */
+  failedUnits?: Partial<Record<"home" | "oracle", FailedUnit[] | null>>;
+  /** Every real disk per machine (the ThinkPad only while it answers). */
+  disks?: Partial<Record<"home" | "oracle" | "thinkpad", HostDisk[]>>;
+  /** Oracle's idle-reclaim check, sampled by its failover panel. */
+  oracleIdle?: OracleIdle | null;
+  /** Jobs /admin may run again (the agent keeps the list). */
+  jobs?: AgentJob[];
+  /** Daily SMART snapshot per disk on home (root's hoffle-smart.timer); [] = not installed. */
+  smart?: SmartDisk[];
   /** This Hoffle process's in-memory rate-limit buckets. */
   rateLimits?: { totalBuckets: number; topBuckets: Array<{ key: string; count: number }> };
   /** The music helper's yt-dlp (it upgrades itself daily). */
@@ -104,6 +170,14 @@ const SERVICE_LABELS: Record<string, string> = {
   musicWatch: "Music + Watch bot",
   musicHelper: "Music helper",
   dnd: "D&D companion",
+};
+
+const MACHINE_LABELS: Record<string, string> = { home: "home", oracle: "Oracle", thinkpad: "ThinkPad" };
+
+const IDLE_TEXT: Record<OracleIdle["level"], string> = {
+  safe: "not idle",
+  close: "close to idle, keep it busy",
+  risk: "IDLE by Oracle's rule, may be reclaimed",
 };
 
 function formatBytes(bytes: number): string {
@@ -233,12 +307,14 @@ function Hosts({
   loading,
   onRefresh,
   onBackup,
+  onJob,
   busy,
 }: {
   status: HostStatus | null;
   loading: boolean;
   onRefresh: () => void;
   onBackup: (kind: "replica" | "archive") => void;
+  onJob: (action: JobAction, target: JobTarget) => void;
   busy: string;
 }) {
   if (!status) {
@@ -261,6 +337,22 @@ function Hosts({
   const host = status.host;
   const replicaOk = status.replica?.result === "success";
   const archiveAge = status.archive?.latest ? Date.now() - new Date(status.archive.latest).getTime() : Infinity;
+  const jobs = status.jobs ?? [];
+  const idle = status.oracleIdle;
+  const disks: Array<[string, HostDisk[]]> = status.disks
+    ? Object.entries(status.disks).map(([machine, list]) => [machine, list ?? []])
+    : [["home", (host?.disks ?? []).map((disk) => ({ mount: disk.label, size: disk.total, free: disk.free,
+        usedPct: Math.round((1 - disk.free / disk.total) * 100), level: "ok" as const }))]];
+  const jobButton = (action: JobAction, target: JobTarget, label: string) => (
+    <button
+      className="portal-btn admin-small"
+      type="button"
+      disabled={Boolean(busy)}
+      onClick={() => onJob(action, target)}
+    >
+      {busy === `${action}:${jobKey(target)}` ? <Loader2 size={12} className="animate-spin" /> : null} {label}
+    </button>
+  );
   return (
     <>
       <div className={`portal-card admin-serving ${serving === "home" ? "ok" : "warn"}`}>
@@ -291,6 +383,12 @@ function Hosts({
                 ? `${status.oracle.active ? "SERVING" : "standing by"} · watcher ${status.oracle.watcher} · standby ${status.oracle.standby}`
                 : "not reachable"}
             </Row>
+            {idle && (
+              <Row label="Oracle idle check" ok={idle.level === "safe"} warn={idle.level !== "safe"}>
+                {IDLE_TEXT[idle.level]} · CPU p95 {idle.cpuP95}% · memory {idle.memory}% · network {idle.network}% ·{" "}
+                {idle.days < 7 ? `${idle.days} of 7 days measured` : "7 days"}
+              </Row>
+            )}
             <Row label="ThinkPad" ok={Boolean(status.thinkpad?.reachable)} warn={!status.thinkpad?.reachable}>
               {status.thinkpad?.reachable
                 ? `${status.thinkpad.serving ? "SERVING" : "idle"} · fallback ${status.thinkpad.standby}${status.thinkpad.holdsVip ? " · holds the LAN IP" : ""}`
@@ -328,7 +426,104 @@ function Hosts({
                 {service.unit ? ` · ${service.unit}` : ""}
               </Row>
             ))}
+            {Object.entries(status.failedUnits ?? {}).map(([machine, units]) =>
+              !units ? (
+                <Row key={machine} label={`Jobs on ${MACHINE_LABELS[machine] ?? machine}`} ok={false} warn>
+                  could not check
+                </Row>
+              ) : units.length === 0 ? (
+                <Row key={machine} label={`Jobs on ${MACHINE_LABELS[machine] ?? machine}`} ok>
+                  none failed
+                </Row>
+              ) : (
+                units.map((unit) => {
+                  const target = { host: machine as JobTarget["host"], scope: unit.scope, unit: unit.unit };
+                  const runnable = jobs.some((job) => jobKey(job) === jobKey(target));
+                  return (
+                    <Row key={jobKey(target)} label={`Failed on ${MACHINE_LABELS[machine] ?? machine}`} ok={false}>
+                      <strong>{unit.unit}</strong>
+                      {unit.since ? ` · since ${ago(unit.since)}` : ""}
+                      {unit.description ? ` · ${unit.description}` : ""}
+                      {unit.scope === "user" ? " · user unit" : ""}
+                      <span className="admin-row-buttons">
+                        {runnable && jobButton("run", target, "Run again")}
+                        {!(machine === "home" && unit.scope === "system") && jobButton("clear", target, "Clear")}
+                      </span>
+                    </Row>
+                  );
+                })
+              ),
+            )}
           </ul>
+        </section>
+      </div>
+
+      <div className="admin-split">
+        <section className="portal-card admin-section">
+          <h2>Disks</h2>
+          <ul className="admin-rows">
+            {disks.map(([machine, list]) =>
+              list.map((disk) => (
+                <Row
+                  key={`${machine}:${disk.mount}`}
+                  label={`${MACHINE_LABELS[machine] ?? machine} ${disk.mount}`}
+                  ok={disk.level === "ok"}
+                  warn={disk.level === "warn"}
+                >
+                  {disk.usedPct}% used · {formatBytes(disk.free)} free of {formatBytes(disk.size)}
+                  {disk.level === "critical" ? " · almost full" : ""}
+                </Row>
+              )),
+            )}
+          </ul>
+          {status.smart && (
+            <ul className="admin-rows">
+              {status.smart.length === 0 ? (
+                <Row label="Disk health (SMART)" ok={false} warn>
+                  not set up: sudo bash ~/huddle-ops/smart/install.sh
+                </Row>
+              ) : (
+                status.smart.map((disk) => {
+                  const bad = (disk.reallocated ?? 0) + (disk.pending ?? 0) + (disk.uncorrectable ?? 0);
+                  const stale = !disk.checkedAt || Date.now() - new Date(disk.checkedAt).getTime() > SMART_STALE_MS;
+                  return (
+                    <Row key={disk.id} label={`Health: ${disk.label}`} ok={disk.passed && bad === 0 && !stale} warn={stale}>
+                      {disk.passed ? "passed" : `FAILING (${disk.failing.join(", ")})`}
+                      {` · ${bad} bad or pending sectors`}
+                      {disk.temp != null ? ` · ${disk.temp} °C` : ""}
+                      {disk.hours != null ? ` · ${disk.hours.toLocaleString()} h on` : ""}
+                      {disk.loadCycles != null ? ` · ${disk.loadCycles.toLocaleString()} head parks` : ""}
+                      {` · checked ${ago(disk.checkedAt)}`}
+                    </Row>
+                  );
+                })
+              )}
+            </ul>
+          )}
+          <p className="admin-muted">
+            Admins get a note and a push at 90% and 95% used, and when a disk&apos;s SMART counters get worse (checked daily).
+          </p>
+        </section>
+
+        <section className="portal-card admin-section">
+          <h2>Jobs</h2>
+          <ul className="admin-rows">
+            {jobs.map((job) => {
+              const running = job.state === "active" || job.state === "activating" || job.state === "reloading";
+              const failed = job.state === "failed";
+              return (
+                <Row key={jobKey(job)} label={`${job.label} (${MACHINE_LABELS[job.host] ?? job.host})`} ok={!failed} warn={failed}>
+                  {job.state ?? "unknown"}
+                  {job.result && job.result !== "success" ? ` · last result ${job.result}` : ""}
+                  {job.lastRun ? ` · last run ${ago(job.lastRun)}` : ""}
+                  <span className="admin-row-buttons">
+                    {jobButton("run", job, job.how === "restart" ? "Restart" : running ? "Running" : "Run now")}
+                  </span>
+                </Row>
+              );
+            })}
+          </ul>
+          <p className="admin-muted">Jobs that are running are left alone; daemons restart. Every click is in the audit log.</p>
         </section>
       </div>
 
@@ -347,11 +542,6 @@ function Hosts({
           <Row label="Archive copy on Oracle" ok={Boolean(status.oracle?.archive)}>
             {when(status.oracle?.archive)}
           </Row>
-          {host?.disks.map((disk) => (
-            <Row key={disk.label} label={`Disk: ${disk.label}`} ok={disk.free / disk.total > 0.1} warn={disk.free / disk.total <= 0.1}>
-              {formatBytes(disk.free)} free of {formatBytes(disk.total)}
-            </Row>
-          ))}
         </ul>
         <div className="admin-actions">
           <button className="portal-btn" type="button" disabled={Boolean(busy)} onClick={() => onBackup("replica")}>
@@ -688,6 +878,19 @@ export function AdminPanel() {
     }
   }
 
+  async function job(action: JobAction, target: JobTarget) {
+    setBusy(`${action}:${jobKey(target)}`);
+    try {
+      await apiFetch("/api/admin/jobs", { method: "POST", body: JSON.stringify({ action, ...target }) });
+      setNotice(action === "run" ? `${target.unit} started.` : `${target.unit} cleared.`);
+      setTimeout(() => void loadHosts(), action === "run" ? 5_000 : 500);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The ops agent refused that.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function toggleFeature(id: string, off: boolean) {
     if (!data) return;
     setBusy(id);
@@ -878,7 +1081,7 @@ export function AdminPanel() {
       </nav>
 
       {tab === "hosts" ? (
-        <Hosts status={hosts} loading={hostsLoading} onRefresh={() => void loadHosts()} onBackup={(kind) => void backup(kind)} busy={busy} />
+        <Hosts status={hosts} loading={hostsLoading} onRefresh={() => void loadHosts()} onBackup={(kind) => void backup(kind)} onJob={(action, target) => void job(action, target)} busy={busy} />
       ) : !data ? (
         <div className="portal-loading">
           <Loader2 size={24} className="animate-spin" /> Loading…
