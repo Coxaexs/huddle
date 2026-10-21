@@ -26,6 +26,22 @@ const SHARE_KEY = "huddle-share-listening";
 const SHARE_APPS_KEY = "huddle-share-apps";
 const LASTFM_KEY = "huddle-spotify-username";
 const POLL_MS = 15_000;
+// Every open tab runs this detector. One Last.fm check per browser per round is
+// enough: a tab skips its check when another one made it this recently.
+const LASTFM_POLLED_KEY = "huddle-lastfm-polled-at";
+const LASTFM_SHARE_MS = 12_000;
+
+/** Claims this round's Last.fm check; false when another tab just made it. */
+export function claimLastFmPoll(now = Date.now()): boolean {
+  try {
+    const last = Number(window.localStorage.getItem(LASTFM_POLLED_KEY) || 0);
+    if (last <= now && now - last < LASTFM_SHARE_MS) return false;
+    window.localStorage.setItem(LASTFM_POLLED_KEY, String(now));
+  } catch {
+    // No storage: every tab checks for itself, as before.
+  }
+  return true;
+}
 
 function readFlag(key: string): boolean {
   try {
@@ -227,7 +243,10 @@ export function useActivityDetector({
           } else {
             const username = lastfmRef.current;
             if (username) {
-              song = await lastFmNowPlaying(username).catch(() => undefined);
+              // Skipped: another tab has just checked and published it.
+              song = claimLastFmPoll()
+                ? await lastFmNowPlaying(username).catch(() => undefined)
+                : undefined;
             } else if (scan) {
               song = null;
             }

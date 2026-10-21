@@ -84,74 +84,107 @@ export async function GET(request: Request) {
         { error: "Last.fm API key not configured on this server.", song: null, isPlaying: false },
       );
     }
-
-    try {
-      const lfmUrl =
-        `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks` +
-        `&user=${encodeURIComponent(username)}` +
-        `&api_key=${apiKey}` +
-        `&format=json&limit=1`;
-
-      const res = await fetch(lfmUrl);
-      const raw = await res.text();
-
-      if (!res.ok) {
-        // Last.fm returns errors like {"error":6,"message":"User not found"}
-        let msg = `Last.fm returned ${res.status}`;
-        try {
-          const errData = JSON.parse(raw) as { message?: string };
-          if (errData.message) msg = errData.message;
-        } catch { /* ignore */ }
-        return Response.json({ error: msg, song: null, isPlaying: false });
-      }
-
-      const data = JSON.parse(raw) as {
-        recenttracks?: {
-          track?: Array<{
-            name: string;
-            artist: { "#text": string };
-            image?: Array<{ "#text": string; size: string }>;
-            "@attr"?: { nowplaying?: string };
-          }>;
-        };
-      };
-
-      const latest = data.recenttracks?.track?.[0];
-      if (latest) {
-        const isNowPlaying = latest["@attr"]?.nowplaying === "true";
-        const song = latest.name;
-        const artist = latest.artist["#text"];
-        // Get the largest image available
-        const images = latest.image || [];
-        const albumArt =
-          images.find((i) => i.size === "extralarge")?.["#text"] ||
-          images.find((i) => i.size === "large")?.["#text"] ||
-          images[images.length - 1]?.["#text"] ||
-          "";
-
-        return Response.json({
-          song,
-          artist,
-          albumArt,
-          isPlaying: isNowPlaying,
-        }, {
-          headers: { "Cache-Control": "no-store, max-age=0" },
-        });
-      }
-
-      return Response.json({
-        song: null,
-        isPlaying: false,
-        message: `Connected to Last.fm user "${username}" — no recent tracks. Play something on Spotify!`,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      return Response.json({ error: `Last.fm request failed: ${msg}`, song: null, isPlaying: false });
-    }
+    return Response.json(await nowPlaying(username, apiKey), {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 
   return Response.json(
     { error: "Provide a Spotify link, Last.fm username, or song search" },
     { status: 400 },
   );
+}
+
+type NowPlaying = {
+  song: string | null;
+  artist?: string;
+  albumArt?: string;
+  isPlaying: boolean;
+  message?: string;
+  error?: string;
+};
+
+// Every open tab polls now-playing every 15 s, and one person often has
+// several. A Last.fm answer is good for 20 s; requests that arrive together
+// share one call.
+const NOW_PLAYING_TTL_MS = 20_000;
+const nowPlayingCache = new Map<string, { at: number; result: Promise<NowPlaying> }>();
+
+function nowPlaying(username: string, apiKey: string, now = Date.now()): Promise<NowPlaying> {
+  const key = username.toLowerCase();
+  const hit = nowPlayingCache.get(key);
+  if (hit && now - hit.at < NOW_PLAYING_TTL_MS) return hit.result;
+  if (nowPlayingCache.size > 500) {
+    for (const [name, entry] of nowPlayingCache) {
+      if (now - entry.at >= NOW_PLAYING_TTL_MS) nowPlayingCache.delete(name);
+    }
+  }
+  const result = fetchNowPlaying(username, apiKey);
+  nowPlayingCache.set(key, { at: now, result });
+  return result;
+}
+
+/** Tests only: forget cached Last.fm answers. */
+export function resetNowPlayingCache() {
+  nowPlayingCache.clear();
+}
+
+async function fetchNowPlaying(username: string, apiKey: string): Promise<NowPlaying> {
+  try {
+    const lfmUrl =
+      `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks` +
+      `&user=${encodeURIComponent(username)}` +
+      `&api_key=${apiKey}` +
+      `&format=json&limit=1`;
+
+    const res = await fetch(lfmUrl);
+    const raw = await res.text();
+
+    if (!res.ok) {
+      // Last.fm returns errors like {"error":6,"message":"User not found"}
+      let msg = `Last.fm returned ${res.status}`;
+      try {
+        const errData = JSON.parse(raw) as { message?: string };
+        if (errData.message) msg = errData.message;
+      } catch { /* ignore */ }
+      return { error: msg, song: null, isPlaying: false };
+    }
+
+    const data = JSON.parse(raw) as {
+      recenttracks?: {
+        track?: Array<{
+          name: string;
+          artist: { "#text": string };
+          image?: Array<{ "#text": string; size: string }>;
+          "@attr"?: { nowplaying?: string };
+        }>;
+      };
+    };
+
+    const latest = data.recenttracks?.track?.[0];
+    if (latest) {
+      // Get the largest image available
+      const images = latest.image || [];
+      const albumArt =
+        images.find((i) => i.size === "extralarge")?.["#text"] ||
+        images.find((i) => i.size === "large")?.["#text"] ||
+        images[images.length - 1]?.["#text"] ||
+        "";
+      return {
+        song: latest.name,
+        artist: latest.artist["#text"],
+        albumArt,
+        isPlaying: latest["@attr"]?.nowplaying === "true",
+      };
+    }
+
+    return {
+      song: null,
+      isPlaying: false,
+      message: `Connected to Last.fm user "${username}" — no recent tracks. Play something on Spotify!`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { error: `Last.fm request failed: ${msg}`, song: null, isPlaying: false };
+  }
 }
