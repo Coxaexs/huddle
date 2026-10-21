@@ -4899,6 +4899,34 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   color: var(--coral);
 }
 
+/* Hover-only "invite people to this channel", before the delete ×. */
+.channel-invite {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  color: var(--muted);
+  margin-left: auto;
+  padding: 0 2px;
+  transition: opacity .12s ease;
+}
+
+.channel-invite + .channel-delete {
+  margin-left: 0;
+}
+
+.mention-badge + .channel-invite {
+  margin-left: 4px;
+}
+
+.channel:hover .channel-invite {
+  opacity: .55;
+}
+
+.channel-invite:hover {
+  opacity: 1 !important;
+  color: var(--text, #fff);
+}
+
 .voice-member.is-speaking .tiny-avatar {
   box-shadow: 0 0 0 2px var(--mint);
 }
@@ -6342,6 +6370,15 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   .channel-delete {
     opacity: .5;
     padding: 0 10px;
+  }
+
+  /* Phones use the server menu's Invite instead. */
+  .channel-invite {
+    display: none;
+  }
+
+  .channel-invite + .channel-delete {
+    margin-left: auto;
   }
 
   .composer textarea {
@@ -20971,6 +21008,187 @@ html[data-motion="reduced"] .bat-wing {
 .forward-btn-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Invite friends to a server (invite-dialog.tsx), after Discord's */
+.invite-dialog-card {
+  max-width: 460px;
+  padding: 20px 16px 16px;
+}
+
+.invite-dialog-title {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.invite-dialog-subtitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.invite-dialog-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #e2def0;
+  font-weight: 600;
+}
+
+.invite-dialog-list {
+  max-height: min(340px, 42vh);
+  margin: 0 -4px;
+  gap: 0;
+}
+
+.invite-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.invite-dialog-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.invite-dialog-row .forward-dest-name {
+  font-size: 15px;
+}
+
+.invite-dialog-row .forward-dest-sub {
+  font-size: 12px;
+}
+
+.invite-dialog-send {
+  flex-shrink: 0;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid #3ba55d;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.invite-dialog-send:hover:not(:disabled) {
+  background: #3ba55d;
+}
+
+.invite-dialog-send:disabled {
+  cursor: default;
+  border-color: transparent;
+  color: #8b83a7;
+}
+
+.invite-dialog-send.is-sent {
+  color: #3ba55d;
+}
+
+.invite-dialog-link-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.invite-dialog-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2def0;
+}
+
+.invite-dialog-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: border-color 0.15s;
+}
+
+.invite-dialog-link.is-copied {
+  border-color: #3ba55d;
+}
+
+.invite-dialog-link input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.invite-dialog-link button {
+  flex-shrink: 0;
+  min-width: 76px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: #5865f2;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.invite-dialog-link button:hover:not(:disabled) {
+  background: #4752c4;
+}
+
+.invite-dialog-link.is-copied button {
+  background: #3ba55d;
+}
+
+.invite-dialog-link button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.invite-dialog-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #a19bb6;
+}
+
+.invite-dialog-hint button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #00a8fc;
+  font: inherit;
+  cursor: pointer;
+}
+
+.invite-dialog-hint button:hover {
+  text-decoration: underline;
+}
+
+.invite-dialog-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invite-dialog-edit .forward-dialog-footer {
+  margin-top: 8px;
 }
 
 /* ==========================================================================

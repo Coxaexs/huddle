@@ -6,6 +6,7 @@ import { EditHistoryDialog } from "../../edit-history";
 import { EventsPanel } from "../../events-panel";
 import { QuickSwitcher, type QuickSwitcherTarget } from "../../quick-switcher";
 import { GroupDmDialog } from "../../group-dm-dialog";
+import { InviteDialog } from "../../invite-dialog";
 import { KeyboardShortcutsDialog } from "../../keyboard-shortcuts-dialog";
 import { practiceRoll, TutorialPill, WelcomeTutorial } from "../../welcome-tutorial";
 import { ToastContainer } from "../../toast";
@@ -49,7 +50,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     dialogOptions, directoryOpen, dms, dndBotActions, editChannelBitrate, editChannelRegion,
     editChannelSlowmode, toggleChannelNsfw, editChannelTopic, editHistoryId, editNickname, setServerAvatar, emojiMap, eventsOpen,
     floatingStream, folderIdOf, folderMenu, forwardTarget, friendUserIds, globalSearchOpen,
-    groupDialog, groupDmMenu, handleAcceptFriend, handleAddFriend, handleBlockUser,
+    groupDialog, groupDmMenu, inviteDialog, setInviteDialog, setDms, handleAcceptFriend, handleAddFriend, handleBlockUser,
     handleForwardMessage, handleRemoveFriend, handleShareThemeToChat, handleUnblockUser, hub,
     inDmHome, incomingDmCall, incomingFriendUserIds, leaveGroupDm, leaveServer, lightbox,
     livingRoom, loadMembers, loadServers, markServerRead, markWelcomeChecked, markdownModalOpen,
@@ -474,6 +475,20 @@ export function renderChatOverlays(v: ShellRenderState) {
         />
       )}
 
+      <InviteDialog
+        open={Boolean(inviteDialog) && Boolean(activeServer) && !inDmHome}
+        server={activeServer ? { id: activeServer.id, name: activeServer.name } : null}
+        channel={(() => {
+          const channel = activeServer?.channels.find((c) => c.id === inviteDialog?.channelId);
+          return channel && channelKindInfo(channel.kind).text && !channelKindInfo(channel.kind).appearsAsVoice
+            ? { id: channel.id, name: channel.name }
+            : null;
+        })()}
+        memberIds={new Set(members.map((member) => member.id))}
+        onClose={() => setInviteDialog(null)}
+        onDmsChanged={setDms}
+      />
+
       <GroupDmDialog
         open={Boolean(groupDialog)}
         existingMemberIds={
@@ -579,8 +594,9 @@ export function renderChatOverlays(v: ShellRenderState) {
         open={directoryOpen}
         onClose={() => setDirectoryOpen(false)}
         onServersUpdated={setServers}
-        onSelectServer={(serverId) => {
+        onSelectServer={(serverId, channelId) => {
           setActiveServerId(serverId);
+          if (channelId) setActiveChannelId(channelId);
           setStageChannelId(null);
           setMobileNav(false);
         }}

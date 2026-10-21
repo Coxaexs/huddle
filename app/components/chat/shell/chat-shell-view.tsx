@@ -30,7 +30,7 @@ export function renderChatShell(s: ChatShellViewState) {
     renderRailFolder, renderRailServer, resolvedInvites, roleColorFor, roomPlayer, savePresence,
     sendNudge, sendThreadReply, serverEvents, serverFolders, serverMenuOpen, servers,
     setActiveChannelId, setActiveServerId, setAutoReply, setCollapsedGroups, setDirectoryOpen,
-    setDmClosed, setEventsOpen, setGlobalSearchOpen, setGroupDialog, setGroupDmMenu, setHoverCard,
+    setDmClosed, setEventsOpen, setGlobalSearchOpen, setGroupDialog, setGroupDmMenu, setHoverCard, setInviteDialog,
     setKindMenu, setLightbox, setLightboxImage, setMemberFilterQuery, setMembersOpen, setMobileNav,
     setNotifyLevel, setPdfViewer, setPictureOpen, setQuickSoundboardOpen, setServerMenuOpen,
     setServerSettingsOpen, setServers, setSettingsOpen, setShareListening, setShortcutsOpen,
@@ -181,6 +181,7 @@ export function renderChatShell(s: ChatShellViewState) {
         canOpenServerSettings={canOpenServerSettings}
         setServerSettingsOpen={setServerSettingsOpen}
         canCreateServerInvites={canCreateServerInvites}
+        openInviteDialog={() => setInviteDialog({ channelId: activeChannelId })}
         showCustomPrompt={showCustomPrompt}
         canManageServer={canManageServer}
         setServers={setServers}

@@ -18,6 +18,21 @@ describe("buildUserInviteLink and extractInviteCodeFromUrl", () => {
     expect(link).toMatch(/\/i\/MYINVITE123$/);
   });
 
+  it("drops /hangout on Hoffle's hosts but keeps it on deeppixel.online", () => {
+    const at = (href: string) => {
+      const url = new URL(href);
+      vi.stubGlobal("window", { location: { origin: url.origin, host: url.host, pathname: url.pathname } });
+      try {
+        return buildUserInviteLink("s5a7fdqhye");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    };
+    expect(at("https://chat.hoffle.online/hangout")).toBe("https://chat.hoffle.online/i/S5A7FDQHYE");
+    expect(at("https://chat.hoffle.online/")).toBe("https://chat.hoffle.online/i/S5A7FDQHYE");
+    expect(at("https://deeppixel.online/hangout")).toBe("https://deeppixel.online/hangout/i/S5A7FDQHYE");
+  });
+
   it("finds short links on Hoffle's hosts and old ?invite= links", () => {
     expect(extractInviteCodes("come join https://hoffle.online/i/ab12cd34 tonight")).toEqual(["AB12CD34"]);
     expect(extractInviteCodes("chat.hoffle.online/i/HX3F-9K2Q")).toEqual(["HX3F-9K2Q"]);

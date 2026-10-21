@@ -124,7 +124,9 @@ export function useChannelServerActions({
   async function joinServerDirect(rawInput?: string) {
     if (!rawInput?.trim()) return;
     let code = rawInput.trim();
-    if (code.includes("?") || code.includes("/")) {
+    const shortLink = code.match(/\/i\/([A-Za-z0-9_-]+)/);
+    if (shortLink) code = shortLink[1];
+    else if (code.includes("?") || code.includes("/")) {
       try {
         const url = new URL(code.startsWith("http") ? code : `https://${code}`);
         code =
@@ -148,6 +150,7 @@ export function useChannelServerActions({
     try {
       const data = await apiFetch<{
         serverId: string;
+        channelId?: string | null;
         servers: PublicServer[];
         alreadyMember?: boolean;
       }>("/api/servers/membership", {
@@ -156,6 +159,8 @@ export function useChannelServerActions({
       });
       setServers(data.servers);
       setActiveServerId(data.serverId);
+      // The invite's channel, when it names one; otherwise the server's usual first channel.
+      if (data.channelId) setActiveChannelId(data.channelId);
       setResolvedInvites((prev) => {
         const existing = prev[code];
         if (!existing) return prev;
@@ -174,7 +179,7 @@ export function useChannelServerActions({
     showCustomPrompt({
       title: "Join a Server",
       message: "Paste the invite code or invite link:",
-      placeholder: "e.g. HX3F-9K2Q or deeppixel.online/hangout?HX3F-9K2Q",
+      placeholder: "e.g. HX3F-9K2Q or chat.hoffle.online/i/HX3F-9K2Q",
       confirmText: "Join Server",
       onConfirm: async (rawInput) => {
         await joinServerDirect(rawInput);

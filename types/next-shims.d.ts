@@ -32,3 +32,7 @@ declare module "next/navigation" {
   export function notFound(): never;
   export function redirect(url: string): never;
 }
+
+declare module "next/og" {
+  export { ImageResponse } from "@vercel/og";
+}

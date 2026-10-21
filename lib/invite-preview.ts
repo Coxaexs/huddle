@@ -18,7 +18,13 @@ export interface InvitePreview {
     memberCount: number;
     onlineCount: number;
   } | null;
-  inviter: { displayName: string; username: string | null; avatar: string | null } | null;
+  inviter: {
+    displayName: string;
+    username: string | null;
+    avatar: string | null;
+    avatarUrl: string | null;
+    color: string | null;
+  } | null;
 }
 
 export async function loadInvitePreview(db: D1Database, rawCode: string): Promise<InvitePreview | null> {
@@ -29,7 +35,8 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       `SELECT i.code, i.max_uses, i.uses, i.revoked, i.server_id,
               s.name AS server_name, s.icon AS server_icon, s.icon_url AS server_icon_url,
               s.color AS server_color, s.banner_url AS server_banner_url, s.description AS server_description,
-              inv_user.display_name AS inviter_name, inv_user.username AS inviter_username, inv_user.avatar AS inviter_avatar
+              inv_user.display_name AS inviter_name, inv_user.username AS inviter_username, inv_user.avatar AS inviter_avatar,
+              inv_user.avatar_url AS inviter_avatar_url, inv_user.color AS inviter_color
          FROM invites i
          LEFT JOIN servers s ON s.id = i.server_id
          LEFT JOIN users inv_user ON inv_user.id = i.created_by
@@ -51,6 +58,8 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       inviter_name: string | null;
       inviter_username: string | null;
       inviter_avatar: string | null;
+      inviter_avatar_url: string | null;
+      inviter_color: string | null;
     }>();
   if (!invite || invite.revoked || (invite.max_uses > 0 && invite.uses >= invite.max_uses)) return null;
 
@@ -91,7 +100,13 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
     code: invite.code,
     server,
     inviter: invite.inviter_name
-      ? { displayName: invite.inviter_name, username: invite.inviter_username, avatar: invite.inviter_avatar }
+      ? {
+          displayName: invite.inviter_name,
+          username: invite.inviter_username,
+          avatar: invite.inviter_avatar,
+          avatarUrl: invite.inviter_avatar_url || null,
+          color: invite.inviter_color || null,
+        }
       : null,
   };
 }

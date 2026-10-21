@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     }
     const invite = await db
       .prepare(
-        "SELECT code, server_id, max_uses, uses, revoked FROM invites WHERE code = ?",
+        "SELECT code, server_id, max_uses, uses, revoked, channel_id FROM invites WHERE code = ?",
       )
       .bind(code)
       .first<{
@@ -55,6 +55,7 @@ export async function POST(request: Request) {
         max_uses: number;
         uses: number;
         revoked: number;
+        channel_id: string | null;
       }>();
     if (
       !invite ||
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
       return Response.json({
         alreadyMember: true,
         serverId: server.id,
+        channelId: invite.channel_id,
         servers: await listServers(db, user.id),
       });
     }
@@ -131,6 +133,7 @@ export async function POST(request: Request) {
     await awardAndNotify(db, user.id, { sources: ["people"] });
     return Response.json({
       serverId: server.id,
+      channelId: invite.channel_id,
       servers: await listServers(db, user.id),
     });
   }

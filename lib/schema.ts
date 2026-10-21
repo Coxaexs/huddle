@@ -1001,6 +1001,10 @@ async function migrate(db: D1Database): Promise<void> {
   if (!inviteColumns.has("default_server_id")) {
     await db.prepare("ALTER TABLE invites ADD COLUMN default_server_id TEXT").run();
   }
+  // A server invite can name the channel people land in when they join.
+  if (!inviteColumns.has("channel_id")) {
+    await db.prepare("ALTER TABLE invites ADD COLUMN channel_id TEXT").run();
+  }
 
   const memberColumns = await columnNames(db, "server_members");
   if (!memberColumns.has("invite_code")) {

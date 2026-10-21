@@ -87,6 +87,8 @@ export function useShellState() {
   const [groupDialog, setGroupDialog] = useState<
     { mode: "create" } | { mode: "add"; channelId: string } | null
   >(null);
+  /** "Invite friends to <server>", landing people in channelId when set. */
+  const [inviteDialog, setInviteDialog] = useState<{ channelId: string | null } | null>(null);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
@@ -1355,7 +1357,7 @@ export function useShellState() {
     user, setUser, bootstrap, setBootstrap, openSignup, setOpenSignup, turnstileSiteKey,
     setTurnstileSiteKey, ready, setReady, features, setFeatures, servers, setServers, members,
     setMembers, memberFilterQuery, setMemberFilterQuery, dms, setDms, groupDialog, setGroupDialog,
-    activeServerId, setActiveServerId, activeChannelId, setActiveChannelId, stageChannelId,
+    inviteDialog, setInviteDialog, activeServerId, setActiveServerId, activeChannelId, setActiveChannelId, stageChannelId,
     setStageChannelId, voiceChatOpen, setVoiceChatOpenState, setVoiceChatOpen, voiceChatSinksRef,
     subscribeVoiceChat, emitVoiceChat, pipDismissed, setPipDismissed, voiceViewMode,
     setVoiceViewMode, focusedStreamInfo, setFocusedStreamInfo, quickSoundboardOpen,

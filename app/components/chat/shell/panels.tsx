@@ -17,7 +17,6 @@ import { MessageBody, StyledText, type MentionChannel } from "../../message-body
 import { eventIsOpen, eventWhen } from "../../events-panel";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
 import { railEntries, type ServerFolder } from "@/lib/server-folders";
-import { showToast } from "../../toast";
 import { MiniMusicBar } from "../../mini-music-bar";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
 import { DM_HOME } from "../../../lib/chat/constants";
@@ -241,6 +240,7 @@ export function ChannelSidebar({
   canOpenServerSettings,
   setServerSettingsOpen,
   canCreateServerInvites,
+  openInviteDialog,
   showCustomPrompt,
   canManageServer,
   setServers,
@@ -308,6 +308,7 @@ export function ChannelSidebar({
   canOpenServerSettings: boolean;
   setServerSettingsOpen: Dispatch<SetStateAction<boolean>>;
   canCreateServerInvites: boolean;
+  openInviteDialog: () => void;
   showCustomPrompt: (options: { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmText?: string; maxLength?: number; onConfirm: (val?: string) => void; }) => void;
   canManageServer: boolean;
   setServers: Dispatch<SetStateAction<PublicServer[]>>;
@@ -430,29 +431,7 @@ export function ChannelSidebar({
                 type="button"
                 onClick={() => {
                   setServerMenuOpen(false);
-                  void apiFetch<{ invite: { code: string } }>("/api/invites", {
-                    method: "POST",
-                    body: JSON.stringify({ serverId: activeServer.id, maxUses: 0 }),
-                  })
-                    .then(async ({ invite }) => {
-                      const link = `${window.location.origin}/hangout?${invite.code}`;
-                      const copied = await navigator.clipboard
-                        ?.writeText(link)
-                        .then(() => true)
-                        .catch(() => false);
-                      if (copied) showToast(t("sidebar.menu.inviteCopied", { link }));
-                      else
-                        showCustomPrompt({
-                          title: t("sidebar.menu.inviteCreated"),
-                          message: t("sidebar.menu.shareLink"),
-                          defaultValue: link,
-                          confirmText: t("common.done"),
-                          onConfirm: () => undefined,
-                        });
-                    })
-                    .catch((error) =>
-                      showToast(error instanceof Error ? error.message : t("sidebar.menu.inviteFailed")),
-                    );
+                  openInviteDialog();
                 }}
               >
                 <span className="flex items-center gap-2">

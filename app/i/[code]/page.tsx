@@ -22,15 +22,6 @@ async function appBase() {
   return isLandingHost(host) ? APP_URL : "";
 }
 
-function absolute(url: string | null, origin: string) {
-  if (!url) return null;
-  try {
-    return new URL(url, origin).toString();
-  } catch {
-    return null;
-  }
-}
-
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { code } = await params;
   const found = await preview(code);
@@ -38,9 +29,16 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "hoffle.online";
   const origin = `${requestHeaders.get("x-forwarded-proto") || "https"}://${host}`;
-  // WhatsApp, Instagram and most others can't draw an SVG preview, so those fall back to Hoffle's card.
-  const picture = [found?.server?.iconUrl, found?.server?.bannerUrl].find((url) => url && !/\.svg(\?|$)/i.test(url)) || null;
-  const image = absolute(picture, origin);
+  // The card (./card/route.tsx) is drawn per invite; /hangout/i/ works on every host.
+  // Its query changes with what the card shows, so Discord and WhatsApp fetch a new one.
+  const version = found
+    ? [found.server?.name, found.server?.iconUrl, found.server?.bannerUrl, found.inviter?.displayName, found.inviter?.avatarUrl]
+        .join("|")
+        .split("")
+        .reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) | 0, 0)
+        .toString(36)
+    : "";
+  const image = found ? `${origin}/hangout/i/${encodeURIComponent(found.code)}/card?v=${version}` : null;
   return {
     // The layout adds " · Hoffle" to the tab title.
     title: tabTitle,
@@ -51,10 +49,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       description,
       siteName: "Hoffle",
       type: "website",
-      // A square server icon shows as a thumbnail; without one, Hoffle's own card.
-      images: image ? [{ url: image, width: 256, height: 256 }] : [{ url: "/og.png", width: 1200, height: 630 }],
+      images: [{ url: image || "/og.png", width: 1200, height: 630 }],
     },
-    twitter: { card: image ? "summary" : "summary_large_image", title, description },
+    twitter: { card: "summary_large_image", title, description },
   };
 }
 

@@ -173,8 +173,7 @@ export function ServerInvitesTab({
                         type="button"
                         className="discord-btn"
                         onClick={() => {
-                          const origin = typeof window !== "undefined" ? window.location.origin : "https://deeppixel.online";
-                          const link = `${origin}/hangout?${invite.code}`;
+                          const link = buildUserInviteLink(invite.code);
                           void navigator.clipboard
                             ?.writeText(link)
                             .then(() => setNotice("Invite link copied to clipboard."))

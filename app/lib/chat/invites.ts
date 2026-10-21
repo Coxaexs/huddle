@@ -9,6 +9,9 @@ export const ACCEPTED_INVITE_KEY = "hoffle-accepted-invite";
 /** Hosts whose /i/CODE links are Hoffle invites (plus whatever host this page is on). */
 const INVITE_HOSTS = ["hoffle.online", "www.hoffle.online", "chat.hoffle.online", "deeppixel.online"];
 
+/** Hosts that serve the invite page at /i/CODE rather than /hangout/i/CODE. */
+const ROOT_INVITE_HOSTS = ["hoffle.online", "www.hoffle.online", "chat.hoffle.online"];
+
 function inviteHosts(): string[] {
   const here = typeof window !== "undefined" ? window.location?.host?.toLowerCase() : "";
   return here && !INVITE_HOSTS.includes(here) ? [...INVITE_HOSTS, here] : INVITE_HOSTS;
@@ -50,8 +53,13 @@ export function buildUserInviteLink(code: string): string {
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin
       : "https://chat.hoffle.online";
+  // Hoffle's own hosts serve /i/ at the root; elsewhere (deeppixel.online)
+  // the app, and so the invite page, only lives under /hangout.
+  const host = typeof window !== "undefined" ? window.location?.host?.toLowerCase() || "" : "";
   const path =
-    typeof window !== "undefined" && window.location?.pathname?.startsWith("/hangout")
+    !ROOT_INVITE_HOSTS.includes(host) &&
+    typeof window !== "undefined" &&
+    window.location?.pathname?.startsWith("/hangout")
       ? "/hangout"
       : "";
   return `${origin}${path}/i/${encodeURIComponent(cleanCode)}`;

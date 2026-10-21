@@ -29,7 +29,8 @@ export function OnboardingDirectoryDialog({
   open: boolean;
   onClose: () => void;
   onServersUpdated: (servers: PublicServer[]) => void;
-  onSelectServer: (serverId: string) => void;
+  /** channelId: the channel a joined invite lands you in, if it names one. */
+  onSelectServer: (serverId: string, channelId?: string | null) => void;
 }) {
   const [tab, setTab] = useState<"discover" | "invite" | "create">("discover");
   const [directory, setDirectory] = useState<PublicDirectoryEntry[]>([]);
@@ -77,11 +78,11 @@ export function OnboardingDirectoryDialog({
   const handleJoinByInvite = async () => {
     const raw = inviteInput.trim();
     if (!raw) return;
-    const match = raw.match(/(?:hangout\?|invite\/)([A-Za-z0-9_-]+)/i);
+    const match = raw.match(/(?:hangout\?|invite\/|\/i\/)([A-Za-z0-9_-]+)/i);
     const code = match ? match[1] : raw;
     setJoiningInvite(true);
     try {
-      const res = await apiFetch<{ servers: PublicServer[]; serverId?: string }>(
+      const res = await apiFetch<{ servers: PublicServer[]; serverId?: string; channelId?: string | null }>(
         "/api/servers/membership",
         {
           method: "POST",
@@ -89,7 +90,7 @@ export function OnboardingDirectoryDialog({
         },
       );
       onServersUpdated(res.servers);
-      if (res.serverId) onSelectServer(res.serverId);
+      if (res.serverId) onSelectServer(res.serverId, res.channelId);
       showToast("Joined server via invite!");
       onClose();
     } catch (e) {
@@ -273,7 +274,7 @@ export function OnboardingDirectoryDialog({
                 type="text"
                 value={inviteInput}
                 onChange={(e) => setInviteInput(e.target.value)}
-                placeholder="e.g. aB3x9K or https://.../hangout?aB3x9K"
+                placeholder="e.g. aB3x9K or chat.hoffle.online/i/aB3x9K"
                 className="w-full px-3 py-2.5 rounded-lg bg-black/30 border border-white/10 text-sm text-white"
               />
             </div>

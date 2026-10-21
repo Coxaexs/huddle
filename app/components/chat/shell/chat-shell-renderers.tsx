@@ -3,7 +3,7 @@ import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { shouldStartMuted } from "@/lib/stage";
 import { hasPermission, Permission } from "@/lib/permissions";
-import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film } from "lucide-react";
+import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, UserPlus } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
 import { type MentionChannel } from "../../message-body";
@@ -23,13 +23,13 @@ export type ShellRenderState = ReturnType<typeof withShellRenderers>;
 /** The member lists, voice stage target, rail and channel row renderers and bot menus the view draws with. */
 export function withShellRenderers(s: ChatShellViewState) {
   const {
-    activeChannelId, activeServer, activeServerId, canManageChannels, canModerate,
+    activeChannelId, activeServer, activeServerId, canCreateServerInvites, canManageChannels, canModerate,
     channelDragProps, deleteChannel, dmMembers, dms, dndUrl, dragServerId, folderDropProps, hub,
     inDmHome, memberFilterQuery, members, membersById, moveMember, musicDashboardUrl,
     myPermissions, myTimeoutUntil, openBotMenu, openFolders, openMusicDashboard, openUserMenu,
     player, prepareCommand, runCommand, serverDragProps, serverDropHint, servers,
     setActiveChannelId, setActiveServerId, setChannelMenu, setFolderMenu, setMobileNav, setNotice,
-    setRailMenu, setStageChannelId, stageChannelId, toggleFolderOpen, touchInput, unread, user,
+    setInviteDialog, setRailMenu, setStageChannelId, stageChannelId, toggleFolderOpen, touchInput, unread, user,
     voice, voiceChannels, voiceRooms, queueStreamHover, setStageFocusRequest,
   } = s;
 
@@ -449,6 +449,20 @@ export function withShellRenderers(s: ChatShellViewState) {
         {channel.nsfw && <span className="nsfw-badge" title="Age-restricted">18+</span>}
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>
+        )}
+        {canCreateServerInvites && (
+          <span
+            className="channel-invite"
+            role="button"
+            title="Create invite"
+            aria-label={`Invite people to #${channel.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setInviteDialog({ channelId: channel.id });
+            }}
+          >
+            <UserPlus size={14} />
+          </span>
         )}
         {canManageChannels && (
           <span

@@ -25,7 +25,11 @@ interface InviteRow {
   server_id: string | null;
   default_theme: string | null;
   default_server_id: string | null;
+  channel_id: string | null;
 }
+
+const INVITE_COLUMNS =
+  "code, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id, channel_id";
 
 function publicInvite(invite: InviteRow) {
   return {
@@ -38,6 +42,7 @@ function publicInvite(invite: InviteRow) {
     serverId: invite.server_id || null,
     defaultTheme: invite.default_theme || null,
     defaultServerId: invite.default_server_id || null,
+    channelId: invite.channel_id || null,
     spent: invite.max_uses > 0 && invite.uses >= invite.max_uses,
   };
 }
@@ -65,13 +70,13 @@ export async function GET(request: Request) {
   const result = serverId
     ? await db
         .prepare(
-          "SELECT code, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id FROM invites WHERE server_id = ? ORDER BY created_at DESC LIMIT 50",
+          `SELECT ${INVITE_COLUMNS} FROM invites WHERE server_id = ? ORDER BY created_at DESC LIMIT 50`,
         )
         .bind(serverId)
         .all()
     : await db
         .prepare(
-          "SELECT code, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id FROM invites WHERE server_id IS NULL ORDER BY created_at DESC LIMIT 50",
+          `SELECT ${INVITE_COLUMNS} FROM invites WHERE server_id IS NULL ORDER BY created_at DESC LIMIT 50`,
         )
         .all();
   return Response.json({
@@ -104,6 +109,13 @@ export async function POST(request: Request) {
     defaultTheme?: string;
     /** Account invites only: server the new member joins on signup. */
     defaultServerId?: string;
+    /** Server invites only: the text channel people land in when they join. */
+    channelId?: string;
+    /**
+     * Hand back your own still-working invite with the same settings instead
+     * of minting another, so opening the invite dialog doesn't pile them up.
+     */
+    reuse?: boolean;
   };
   const maxUses = clampInviteUses(body.maxUses);
 
@@ -135,6 +147,28 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+  }
+
+  let channelId: string | null = null;
+  if (serverId && body.channelId) {
+    const channel = await db
+      .prepare("SELECT id FROM channels WHERE id = ? AND server_id = ? AND kind IN ('text', 'announcement', 'forum')")
+      .bind(body.channelId.slice(0, 64), serverId)
+      .first<{ id: string }>();
+    channelId = channel?.id || null;
+  }
+
+  if (serverId && body.reuse && !body.note?.trim()) {
+    const existing = await db
+      .prepare(
+        `SELECT ${INVITE_COLUMNS} FROM invites
+          WHERE server_id = ? AND created_by = ? AND revoked = 0 AND note IS NULL
+            AND max_uses = ? AND uses < max_uses AND channel_id IS ?
+          ORDER BY created_at DESC LIMIT 1`,
+      )
+      .bind(serverId, user.id, maxUses, channelId)
+      .first<InviteRow>();
+    if (existing) return Response.json({ invite: publicInvite(existing) });
   }
 
   let defaultTheme: string | null = null;
@@ -169,11 +203,12 @@ export async function POST(request: Request) {
     server_id: serverId,
     default_theme: defaultTheme,
     default_server_id: defaultServerId,
+    channel_id: channelId,
   };
 
   await db
     .prepare(
-      "INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
+      "INSERT INTO invites (code, created_by, created_at, max_uses, uses, revoked, note, server_id, default_theme, default_server_id, channel_id) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
     )
     .bind(
       invite.code,
@@ -184,6 +219,7 @@ export async function POST(request: Request) {
       invite.server_id,
       invite.default_theme,
       invite.default_server_id,
+      invite.channel_id,
     )
     .run();
 
