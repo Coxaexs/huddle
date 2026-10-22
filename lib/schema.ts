@@ -981,6 +981,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["verification_level", "ALTER TABLE servers ADD COLUMN verification_level INTEGER NOT NULL DEFAULT 0"],
     // The server's custom invite code; an invites row with this code exists too.
     ["vanity_code", "ALTER TABLE servers ADD COLUMN vanity_code TEXT"],
+    // What every member gets before any role: the @everyone permissions.
+    ["everyone_permissions", "ALTER TABLE servers ADD COLUMN everyone_permissions INTEGER NOT NULL DEFAULT 0"],
   ] as const) {
     if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
   }

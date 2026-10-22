@@ -16,7 +16,7 @@ import { BANNER_COLORS } from "./server-settings/constants";
 import { ServerProfileTab } from "./server-settings/profile-tab";
 import { ServerEmojiTab } from "./server-settings/emoji-tab";
 import { ServerMembersTab } from "./server-settings/members-tab";
-import { ServerRolesTab } from "./server-settings/roles-tab";
+import { ServerRolesTab, EVERYONE_ROLE_ID, everyoneRoleOf } from "./server-settings/roles-tab";
 import { ServerBansTab } from "./server-settings/bans-tab";
 import { ServerInvitesTab } from "./server-settings/invites-tab";
 import { ServerAuditLogTab } from "./server-settings/audit-log-tab";
@@ -463,7 +463,13 @@ export function ServerSettingsDialog({
     setServerName(server.name);
     setServerColor(server.color || "#7b63e6");
     setRoles(server.roles || []);
-    setActiveRole((server.roles || [])[0] || null);
+    // Stay on the role being edited across a refresh; a toggle still on its
+    // way keeps what it showed.
+    setActiveRole((prev) => {
+      if (prev && pendingPermsRef.current.has(prev.id)) return prev;
+      if (prev?.id === EVERYONE_ROLE_ID) return everyoneRoleOf(server);
+      return (server.roles || []).find((r) => r.id === prev?.id) || (server.roles || [])[0] || null;
+    });
   }, [server]);
 
   useEffect(() => {
@@ -699,12 +705,16 @@ export function ServerSettingsDialog({
     const nextPerms = (current & flag) === flag ? current & ~flag : current | flag;
     pendingPermsRef.current.set(activeRole.id, nextPerms);
     setActiveRole({ ...activeRole, permissions: nextPerms });
+    // @everyone is not a row in roles: it lives on the server itself.
+    const isEveryone = activeRole.id === EVERYONE_ROLE_ID;
     try {
       const res = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/roles/${activeRole.id}`,
+        isEveryone ? "/api/roles/everyone" : `/api/roles/${activeRole.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ permissions: nextPerms }),
+          body: JSON.stringify(
+            isEveryone ? { serverId: server.id, permissions: nextPerms } : { permissions: nextPerms },
+          ),
         },
       );
       // A later toggle is already on its way: its answer is the one to show.
@@ -714,7 +724,9 @@ export function ServerSettingsDialog({
       if (updatedServer) {
         setRoles(updatedServer.roles);
         setActiveRole(
-          updatedServer.roles.find((r) => r.id === activeRole.id) || null,
+          isEveryone
+            ? everyoneRoleOf(updatedServer)
+            : updatedServer.roles.find((r) => r.id === activeRole.id) || null,
         );
       }
       onServerUpdated();
@@ -1171,6 +1183,7 @@ export function ServerSettingsDialog({
         canManageRolesEffective={canManageRolesEffective}
         handleCreateRole={handleCreateRole}
         filteredRoles={filteredRoles}
+        everyoneRole={everyoneRoleOf(server)}
         activeRole={activeRole}
         setActiveRole={setActiveRole}
         members={members}

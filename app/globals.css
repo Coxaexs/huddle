@@ -13977,6 +13977,19 @@ html[data-motion="reduced"] .typing-dots i {
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
+  width: 100%;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.default-permissions-card:hover {
+  background: #232428;
+}
+
+.default-permissions-card.selected {
+  background: #35373c;
 }
 
 .default-permissions-card .card-info strong {
@@ -13993,6 +14006,53 @@ html[data-motion="reduced"] .typing-dots i {
 .default-permissions-card .chevron-arrow {
   font-size: 20px;
   color: #949ba4;
+}
+
+.active-role-permissions-editor {
+  margin-top: 24px;
+}
+
+.active-role-permissions-editor > h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f2f3f5;
+}
+
+.permissions-toggle-grid {
+  display: grid;
+  margin-top: 8px;
+}
+
+.perm-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.perm-item-row strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f2f3f5;
+}
+
+.perm-item-row p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #949ba4;
+}
+
+.perm-item-row input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: #5865f2;
+  cursor: pointer;
 }
 
 .roles-toolbar {

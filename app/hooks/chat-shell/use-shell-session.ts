@@ -605,7 +605,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     const myRoleIds = new Set(
       membersById.get(user.id)?.roleIds?.[activeServer.id] || [],
     );
-    let mask = 0;
+    let mask = activeServer.everyonePermissions || 0;
     for (const role of activeServer.roles) {
       if (myRoleIds.has(role.id)) mask |= role.permissions;
     }

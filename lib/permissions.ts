@@ -2,7 +2,8 @@
  * Role permissions for Huddle servers.
  *
  * Permissions are a small bitmask stored on `roles.permissions`. A member's
- * effective permissions are the OR of every role they hold in that server, plus
+ * effective permissions are the OR of every role they hold in that server and
+ * the server's @everyone mask (`servers.everyone_permissions`), plus
  * an implicit everything for the server owner (`servers.created_by`) and for any
  * global admin (`users.is_admin`, the first account). `ADMINISTRATOR` on any
  * role also implies everything.
@@ -326,14 +327,19 @@ export interface MemberTagInfo {
  */
 export function computeMemberPermissions(
   member: { id: string; isAdmin?: boolean; roleIds?: Record<string, string[]> } | null | undefined,
-  server: { id: string; ownerId?: string | null; roles?: Array<{ id: string; permissions: number }> } | null | undefined,
+  server: {
+    id: string;
+    ownerId?: string | null;
+    everyonePermissions?: number;
+    roles?: Array<{ id: string; permissions: number }>;
+  } | null | undefined,
 ): number {
   if (!member || !server) return 0;
   if (member.isAdmin || (server.ownerId && server.ownerId === member.id)) {
     return ALL_PERMISSIONS;
   }
   const roleIds = new Set(member.roleIds?.[server.id] || []);
-  let mask = 0;
+  let mask = server.everyonePermissions || 0;
   for (const role of server.roles || []) {
     if (roleIds.has(role.id)) {
       mask |= role.permissions;
@@ -357,6 +363,7 @@ export function getMemberTagInfo(
   server: {
     id: string;
     ownerId?: string | null;
+    everyonePermissions?: number;
     roles?: Array<{ id: string; name: string; color: string; permissions: number; position: number }>;
   } | null | undefined,
 ): MemberTagInfo | null {
@@ -416,7 +423,7 @@ export function getMemberTagInfo(
 
 /**
  * The bitmask a member effectively has in a server. Owner and global admins get
- * everything; otherwise it is the union of their assigned roles.
+ * everything; otherwise it is the union of @everyone and their assigned roles.
  */
 export async function effectivePermissions(
   db: D1Database,
@@ -429,9 +436,9 @@ export async function effectivePermissions(
       .bind(userId)
       .first<{ is_admin: number }>(),
     db
-      .prepare("SELECT created_by FROM servers WHERE id = ?")
+      .prepare("SELECT * FROM servers WHERE id = ?")
       .bind(serverId)
-      .first<{ created_by: string | null }>(),
+      .first<{ created_by: string | null; everyone_permissions?: number }>(),
   ]);
 
   if (user?.is_admin) return ALL_PERMISSIONS;
@@ -447,7 +454,7 @@ export async function effectivePermissions(
     .bind(serverId, userId)
     .all();
 
-  let mask = 0;
+  let mask = server?.everyone_permissions || 0;
   for (const row of (rows.results || []) as Array<{ permissions: number }>) {
     mask |= row.permissions;
   }
@@ -496,9 +503,9 @@ export async function roleAuthority(
   const [user, server, roles] = await Promise.all([
     db.prepare("SELECT is_admin FROM users WHERE id = ?").bind(userId).first<{ is_admin: number }>(),
     db
-      .prepare("SELECT created_by FROM servers WHERE id = ?")
+      .prepare("SELECT * FROM servers WHERE id = ?")
       .bind(serverId)
-      .first<{ created_by: string | null }>(),
+      .first<{ created_by: string | null; everyone_permissions?: number }>(),
     db
       .prepare(
         `SELECT r.permissions AS permissions, r.position AS position
@@ -509,7 +516,7 @@ export async function roleAuthority(
       .all<{ permissions: number; position: number }>(),
   ]);
   const unlimited = Boolean(user?.is_admin) || server?.created_by === userId;
-  let mask = 0;
+  let mask = server?.everyone_permissions || 0;
   let top = -1;
   for (const role of roles.results || []) {
     mask |= role.permissions;

@@ -1,13 +1,27 @@
 "use client";
 
 import { Search, Shield, GripVertical, Users, Pencil, MoreHorizontal } from "lucide-react";
-import type { PublicRole } from "@/lib/servers";
+import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import { Tab } from "./types";
 import { useEffect, useRef, useState } from "react";
 import { roleIconIsImage } from "@/lib/role-icon";
 import { useI18n } from "../../lib/i18n-context";
+
+/** The id the editor uses for @everyone, which lives on the server, not in roles. */
+export const EVERYONE_ROLE_ID = "@everyone";
+
+/** @everyone as a role the editor can open, below every real one. */
+export function everyoneRoleOf(server: PublicServer): PublicRole {
+  return {
+    id: EVERYONE_ROLE_ID,
+    name: "@everyone",
+    color: "",
+    permissions: server.everyonePermissions || 0,
+    position: -1,
+  };
+}
 
 /** Emoji or uploaded image beside the names of this role's members. */
 function RoleIconEditor({
@@ -84,6 +98,7 @@ export function ServerRolesTab({
   canManageRolesEffective,
   handleCreateRole,
   filteredRoles,
+  everyoneRole,
   activeRole,
   setActiveRole,
   members,
@@ -97,6 +112,7 @@ export function ServerRolesTab({
   canManageRolesEffective: boolean;
   handleCreateRole: () => void;
   filteredRoles: PublicRole[];
+  everyoneRole: PublicRole;
   activeRole: PublicRole | null;
   setActiveRole: React.Dispatch<React.SetStateAction<PublicRole | null>>;
   members: Member[];
@@ -111,13 +127,17 @@ export function ServerRolesTab({
             <h1 className="pane-title">Roles</h1>
             <p className="pane-subtitle">Use roles to group your server members and assign permissions.</p>
 
-            <div className="default-permissions-card">
+            <button
+              type="button"
+              className={`default-permissions-card ${activeRole?.id === EVERYONE_ROLE_ID ? "selected" : ""}`}
+              onClick={() => setActiveRole((prev) => (prev?.id === EVERYONE_ROLE_ID ? prev : everyoneRole))}
+            >
               <div className="card-info">
                 <strong>Default Permissions</strong>
                 <span>@everyone · applies to all server members</span>
               </div>
               <span className="chevron-arrow">›</span>
-            </div>
+            </button>
 
             <div className="roles-toolbar">
               <div className="search-wrap">
@@ -184,8 +204,15 @@ export function ServerRolesTab({
 
             {activeRole && canManageRolesEffective && (
               <div className="active-role-permissions-editor">
-                <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
+                {activeRole.id !== EVERYONE_ROLE_ID && (
+                  <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
+                )}
                 <h3>Edit Permissions for {activeRole.name}</h3>
+                {activeRole.id === EVERYONE_ROLE_ID && (
+                  <p className="pane-subtitle" style={{ margin: "0 0 12px" }}>
+                    Every member has these, whatever roles they hold.
+                  </p>
+                )}
                 <div className="permissions-toggle-grid">
                   {PERMISSION_INFO.map((info) => {
                     const enabled = (activeRole.permissions & info.flag) === info.flag;

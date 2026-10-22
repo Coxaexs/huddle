@@ -61,6 +61,7 @@ export interface ServerRow {
   raid_mode?: number;
   verification_level?: number;
   vanity_code?: string | null;
+  everyone_permissions?: number;
 }
 
 export interface PublicChannel {
@@ -115,6 +116,8 @@ export interface PublicServer {
   verificationLevel?: number;
   /** The server's custom invite code, if it set one. */
   vanityCode?: string | null;
+  /** What every member holds before any role (@everyone). */
+  everyonePermissions?: number;
   channels: PublicChannel[];
   categories: PublicCategory[];
   roles: PublicRole[];
@@ -325,6 +328,7 @@ export async function listServers(
       ...(server.raid_mode !== undefined ? { raidMode: Boolean(server.raid_mode) } : {}),
       ...(server.verification_level !== undefined ? { verificationLevel: server.verification_level || 0 } : {}),
       ...(server.vanity_code !== undefined ? { vanityCode: server.vanity_code || null } : {}),
+      ...(server.everyone_permissions !== undefined ? { everyonePermissions: server.everyone_permissions || 0 } : {}),
       channels: channelsByServer.get(server.id) || [],
       categories: categoriesByServer.get(server.id) || [],
       roles: rolesByServer.get(server.id) || [],

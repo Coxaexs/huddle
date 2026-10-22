@@ -5,6 +5,7 @@ import {
   ALL_PERMISSIONS,
   canAccessServerSettings,
   getMemberTagInfo,
+  computeMemberPermissions,
 } from "./permissions";
 
 describe("hasPermission", () => {
@@ -139,5 +140,21 @@ describe("getMemberTagInfo & computeMemberPermissions", () => {
     // Demoted back
     member.roleIds["srv-1"] = [];
     expect(getMemberTagInfo(member, mockServer)).toBeNull();
+  });
+
+  it("gives every member the @everyone permissions, with or without roles", () => {
+    const server = {
+      id: "srv-1",
+      ownerId: "owner",
+      everyonePermissions: Permission.SPEAK | Permission.CREATE_INVITES,
+      roles: [{ id: "role-mod", permissions: Permission.MODERATE }],
+    };
+    expect(computeMemberPermissions({ id: "plain", roleIds: {} }, server)).toBe(
+      Permission.SPEAK | Permission.CREATE_INVITES,
+    );
+    expect(computeMemberPermissions({ id: "mod", roleIds: { "srv-1": ["role-mod"] } }, server)).toBe(
+      Permission.SPEAK | Permission.CREATE_INVITES | Permission.MODERATE,
+    );
+    expect(computeMemberPermissions({ id: "plain", roleIds: {} }, { ...server, everyonePermissions: undefined })).toBe(0);
   });
 });
