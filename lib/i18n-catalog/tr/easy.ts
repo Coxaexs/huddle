@@ -1,0 +1,25 @@
+import type { easy as en } from "../en/easy";
+
+export const easy: Record<keyof typeof en, string> = {
+  "share.message": "{server} sunucusunda takılalım! 🧇 {link}",
+  "share.whatsapp": "WhatsApp",
+  "share.telegram": "Telegram",
+  "share.more": "Paylaş…",
+  "share.qr": "QR kod",
+  "share.qrHint": "Arkadaşların telefon kamerasıyla okutabilir.",
+  "iosNudge.title": "iPhone'da bildirim al",
+  "iosNudge.body": "Paylaş düğmesine, sonra Ana Ekrana Ekle'ye dokun. Hoffle'ı ana ekrandan aç, mesajlar her uygulamadaki gibi gelsin.",
+  "guest.tab": "Hızlı katıl",
+  "guest.lead": "Arkadaşlarının göreceği ismi seç, içeridesin. Hesabını sonra kaydedebilirsin.",
+  "guest.nameLabel": "İsmin",
+  "guest.namePlaceholder": "Arkadaşların ne görsün",
+  "guest.join": "{server} sunucusuna katıl",
+  "guest.fullAccount": "Onun yerine tam hesap aç",
+  "guest.haveAccount": "Zaten hesabım var",
+  "guest.bar": "Misafir olarak buradasın. Her cihazdan dönebilmek için hesabını kaydet.",
+  "guest.save": "Hesabımı kaydet",
+  "guest.later": "Sonra",
+  "guest.saveTitle": "Hesabını kaydet",
+  "guest.saveLead": "Her yerden tekrar girebilmek için bir kullanıcı adı ve şifre seç. Mesajların ve sunucuların kalır.",
+  "guest.saveFailed": "Hesabın kaydedilemedi.",
+};

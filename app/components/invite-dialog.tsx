@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Hash, Loader2, Search, X } from "lucide-react";
+import { ArrowLeft, Hash, Loader2, QrCode, Search, Share2, X } from "lucide-react";
+import { renderSVG } from "uqr";
 import { Avatar } from "./avatar";
 import { apiFetch } from "../lib/client";
 import { buildUserInviteLink } from "../lib/chat/invites";
@@ -287,6 +288,9 @@ export function InviteDialog({ open, server, channel, memberIds, onClose, onDmsC
                   {copied ? t("inviteModal.copied") : t("inviteModal.copy")}
                 </button>
               </div>
+              {link && (
+                <ShareRow link={link} serverName={server?.name || "Hoffle"} />
+              )}
               {invite && (
                 <p className="invite-dialog-hint">
                   {t("inviteModal.usesLeft", { count: usesLeft })}{" "}
@@ -306,5 +310,45 @@ export function InviteDialog({ open, server, channel, memberIds, onClose, onDmsC
         )}
       </div>
     </div>
+  );
+}
+
+/** Where invites actually travel: WhatsApp, Telegram, the phone's share sheet, or a QR code to scan. */
+function ShareRow({ link, serverName }: { link: string; serverName: string }) {
+  const { t } = useI18n();
+  const [qr, setQr] = useState(false);
+  const message = t("share.message", { server: serverName, link });
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const qrSvg = useMemo(() => (qr ? renderSVG(link, { border: 1, pixelSize: 8 }) : ""), [qr, link]);
+  return (
+    <>
+      <div className="invite-share-row">
+        <a className="wa" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer">
+          {t("share.whatsapp")}
+        </a>
+        <a
+          className="tg"
+          href={`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(message.replace(link, "").trim())}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t("share.telegram")}
+        </a>
+        {canShare && (
+          <button type="button" onClick={() => void navigator.share({ text: message }).catch(() => undefined)}>
+            <Share2 size={13} /> {t("share.more")}
+          </button>
+        )}
+        <button type="button" aria-pressed={qr} onClick={() => setQr((v) => !v)}>
+          <QrCode size={13} /> {t("share.qr")}
+        </button>
+      </div>
+      {qr && (
+        <div className="invite-qr">
+          <div className="invite-qr-code" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+          <p>{t("share.qrHint")}</p>
+        </div>
+      )}
+    </>
   );
 }

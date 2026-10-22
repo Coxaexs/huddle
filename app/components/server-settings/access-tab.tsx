@@ -21,6 +21,7 @@ export function ServerAccessTab({
   setNotice: (msg: string) => void;
 }) {
   const [isPublic, setIsPublic] = useState<boolean>(Boolean(server.isPublic));
+  const [webPublic, setWebPublic] = useState<boolean>(Boolean(server.webPublic));
   const [description, setDescription] = useState<string>(server.description || "");
   const [disabledModules, setDisabledModules] = useState<FeatureModuleKey[]>(() =>
     normalizeDisabledModules(server.disabledModules || []),
@@ -29,6 +30,7 @@ export function ServerAccessTab({
 
   useEffect(() => {
     setIsPublic(Boolean(server.isPublic));
+    setWebPublic(Boolean(server.webPublic));
     setDescription(server.description || "");
     setDisabledModules(normalizeDisabledModules(server.disabledModules || []));
   }, [server]);
@@ -94,6 +96,39 @@ export function ServerAccessTab({
               const next = e.target.checked;
               setIsPublic(next);
               void saveAccessSettings(next, description, disabledModules);
+            }}
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Globe size={16} className={webPublic ? "text-sky-400" : "opacity-60"} />
+              Readable on the web
+            </h3>
+            <p className="text-xs opacity-75 mt-1">
+              Anyone can read this server's open channels at{" "}
+              <a href={`https://hoffle.online/s/${encodeURIComponent((server.vanityCode || server.id).toLowerCase())}`} target="_blank" rel="noopener noreferrer" className="underline">
+                hoffle.online/s/{(server.vanityCode || server.id).toLowerCase()}
+              </a>
+              , and search engines can list them. Private channels, 18+ channels and any channel with its own permissions stay hidden. Tell your members before you turn this on.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={webPublic}
+            disabled={!canManageServer || saving}
+            onChange={async (e) => {
+              const next = e.target.checked;
+              setWebPublic(next);
+              try {
+                await apiFetch(`/api/servers/${server.id}`, { method: "PATCH", body: JSON.stringify({ webPublic: next }) });
+                onServerUpdated();
+                setNotice(next ? "Open channels are now readable on the web." : "This server is no longer readable on the web.");
+              } catch (err) {
+                setWebPublic(!next);
+                setNotice(err instanceof Error ? err.message : "Could not change that.");
+              }
             }}
           />
         </div>

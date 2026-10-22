@@ -15,6 +15,7 @@ import "./achievements.css";
 import "./command-buttons.css";
 import "./hoffy.css";
 import "./channel-permissions.css";
+import "./easy.css";
 import { I18nProvider } from "./lib/i18n-context";
 import { InstallPrompt } from "./components/install-prompt";
 import { INSTALL_EVENT_SCRIPT } from "./lib/install-event";

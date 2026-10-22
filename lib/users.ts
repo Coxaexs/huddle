@@ -124,6 +124,8 @@ export type AvatarFrameId = "none" | "neon" | "rainbow" | "cyber" | "gold" | "sa
 
 export interface PublicUser {
   id: string;
+  /** Joined with just a name from an invite link (app/api/auth/guest), not saved yet. */
+  isGuest?: boolean;
   /** When the account was made (ISO). */
   createdAt?: string;
   username: string;

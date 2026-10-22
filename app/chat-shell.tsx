@@ -13,6 +13,7 @@ import { useShellComposer } from "./hooks/chat-shell/use-shell-composer";
 import { renderChatShell } from "./components/chat/shell/chat-shell-view";
 import { TermsConsent } from "./components/terms-consent";
 import { Hoffy } from "./components/hoffy";
+import { GuestBanner } from "./components/guest-banner";
 
 // The app's main screen. Its state and handlers live in a chain of hooks
 // (app/hooks/chat-shell/, called in this order every render) and its markup
@@ -67,6 +68,7 @@ export function ChatShell() {
     <>
       {renderChatShell({ ...shell, user })}
       <TermsConsent />
+      <GuestBanner user={user} onSaved={setUser} />
     </>
   );
 }

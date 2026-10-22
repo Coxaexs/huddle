@@ -71,6 +71,7 @@ export interface ServerRow {
   verification_level?: number;
   vanity_code?: string | null;
   everyone_permissions?: number;
+  web_public?: number;
 }
 
 export interface PublicChannel {
@@ -117,6 +118,8 @@ export interface PublicRole {
 }
 
 export interface PublicServer {
+  /** Its open channels can be read on the web at hoffle.online/s/... (lib/web-public.ts). */
+  webPublic?: boolean;
   id: string;
   name: string;
   icon: string;
@@ -365,6 +368,7 @@ export async function listServers(
       ...(server.verification_level !== undefined ? { verificationLevel: server.verification_level || 0 } : {}),
       ...(server.vanity_code !== undefined ? { vanityCode: server.vanity_code || null } : {}),
       ...(server.everyone_permissions !== undefined ? { everyonePermissions: server.everyone_permissions || 0 } : {}),
+      ...(server.web_public !== undefined ? { webPublic: Boolean(server.web_public) } : {}),
       channels: channelsByServer.get(server.id) || [],
       categories: categoriesByServer.get(server.id) || [],
       roles: rolesByServer.get(server.id) || [],

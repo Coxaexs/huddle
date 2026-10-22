@@ -40,12 +40,40 @@ function hintFor(): Hint {
   return "chromium";
 }
 
+const IOS_NUDGE_KEY = "hoffle-ios-nudge";
+
 export function InstallPrompt() {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [event, setEvent] = useState<InstallEvent | null>(null);
   const [hint, setHint] = useState<Hint>("chromium");
   const [done, setDone] = useState(false);
+  /** Opened by itself on an iPhone: about notifications, not installing. */
+  const [nudge, setNudge] = useState(false);
+
+  // iPhones only notify from a Home Screen app, so a signed-in iPhone user in
+  // Safari is told once, after a minute and a half in the app.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("install") || hintFor() !== "ios") return;
+    let seen = false;
+    try {
+      seen = Boolean(localStorage.getItem(IOS_NUDGE_KEY));
+    } catch {
+      return;
+    }
+    if (seen) return;
+    const timer = window.setTimeout(() => {
+      // Still on the sign-in card: not now, next visit.
+      if (document.querySelector(".username-gate")) return;
+      try {
+        localStorage.setItem(IOS_NUDGE_KEY, "1");
+      } catch {}
+      setHint("ios");
+      setNudge(true);
+      setOpen(true);
+    }, 90_000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -93,8 +121,8 @@ export function InstallPrompt() {
     <div className="install-prompt" role="dialog" aria-labelledby="install-prompt-title">
       <img src="/hangout/icon-192.png" alt="" width={44} height={44} className="install-prompt-icon" />
       <div className="install-prompt-body">
-        <p id="install-prompt-title" className="install-prompt-title">{t("landing.install.title")}</p>
-        <p className="install-prompt-text">{message}</p>
+        <p id="install-prompt-title" className="install-prompt-title">{nudge ? t("iosNudge.title") : t("landing.install.title")}</p>
+        <p className="install-prompt-text">{nudge ? t("iosNudge.body") : message}</p>
       </div>
       <div className="install-prompt-actions">
         {event && !done && (

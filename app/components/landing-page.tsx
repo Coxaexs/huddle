@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { Coffee, Heart } from "./site-icons";
+import { Hoffy } from "./hoffy";
+import { VS_DISCORD_PATH } from "./vs-discord-page";
 import { CopyButton, DownloadButton } from "./landing-client";
 import { LiveChannel, MatrixRain, ThemeTour, type JoinLinks } from "./landing-demo";
 import { LANDING_COPY, LANDING_PATH, type LandingCopy, type LandingLang } from "./landing-copy";
@@ -458,7 +460,13 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         {/* ── Hero ──────────────────────────────────────────────────── */}
         <section className="px-4 pt-14 sm:px-6 sm:pt-20">
           <div className="mx-auto max-w-6xl">
-            <h1 className="lp-display max-w-[22ch] text-4xl font-normal leading-[1.1] sm:text-[56px]">{copy.hero.title}</h1>
+            <div className="flex items-start justify-between gap-8">
+              <h1 className="lp-display max-w-[22ch] text-4xl font-normal leading-[1.1] sm:text-[56px]">{copy.hero.title}</h1>
+              {/* A wrapper does the hiding: .hoffy sets its own display. */}
+              <span className="hidden shrink-0 md:block">
+                <Hoffy size={170} motion="boot" id="hoffy-hero" label="Hoffy, the Hoffle mascot" />
+              </span>
+            </div>
             <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <p className="max-w-[62ch] text-lg leading-relaxed text-(--ink-2)">{copy.hero.body}</p>
               <div className="flex flex-wrap gap-3">
@@ -475,6 +483,25 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 <a href={COMMUNITY_URL} className={`${primaryButton} shrink-0`}>{copy.community.button}</a>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* ── Coming from Discord ──────────────────────────────────── */}
+        <section id="move" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-16 sm:px-6 sm:py-20">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr] lg:items-start">
+            <div>
+              <h2 className={sectionTitle}>{copy.moving.title}</h2>
+              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.moving.lead}</p>
+              <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-5 inline-block`}>{copy.moving.compare}</a>
+            </div>
+            <ol className="grid gap-4 sm:grid-cols-3">
+              {copy.moving.steps.map((step, i) => (
+                <li key={step} className="rounded-xl border border-(--line) bg-(--card) p-5">
+                  <span className="lp-display text-3xl text-(--violet)">{i + 1}</span>
+                  <p className="mt-2 text-[15px] leading-relaxed text-(--ink-2)">{step}</p>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
@@ -535,29 +562,8 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 </tbody>
               </table>
             </div>
+            <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-4 inline-block`}>{copy.compare.full}</a>
             <p className="mt-3 text-sm text-(--muted)">{copy.compare.source}</p>
-          </div>
-        </section>
-
-        {/* ── Will it last? ────────────────────────────────────────── */}
-        <section id="staying" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
-            <div>
-              <h2 className={sectionTitle}>{copy.staying.title}</h2>
-              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.staying.lead}</p>
-              <a href={STATUS_URL} className={`${secondaryButton} mt-6`}>
-                <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-[#3ba55d]" />
-                {copy.staying.status}
-              </a>
-            </div>
-            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
-              {copy.staying.points.map((point) => (
-                <div key={point.title}>
-                  <dt className="font-bold">{point.title}</dt>
-                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
-                </div>
-              ))}
-            </dl>
           </div>
         </section>
 
@@ -619,6 +625,46 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
           </div>
         </section>
 
+        {/* ── Will it last? ────────────────────────────────────────── */}
+        <section id="staying" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
+            <div>
+              <h2 className={sectionTitle}>{copy.staying.title}</h2>
+              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.staying.lead}</p>
+              <a href={STATUS_URL} className={`${secondaryButton} mt-6`}>
+                <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-[#3ba55d]" />
+                {copy.staying.status}
+              </a>
+            </div>
+            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
+              {copy.staying.points.map((point) => (
+                <div key={point.title}>
+                  <dt className="font-bold">{point.title}</dt>
+                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
+
+        {/* ── Voice (LiveKit) ──────────────────────────────────────── */}
+        <section id="voice" className="scroll-mt-4 border-b border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
+            <div>
+              <h2 className={sectionTitle}>{copy.voice.title}</h2>
+              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.voice.lead}</p>
+            </div>
+            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
+              {copy.voice.points.map((point) => (
+                <div key={point.title}>
+                  <dt className="font-bold">{point.title}</dt>
+                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
+
         {/* ── Self-host ────────────────────────────────────────────── */}
         <section id="self-host" className="scroll-mt-4 bg-(--slab) px-4 py-20 text-white sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
@@ -646,24 +692,6 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 <div className="text-white/45">{copy.selfHost.after}</div>
               </pre>
             </div>
-          </div>
-        </section>
-
-        {/* ── Voice (LiveKit) ──────────────────────────────────────── */}
-        <section id="voice" className="scroll-mt-4 border-b border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
-            <div>
-              <h2 className={sectionTitle}>{copy.voice.title}</h2>
-              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.voice.lead}</p>
-            </div>
-            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
-              {copy.voice.points.map((point) => (
-                <div key={point.title}>
-                  <dt className="font-bold">{point.title}</dt>
-                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
-                </div>
-              ))}
-            </dl>
           </div>
         </section>
 

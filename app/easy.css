@@ -1,0 +1,33 @@
+/* Sharing an invite (invite-dialog.tsx): WhatsApp, Telegram, the phone's share sheet, a QR code. */
+.invite-share-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.invite-share-row a, .invite-share-row button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.12));
+  background: none; color: var(--ink); font-size: 12.5px; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.invite-share-row a:hover, .invite-share-row button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.invite-share-row .wa { color: #25d366; border-color: color-mix(in srgb, #25d366 45%, transparent); }
+.invite-share-row .tg { color: #2aabee; border-color: color-mix(in srgb, #2aabee 45%, transparent); }
+.invite-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; }
+.invite-qr-code { width: 180px; height: 180px; padding: 10px; border-radius: 14px; background: #fff; }
+.invite-qr-code svg { width: 100%; height: 100%; display: block; }
+.invite-qr p { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* Guests (guest-banner.tsx): a bar until they save the account. */
+.guest-bar {
+  position: fixed; left: 50%; bottom: 18px; z-index: 900; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+  max-width: calc(100vw - 24px); padding: 10px 10px 10px 16px; border-radius: 14px; background: var(--surface, #1e1b2e); color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--lavender, #8a70ee) 35%, transparent); box-shadow: 0 16px 40px rgba(0,0,0,.4); font-size: 13px;
+}
+.guest-bar-save { padding: 7px 12px; border: 0; border-radius: 10px; background: var(--accent-strong, #6a4ddb); color: var(--on-accent, #fff); font-weight: 700; cursor: pointer; white-space: nowrap; }
+.guest-bar-later { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.guest-save-card { max-width: 420px; align-items: stretch; }
+.guest-save-card .hoffy { align-self: center; }
+.guest-save-card label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: -8px; }
+.username-card .guest-switch { display: block; width: 100%; margin-top: 4px; }
+@media (max-width: 640px) { .guest-bar { bottom: 76px; } }
+
+/* Hoffy stickers (app/lib/hoffy-stickers.ts) sit in the chat like stickers, not photos. */
+img.message-image[src*="/stickers/hoffy/"] {
+  width: 150px; height: 150px; max-width: 150px; max-height: 150px; object-fit: contain;
+  border: 0; border-radius: 0; background: none; box-shadow: none; padding: 0; cursor: default;
+}

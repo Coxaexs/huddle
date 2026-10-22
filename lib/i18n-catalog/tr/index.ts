@@ -23,6 +23,7 @@ import { safety } from "./safety";
 import { mascot } from "./mascot";
 import { channelPerms } from "./channelPerms";
 import { discordMove } from "./discordMove";
+import { easy } from "./easy";
 
 export const TR = {
   ...core,
@@ -49,4 +50,5 @@ export const TR = {
   ...mascot,
   ...channelPerms,
   ...discordMove,
+  ...easy,
 };

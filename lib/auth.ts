@@ -203,6 +203,7 @@ export function publicUser(user: User): PublicUser {
     email: user.email || null,
     emailPromptSkipped: Boolean(user.email_prompt_skipped),
     createdAt: user.created_at,
+    ...(user.signup_source === "guest" ? { isGuest: true } : {}),
   };
 }
 

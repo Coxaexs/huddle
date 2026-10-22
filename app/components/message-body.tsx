@@ -38,6 +38,8 @@ export function isImageUrl(value: string): boolean {
   const url = value.trim();
   // Custom stickers are served from our own uploads under a relative path.
   if (/^\/hangout\/api\/uploads\//i.test(url)) return true;
+  // The Hoffy sticker pack ships with the app (app/lib/hoffy-stickers.ts).
+  if (/^\/hangout\/stickers\/hoffy\/[a-z-]+\.svg$/i.test(url)) return true;
   if (!/^https?:\/\//i.test(url)) return false;
   // Klipy and friends serve GIFs and stickers from paths that end in the
   // extension (.gif, .webp, …).

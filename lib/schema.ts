@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -997,6 +997,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["vanity_code", "ALTER TABLE servers ADD COLUMN vanity_code TEXT"],
     // What every member gets before any role: the @everyone permissions.
     ["everyone_permissions", "ALTER TABLE servers ADD COLUMN everyone_permissions INTEGER NOT NULL DEFAULT 0"],
+    // Readable on the web at hoffle.online/s/... (lib/web-public.ts); off unless the owner turns it on.
+    ["web_public", "ALTER TABLE servers ADD COLUMN web_public INTEGER NOT NULL DEFAULT 0"],
   ] as const) {
     if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
   }

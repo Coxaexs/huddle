@@ -329,7 +329,7 @@ export function renderChatOverlays(v: ShellRenderState) {
 
       {/* Never on top of another dialog, and not in a new account's first day:
           holdEmailPrompt covers the device it signed up on, createdAt every other. */}
-      {!user.email && !user.emailPromptSkipped && !holdEmailPrompt && !accountIsNew(user.createdAt) && !directoryOpen && !dialogOptions && !tutorial && (
+      {!user.email && !user.isGuest && !user.emailPromptSkipped && !holdEmailPrompt && !accountIsNew(user.createdAt) && !directoryOpen && !dialogOptions && !tutorial && (
         <EmailPrompt onUser={setUser} />
       )}
 

@@ -46,6 +46,7 @@ export async function PATCH(
     raidMode?: boolean;
     verificationLevel?: number;
     vanityCode?: string | null;
+    webPublic?: boolean;
   };
 
   const server = await db
@@ -115,6 +116,17 @@ export async function PATCH(
       id,
     )
     .run();
+
+  if (body.webPublic !== undefined) {
+    await db.prepare("UPDATE servers SET web_public = ? WHERE id = ?").bind(body.webPublic ? 1 : 0, id).run();
+    await recordAudit(db, {
+      serverId: id,
+      actor: user,
+      action: "server.web_public",
+      targetName: server.name,
+      detail: body.webPublic ? "Readable on the web" : "No longer readable on the web",
+    });
+  }
 
   if (body.raidMode !== undefined && Boolean(server.raid_mode) !== Boolean(raidMode)) {
     await recordAudit(db, {

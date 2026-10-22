@@ -13,6 +13,8 @@ export function isRestrictedAccount(
   user: Pick<User, "id" | "is_admin" | "created_at" | "signup_source">,
   now: number = Date.now(),
 ): boolean {
+  // A guest (joined with just a name) stays restricted until the account is saved.
+  if (user.signup_source === "guest") return !isInstanceAdmin(user);
   if (user.signup_source !== "open") return false;
   if (isInstanceAdmin(user)) return false;
   const created = Date.parse(user.created_at);

@@ -37,7 +37,9 @@ export interface LandingCopy {
     cyberpunk: { intro: string; points: string[]; alt: string; toast: string };
     matrix: { intro: string; points: string[]; alt: string; toast: [string, string] };
   };
-  compare: { title: string; lead: string; caption: string; featureColumn: string; discord: string; rows: { label: string; discord: string; hoffle: string }[]; source: string };
+  compare: { title: string; lead: string; caption: string; featureColumn: string; discord: string; rows: { label: string; discord: string; hoffle: string }[]; source: string; full: string };
+  /** Coming from Discord: the one-link move. */
+  moving: { title: string; lead: string; steps: string[]; compare: string };
   staying: { title: string; lead: string; points: { title: string; body: string }[]; status: string };
   download: {
     title: string;
@@ -255,7 +257,7 @@ const en: LandingCopy = {
     rows: [
       { label: "Price", discord: "Free; Nitro is $9.99 a month (US)", hoffle: "Free, no paid tier" },
       { label: "Screen share", discord: "720p at 30 fps (1080p60 and up with Nitro)", hoffle: "Up to 1080p at 60 fps, with audio" },
-      { label: "File uploads", discord: "10 MB per file", hoffle: "8 MB images, 20 MB PDFs, 40 MB video clips" },
+      { label: "File uploads", discord: "20 MB per file", hoffle: "8 MB images, 20 MB PDFs, 40 MB video clips" },
       { label: "Mic quality", discord: "64 kbps default, up to 96 kbps", hoffle: "64 kbps Opus with packet redundancy" },
       { label: "Custom emoji in other servers", discord: "Nitro only", hoffle: "Free" },
       { label: "People in one voice room", discord: "Up to 99 (25 with video)", hoffle: "No set limit; the server's upload is the limit, about 4 Mbps per 1080p viewer" },
@@ -265,6 +267,17 @@ const en: LandingCopy = {
       { label: "Phone", discord: "iOS and Android apps", hoffle: "Phone browser, added to the home screen, with notifications" },
     ],
     source: "Discord figures are from discord.com/nitro and Discord's help centre, October 2026. Hoffle's upload limits are those of chat.hoffle.online.",
+    full: "The full comparison →",
+  },
+  moving: {
+    title: "Coming from Discord?",
+    lead: "Bring your server with you. Channels, categories, roles and who can see what come across in one go, no bot needed.",
+    steps: [
+      "In Discord, open Server Settings → Server Template and copy the link.",
+      "In Hoffle, press + → Create New and paste the link instead of a name.",
+      "Post the ready-made \"we're moving\" message Hoffle gives you, invite link included.",
+    ],
+    compare: "Discord vs Hoffle, row by row →",
   },
   staying: {
     title: "Is this going to stick around?",
@@ -597,7 +610,7 @@ const tr: LandingCopy = {
     rows: [
       { label: "Fiyat", discord: "Ücretsiz; Nitro aylık 9,99 $ (ABD)", hoffle: "Ücretsiz, ücretli plan yok" },
       { label: "Ekran paylaşımı", discord: "30 fps'de 720p (Nitro ile 1080p60 ve üstü)", hoffle: "Sesiyle birlikte 60 fps'de 1080p'ye kadar" },
-      { label: "Dosya yükleme", discord: "Dosya başına 10 MB", hoffle: "Resim 8 MB, PDF 20 MB, video klip 40 MB" },
+      { label: "Dosya yükleme", discord: "Dosya başına 20 MB", hoffle: "Resim 8 MB, PDF 20 MB, video klip 40 MB" },
       { label: "Mikrofon kalitesi", discord: "Varsayılan 64 kbps, en fazla 96 kbps", hoffle: "Yedek paketli 64 kbps Opus" },
       { label: "Başka sunucularda özel emoji", discord: "Yalnızca Nitro ile", hoffle: "Ücretsiz" },
       { label: "Bir sesli odada kaç kişi", discord: "En fazla 99 (görüntülü 25)", hoffle: "Sabit sınır yok; sınırı sunucunun yükleme hızı belirler, 1080p izleyen kişi başına yaklaşık 4 Mbps" },
@@ -607,6 +620,17 @@ const tr: LandingCopy = {
       { label: "Telefon", discord: "iOS ve Android uygulamaları", hoffle: "Ana ekrana eklenen telefon tarayıcısı, bildirimleriyle" },
     ],
     source: "Discord rakamları discord.com/nitro ve Discord yardım merkezinden, Ekim 2026. Hoffle'ın yükleme sınırları chat.hoffle.online içindir.",
+    full: "Tam karşılaştırma →",
+  },
+  moving: {
+    title: "Discord'dan mı geliyorsun?",
+    lead: "Sunucunu da getir. Kanallar, kategoriler, roller ve kimin neyi göreceği tek seferde gelir, bot gerekmez.",
+    steps: [
+      "Discord'da Sunucu Ayarları → Sunucu Şablonu'nu aç ve linki kopyala.",
+      "Hoffle'da + → Yeni Oluştur'a bas ve linki isim yerine yapıştır.",
+      "Hoffle'ın verdiği hazır \"taşınıyoruz\" mesajını, davet linkiyle birlikte at.",
+    ],
+    compare: "Discord mu Hoffle mı, satır satır →",
   },
   staying: {
     title: "Bu iş kalıcı mı?",

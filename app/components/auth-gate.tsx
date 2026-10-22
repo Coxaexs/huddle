@@ -74,6 +74,8 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   // Hoffle the account is made like any other and the server joined after.
   const [serverInvite, setServerInvite] = useState<string | null>(null);
   const [serverInviteName, setServerInviteName] = useState("");
+  // With a server invite on an open Hoffle, "Quick join" (just a name) comes first.
+  const [quick, setQuick] = useState(true);
   const [challengeToken, setChallengeToken] = useState("");
   const [challengeFailed, setChallengeFailed] = useState(false);
   const challengeBox = useRef<HTMLDivElement | null>(null);
@@ -181,7 +183,47 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         // Already gone.
       }
     };
-  }, [needsChallenge, turnstileSiteKey]);
+  }, [needsChallenge, turnstileSiteKey, quick]);
+
+  /** Quick join: a guest account with just a name, already in the invite's server. */
+  async function joinAsGuest(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const data = await apiFetch<{ user: PublicUser }>("/api/auth/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          displayName,
+          invite: serverInvite,
+          agreed,
+          ...(needsChallenge ? { turnstileToken: challengeToken } : {}),
+        }),
+      });
+      rememberTermsAccepted();
+      try {
+        const firstRun: FirstRun = { invite: true, joined: null };
+        window.localStorage.setItem(FIRST_RUN_KEY, JSON.stringify(firstRun));
+      } catch {
+        // Storage blocked: the tutorial is still in Settings.
+      }
+      // The invite stays in the address bar: the shell finds them already a
+      // member and opens the server.
+      onSignedIn(data.user);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : t("gate.failed"));
+      if (needsChallenge) {
+        setChallengeToken("");
+        try {
+          challengeWidget.current?.api.reset(challengeWidget.current.id);
+        } catch {
+          // The widget is gone.
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function switchMode(next: typeof mode) {
     setMode(next);
@@ -417,6 +459,62 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             }}
           >
             {t("gate.link.back")}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  if (serverInvite && open && quick && mode === "signup") {
+    return (
+      <div className="username-gate" role="dialog" aria-modal="true">
+        <form className="username-card" onSubmit={joinAsGuest}>
+          <Hoffy className="username-hoffy" size={76} motion="wave" id="hoffy-gate" />
+          <p className="eyebrow">{t("guest.tab")}</p>
+          <h2>{t("gate.title.joinServer", { server: serverInviteName })}</h2>
+          <p>{t("guest.lead")}</p>
+          <label htmlFor="huddle-guest-name">{t("guest.nameLabel")}</label>
+          <input
+            id="huddle-guest-name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            maxLength={32}
+            autoFocus
+            autoComplete="nickname"
+            placeholder={t("guest.namePlaceholder")}
+          />
+          {needsChallenge && (
+            <>
+              <div ref={challengeBox} className="auth-challenge" />
+              {challengeFailed && <p className="auth-error">{t("gate.robotFailed")}</p>}
+            </>
+          )}
+          <label className="auth-agree">
+            <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
+            <span>
+              {tRich(t, "gate.agree", {
+                terms: (
+                  <a href={`${SITE}/terms`} target="_blank" rel="noopener noreferrer">
+                    {t("gate.terms")}
+                  </a>
+                ),
+                privacy: (
+                  <a href={`${SITE}/privacy`} target="_blank" rel="noopener noreferrer">
+                    {t("gate.privacy")}
+                  </a>
+                ),
+              })}
+            </span>
+          </label>
+          {error && <p className="auth-error">{error}</p>}
+          <button type="submit" disabled={busy || !displayName.trim() || !agreed || (needsChallenge && !challengeToken)}>
+            {busy ? t("gate.busy") : t("guest.join", { server: serverInviteName })}
+          </button>
+          <button type="button" className="auth-switch guest-switch" onClick={() => { setQuick(false); setError(""); }}>
+            {t("guest.fullAccount")}
+          </button>
+          <button type="button" className="auth-switch guest-switch" onClick={() => { setQuick(false); switchMode("signin"); }}>
+            {t("guest.haveAccount")}
           </button>
         </form>
       </div>

@@ -35,4 +35,16 @@
     <loc>https://hoffle.online/docs/bots</loc>
     <lastmod>2026-09-27</lastmod>
   </url>
+  <url>
+    <loc>https://hoffle.online/vs-discord</loc>
+    <lastmod>2026-10-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://hoffle.online/vs-discord"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://hoffle.online/tr/vs-discord"/>
+  </url>
+  <url>
+    <loc>https://hoffle.online/tr/vs-discord</loc>
+    <lastmod>2026-10-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://hoffle.online/vs-discord"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://hoffle.online/tr/vs-discord"/>
+  </url>
 </urlset>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
 import { EmojiPicker } from "./emoji-picker";
+import { hoffyStickerItems } from "../lib/hoffy-stickers";
 
 interface MediaItem {
   id: string;
@@ -12,7 +13,7 @@ interface MediaItem {
   url: string;
 }
 
-type Tab = "gif" | "sticker" | "server" | "emoji";
+type Tab = "hoffy" | "gif" | "sticker" | "server" | "emoji";
 
 interface GifPickerProps {
   onPick: (url: string) => void;
@@ -27,7 +28,7 @@ interface GifPickerProps {
 }
 
 /**
- * The composer's media picker: Klipy GIFs, Klipy stickers, and a server's own
+ * The composer's media picker: Hoffy stickers, Klipy GIFs, Klipy stickers, and a server's own
  * uploaded stickers. Picking any item posts its URL as a message; the message
  * body renders image/GIF URLs as the picture itself.
  */
@@ -39,7 +40,8 @@ export function GifPicker({
   onInsert,
   onEmojiChange,
 }: GifPickerProps) {
-  const [tab, setTab] = useState<Tab>("gif");
+  // Hoffy first: the mascot pack is there for everyone, in every server.
+  const [tab, setTab] = useState<Tab>("hoffy");
   const [customEmojis, setCustomEmojis] = useState<
     Array<{ id: string; name: string; url: string }>
   >([]);
@@ -100,6 +102,12 @@ export function GifPicker({
   }
 
   useEffect(() => {
+    if (tab === "hoffy") {
+      setItems(hoffyStickerItems(query));
+      setHint("");
+      setLoading(false);
+      return;
+    }
     if (tab === "server" || tab === "emoji") return; // these load separately
     let cancelled = false;
     setLoading(true);
@@ -200,6 +208,13 @@ export function GifPicker({
       <div className="gif-picker-tabs">
         <button
           type="button"
+          className={tab === "hoffy" ? "active" : ""}
+          onClick={() => setTab("hoffy")}
+        >
+          Hoffy
+        </button>
+        <button
+          type="button"
           className={tab === "gif" ? "active" : ""}
           onClick={() => setTab("gif")}
         >
@@ -236,12 +251,12 @@ export function GifPicker({
         </button>
       </div>
 
-      {(tab === "gif" || tab === "sticker") && (
+      {(tab === "hoffy" || tab === "gif" || tab === "sticker") && (
         <div className="gif-picker-head">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={tab === "gif" ? "Search GIFs" : "Search stickers"}
+            placeholder={tab === "gif" ? "Search GIFs" : tab === "hoffy" ? "Search Hoffy" : "Search stickers"}
             aria-label="Search"
             autoFocus
           />
