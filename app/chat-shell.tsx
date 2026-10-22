@@ -12,6 +12,7 @@ import { useShellMessaging } from "./hooks/chat-shell/use-shell-messaging";
 import { useShellComposer } from "./hooks/chat-shell/use-shell-composer";
 import { renderChatShell } from "./components/chat/shell/chat-shell-view";
 import { TermsConsent } from "./components/terms-consent";
+import { Hoffy } from "./components/hoffy";
 
 // The app's main screen. Its state and handlers live in a chain of hooks
 // (app/hooks/chat-shell/, called in this order every render) and its markup
@@ -33,9 +34,10 @@ export function ChatShell() {
   if (!ready) {
     return (
       <main className="app-shell booting">
-        <div className="boot-card">
-          <p>Opening Hoffle…</p>
-          <p style={{ fontSize: 13, opacity: 0.7, marginTop: 8, maxWidth: 360 }}>
+        <div className="boot-card hoffy-boot-card">
+          <Hoffy motion="boot" size={132} id="hoffy-boot" />
+          <p className="hoffy-boot-text">Opening Hoffle…</p>
+          <p className="hoffy-boot-about">
             An open-source, self-hostable chat app: voice channels with screen sharing, servers, DMs and friends, on web and desktop. AGPL-3.0, no tracking.
           </p>
         </div>

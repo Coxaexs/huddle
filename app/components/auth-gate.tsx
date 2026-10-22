@@ -19,6 +19,7 @@ import type { PublicUser } from "@/lib/users";
 import { FIRST_RUN_KEY, type FirstRun } from "./welcome-tutorial";
 import { SITE } from "./site-chrome";
 import { rememberTermsAccepted } from "./terms-consent";
+import { Hoffy } from "./hoffy";
 
 interface AuthGateProps {
   /** True when nobody has signed up yet: the first account skips the invite. */
@@ -425,7 +426,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   return (
     <div className="username-gate" role="dialog" aria-modal="true">
       <form className="username-card" onSubmit={submit}>
-        <span className="username-mark">h</span>
+        <Hoffy className="username-hoffy" size={76} motion="wave" id="hoffy-gate" />
         <p className="eyebrow">
           {bootstrap ? t("gate.eyebrow.setup") : mode === "signup" ? t("gate.eyebrow.welcome") : t("gate.eyebrow.back")}
         </p>

@@ -20,6 +20,7 @@ import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { ChannelKindInfo } from "@/lib/channel-kinds";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
 import { MessageRow } from "./message-row";
+import { Hoffy } from "../../hoffy";
 
 export function MessageList({
   messagesScrollRef,
@@ -362,6 +363,7 @@ export function MessageList({
                   </div>
                 )}
                 {!hasOlder && (inDmHome || activeChannelId) && <div className="channel-intro">
+                  <Hoffy className="channel-intro-hoffy" size={64} motion="wave" id="hoffy-intro" />
                   <div className="cozy-intro-pill">
                     <span className="cozy-intro-icon">
                       {inDmHome ? (

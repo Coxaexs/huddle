@@ -1,0 +1,70 @@
+/* Hoffy, the mascot (app/components/hoffy.tsx). Parts rotate and scale
+   about their own boxes: the arms about the shoulder (top centre of the arm),
+   the eyes about their centre, the syrup from its top edge. */
+.hoffy { display: inline-block; flex: none; line-height: 0; vertical-align: middle; }
+.hoffy svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.hoffy .hb-arm-l, .hoffy .hb-arm-r, .hoffy .hb-eyes, .hoffy .hb-syrup, .hoffy .hb-hat { transform-box: fill-box; }
+.hoffy .hb-arm-l, .hoffy .hb-arm-r, .hoffy .hb-syrup { transform-origin: 50% 0; }
+.hoffy .hb-eyes { transform-origin: 50% 50%; }
+
+.hoffy-idle svg, .hoffy-wave svg { animation: hoffy-bob 3.2s ease-in-out infinite; }
+.hoffy-idle .hb-eyes, .hoffy-wave .hb-eyes { animation: hoffy-blink 4.6s infinite; }
+.hoffy-wave .hb-arm-r { animation: hoffy-wave 2.6s ease-in-out infinite; }
+
+/* The opening: drop in and squash, the syrup pours, the butter lands, then wave. */
+.hoffy-boot { animation: hoffy-drop .5s cubic-bezier(.55, 0, .8, .2) both, hoffy-land .55s .5s ease-out both; transform-origin: 50% 92%; }
+.hoffy-boot .hb-syrup { animation: hoffy-pour .6s .62s cubic-bezier(.2, .8, .3, 1) both; }
+.hoffy-boot .hb-hat { animation: hoffy-hat .32s 1.08s cubic-bezier(.55, 0, .8, .2) both; }
+.hoffy-boot svg { animation: hoffy-bob 3.2s 1.6s ease-in-out infinite; }
+.hoffy-boot .hb-eyes { animation: hoffy-blink 4.6s 1.5s infinite; }
+.hoffy-boot .hb-arm-r { animation: hoffy-wave 2.6s 1.45s ease-in-out infinite; }
+
+@keyframes hoffy-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3%; } }
+@keyframes hoffy-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes hoffy-wave {
+  0%, 46%, 100% { transform: rotate(-145deg); }
+  10%, 30% { transform: rotate(-116deg); }
+  20%, 40% { transform: rotate(-152deg); }
+}
+@keyframes hoffy-drop { from { translate: 0 -70vh; } to { translate: 0 0; } }
+@keyframes hoffy-land { 0% { scale: 1.16 .8; } 35% { scale: .95 1.07; } 70% { scale: 1.02 .98; } 100% { scale: 1 1; } }
+@keyframes hoffy-pour { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* Hidden until it starts to fall, so it doesn't hang over Hoffy's head during the delay. */
+@keyframes hoffy-hat { 0% { transform: translateY(-300px); opacity: 0; } 1% { opacity: 1; } 100% { transform: translateY(0); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hoffy, .hoffy * { animation: none !important; }
+}
+
+/* The opening screen. The chat layout's 3-column rule is !important, which
+   used to squeeze this card into the 60px server rail. */
+.app-shell.booting:not(.has-members):not(.has-thread) { grid-template-columns: 1fr !important; }
+.boot-card.hoffy-boot-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+.hoffy-boot-card .hoffy-boot-text { margin: 4px 0 0; font-weight: 700; color: var(--ink, inherit); animation: hoffy-fade .4s .9s both; }
+.hoffy-boot-card .hoffy-boot-about { font-size: 13px; opacity: .7; max-width: 360px; margin: 0; animation: hoffy-fade .4s 1.1s both; }
+@keyframes hoffy-fade { from { opacity: 0; translate: 0 6px; } to { translate: 0 0; } }
+
+/* Sign-in card: Hoffy sits where the h mark was. */
+.username-card .username-hoffy { display: block; margin: -6px 0 10px -8px; }
+
+/* Start of a channel or conversation. */
+.channel-intro .channel-intro-hoffy { display: block; margin: 0 0 4px -6px; }
+
+/* Friends list, nobody here. */
+.friends-hoffy { display: block; margin: 0 auto 8px; }
+
+/* 404. */
+.hoffy-404 {
+  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 32px 20px; text-align: center; color: #fff;
+  background: radial-gradient(120% 80% at 30% 20%, #3a2a8f 0%, #1d1550 45%, #0b081f 100%);
+  font-family: Inter, system-ui, sans-serif;
+}
+.hoffy-404 .hoffy-404-code { margin: 0; font: 800 15px/1 ui-monospace, monospace; letter-spacing: .3em; color: #ffae42; }
+.hoffy-404 h1 { margin: 6px 0 0; font-size: clamp(26px, 5vw, 40px); line-height: 1.1; letter-spacing: -.02em; }
+.hoffy-404 p { margin: 4px 0 0; max-width: 420px; color: rgba(255, 255, 255, .78); font-size: 16px; line-height: 1.45; }
+.hoffy-404 .hoffy-404-home {
+  margin-top: 18px; padding: 12px 22px; border-radius: 999px; background: #fff; color: #1a1147;
+  font-weight: 800; text-decoration: none;
+}
+.hoffy-404 .hoffy-404-home:hover { background: #ffae42; }

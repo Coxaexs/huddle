@@ -24,6 +24,7 @@ import { admin } from "./admin";
 import { landing } from "./landing";
 import { commands } from "./commands";
 import { safety } from "./safety";
+import { mascot } from "./mascot";
 
 export const EN_APP = {
   ...auth,
@@ -46,4 +47,5 @@ export const EN_APP = {
   ...landing,
   ...commands,
   ...safety,
+  ...mascot,
 } as const;

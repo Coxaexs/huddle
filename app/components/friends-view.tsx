@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
+import { Hoffy } from "./hoffy";
 import type { FriendUser, FriendsSummary } from "@/lib/friends";
 import { useI18n } from "@/app/lib/i18n-context";
 
@@ -629,7 +630,14 @@ export function FriendsView({
 
             {displayedFriends.length === 0 ? (
               <div className="py-16 text-center text-[var(--muted)]">
-                <Users size={36} className="mx-auto mb-3 opacity-30" />
+                <Hoffy
+                  className="friends-hoffy"
+                  size={110}
+                  id="hoffy-friends"
+                  face={tab === "online" ? "sleepy" : data.friends.length === 0 ? "happy" : "surprised"}
+                  pose={tab === "online" ? "rest" : data.friends.length === 0 ? "wave" : "shrug"}
+                  motion={tab === "online" || data.friends.length > 0 ? "idle" : "wave"}
+                />
                 <p className="text-sm font-medium">
                   {tab === "online"
                     ? t("friends.emptyOnline")

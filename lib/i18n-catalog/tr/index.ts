@@ -20,6 +20,7 @@ import { admin } from "./admin";
 import { landing } from "./landing";
 import { commands } from "./commands";
 import { safety } from "./safety";
+import { mascot } from "./mascot";
 
 export const TR = {
   ...core,
@@ -43,4 +44,5 @@ export const TR = {
   ...landing,
   ...commands,
   ...safety,
+  ...mascot,
 };
