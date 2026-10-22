@@ -8,6 +8,7 @@ import {
   isEmptyQuery,
   parseSearchQuery,
 } from "@/lib/search-query";
+import { hiddenChannelIds } from "@/lib/channel-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,15 @@ export async function GET(request: Request) {
         DEFAULT_SERVER_ID,
         user.id,
       );
+    }
+  }
+
+  // Channels this member's channel permissions hide are not searched.
+  if (!channelId && !user.is_admin) {
+    const hidden = [...(await hiddenChannelIds(db, user.id))];
+    if (hidden.length) {
+      filters.clauses.push(`(m.channel_id IS NULL OR m.channel_id NOT IN (${hidden.map(() => "?").join(",")}))`);
+      filters.params.push(...hidden);
     }
   }
 

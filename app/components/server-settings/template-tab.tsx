@@ -5,6 +5,7 @@ import { Download, Upload, Copy, Sparkles } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
 import { apiFetch } from "../../lib/client";
 import type { Tab } from "./types";
+import { useI18n } from "../../lib/i18n-context";
 
 export function ServerTemplateTab({
   tab,
@@ -17,6 +18,8 @@ export function ServerTemplateTab({
   onServerUpdated: () => void;
   setNotice: (msg: string) => void;
 }) {
+  const { t } = useI18n();
+  const [discordLink, setDiscordLink] = useState("");
   const [discordBotToken, setDiscordBotToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
   const [jsonInput, setJsonInput] = useState("");
@@ -45,14 +48,17 @@ export function ServerTemplateTab({
     setImporting(true);
     try {
       const res = await apiFetch<{
-        imported: { categories: number; channels: number; roles: number };
+        imported: { categories: number; channels: number; roles: number; privateChannels?: string[] };
       }>(`/api/servers/${server.id}/import`, {
         method: "POST",
         body: JSON.stringify(body),
       });
       onServerUpdated();
+      const privateNote = res.imported.privateChannels?.length
+        ? ` ${t("discordMove.private", { channels: res.imported.privateChannels.map((name) => `#${name}`).join(", ") })}`
+        : "";
       setNotice(
-        `Imported ${res.imported.categories} categories, ${res.imported.channels} channels, and ${res.imported.roles} roles!`,
+        `Imported ${res.imported.categories} categories, ${res.imported.channels} channels, and ${res.imported.roles} roles!${privateNote}`,
       );
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Import failed.");
@@ -99,7 +105,30 @@ export function ServerTemplateTab({
         </div>
       </div>
 
-      {/* Discord Server Import */}
+      {/* Discord: a template link, no bot needed */}
+      <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Download size={16} className="text-emerald-400" /> {t("discordMove.fromTemplate")}
+        </h3>
+        <p className="text-xs opacity-75">{t("discordMove.fromTemplateHint")}</p>
+        <input
+          type="url"
+          className="discord-input text-xs w-full"
+          placeholder={t("discordMove.templatePlaceholder")}
+          value={discordLink}
+          onChange={(e) => setDiscordLink(e.target.value)}
+        />
+        <button
+          type="button"
+          className="discord-btn primary-indigo text-xs"
+          disabled={importing || !discordLink.trim()}
+          onClick={() => void runImport({ mode: "discord-template", link: discordLink.trim() })}
+        >
+          {importing ? t("discordMove.importing") : t("discordMove.import")}
+        </button>
+      </div>
+
+      {/* Discord Server Import (with a bot token) */}
       <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
         <h3 className="text-sm font-semibold flex items-center gap-2">
           <Download size={16} className="text-emerald-400" /> Import from Discord Server

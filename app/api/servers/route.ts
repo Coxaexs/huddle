@@ -7,9 +7,11 @@ import {
   SOCIAL_RATE_LIMITS,
 } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
-import { addServerMember, listServers } from "@/lib/servers";
+import { addServerMember, deleteServerData, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 import { isRestrictedAccount } from "@/lib/trust";
+import { fetchDiscordTemplate } from "@/lib/discord-import";
+import { applyServerLayout } from "@/lib/server-layout";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +47,15 @@ export async function POST(request: Request) {
     color?: string;
     isPublic?: boolean;
     description?: string;
+    /** A Discord server template link: the new server gets its channels, roles and permissions. */
+    discordTemplate?: string;
   };
-  const name = body.name?.trim().slice(0, 50);
+  // Read the template before making anything, so a bad link leaves no empty server behind.
+  const fromDiscord = body.discordTemplate ? await fetchDiscordTemplate(body.discordTemplate) : null;
+  if (fromDiscord && !fromDiscord.ok) {
+    return Response.json({ error: fromDiscord.error }, { status: fromDiscord.status });
+  }
+  const name = (body.name?.trim() || (fromDiscord?.ok ? fromDiscord.name : "")).slice(0, 50);
   if (!name) {
     return Response.json({ error: "Give the server a name." }, { status: 400 });
   }
@@ -89,7 +98,12 @@ export async function POST(request: Request) {
     .first<{ count: number }>();
 
   const isPublic = body.isPublic ? 1 : 0;
-  const description = typeof body.description === "string" ? body.description.trim().slice(0, 240) : "";
+  const description =
+    typeof body.description === "string"
+      ? body.description.trim().slice(0, 240)
+      : fromDiscord?.ok
+        ? fromDiscord.description
+        : "";
   await db
     .prepare(
       "INSERT INTO servers (id, name, icon, color, created_by, created_at, position, is_public, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -117,8 +131,32 @@ export async function POST(request: Request) {
     targetName: name,
   });
 
+  // From Discord: its layout instead of the two starter channels (unless it had none).
+  const layout = fromDiscord?.ok ? fromDiscord.layout : null;
+  const hasChannels = Boolean(layout && ((layout.channels || []).length || (layout.categories || []).some((c) => c.channels.length)));
+  let imported: Awaited<ReturnType<typeof applyServerLayout>> | null = null;
+  if (layout) {
+    try {
+      imported = await applyServerLayout(db, id, layout, { setEveryone: true });
+    } catch (error) {
+      // Half a copy is worse than none: take the new server away again.
+      await deleteServerData(db, id).catch(() => undefined);
+      console.error("discord import failed", error);
+      return Response.json({ error: "Couldn't copy that Discord server. Try again, or start from an empty one." }, { status: 500 });
+    }
+  }
+  if (imported) {
+    await recordAudit(db, {
+      serverId: id,
+      actor: user,
+      action: "server.import",
+      targetName: `discord:${fromDiscord?.ok ? fromDiscord.name : ""}`,
+      detail: `${imported.categories} categories, ${imported.channels} channels, ${imported.roles} roles`,
+    });
+  }
+
   // A brand new server is useless without somewhere to talk.
-  await db.batch([
+  if (!hasChannels) await db.batch([
     db
       .prepare(
         "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, 'general', 'text', '', 0, ?)",
@@ -133,7 +171,11 @@ export async function POST(request: Request) {
 
   const servers = await listServers(db, user.id);
   return Response.json(
-    { server: servers.find((server) => server.id === id), servers },
+    {
+      server: servers.find((server) => server.id === id),
+      servers,
+      ...(imported && fromDiscord?.ok ? { imported: { ...imported, skipped: fromDiscord.skipped } } : {}),
+    },
     { status: 201 },
   );
 }

@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     action?: string;
     voiceChannelId?: string;
   };
-  const access = await channelAccess(db, String(body.channelId || ""), user);
+  const access = await channelAccess(db, String(body.channelId || ""), user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
   if (access.channel.isDm) {
     return Response.json({ error: "Recaps are for servers." }, { status: 400 });

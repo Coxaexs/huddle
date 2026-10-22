@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -289,6 +289,20 @@ async function migrate(db: D1Database): Promise<void> {
       )`),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS member_roles_user_idx ON member_roles(server_id, user_id)",
+    ),
+    // Per-channel permissions (lib/channel-permissions.ts): what @everyone
+    // (target_id ''), a role or one member may or may not do in a channel.
+    db.prepare(`CREATE TABLE IF NOT EXISTS channel_overwrites (
+        channel_id TEXT NOT NULL,
+        server_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL DEFAULT '',
+        allow INTEGER NOT NULL DEFAULT 0,
+        deny INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (channel_id, target_type, target_id)
+      )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS channel_overwrites_server_idx ON channel_overwrites(server_id)",
     ),
     db.prepare(`CREATE TABLE IF NOT EXISTS bans (
         server_id TEXT NOT NULL,

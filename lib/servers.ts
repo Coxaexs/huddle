@@ -8,6 +8,15 @@
 import { DM_SERVER_ID } from "./schema";
 import { channelKindInfo, isChannelKind, type ChannelKind } from "./channel-kinds";
 import { clampVoiceBitrate } from "./voice-quality";
+import {
+  applyOverwrites,
+  isPrivateChannel,
+  loadServerOverwrites,
+  mayView,
+  memberAccessMany,
+  type ChannelOverwrite,
+  type MemberAccess,
+} from "./channel-permissions";
 
 export interface ChannelRow {
   id: string;
@@ -82,6 +91,13 @@ export interface PublicChannel {
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
+  /** Hidden from @everyone: only some roles or people can see it. */
+  private?: boolean;
+  /**
+   * This member's permissions in the channel (lib/channel-permissions.ts),
+   * sent only when the channel has overwrites; otherwise CHANNEL_DEFAULTS hold.
+   */
+  access?: number;
 }
 
 export interface PublicCategory {
@@ -278,10 +294,30 @@ export async function listServers(
     ),
   ]);
 
+  // Per-channel permissions: a member's list leaves out what they may not see,
+  // and says what the rest let them do (only where a channel has overwrites).
+  // Bots (no userId) see every channel, as they always did.
+  const overwrites = userId
+    ? await loadServerOverwrites(db, ((servers.results || []) as unknown as ServerRow[]).map((s) => s.id))
+    : new Map<string, ChannelOverwrite[]>();
+  const accessByServer = new Map<string, MemberAccess>();
   const channelsByServer = new Map<string, PublicChannel[]>();
   for (const row of (channels.results || []) as unknown as ChannelRow[]) {
+    const channel = publicChannel(row);
+    const gate = overwrites.get(row.id);
+    if (userId && gate?.length) {
+      let access = accessByServer.get(row.server_id);
+      if (!access) {
+        access = (await memberAccessMany(db, row.server_id, [userId])).get(userId)!;
+        accessByServer.set(row.server_id, access);
+      }
+      const permissions = applyOverwrites(access, gate, userId);
+      if (!mayView(permissions)) continue;
+      channel.access = permissions;
+      if (isPrivateChannel(gate)) channel.private = true;
+    }
     const list = channelsByServer.get(row.server_id) || [];
-    list.push(publicChannel(row));
+    list.push(channel);
     channelsByServer.set(row.server_id, list);
   }
 
@@ -365,6 +401,7 @@ export async function deleteServerData(db: D1Database, id: string): Promise<void
   const statements = [
     db.prepare("DELETE FROM channels WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM categories WHERE server_id = ?").bind(id),
+    db.prepare("DELETE FROM channel_overwrites WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM roles WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM member_roles WHERE server_id = ?").bind(id),
     db.prepare("DELETE FROM server_members WHERE server_id = ?").bind(id),

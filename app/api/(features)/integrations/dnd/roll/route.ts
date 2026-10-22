@@ -506,7 +506,7 @@ async function postVerifiedRoll(
   channelId: string,
   card: { text: string; payload: Record<string, unknown>; command: string; author?: string; avatar?: string; color?: string },
 ): Promise<Response | ReturnType<typeof publicMessage>> {
-  const access = await channelAccess(db, channelId, user);
+  const access = await channelAccess(db, channelId, user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
   if (!access.channel.isDm && !channelKindInfo(access.channel.kind).text) {
     return Response.json({ error: "Roll in a text channel." }, { status: 400 });

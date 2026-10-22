@@ -128,6 +128,7 @@ export async function DELETE(
 
   await db.batch([
     db.prepare("DELETE FROM member_roles WHERE role_id = ?").bind(id),
+    db.prepare("DELETE FROM channel_overwrites WHERE target_type = 'role' AND target_id = ?").bind(id),
     db.prepare("DELETE FROM roles WHERE id = ?").bind(id),
   ]);
 

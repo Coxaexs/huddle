@@ -13,7 +13,16 @@ function fakeDb() {
     "a-voice": { kind: "voice", server_id: "server-a" },
     "b-voice": { kind: "voice", server_id: "server-b" },
     "dm-1": { kind: "dm", server_id: "dm" },
+    "a-secret": { kind: "text", server_id: "server-a" },
+    "a-secret-voice": { kind: "voice", server_id: "server-a" },
   };
+  // Both secret channels: hidden from @everyone, open to the GM role, which bob holds.
+  const VIEW = 1 << 30;
+  const overwrites = ["a-secret", "a-secret-voice"].flatMap((channel_id) => [
+    { channel_id, target_type: "everyone", target_id: "", allow: 0, deny: VIEW },
+    { channel_id, target_type: "role", target_id: "r-gm", allow: VIEW, deny: 0 },
+  ]);
+  const memberRoles = [{ user_id: "bob", role_id: "r-gm", permissions: 0 }];
   const members = [
     { user_id: "alice", server_id: "server-a" },
     { user_id: "bob", server_id: "server-a" },
@@ -32,6 +41,7 @@ function fakeDb() {
           if (sql.includes("FROM channels")) return channels[String(args[0])] ?? null;
           if (sql.includes("FROM bans")) return null;
           if (sql.includes("FROM friendships")) return null;
+          if (sql.includes("FROM servers")) return { created_by: "owner", everyone_permissions: 0 };
           return null;
         },
         async all() {
@@ -40,6 +50,12 @@ function fakeDb() {
           }
           if (sql.includes("FROM dm_members")) {
             return { results: dmMembers.filter((row) => row.channel_id === args[0]) };
+          }
+          if (sql.includes("FROM channel_overwrites")) {
+            return { results: overwrites.filter((row) => args.includes(row.channel_id)) };
+          }
+          if (sql.includes("FROM member_roles")) {
+            return { results: memberRoles.filter((row) => args.includes(row.user_id)) };
           }
           return { results: [] };
         },
@@ -140,4 +156,28 @@ it("ignores player commands from someone outside the room", async () => {
   ]);
   await act("bob", { t: "player", channelId: "a-voice", action: { name: "stop" } });
   expect(sent("alice").some((event) => event.t === "player")).toBe(false);
+});
+
+it("keeps a private channel's messages to the people who can see it", async () => {
+  const { hub, sent } = hubWith([
+    { connectionId: "c-alice", userId: "alice" },
+    { connectionId: "c-bob", userId: "bob" },
+  ]);
+  await hub.fetch(new Request("https://huddle.hub/broadcast", {
+    method: "POST",
+    body: JSON.stringify({ channelId: "a-secret", message: { id: "m2", text: "the twist" } }),
+  }));
+  expect(sent("bob").some((event) => event.t === "message")).toBe(true);
+  expect(sent("alice").some((event) => event.t === "message")).toBe(false);
+});
+
+it("refuses a seat in a private voice channel to members who cannot see it", async () => {
+  const { act, byId } = hubWith([
+    { connectionId: "c-alice", userId: "alice" },
+    { connectionId: "c-bob", userId: "bob" },
+  ]);
+  await act("alice", { t: "voice-join", channelId: "a-secret-voice" });
+  expect(byId.alice.attachment.voiceChannelId).toBe(null);
+  await act("bob", { t: "voice-join", channelId: "a-secret-voice" });
+  expect(byId.bob.attachment.voiceChannelId).toBe("a-secret-voice");
 });

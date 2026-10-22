@@ -21,6 +21,8 @@ import { landing } from "./landing";
 import { commands } from "./commands";
 import { safety } from "./safety";
 import { mascot } from "./mascot";
+import { channelPerms } from "./channelPerms";
+import { discordMove } from "./discordMove";
 
 export const TR = {
   ...core,
@@ -45,4 +47,6 @@ export const TR = {
   ...commands,
   ...safety,
   ...mascot,
+  ...channelPerms,
+  ...discordMove,
 };

@@ -9,6 +9,7 @@ import {
 } from "@/lib/scheduled";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     timezoneOffset?: number;
   };
   // Checked now for a quick answer, and again when it is posted.
-  const access = await channelAccess(db, String(body.channelId || ""), user);
+  const access = await channelAccess(db, String(body.channelId || ""), user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
 
   const offset = Number(body.timezoneOffset);

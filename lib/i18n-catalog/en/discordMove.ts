@@ -1,0 +1,20 @@
+/** Moving a server over from Discord: the Create Server hint and the "you moved" dialog. */
+export const discordMove = {
+  "discordMove.createHint": "Enter a name for your new server, or paste a Discord server template link (discord.new/…) to copy a Discord server's channels, roles and permissions.",
+  "discordMove.createPlaceholder": "e.g. My Cool Server, or discord.new/…",
+  "discordMove.title": "{server} moved in",
+  "discordMove.summary": "Copied {categories} categories, {channels} channels and {roles} roles from Discord.",
+  "discordMove.private": "Private on Discord, private here too: {channels}",
+  "discordMove.skipped": "{count} channels of a kind Hoffle doesn't have yet were left out.",
+  "discordMove.tellThem": "Now tell your Discord",
+  "discordMove.tellThemHint": "Paste this in the Discord server's announcements. The link works for up to 1000 people.",
+  "discordMove.message": "We're moving to Hoffle! 🧇\nSame channels and roles, and it's free with no ads.\nJoin here: {link}\nOpen it, make an account, and you're in. Nothing to install.",
+  "discordMove.copy": "Copy message",
+  "discordMove.done": "Done",
+  "discordMove.inviteFailed": "Couldn't make an invite link. Make one from the server menu.",
+  "discordMove.fromTemplate": "Copy a Discord server",
+  "discordMove.fromTemplateHint": "In Discord: Server Settings → Server Template → copy the link, then paste it here. No bot needed.",
+  "discordMove.templatePlaceholder": "https://discord.new/…",
+  "discordMove.import": "Copy channels and roles",
+  "discordMove.importing": "Copying…",
+};

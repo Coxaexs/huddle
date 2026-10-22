@@ -587,7 +587,9 @@ export function Composer({
                   <div className="dm-blocked-banner">
                     <Radio size={16} className="text-violet-400 shrink-0" />
                     <span>
-                      {t("composer.announcementOnly")}
+                      {activeChannelInfo.moderatorOnlyPosting
+                        ? t("composer.announcementOnly")
+                        : t("composer.noSendPermission")}
                     </span>
                   </div>
                 ) : (

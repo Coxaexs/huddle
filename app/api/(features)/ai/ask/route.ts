@@ -23,7 +23,8 @@ import { enforceAutomod } from "@/lib/automod";
 import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
 import { channelAudience, isDmMember } from "@/lib/dms";
 import { publishMessage } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { can, hasPermission, Permission } from "@/lib/permissions";
+import { channelOverwritePermissions, mayView } from "@/lib/channel-permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
@@ -131,6 +132,13 @@ export async function POST(request: Request): Promise<Response> {
   } else {
     if (!(await canSeeServer(db, channel.server_id, user))) {
       return Response.json({ error: "You are not a member of this server." }, { status: 403 });
+    }
+    const here = await channelOverwritePermissions(db, user.id, channelId, channel.server_id);
+    if (here !== null && !mayView(here)) {
+      return Response.json({ error: "That channel is gone." }, { status: 404 });
+    }
+    if (here !== null && !hasPermission(here, Permission.SEND_MESSAGES)) {
+      return Response.json({ error: "You can't send messages in this channel." }, { status: 403 });
     }
     const timedOut = await blockIfTimedOut(db, channelId, user.id);
     if (timedOut) return timedOut;

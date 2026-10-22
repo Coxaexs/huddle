@@ -13,6 +13,7 @@ import { sendPushNotifications } from "./push";
 import { noteToSelf } from "./reminders";
 import { DM_SERVER_ID } from "./schema";
 import { GUESTBOOK_SERVER_ID } from "./guestbook";
+import { Permission } from "./permissions";
 
 export type DigestMode = "off" | "notes" | "email";
 export const DIGEST_MODES: DigestMode[] = ["off", "notes", "email"];
@@ -103,6 +104,8 @@ export async function serverWeek(
            JOIN channels c ON c.id = m.channel_id
            JOIN reactions r ON r.message_id = m.id
           WHERE c.server_id = ? AND m.created_at >= ? AND m.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM channel_overwrites o
+                             WHERE o.channel_id = c.id AND (o.deny & ${Permission.VIEW_CHANNEL}) != 0)
           GROUP BY m.id
           ORDER BY reactions DESC, m.created_at DESC
           LIMIT ?`,

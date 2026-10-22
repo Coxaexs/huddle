@@ -161,6 +161,7 @@ export async function DELETE(
   await db.batch([
     db.prepare("DELETE FROM messages WHERE channel_id = ?").bind(id),
     db.prepare("DELETE FROM channels WHERE id = ?").bind(id),
+    db.prepare("DELETE FROM channel_overwrites WHERE channel_id = ?").bind(id),
   ]);
 
   await recordAudit(db, {

@@ -3,10 +3,19 @@
  *
  * One rule for every route that takes a channel id: a DM (or group DM) is open
  * to its participants only, and a server channel to that server's members who
- * are not banned from it. Global admins can see everything, as they always
- * could. An unknown channel answers 404 rather than 403 so ids cannot be
- * probed for existence.
+ * are not banned from it and whose channel permissions let them see it. Global
+ * admins can see everything, as they always could. An unknown channel, and one
+ * the viewer may not see, answer 404 rather than 403 so ids cannot be probed
+ * for existence.
  */
+import {
+  applyOverwrites,
+  CHANNEL_DEFAULTS,
+  loadOverwrites,
+  mayView,
+  memberAccessMany,
+} from "./channel-permissions";
+import { hasPermission, type PermissionFlag } from "./permissions";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 
 export interface AccessibleChannel {
@@ -18,7 +27,15 @@ export interface AccessibleChannel {
 }
 
 export type ChannelAccess =
-  | { ok: true; channel: AccessibleChannel }
+  | {
+      ok: true;
+      channel: AccessibleChannel;
+      /**
+       * What this channel lets the viewer do: CHANNEL_DEFAULTS when it has no
+       * overwrites. Server-wide rights (moderation and the like) come from can().
+       */
+      permissions: number;
+    }
   | { ok: false; response: Response };
 
 interface Viewer {
@@ -50,11 +67,15 @@ export async function canSeeServer(
   return Boolean(member) && !banned;
 }
 
-/** Looks up a channel and checks the viewer may use it. */
+/**
+ * Looks up a channel and checks the viewer may use it. `need` adds channel
+ * permissions the action requires (sending, connecting...), refused with 403.
+ */
 export async function channelAccess(
   db: D1Database,
   channelId: string,
   user: Viewer,
+  options: { need?: PermissionFlag[] } = {},
 ): Promise<ChannelAccess> {
   const row = await db
     .prepare("SELECT id, server_id, kind, name FROM channels WHERE id = ?")
@@ -75,12 +96,26 @@ export async function channelAccess(
       .prepare("SELECT 1 FROM dm_members WHERE channel_id = ? AND user_id = ?")
       .bind(channelId, user.id)
       .first();
-    return member ? { ok: true, channel } : denied(403, "You are not in this conversation.");
+    return member
+      ? { ok: true, channel, permissions: CHANNEL_DEFAULTS }
+      : denied(403, "You are not in this conversation.");
   }
   if (!(await canSeeServer(db, channel.serverId || DEFAULT_SERVER_ID, user))) {
     return denied(403, "You are not a member of this server.");
   }
-  return { ok: true, channel };
+  const overwrites = (await loadOverwrites(db, [channel.id])).get(channel.id);
+  let permissions = CHANNEL_DEFAULTS;
+  if (overwrites?.length) {
+    const access = (await memberAccessMany(db, channel.serverId, [user.id])).get(user.id)!;
+    permissions = applyOverwrites(access, overwrites, user.id);
+    if (!mayView(permissions)) return denied(404, "That channel is gone.");
+  }
+  for (const flag of options.need || []) {
+    if (!hasPermission(permissions, flag)) {
+      return denied(403, "You don't have permission to do that in this channel.");
+    }
+  }
+  return { ok: true, channel, permissions };
 }
 
 /** Access to the channel a message lives in, by message id. */
@@ -103,6 +138,7 @@ export async function messageAccess(
       ? {
           ok: true,
           channel: { id: "", serverId: DEFAULT_SERVER_ID, kind: "text", name: "", isDm: false },
+          permissions: CHANNEL_DEFAULTS,
         }
       : denied(403, "You are not a member of this server.");
   }

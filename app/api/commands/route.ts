@@ -4,6 +4,7 @@ import { listCommandsForServer, runBotCommand } from "@/lib/discord/interactions
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -180,7 +181,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Channel not found" }, { status: 404 });
   }
   // Only people in the channel's server (or DM) can drive its bots.
-  const access = await channelAccess(db, body.channelId, user);
+  const access = await channelAccess(db, body.channelId, user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
 
   const available = await listCommandsForServer(db, channel.server_id);

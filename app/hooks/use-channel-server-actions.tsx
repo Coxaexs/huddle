@@ -29,6 +29,9 @@ import {
 import { DM_HOME } from "../lib/chat/constants";
 import { withArticle } from "../lib/chat/format";
 import { apiFetch } from "../lib/client";
+import { looksLikeDiscordTemplate } from "@/lib/discord-import";
+import { showDiscordMove, type DiscordMoveDetail } from "../components/discord-move-dialog";
+import { tNow } from "../lib/i18n-context";
 
 export function useChannelServerActions({
   activeServer,
@@ -196,22 +199,30 @@ export function useChannelServerActions({
       onConfirm: () => {
         showCustomPrompt({
           title: "Create Server",
-          message: "Enter a name for your new server:",
-          placeholder: "e.g. My Cool Server",
+          message: tNow("discordMove.createHint"),
+          placeholder: tNow("discordMove.createPlaceholder"),
           confirmText: "Create Server",
-          maxLength: 50,
-          onConfirm: async (name) => {
-            if (!name?.trim()) return;
+          maxLength: 60,
+          onConfirm: async (input) => {
+            const value = input?.trim();
+            if (!value) return;
+            // A Discord template link copies that server; anything else is a name.
+            const fromDiscord = looksLikeDiscordTemplate(value);
             try {
               const data = await apiFetch<{
                 server: PublicServer;
                 servers: PublicServer[];
+                imported?: DiscordMoveDetail["imported"];
               }>("/api/servers", {
                 method: "POST",
-                body: JSON.stringify({ name: name.trim() }),
+                body: JSON.stringify(fromDiscord ? { discordTemplate: value } : { name: value.slice(0, 50) }),
               });
               setServers(data.servers);
               setActiveServerId(data.server.id);
+              if (data.imported) {
+                showDiscordMove({ server: data.server, imported: data.imported });
+                return;
+              }
               setNotice(`${data.server.name} is live — invite people from its settings.`);
             } catch (error) {
               setNotice(error instanceof Error ? error.message : "Could not create it.");

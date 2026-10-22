@@ -3,7 +3,7 @@ import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { shouldStartMuted } from "@/lib/stage";
 import { hasPermission, Permission } from "@/lib/permissions";
-import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, UserPlus } from "lucide-react";
+import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, Lock, UserPlus } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
 import { type MentionChannel } from "../../message-body";
@@ -446,6 +446,7 @@ export function withShellRenderers(s: ChatShellViewState) {
         {unread[channel.id]?.unread && <span className="unread-pill" />}
         {channelKindIcon(channel.kind, 16, "channel-hash shrink-0")}
         <span>{channel.name}</span>
+        {channel.private && <Lock size={12} className="channel-lock" aria-hidden="true" />}
         {channel.nsfw && <span className="nsfw-badge" title="Age-restricted">18+</span>}
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>

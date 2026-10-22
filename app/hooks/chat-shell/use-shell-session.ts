@@ -769,7 +769,11 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
    * the composer is replaced by an explanation instead of a box that 403s.
    */
   const composerBlocked = Boolean(
-    activeChannel && activeChannelInfo.moderatorOnlyPosting && !canPostAnnouncements,
+    activeChannel &&
+      ((activeChannelInfo.moderatorOnlyPosting && !canPostAnnouncements) ||
+        // Channel permissions (lib/channel-permissions.ts): `access` is only sent
+        // for channels with overwrites.
+        (activeChannel.access !== undefined && !hasPermission(activeChannel.access, Permission.SEND_MESSAGES))),
   );
   const activeDm = useMemo(
     () => dms.find((dm) => dm.channelId === activeChannelId) || null,

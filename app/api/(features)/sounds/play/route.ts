@@ -6,6 +6,7 @@ import { findChannel } from "@/lib/servers";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
+import { Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   // You play into a room you are sitting in, of a server you belong to, and
   // only if you could be heard there anyway: a stage's audience cannot blast
   // sounds over the speakers. Moderators can switch a room's soundboard off.
-  const access = await channelAccess(db, channelId, user);
+  const access = await channelAccess(db, channelId, user, { need: [Permission.SPEAK] });
   if (!access.ok) return access.response;
   const room = await findChannel(db, channelId);
   if (room && (room as { soundboard?: number }).soundboard === 0) {

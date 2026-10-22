@@ -72,6 +72,11 @@ export const Permission = {
   MOVE_MEMBERS: 1 << 28,
   /** Be heard over everyone else: other voices are lowered while they talk. */
   PRIORITY_SPEAKER: 1 << 29,
+  /**
+   * See a channel at all. Every member has it unless a channel overwrite takes
+   * it away (lib/channel-permissions.ts); it means nothing server-wide.
+   */
+  VIEW_CHANNEL: 1 << 30,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];

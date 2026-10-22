@@ -1,6 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { hiddenChannelIds } from "@/lib/channel-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
     entry.mentions = row.count;
     entry.unread = true;
   }
+  for (const id of await hiddenChannelIds(db, user.id)) delete result[id];
 
   return Response.json({ channels: result });
 }

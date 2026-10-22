@@ -70,7 +70,7 @@ export async function POST(request: Request) {
   if (body.action === "ask") {
     const limited = await limitUser(db, ASK_LIMIT, user.id);
     if (limited) return limited;
-    const access = await channelAccess(db, String(body.channelId || ""), user);
+    const access = await channelAccess(db, String(body.channelId || ""), user, { need: [Permission.SEND_MESSAGES] });
     if (!access.ok) return access.response;
     const timedOut = await blockIfTimedOut(db, access.channel.id, user.id);
     if (timedOut) return timedOut;
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
   const question = await getQuestion(db, String(body.id || ""));
   if (!question) return Response.json({ error: "That question is gone." }, { status: 404 });
-  const access = await channelAccess(db, question.channelId, user);
+  const access = await channelAccess(db, question.channelId, user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
 
   if (body.action === "vote") {

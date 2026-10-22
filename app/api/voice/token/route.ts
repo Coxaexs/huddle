@@ -3,10 +3,11 @@ import { bindings } from "@/lib/storage";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { isDmMember } from "@/lib/dms";
 import { DM_SERVER_ID } from "@/lib/schema";
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, TrackSource } from "livekit-server-sdk";
 import { timeoutInChannel } from "@/lib/timeouts";
 import { hubState } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { can, hasPermission, Permission } from "@/lib/permissions";
+import { channelOverwritePermissions, mayView } from "@/lib/channel-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,8 @@ export async function GET(request: Request) {
   }
 
   let channel: Awaited<ReturnType<typeof findChannel>> = null;
+  /** This member's permissions in the room, or null when it has no overwrites. */
+  let here: number | null = null;
   const db = b.DB;
   if (db && !recorder) {
     channel = await findChannel(db, channelId);
@@ -82,6 +85,13 @@ export async function GET(request: Request) {
           { error: "You are not a member of this server." },
           { status: 403 },
         );
+      }
+      here = await channelOverwritePermissions(db, user!.id, channelId, channel.server_id);
+      if (here !== null && !mayView(here)) {
+        return Response.json({ error: "No such channel." }, { status: 404 });
+      }
+      if (here !== null && !hasPermission(here, Permission.CONNECT)) {
+        return Response.json({ error: "You can't join this voice channel." }, { status: 403 });
       }
     }
   }
@@ -138,10 +148,14 @@ export async function GET(request: Request) {
     ttl: "24h",
   });
 
+  // Channel permissions: no SPEAK is a listen-only seat; no VIDEO keeps it to the microphone.
+  const mayNotSpeak = here !== null && !hasPermission(here, Permission.SPEAK);
+  const mayNotShowVideo = here !== null && !hasPermission(here, Permission.VIDEO);
   at.addGrant({
     roomJoin: true,
     room: channelId,
-    canPublish: !timedOut && !silenced,
+    canPublish: !timedOut && !silenced && !mayNotSpeak,
+    ...(mayNotShowVideo ? { canPublishSources: [TrackSource.MICROPHONE] } : {}),
     canSubscribe: true,
     canPublishData: !timedOut,
   });

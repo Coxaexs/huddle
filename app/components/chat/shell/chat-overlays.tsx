@@ -31,6 +31,8 @@ import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from 
 import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
+import { ChannelPermissionsDialog } from "../../channel-permissions-dialog";
+import { DiscordMoveDialog } from "../../discord-move-dialog";
 
 const ProfileCard = deferred(() => import("../../profile-card").then((m) => m.ProfileCard));
 const PdfViewer = deferred(() => import("../../pdf-viewer").then((m) => m.PdfViewer));
@@ -756,6 +758,8 @@ export function renderChatOverlays(v: ShellRenderState) {
           onClose={closeStreamHover}
         />
       )}
+      <ChannelPermissionsDialog />
+      <DiscordMoveDialog />
     </>
   );
 }

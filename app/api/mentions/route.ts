@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { publicMessage, type PublicMessage } from "@/app/api/messages/route";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
+import { hiddenChannelIds } from "@/lib/channel-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,9 @@ export async function GET(request: Request) {
       }
     >();
 
-  const mentions: MentionEntry[] = (rows.results || []).map((row) => ({
+  // Mentions from channels this member can no longer see stay out of the inbox.
+  const hidden = await hiddenChannelIds(db, user.id);
+  const mentions: MentionEntry[] = (rows.results || []).filter((row) => !hidden.has(row.channel_id || "")).map((row) => ({
     message: publicMessage(row),
     channelName: row.mn_channel_name,
     channelKind: row.mn_channel_kind,
@@ -70,5 +73,5 @@ export async function GET(request: Request) {
     serverName: row.mn_channel_kind === "dm" ? null : row.mn_server_name,
     read: row.mn_read === 1,
   }));
-  return Response.json({ mentions, hasMore: mentions.length === PAGE });
+  return Response.json({ mentions, hasMore: (rows.results || []).length === PAGE });
 }

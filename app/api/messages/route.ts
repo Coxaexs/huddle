@@ -9,7 +9,8 @@ import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
-import { can, canAny, Permission } from "@/lib/permissions";
+import { can, canAny, hasPermission, Permission } from "@/lib/permissions";
+import { CHANNEL_DEFAULTS, channelOverwritePermissions, channelViewers, mayView } from "@/lib/channel-permissions";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
@@ -578,6 +579,8 @@ export async function postMessageAs(
   let channelName = body.channel?.slice(0, 64) || "general";
   let audience: string[] | null = null;
   let serverId: string | null = null;
+  /** This member's permissions in the channel, or null when it has no overwrites. */
+  let here: number | null = null;
   if (channelId) {
     const channel = await db
       .prepare(
@@ -612,6 +615,19 @@ export async function postMessageAs(
           { error: "You are not a member of this server." },
           { status: 403 },
         );
+      }
+      // Channel permissions: a channel this member cannot see is gone, and
+      // posting, thread replies and files each need their permission there.
+      here = await channelOverwritePermissions(db, user.id, channelId, channel.server_id);
+      const allowed = here ?? CHANNEL_DEFAULTS;
+      if (!mayView(allowed)) {
+        return Response.json({ error: "That channel is gone." }, { status: 404 });
+      }
+      if (!hasPermission(allowed, body.threadId ? Permission.SEND_MESSAGES_IN_THREADS : Permission.SEND_MESSAGES)) {
+        return Response.json({ error: "You can't send messages in this channel." }, { status: 403 });
+      }
+      if (attachmentKey && !hasPermission(allowed, Permission.ATTACH_FILES)) {
+        return Response.json({ error: "You can't upload files in this channel." }, { status: 403 });
       }
       const timedOut = await blockIfTimedOut(db, channelId, user.id);
       if (timedOut) return timedOut;
@@ -795,7 +811,9 @@ export async function postMessageAs(
       (wantsEveryone || wantsHere) &&
       serverId &&
       !audience &&
-      (await can(db, user.id, serverId, Permission.MENTION_EVERYONE))
+      (here !== null
+        ? hasPermission(here, Permission.MENTION_EVERYONE)
+        : await can(db, user.id, serverId, Permission.MENTION_EVERYONE))
     ) {
       const members = await db
         .prepare("SELECT user_id FROM server_members WHERE server_id = ?")
@@ -816,6 +834,10 @@ export async function postMessageAs(
         ...broadcastIds,
       ]),
     ].filter((id) => id !== user.id && (!audience || audience.includes(id)));
+    // Nobody gets pinged (or a push) from a channel they cannot see.
+    if (here !== null && serverId && channelId && mentionedIds.length) {
+      mentionedIds = await channelViewers(db, channelId, serverId, mentionedIds);
+    }
   }
 
   // ---- Automod ------------------------------------------------------------

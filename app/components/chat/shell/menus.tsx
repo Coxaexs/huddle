@@ -17,6 +17,7 @@ import type { MsnContacts } from "@/lib/msn-contacts";
 import type { Dispatch, SetStateAction } from "react";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
 import { useI18n } from "@/app/lib/i18n-context";
+import { openChannelPermissions } from "../../channel-permissions-dialog";
 
 // Keeps a fixed-position menu fully on screen: flips upward near the bottom edge.
 function clampToViewport(el: HTMLDivElement | null) {
@@ -722,6 +723,17 @@ export function ChannelMenuLayer({
                   }}
                 >
                   {t("channelMenu.rename")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const channel = channelMenu.channel;
+                    setChannelMenu(null);
+                    openChannelPermissions(channel);
+                  }}
+                >
+                  {t("channelMenu.permissions")}
                 </button>
                 <button
                   type="button"

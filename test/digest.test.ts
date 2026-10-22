@@ -60,6 +60,7 @@ describe.skipIf(!sqliteAvailable)("weekly run", () => {
     await db.exec(`CREATE TABLE server_members (server_id TEXT, user_id TEXT, joined_at TEXT)`);
     await db.exec(`CREATE TABLE bans (server_id TEXT, user_id TEXT)`);
     await db.exec(`CREATE TABLE channels (id TEXT PRIMARY KEY, server_id TEXT, name TEXT)`);
+    await db.exec(`CREATE TABLE channel_overwrites (channel_id TEXT, server_id TEXT, target_type TEXT, target_id TEXT, allow INTEGER, deny INTEGER)`);
     await db.exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, channel_id TEXT, user_id TEXT, author TEXT, content TEXT, created_at TEXT, deleted_at TEXT)`);
     await db.exec(`CREATE TABLE reactions (message_id TEXT, user_id TEXT, emoji TEXT)`);
     await db.exec(`CREATE TABLE server_events (id TEXT PRIMARY KEY, server_id TEXT, title TEXT, starts_at TEXT)`);

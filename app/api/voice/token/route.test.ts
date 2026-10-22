@@ -139,6 +139,8 @@ it("respects channel rtc_region configuration", async () => {
       prepare: vi.fn().mockReturnValue({
         bind: vi.fn().mockReturnValue({
           first: vi.fn().mockResolvedValue(null),
+          // The channel's permission overwrites: none.
+          all: vi.fn().mockResolvedValue({ results: [] }),
         }),
       }),
     } as any,

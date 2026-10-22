@@ -462,6 +462,10 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
         .prepare("DELETE FROM member_roles WHERE role_id = ?")
         .bind(nativeRoleId)
         .run();
+      await context.db
+        .prepare("DELETE FROM channel_overwrites WHERE target_type = 'role' AND target_id = ?")
+        .bind(nativeRoleId)
+        .run();
       return new Response(null, { status: 204 });
     }
 

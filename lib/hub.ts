@@ -16,7 +16,15 @@ import { stopSharedConversion } from "./jellyfin-proxy";
 import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
-import { can, Permission } from "./permissions";
+import { can, hasPermission, Permission } from "./permissions";
+import {
+  applyOverwrites,
+  loadOverwrites,
+  mayView,
+  memberAccessMany,
+  type ChannelOverwrite,
+  type MemberAccess,
+} from "./channel-permissions";
 import { initialSpeakAllowed, resolveSeatMute } from "./stage";
 import { sendPushNotifications } from "./push";
 import { djControl, type DjControl } from "./musicbot";
@@ -161,6 +169,14 @@ export class HuddleHub extends DurableObject {
   private readonly memberships = new Map<string, Set<string>>();
   /** DM channelId -> its participants, cleared alongside memberships. */
   private readonly dmAudiences = new Map<string, Set<string>>();
+  /**
+   * Server channelId -> its permission overwrites ([] for none), and
+   * "serverId:userId" -> that member's server-wide standing. Both are cleared on
+   * every structure change: role edits, role assignments and channel
+   * permission edits all publish one.
+   */
+  private readonly channelGates = new Map<string, ChannelOverwrite[]>();
+  private readonly memberAccess = new Map<string, MemberAccess>();
   private readonly whisperBudget = new Map<string, { second: number; count: number }>();
   /**
    * The latest preview frame of each live screen share, by connection. Memory
@@ -460,10 +476,12 @@ export class HuddleHub extends DurableObject {
     }
     if (url.pathname === "/structure" && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { serverId?: string | null };
-      // Memberships, DM rosters and channel kinds may all have changed.
+      // Memberships, DM rosters, channel kinds and permissions may all have changed.
       this.memberships.clear();
       this.dmAudiences.clear();
       this.channelCache.clear();
+      this.channelGates.clear();
+      this.memberAccess.clear();
       this.broadcast({
         t: "structure",
         ...(body.serverId ? { serverId: body.serverId } : {}),
@@ -1606,8 +1624,23 @@ export class HuddleHub extends DurableObject {
     }
     const serverId = info.serverId || DEFAULT_SERVER_ID;
     await this.ensureMemberships(this.sockets().map((entry) => entry.attachment.userId));
-    return (attachment) =>
-      attachment.bot || Boolean(this.memberships.get(attachment.userId)?.has(serverId));
+    const gate = info.serverId ? await this.channelGate(channelId) : [];
+    if (!gate.length) {
+      return (attachment) =>
+        attachment.bot || Boolean(this.memberships.get(attachment.userId)?.has(serverId));
+    }
+    // Overwrites: only the connected members who can see this channel.
+    const members = [...new Set(this.sockets().map((entry) => entry.attachment.userId))].filter(
+      (id) => !id.startsWith("bot:") && this.memberships.get(id)?.has(serverId),
+    );
+    const access = await this.accessFor(serverId, members);
+    const viewers = new Set(
+      members.filter((id) => {
+        const mine = access.get(id);
+        return mine ? mayView(applyOverwrites(mine, gate, id)) : false;
+      }),
+    );
+    return (attachment) => attachment.bot || viewers.has(attachment.userId);
   }
 
   /** Whether this seat may sit in a voice room: member (or DM participant), not banned. */
@@ -1626,7 +1659,51 @@ export class HuddleHub extends DurableObject {
       .bind(info.serverId, attachment.userId)
       .first()
       .catch(() => null);
-    return !banned;
+    if (banned) return false;
+    // A channel with overwrites also needs them to let this member see it and connect.
+    const gate = await this.channelGate(channelId);
+    if (!gate.length) return true;
+    const access = (await this.accessFor(info.serverId, [attachment.userId])).get(attachment.userId);
+    if (!access) return false;
+    const permissions = applyOverwrites(access, gate, attachment.userId);
+    return mayView(permissions) && hasPermission(permissions, Permission.CONNECT);
+  }
+
+  /**
+   * A server channel's permission overwrites, [] when it has none. A lookup
+   * that fails reads as "@everyone may not see it" (only owners and admins
+   * get through) and is not cached, so the next event retries.
+   */
+  private async channelGate(channelId: string): Promise<ChannelOverwrite[]> {
+    const cached = this.channelGates.get(channelId);
+    if (cached) return cached;
+    if (!this.db) return [];
+    const loaded = await loadOverwrites(this.db, [channelId]).catch(() => null);
+    if (!loaded) return [{ targetType: "everyone", targetId: "", allow: 0, deny: Permission.VIEW_CHANNEL }];
+    const gate = loaded.get(channelId) || [];
+    if (this.channelGates.size >= CHANNEL_CACHE_LIMIT) this.channelGates.clear();
+    this.channelGates.set(channelId, gate);
+    return gate;
+  }
+
+  /** Server-wide standing for these members of one server (cached until the next structure change). */
+  private async accessFor(serverId: string, userIds: string[]): Promise<Map<string, MemberAccess>> {
+    const out = new Map<string, MemberAccess>();
+    const missing: string[] = [];
+    for (const id of userIds) {
+      const hit = this.memberAccess.get(`${serverId}:${id}`);
+      if (hit) out.set(id, hit);
+      else missing.push(id);
+    }
+    if (missing.length && this.db) {
+      const loaded = await memberAccessMany(this.db, serverId, missing).catch(() => null);
+      for (const [id, access] of loaded || []) {
+        if (this.memberAccess.size >= 5000) this.memberAccess.clear();
+        this.memberAccess.set(`${serverId}:${id}`, access);
+        out.set(id, access);
+      }
+    }
+    return out;
   }
 
   /** Sends an event about one channel to everyone allowed to see that channel. */
