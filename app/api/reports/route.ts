@@ -1,9 +1,9 @@
+import { messageAccess } from "@/lib/access";
 import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { can, Permission, reportNotifierIds } from "@/lib/permissions";
-import { ensureSchema, DM_SERVER_ID } from "@/lib/schema";
-import { findChannel, isServerMember } from "@/lib/servers";
+import { ensureSchema } from "@/lib/schema";
 import { sendPushNotifications } from "@/lib/push";
 import { bindings } from "@/lib/storage";
 
@@ -117,19 +117,16 @@ export async function POST(request: Request) {
     return Response.json({ error: "Provide a message and a reason for the report." }, { status: 400 });
   }
 
-  const msg = await db
-    .prepare("SELECT id, channel_id, author FROM messages WHERE id = ?")
-    .bind(messageId)
-    .first<{ id: string; channel_id: string | null; author: string }>();
-  if (!msg || !msg.channel_id) {
+  // Only a message the reporter can read: a private channel's messages are a
+  // 404 to anyone it hides them from, here as everywhere else.
+  const access = await messageAccess(db, messageId, user, { includeDeleted: true });
+  if (!access.ok) return access.response;
+  const channel = access.channel;
+  if (!channel.id) {
     return Response.json({ error: "That message could not be found." }, { status: 404 });
   }
-  const channel = await findChannel(db, msg.channel_id);
-  if (!channel || channel.server_id === DM_SERVER_ID) {
+  if (channel.isDm) {
     return Response.json({ error: "Only server messages can be reported to server moderators." }, { status: 400 });
-  }
-  if (!(await isServerMember(db, channel.server_id, user.id))) {
-    return Response.json({ error: "You are not a member of that server." }, { status: 403 });
   }
 
   const id = crypto.randomUUID();
@@ -139,16 +136,16 @@ export async function POST(request: Request) {
       `INSERT INTO message_reports (id, server_id, channel_id, message_id, reporter_id, reason, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
     )
-    .bind(id, channel.server_id, channel.id, messageId, user.id, reason, now)
+    .bind(id, channel.serverId, channel.id, messageId, user.id, reason, now)
     .run();
 
   // Tell the server's moderators a report was filed so they don't have to keep
   // checking the Safety tab or /kivi. Errors here must never fail a report.
   const server = await db
     .prepare("SELECT name FROM servers WHERE id = ?")
-    .bind(channel.server_id)
+    .bind(channel.serverId)
     .first<{ name: string }>();
-  const notifierIds = await reportNotifierIds(db, channel.server_id, user.id);
+  const notifierIds = await reportNotifierIds(db, channel.serverId, user.id);
   if (notifierIds.length) {
     await sendPushNotifications(db, notifierIds, {
       title: "New message report",

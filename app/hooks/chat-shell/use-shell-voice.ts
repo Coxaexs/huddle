@@ -63,6 +63,7 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     send: hub.send,
     roomBitrates,
     isDev: isDevUser,
+    signedIn: Boolean(user),
   });
   const captions = useLiveCaptions({
     roomId: voice.channelId,

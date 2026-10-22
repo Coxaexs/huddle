@@ -158,6 +158,11 @@ interface UseVoiceOptions {
   roomBitrates?: Record<string, number>;
   /** Whether the active user is a developer who sees verbose LiveKit logs. */
   isDev?: boolean;
+  /**
+   * Whether this tab is signed in yet. The relay list waits for it; leave it
+   * out where the page has its own credentials (the recorder).
+   */
+  signedIn?: boolean;
 }
 
 /** Screen share heights on offer, lowest first. */
@@ -414,6 +419,7 @@ export function useVoice({
   send,
   roomBitrates,
   isDev,
+  signedIn = true,
 }: UseVoiceOptions) {
   const isDevRef = useRef(isDev);
   isDevRef.current = isDev;
@@ -1214,8 +1220,13 @@ export function useVoice({
   });
   /** Bumped when the ICE configuration arrives, so the check can wait for it. */
   const [iceGeneration, setIceGeneration] = useState(0);
+  const iceLoaded = iceGeneration > 0;
 
+  // The sign-in screen mounts this hook too, and the list is for signed-in
+  // people only: asking there was refused and never asked again, so a tab
+  // that signed in stayed on public STUN, without our relay, until a reload.
   useEffect(() => {
+    if (!signedIn || iceLoaded) return;
     let cancelled = false;
     /**
      * The relay list decides whether people behind strict networks can be heard
@@ -1258,7 +1269,7 @@ export function useVoice({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [signedIn, iceLoaded]);
 
   /**
    * Gathers a relay candidate and reports what came back. Worth doing because

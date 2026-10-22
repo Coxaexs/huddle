@@ -1,3 +1,4 @@
+import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
 import {
   payloadHasComponent,
@@ -5,9 +6,7 @@ import {
 } from "@/lib/discord/bot-messages";
 import { runBotCommand } from "@/lib/discord/interactions";
 import { InteractionType } from "@/lib/discord/protocol";
-import { isDmMember } from "@/lib/dms";
-import { DM_SERVER_ID, ensureSchema } from "@/lib/schema";
-import { findChannel, isServerMember } from "@/lib/servers";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -41,13 +40,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing channel, message or component" }, { status: 400 });
   }
 
-  const channel = await findChannel(db, body.channelId);
-  if (!channel) return Response.json({ error: "Channel not found" }, { status: 404 });
-  const allowed =
-    channel.server_id === DM_SERVER_ID || channel.kind === "dm"
-      ? await isDmMember(db, channel.id, user.id)
-      : await isServerMember(db, channel.server_id, user.id);
-  if (!allowed) return Response.json({ error: "Not allowed" }, { status: 403 });
+  // Whoever can't see the channel can't press its buttons either: a private
+  // channel is hidden from the rest of the server, not just from outsiders.
+  const access = await channelAccess(db, body.channelId, user);
+  if (!access.ok) return access.response;
+  const channel = access.channel;
 
   const stored = await db
     .prepare(

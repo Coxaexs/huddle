@@ -269,11 +269,17 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
+  }, []);
 
+  // Signed-in only, so it waits for the user: asked from the sign-in screen it
+  // was refused, and recording stayed hidden in that tab until a reload.
+  const signedInUserId = user?.id;
+  useEffect(() => {
+    if (!signedInUserId) return;
     apiFetch<{ recordSessions: boolean }>("/api/features")
       .then((data) => setFeatures(data))
       .catch(() => undefined);
-  }, []);
+  }, [signedInUserId]);
 
   useEffect(() => {
     if (!user) return;

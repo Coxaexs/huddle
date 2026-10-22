@@ -62,6 +62,7 @@ beforeEach(async () => {
   await db.exec("DELETE FROM users");
   await db.exec("DELETE FROM member_roles");
   await db.exec("DELETE FROM roles");
+  await db.exec("DELETE FROM channel_overwrites");
   vi.clearAllMocks();
 });
 
@@ -160,6 +161,24 @@ describe("POST /api/reports", () => {
 
     const res = await post({ messageId: "m1", reason: "spam" });
     expect(res.status).toBe(200);
+    expect(sendPushNotifications).not.toHaveBeenCalled();
+  });
+
+  it("refuses a message in a channel hidden from the reporter", async () => {
+    await seed();
+    await db
+      .prepare("INSERT INTO channel_overwrites VALUES ('c1', 's1', 'everyone', '', 0, ?)")
+      .bind(1 << 30) // VIEW_CHANNEL
+      .run();
+    (currentUser as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "reporter",
+      username: "reporter",
+      display_name: "Reporter",
+    } as never);
+
+    const res = await post({ messageId: "m1", reason: "spam" });
+    expect(res.status).toBe(404);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM message_reports").first()).toEqual({ n: 0 });
     expect(sendPushNotifications).not.toHaveBeenCalled();
   });
 });
