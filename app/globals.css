@@ -24789,6 +24789,83 @@ a.link-preview-author:hover {
   }
 }
 
+/* "Hoffle has been updated"; see components/update-banner.tsx. Same spot as
+   the connection banner, which it gives way to. */
+.update-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 14px;
+  border-radius: 8px;
+  background: #2b2d31;
+  border: 1px solid rgba(35, 165, 90, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #f2f3f5;
+  font-size: 13px;
+  font-weight: 500;
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.update-banner-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #23a55a;
+}
+
+.update-banner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.update-banner-text small {
+  color: #b5bac1;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.update-banner-go,
+.update-banner-later {
+  flex: none;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.update-banner-go {
+  background: #23a55a;
+  color: #fff;
+}
+
+.update-banner-go:hover {
+  background: #1a8a4a;
+}
+
+.update-banner-later {
+  background: transparent;
+  color: #b5bac1;
+}
+
+.update-banner-later:hover {
+  color: #f2f3f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-banner {
+    animation: none;
+  }
+}
+
 /* ---- MSN display pictures: theirs beside the history, yours by the typing box ---- */
 .msn-dp-column {
   display: none;

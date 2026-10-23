@@ -3,7 +3,7 @@
 import { createSpeakingStore } from "../lib/speaking-store";
 import { setStreamerSharing } from "../lib/streamer-mode";
 import { installIdlePause, setIdlePauseCallActive } from "../lib/idle-pause";
-import { inTauriShell, installTauriHotkeys } from "../lib/tauri-shell";
+import { inTauriShell, installTauriHotkeys, tellTauriInCall } from "../lib/tauri-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
@@ -1044,12 +1044,15 @@ export function useVoice({
 
   // Desktop shell: only keep the window running at full speed while in a call.
   // Idle, a hidden or minimised window should rest, or it burns battery for nothing.
+  // The shells also hold back a self-update restart while the call lasts.
   useEffect(() => {
     const shell = (window as unknown as { huddle?: { setInCall?: (on: boolean) => void } }).huddle;
     shell?.setInCall?.(Boolean(channelId));
+    tellTauriInCall(Boolean(channelId));
     setIdlePauseCallActive(Boolean(channelId));
     return () => {
       shell?.setInCall?.(false);
+      tellTauriInCall(false);
       setIdlePauseCallActive(false);
     };
   }, [channelId]);

@@ -1,4 +1,5 @@
 import { ConnectionBanner } from "../../connection-banner";
+import { UpdateBanner } from "../../update-banner";
 import { RetroChrome } from "../../retro-chrome";
 import { type PublicUser } from "@/lib/users";
 import { MatrixRain } from "../../matrix-rain";
@@ -56,6 +57,7 @@ export function renderChatShell(s: ChatShellViewState) {
       } as React.CSSProperties}
     >
       <ConnectionBanner connected={hub.connected} />
+      <UpdateBanner connected={hub.connected} inCall={Boolean(currentVoiceChannel)} />
       <RetroChrome
         serverName={inDmHome ? null : activeServer?.name ?? null}
         serverIconUrl={inDmHome ? null : activeServer?.iconUrl ?? null}
