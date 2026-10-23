@@ -248,6 +248,14 @@ jobs:
           v=$(node -p "require('./desktop/package.json').version")
           mkdir -p out
           cp desktop-native-windows/build/hoffle_native_windows.zip "out/Hoffle-Native-$v-windows-x64.zip"
+      # Its line in native-latest.txt (native-update-manifest).
+      - run: |
+          mkdir -p native-update
+          cd out && f=$(ls Hoffle-Native-*-windows-x64.zip) && echo "windows-x64 $f $(sha256sum "$f" | cut -d' ' -f1)" > ../native-update/windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-update-windows
+          path: native-update/windows.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hoffle-native-windows
@@ -271,6 +279,13 @@ jobs:
           v=$(node -p "require('./desktop/package.json').version")
           mkdir -p out
           cp desktop-native-linux/build/hoffle_native_linux_x86_64.tar.gz "out/Hoffle-Native-$v-linux-x86_64.tar.gz"
+      - run: |
+          mkdir -p native-update
+          cd out && f=$(ls Hoffle-Native-*-linux-x86_64.tar.gz) && echo "linux-x86_64 $f $(sha256sum "$f" | cut -d' ' -f1)" > ../native-update/linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-update-linux
+          path: native-update/linux.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hoffle-native-linux
@@ -294,6 +309,15 @@ jobs:
           v=$(node -p "require('./desktop/package.json').version")
           mkdir -p out
           cp desktop-native-macos/build/Hoffle-macOS-arm64.dmg "out/Hoffle-Native-$v-mac-arm64.dmg"
+          # The self-update replaces the signed .app itself.
+          tar -czf "out/Hoffle-Native-$v-mac-arm64.app.tar.gz" -C desktop-native-macos/build Hoffle.app
+      - run: |
+          mkdir -p native-update
+          cd out && f=$(ls Hoffle-Native-*-mac-arm64.app.tar.gz) && echo "mac-arm64 $f $(shasum -a 256 "$f" | cut -d' ' -f1)" > ../native-update/mac.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-update-mac
+          path: native-update/mac.txt
       - uses: actions/upload-artifact@v4
         with:
           name: hoffle-native-mac
@@ -323,6 +347,33 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: lite-latest.json
+
+  # Hoffle Native's update list, which desktop/native/native-update.sh and .ps1
+  # read from the latest Release: the version, then each platform's file in
+  # this Release with its SHA-256.
+  native-update-manifest:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [native-windows, native-linux, native-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-update-*
+          path: native-update
+          merge-multiple: true
+      - name: Write native-latest.txt
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "version $v"
+            cat native-update/*.txt | awk -v base="$base" '{ print $1, base "/" $2, $3 }'
+          } > native-latest.txt
+          cat native-latest.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: native-latest.txt
 
   # Tells hoffle.online whether this release is signed (lib/downloads.ts reads
   # SIGNING.json), so the "Windows protected your PC" note goes away by itself.

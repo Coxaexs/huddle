@@ -31,12 +31,30 @@
     }
   }
 
+  // The app's own update (see "Self-update" in WebViewController.m). The
+  // page's banner offers "Restart" once one is ready (app/lib/app-update.ts).
+  var updateState = null;
+  var updateListeners = new Set();
+  window.__hoffleUpdate = function (state) {
+    updateState = state;
+    updateListeners.forEach(function (cb) { try { cb(state); } catch (e) {} });
+  };
+
   // Define window.huddle API expected by the Hoffle frontend
   const huddleApi = {
     desktop: true,
     native: true,
     platform: "darwin",
     arch: "arm64",
+    updates: {
+      state: function () { return Promise.resolve(updateState); },
+      onChange: function (cb) {
+        updateListeners.add(cb);
+        return function () { updateListeners.delete(cb); };
+      },
+      install: function () { postNative({ type: "updateInstall" }); },
+      download: function () { postNative({ type: "updateDownload" }); },
+    },
     setBadge: function (count) {
       postNative({ type: "setBadge", count: Number(count) || 0 });
     },
@@ -210,4 +228,5 @@
   }
 
   console.log("[Hoffle] Full native macOS (arm64 Apple Silicon) bridge initialized.");
+  postNative({ type: "updateState" });
 })();

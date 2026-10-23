@@ -89,6 +89,14 @@ the tray, or for the next quit. Windows and the AppImage update unsigned; macOS
 only lets a Developer ID-signed app replace itself, so until then Mac users get
 "Hoffle 2.x is out — Download" instead.
 
+Hoffle Native (`desktop-native-*/`, which take their version from this
+`package.json` when they build) follows the same rules with its own script,
+`native/native-update.sh` (macOS, Linux) and `native/native-update.ps1`
+(Windows). It reads `native-latest.txt` from the latest Release, which CI
+writes with each file's SHA-256, unpacks the new build into the user's cache
+and swaps it in after the app quits. An unsigned Mac build can do this: no
+Developer ID is needed to replace an app that is not notarized to begin with.
+
 ## What's in here
 
 - `src/main.js` — window, permissions, and the screen-share request handler.

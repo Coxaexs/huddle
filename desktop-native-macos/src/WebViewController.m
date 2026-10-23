@@ -27,6 +27,13 @@ static NSTouchBarItemIdentifier const kTouchBarItemReload = @"online.deeppixel.h
 
 @interface WebViewController () {
     id<NSObject> _callActivityToken;
+    // Self-update state (see "Self-update" below).
+    BOOL _inCall;
+    BOOL _updateChecking;
+    NSString *_updateStatus;
+    NSString *_updateVersion;
+    NSDate *_launchedAt;
+    NSTimer *_updateTimer;
 }
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) NSView *errorView;
@@ -85,6 +92,8 @@ static NSTouchBarItemIdentifier const kTouchBarItemReload = @"online.deeppixel.h
     
     // Setup Push to talk delegate
     [PushToTalkManager sharedManager].delegate = self;
+
+    [self startUpdateChecks];
 }
 
 - (void)setupErrorView {
@@ -210,6 +219,116 @@ static NSTouchBarItemIdentifier const kTouchBarItemReload = @"online.deeppixel.h
     }
 }
 
+#pragma mark - Self-update
+
+// The app updates itself with native-update.sh (desktop/native/, shared with
+// the Linux app; scripts/build.sh puts it in Resources). It checks the latest
+// GitHub Release at launch and every few hours and unpacks a newer build into
+// the cache; the page then shows "Restart" (window.huddle.updates). A build
+// ready within a minute of launch is installed straight away unless a call is
+// live, as the other apps do.
+
+static const NSTimeInterval kUpdateCheckEvery = 4 * 60 * 60;
+static const NSTimeInterval kApplyAtLaunch = 60;
+
+- (NSString *)updateStage {
+    NSString *caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    return [caches stringByAppendingPathComponent:@"Hoffle Native/update"];
+}
+
+- (void)startUpdateChecks {
+    _launchedAt = [NSDate date];
+    _updateStatus = @"idle";
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self checkForUpdate];
+    });
+    _updateTimer = [NSTimer scheduledTimerWithTimeInterval:kUpdateCheckEvery
+                                                    target:self
+                                                  selector:@selector(checkForUpdate)
+                                                  userInfo:nil
+                                                   repeats:YES];
+}
+
+- (void)checkForUpdate {
+    NSString *script = [[NSBundle mainBundle] pathForResource:@"native-update" ofType:@"sh"];
+    NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    if (_updateChecking || [_updateStatus isEqualToString:@"ready"] || !script || !version) return;
+    _updateChecking = YES;
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
+    task.arguments = @[script, @"check", version, @"mac-arm64", [NSBundle mainBundle].bundlePath, [self updateStage]];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = [NSFileHandle fileHandleWithNullDevice];
+    __weak typeof(self) weakSelf = self;
+    task.terminationHandler = ^(NSTask *finished) {
+        NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+        NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+        BOOL ok = finished.terminationStatus == 0;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateChecked:output ok:ok];
+        });
+    };
+    if (![task launchAndReturnError:nil]) _updateChecking = NO;
+}
+
+- (void)updateChecked:(NSString *)output ok:(BOOL)ok {
+    _updateChecking = NO;
+    // The last line is the answer: "ready 2.2.0", "manual 2.2.0" or "none".
+    NSString *last = @"";
+    for (NSString *line in [output componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (trimmed.length) last = trimmed;
+    }
+    NSArray<NSString *> *words = [last componentsSeparatedByString:@" "];
+    NSString *word = words.firstObject ?: @"";
+    NSString *version = words.count > 1 ? words[1] : @"";
+    // Only digits and dots go into the page's script.
+    NSCharacterSet *notVersion = [[NSCharacterSet characterSetWithCharactersInString:@"0123456789."] invertedSet];
+    if ([version rangeOfCharacterFromSet:notVersion].location != NSNotFound) version = @"";
+    if (!ok) {
+        if (![_updateStatus isEqualToString:@"ready"] && ![_updateStatus isEqualToString:@"manual"]) _updateStatus = @"error";
+    } else if (([word isEqualToString:@"ready"] || [word isEqualToString:@"manual"]) && version.length) {
+        _updateStatus = word;
+        _updateVersion = version;
+    } else if (![_updateStatus isEqualToString:@"ready"]) {
+        _updateStatus = @"idle";
+    }
+    [self pushUpdateState];
+    if ([_updateStatus isEqualToString:@"ready"] && !_inCall && -[_launchedAt timeIntervalSinceNow] < kApplyAtLaunch) {
+        [self installUpdate];
+    }
+}
+
+- (void)pushUpdateState {
+    NSString *version = _updateVersion.length ? [NSString stringWithFormat:@",\"version\":\"%@\"", _updateVersion] : @"";
+    NSString *js = [NSString stringWithFormat:@"if (window.__hoffleUpdate) window.__hoffleUpdate({\"status\":\"%@\"%@});",
+                    _updateStatus ?: @"idle", version];
+    [self.webView evaluateJavaScript:js completionHandler:nil];
+}
+
+/** Starts the script's install step, which waits for this process to end, then quits. */
+- (void)installUpdate {
+    if (![_updateStatus isEqualToString:@"ready"]) return;
+    NSString *bundled = [[NSBundle mainBundle] pathForResource:@"native-update" ofType:@"sh"];
+    NSString *stage = [self updateStage];
+    // A copy outside the bundle, which the script is about to replace.
+    NSString *script = [stage stringByAppendingPathComponent:@"native-update.sh"];
+    NSFileManager *files = [NSFileManager defaultManager];
+    [files createDirectoryAtPath:stage withIntermediateDirectories:YES attributes:nil error:nil];
+    [files removeItemAtPath:script error:nil];
+    if (!bundled || ![files copyItemAtPath:bundled toPath:script error:nil]) return;
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
+    // Backgrounded with nohup, so it carries on once this app has quit.
+    task.arguments = @[@"-c", @"nohup /bin/sh \"$0\" install \"$1\" \"$2\" \"$3\" >/dev/null 2>&1 &",
+                       script, [NSBundle mainBundle].bundlePath,
+                       [NSString stringWithFormat:@"%d", [[NSProcessInfo processInfo] processIdentifier]], stage];
+    if (![task launchAndReturnError:nil]) return;
+    [task waitUntilExit];
+    [NSApp terminate:nil];
+}
+
 #pragma mark - PushToTalkDelegate
 
 - (void)pushToTalkDidPressDown {
@@ -256,7 +375,14 @@ static NSTouchBarItemIdentifier const kTouchBarItemReload = @"online.deeppixel.h
         [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:req withCompletionHandler:nil];
     } else if ([type isEqualToString:@"setInCall"]) {
         BOOL inCall = [body[@"inCall"] boolValue];
+        _inCall = inCall;
         [self updateInCallActivity:inCall];
+    } else if ([type isEqualToString:@"updateState"]) {
+        [self pushUpdateState];
+    } else if ([type isEqualToString:@"updateInstall"]) {
+        [self installUpdate];
+    } else if ([type isEqualToString:@"updateDownload"]) {
+        [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://hoffle.online/download/mac-native"]];
     } else if ([type isEqualToString:@"setMuteHotkey"]) {
         NSString *acc = body[@"accelerator"];
         [[GlobalHotkeyManager sharedManager] bindMuteHotkey:acc];

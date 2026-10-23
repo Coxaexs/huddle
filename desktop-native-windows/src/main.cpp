@@ -16,6 +16,14 @@
 #include "WebView2.h"
 #include "ConfigManager.h"
 #include "ActivityScanner.h"
+// kUpdateScript: desktop/native/native-update.ps1, embedded by scripts/build.sh.
+#include "update-script.h"
+
+#ifndef HOFFLE_VERSION
+#define HOFFLE_VERSION "0.0.0"
+#endif
+#define HOFFLE_WIDEN2(x) L##x
+#define HOFFLE_WIDEN(x) HOFFLE_WIDEN2(x)
 
 using Microsoft::WRL::ComPtr;
 
@@ -31,6 +39,11 @@ using Microsoft::WRL::ComPtr;
 #define WM_APP_AUDIO_STARTED (WM_APP + 1)
 #define WM_APP_AUDIO_PCM (WM_APP + 2)
 #define WM_APP_AUDIO_ENDED (WM_APP + 3)
+
+// Self-update (see the Self-update section)
+#define WM_APP_UPDATE_CHECKED (WM_APP + 4)
+#define IDT_UPDATE_FIRST 201
+#define IDT_UPDATE_EVERY 202
 
 #define HOTKEY_ID_MUTE 1
 #define HOTKEY_ID_DEAFEN 2
@@ -241,6 +254,166 @@ static void StartAppAudio(int startId, const std::wstring& windowId) {
     }).detach();
 }
 
+// ---------------------------------------------------------------------------
+// Self-update, with desktop/native/native-update.ps1 (the macOS and Linux apps
+// run native-update.sh the same way). The script checks the latest GitHub
+// Release at launch and every few hours and unpacks a newer build into
+// %LOCALAPPDATA%\Hoffle\update; the page then shows "Restart"
+// (window.huddle.updates). A build ready within a minute of launch is
+// installed straight away unless a call is live, as the other apps do.
+
+static const UINT kUpdateCheckEveryMs = 4 * 60 * 60 * 1000;
+static const ULONGLONG kApplyAtLaunchMs = 60 * 1000;
+static ULONGLONG g_launchedAt = 0;
+static bool g_inCall = false;
+static bool g_updateChecking = false;
+static std::wstring g_updateStatus = L"idle";
+static std::wstring g_updateVersion;
+
+/** The app's folder without the trailing backslash, which would escape a closing quote on a command line. */
+static std::wstring AppFolder() {
+    std::wstring dir = ExeDir();
+    if (!dir.empty() && dir.back() == L'\\') dir.pop_back();
+    return dir;
+}
+
+static std::wstring UpdateStage() {
+    wchar_t appData[MAX_PATH];
+    if (FAILED(SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, appData))) return L"";
+    return std::wstring(appData) + L"\\Hoffle\\update";
+}
+
+/** Windows PowerShell from System32, never whatever "powershell" PATH finds first. */
+static std::wstring PowerShell() {
+    wchar_t system[MAX_PATH];
+    GetSystemDirectoryW(system, MAX_PATH);
+    return std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+}
+
+/** Writes the script into the stage folder, where replacing the app cannot pull it away mid-run. */
+static bool WriteUpdateScript(std::wstring& path) {
+    std::wstring stage = UpdateStage();
+    if (stage.empty()) return false;
+    SHCreateDirectoryExW(NULL, stage.c_str(), NULL);
+    path = stage + L"\\native-update.ps1";
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD size = (DWORD)strlen(kUpdateScript), written = 0;
+    BOOL ok = WriteFile(file, kUpdateScript, size, &written, NULL) && written == size;
+    CloseHandle(file);
+    return ok;
+}
+
+static std::wstring UpdateCommand(const std::wstring& script, const std::wstring& args) {
+    return L"\"" + PowerShell() + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" +
+           script + L"\" " + args;
+}
+
+static void PushUpdateState() {
+    std::wstring js = L"if (window.__hoffleUpdate) window.__hoffleUpdate({\"status\":\"" + g_updateStatus + L"\"";
+    if (!g_updateVersion.empty()) js += L",\"version\":\"" + g_updateVersion + L"\"";
+    js += L"});";
+    ExecuteScript(js);
+}
+
+/** Starts the script's install step, which waits for this process to end, then quits. */
+static void InstallUpdate() {
+    std::wstring script;
+    if (g_updateStatus != L"ready" || !WriteUpdateScript(script)) return;
+    std::wstring cmd = UpdateCommand(script, L"install \"" + AppFolder() + L"\" " +
+                                     std::to_wstring(GetCurrentProcessId()) + L" \"" + UpdateStage() + L"\"");
+    STARTUPINFOW si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessW(NULL, &cmd[0], NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) return;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    DestroyWindow(g_hWnd);
+}
+
+/** Runs the script's check step on a thread; the answer comes back as WM_APP_UPDATE_CHECKED. */
+static void CheckForUpdate() {
+    std::wstring script;
+    if (g_updateChecking || g_updateStatus == L"ready" || !WriteUpdateScript(script)) return;
+    g_updateChecking = true;
+    std::wstring cmd = UpdateCommand(script, L"check " HOFFLE_WIDEN(HOFFLE_VERSION) L" \"" + AppFolder() + L"\" \"" +
+                                     UpdateStage() + L"\"");
+    std::thread([cmd] {
+        std::string output;
+        bool ok = false;
+        SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+        HANDLE outRead = NULL, outWrite = NULL;
+        HANDLE nul = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                                 OPEN_EXISTING, 0, NULL);
+        if (nul != INVALID_HANDLE_VALUE && CreatePipe(&outRead, &outWrite, &sa, 0)) {
+            SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+            // Only these two handles go to PowerShell, never the share-audio
+            // helper's pipes that the window thread may be making meanwhile.
+            HANDLE inherit[] = { outWrite, nul };
+            SIZE_T size = 0;
+            InitializeProcThreadAttributeList(NULL, 1, 0, &size);
+            std::vector<unsigned char> attrs(size);
+            auto* list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrs.data());
+            if (InitializeProcThreadAttributeList(list, 1, 0, &size) &&
+                UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit, sizeof(inherit), NULL, NULL)) {
+                STARTUPINFOEXW si = {};
+                si.StartupInfo.cb = sizeof(si);
+                si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+                si.StartupInfo.hStdInput = nul;
+                si.StartupInfo.hStdOutput = outWrite;
+                si.StartupInfo.hStdError = nul;
+                si.lpAttributeList = list;
+                PROCESS_INFORMATION pi = {};
+                std::wstring line = cmd;
+                if (CreateProcessW(NULL, &line[0], NULL, NULL, TRUE, CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+                                   NULL, NULL, &si.StartupInfo, &pi)) {
+                    CloseHandle(outWrite);
+                    outWrite = NULL;
+                    char buf[512];
+                    DWORD got = 0;
+                    while (ReadFile(outRead, buf, sizeof(buf), &got, NULL) && got > 0) output.append(buf, got);
+                    WaitForSingleObject(pi.hProcess, INFINITE);
+                    DWORD code = 1;
+                    GetExitCodeProcess(pi.hProcess, &code);
+                    ok = code == 0;
+                    CloseHandle(pi.hThread);
+                    CloseHandle(pi.hProcess);
+                }
+                DeleteProcThreadAttributeList(list);
+            }
+        }
+        if (outWrite) CloseHandle(outWrite);
+        if (outRead) CloseHandle(outRead);
+        if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
+        PostMessageW(g_hWnd, WM_APP_UPDATE_CHECKED, ok ? 1 : 0, (LPARAM) new std::string(output));
+    }).detach();
+}
+
+static void OnUpdateChecked(bool ok, const std::string& output) {
+    g_updateChecking = false;
+    // The last line is the answer: "ready 2.2.0", "manual 2.2.0" or "none".
+    std::istringstream lines(output);
+    std::string line, last;
+    while (std::getline(lines, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (!line.empty()) last = line;
+    }
+    std::istringstream words(last);
+    std::string word, version;
+    words >> word >> version;
+    // Only digits and dots go into the page's script.
+    if (version.find_first_not_of("0123456789.") != std::string::npos) version.clear();
+    if (!ok) {
+        if (g_updateStatus != L"ready" && g_updateStatus != L"manual") g_updateStatus = L"error";
+    } else if ((word == "ready" || word == "manual") && !version.empty()) {
+        g_updateStatus = word == "ready" ? L"ready" : L"manual";
+        g_updateVersion = std::wstring(version.begin(), version.end());
+    } else if (g_updateStatus != L"ready") {
+        g_updateStatus = L"idle";
+    }
+    PushUpdateState();
+    if (g_updateStatus == L"ready" && !g_inCall && GetTickCount64() - g_launchedAt < kApplyAtLaunchMs) InstallUpdate();
+}
+
 // Low-level keyboard hook for Push-To-Talk
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION && !g_pttKeyCode.empty()) {
@@ -347,6 +520,22 @@ void HandleWebMessage(const std::wstring& msg) {
         StopAppAudio();
         return;
     }
+    if (msg.find(L"\"setInCall\"") != std::wstring::npos) {
+        g_inCall = msg.find(L"\"inCall\":true") != std::wstring::npos;
+        return;
+    }
+    if (msg.find(L"\"updateState\"") != std::wstring::npos) {
+        PushUpdateState();
+        return;
+    }
+    if (msg.find(L"\"updateInstall\"") != std::wstring::npos) {
+        InstallUpdate();
+        return;
+    }
+    if (msg.find(L"\"updateDownload\"") != std::wstring::npos) {
+        ShellExecuteW(NULL, L"open", L"https://hoffle.online/download/windows-native", NULL, NULL, SW_SHOWNORMAL);
+        return;
+    }
     if (msg.find(L"\"setPushToTalkKey\"") != std::wstring::npos) {
         if (!g_pttHook) {
             g_pttHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, g_hInstance, 0);
@@ -404,7 +593,8 @@ public:
 static NavigationStartingHandler s_navigationStartingHandler;
 
 // window.huddle for the page. appAudio is the bridge app/lib/app-audio.ts
-// expects from a shell that captures share audio once asked.
+// expects from a shell that captures share audio once asked; updates is the
+// app's own update (the Self-update section), for app/lib/app-update.ts.
 static std::wstring BridgeScript() {
     std::wstring script = LR"JS((function () {
   var listeners = new Set();
@@ -428,8 +618,21 @@ static std::wstring BridgeScript() {
       active = false;
     }
   });
+  var updateState = null;
+  var updateListeners = new Set();
+  window.__hoffleUpdate = function (state) {
+    updateState = state;
+    updateListeners.forEach(function (cb) { try { cb(state); } catch (e) {} });
+  };
   window.huddle = {
     desktop: true, native: true, platform: "win32", arch: "x64",
+    setInCall: function (on) { post({ type: "setInCall", inCall: Boolean(on) }); },
+    updates: {
+      state: function () { return Promise.resolve(updateState); },
+      onChange: function (cb) { updateListeners.add(cb); return function () { updateListeners.delete(cb); }; },
+      install: function () { post({ type: "updateInstall" }); },
+      download: function () { post({ type: "updateDownload" }); }
+    },
     appAudio: {
       available: function () { return Promise.resolve(__HAVE_HELPER__); },
       start: function (target) {
@@ -445,6 +648,7 @@ static std::wstring BridgeScript() {
       stop: function () { active = false; post({ type: "appAudioStop" }); }
     }
   };
+  post({ type: "updateState" });
 })();)JS";
     const std::wstring marker = L"__HAVE_HELPER__";
     script.replace(script.find(marker), marker.size(), HaveAppAudioHelper() ? L"true" : L"false");
@@ -594,6 +798,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
 
+    g_launchedAt = GetTickCount64();
+    SetTimer(g_hWnd, IDT_UPDATE_FIRST, 3000, NULL);
+    SetTimer(g_hWnd, IDT_UPDATE_EVERY, kUpdateCheckEveryMs, NULL);
+
     // Initialize WebView2
     if (pfnCreateEnvironment) {
         wchar_t appData[MAX_PATH];
@@ -694,6 +902,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         // Hide to tray instead of destroying
         ShowWindow(hWnd, SW_HIDE);
         return 0;
+
+    case WM_TIMER:
+        if (wParam == IDT_UPDATE_FIRST) KillTimer(hWnd, IDT_UPDATE_FIRST);
+        if (wParam == IDT_UPDATE_FIRST || wParam == IDT_UPDATE_EVERY) CheckForUpdate();
+        return 0;
+
+    case WM_APP_UPDATE_CHECKED: {
+        std::unique_ptr<std::string> output(reinterpret_cast<std::string*>(lParam));
+        OnUpdateChecked(wParam != 0, *output);
+        return 0;
+    }
 
     case WM_APP_AUDIO_STARTED: {
         auto* audio = reinterpret_cast<std::shared_ptr<AppAudio>*>(lParam);

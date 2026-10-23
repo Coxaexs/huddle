@@ -16,14 +16,23 @@ mkdir -p "$BUILD_DIR"
 echo "• Compiling Windows resources..."
 (cd "$DIR/resources" && "$ZIG" rc /fo resource.res resource.rc)
 
-# 2. Compile and Link C++ executable
-echo "• Compiling and Linking Hoffle.exe..."
+# 2. Compile and Link C++ executable. The self-update script goes inside it,
+# and the version it compares against is the desktop apps' shared one.
+GEN_DIR="$BUILD_DIR/gen"
+mkdir -p "$GEN_DIR"
+{
+    printf 'static const char* kUpdateScript = R"HOFFLE_UPDATE('
+    cat "$ROOT_DIR/desktop/native/native-update.ps1"
+    printf ')HOFFLE_UPDATE";\n'
+} > "$GEN_DIR/update-script.h"
+VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$ROOT_DIR/desktop/package.json" | head -n 1)"
+echo "• Compiling and Linking Hoffle.exe (version $VERSION)..."
 CXX="$ZIG c++"
 CXXFLAGS="-target x86_64-windows -O2 -std=c++17"
-INCLUDES="-I$DIR/include -I$DIR/vendor/webview2/build/native/include -I$DIR/src"
+INCLUDES="-I$DIR/include -I$DIR/vendor/webview2/build/native/include -I$DIR/src -I$GEN_DIR"
 LIBS="-lgdi32 -luser32 -lshell32 -lole32 -loleaut32 -lshlwapi -ldwmapi -lversion -lcomctl32 -Wl,--subsystem,windows"
 
-$CXX $CXXFLAGS $INCLUDES \
+$CXX $CXXFLAGS $INCLUDES -DHOFFLE_VERSION="\"$VERSION\"" \
     "$DIR/src/main.cpp" \
     "$DIR/src/ConfigManager.cpp" \
     "$DIR/src/ActivityScanner.cpp" \

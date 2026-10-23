@@ -78,7 +78,10 @@ chmod +x "$MACOS_DIR/Hoffle"
 
 # 5. Package bundle metadata and resources
 echo "• Packaging Hoffle.app bundle..."
-cp "$DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+# The desktop apps share one version, which the self-update compares against.
+VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$ROOT_DIR/desktop/package.json" | head -n 1)"
+sed "/<key>CFBundleShortVersionString<\/key>/{n;s#<string>[^<]*</string>#<string>$VERSION</string>#;}" \
+    "$DIR/Resources/Info.plist" > "$CONTENTS_DIR/Info.plist"
 echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 if [ -f "$DIR/Resources/AppIcon.icns" ]; then
@@ -96,6 +99,9 @@ fi
 if [ -f "$DIR/src/web-bridge.js" ]; then
     cp "$DIR/src/web-bridge.js" "$RESOURCES_DIR/web-bridge.js"
 fi
+
+# The self-update script (desktop/native/, shared with the Linux app).
+cp "$ROOT_DIR/desktop/native/native-update.sh" "$RESOURCES_DIR/native-update.sh"
 
 # 6. Verify binary
 echo "• Verifying binary architecture:"

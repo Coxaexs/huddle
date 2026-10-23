@@ -13,9 +13,22 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR/bin"
 mkdir -p "$DIST_DIR/resources"
 
+# The self-update script goes inside the binary, and the version it compares
+# against is the desktop apps' shared one.
+REPO_DIR="$(cd "$ROOT_DIR/.." && pwd)"
+GEN_DIR="$BUILD_DIR/gen"
+mkdir -p "$GEN_DIR"
+{
+    printf 'static const char* kUpdateScript = R"HOFFLE_UPDATE('
+    cat "$REPO_DIR/desktop/native/native-update.sh"
+    printf ')HOFFLE_UPDATE";\n'
+} > "$GEN_DIR/update-script.h"
+VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$REPO_DIR/desktop/package.json" | head -n 1)"
+
 # Compile with g++
-echo "--> Compiling C++ native binary..."
+echo "--> Compiling C++ native binary (version $VERSION)..."
 g++ -std=c++17 -O2 -Wno-deprecated-declarations \
+    -I"$GEN_DIR" -DHOFFLE_VERSION="\"$VERSION\"" \
     "$ROOT_DIR/src/main.cpp" \
     "$ROOT_DIR/src/ActivityScanner.cpp" \
     "$ROOT_DIR/src/ConfigManager.cpp" \

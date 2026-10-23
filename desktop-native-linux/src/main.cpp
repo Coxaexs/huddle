@@ -9,15 +9,26 @@
 #include <string>
 #include <sstream>
 #include <fstream>
+#include <memory>
+#include <thread>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "ConfigManager.h"
 #include "ActivityScanner.h"
+// kUpdateScript: desktop/native/native-update.sh, embedded by scripts/build.sh.
+#include "update-script.h"
+
+#ifndef HOFFLE_VERSION
+#define HOFFLE_VERSION "0.0.0"
+#endif
 
 static GtkWidget* g_window = nullptr;
 static WebKitWebView* g_webView = nullptr;
 static AppIndicator* g_indicator = nullptr;
 static std::string g_iconPath = "";
 static std::string g_trayIconPath = "";
+static std::string g_exePath = "";
 
 // Embedded fallback of web-bridge.js to ensure standalone portability
 static const char* kEmbeddedBridgeJs = R"JS(
@@ -49,11 +60,29 @@ static const char* kEmbeddedBridgeJs = R"JS(
     }
   }
 
+  // The app's own update (see "Self-update" in main.cpp). The page's banner
+  // offers "Restart" once one is ready (app/lib/app-update.ts).
+  var updateState = null;
+  var updateListeners = new Set();
+  window.__hoffleUpdate = function (state) {
+    updateState = state;
+    updateListeners.forEach(function (cb) { try { cb(state); } catch (e) {} });
+  };
+
   const huddleApi = {
     desktop: true,
     native: true,
     platform: "linux",
     arch: "x64",
+    updates: {
+      state: function () { return Promise.resolve(updateState); },
+      onChange: function (cb) {
+        updateListeners.add(cb);
+        return function () { updateListeners.delete(cb); };
+      },
+      install: function () { postNative({ type: "updateInstall" }); },
+      download: function () { postNative({ type: "updateDownload" }); },
+    },
     setBadge: function (count) {
       postNative({ type: "setBadge", count: Number(count) || 0 });
     },
@@ -155,6 +184,7 @@ static const char* kEmbeddedBridgeJs = R"JS(
     }
   });
 
+  postNative({ type: "updateState" });
   console.log("[Hoffle] Linux native bridge active.");
 })();
 )JS";
@@ -163,6 +193,117 @@ static void execute_javascript(const std::string& script) {
     if (g_webView) {
         webkit_web_view_evaluate_javascript(g_webView, script.c_str(), -1, nullptr, nullptr, nullptr, nullptr, nullptr);
     }
+}
+
+static void on_tray_quit(GtkMenuItem* item, gpointer user_data);
+
+// ---------------------------------------------------------------------------
+// Self-update, with desktop/native/native-update.sh (shared with the macOS
+// app). The script checks the latest GitHub Release at launch and every few
+// hours and unpacks a newer build into the cache; the page then shows
+// "Restart" (window.huddle.updates). A build ready within a minute of launch
+// is installed straight away unless a call is live, as the other apps do.
+
+static const guint kUpdateCheckEverySeconds = 4 * 60 * 60;
+static const gint64 kApplyAtLaunchUs = 60 * G_USEC_PER_SEC;
+static gint64 g_launchedAt = 0;
+static bool g_inCall = false;
+static bool g_updateChecking = false;
+static std::string g_updateStatus = "idle";
+static std::string g_updateVersion = "";
+
+static std::string update_stage() {
+    return std::string(g_get_user_cache_dir()) + "/hoffle/update";
+}
+
+/** Writes the script into the cache, where replacing the app cannot pull it away mid-run. */
+static bool write_update_script(std::string& path) {
+    std::string stage = update_stage();
+    g_mkdir_with_parents(stage.c_str(), 0700);
+    path = stage + "/native-update.sh";
+    return g_file_set_contents(path.c_str(), kUpdateScript, -1, nullptr);
+}
+
+static void push_update_state() {
+    std::string js = "if (window.__hoffleUpdate) window.__hoffleUpdate({\"status\":\"" + g_updateStatus + "\"";
+    if (!g_updateVersion.empty()) js += ",\"version\":\"" + g_updateVersion + "\"";
+    js += "});";
+    execute_javascript(js);
+}
+
+/** Runs the script's install step, which waits for this process to end, then quits. */
+static void install_update() {
+    std::string script;
+    if (g_updateStatus != "ready" || g_exePath.empty() || !write_update_script(script)) return;
+    std::string pid = std::to_string(getpid());
+    std::string stage = update_stage();
+    gchar* argv[] = { (gchar*)"/bin/sh", (gchar*)script.c_str(), (gchar*)"install", (gchar*)g_exePath.c_str(),
+                      (gchar*)pid.c_str(), (gchar*)stage.c_str(), nullptr };
+    // Without G_SPAWN_DO_NOT_REAP_CHILD, GLib detaches the child, so it outlives us.
+    if (!g_spawn_async(nullptr, argv, nullptr, (GSpawnFlags)(G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL),
+                       nullptr, nullptr, nullptr, nullptr)) {
+        return;
+    }
+    on_tray_quit(nullptr, nullptr);
+}
+
+struct UpdateCheck {
+    std::string output;
+    bool ok;
+};
+
+static gboolean on_update_checked(gpointer data) {
+    std::unique_ptr<UpdateCheck> check(static_cast<UpdateCheck*>(data));
+    g_updateChecking = false;
+    // The last line is the answer: "ready 2.2.0", "manual 2.2.0" or "none".
+    std::istringstream lines(check->output);
+    std::string line, last;
+    while (std::getline(lines, line)) if (!line.empty()) last = line;
+    std::istringstream words(last);
+    std::string word, version;
+    words >> word >> version;
+    // Only digits and dots go into the page's script.
+    if (version.find_first_not_of("0123456789.") != std::string::npos) version.clear();
+    if (!check->ok) {
+        if (g_updateStatus != "ready" && g_updateStatus != "manual") g_updateStatus = "error";
+    } else if ((word == "ready" || word == "manual") && !version.empty()) {
+        g_updateStatus = word;
+        g_updateVersion = version;
+    } else if (g_updateStatus != "ready") {
+        g_updateStatus = "idle";
+    }
+    push_update_state();
+    if (g_updateStatus == "ready" && !g_inCall && g_get_monotonic_time() - g_launchedAt < kApplyAtLaunchUs) {
+        install_update();
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean check_for_update(gpointer) {
+    std::string script;
+    if (g_updateChecking || g_updateStatus == "ready" || g_exePath.empty() || !write_update_script(script)) {
+        return G_SOURCE_CONTINUE;
+    }
+    g_updateChecking = true;
+    std::string exe = g_exePath;
+    std::string stage = update_stage();
+    std::thread([script, exe, stage] {
+        gchar* argv[] = { (gchar*)"/bin/sh", (gchar*)script.c_str(), (gchar*)"check", (gchar*)HOFFLE_VERSION,
+                          (gchar*)"linux-x86_64", (gchar*)exe.c_str(), (gchar*)stage.c_str(), nullptr };
+        gchar* out = nullptr;
+        gint status = 0;
+        gboolean ran = g_spawn_sync(nullptr, argv, nullptr, G_SPAWN_STDERR_TO_DEV_NULL, nullptr, nullptr,
+                                    &out, nullptr, &status, nullptr);
+        auto* check = new UpdateCheck{ out ? out : "", ran && WIFEXITED(status) && WEXITSTATUS(status) == 0 };
+        g_free(out);
+        g_idle_add(on_update_checked, check);
+    }).detach();
+    return G_SOURCE_CONTINUE;
+}
+
+static gboolean first_update_check(gpointer) {
+    check_for_update(nullptr);
+    return G_SOURCE_REMOVE;
 }
 
 // Global Hotkey Callbacks
@@ -272,6 +413,20 @@ static void on_script_message_received(WebKitUserContentManager* manager,
                 gdk_event_free(event);
             }
         }
+    }
+    else if (type == "setInCall") {
+        JSCValue* inCallVal = jsc_value_object_get_property(value, "inCall");
+        g_inCall = inCallVal && jsc_value_to_boolean(inCallVal);
+        if (inCallVal) g_object_unref(inCallVal);
+    }
+    else if (type == "updateState") {
+        push_update_state();
+    }
+    else if (type == "updateInstall") {
+        install_update();
+    }
+    else if (type == "updateDownload") {
+        g_app_info_launch_default_for_uri("https://hoffle.online/download/linux-native", nullptr, nullptr);
     }
     else if (type == "windowZoom") {
         if (g_window) {
@@ -410,6 +565,7 @@ static void resolve_resource_paths() {
     ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
     if (len > 0) {
         exePath[len] = '\0';
+        g_exePath = exePath;
         std::string dir = exePath;
         size_t lastSlash = dir.find_last_of('/');
         if (lastSlash != std::string::npos) {
@@ -601,6 +757,10 @@ int main(int argc, char* argv[]) {
     }
 
     gtk_widget_show_all(g_window);
+
+    g_launchedAt = g_get_monotonic_time();
+    g_timeout_add_seconds(3, first_update_check, nullptr);
+    g_timeout_add_seconds(kUpdateCheckEverySeconds, check_for_update, nullptr);
 
     gtk_main();
 
