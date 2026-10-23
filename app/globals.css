@@ -24790,12 +24790,16 @@ a.link-preview-author:hover {
 }
 
 /* "Hoffle has been updated"; see components/update-banner.tsx. Same spot as
-   the connection banner, which it gives way to. */
+   the connection banner, which it gives way to. Centred with margins rather
+   than translateX(-50%): that would leave it only half the screen to wrap in
+   on a phone, and toastSlideIn's transform would undo it while sliding in. */
 .update-banner {
   position: fixed;
   top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  width: max-content;
+  margin: 0 auto;
   z-index: 10001;
   display: flex;
   align-items: center;
