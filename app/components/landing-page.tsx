@@ -467,9 +467,10 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 <Hoffy size={170} motion="boot" id="hoffy-hero" label="Hoffy, the Hoffle mascot" />
               </span>
             </div>
-            <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <p className="max-w-[62ch] text-lg leading-relaxed text-(--ink-2)">{copy.hero.body}</p>
-              <div className="flex flex-wrap gap-3">
+            {/* The buttons follow the words they belong to; Hoffy holds the right. */}
+            <div className="mt-6 max-w-[62ch]">
+              <p className="text-lg leading-relaxed text-(--ink-2)">{copy.hero.body}</p>
+              <div className="mt-7 flex flex-wrap gap-3">
                 <a href={APP_URL} className={primaryButton}>{copy.hero.open}</a>
                 <DownloadButton labels={downloadLabels} hrefs={downloadHrefs} className={secondaryButton} />
               </div>

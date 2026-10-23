@@ -120,6 +120,15 @@ async function handleRequest(
       return env.ASSETS.fetch(new Request(target, request));
     }
 
+    // Hoffle has no server actions. Scanners post made-up action ids anyway,
+    // which the framework answered with a 500 and a stack trace in the log.
+    if (
+      request.method === "POST" &&
+      (request.headers.has("next-action") || request.headers.has("x-rsc-action"))
+    ) {
+      return new Response("Not found.", { status: 404 });
+    }
+
     const previewInvite = invitePreviewRedirect(request, url, effectiveBasePath);
     if (previewInvite) return previewInvite;
 
