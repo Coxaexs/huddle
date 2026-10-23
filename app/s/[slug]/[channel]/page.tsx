@@ -29,6 +29,13 @@ const cursor = (value: string | undefined) => (value && /^\d{4}-\d\d-\d\dT[\d:.]
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"']+)/g;
 
+/**
+ * A GIF from the app's picker: the message is that one link, and the app
+ * shows it as a picture, so show it here too. Other links stay links.
+ */
+const PICKER_GIF = /^https:\/\/static\.klipy\.com\/[^\s<>"']+\.(?:gif|webp|png)$/i;
+const pickerGif = (content: string) => (PICKER_GIF.test(content.trim()) ? content.trim() : null);
+
 /** Message text with its links clickable (nofollow: these are visitors' words). */
 function linkify(text: string): ReactNode[] {
   return text.split(URL_PATTERN).map((part, i) =>
@@ -42,13 +49,23 @@ function linkify(text: string): ReactNode[] {
   );
 }
 
+/** A message's words with their links, or the GIF it is. */
+function MessageText({ content }: { content: string }) {
+  const gif = pickerGif(content);
+  if (gif) {
+    return <img src={gif} alt="GIF" loading="lazy" referrerPolicy="no-referrer" className="mt-2 max-h-72 max-w-full rounded-lg" />;
+  }
+  if (!content) return null;
+  return <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-(--ink-2)">{linkify(content)}</p>;
+}
+
 export async function generateMetadata({ params, searchParams }: Params): Promise<Metadata> {
   const { slug, channel: channelKey } = await params;
   const found = await load(slug, channelKey);
   if (!found) return { title: "Not found", robots: { index: false, follow: false } };
   const { db, server, channel } = found;
   const { messages } = await loadWebMessages(db, channel.id, cursor((await searchParams).before));
-  const first = messages.find((m) => m.content.trim())?.content.replace(/\s+/g, " ").slice(0, 150);
+  const first = messages.find((m) => m.content.trim() && !pickerGif(m.content))?.content.replace(/\s+/g, " ").slice(0, 150);
   const description = channel.topic || first || `#${channel.name} on ${server.name}`;
   return {
     title: `#${channel.name} · ${server.name}`,
@@ -106,9 +123,7 @@ export default async function WebChannelPage({ params, searchParams }: Params) {
                     <strong className="text-(--ink)">{message.author}</strong>
                     <time dateTime={message.createdAt} className="text-xs text-(--muted)">{when(message.createdAt)}</time>
                   </p>
-                  {message.content && (
-                    <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-(--ink-2)">{linkify(message.content)}</p>
-                  )}
+                  <MessageText content={message.content} />
                   {message.images.map((src) => (
                     <img key={src} src={src} alt="" loading="lazy" className="mt-2 max-h-72 max-w-full rounded-lg" />
                   ))}

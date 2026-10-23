@@ -5,4 +5,5 @@ export const mascot: Record<keyof typeof en, string> = {
   "mascot.notFound.title": "Bu sayfa tabaktan düşmüş.",
   "mascot.notFound.body": "Hoffy her yere baktı. Sayfa burada değil, ya da link eskimiş.",
   "mascot.notFound.home": "Hoffle'a dön",
+  "mascot.notFound.tab": "Sayfa bulunamadı · Hoffle",
 };
