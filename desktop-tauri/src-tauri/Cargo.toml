@@ -1,6 +1,6 @@
 [package]
 name = "huddle-desktop"
-version = "2.1.0"
+version = "2.1.1"
 description = "Huddle lightweight desktop client powered by Tauri v2"
 edition = "2021"
 authors = ["coxaexs"]

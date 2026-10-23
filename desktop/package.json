@@ -1,6 +1,6 @@
 {
   "name": "huddle-desktop",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "description": "Hoffle desktop app (Electron shell around chat.hoffle.online)",
   "author": "coxaexs",
