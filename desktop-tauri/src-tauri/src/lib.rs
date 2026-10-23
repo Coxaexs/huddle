@@ -6,6 +6,7 @@ use tauri::{
 
 mod app_audio;
 mod head_tracking;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,6 +14,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             head_tracking::head_tracking_available,
             head_tracking::head_tracking_start,
@@ -20,6 +22,9 @@ pub fn run() {
             app_audio::app_audio_available,
             app_audio::app_audio_start,
             app_audio::app_audio_stop,
+            updater::update_state,
+            updater::update_install,
+            updater::set_in_call,
         ])
         // A reload or new page drops the share, so the capture behind it goes too.
         .on_page_load(|_webview, payload| {
@@ -100,6 +105,9 @@ pub fn run() {
                     }
                 });
             }
+
+            #[cfg(desktop)]
+            updater::start(app.handle());
 
             Ok(())
         })

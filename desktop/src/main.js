@@ -16,6 +16,7 @@ const {
 const path = require("node:path");
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
+const { startUpdater, downloadPage } = require("./updater");
 
 /** Global hotkey that toggles your mic even when Hoffle isn't focused. */
 const MUTE_HOTKEY = "CommandOrControl+Shift+M";
@@ -95,6 +96,10 @@ function isAppUrl(url) {
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+/** True while the page reports a live call ("set-in-call"); an update then waits to be asked. */
+let inCall = false;
+/** The app's own updates (updater.js); null until started, and where there are none. */
+let updater = null;
 
 function loadBounds() {
   try {
@@ -124,8 +129,43 @@ function createTray() {
   }
   tray = new Tray(icon);
   tray.setToolTip("Hoffle");
+  refreshTrayMenu();
+  tray.on("click", () => {
+    if (!mainWindow) {
+      createWindow();
+    } else if (mainWindow.isVisible()) {
+      if (mainWindow.isFocused()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.focus();
+      }
+    } else {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
-  const contextMenu = Menu.buildFromTemplate([
+/** The tray's line about the app's own update, if updates run here at all. */
+function updateMenuItem() {
+  if (!updater) return [];
+  const { status, version, percent } = updater.state();
+  if (status === "ready") {
+    return [{ label: `Restart to update to ${version}`, click: () => updater.install() }];
+  }
+  if (status === "manual") {
+    return [{ label: `Download Hoffle ${version}…`, click: () => shell.openExternal(downloadPage()) }];
+  }
+  if (status === "downloading") {
+    return [{ label: `Downloading update… ${percent || 0}%`, enabled: false }];
+  }
+  return [{ label: "Check for updates", enabled: status !== "checking", click: () => updater.check() }];
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: "Open Hoffle",
       click: () => {
@@ -145,6 +185,7 @@ function createTray() {
       },
     },
     { type: "separator" },
+    ...updateMenuItem(),
     {
       label: "Quit Hoffle",
       click: () => {
@@ -152,24 +193,7 @@ function createTray() {
         app.quit();
       },
     },
-  ]);
-
-  tray.setContextMenu(contextMenu);
-  tray.on("click", () => {
-    if (!mainWindow) {
-      createWindow();
-    } else if (mainWindow.isVisible()) {
-      if (mainWindow.isFocused()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.focus();
-      }
-    } else {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+  ]));
 }
 
 function createWindow() {
@@ -595,7 +619,34 @@ if (!app.requestSingleInstanceLock()) {
     // minimised or tray-hidden page, but only while a call is live.
     ipcMain.on("set-in-call", (event, on) => {
       if (!mainWindow || event.sender !== mainWindow.webContents) return;
+      inCall = Boolean(on);
       mainWindow.webContents.setBackgroundThrottling(!on);
+    });
+
+    // The app's own update (updater.js): the page shows a "Restart" banner
+    // for it, the tray a menu line.
+    ipcMain.handle("update:state", (event) =>
+      mainWindow && event.sender === mainWindow.webContents && updater ? updater.state() : null,
+    );
+    ipcMain.on("update:install", (event) => {
+      if (mainWindow && event.sender === mainWindow.webContents) updater?.install();
+    });
+    ipcMain.on("update:download", (event) => {
+      if (mainWindow && event.sender === mainWindow.webContents) shell.openExternal(downloadPage());
+    });
+    startUpdater({
+      isBusy: () => inCall,
+      onChange: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("update:state", state);
+        refreshTrayMenu();
+      },
+      // The windows would otherwise hide to the tray instead of closing.
+      beforeInstall: () => {
+        isQuitting = true;
+      },
+    }).then((started) => {
+      updater = started;
+      refreshTrayMenu();
     });
     // Per-app screen-share audio (startAppAudio): is this share using it, and
     // the page's stop when the share ends.

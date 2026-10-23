@@ -17,6 +17,14 @@ permissions:
 #   macOS    MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD (the Developer ID .p12, base64)
 #            and APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID to notarize.
 # Without them the builds come out unsigned (Mac: ad-hoc), as before.
+#
+# Self-updates: the apps read the newest Release. The Electron app reads the
+# latest*.yml files electron-builder writes beside the installers
+# (desktop/src/updater.js). Hoffle Lite reads lite-latest.json (written by the
+# last job here), whose files are signed with TAURI_SIGNING_PRIVATE_KEY +
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD (secrets); the public half is in
+# desktop-tauri/src-tauri/tauri.conf.json. Without the private key no Lite
+# update can ever install, so keep a copy of it.
 env:
   SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
   MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
@@ -66,7 +74,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           node native/build.js mac
-          npx electron-builder --mac -c.mac.hardenedRuntime=true -c.mac.notarize=true
+          npx electron-builder --mac --publish never -c.mac.hardenedRuntime=true -c.mac.notarize=true
       # SignPath signs the Windows installer; the signed copy replaces it.
       - if: matrix.os == 'windows-latest' && env.SIGNPATH_API_TOKEN != ''
         id: unsigned-win
@@ -84,6 +92,9 @@ jobs:
           github-artifact-id: ${{ steps.unsigned-win.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: desktop/dist
+      # The signed installer no longer matches the checksum in latest.yml.
+      - if: matrix.os == 'windows-latest' && env.SIGNPATH_API_TOKEN != ''
+        run: node scripts/refresh-update-info.mjs dist/latest.yml
       - uses: actions/upload-artifact@v4
         with:
           name: hoffle-${{ matrix.os }}
@@ -92,8 +103,12 @@ jobs:
             desktop/dist/*.zip
             desktop/dist/*.exe
             desktop/dist/*.AppImage
+            desktop/dist/latest*.yml
+            desktop/dist/*.blockmap
           if-no-files-found: ignore
-      # Tag pushes publish a Release; hoffle.online links to releases/latest.
+      # Tag pushes publish a Release; hoffle.online links to releases/latest,
+      # and the installed apps update from it (latest*.yml, blockmaps for
+      # downloading only what changed).
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
@@ -102,6 +117,8 @@ jobs:
             desktop/dist/*.zip
             desktop/dist/*.exe
             desktop/dist/*.AppImage
+            desktop/dist/latest*.yml
+            desktop/dist/*.blockmap
           fail_on_unmatched_files: false
 
   # Lightweight Windows build on WebView2 (desktop-tauri/), attached to the
@@ -127,7 +144,11 @@ jobs:
         with:
           version: 0.13.0
       - run: node ../desktop/native/build.js win
+      # Also signs the installer for self-updates (the .sig beside it).
       - run: npx tauri build --bundles nsis
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - id: lite-win
         uses: actions/upload-artifact@v4
         with:
@@ -143,6 +164,22 @@ jobs:
           github-artifact-id: ${{ steps.lite-win.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: desktop-tauri/src-tauri/target/release/bundle/nsis
+      # SignPath changed the installer, so its update signature is signed again.
+      - if: env.SIGNPATH_API_TOKEN != ''
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for exe in src-tauri/target/release/bundle/nsis/*.exe; do
+            rm -f "$exe.sig"
+            npx tauri signer sign "$exe"
+          done
+      # The update signature, for lite-update-manifest.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoffle-lite-update-windows
+          path: desktop-tauri/src-tauri/target/release/bundle/nsis/*.exe.sig
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
@@ -168,15 +205,32 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri
       - run: npm install
-      - run: npx tauri build --target universal-apple-darwin --bundles dmg
+      # "app" too: the self-update is the zipped .app (with its .sig), which
+      # gets a name without spaces so its Release URL is predictable.
+      - run: npx tauri build --target universal-apple-darwin --bundles app,dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Name the update
+        run: |
+          v=$(node -p "require('./package.json').version")
+          mkdir -p update
+          cp "src-tauri/target/universal-apple-darwin/release/bundle/macos/Hoffle Lite.app.tar.gz" "update/Hoffle-Lite-$v-mac-universal.app.tar.gz"
+          cp "src-tauri/target/universal-apple-darwin/release/bundle/macos/Hoffle Lite.app.tar.gz.sig" "update/Hoffle-Lite-$v-mac-universal.app.tar.gz.sig"
       - uses: actions/upload-artifact@v4
         with:
           name: hoffle-lite-mac
           path: desktop-tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hoffle-lite-update-mac
+          path: desktop-tauri/update/*.sig
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: desktop-tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          files: |
+            desktop-tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            desktop-tauri/update/*.app.tar.gz
 
   # Native apps (desktop-native-*/): no Electron, no Tauri, just the system
   # webview, attached to the same Release. Files carry the desktop version.
@@ -248,6 +302,27 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: out/*
+
+  # Hoffle Lite's update manifest (src-tauri/src/updater.rs reads it from the
+  # latest Release): each platform's file in this Release and its signature.
+  lite-update-manifest:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [tauri-windows, tauri-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hoffle-lite-update-*
+          path: lite-update
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: node desktop-tauri/scripts/update-manifest.mjs "$GITHUB_REF_NAME" lite-update > lite-latest.json
+      - run: cat lite-latest.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: lite-latest.json
 
   # Tells hoffle.online whether this release is signed (lib/downloads.ts reads
   # SIGNING.json), so the "Windows protected your PC" note goes away by itself.

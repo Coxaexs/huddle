@@ -19,6 +19,10 @@ Signed with Hoffle's Apple Developer ID and notarized by Apple, once that
 account is set up. Until then the Mac apps are ad-hoc signed, and macOS asks
 you to allow them in System Settings → Privacy & Security the first time.
 
+The Developer ID also lets the Electron app update itself on a Mac: macOS
+refuses a self-update for an ad-hoc signed app, so until then it only says
+that a new version is out and links to the download.
+
 ## Who does what
 
 - Committers and reviewers: [Abdullah Türk](https://github.com/Coxaexs)

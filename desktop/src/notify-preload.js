@@ -5,7 +5,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 /**
  * A deliberately tiny bridge injected into the Huddle web app. It exposes only:
  *  - `window.huddle.desktop` so the app can tell it's running in the shell,
- *  - `window.huddle.setBadge(n)` to reflect the unread count on the dock/taskbar.
+ *  - `window.huddle.setBadge(n)` to reflect the unread count on the dock/taskbar,
+ *  - `window.huddle.updates` to offer a restart once the app has updated itself.
  * The global hotkey arrives as an IPC message and is re-dispatched as a plain
  * DOM event the web app can listen for, so no privileged API is handed over.
  */
@@ -42,6 +43,22 @@ contextBridge.exposeInMainWorld("huddle", {
       return () => ipcRenderer.removeListener("app-audio:pcm", listener);
     },
     stop: () => ipcRenderer.send("app-audio:stop"),
+  },
+  /**
+   * The app's own update (updater.js). state(): { status, version } where
+   * status "ready" means a restart installs it, and "manual" that a newer
+   * version is out which this copy cannot install itself.
+   */
+  updates: {
+    state: () => ipcRenderer.invoke("update:state"),
+    /** Returns the unsubscribe. */
+    onChange: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("update:state", listener);
+      return () => ipcRenderer.removeListener("update:state", listener);
+    },
+    install: () => ipcRenderer.send("update:install"),
+    download: () => ipcRenderer.send("update:download"),
   },
   /** Trigger native OS push notification */
   notify: (title, body) =>

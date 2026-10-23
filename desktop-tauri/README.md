@@ -31,6 +31,21 @@ npm run build
 ```
 The output installers (.deb, .AppImage, .dmg, or .msi/.exe) will be generated in `src-tauri/target/release/bundle/`.
 
+Release builds also sign Lite's self-update (`src-tauri/src/updater.rs`),
+so they need the updater key: `TAURI_SIGNING_PRIVATE_KEY` (the key file's
+contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, as in CI. To build without
+it, leave the update files out:
+`npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+
+## Updates
+
+Lite checks the latest GitHub Release's `lite-latest.json` at launch and every
+4 hours (CI writes it, `scripts/update-manifest.mjs`), downloads a newer build
+and verifies it against the public key in `tauri.conf.json`. It installs at
+once when that happens within a minute of launch and no call is live, otherwise
+when "Restart" is picked in the page's update banner. If the private key is
+lost, no Lite update can install again: keep a copy of it.
+
 ## Known limitation
 
 The Tauri capability allowlist (`src-tauri/capabilities/`) only grants native

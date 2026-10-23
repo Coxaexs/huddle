@@ -71,6 +71,24 @@ You need a Windows machine, **or** CI (recommended — no local Windows needed):
   `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for notarization.
   electron-builder signs and notarizes automatically when these are present.
 
+## Updates
+
+The chat is the hosted site, so a deploy reaches every app at its next reload,
+and an open window offers "Reload" when the server runs a newer build
+(`app/components/update-banner.tsx`). Only changes to this shell need a new
+version, and the app fetches that itself (`src/updater.js`, electron-updater):
+
+1. Bump `version` in `package.json` (and in `desktop-tauri/` for Hoffle Lite).
+2. Tag it: `git tag desktop-v2.1.1 && git push origin desktop-v2.1.1`.
+3. CI publishes the Release with the `latest*.yml` files the apps read.
+
+Running apps check at launch and every 4 hours and download in the background.
+A download that finishes within a minute of launch installs straight away
+(unless a call is live); later ones wait for "Restart" in the page's banner or
+the tray, or for the next quit. Windows and the AppImage update unsigned; macOS
+only lets a Developer ID-signed app replace itself, so until then Mac users get
+"Hoffle 2.x is out — Download" instead.
+
 ## What's in here
 
 - `src/main.js` — window, permissions, and the screen-share request handler.

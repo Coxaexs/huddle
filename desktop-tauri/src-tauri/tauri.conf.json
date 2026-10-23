@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Hoffle Lite",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "identifier": "online.hoffle.lite",
   "build": {
     "devUrl": "https://chat.hoffle.online",
@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,6 +45,17 @@
     },
     "iOS": {
       "minimumSystemVersion": "14.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA0OEM0MjFCNjlBNTRCOTUKUldTVlM2VnBHMEtNQkVzejUzcHZlSWFmQ3Nuak1MTUw3aDZVY1cxdExBbmR3UzljWU5rM2VMZloK",
+      "endpoints": [
+        "https://github.com/Coxaexs/huddle/releases/latest/download/lite-latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
