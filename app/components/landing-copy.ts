@@ -49,8 +49,8 @@ export interface LandingCopy {
     browserButton: string;
     desktopTitle: string;
     desktopBody: string;
-    rows: { windows: string; macArm: string; macIntel: string; linux: string; lite: string };
-    files: { windows: string; macArm: string; macIntel: string; linux: string; lite: string };
+    rows: { windows: string; macArm: string; macIntel: string; linux: string; lite: string; native: string };
+    files: { windows: string; macArm: string; macIntel: string; linux: string; lite: string; native: string };
     action: string;
     version: (v: string) => string;
     windowsUnsigned: string;
@@ -320,13 +320,14 @@ const en: LandingCopy = {
     browserButton: "Install Hoffle",
     desktopTitle: "Or get the desktop app",
     desktopBody: "It adds push-to-talk that works while a game has focus, and your computer's sound when you share your screen.",
-    rows: { windows: "Windows", macArm: "Mac (Apple chip)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite" },
+    rows: { windows: "Windows", macArm: "Mac (Apple chip)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite", native: "Hoffle Native" },
     files: {
       windows: ".exe installer",
       macArm: ".dmg, M1 and newer",
       macIntel: ".dmg, older Macs",
       linux: ".AppImage, Wayland and X11",
       lite: "a much smaller app for Windows and Mac",
+      native: "beta: the lightest one, under 1 MB, for Windows, Mac (Apple chip) and Linux",
     },
     action: "Download",
     version: (v) => `Version ${v}, downloaded straight from hoffle.online.`,
@@ -673,13 +674,14 @@ const tr: LandingCopy = {
     browserButton: "Hoffle'ı yükle",
     desktopTitle: "Ya da masaüstü uygulamasını indir",
     desktopBody: "Oyun açıkken de çalışan bas-konuş ve ekran paylaşırken bilgisayarının sesi bu uygulamayla geliyor.",
-    rows: { windows: "Windows", macArm: "Mac (Apple çipli)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite" },
+    rows: { windows: "Windows", macArm: "Mac (Apple çipli)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite", native: "Hoffle Native" },
     files: {
       windows: ".exe kurulum dosyası",
       macArm: ".dmg, M1 ve sonrası",
       macIntel: ".dmg, eski Mac'ler",
       linux: ".AppImage, Wayland ve X11",
       lite: "Windows ve Mac için çok daha küçük bir uygulama",
+      native: "beta: en hafifi, 1 MB'tan küçük; Windows, Mac (Apple çipli) ve Linux için",
     },
     action: "İndir",
     version: (v) => `Sürüm ${v}, doğrudan hoffle.online'dan iniyor.`,

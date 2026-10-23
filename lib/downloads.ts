@@ -19,7 +19,16 @@ export const RELEASES_PAGE = `https://github.com/${RELEASES_REPO}/releases/lates
 /** R2 wants every multipart part but the last to be the same size. */
 const PART_BYTES = 16 * 1024 * 1024;
 
-export type DownloadPlatform = "windows" | "windows-lite" | "mac-arm64" | "mac-intel" | "mac-lite" | "linux";
+export type DownloadPlatform =
+  | "windows"
+  | "windows-lite"
+  | "windows-native"
+  | "mac-arm64"
+  | "mac-intel"
+  | "mac-lite"
+  | "mac-native"
+  | "linux"
+  | "linux-native";
 
 /** Which release asset each download is, by file name. */
 const ASSET_PATTERNS: Record<DownloadPlatform, RegExp> = {
@@ -29,6 +38,10 @@ const ASSET_PATTERNS: Record<DownloadPlatform, RegExp> = {
   "mac-intel": /^Hoffle-[\d.]+\.dmg$/i,
   "mac-lite": /^Hoffle[ .]Lite_[\d.]+_universal\.dmg$/i,
   linux: /^Hoffle-[\d.]+\.AppImage$/i,
+  // Hoffle Native (desktop-native-*/): no installer on Windows and Linux, just the app.
+  "windows-native": /^Hoffle-Native-[\d.]+-windows-x64\.zip$/i,
+  "mac-native": /^Hoffle-Native-[\d.]+-mac-arm64\.dmg$/i,
+  "linux-native": /^Hoffle-Native-[\d.]+-linux-x86_64\.tar\.gz$/i,
 };
 
 export const DOWNLOAD_PLATFORMS = Object.keys(ASSET_PATTERNS) as DownloadPlatform[];
@@ -148,6 +161,8 @@ async function copyAsset(bucket: R2Bucket, asset: ReleaseAsset, key: string): Pr
 function contentTypeFor(name: string): string {
   if (name.endsWith(".exe")) return "application/vnd.microsoft.portable-executable";
   if (name.endsWith(".dmg")) return "application/x-apple-diskimage";
+  if (name.endsWith(".zip")) return "application/zip";
+  if (name.endsWith(".tar.gz")) return "application/gzip";
   return "application/octet-stream";
 }
 

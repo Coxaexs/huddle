@@ -402,7 +402,16 @@ function downloadRows(copy: LandingCopy["download"], manifest: DownloadManifest 
     { name: copy.rows.macArm, file: copy.files.macArm + size("mac-arm64"), href: href("mac-arm64") },
     { name: copy.rows.macIntel, file: copy.files.macIntel + size("mac-intel"), href: href("mac-intel") },
     { name: copy.rows.linux, file: copy.files.linux + size("linux"), href: href("linux") },
-    { name: copy.rows.lite, file: copy.files.lite, href: href("windows-lite"), extra: { label: "Mac", href: href("mac-lite") } },
+    { name: copy.rows.lite, file: copy.files.lite, href: href("windows-lite"), extras: [{ label: "Mac", href: href("mac-lite") }] },
+    {
+      name: copy.rows.native,
+      file: copy.files.native,
+      href: href("windows-native"),
+      extras: [
+        { label: "Mac", href: href("mac-native") },
+        { label: "Linux", href: href("linux-native") },
+      ],
+    },
   ];
 }
 
@@ -585,17 +594,18 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
               <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-(--ink-2)">{copy.download.desktopBody}</p>
               <ul className="mt-4 divide-y divide-(--line) border-y border-(--line)">
                 {downloadRows(copy.download, manifest).map((row) => (
-                  <li key={row.name} className="flex items-center gap-4 py-4">
-                    <span className="w-36 shrink-0 font-bold">{row.name}</span>
-                    <span className="min-w-0 flex-1 text-sm text-(--muted)">{row.file}</span>
+                  <li key={row.name} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-4">
+                    {/* On a phone: the name and links on one line, what it is on the next. */}
+                    <span className="font-bold max-sm:flex-1 sm:w-36 sm:shrink-0">{row.name}</span>
+                    <span className="min-w-0 text-sm text-(--muted) max-sm:order-last max-sm:basis-full sm:flex-1">{row.file}</span>
                     <a href={row.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
-                      {row.extra ? "Windows" : copy.download.action} →
+                      {row.extras ? "Windows" : copy.download.action} →
                     </a>
-                    {row.extra && (
-                      <a href={row.extra.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
-                        {row.extra.label} →
+                    {row.extras?.map((extra) => (
+                      <a key={extra.label} href={extra.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
+                        {extra.label} →
                       </a>
-                    )}
+                    ))}
                   </li>
                 ))}
               </ul>
