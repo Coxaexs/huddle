@@ -16,6 +16,7 @@ import { stopSharedConversion } from "./jellyfin-proxy";
 import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { cleanClubBatch } from "./club-feed";
+import { CLUB_DECKS_SEAT, DEFAULT_DESK, cleanClubDesk, cleanClubFx, type ClubDesk } from "./club-desk";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, hasPermission, Permission } from "./permissions";
 import {
@@ -118,6 +119,8 @@ interface Attachment {
    * sends, so it sits in no voice room and on no roster; channelId is its room.
    */
   feed?: boolean;
+  /** A room shard socket (?room=): the room's live traffic goes here, its living room poses included. */
+  shard?: boolean;
   /** This seat has the club open: the music bot's lights reach it. */
   clubWatch?: boolean;
 }
@@ -210,6 +213,10 @@ export class HuddleHub extends DurableObject {
   private readonly clubBudget = new Map<string, { second: number; count: number }>();
   /** Feed socket connectionId -> when it was last told nobody has the club open. */
   private readonly clubIdleAt = new Map<string, number>();
+  /** connectionId -> light desk changes and moments sent this second. */
+  private readonly clubDeskBudget = new Map<string, { second: number; count: number }>();
+  /** voice room -> its club's light desk and who last set it; persisted, like the living room's shared state. */
+  private clubDesks: Record<string, { desk: ClubDesk; by: string | null }> | null = null;
   /** In-memory attachment cache to avoid O(N) structured-clone deserialization on every 10Hz frame. */
   private readonly attachmentCache = new WeakMap<WebSocket, Attachment>();
   /** voice room -> its shared living room state; persisted, since the object may sleep mid-call. */
@@ -583,6 +590,7 @@ export class HuddleHub extends DurableObject {
       bot: url.searchParams.get("bot") === "1",
       recorder: url.searchParams.get("recorder") === "1",
       invisible: url.searchParams.get("invisible") === "1",
+      ...(shardRoom ? { shard: true } : {}),
     };
     if (feed) {
       Object.assign(attachment, { voiceChannelId: null, voiceJoinedAt: null, invisible: true, feed: true });
@@ -827,6 +835,55 @@ export class HuddleHub extends DurableObject {
             other.send(wake);
           }
         }
+        // And the light desk as the room has it.
+        const kept = (await this.loadClubDesks())[room];
+        if (kept) socket.send(JSON.stringify({ t: "club-desk", channelId: room, desk: kept.desk, by: kept.by, serverNow: Date.now() } satisfies ServerEvent));
+        return;
+      }
+
+      case "club-desk":
+      case "club-fx": {
+        // The light desk is whoever has the decks', or anyone's while they are free.
+        const room = attachment.voiceChannelId;
+        if (!room || attachment.bot) return;
+        const second = Math.floor(Date.now() / 1000);
+        const budget = this.clubDeskBudget.get(attachment.connectionId);
+        if (budget?.second === second) {
+          if (budget.count >= 16) return;
+          budget.count += 1;
+        } else {
+          this.clubDeskBudget.set(attachment.connectionId, { second, count: 1 });
+        }
+        const dj = this.sockets().find(({ attachment: peer }) =>
+          peer.voiceChannelId === room && !peer.bot && peer.lounge?.seat === CLUB_DECKS_SEAT && peer.lounge.venue === "club");
+        const allowed = !dj || dj.attachment.connectionId === attachment.connectionId;
+        const desks = await this.loadClubDesks();
+        const now = Date.now();
+        if (event.t === "club-fx") {
+          const fx = cleanClubFx(event.fx);
+          if (!fx || !allowed) return;
+          const payload = JSON.stringify({ t: "club-fx", channelId: room, fx, serverNow: now } satisfies ServerEvent);
+          for (const { socket: other, attachment: peer } of this.sockets()) {
+            if (peer.voiceChannelId === room && !peer.bot && peer.connectionId !== attachment.connectionId) other.send(payload);
+          }
+          return;
+        }
+        const desk = cleanClubDesk(event.desk);
+        if (!desk) return;
+        if (!allowed) {
+          // Someone else is at the decks: put this tab's desk back the way the room has it.
+          const kept = desks[room] ?? { desk: DEFAULT_DESK, by: null };
+          socket.send(JSON.stringify({ t: "club-desk", channelId: room, desk: kept.desk, by: kept.by, serverNow: now } satisfies ServerEvent));
+          return;
+        }
+        const by = attachment.displayName || attachment.username || null;
+        desks[room] = { desk, by };
+        await this.ctx.storage.put("clubDesks", desks);
+        const payload = JSON.stringify({ t: "club-desk", channelId: room, desk, by, serverNow: now } satisfies ServerEvent);
+        for (const { socket: other, attachment: peer } of this.sockets()) {
+          // Whoever set it has it already: an echo arriving after their next move would drag the slider back.
+          if (peer.voiceChannelId === room && !peer.bot && peer.connectionId !== attachment.connectionId) other.send(payload);
+        }
         return;
       }
 
@@ -863,6 +920,14 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const poses: Array<{ connectionId: string; pose: LoungeWirePose }> = [];
+        if (attachment.shard) {
+          // The room's shard holds the poses (they're sent here); the venue and shared state are the main hub's.
+          for (const { attachment: peer } of this.sockets()) {
+            if (peer.voiceChannelId === room && peer.lounge) poses.push({ connectionId: peer.connectionId, pose: peer.lounge });
+          }
+          socket.send(JSON.stringify({ t: "lounge-state", channelId: room, poses, shard: true, serverNow: Date.now() } satisfies ServerEvent));
+          return;
+        }
         const shared = (await this.loadLoungeShared())[room];
         let venue: LoungeVenue | undefined;
         for (const { attachment: peer } of this.sockets()) {
@@ -1521,6 +1586,7 @@ export class HuddleHub extends DurableObject {
     if (attachment) this.synthBudget.delete(attachment.connectionId);
     if (attachment) this.clubBudget.delete(attachment.connectionId);
     if (attachment) this.clubIdleAt.delete(attachment.connectionId);
+    if (attachment) this.clubDeskBudget.delete(attachment.connectionId);
     if (attachment) this.streamPreviews.delete(attachment.connectionId);
     if (attachment) this.watchingBy.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
@@ -1959,10 +2025,20 @@ export class HuddleHub extends DurableObject {
     if (this.loungeShared) await this.ctx.storage.put("loungeShared", this.loungeShared);
   }
 
+  private async loadClubDesks(): Promise<Record<string, { desk: ClubDesk; by: string | null }>> {
+    this.clubDesks ??= (await this.ctx.storage.get<Record<string, { desk: ClubDesk; by: string | null }>>("clubDesks")) ?? {};
+    return this.clubDesks;
+  }
+
   /** Forgets a room's shared state (and its venue clock) once nobody is left in it. */
   private async pruneLounge(room: string): Promise<void> {
     for (const { attachment } of this.sockets()) if (attachment.voiceChannelId === room) return;
     this.venueChangedAt.delete(room);
+    const desks = await this.loadClubDesks();
+    if (desks[room]) {
+      delete desks[room];
+      await this.ctx.storage.put("clubDesks", desks);
+    }
     const all = await this.loadLoungeShared();
     if (!all[room]) return;
     const watch = all[room].watch as WatchState | undefined;

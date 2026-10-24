@@ -1,6 +1,7 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
 import type { ClubBatch } from "./club-feed";
+import type { ClubDesk, ClubFx } from "./club-desk";
 import type { SynthPlay } from "./gesture-synth";
 import type { SessionNotesState } from "./session-notes";
 
@@ -394,6 +395,10 @@ export type ClientEvent =
   | { t: "club-watch"; on: boolean }
   /** The music bot's light feed for the room's club (from its feed socket only; see club-feed.ts). */
   | ({ t: "club" } & ClubBatch)
+  /** The club's light desk, from whoever has the decks (anyone while they are free); see club-desk.ts. */
+  | { t: "club-desk"; desk: ClubDesk }
+  /** A moment from the light desk's buttons. */
+  | { t: "club-fx"; fx: ClubFx }
   /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
   /** A small JPEG of this seat's own screen share, for the "Streaming Now" hover card. */
   | { t: "stream-preview"; image: string; title?: string | null }
@@ -470,6 +475,8 @@ export type ServerEvent =
       t: "lounge-state";
       channelId: string;
       poses: Array<{ connectionId: string; pose: LoungeWirePose }>;
+      /** From the room's shard: the poses alone (the venue and shared state come from the main hub's answer). */
+      shard?: true;
       /** The room the call is in; absent means the living room. */
       venue?: LoungeVenue;
       /** The room's shared state: watch, initiative, gm, card and characters (a map by user). */
@@ -497,6 +504,10 @@ export type ServerEvent =
       channelId: string;
       serverNow: number;
     } & ClubBatch)
+  /** The club's light desk as it is now: on any change, and to whoever opens the club. */
+  | { t: "club-desk"; channelId: string; desk: ClubDesk; by: string | null; serverNow: number }
+  /** A moment from the light desk, for everyone in the club but whoever pressed it. */
+  | { t: "club-fx"; channelId: string; fx: ClubFx; serverNow: number }
   /** To the music bot's feed socket: nobody has the club open (club-idle), or now somebody does (club-wake). */
   | { t: "club-idle" }
   | { t: "club-wake" }

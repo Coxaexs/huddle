@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * The Living Room club's DJ booth: the music bot's DJ booth for one voice
- * room, through the club's own panel. Starting the night puts Real DJ on air
- * with the stemmed songs; whoever has the decks then mixes, remixes and fires
- * the sampler. Only these controls go through (the full booth, /dj, has the
- * rest), and only for people who may join the room.
+ * room, through the club's own panel. Starting the night puts Real DJ (or
+ * Auto DJ) on air with the stemmed songs; whoever has the decks then mixes,
+ * remixes, fires the sampler and decides who mixes and how. Only these
+ * controls go through (the full booth, /dj, has the rest), and only for
+ * people who may join the room.
  */
 
 const STEMS = ["drums", "bass", "vocals", "other"];
@@ -26,7 +27,7 @@ export function boothOp(body: Record<string, unknown>): Record<string, unknown> 
   const op = typeof body.op === "string" ? body.op : "";
   switch (op) {
     case "club":
-      return { op: "club", ...(VIBES.includes(body.vibe as string) ? { vibe: body.vibe } : {}) };
+      return { op: "club", ...(VIBES.includes(body.vibe as string) ? { vibe: body.vibe } : {}), ...(body.mode === "auto" ? { mode: "auto" } : {}) };
     case "stop":
       return { op: "stop" };
     case "auto": {
@@ -35,6 +36,10 @@ export function boothOp(body: Record<string, unknown>): Record<string, unknown> 
       if (VIBES.includes(body.vibe as string)) out.vibe = body.vibe;
       if (typeof body.on === "boolean") out.on = body.on;
       if (typeof body.three === "boolean") out.three = body.three;
+      // Auto DJ's mixes: their style, and their length in beats (0: each style's own).
+      if (MIX_STYLES.includes(body.style as string)) out.style = body.style;
+      const beats = Number(body.beats);
+      if (body.beats !== undefined && Number.isInteger(beats) && beats >= 0 && beats <= 64) out.beats = beats;
       return Object.keys(out).length > 1 ? out : "Nothing to change.";
     }
     case "skip":
@@ -106,7 +111,10 @@ export function slimState(state: Record<string, any>) {
     decks,
     master: typeof state.mixer?.master_deck === "string" ? state.mixer.master_deck : null,
     mix: transition ? { label: String(transition.label ?? transition.style ?? ""), progress: Number(transition.progress) || 0, started: Boolean(transition.started) } : null,
-    auto: { on: Boolean(auto.on), mode: auto.mode === "real" ? "real" : "auto", vibe: VIBES.includes(auto.vibe) ? auto.vibe : "club", three: Boolean(auto.three), next: auto.real?.next ?? null },
+    auto: {
+      on: Boolean(auto.on), mode: auto.mode === "real" ? "real" : "auto", vibe: VIBES.includes(auto.vibe) ? auto.vibe : "club", three: Boolean(auto.three), next: auto.real?.next ?? null,
+      style: MIX_STYLES.includes(auto.style) ? auto.style : "auto", beats: typeof auto.beats === "number" && auto.beats > 0 ? auto.beats : null,
+    },
     stems: { on: Boolean(state.stems?.on), available: Boolean(state.stems?.available) },
     crate: (Array.isArray(state.crate) ? state.crate : []).slice(0, 12).map((item: Record<string, unknown>) => ({
       title: typeof item.title === "string" ? item.title : "",

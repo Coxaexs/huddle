@@ -11,6 +11,7 @@
  * only the furnishings' looks change per theme.
  */
 import type { Vector } from "./spatial-audio";
+import { CLUB_DECKS_SEAT } from "@/lib/club-desk";
 
 export interface LoungePose {
   x: number;
@@ -504,7 +505,7 @@ export const CLUB_STAGE = { x0: -6.2, x1: 6.2, z0: -CLUB_HALF_Z, z1: -5.2, heigh
 export const CLUB_DANCE_FLOOR = { x0: -5, x1: 5, z0: -4.6, z1: 2.6, tile: 0.9 };
 export const CLUB_BAR = { x0: -4.2, x1: 4.2, z0: 6.15, z1: 6.85 };
 /** The DJ's spot behind the decks, and the decks (the booth's table). */
-export const CLUB_DJ_SEAT = "club-dj";
+export const CLUB_DJ_SEAT = CLUB_DECKS_SEAT;
 export const CLUB_DECKS = { x: 0, z: -6.15, width: 2.6, depth: 0.75 };
 const CLUB_BOOTH_SIDES: Array<{ side: -1 | 1; z: number }> = [-2.4, 1.6].flatMap((z) => [{ side: -1 as const, z }, { side: 1 as const, z }]);
 const CLUB_SEATS: LoungeSeat[] = [

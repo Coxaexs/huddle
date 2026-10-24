@@ -3,7 +3,7 @@
 import "../lib/canvas-polyfill";
 import { markAchievement } from "../lib/achievement-client";
 import { apiUrl } from "../lib/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Armchair, ChessPawn, Clapperboard, Crown, Disc3, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
@@ -21,8 +21,9 @@ import { TableDice } from "./tabletop-dice";
 import { buildBoardHall, type FloorBoard } from "./board-hall-scene";
 import { buildMeadow } from "./meadow-scene";
 import { buildClub, type ClubRig } from "./club-scene";
-import { ClubBar, ClubDecksPanel, type ClubStatus } from "./club-panel";
+import { ClubBar, ClubDecksPanel, ClubLightDesk, ClubLightsPanel, type ClubLightSettings, type ClubStatus } from "./club-panel";
 import { ClubLights, watchClub, type ClubShow } from "../lib/club-lights";
+import { DEFAULT_DESK, type ClubDesk, type ClubFx } from "@/lib/club-desk";
 import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from "../lib/board-game";
 import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
@@ -96,9 +97,8 @@ const VENUE_HINTS: Record<VenueId, string> = {
   club: "The club: the lights play the music, part by part when a song has stems. Dance on the floor, sit in a booth or at the bar, or click the decks to DJ. Nothing on? Start the night from the club bar.",
 };
 
-/** The club's lights, per browser: strobes allowed, and how much later the lights hit (Bluetooth headphones lag). */
+/** The club's lights, per browser: strobes allowed, how much later the lights hit (Bluetooth headphones lag), how bright. */
 const CLUB_LIGHTS_KEY = "huddle-club-lights";
-interface ClubLightSettings { strobes: boolean; nudgeMs: number }
 function readClubLights(): ClubLightSettings {
   const calm = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   try {
@@ -106,11 +106,14 @@ function readClubLights(): ClubLightSettings {
     return {
       strobes: typeof raw.strobes === "boolean" ? raw.strobes : !calm,
       nudgeMs: typeof raw.nudgeMs === "number" && Number.isFinite(raw.nudgeMs) ? Math.max(-150, Math.min(400, raw.nudgeMs)) : 0,
+      brightness: typeof raw.brightness === "number" && Number.isFinite(raw.brightness) ? Math.max(0.3, Math.min(1.5, raw.brightness)) : 1,
     };
   } catch {
-    return { strobes: !calm, nudgeMs: 0 };
+    return { strobes: !calm, nudgeMs: 0, brightness: 1 };
   }
 }
+/** Light desk changes go to the room at most this often while a fader moves (the last one always goes). */
+const DESK_SEND_MS = 140;
 /** A spell or monster card floats over the table this long, unless someone clicks it away first. */
 const CARD_SECONDS = 20;
 /** Only this many people are drawn as full tokens; the rest of a crowd are small dots. */
@@ -543,9 +546,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | "decks" | null>(null);
-  // The club: its lights read the music bot's feed; strobes and the timing nudge are this browser's own.
-  const [clubLightSettings, setClubLightSettingsState] = useState<ClubLightSettings>({ strobes: true, nudgeMs: 0 });
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | "decks" | "lights" | null>(null);
+  // The club: its lights read the music bot's feed and the room's light desk; strobes, the timing nudge and
+  // the brightness are this browser's own.
+  const [clubLightSettings, setClubLightSettingsState] = useState<ClubLightSettings>({ strobes: true, nudgeMs: 0, brightness: 1 });
   useEffect(() => { setClubLightSettingsState(readClubLights()); }, []);
   const setClubLightSettings = (patch: Partial<ClubLightSettings>) => setClubLightSettingsState((current) => {
     const next = { ...current, ...patch };
@@ -561,10 +565,37 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     : null), [venueId]);
   const clubLightsRef = useRef<ClubLights | null>(null);
   clubLightsRef.current = clubLights;
+  const [clubDesk, setClubDesk] = useState<ClubDesk>(DEFAULT_DESK);
+  const [clubDeskBy, setClubDeskBy] = useState<string | null>(null);
   useEffect(() => {
+    setClubDesk(DEFAULT_DESK);
     if (!clubLights || !room.roomId) return;
-    return watchClub(room.roomId, clubLights, room.clubWatch);
+    return watchClub(room.roomId, clubLights, room.clubWatch, (desk, by) => { setClubDesk(desk); setClubDeskBy(by); });
   }, [clubLights, room.roomId, room.clubWatch]);
+  // The desk changes here at once; the room hears of it a few times a second while a fader moves, and always the last.
+  const deskOut = useRef<{ timer: ReturnType<typeof setTimeout> | null; at: number; next: ClubDesk | null }>({ timer: null, at: 0, next: null });
+  useEffect(() => () => { if (deskOut.current.timer) clearTimeout(deskOut.current.timer); }, []);
+  const changeDesk = useCallback((desk: ClubDesk) => {
+    clubLightsRef.current?.setDesk(desk);
+    setClubDesk(desk);
+    const out = deskOut.current;
+    out.next = desk;
+    if (out.timer) return;
+    const flush = () => {
+      out.timer = null;
+      if (!out.next) return;
+      room.clubDesk(out.next);
+      out.next = null;
+      out.at = Date.now();
+    };
+    const wait = DESK_SEND_MS - (Date.now() - out.at);
+    if (wait <= 0) flush();
+    else out.timer = setTimeout(flush, wait);
+  }, [room.clubDesk]);
+  const fireClubFx = useCallback((fx: ClubFx) => {
+    clubLightsRef.current?.fx(fx);
+    room.clubFx(fx);
+  }, [room.clubFx]);
   /** The club's show this frame, for the dancers; and what the club bar shows of it, a couple of times a second. */
   const clubShowRef = useRef<ClubShow | null>(null);
   const [clubStatus, setClubStatus] = useState<ClubStatus>({ live: false, bpm: null, info: null, section: "idle" });
@@ -1645,6 +1676,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (!club) return;
       const show = clubShowRef.current;
       if (show) club.show(show);
+      club.brightness(clubSettingsRef.current.brightness);
       const r = live.current.room;
       const spots: Array<{ x: number; z: number }> = [];
       let dj: string | null = null;
@@ -1786,6 +1818,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       if (key === applied) return;
       applied = key;
       post.setQuality(tier);
+      parts.club?.quality(tier);
       if (renderer.getPixelRatio() !== ratio) { renderer.setPixelRatio(ratio); resize(); }
       setGraphicsNow(tier);
     };
@@ -2351,6 +2384,15 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const djHolder = venueId === "club" ? [...room.poses].find(([, pose]) => pose.seat === CLUB_DJ_SEAT)?.[0] ?? null : null;
   const djName = djHolder ? participants.find((p) => p.connectionId === djHolder)?.displayName ?? null : null;
   const takeDecks = () => { const refused = room.sit(CLUB_DJ_SEAT); if (refused) flashHint(refused); };
+  // The light desk is the DJ's, or anyone's while the decks are free.
+  const canRunLights = atDecks || !djHolder;
+  const readClubNotes = useCallback(() => (clubShowRef.current?.live ? clubShowRef.current.notes : null), []);
+  const lightDesk = venueId === "club" ? (
+    <ClubLightDesk
+      desk={clubDesk} canRun={canRunLights} runBy={djName ?? clubDeskBy} onDesk={changeDesk} onFx={fireClubFx}
+      mine={clubLightSettings} onMine={setClubLightSettings} readNotes={readClubNotes}
+    />
+  ) : null;
   const leaveDecks = () => room.move({ x: 0, z: CLUB_STAGE.z1 + 0.7, facing: Math.PI, seat: null });
   const wasAtDecks = useRef(false);
   useEffect(() => {
@@ -2444,11 +2486,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           onTackle={() => setTackle((open) => (open ? null : readTackle()))}
         />
       )}
-      {!controlsHidden && venueId === "club" && room.roomId && !(panel === "decks" && atDecks) && (
+      {!controlsHidden && venueId === "club" && room.roomId && !(panel === "decks" && atDecks) && panel !== "lights" && (
         <ClubBar
           roomId={room.roomId} status={clubStatus} djName={djName} isDj={atDecks} decksFree={!djHolder}
           nowPlaying={nowPlaying?.track ? { title: nowPlaying.track.title, artist: nowPlaying.track.artist } : null}
           onTakeDecks={takeDecks} onLeaveDecks={leaveDecks} onOpenDecks={() => setPanel("decks")}
+          onOpenLights={() => setPanel((current) => (current === "lights" ? null : "lights"))}
           onRequest={(query) => onCommand?.(`/play ${query}`)}
         />
       )}
@@ -2477,8 +2520,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             />
           )}
           {panel === "decks" && atDecks && room.roomId && (
-            <ClubDecksPanel roomId={room.roomId} onOpenBooth={() => onCommand?.("/dj")} onClose={() => setPanel(null)} />
+            <ClubDecksPanel roomId={room.roomId} onOpenBooth={() => onCommand?.("/dj")} onClose={() => setPanel(null)} lights={lightDesk} />
           )}
+          {panel === "lights" && venueId === "club" && !atDecks && <ClubLightsPanel onClose={() => setPanel(null)}>{lightDesk}</ClubLightsPanel>}
           {panel === "seats" && <SeatFinder participants={participants} poses={room.poses} myId={connectionId} onSitNear={sitNear} onClose={() => setPanel(null)} />}
           {panel === "initiative" && (
             <InitiativePanel
@@ -2612,6 +2656,11 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               <label className="living-room-switch">
                 <span><strong>Strobes</strong><small>The flashes on drops and builds (never more than three a second). Off for no flashing at all.</small></span>
                 <input type="checkbox" checked={clubLightSettings.strobes} onChange={(event) => setClubLightSettings({ strobes: event.target.checked })} />
+              </label>
+              <label className="living-room-slider">
+                <span>Light brightness: {Math.round(clubLightSettings.brightness * 100)}%</span>
+                <input type="range" min={0.3} max={1.5} step={0.05} value={clubLightSettings.brightness} aria-label="Light brightness"
+                  onChange={(event) => setClubLightSettings({ brightness: Number(event.target.value) })} />
               </label>
               <label className="living-room-slider">
                 <span>Light timing: {clubLightSettings.nudgeMs > 0 ? `${clubLightSettings.nudgeMs} ms later` : clubLightSettings.nudgeMs < 0 ? `${-clubLightSettings.nudgeMs} ms sooner` : "as sent"}</span>
@@ -2922,7 +2971,6 @@ const LIVING_ROOM_CSS = `
 .lr-club-text small { opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lr-club-dot { flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
 .lr-club-dot.on { background: #ff3b6b; box-shadow: 0 0 10px #ff3b6b; animation: lr-onair-pulse 1.2s ease-in-out infinite; }
-.lr-decks { max-height: calc(100vh - 220px); }
 .lr-deck-now { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .lr-deck-now img, .lr-deck-art { flex: none; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; }
 .lr-deck-now .lr-line { min-width: 0; }
@@ -2942,4 +2990,24 @@ const LIVING_ROOM_CSS = `
   .lr-club-bar { bottom: 132px; }
 }
 .lr-hold:active { background: var(--lr-accent) !important; color: #1b1530 !important; }
+.lr-hold small { opacity: 0.7; font-weight: 600; }
+/* The light desk. */
+.lr-tabs { display: flex; gap: 4px; }
+.lr-tabs button { flex: 1; justify-content: center; }
+.lr-desk { display: grid; gap: 6px; }
+.lr-desk fieldset { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.lr-desk fieldset:disabled { opacity: 0.55; }
+/* Moments: three shots, then two, then the two held. */
+.lr-pads-3 { grid-template-columns: repeat(6, 1fr); }
+.lr-pads-3 > * { grid-column: span 2; }
+.lr-pads-3 > :nth-child(n + 4) { grid-column: span 3; }
+.lr-pads-3 button { font-size: 11.5px !important; }
+.lr-faders { display: grid; gap: 4px; }
+.lr-fader { display: grid; grid-template-columns: 84px 1fr 28px; gap: 6px; align-items: center; }
+.lr-fader small { opacity: 0.85; font-weight: 600; }
+.lr-fader output { font-size: 11px; opacity: 0.7; text-align: right; font-variant-numeric: tabular-nums; }
+.lr-hue { width: 100%; height: 14px; border-radius: 7px; appearance: none; -webkit-appearance: none; background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.lr-chip-note { align-self: center; font-size: 11px; opacity: 0.7; padding: 0 4px; }
+.lr-desk .lr-chips button { min-height: 26px; padding: 0 9px; }
+.living-room-panel button.lr-wide-plain { width: 100%; justify-content: center; }
 `;

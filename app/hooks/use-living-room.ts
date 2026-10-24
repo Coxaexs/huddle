@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchQueue, WatchState } from "@/lib/lounge-shared";
+import type { ClubDesk, ClubFx } from "@/lib/club-desk";
 import {
   CLUB_DJ_SEAT, FLOOR_SEAT, GM_SEAT_ID, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -118,6 +119,10 @@ export interface LivingRoom {
   roomId: string | null;
   /** The club: tell the hub this seat has it open, so the music bot's lights come here. */
   clubWatch: (on: boolean) => void;
+  /** The club's light desk, for everyone in the room (refused unless this seat has the decks, or nobody does). */
+  clubDesk: (desk: ClubDesk) => void;
+  /** A moment from the light desk: confetti, CO2, flames, a flash, a drop; a blackout or strobe held (on) and let go. */
+  clubFx: (fx: ClubFx) => void;
   shared: LoungeShared;
   /** Put up (or, with null, clear) a piece of the room's shared state for everyone. */
   setShared: (key: LoungeSharedKey, value: unknown) => void;
@@ -240,7 +245,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     const onEvent = (raw: Event) => {
       const detail = (raw as CustomEvent).detail as
         | { t: "lounge"; channelId: string; connectionId: string; pose: unknown; emote?: string }
-        | { t: "lounge-state"; channelId: string; poses: Array<{ connectionId: string; pose: unknown }>; venue?: unknown }
+        | { t: "lounge-state"; channelId: string; poses: Array<{ connectionId: string; pose: unknown }>; venue?: unknown; shard?: boolean }
         | { t: "lounge-venue"; channelId: string; venue: unknown }
         | { t: "lounge-shared"; channelId: string; key: string; value: unknown };
       if (!detail || detail.channelId !== roomId) return;
@@ -261,7 +266,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         }
         return;
       }
-      if (detail.t === "lounge-state") {
+      if (detail.t === "lounge-state" && !detail.shard) {
         if (isVenueId(detail.venue)) setVenueState(detail.venue);
         setSharedState({ ...NO_SHARED, ...((detail as { shared?: Partial<LoungeShared> }).shared ?? {}) });
       }
@@ -273,15 +278,14 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
         return pose ? { pose, venue: room } : null;
       };
       if (detail.t === "lounge-state") {
-        const next = new Map<string, { pose: LoungePose; venue: VenueId }>();
-        for (const entry of detail.poses) {
-          const got = read(entry.pose);
-          if (got && entry.connectionId !== connectionId) next.set(entry.connectionId, got);
-        }
-        // Keep our own spot: the hub may answer before our first pose landed.
+        // Two answers come (the room's shard has the poses, the main hub only early ones): add each to what's
+        // known. A new room starts empty, and anyone gone drops off with the roster.
         setEveryone((current) => {
-          const mine = connectionId ? current.get(connectionId) : undefined;
-          if (mine && connectionId) next.set(connectionId, mine);
+          const next = new Map(current);
+          for (const entry of detail.poses) {
+            const got = read(entry.pose);
+            if (got && entry.connectionId !== connectionId) next.set(entry.connectionId, got);
+          }
           return next;
         });
         return;
@@ -412,6 +416,8 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   }, [open, roomId, connectionId, claimed, explicit, move, self, venue]);
 
   const clubWatch = useCallback((on: boolean) => { sendRef.current({ t: "club-watch", on }); }, []);
+  const clubDesk = useCallback((desk: ClubDesk) => { sendRef.current({ t: "club-desk", desk }); }, []);
+  const clubFx = useCallback((fx: ClubFx) => { sendRef.current({ t: "club-fx", fx }); }, []);
 
   const live = open && Boolean(roomId);
   const heard = useMemo(() => {
@@ -426,7 +432,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, roomId, clubWatch, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, roomId, clubWatch, clubDesk, clubFx, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

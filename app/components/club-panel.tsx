@@ -5,13 +5,23 @@
  * what's next, a way to start the night, to take the decks, and to ask for a
  * song. Whoever has the decks gets the DJ's panel: mix into the next song in
  * a style of their choosing, remix moves on the beat, the stems of the song
- * that's playing, the filter, hold-down effects, the sampler, and how much
- * Real DJ does by itself.
+ * that's playing, the filter, hold-down effects, the sampler, who mixes
+ * (Real DJ, Auto DJ, or the DJ by hand), and the light desk.
+ *
+ * The light desk (ClubLightDesk) is the DJ's too, and anyone's while the
+ * decks are free: scenes, faders, colours (following the music's notes, or
+ * not), patterns and the moment buttons.
+ * Everyone else sees it as it is, and has their own brightness, strobes and
+ * light timing underneath.
  */
-import { useEffect, useRef, useState } from "react";
-import { AudioLines, Disc3, ExternalLink, Headphones, PartyPopper, Power, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AudioLines, Disc3, ExternalLink, Headphones, PartyPopper, Power, SlidersHorizontal, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
-import type { ClubInfo } from "@/lib/club-feed";
+import { NOTE_NAMES, type ClubInfo, type ClubNote } from "@/lib/club-feed";
+import {
+  BEAM_FX, FLOOR_FX, LASER_FX, WALL_FX, sceneDesk,
+  type ClubColour, type ClubDesk, type ClubFader, type ClubFx, type ClubFxThing, type ClubScene,
+} from "@/lib/club-desk";
 
 /** The booth as the club route answers (see app/api/(features)/music/club). */
 export interface ClubState {
@@ -24,7 +34,7 @@ export interface ClubState {
   }>;
   master: "A" | "B" | null;
   mix: { label: string; progress: number; started: boolean } | null;
-  auto: { on: boolean; mode: "real" | "auto"; vibe: "chill" | "club" | "hype"; three: boolean; next: string | null };
+  auto: { on: boolean; mode: "real" | "auto"; vibe: "chill" | "club" | "hype"; three: boolean; next: string | null; style: string; beats: number | null };
   stems: { on: boolean; available: boolean };
   crate: Array<{ title: string; artist: string }>;
   notice: string | null;
@@ -44,7 +54,7 @@ export function clubAction(voiceChannelId: string, body: Record<string, unknown>
 
 const MODE_LABEL: Record<string, string> = { real: "Real DJ", auto: "Auto DJ", hands: "hands on", player: "the room's player" };
 
-export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, onTakeDecks, onLeaveDecks, onOpenDecks, onRequest }: {
+export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, onTakeDecks, onLeaveDecks, onOpenDecks, onOpenLights, onRequest }: {
   roomId: string;
   status: ClubStatus;
   nowPlaying: { title: string; artist: string } | null;
@@ -54,6 +64,7 @@ export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, o
   onTakeDecks: () => void;
   onLeaveDecks: () => void;
   onOpenDecks: () => void;
+  onOpenLights: () => void;
   onRequest: (query: string) => void;
 }) {
   const [request, setRequest] = useState("");
@@ -101,6 +112,11 @@ export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, o
         ) : decksFree ? (
           <button type="button" onClick={onTakeDecks} title="Step up to the decks: mix, remix, and play the sampler"><Headphones size={14} /> Take the decks</button>
         ) : null}
+        {!isDj && (
+          <button type="button" onClick={onOpenLights} title={decksFree ? "The light desk: scenes, faders, colours, lasers, confetti and flames" : "How the lights look for you (the DJ runs the desk)"}>
+            <SlidersHorizontal size={14} /> Lights
+          </button>
+        )}
       </div>
       <form className="lr-row" onSubmit={(event) => { event.preventDefault(); const q = request.trim(); if (!q) return; onRequest(q); setRequest(""); setNote(`Requested "${q}". The DJ plays it when it fits.`); }}>
         <input value={request} onChange={(event) => setRequest(event.target.value)} placeholder="Request a song…" aria-label="Request a song" maxLength={200} />
@@ -126,8 +142,15 @@ const STEMS: Array<[string, string]> = [["drums", "Drums"], ["bass", "Bass"], ["
 const PADS: Array<[string, string]> = [["horn", "📯 Horn"], ["siren", "🚨 Siren"], ["laser", "🔫 Laser"], ["boom", "💥 808"], ["clap", "👏 Clap"], ["riser", "📈 Riser"], ["scratch", "💿 Scratch"], ["rewind", "⏪ Rewind"]];
 const HOLD_FX: Array<[string, string, number]> = [["roll", "Roll", 2], ["echo", "Echo", 3], ["flanger", "Flanger", 5], ["reverb", "Reverb", 4]];
 const VIBES: Array<[ClubState["auto"]["vibe"], string]> = [["chill", "Chill"], ["club", "Club"], ["hype", "Hype"]];
+/** Who mixes: Real DJ (picks and remixes), Auto DJ (mixes the queue in order), or the DJ by hand. */
+const WHO_MIXES: Array<["real" | "auto" | "hands", string, string]> = [
+  ["real", "Real DJ", "Picks the next songs and mixes and remixes them by itself"],
+  ["auto", "Auto DJ", "Mixes the queue in order, in the style you choose"],
+  ["hands", "By hand", "Nothing mixes unless you do"],
+];
 
-export function ClubDecksPanel({ roomId, onOpenBooth, onClose }: { roomId: string; onOpenBooth: () => void; onClose: () => void }) {
+export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights }: { roomId: string; onOpenBooth: () => void; onClose: () => void; lights?: ReactNode }) {
+  const [tab, setTab] = useState<"music" | "lights">("music");
   const [state, setState] = useState<ClubState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -175,7 +198,16 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose }: { roomId: strin
   const other = state && master ? state.decks[master.name === "A" ? "B" : "A"] : null;
   const onAir = Boolean(state?.active && state.live);
   const stemsReady = master?.stems === "ready";
-  const real = Boolean(state?.auto.on && state.auto.mode === "real");
+  const who = !state?.auto.on ? "hands" : state.auto.mode;
+  const [beats, setBeats] = useState<number | null>(null);
+  useEffect(() => { setBeats(state?.auto.beats ?? null); }, [state?.auto.beats]);
+  const beatsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (beatsTimer.current) clearTimeout(beatsTimer.current); }, []);
+  const sendBeats = (value: number | null) => {
+    setBeats(value);
+    if (beatsTimer.current) clearTimeout(beatsTimer.current);
+    beatsTimer.current = setTimeout(() => void send({ op: "auto", beats: value ?? 0 }), 250);
+  };
   const sendFilter = (value: number) => {
     setFilter(value);
     if (!master) return;
@@ -195,14 +227,22 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose }: { roomId: strin
         <strong><Disc3 size={14} /> The decks {onAir && <span className="lr-onair">ON AIR</span>}</strong>
         <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
       </div>
-      {!state && !error && <p className="lr-note">Finding the booth…</p>}
-      {state && !onAir && (
-        <div className="lr-line">
-          <span className="lr-title">The booth is off</span>
-          <button type="button" className="primary lr-wide" onClick={() => void send({ op: "club" })}><PartyPopper size={14} /> Start the night</button>
+      {lights && (
+        <div className="lr-tabs" role="tablist" aria-label="Decks or lights">
+          <button type="button" role="tab" aria-selected={tab === "music"} className={tab === "music" ? "active" : ""} onClick={() => setTab("music")}><Disc3 size={13} /> Music</button>
+          <button type="button" role="tab" aria-selected={tab === "lights"} className={tab === "lights" ? "active" : ""} onClick={() => setTab("lights")}><SlidersHorizontal size={13} /> Lights</button>
         </div>
       )}
-      {state && onAir && (
+      {tab === "lights" && lights}
+      {tab === "music" && !state && !error && <p className="lr-note">Finding the booth…</p>}
+      {tab === "music" && state && !onAir && (
+        <div className="lr-line">
+          <span className="lr-title">The booth is off</span>
+          <button type="button" className="primary lr-wide" onClick={() => void send({ op: "club" })} title="Real DJ picks stemmed songs and mixes and remixes them"><PartyPopper size={14} /> Start the night with Real DJ</button>
+          <button type="button" className="lr-wide-plain" onClick={() => void send({ op: "club", mode: "auto" })} title="Auto DJ mixes the queue in order; stemmed songs go in it if it's short">Start with Auto DJ</button>
+        </div>
+      )}
+      {tab === "music" && state && onAir && (
         <>
           <div className="lr-deck-now">
             {master?.thumbnail ? <img src={master.thumbnail} alt="" /> : <span className="lr-deck-art"><AudioLines size={18} /></span>}
@@ -262,26 +302,243 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose }: { roomId: strin
           <div className="lr-pads lr-pads-4">
             {PADS.map(([name, label]) => <button key={name} type="button" onClick={() => void send({ op: "sample", name })}>{label}</button>)}
           </div>
-          <div className="lr-heading">Real DJ</div>
-          <div className="lr-row">
-            <button type="button" className={real ? "active" : ""} aria-pressed={real} onClick={() => void send(real ? { op: "auto", on: false } : { op: "auto", mode: "real", on: true })}
-              title={real ? "Real DJ picks the songs and mixes by itself; switch it off to do it all by hand" : "Let Real DJ pick the next songs and mix them"}>
-              {real ? "On: it mixes by itself" : "Off: all yours"}
-            </button>
-            <button type="button" className={state.auto.three ? "active" : ""} aria-pressed={state.auto.three} onClick={() => void send({ op: "auto", three: !state.auto.three })} title="Real DJ layers a third song's vocal over the beat now and then">3 songs</button>
-          </div>
-          <div className="lr-chips" role="radiogroup" aria-label="Vibe">
-            {VIBES.map(([vibe, label]) => (
-              <button key={vibe} type="button" role="radio" aria-checked={state.auto.vibe === vibe} className={state.auto.vibe === vibe ? "active" : ""} onClick={() => void send({ op: "auto", vibe })}>{label}</button>
+          <div className="lr-heading">Who mixes</div>
+          <div className="lr-chips" role="radiogroup" aria-label="Who mixes">
+            {WHO_MIXES.map(([id, label, hint]) => (
+              <button key={id} type="button" role="radio" aria-checked={who === id} className={who === id ? "active" : ""} title={hint}
+                onClick={() => void send(id === "hands" ? { op: "auto", on: false } : { op: "auto", mode: id, on: true }, id === "hands" ? "It's all yours: nothing mixes unless you do." : `${label} is mixing.`)}>
+                {label}
+              </button>
             ))}
           </div>
+          {who === "real" && (
+            <>
+              <div className="lr-chips" role="radiogroup" aria-label="Vibe">
+                {VIBES.map(([vibe, label]) => (
+                  <button key={vibe} type="button" role="radio" aria-checked={state.auto.vibe === vibe} className={state.auto.vibe === vibe ? "active" : ""} onClick={() => void send({ op: "auto", vibe })}>{label}</button>
+                ))}
+                <button type="button" className={state.auto.three ? "active" : ""} aria-pressed={state.auto.three} onClick={() => void send({ op: "auto", three: !state.auto.three })} title="Real DJ layers a third song's vocal over the beat now and then">3 songs</button>
+              </div>
+            </>
+          )}
+          {who === "auto" && (
+            <>
+              <small className="lr-note">Auto DJ mixes into the next song in the queue as each one ends, like this:</small>
+              <div className="lr-chips" role="radiogroup" aria-label="Auto DJ's mixes">
+                {MIX_STYLES.map(([id, label]) => (
+                  <button key={id} type="button" role="radio" aria-checked={state.auto.style === id} className={state.auto.style === id ? "active" : ""} onClick={() => void send({ op: "auto", style: id })}>{label}</button>
+                ))}
+              </div>
+              <label className="lr-field">
+                <small>Mix length: {beats ? `${beats} beats (${beats / 4} bars)` : "the style's own"}</small>
+                <span className="lr-row">
+                  <input type="range" min={0} max={64} step={4} value={beats ?? 0} aria-label="Mix length"
+                    onChange={(event) => sendBeats(Number(event.target.value) || null)} />
+                  <button type="button" onClick={() => sendBeats(null)} disabled={!beats}>Auto</button>
+                </span>
+              </label>
+            </>
+          )}
         </>
       )}
-      {(notice || error) && <small className={error ? "lr-note lr-warn" : "lr-note"}>{error || notice}</small>}
-      <div className="lr-row">
-        <button type="button" onClick={onOpenBooth} title="The whole booth, in a new tab: both decks, EQs, loops, hot cues and more"><ExternalLink size={13} /> Full booth</button>
-        {onAir && <button type="button" onClick={() => void send({ op: "stop" }, "The booth is off; the room's player has the music back.")}><Power size={13} /> End the night</button>}
+      {tab === "music" && (notice || error) && <small className={error ? "lr-note lr-warn" : "lr-note"}>{error || notice}</small>}
+      {tab === "music" && (
+        <div className="lr-row">
+          <button type="button" onClick={onOpenBooth} title="The whole booth, in a new tab: both decks, EQs, loops, hot cues and more"><ExternalLink size={13} /> Full booth</button>
+          {onAir && <button type="button" onClick={() => void send({ op: "stop" }, "The booth is off; the room's player has the music back.")}><Power size={13} /> End the night</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- the light desk ---------- */
+
+const SCENES: Array<[Exclude<ClubScene, "custom">, string, string]> = [
+  ["auto", "Auto", "The lights follow the music: every look, by the song's sections"],
+  ["warmup", "Warm-up", "Low and slow, no lasers or strobes: the early hours"],
+  ["peak", "Peak", "Everything up: fast beams, lasers, strobes on the drops"],
+  ["chill", "Chill", "Soft colours, still beams, a laser sky, no strobes"],
+  ["lasers", "Laser show", "Lasers forward in thick haze, the beams low"],
+];
+const FADERS: Array<[ClubFader, string, string]> = [
+  ["master", "Master", "Everything at once"],
+  ["beams", "Beams", "The moving heads on the truss"],
+  ["move", "Movement", "How fast the beams and lasers move"],
+  ["lasers", "Lasers", "Off at the bottom"],
+  ["strobe", "Strobe", "How much the drops and builds flash (never more than three a second)"],
+  ["haze", "Haze", "Thicker haze shows the beams"],
+  ["floor", "Floor", "The LED dance floor"],
+  ["react", "React", "Smooth at the bottom, punchy at the top"],
+  ["colourSpeed", "Colour speed", "How often the colours move on: never, each 16 bars, … each bar"],
+];
+/** With the colours, not the other faders. */
+const MIX_FADER: [ClubFader, string, string] = ["mix", "Colour mix", "Down: one colour for the whole room. Up: every light its own colour"];
+const COLOURS: Array<[ClubColour, string, string]> = [
+  ["theme", "Theme", "The room theme's colours"],
+  ["rainbow", "Rainbow", "The whole colour wheel"],
+  ["key", "Song key", "A colour for each key: harmonic mixes stay close, key changes leap"],
+  ["pick", "Pick", "One colour of your choosing"],
+];
+const PATTERN_NAMES: Record<string, string> = {
+  auto: "Auto", ripple: "Ripple", checker: "Checker", stems: "Stems", chase: "Chase", sparkle: "Sparkle",
+  bars: "Bars", rings: "Rings", tunnel: "Tunnel", waves: "Waves", history: "History",
+  sweep: "Sweep", fan: "Fan", circle: "Circles", crowd: "On the crowd", still: "Still", sheet: "Liquid sky", cross: "Cross",
+};
+const PATTERNS: Array<["beamFx" | "laserFx" | "floorFx" | "wallFx", string, readonly string[]]> = [
+  ["beamFx", "Beams", BEAM_FX],
+  ["laserFx", "Lasers", LASER_FX],
+  ["floorFx", "Floor", FLOOR_FX],
+  ["wallFx", "LED wall", WALL_FX],
+];
+const SHOTS: Array<[ClubFxThing, string, string]> = [
+  ["confetti", "🎉 Confetti", "From the roof over the floor"],
+  ["co2", "💨 CO2", "Jets from the stage"],
+  ["pyro", "🔥 Flames", "Four flame jets along the stage"],
+  ["flash", "⚡ Flash", "One strobe flash"],
+  ["drop", "💥 Drop", "The lights drop: colours thrown, confetti and CO2"],
+];
+
+/** This listener's own view of the show. */
+export interface ClubLightSettings { strobes: boolean; nudgeMs: number; brightness: number }
+
+const NOTE_LABELS = ["Bass", "Chords", "Voice"];
+
+/** The notes the lights hear now, a few times a second: what the colours are following. */
+function NotesNow({ read }: { read: () => readonly (ClubNote | null)[] | null }) {
+  const [notes, setNotes] = useState("");
+  useEffect(() => {
+    const tick = () => {
+      const now = read();
+      setNotes(now ? now.map((note, k) => (note ? `${NOTE_LABELS[k]} ${NOTE_NAMES[note.pc]}` : "")).filter(Boolean).join(" · ") : "");
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [read]);
+  return <p className="lr-note lr-notes-now" aria-live="off">{notes || "No notes heard right now"}</p>;
+}
+
+export function ClubLightDesk({ desk, canRun, runBy, onDesk, onFx, mine, onMine, readNotes }: {
+  desk: ClubDesk;
+  /** This person may work the desk (at the decks, or nobody is). */
+  canRun: boolean;
+  /** Who runs it, when it's not this person. */
+  runBy: string | null;
+  onDesk: (desk: ClubDesk) => void;
+  onFx: (fx: ClubFx) => void;
+  mine: ClubLightSettings;
+  onMine: (patch: Partial<ClubLightSettings>) => void;
+  /** The notes the show hears now (bass, chords, voice). */
+  readNotes?: () => readonly (ClubNote | null)[] | null;
+}) {
+  const held = useRef<ClubFxThing | null>(null);
+  const onFxRef = useRef(onFx);
+  onFxRef.current = onFx;
+  const set = (patch: Partial<ClubDesk>) => onDesk({ ...desk, ...patch, scene: "scene" in patch ? patch.scene! : "custom" });
+  const hold = (thing: ClubFxThing, on: boolean) => {
+    if (on) held.current = thing;
+    else if (held.current !== thing) return;
+    else held.current = null;
+    onFx({ thing, on });
+  };
+  const fader = ([key, label, hint]: [ClubFader, string, string]) => (
+    <label key={key} className="lr-fader" title={hint}>
+      <small>{label}</small>
+      <input type="range" min={0} max={1} step={0.01} value={desk[key]} aria-label={label}
+        onChange={(event) => set({ [key]: Number(event.target.value) } as Partial<ClubDesk>)} />
+      <output>{Math.round(desk[key] * 100)}</output>
+    </label>
+  );
+  // Let go of a held blackout or strobe if the desk goes away mid-hold.
+  useEffect(() => () => { if (held.current) onFxRef.current({ thing: held.current, on: false }); }, []);
+  return (
+    <div className="lr-desk">
+      {!canRun && <p className="lr-note">{runBy ? `DJ ${runBy} runs the lights.` : "Whoever has the decks runs the lights."} Yours to change: how they look for you, below.</p>}
+      <fieldset disabled={!canRun}>
+        <div className="lr-heading">Scenes</div>
+        <div className="lr-chips" role="radiogroup" aria-label="Light scene">
+          {SCENES.map(([id, label, hint]) => (
+            <button key={id} type="button" role="radio" aria-checked={desk.scene === id} className={desk.scene === id ? "active" : ""} title={hint}
+              onClick={() => onDesk(sceneDesk(id, desk))}>{label}</button>
+          ))}
+          {desk.scene === "custom" && <span className="lr-chip-note">Custom</span>}
+        </div>
+        <div className="lr-heading">Moments</div>
+        <div className="lr-pads lr-pads-3">
+          {SHOTS.map(([thing, label, hint]) => <button key={thing} type="button" title={hint} onClick={() => onFx({ thing })}>{label}</button>)}
+          {(["blackout", "strobe"] as const).map((thing) => (
+            <button key={thing} type="button" className="lr-hold" title={thing === "blackout" ? "Every light out while held: let go for the drop" : "Strobe on the beat while held (three flashes a second at most)"}
+              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); hold(thing, true); }}
+              onPointerUp={() => hold(thing, false)} onPointerCancel={() => hold(thing, false)}
+              onKeyDown={(event) => { if ((event.key === " " || event.key === "Enter") && !event.repeat) hold(thing, true); }}
+              onKeyUp={(event) => { if (event.key === " " || event.key === "Enter") hold(thing, false); }}>
+              {thing === "blackout" ? "⬛ Blackout" : "💡 Strobe"} <small>hold</small>
+            </button>
+          ))}
+        </div>
+        <div className="lr-heading">Faders</div>
+        <div className="lr-faders">{FADERS.map(fader)}</div>
+        <div className="lr-heading">Colours</div>
+        <div className="lr-chips" role="radiogroup" aria-label="Colours">
+          {COLOURS.map(([id, label, hint]) => (
+            <button key={id} type="button" role="radio" aria-checked={desk.colour === id} className={desk.colour === id ? "active" : ""} title={hint} onClick={() => set({ colour: id })}>{label}</button>
+          ))}
+        </div>
+        {desk.colour === "pick" && (
+          <input className="lr-hue" type="range" min={0} max={1} step={0.005} value={desk.hue} aria-label="Colour"
+            style={{ accentColor: `hsl(${Math.round(desk.hue * 360)} 100% 55%)` }} onChange={(event) => set({ hue: Number(event.target.value) })} />
+        )}
+        <div className="lr-faders">{fader(MIX_FADER)}</div>
+        <label className="living-room-switch">
+          <span><strong>Colours follow the notes</strong><small>Each part&apos;s lights take its note&apos;s colour: the floor the bass line, the beams the chords, the lasers the voice. Notes that go together get colours close together.</small></span>
+          <input type="checkbox" checked={desk.notes} onChange={(event) => set({ notes: event.target.checked })} />
+        </label>
+        {desk.notes && readNotes && <NotesNow read={readNotes} />}
+        {PATTERNS.map(([key, label, options]) => (
+          <div key={key}>
+            <div className="lr-heading">{label}</div>
+            <div className="lr-chips" role="radiogroup" aria-label={`${label} pattern`}>
+              {options.map((id) => (
+                <button key={id} type="button" role="radio" aria-checked={desk[key] === id} className={desk[key] === id ? "active" : ""}
+                  onClick={() => set({ [key]: id } as Partial<ClubDesk>)}>{PATTERN_NAMES[id] ?? id}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <label className="living-room-switch">
+          <span><strong>Confetti and CO2 on the drops</strong><small>By themselves, whenever the music drops. The buttons above always work.</small></span>
+          <input type="checkbox" checked={desk.autoFx} onChange={(event) => set({ autoFx: event.target.checked })} />
+        </label>
+      </fieldset>
+      <div className="lr-heading">Just for you</div>
+      <label className="living-room-slider">
+        <span>Brightness: {Math.round(mine.brightness * 100)}%</span>
+        <input type="range" min={0.3} max={1.5} step={0.05} value={mine.brightness} aria-label="Brightness for me"
+          onChange={(event) => onMine({ brightness: Number(event.target.value) })} />
+      </label>
+      <label className="living-room-switch">
+        <span><strong>Strobes</strong><small>Off: no flashing at all, whatever the desk does.</small></span>
+        <input type="checkbox" checked={mine.strobes} onChange={(event) => onMine({ strobes: event.target.checked })} />
+      </label>
+      <label className="living-room-slider">
+        <span>Light timing: {mine.nudgeMs > 0 ? `${mine.nudgeMs} ms later` : mine.nudgeMs < 0 ? `${-mine.nudgeMs} ms sooner` : "as sent"}</span>
+        <input type="range" min={-150} max={400} step={10} value={mine.nudgeMs} aria-label="Light timing"
+          onChange={(event) => onMine({ nudgeMs: Number(event.target.value) })} />
+      </label>
+    </div>
+  );
+}
+
+/** The light desk on its own, for anyone in the club who isn't at the decks. */
+export function ClubLightsPanel({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="living-room-panel lr-decks" role="dialog" aria-label="The lights">
+      <div className="living-room-panel-head">
+        <strong><SlidersHorizontal size={14} /> The lights</strong>
+        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
       </div>
+      {children}
     </div>
   );
 }

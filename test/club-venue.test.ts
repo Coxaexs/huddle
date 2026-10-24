@@ -51,6 +51,12 @@ describe("the club's booth controls", () => {
     expect(boothOp({ op: "sample", name: "horn" })).toEqual({ op: "sample", name: "horn" });
     expect(boothOp({ op: "auto", mode: "real", vibe: "chill", on: true })).toEqual({ op: "auto", mode: "real", vibe: "chill", on: true });
     expect(boothOp({ op: "auto" })).toBe("Nothing to change.");
+    expect(boothOp({ op: "club", mode: "auto", vibe: "hype" })).toEqual({ op: "club", vibe: "hype", mode: "auto" });
+    expect(boothOp({ op: "club", mode: "robot" })).toEqual({ op: "club" });
+    expect(boothOp({ op: "auto", style: "mashup", beats: 16 })).toEqual({ op: "auto", style: "mashup", beats: 16 });
+    expect(boothOp({ op: "auto", beats: 0 })).toEqual({ op: "auto", beats: 0 });
+    expect(boothOp({ op: "auto", style: "scratch", beats: 65 })).toBe("Nothing to change.");
+    expect(boothOp({ op: "auto", beats: 2.5 })).toBe("Nothing to change.");
     expect(boothOp({ op: "eject", deck: "A" })).toBe("Unknown control.");
     expect(boothOp({ op: "queue", query: "  " })).toBe("Type a song name or paste a link.");
   });
@@ -73,7 +79,8 @@ describe("the club's booth controls", () => {
     expect(state.decks.B.loaded).toBe(false);
     expect(state.master).toBe("A");
     expect(state.mix).toEqual({ label: "Stem swap", progress: 0.4, started: true });
-    expect(state.auto).toEqual({ on: true, mode: "real", vibe: "hype", three: false, next: "Two" });
+    expect(state.auto).toEqual({ on: true, mode: "real", vibe: "hype", three: false, next: "Two", style: "auto", beats: null });
+    expect(slimState({ auto: { on: true, mode: "auto", style: "echo", beats: 8 } }).auto).toMatchObject({ mode: "auto", style: "echo", beats: 8 });
     expect(state.crate).toHaveLength(12);
     expect(state.crate[0]).toEqual({ title: "S0", artist: "" });
     expect("history" in state).toBe(false);

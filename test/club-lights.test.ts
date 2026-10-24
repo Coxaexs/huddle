@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CLUB_FRAME_MS, cleanClubBatch, decodeFrames, type ClubBatch } from "@/lib/club-feed";
-import { ClubLights, MIN_FLASH_GAP_MS, SOUND_DELAY_MS } from "@/app/lib/club-lights";
+import { CLUB_FRAME_MS, cleanClubBatch, decodeFrames, decodeNotes, readNote, type ClubBatch } from "@/lib/club-feed";
+import { ClubLights, MIN_FLASH_GAP_MS, NOTE_STEP, SOUND_DELAY_MS } from "@/app/lib/club-lights";
+import { DEFAULT_DESK, HOLD_MAX_MS, fifths, keyHue, keyMiddle } from "@/lib/club-desk";
 
 const encode = (frames: number[][]) =>
   btoa(String.fromCharCode(...frames.flatMap((frame) => frame.map((v) => Math.round(v * 255)))));
@@ -55,6 +56,19 @@ describe("the club feed on the wire", () => {
       info: { mode: "real", vibe: "club", mix: { style: "Mashup", progress: 1 }, next: "Next song", key: "8A", paused: false },
     });
     expect(cleanClubBatch({ at: 1, f: "", info: { mode: "party" } })?.info).toBeUndefined();
+  });
+
+  it("carries each frame's notes, and nothing that isn't them", () => {
+    const n = btoa(String.fromCharCode(0x9a, 0, 0x45, 0xf1, 0x31, 0));
+    expect(cleanClubBatch({ at: 1, f: "", n })?.n).toBe(n);
+    expect(cleanClubBatch({ at: 1, f: "", n: "<b>" })?.n).toBeUndefined();
+    expect(cleanClubBatch({ at: 1, f: "", n: "A".repeat(401) })?.n).toBeUndefined();
+    expect(decodeNotes(n)).toEqual([[0x9a, 0, 0x45], [0xf1, 0x31, 0]]);
+    expect(readNote(0x9a)).toEqual({ pc: 9, strength: 0.6 });   // A, fairly clear
+    expect(readNote(0xf1)).toEqual({ pc: 0, strength: 1 });     // C, as clear as it gets
+    expect(readNote(0)).toBeNull();
+    expect(readNote(0x0a)).toBeNull();                          // a note with no clarity is none
+    expect(readNote(0x9d)).toBeNull();                          // no such pitch class
   });
 
   it("decodes frames of six channels", () => {
@@ -136,5 +150,214 @@ describe("the club's lights", () => {
     const shows = play(clock, lights, 1000, 3500);
     expect(shows.filter(({ show }, i) => show.hits.horn === 1 && shows[i - 1]?.show.hits.horn !== 1)).toHaveLength(1);
     expect(shows.find(({ t }) => t >= 3100)!.show.section).toBe("drop");
+  });
+});
+
+/** How far apart two hues are round the wheel. */
+const wheelGap = (a: number, b: number) => Math.min(Math.abs(a - b), 1 - Math.abs(a - b));
+/** Times a flash starts (jumps up) in a run of shows. */
+const flashStarts = (shows: Array<{ t: number; show: { flash: number } }>) =>
+  shows.filter(({ show }, i) => show.flash > (shows[i - 1]?.show.flash ?? 0) + 0.2).map(({ t }) => t);
+
+describe("the club's light desk, in the lights", () => {
+  it("holds a blackout while the button is down, and lets go by itself if the letting go never comes", () => {
+    const { clock, lights } = rig();
+    feed(lights, 0, 14);
+    play(clock, lights, 1000, 2000);
+    lights.fx({ thing: "blackout", on: true });
+    expect(play(clock, lights, 2000, 2200).at(-1)!.show.blackout).toBeGreaterThan(0.95);
+    lights.fx({ thing: "blackout", on: false });
+    expect(play(clock, lights, 2200, 2400).at(-1)!.show.blackout).toBeLessThan(0.05);
+    lights.fx({ thing: "blackout", on: true });
+    const held = play(clock, lights, 2400, 2400 + HOLD_MAX_MS + 300);
+    expect(held.find(({ t }) => t >= 2400 + HOLD_MAX_MS - 200)!.show.blackout).toBeGreaterThan(0.95);
+    expect(held.at(-1)!.show.blackout).toBeLessThan(0.05);
+  });
+
+  it("strobes on the beat while held, never faster than the cap, and not at all for someone with strobes off", () => {
+    for (const strobes of [true, false]) {
+      const { clock, lights } = rig({ strobes });
+      feed(lights, 0, 6, { bpm: 240 });
+      play(clock, lights, 1000, 2000);
+      lights.fx({ thing: "strobe", on: true });
+      const shows = play(clock, lights, 2000, 4000);
+      const starts = flashStarts(shows);
+      if (strobes) {
+        // 240 bpm is four beats a second: the cap lets every other one through.
+        expect(starts.length).toBeGreaterThanOrEqual(3);
+        expect(starts.length).toBeLessThanOrEqual(6);
+        for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(MIN_FLASH_GAP_MS - 16);
+      } else {
+        expect(shows.every(({ show }) => show.flash === 0)).toBe(true);
+      }
+      lights.fx({ thing: "strobe", on: false });
+      expect(flashStarts(play(clock, lights, 4000, 5000))).toEqual([]);
+    }
+  });
+
+  it("keeps the music's strobe off with the strobe fader down, but a flash from the desk still fires", () => {
+    const { clock, lights } = rig();
+    lights.setDesk({ ...DEFAULT_DESK, strobe: 0 });
+    feed(lights, 0, 8);
+    lights.push({ at: 4000, f: "", ev: [{ k: "drop", at: 4000 }] });
+    const shows = play(clock, lights, 1000, 6000);
+    expect(shows.find(({ t }) => t >= 4100)!.show.section).toBe("drop");
+    expect(shows.every(({ show }) => show.flash === 0)).toBe(true);
+    lights.fx({ thing: "flash" });
+    expect(flashStarts(play(clock, lights, 6000, 7000))).toHaveLength(1);
+  });
+
+  it("flashes the drop's kicks too with the strobe fader right up", () => {
+    const starts = (strobe: number) => {
+      const { clock, lights } = rig();
+      lights.setDesk({ ...DEFAULT_DESK, strobe });
+      feed(lights, 0, 8);
+      lights.push({ at: 4000, f: "", ev: [{ k: "drop", at: 4000 }] });
+      return flashStarts(play(clock, lights, 1000, 7000));
+    };
+    const full = starts(1);
+    expect(full.length).toBeGreaterThan(starts(DEFAULT_DESK.strobe).length);
+    for (let i = 1; i < full.length; i++) expect(full[i] - full[i - 1]).toBeGreaterThanOrEqual(MIN_FLASH_GAP_MS - 16);
+  });
+
+  it("fires confetti, CO2 and flames once per press, and a drop from the desk throws the colour and both", () => {
+    const { clock, lights } = rig();
+    feed(lights, 0, 8);
+    const before = play(clock, lights, 1000, 2000).at(-1)!.show;
+    expect(before.shots).toEqual({ confetti: 0, co2: 0, pyro: 0 });
+    lights.fx({ thing: "pyro" });
+    lights.fx({ thing: "pyro" });
+    lights.fx({ thing: "confetti" });
+    expect(play(clock, lights, 2000, 2100).at(-1)!.show.shots).toEqual({ confetti: 1, co2: 0, pyro: 2 });
+    lights.fx({ thing: "drop" });
+    const after = play(clock, lights, 2100, 2600).at(-1)!.show;
+    expect(after.section).toBe("drop");
+    expect(after.shots).toEqual({ confetti: 2, co2: 1, pyro: 2 });
+    expect(wheelGap(after.hue, before.hue)).toBeGreaterThan(0.1);
+  });
+
+  it("settles on a picked colour, or the song's key, and only sways round it", () => {
+    for (const colour of ["pick", "key"] as const) {
+      const { clock, lights } = rig();
+      lights.setDesk({ ...DEFAULT_DESK, colour, hue: 0.6, colourSpeed: 0.9 });
+      feed(lights, 0, 30);
+      lights.push({ at: 0, f: "", info: { mode: "real", key: "4A" } });
+      const shows = play(clock, lights, 1000, 29_000);
+      const centre = colour === "pick" ? 0.6 : keyHue("4A")!;
+      for (const { show } of shows.slice(shows.length / 2)) expect(wheelGap(show.hue, centre)).toBeLessThan(colour === "pick" ? 0.03 : 0.06);
+      // It does move with the phrases, a little.
+      expect(new Set(shows.map(({ show }) => Math.round(show.hue * 200))).size).toBeGreaterThan(2);
+    }
+  });
+
+  it("moves the theme's colour on each phrase, faster with the colour speed up, and not at all with it down", () => {
+    const steps = (colourSpeed: number) => {
+      const { clock, lights } = rig();
+      lights.setDesk({ ...DEFAULT_DESK, colourSpeed });
+      feed(lights, 0, 34);
+      const shows = play(clock, lights, 1000, 33_000);
+      return shows.filter(({ show }, i) => i > 0 && wheelGap(show.hue, shows[i - 1].show.hue) > 0.01).length;
+    };
+    expect(steps(0)).toBe(0);
+    expect(steps(1)).toBeGreaterThan(steps(0.5));
+  });
+
+  it("reacts harder with the react fader up: quieter kicks still hit", () => {
+    const hits = (react: number) => {
+      const { clock, lights } = rig();
+      lights.setDesk({ ...DEFAULT_DESK, react });
+      // Soft kicks: 0.4 over a floor of 0.02.
+      for (let start = 0; start < 6000; start += 80) {
+        const frames = [0, 1, 2, 3].map((i) => ((start + i * CLUB_FRAME_MS) % 500 < 60 ? [0.4, 0.1, 0.5, 0.3, 0.4, 0.6] : [0.02, 0.1, 0.5, 0.3, 0.4, 0.6]));
+        lights.push({ at: start, f: encode(frames), b: start / 500, bpm: 120, stems: true });
+      }
+      return play(clock, lights, 1000, 5000).filter(({ show }, i) => i > 0 && show.kickHit === 1).length;
+    };
+    expect(hits(0)).toBe(0);
+    expect(hits(1)).toBeGreaterThanOrEqual(7);
+  });
+
+  it("shows how far through a mix the music is", () => {
+    const { clock, lights } = rig();
+    feed(lights, 0, 4);
+    lights.push({ at: 1000, f: "", info: { mode: "player", mix: { style: "AutoMix", progress: 0.4 } } });
+    expect(play(clock, lights, 1000, 1100).at(-1)!.show.mix).toBe(0.4);
+    lights.push({ at: 2000, f: "", info: { mode: "player" } });
+    expect(play(clock, lights, 1100, 1200).at(-1)!.show.mix).toBeNull();
+  });
+});
+
+/** A note byte as the bot sends it: clear (12 of 15) on pitch class `pc` (C = 0), or none. */
+const note = (pc: number | null) => (pc === null ? 0 : (12 << 4) | (pc + 1));
+const [C, D, E, F, Fs, G, A, B] = [0, 2, 4, 5, 6, 7, 9, 11];
+
+/** `seconds` of music from `from` whose parts are on the notes `at(t)` gives (bass, chord, voice). */
+function feedNotes(lights: ClubLights, from: number, seconds: number, at: (t: number) => Array<number | null>, info?: ClubBatch["info"]) {
+  for (let start = 0; start < seconds * 1000; start += 80) {
+    const frames: number[][] = [];
+    const notes: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      frames.push([0.1, 0.1, 0.5, 0.4, 0.5, 0.6]);
+      notes.push(...at(start + i * CLUB_FRAME_MS).map(note));
+    }
+    lights.push({ at: from + start, f: encode(frames), n: btoa(String.fromCharCode(...notes)), b: start / 500, bpm: 120, stems: true, ...(info ? { info } : {}) });
+  }
+}
+
+describe("the club's colours, by the notes", () => {
+  it("finds a key's middle round the circle of fifths", () => {
+    expect([C, G, D, A, E, B, Fs].map(fifths)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(fifths(F)).toBe(11);
+    expect(keyMiddle("8B")).toBe(fifths(D));        // C major: C..B, three fifths either side of D
+    expect(keyMiddle("8A")).toBe(fifths(D));        // A minor: the same notes
+    expect(keyMiddle("9B")).toBe(fifths(A));        // G major, a fifth on
+    expect(keyMiddle("nope")).toBeNull();
+  });
+
+  it("colours each part by its note, as far round from the show's colour as the note is from the key's middle", () => {
+    const { clock, lights } = rig();
+    feedNotes(lights, 0, 3, (t) => (t < 1500 ? [A, C, E] : [D, C, E]), { mode: "real", key: "8B" });
+    const before = play(clock, lights, 0, 1450).at(-1)!.show;
+    expect(before.notes.map((n) => n?.pc)).toEqual([A, C, E]);
+    // A is a fifth past D, C two fifths before it, E two past it.
+    expect(before.noteShift[0]).toBeCloseTo(NOTE_STEP, 2);
+    expect(before.noteShift[1]).toBeCloseTo(-2 * NOTE_STEP, 2);
+    expect(before.noteShift[2]).toBeCloseTo(2 * NOTE_STEP, 2);
+    expect(before.noteFollow).toBeGreaterThan(0.5);
+    // The bass steps to D, the key's middle: its colour goes to the show's own, quickly.
+    const after = play(clock, lights, 1450, 1750).at(-1)!.show;
+    expect(after.notes[0]?.pc).toBe(D);
+    expect(Math.abs(after.noteShift[0])).toBeLessThan(0.02);
+    expect(after.noteShift[1]).toBeCloseTo(-2 * NOTE_STEP, 2);
+  });
+
+  it("without a key, measures from the middle of the notes heard", () => {
+    const { clock, lights } = rig();
+    const scale = [C, D, E, F, G, A, B];
+    // Half a minute of C major's notes, then the bass holds D (the middle) and the chords F# (out of the key).
+    feedNotes(lights, 0, 34, (t) => (t < 30_000 ? [scale[Math.floor(t / 250) % 7], scale[Math.floor(t / 500 + 3) % 7], null] : [D, Fs, null]));
+    const show = play(clock, lights, 0, 31_000).at(-1)!.show;
+    expect(Math.abs(show.noteShift[0])).toBeLessThan(0.06);
+    expect(show.noteShift[1]).toBeGreaterThan(3 * NOTE_STEP);
+    expect(show.notes[2]).toBeNull();
+  });
+
+  it("eases a part back when it stops, and follows nothing with the desk's notes off or from a bot without notes", () => {
+    const { clock, lights } = rig();
+    feedNotes(lights, 0, 10, (t) => [t < 2000 ? A : null, C, null], { mode: "real", key: "8B" });
+    expect(play(clock, lights, 0, 1900).at(-1)!.show.noteShift[0]).toBeCloseTo(NOTE_STEP, 2);
+    const later = play(clock, lights, 1900, 8000).at(-1)!.show;
+    expect(later.notes[0]).toBeNull();
+    expect(Math.abs(later.noteShift[0])).toBeLessThan(0.01);
+    expect(later.noteShift[1]).toBeCloseTo(-2 * NOTE_STEP, 2);
+    expect(later.noteFollow).toBeGreaterThan(0.9);
+    lights.setDesk({ ...DEFAULT_DESK, notes: false });
+    expect(play(clock, lights, 8000, 10_000).at(-1)!.show.noteFollow).toBeLessThan(0.3);
+
+    const old = rig();
+    feed(old.lights, 0, 3);
+    const show = play(old.clock, old.lights, 0, 2500).at(-1)!.show;
+    expect(show.notes).toEqual([null, null, null]);
+    expect(show.noteFollow).toBe(0);
   });
 });

@@ -190,6 +190,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       rs.onmessage = (ev) => {
         socketRef.current?.onmessage?.(ev);
       };
+      // The shard holds the room's living room poses: ask it who is where as soon as it's up.
+      rs.onopen = () => {
+        try { rs.send(JSON.stringify({ t: "lounge-sync" } satisfies ClientEvent)); } catch {}
+      };
       rs.onerror = () => {
         try { rs.close(); } catch {}
       };
@@ -208,8 +212,12 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     } else if (event.t === "voice-leave") {
       connectRoomShard(null);
     }
+    // Who is where: the poses from the room's shard, the venue and shared state from the main hub.
+    if (event.t === "lounge-sync" && roomSocketRef.current?.readyState === WebSocket.OPEN) {
+      roomSocketRef.current.send(JSON.stringify(event));
+    }
     if (
-      (event.t === "lounge" || event.t === "synth" || event.t === "caption" || event.t === "club-watch") &&
+      (event.t === "lounge" || event.t === "synth" || event.t === "caption" || event.t === "club-watch" || event.t === "club-desk" || event.t === "club-fx") &&
       roomSocketRef.current?.readyState === WebSocket.OPEN
     ) {
       roomSocketRef.current.send(JSON.stringify(event));
@@ -497,7 +505,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             window.dispatchEvent(new CustomEvent("huddle-lounge", { detail: payload }));
             break;
           case "club":
-            // The club's lights, a dozen times a second: read by club-lights.ts, never React state.
+          case "club-desk":
+          case "club-fx":
+            // The club's lights (a dozen times a second) and its light desk: read by club-lights.ts.
             window.dispatchEvent(new CustomEvent("huddle-club", { detail: payload }));
             break;
           case "typing":

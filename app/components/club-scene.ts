@@ -8,16 +8,24 @@
  * it drops, with confetti and CO2. With nothing playing the room idles, slow
  * and dim, waiting for someone to start the night.
  *
+ * The light desk (lib/club-desk.ts) plays it too: how bright, how much the
+ * beams move, how many lasers and in what pattern, the haze, the floor's and
+ * the wall's patterns, where the colours come from, and its buttons'
+ * moments (confetti, CO2, flames, a flash, a blackout, a strobe). All of it
+ * is drawn here, in each browser; nothing but numbers comes over the wire.
+ *
  * Built to be cheap: the floor's tiles, the lasers and the confetti are each
- * one instanced draw; the beams are additive cones with a glow where they hit
- * the floor rather than real volumetrics; a handful of real lights wash the
- * floor and the crowd, none with shadows.
+ * one instanced draw; the beams are soft additive cones with drifting dust and
+ * a gobo where they hit the floor rather than real volumetrics; a handful of
+ * real lights wash the floor and the crowd, none with shadows.
  */
 import "../lib/canvas-polyfill";
 import * as THREE from "three";
 import type { RoomTheme } from "../hooks/use-living-room";
 import { CLUB, CLUB_BAR, CLUB_DANCE_FLOOR, CLUB_DECKS, CLUB_DJ_SEAT, CLUB_HALF_X, CLUB_HALF_Z, CLUB_STAGE } from "../lib/living-room";
 import type { ClubShow } from "../lib/club-lights";
+import { DEFAULT_DESK, type ClubColour } from "@/lib/club-desk";
+import type { RoomQuality } from "./room-post";
 import { LOOKS, box, canvasTexture, cushion, glowTexture, mat, tagSeat, type BuiltRoom } from "./living-room-scene";
 import { mergeStatics } from "./living-room-fx";
 import { dress, fabric } from "./room-surfaces";
@@ -34,6 +42,10 @@ export interface ClubRig {
   track: (title: string | null, artist: string | null) => void;
   /** Less motion: slower beams, no flashing at all. */
   calm: (on: boolean) => void;
+  /** This listener's own brightness for the whole show (0.3..1.5; 1 as the desk has it). */
+  brightness: (level: number) => void;
+  /** The graphics tier: low drops the haze and thins the specks and confetti. */
+  quality: (tier: RoomQuality) => void;
 }
 
 /** Each theme's palette: the colours the lights cycle through, and the bar's sign. */
@@ -63,9 +75,10 @@ void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(
 `;
 const WALL_FRAGMENT = /* glsl */ `
 uniform float uTime, uKick, uSnare, uBass, uVocals, uMelody, uLevel, uPhase, uBar, uBuild, uFlash, uLive, uDrop;
+uniform float uHistW, uHead, uMaster, uMix;
 uniform vec4 uWeights;
 uniform vec3 uColA, uColB, uColC;
-uniform sampler2D uText;
+uniform sampler2D uText, uHistory;
 varying vec2 vUv;
 const vec2 GRID = vec2(192.0, 70.0);
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -97,7 +110,14 @@ void main() {
   float w1 = smoothstep(0.04, 0.0, abs(c.y - sin(c.x * 3.0 + uTime * 2.0) * 0.34 * (0.15 + uVocals)));
   float w2 = smoothstep(0.03, 0.0, abs(c.y - sin(c.x * 5.0 - uTime * 3.0) * 0.26 * (0.1 + uMelody)));
   vec3 colWave = uColC * w1 * 1.4 + uColB * w2;
-  vec3 col = colBars * uWeights.x + colRings * uWeights.y + colTunnel * uWeights.z + colWave * uWeights.w;
+  // History: the parts over the last few seconds, scrolling in from the right, the kick at the bottom.
+  float lane = floor(p.y * 5.0);
+  float ly = fract(p.y * 5.0) - 0.5;
+  float row = lane < 1.0 ? 0.0 : lane < 2.0 ? 2.0 : lane < 3.0 ? 1.0 : lane < 4.0 ? 4.0 : 3.0;
+  float past = texture2D(uHistory, vec2(fract(p.x + uHead), (row + 0.5) / 8.0)).r;
+  float trace = step(abs(ly), past * 0.46) * step(0.02, past);
+  vec3 colHistory = mix(uColA, uColC, lane / 4.0) * trace * (0.5 + 0.8 * p.x);
+  vec3 col = colBars * uWeights.x + colRings * uWeights.y + colTunnel * uWeights.z + colWave * uWeights.w + colHistory * uHistW;
   // A build fills the wall from the bottom, blinking faster towards the drop.
   col += uColA * step(p.y, uBuild) * (0.4 + 0.6 * step(0.5, fract(uTime * (2.0 + uBuild * 14.0)))) * uBuild;
   // Nothing on: a slow plasma.
@@ -105,28 +125,20 @@ void main() {
   col = mix(idle, col, uLive);
   // Glitter on the hats after a drop.
   col += uColC * step(0.985 - 0.06 * uSnare, hash(cell + floor(uTime * 12.0))) * uDrop * 1.5;
+  // A mix: a line wipes across from the old song's colours to the new one's.
+  if (uMix >= 0.0) {
+    col = mix(col, col.gbr * 1.1, step(1.0 - uMix, p.x) * 0.7);
+    col += uColC * smoothstep(0.01, 0.0, abs(p.x - (1.0 - uMix))) * 1.5;
+  }
+  col *= uMaster;
   col += vec3(uFlash * 1.6);
   vec4 text = texture2D(uText, p);
-  col = mix(col, text.rgb * 1.7, text.a);
+  col = mix(col, text.rgb * 1.7 * max(uMaster, 0.15), text.a);
   gl_FragColor = vec4(col * led * 1.9 + col * 0.05, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
 `;
-
-/** A soft vertical gradient for the beams: bright at the lens, nothing at the far end. */
-function beamTexture() {
-  const texture = canvasTexture(32, 256, (ctx) => {
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.25, "rgba(255,255,255,0.45)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 32, 256);
-  });
-  texture.colorSpace = THREE.NoColorSpace;
-  return texture;
-}
 
 /** A laser's cross-section: a hot core with a little bloom either side. */
 function laserTexture() {
@@ -139,6 +151,91 @@ function laserTexture() {
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 64, 4);
+  });
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
+/** A moving head's beam: brightest down its middle and at the lens, fading to nothing, with dust drifting through it. */
+const BEAM_VERTEX = /* glsl */ `
+varying float vAlong;
+varying vec3 vNormalV, vViewV, vWorld;
+void main() {
+  vAlong = 1.0 - uv.y;
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWorld = world.xyz;
+  vec4 view = viewMatrix * world;
+  vNormalV = normalize(normalMatrix * normal);
+  vViewV = normalize(-view.xyz);
+  gl_Position = projectionMatrix * view;
+}
+`;
+const BEAM_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uDust, uTime;
+varying float vAlong;
+varying vec3 vNormalV, vViewV, vWorld;
+float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float noise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+void main() {
+  float core = pow(abs(dot(normalize(vNormalV), normalize(vViewV))), 1.6);
+  float along = pow(1.0 - vAlong, 1.4) * smoothstep(0.0, 0.03, vAlong);
+  float dust = 0.5 + 0.5 * noise(vWorld * 1.6 + vec3(0.0, uTime * 0.22, uTime * 0.09));
+  gl_FragColor = vec4(uColor * core * along * mix(1.0, dust, uDust), 1.0);
+  #include <colorspace_fragment>
+}
+`;
+
+/** Gobos: the patterns cut into a moving head's beam, as they land on the floor. */
+function goboTexture(kind: number) {
+  const texture = canvasTexture(128, 128, (ctx) => {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, 128, 128);
+    const blob = (x: number, y: number, r: number) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, "rgba(255,255,255,1)");
+      g.addColorStop(0.6, "rgba(255,255,255,0.7)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    if (kind === 0) {
+      // A ring of dots round one in the middle.
+      blob(64, 64, 13);
+      for (let i = 0; i < 7; i++) blob(64 + Math.cos((i / 7) * Math.PI * 2) * 38, 64 + Math.sin((i / 7) * Math.PI * 2) * 38, 12);
+    } else if (kind === 1) {
+      // A star of rays.
+      ctx.translate(64, 64);
+      for (let i = 0; i < 8; i++) {
+        ctx.rotate(Math.PI / 4);
+        const g = ctx.createLinearGradient(0, 0, 58, 0);
+        g.addColorStop(0, "rgba(255,255,255,1)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(58, -9);
+        ctx.lineTo(58, 9);
+        ctx.fill();
+      }
+    } else {
+      // Rings.
+      for (const [r, w] of [[52, 7], [32, 7], [12, 9]] as const) {
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.arc(64, 64, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   });
   texture.colorSpace = THREE.NoColorSpace;
   return texture;
@@ -170,8 +267,11 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
   const look = LOOKS[theme];
   const palette = PALETTES[theme];
   const colours = palette.colours.map((c) => new THREE.Color(c));
-  /** The palette at h (0..1, wrapping), blended between its colours. */
+  let colourMode: ClubColour = "theme";
+  /** The colour at h (0..1, wrapping): the theme's palette, blended between its colours; or, for the desk's other colour modes, the wheel. */
   const paint = (h: number, out = new THREE.Color()) => {
+    // In sRGB, so the room's red is the red on the desk's colour slider.
+    if (colourMode !== "theme") return out.setHSL(((h % 1) + 1) % 1, 1, 0.5, THREE.SRGBColorSpace);
     const n = colours.length;
     const at = (((h % 1) + 1) % 1) * n;
     const i = Math.floor(at);
@@ -239,12 +339,20 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
   textCanvas.height = 376;
   const textTexture = track(new THREE.CanvasTexture(textCanvas));
   textTexture.colorSpace = THREE.SRGBColorSpace;
+  // The wall's memory of the parts: one column per thirtieth of a second, a row per part, scrolling.
+  const HISTORY = 128;
+  const historyData = new Uint8Array(HISTORY * 8 * 4);
+  const history = track(new THREE.DataTexture(historyData, HISTORY, 8, THREE.RGBAFormat));
+  history.magFilter = THREE.NearestFilter;
+  history.minFilter = THREE.NearestFilter;
+  history.needsUpdate = true;
   const wallUniforms = {
     uTime: { value: 0 }, uKick: { value: 0 }, uSnare: { value: 0 }, uBass: { value: 0 }, uVocals: { value: 0 }, uMelody: { value: 0 }, uLevel: { value: 0 },
     uPhase: { value: 0 }, uBar: { value: 0 }, uBuild: { value: 0 }, uFlash: { value: 0 }, uLive: { value: 0 }, uDrop: { value: 0 },
+    uHistW: { value: 0 }, uHead: { value: 0 }, uMaster: { value: 1 }, uMix: { value: -1 },
     uWeights: { value: new THREE.Vector4(1, 0, 0, 0) },
     uColA: { value: new THREE.Color() }, uColB: { value: new THREE.Color() }, uColC: { value: new THREE.Color() },
-    uText: { value: textTexture },
+    uText: { value: textTexture }, uHistory: { value: history },
   };
   const ledWallMaterial = track(new THREE.ShaderMaterial({ uniforms: wallUniforms, vertexShader: WALL_VERTEX, fragmentShader: WALL_FRAGMENT, toneMapped: false }));
   const ledWall = new THREE.Mesh(new THREE.PlaneGeometry(WALL.x1 - WALL.x0, WALL.y1 - WALL.y0), ledWallMaterial);
@@ -383,10 +491,15 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     hanger.position.set(x, (H + TRUSS_Y + 0.2) / 2, trussZ[0]);
     root.add(hanger);
   }
-  const beamMap = track(beamTexture());
-  const beamGeometry = track(new THREE.ConeGeometry(0.5, 1, 24, 1, true));
+  const beamGeometry = track(new THREE.ConeGeometry(0.5, 1, 32, 1, true));
   beamGeometry.translate(0, -0.5, 0);   // apex at the lens, opening downwards
-  interface Head { at: THREE.Vector3; home: number; front: boolean; side: number; head: THREE.Object3D; beam: THREE.Mesh; beamMaterial: THREE.MeshBasicMaterial; lens: THREE.MeshBasicMaterial; spot: THREE.Mesh; spotMaterial: THREE.MeshBasicMaterial; dir: THREE.Vector3 }
+  const beamTime = { value: 0 };
+  const beamDust = { value: 0.5 };
+  const gobos = [0, 1, 2].map((kind) => track(goboTexture(kind)));
+  interface Head {
+    at: THREE.Vector3; home: number; front: boolean; side: number; head: THREE.Object3D; beam: THREE.Mesh; beamColor: THREE.Color; lens: THREE.MeshBasicMaterial;
+    flare: THREE.Sprite; spot: THREE.Mesh; spotMaterial: THREE.MeshBasicMaterial; spin: number; dir: THREE.Vector3; want: THREE.Vector3;
+  }
   const heads: Head[] = [];
   const fixtures = [
     ...[-5, -3, -1, 1, 3, 5].map((x) => ({ x, z: trussZ[0], home: 0, front: true })),
@@ -414,28 +527,38 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     const lensMesh = new THREE.Mesh(new THREE.CircleGeometry(0.1, 20), lens);
     lensMesh.rotation.x = Math.PI / 2;
     lensMesh.position.y = -0.105;
-    head.add(body, lensMesh);
+    // The lens's own glare, seen from the floor looking up into it.
+    const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: "#000000", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    flare.position.y = -0.14;
+    flare.scale.setScalar(0.7);
+    noPick(flare);
+    head.add(body, lensMesh, flare);
     head.userData.animated = true;
     mount.add(head);
-    const beamMaterial = new THREE.MeshBasicMaterial({ map: beamMap, color: "#000000", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    const beamColor = new THREE.Color(0, 0, 0);
+    const beamMaterial = track(new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: beamColor }, uDust: beamDust, uTime: beamTime },
+      vertexShader: BEAM_VERTEX, fragmentShader: BEAM_FRAGMENT,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    }));
     const beam = new THREE.Mesh(beamGeometry, beamMaterial);
     beam.position.copy(at);
     beam.renderOrder = 3;
     beam.userData.animated = true;
     noPick(beam);
     root.add(beam);
-    const spotMaterial = new THREE.MeshBasicMaterial({ map: glow, color: "#000000", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const spotMaterial = new THREE.MeshBasicMaterial({ map: gobos[heads.length % gobos.length], color: "#000000", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     const spot = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), spotMaterial);
     spot.rotation.x = -Math.PI / 2;
     spot.renderOrder = 2;
     spot.userData.animated = true;
     noPick(spot);
     root.add(spot);
-    heads.push({ at, home: fixture.home, front: fixture.front, side: Math.sign(fixture.x), head, beam, beamMaterial, lens, spot, spotMaterial, dir: new THREE.Vector3(0, -1, 0) });
+    heads.push({ at, home: fixture.home, front: fixture.front, side: Math.sign(fixture.x), head, beam, beamColor, lens, flare, spot, spotMaterial, spin: heads.length, dir: new THREE.Vector3(0, -1, 0), want: new THREE.Vector3(0, -1, 0) });
   }
 
-  // ---- lasers: two fans from the stage's front corners, over the crowd's heads ----
-  const LASER_BEAMS = 9;
+  // ---- lasers: two emitters at the stage's front corners, over the crowd's heads ----
+  const LASER_BEAMS = 16;
   const laserOrigins = [new THREE.Vector3(-4.6, STAGE_Y + 0.25, CLUB_STAGE.z1 - 0.15), new THREE.Vector3(4.6, STAGE_Y + 0.25, CLUB_STAGE.z1 - 0.15)];
   const laserGeometry = track(new THREE.PlaneGeometry(0.05, 1));
   laserGeometry.translate(0, 0.5, 0);
@@ -514,6 +637,30 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     jet.position.copy(nozzle).add(new THREE.Vector3(0, -0.05, 0));
     root.add(jet);
   }
+
+  // ---- flames: four jets along the stage's front edge ----
+  const FLAMES_EACH = 36;
+  const flameJets = [-5.2, -1.8, 1.8, 5.2].map((x) => new THREE.Vector3(x, STAGE_Y + 0.12, CLUB_STAGE.z1 - 0.25));
+  for (const jet of flameJets) {
+    const base = box(0.34, 0.2, 0.34, mat("#18181d", 0.45, { metalness: 0.6 }), false);
+    base.position.copy(jet).add(new THREE.Vector3(0, -0.06, 0));
+    root.add(base);
+  }
+  const FLAMES = FLAMES_EACH * flameJets.length;
+  const flamePositions = new Float32Array(FLAMES * 3);
+  const flameColours = new Float32Array(FLAMES * 3);
+  const flameGeometry = track(new THREE.BufferGeometry());
+  flameGeometry.setAttribute("position", new THREE.BufferAttribute(flamePositions, 3));
+  flameGeometry.setAttribute("color", new THREE.BufferAttribute(flameColours, 3));
+  const flames = new THREE.Points(flameGeometry, new THREE.PointsMaterial({ map: glow, size: 0.9, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  flames.frustumCulled = false;
+  flames.userData.animated = true;
+  noPick(flames);
+  root.add(flames);
+  const flameState = Array.from({ length: FLAMES }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), wait: 0, age: 0, life: 0 }));
+  const fireLight = new THREE.PointLight("#ff7a1a", 0, 14, 1.5);
+  fireLight.position.set(0, STAGE_Y + 1.6, CLUB_STAGE.z1 + 0.4);
+  root.add(fireLight);
 
   // ---- haze: a few big soft clouds catching the light ----
   const hazeMaterial = new THREE.SpriteMaterial({ map: smoke, color: "#000000", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -670,6 +817,8 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
   let show: ClubShow | null = null;
   let crowd: Array<{ x: number; z: number }> = [];
   let calm = false;
+  let personal = 1;
+  let tier: RoomQuality = "high";
   let djName: string | null = null;
   let title: string | null = null;
   let artist: string | null = null;
@@ -677,9 +826,29 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
   let panelKey = "";
   const weights = new THREE.Vector4(1, 0, 0, 0);
   const wantWeights = new THREE.Vector4(1, 0, 0, 0);
+  let historyWeight = 0;
+  let historyClock = 0;
+  let historyHead = 0;
   let lastDrop = Infinity;
+  let shotsSeen = { confetti: 0, co2: 0, pyro: 0 };
+  let fireGlow = 0;
   let ballAngle = 0;
   let idleClock = 0;
+  /** This frame's base colour, and how far round the palette or the wheel the other lights' colours spread from it. */
+  let hueNow = 0;
+  let spreadNow = 1;
+  /** Each part's note as a colour shift (bass, chord, voice; see ClubShow), and how much the colours follow them. */
+  let noteShift: readonly number[] = [0, 0, 0];
+  let noteFollow = 0;
+  let laserPart: 1 | 2 = 1;
+  const centred = (offset: number) => (((offset % 1) + 1) % 1) - 0.5;
+  // A fixture's colour, `offset` (0..1) of the way through the spread, which is centred on the show's colour: the
+  // desk's colour mix down, one colour for the room; up, every light its own (round a picked colour or a key, less far).
+  const tint = (offset: number, out = new THREE.Color()) => paint(hueNow + centred(offset) * spreadNow, out);
+  // A fixture one part of the music plays (0 the bass, 1 the chords, 2 the voice): following the notes, the
+  // colour of the note that part is on, the fixtures a touch apart by `offset`; not, as tint.
+  const tintPart = (part: 0 | 1 | 2, offset: number, out = new THREE.Color()) =>
+    paint(hueNow + (centred(offset) * (1 - 0.8 * noteFollow) + noteShift[part] * noteFollow) * spreadNow, out);
   const tmp = new THREE.Color();
   const tmp2 = new THREE.Color();
   const q = new THREE.Quaternion();
@@ -692,8 +861,8 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
   /** The second plane of each laser beam, turned a quarter round it, so it shows from every side. */
   const twists = [new THREE.Quaternion(), new THREE.Quaternion().setFromAxisAngle(up, Math.PI / 2)];
 
-  const drawText = (live: boolean, bpm: number | null) => {
-    const keyNow = `${live}|${djName}|${title}|${artist}|${bpm ? Math.round(bpm) : ""}`;
+  const drawText = (live: boolean, bpm: number | null, next: string | null) => {
+    const keyNow = `${live}|${djName}|${title}|${artist}|${bpm ? Math.round(bpm) : ""}|${next ?? ""}`;
     if (keyNow === textKey) return;
     textKey = keyNow;
     const ctx = textCanvas.getContext("2d")!;
@@ -718,25 +887,29 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     ctx.globalAlpha = 0.85;
     if (artist) ctx.fillText(artist, 30, 360, 760);
     ctx.globalAlpha = 1;
+    if (next) {
+      ctx.font = "700 32px system-ui, sans-serif";
+      ctx.fillText(`MIXING INTO ${next.toUpperCase()}`, 30, 56, 600);
+    }
     ctx.textAlign = "right";
     ctx.font = "800 40px system-ui, sans-serif";
-    ctx.fillText(djName ? `DJ ${djName.toUpperCase()}` : "DJ HOFFY", 994, 56, 600);
+    ctx.fillText(djName ? `DJ ${djName.toUpperCase()}` : "DJ HOFFY", 994, 56, next ? 330 : 600);
     if (bpm) {
       ctx.font = "700 32px ui-monospace, monospace";
       ctx.fillText(`${Math.round(bpm)} BPM`, 994, 360);
     }
     textTexture.needsUpdate = true;
   };
-  drawText(false, null);
+  drawText(false, null, null);
 
-  const drawPanel = (hue: number, level: number) => {
-    const keyNow = `${djName}|${Math.round(hue * 24)}|${Math.round(level * 10)}`;
+  const drawPanel = (level: number) => {
+    const keyNow = `${djName}|${colourMode}|${Math.round(hueNow * 48)}|${Math.round(level * 10)}`;
     if (keyNow === panelKey) return;
     panelKey = keyNow;
+    const colour = `#${tint(0, tmp2).getHexString()}`;
     const ctx = panelCanvas.getContext("2d")!;
     ctx.fillStyle = "#050507";
     ctx.fillRect(0, 0, 512, 128);
-    const colour = `#${paint(hue, tmp2).getHexString()}`;
     ctx.fillStyle = colour;
     ctx.font = "800 54px system-ui, sans-serif";
     ctx.textAlign = "center";
@@ -770,7 +943,7 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
       bit.r.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
       bit.life = 4 + Math.random() * 3;
     }
-    for (let i = 0; i < CONFETTI; i++) confetti.setColorAt(i, paint(Math.random()).multiplyScalar(1.6));
+    for (let i = 0; i < CONFETTI; i++) confetti.setColorAt(i, tint(Math.random(), tmp).multiplyScalar(1.6));
     if (confetti.instanceColor) confetti.instanceColor.needsUpdate = true;
   };
   const fireCo2 = () => {
@@ -781,22 +954,56 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
       puff.life = 0.9 + Math.random() * 0.5 + (i / PUFFS) * 0.4;
     });
   };
+  const fireFlames = () => {
+    fireGlow = 1;
+    flameState.forEach((flame, i) => {
+      const jet = flameJets[Math.floor(i / FLAMES_EACH)];
+      flame.p.copy(jet);
+      flame.v.set((Math.random() - 0.5) * 0.5, 6.5 + Math.random() * 2.5, (Math.random() - 0.5) * 0.5);
+      flame.wait = ((i % FLAMES_EACH) / FLAMES_EACH) * 0.55;    // a column half a second long
+      flame.age = 0;
+      flame.life = 0.5 + Math.random() * 0.25;
+    });
+  };
+
+  const applyQuality = () => {
+    // Low graphics: no haze clouds (the costliest to fill), half the specks and confetti.
+    for (const cloud of haze) cloud.visible = tier !== "low";
+    speckGeometry.setDrawRange(0, tier === "low" ? SPECKS / 2 : SPECKS);
+    confetti.count = tier === "low" ? CONFETTI / 2 : CONFETTI;
+  };
 
   const update = (t: number, dt = 1 / 60) => {
     const s = show;
     const live = Boolean(s?.live);
+    const desk = s?.desk ?? DEFAULT_DESK;
+    colourMode = s?.colour ?? "theme";
+    spreadNow = desk.mix * (colourMode === "pick" ? 0.5 : colourMode === "key" ? 0.6 : 1);
     idleClock += dt;
     const hue = s ? s.hue : (idleClock * 0.02) % 1;
+    hueNow = hue;
+    noteShift = s?.noteShift ?? [0, 0, 0];
+    noteFollow = s?.noteFollow ?? 0;
     const beat = s?.beat ?? (live ? null : idleClock * 1.2);
     const beatClock = beat ?? idleClock * 2;
     const energy = live ? s!.energy : 0.15;
     const section = s?.section ?? "idle";
-    const flash = calm ? 0 : s?.flash ?? 0;
+    const blackout = s?.blackout ?? 0;
+    // The desk's master, this listener's own brightness, and the blackout: every light in the show goes through it.
+    const M = (desk.master / DEFAULT_DESK.master) * personal * (1 - blackout);
+    const flash = calm ? 0 : (s?.flash ?? 0) * Math.min(1, personal);
     const kickHit = live ? s!.kickHit : 0;
     const sinceDrop = s?.sinceDrop ?? Infinity;
-    if (live && sinceDrop < lastDrop && sinceDrop < 0.5) { fireConfetti(); fireCo2(); }
+    if (live && desk.autoFx && sinceDrop < lastDrop && sinceDrop < 0.5) { fireConfetti(); fireCo2(); }
     lastDrop = sinceDrop;
-    const motion = calm ? 0.45 : 1;
+    if (s) {
+      if (s.shots.confetti !== shotsSeen.confetti) fireConfetti();
+      if (s.shots.co2 !== shotsSeen.co2) fireCo2();
+      if (s.shots.pyro !== shotsSeen.pyro && !calm) fireFlames();
+      shotsSeen = s.shots;
+    }
+    const speed = (0.15 + 1.7 * desk.move) * (calm ? 0.45 : 1);
+    const motion = speed;
 
     // The wall.
     const u = wallUniforms;
@@ -813,70 +1020,160 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     u.uFlash.value = flash;
     u.uLive.value += ((live ? 1 : 0) - u.uLive.value) * Math.min(1, dt * 2);
     u.uDrop.value = section === "drop" ? 1 : 0;
+    u.uMaster.value = M;
+    u.uMix.value = live && s?.mix != null ? s.mix : -1;
     const phrase = Math.floor(beatClock / 32);
-    if (section === "drop") wantWeights.set(1, 0.8, 0, 0);
-    else if (section === "breakdown") wantWeights.set(0, 0.3, 0, 1);
-    else if (section === "build") wantWeights.set(0.3, 1, 0, 0);
-    else wantWeights.set(phrase % 3 === 0 ? 1 : 0, phrase % 3 === 1 ? 1 : 0, phrase % 3 === 2 ? 1 : 0, s?.stems && (s.vocals > 0.3) ? 0.5 : 0);
+    let wantHistory = 0;
+    switch (desk.wallFx) {
+      case "bars": wantWeights.set(1, 0, 0, 0); break;
+      case "rings": wantWeights.set(0, 1, 0, 0); break;
+      case "tunnel": wantWeights.set(0, 0, 1, 0); break;
+      case "waves": wantWeights.set(0, 0.2, 0, 1); break;
+      case "history": wantWeights.set(0, 0, 0, 0); wantHistory = 1; break;
+      default:
+        if (section === "drop") wantWeights.set(1, 0.8, 0, 0);
+        else if (section === "breakdown") wantWeights.set(0, 0.3, 0, 1);
+        else if (section === "build") wantWeights.set(0.3, 1, 0, 0);
+        else {
+          // A new look every eight bars: the bars, the rings, the tunnel, then the parts' history.
+          const look = phrase % 4;
+          wantWeights.set(look === 0 ? 1 : 0, look === 1 ? 1 : 0, look === 2 ? 1 : 0, s?.stems && (s.vocals > 0.3) && look !== 3 ? 0.5 : 0);
+          wantHistory = look === 3 ? 1 : 0;
+        }
+    }
     weights.lerp(wantWeights, Math.min(1, dt * 1.5));
+    historyWeight += (wantHistory - historyWeight) * Math.min(1, dt * 1.5);
     u.uWeights.value.copy(weights);
-    paint(hue, u.uColA.value);
-    paint(hue + 0.33, u.uColB.value);
-    paint(hue + 0.66, u.uColC.value);
-    drawText(live, s?.bpm ?? null);
-    drawPanel(hue, live ? s!.level : 0);
+    u.uHistW.value = historyWeight;
+    // The wall's three colours are the bass's, the chords' and the voice's.
+    tintPart(0, 0, u.uColA.value);
+    tintPart(1, 0.33, u.uColB.value);
+    tintPart(2, 0.66, u.uColC.value);
+    // The history moves on thirty times a second whatever the frame rate.
+    historyClock += dt;
+    if (historyClock >= 1 / 30) {
+      historyClock %= 1 / 30;
+      const parts = live ? [Math.max(s!.kick, kickHit), s!.snare, s!.bass, s!.vocals, s!.melody, s!.level] : [0, 0, 0, 0, 0, 0];
+      parts.forEach((value, row) => { historyData[(row * HISTORY + historyHead) * 4] = Math.round(clamp01(value) * 255); });
+      historyHead = (historyHead + 1) % HISTORY;
+      history.needsUpdate = true;
+      u.uHead.value = historyHead / HISTORY;
+    }
+    drawText(live, s?.bpm ?? null, live && s?.mix != null ? s.info?.next ?? null : null);
+    drawPanel(live ? s!.level : 0);
     // A share (or a film) on the screen covers the middle of the wall.
     screen.visible = Boolean(screenMaterial.map);
 
-    // The floor: ripples out from the middle on the kick, a checker on the beat, light under people's feet.
+    // The floor: the desk's pattern (or, on auto, the section's), light under people's feet.
     const phase = s?.beatPhase ?? 0;
     const beatIndex = Math.floor(beatClock);
     const cx = (f.x0 + f.x1) / 2;
     const cz = (f.z0 + f.z1) / 2;
     const ringAt = live ? (1 - kickHit) * 7 : (idleClock * 0.8) % 7;
+    const floorGain = (desk.floor / DEFAULT_DESK.floor) * M * 1.6;
+    const sparkleTick = Math.floor(t * 8);
     for (let i = 0; i < cols * rows; i++) {
       const { x, z } = tileAt(i);
       const col = i % cols;
       const row = Math.floor(i / cols);
       const r = Math.hypot(x - cx, z - cz);
       let level = 0;
-      let h = hue;
+      let h = 0;
+      let part: 0 | 1 | 2 = 0;               // the floor is the bass's, but where a pattern shows another part
       if (!live) {
         level = 0.08 + 0.06 * Math.sin(idleClock * 0.8 + r * 0.9);
-        h = hue + r * 0.05;
+        h = r * 0.05;
+      } else if (desk.floorFx === "ripple") {
+        level = 0.05 + Math.max(0, 1 - Math.abs(r - ringAt) * 1.2) * (0.35 + kickHit) + 0.15 * s!.bass * Math.max(0, 1 - r / 6);
+        h = r * 0.04;
+      } else if (desk.floorFx === "checker") {
+        const on = (col + row + beatIndex) % 2 === 0;
+        level = on ? 0.25 + 0.6 * Math.max(s!.bass, kickHit) : 0.04;
+        h = on ? 0 : 0.5;
+      } else if (desk.floorFx === "stems") {
+        // A bar per part from the stage end, mirrored out from the middle: the kick, the bass, the vocal, the melody, the hats.
+        const side = Math.abs(col - (cols - 1) / 2) / ((cols - 1) / 2);
+        const lane = Math.min(4, Math.floor(side * 5));
+        const value = [Math.max(s!.kick, kickHit), s!.bass, s!.vocals, s!.melody, s!.snare][lane];
+        level = (row + 0.5) / rows <= value ? 0.85 : 0.04;
+        h = lane * 0.18;
+        part = lane === 2 ? 2 : lane >= 3 ? 1 : 0;
+      } else if (desk.floorFx === "chase") {
+        const d = (((col + row) / (cols + rows - 2) - (beatClock / 4) % 1) % 1 + 1) % 1;
+        level = Math.max(0, 1 - d * 6) * (0.4 + 0.6 * s!.level) + 0.03;
+        h = d * 0.3;
+      } else if (desk.floorFx === "sparkle") {
+        const seed = Math.sin(i * 12.9898 + sparkleTick * 78.233) * 43758.5453;
+        const rnd = seed - Math.floor(seed);
+        level = rnd > 0.9 - 0.25 * Math.max(s!.snare, s!.melody) ? 0.9 : 0.03 + 0.05 * s!.bass;
+        h = rnd * 0.6;
       } else if (section === "build") {
         const reach = (1 - s!.build) * 6;
         level = r > reach ? 0.9 : 0.06;
         if (s!.build > 0.75 && !calm) level *= phase < 0.5 ? 1 : 0.2;
       } else if (section === "breakdown") {
         level = 0.1 + 0.4 * s!.vocals * (0.5 + 0.5 * Math.sin(r * 1.2 - t * 1.5));
-        h = hue + 0.5;
+        h = 0.5;
+        part = 2;
       } else {
         const checker = (col + row + beatIndex) % 2 === 0 ? 1 : 0.15;
         const ring = Math.max(0, 1 - Math.abs(r - ringAt) * 1.4) * (0.4 + kickHit);
         level = (section === "drop" ? 0.35 : 0.18) * checker * (0.4 + s!.bass) + ring * (section === "drop" ? 1.2 : 0.8) + (section === "drop" ? s!.snareHit * (Math.random() < 0.08 ? 1 : 0) : 0);
-        h = hue + (checker > 0.5 ? 0 : 0.33) + r * 0.02;
+        h = (checker > 0.5 ? 0 : 0.33) + r * 0.02;
       }
       for (const spot of crowd) {
         const d = Math.hypot(spot.x - x, spot.z - z);
         if (d < 0.7) level = Math.max(level, (0.7 - d) * (live ? 0.9 : 0.5));
       }
-      level += flash * 0.8;
-      tiles.setColorAt(i, paint(h, tmp).multiplyScalar(level * 1.6));
+      tiles.setColorAt(i, tintPart(part, h, tmp).multiplyScalar(level * floorGain + flash * 1.3));
     }
     if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
 
-    // The beams.
+    // The beams: the desk's pattern (or, on auto, the section's), how bright, how fast; seen as much as the haze lets them be.
+    const beamGain = (desk.beams / DEFAULT_DESK.beams) * M;
+    const seen = 0.25 + 0.75 * desk.haze / DEFAULT_DESK.haze;
+    beamTime.value = t;
+    beamDust.value = 0.3 + 0.5 * desk.haze;
     const rate = section === "drop" ? 0.5 : section === "build" ? 0.25 + (s?.build ?? 0) * 0.75 : section === "breakdown" ? 0.08 : live ? 0.18 : 0.05;
+    const bar = Math.floor(beatClock / 4);
     heads.forEach((head, i) => {
       const lane = i % 2 ? 1 : -1;
-      const swing = Math.sin(beatClock * Math.PI * rate * motion + i * 0.7);
-      let pan = head.home + (section === "drop" ? head.side * 0.35 + swing * 0.6 : swing * 0.7 * lane);
-      let tilt = 0.45 + 0.25 * Math.cos(beatClock * Math.PI * rate * 0.5 * motion + i);
-      if (section === "build") tilt = 0.35 + (s!.build) * 0.9;            // rising towards the crowd
-      if (section === "breakdown") { tilt = 0.3; pan = head.home + Math.sin(t * 0.2 + i) * 0.4; }
-      if (!live) { tilt = 0.4 + 0.1 * Math.sin(idleClock * 0.3 + i); pan = head.home + Math.sin(idleClock * 0.15 + i) * 0.5; }
-      head.dir.set(Math.sin(tilt) * Math.sin(pan), -Math.cos(tilt), Math.sin(tilt) * Math.cos(pan)).normalize();
+      const across = head.at.x / 5;
+      const facing = head.front ? 1 : -1;
+      let pan = head.home;
+      let tilt = 0.45;
+      let aimed = false;
+      if (!live) {
+        tilt = 0.4 + 0.1 * Math.sin(idleClock * 0.3 + i);
+        pan = head.home + Math.sin(idleClock * 0.15 + i) * 0.5;
+      } else if (desk.beamFx === "sweep") {
+        pan = head.home + Math.sin(beatClock * Math.PI * 0.25 * motion) * 0.8 * facing;
+        tilt = 0.55;
+      } else if (desk.beamFx === "fan") {
+        const open = 0.5 + 0.5 * Math.sin(beatClock * Math.PI * 0.25 * motion);
+        pan = head.home + across * (0.15 + 0.6 * open) * facing;
+        tilt = 0.3 + 0.45 * open;
+      } else if (desk.beamFx === "circle") {
+        const angle = beatClock * Math.PI * 0.5 * motion + i * 0.63;
+        pan = head.home + Math.sin(angle) * 0.55;
+        tilt = 0.5 + 0.25 * Math.cos(angle);
+      } else if (desk.beamFx === "crowd") {
+        // Each head picks out a dancer, a new one every bar.
+        const target = crowd.length ? crowd[(i * 7 + bar) % crowd.length] : tileAt((i * 13 + bar * 5) % (cols * rows));
+        head.want.set(target.x - head.at.x, 1.0 - head.at.y, target.z - head.at.z).normalize();
+        aimed = true;
+      } else if (desk.beamFx === "still") {
+        pan = head.home + across * 0.3 * facing;
+        tilt = 0.5;
+      } else {
+        const swing = Math.sin(beatClock * Math.PI * rate * motion + i * 0.7);
+        pan = head.home + (section === "drop" ? head.side * 0.35 + swing * 0.6 : swing * 0.7 * lane);
+        tilt = 0.45 + 0.25 * Math.cos(beatClock * Math.PI * rate * 0.5 * motion + i);
+        if (section === "build") tilt = 0.35 + (s!.build) * 0.9;            // rising towards the crowd
+        if (section === "breakdown") { tilt = 0.3; pan = head.home + Math.sin(t * 0.2 * motion + i) * 0.4; }
+      }
+      if (!aimed) head.want.set(Math.sin(tilt) * Math.sin(pan), -Math.cos(tilt), Math.sin(tilt) * Math.cos(pan)).normalize();
+      head.dir.lerp(head.want, Math.min(1, dt * (aimed ? 2.5 * motion : 14))).normalize();
       q.setFromUnitVectors(down, head.dir);
       head.head.quaternion.copy(q);
       head.beam.quaternion.copy(q);
@@ -885,58 +1182,98 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
       head.beam.scale.set(0.35 + length * 0.07, length, 0.35 + length * 0.07);
       let intensity = !live ? 0.12 : section === "breakdown" ? 0.15 + s!.vocals * 0.35 : section === "drop" ? 0.55 + 0.45 * kickHit : 0.25 + 0.55 * s!.melody;
       if (section === "build") intensity = 0.3 + s!.build * 0.7;
+      if (live && desk.beamFx === "still") intensity = 0.25 + 0.75 * Math.max(kickHit, s!.melody * 0.6);
       if (section === "drop" && !calm && i % 2 === beatIndex % 2) intensity *= 0.35 + 0.65 * (1 - phase);
-      paint(hue + (i % 3) * 0.33 + (section === "breakdown" ? 0.5 : 0), tmp);
-      head.beamMaterial.color.copy(tmp).multiplyScalar(intensity * 0.5);
-      head.lens.color.copy(tmp).multiplyScalar(0.5 + intensity * 2.5);
-      if (toFloor < 14) {
+      intensity *= beamGain;
+      // The chords' colour; in a breakdown, the voice's.
+      tintPart(section === "breakdown" ? 2 : 1, i * 0.382 + (section === "breakdown" ? 0.5 : 0), tmp);
+      head.beamColor.copy(tmp).multiplyScalar(intensity * 0.65 * seen);
+      head.lens.color.copy(tmp).multiplyScalar((0.5 + intensity * 2.5) * Math.min(1, M + 0.05));
+      (head.flare.material as THREE.SpriteMaterial).color.copy(tmp).multiplyScalar(intensity * 0.9);
+      head.flare.scale.setScalar(0.35 + intensity * 0.6);
+      if (toFloor < 14 && intensity > 0.002) {
         head.spot.visible = true;
         head.spot.position.copy(head.at).addScaledVector(head.dir, toFloor * 0.995);
         head.spot.position.y = 0.06;
         head.spot.scale.setScalar((0.35 + length * 0.07) * 0.9);
-        head.spotMaterial.color.copy(tmp).multiplyScalar(intensity * 0.9);
+        head.spin += dt * (0.3 + 0.6 * motion) * lane;
+        head.spot.rotation.z = head.spin;
+        head.spotMaterial.color.copy(tmp).multiplyScalar(intensity * 1.1);
       } else head.spot.visible = false;
     });
     // The washes on the floor and the crowd follow the kick and the colour.
     washes.forEach((light, i) => {
-      light.color.copy(paint(hue + i * 0.25, tmp));
-      light.intensity = !live ? 4 : 10 + 50 * (section === "drop" ? kickHit : s!.bass * 0.6 + kickHit * 0.4);
+      light.color.copy(tintPart(0, i * 0.25, tmp));
+      light.intensity = (!live ? 4 : 10 + 50 * (section === "drop" ? kickHit : s!.bass * 0.6 + kickHit * 0.4)) * M;
     });
-    key.intensity = djName || live ? 24 : 10;
+    key.intensity = (djName || live ? 24 : 10) * (1 - blackout);
     wallSpill.color.copy(u.uColA.value);
-    wallSpill.intensity = live ? 6 + 20 * s!.level : 3;
+    wallSpill.intensity = (live ? 6 + 20 * s!.level : 3) * M;
     strobe.intensity = flash * 700;
-    hemi.intensity = 0.18 + flash * 2;
-    stageEdge.color.copy(paint(hue, tmp)).multiplyScalar(live ? 0.3 + kickHit * 2.2 : 0.4);
-    underGlow.color.copy(paint(hue + 0.5, tmp)).multiplyScalar(1.4);
+    hemi.intensity = 0.18 * (0.4 + 0.6 * (1 - blackout)) + flash * 2;
+    stageEdge.color.copy(tintPart(0, 0, tmp)).multiplyScalar((live ? 0.3 + kickHit * 2.2 : 0.4) * M);
+    underGlow.color.copy(tintPart(1, 0.5, tmp)).multiplyScalar(1.4);
     signMaterial.color.setScalar(1.8 + (live ? s!.kick * 0.6 : 0.2 * Math.sin(t * 3)));
     for (const tube of tubes) {
       const chase = live ? Math.max(0, 1 - Math.abs(((beatClock * 2) % 7) - (tube.side > 0 ? tube.index : 6 - tube.index))) : 0;
-      tube.material.color.copy(paint(hue + tube.index * 0.08, tmp)).multiplyScalar(live ? 0.3 + s!.melody * 1.2 + chase * 1.5 : 0.35);
+      tube.material.color.copy(tintPart(1, tube.index * 0.08, tmp)).multiplyScalar((live ? 0.3 + s!.melody * 1.2 + chase * 1.5 : 0.35) * M);
     }
-    jogRings.forEach((ring, i) => ring.color.copy(paint(hue + i * 0.5, tmp)).multiplyScalar(live ? 1 + kickHit * 2 : 0.4));
-    knobs.forEach((knob, i) => knob.color.copy(paint(hue + i * 0.1, tmp)).multiplyScalar(live ? 0.6 + (i % 2 ? s!.snare : s!.bass) * 2 : 0.2));
+    jogRings.forEach((ring, i) => ring.color.copy(tintPart(i ? 1 : 0, i * 0.5, tmp)).multiplyScalar(live ? 1 + kickHit * 2 : 0.4));
+    knobs.forEach((knob, i) => knob.color.copy(tintPart(i % 2 ? 1 : 0, i * 0.1, tmp)).multiplyScalar(live ? 0.6 + (i % 2 ? s!.snare : s!.bass) * 2 : 0.2));
     for (const platter of platters) platter.rotation.y -= (live && s!.info?.paused !== true ? 3.49 : 0) * dt;   // 33⅓ rpm
     for (const { mesh, sub } of cones) {
       const pump = live ? (sub ? s!.kick * 0.5 + kickHit * 0.5 : s!.bass) : 0;
       mesh.scale.set(1, 1, 1 + pump * 0.8);
     }
 
-    // Lasers: on the drop, and in a big groove with the hats; never in a breakdown.
-    const laserLevel = !live || calm ? 0 : section === "drop" ? 0.6 + 0.4 * s!.snare : section === "build" ? s!.build * 0.5 : section === "groove" && energy > 0.5 ? s!.snare * 0.6 : 0;
+    // Lasers. On auto: on the drop, and in a big groove with the hats; never in a breakdown. A chosen
+    // pattern plays all night, riding the hats. The fader sets how bright.
+    const laserFx = desk.laserFx;
+    let laserLevel = 0;
+    if (live && !calm && desk.lasers > 0.01) {
+      if (laserFx === "auto") {
+        const groove = section === "groove" && (energy > 0.5 || desk.lasers > 0.8);
+        laserLevel = (section === "drop" ? 0.6 + 0.4 * s!.snare : section === "build" ? s!.build * 0.5 : groove ? s!.snare * 0.6 : 0) * Math.min(1.6, desk.lasers / DEFAULT_DESK.lasers);
+      } else {
+        laserLevel = desk.lasers * (section === "breakdown" ? 0.35 : 0.5 + 0.5 * s!.snare) * (section === "drop" ? 1.25 : 1);
+      }
+    }
+    laserLevel *= M;
+    const pattern = laserFx === "auto" ? "fan" : laserFx;
+    // The lasers take the voice's colour while it sings, the chords' otherwise (a little either way, so no flicker).
+    if (!live || s!.vocals < 0.08) laserPart = 1;
+    else if (s!.vocals > 0.2) laserPart = 2;
+    const beamsNow = pattern === "sheet" ? LASER_BEAMS : pattern === "sweep" ? 6 : pattern === "cross" ? 5 : 9;
     let n = 0;
     laserOrigins.forEach((origin, o) => {
-      const facing = o === 0 ? 0.45 : -0.45;
-      const sweep = Math.sin(beatClock * Math.PI * (section === "drop" ? 0.5 : 0.25)) * 0.35;
+      const mirror = o === 0 ? 1 : -1;
+      const facing = 0.45 * mirror;
       for (let b = 0; b < LASER_BEAMS; b++) {
-        const yaw = facing + (b / (LASER_BEAMS - 1) - 0.5) * (section === "drop" ? 1.4 : 0.9) + sweep * (o === 0 ? 1 : -1);
-        const pitch = 0.12 + (section === "build" ? (s!.build) * 0.25 : 0) + Math.sin(beatClock * 0.5 + b) * 0.03;
+        const k = beamsNow > 1 ? b / (beamsNow - 1) - 0.5 : 0;
+        let yaw: number;
+        let pitch: number;
+        if (pattern === "sheet") {
+          // Liquid sky: a sheet of light just over the crowd's heads, rolling slowly.
+          yaw = facing * 0.6 + k * 2.2;
+          pitch = 0.1 + 0.035 * Math.sin(beatClock * Math.PI * 0.25 * motion + b * 0.5);
+        } else if (pattern === "sweep") {
+          yaw = facing * 0.5 + k * 0.22 + Math.sin(beatClock * Math.PI * 0.5 * motion) * 0.9 * mirror;
+          pitch = 0.14;
+        } else if (pattern === "cross") {
+          yaw = -facing * 0.4 + k * 0.5 + Math.sin(beatClock * Math.PI * 0.5 * motion) * 0.6 * mirror;
+          pitch = 0.16 + 0.04 * Math.cos(beatClock * Math.PI * 0.5);
+        } else {
+          const sweep = Math.sin(beatClock * Math.PI * (section === "drop" ? 0.5 : 0.25) * motion) * 0.35;
+          yaw = facing + k * (section === "drop" ? 1.4 : 0.9) + sweep * mirror;
+          pitch = 0.12 + (section === "build" ? (s?.build ?? 0) * 0.25 : 0) + Math.sin(beatClock * 0.5 + b) * 0.03;
+        }
         v3.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
         const length = hitRoom(origin, v3, hit).distanceTo(origin);
         q.setFromUnitVectors(up, v3);
-        paint(hue + 0.5 + o * 0.15, tmp).multiplyScalar(laserLevel * 3.2);
+        tintPart(laserPart, 0.5 + o * 0.15, tmp).multiplyScalar(laserLevel * 3.2);
+        const shown = laserLevel > 0.01 && b < beamsNow;
         for (const twist of twists) {
-          m4.compose(origin, q2.copy(q).multiply(twist), scale.set(1, laserLevel > 0.01 ? length : 0, 1));
+          m4.compose(origin, q2.copy(q).multiply(twist), scale.set(1, shown ? length : 0, 1));
           lasers.setMatrixAt(n, m4);
           lasers.setColorAt(n, tmp);
           n++;
@@ -949,12 +1286,13 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     // The disco ball turns; its specks show most when the music lets them (breakdowns, intros, nothing on).
     ballAngle += dt * (section === "drop" ? 0.9 : 0.35) * motion;
     ball.rotation.y = ballAngle;
-    const speckLevel = !live ? 0.35 : section === "breakdown" || section === "intro" ? 0.9 : section === "drop" ? 0.25 : 0.3;
-    pin.intensity = 20 + 60 * speckLevel;
-    speckMaterial.color.copy(paint(hue + 0.15, tmp)).lerp(tmp2.set("#ffffff"), 0.6).multiplyScalar(speckLevel * 1.4);
+    const speckLevel = (!live ? 0.35 : section === "breakdown" || section === "intro" ? 0.9 : section === "drop" ? 0.25 : 0.3) * M;
+    pin.intensity = (20 + 60 * speckLevel) * Math.min(1, M);
+    speckMaterial.color.copy(tint(0.15, tmp)).lerp(tmp2.set("#ffffff"), 0.6).multiplyScalar(speckLevel * 1.4);
     const cos = Math.cos(ballAngle);
     const sin = Math.sin(ballAngle);
-    for (let i = 0; i < SPECKS; i++) {
+    const specksDrawn = tier === "low" ? SPECKS / 2 : SPECKS;
+    for (let i = 0; i < specksDrawn; i++) {
       const d = speckDirs[i];
       v3.set(d.x * cos - d.z * sin, d.y, d.x * sin + d.z * cos);
       const at = hitRoom(BALL, v3, hit);
@@ -964,7 +1302,7 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     }
     speckGeometry.attributes.position.needsUpdate = true;
 
-    // Confetti falls and flutters; CO2 shoots up and spreads.
+    // Confetti falls and flutters; CO2 shoots up and spreads; flames roar up and burn out.
     let anyBit = false;
     bits.forEach((bit, i) => {
       if (bit.life <= 0) return;
@@ -988,7 +1326,7 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
       puff.v.multiplyScalar(Math.exp(-dt * 2.2));
       puff.v.x += (Math.random() - 0.5) * dt * 2;
       puff.p.addScaledVector(puff.v, dt);
-      const a = clamp01(puff.life) * 0.5;
+      const a = clamp01(puff.life) * 0.5 * Math.min(1, personal);
       puffColours[i * 3] = puffColours[i * 3 + 1] = puffColours[i * 3 + 2] = a;
       puffPositions[i * 3] = puff.p.x;
       puffPositions[i * 3 + 1] = puff.p.y;
@@ -996,9 +1334,38 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
     });
     puffGeometry.attributes.position.needsUpdate = true;
     puffGeometry.attributes.color.needsUpdate = true;
+    fireGlow *= Math.exp(-dt / 0.35);
+    fireLight.intensity = fireGlow * 160 * Math.min(1, personal);
+    flameState.forEach((flame, i) => {
+      let heat = 0;
+      if (flame.life > 0) {
+        if (flame.wait > 0) flame.wait -= dt;
+        else {
+          flame.age += dt;
+          if (flame.age >= flame.life) flame.life = 0;
+          else {
+            flame.v.y -= 3 * dt;
+            flame.v.x += (Math.random() - 0.5) * dt * 3;
+            flame.p.addScaledVector(flame.v, dt);
+            heat = 1 - flame.age / flame.life;
+            fireGlow = Math.max(fireGlow, 0.6 * heat);
+          }
+        }
+      }
+      // White-hot at the nozzle, then orange, then a dull red as it burns out.
+      const k = heat * 1.8 * Math.min(1, personal);
+      flameColours[i * 3] = k;
+      flameColours[i * 3 + 1] = (0.25 + 0.6 * heat * heat) * k;
+      flameColours[i * 3 + 2] = 0.15 * heat * heat * heat * k;
+      flamePositions[i * 3] = flame.p.x;
+      flamePositions[i * 3 + 1] = flame.p.y;
+      flamePositions[i * 3 + 2] = flame.p.z;
+    });
+    flameGeometry.attributes.position.needsUpdate = true;
+    flameGeometry.attributes.color.needsUpdate = true;
 
-    // The haze drifts and takes the room's colour.
-    hazeMaterial.color.copy(paint(hue, tmp)).multiplyScalar(live ? 0.04 + 0.06 * energy + flash * 0.2 : 0.03);
+    // The haze drifts and takes the room's colour; the desk's haze fader thickens it.
+    hazeMaterial.color.copy(tint(0, tmp)).multiplyScalar((live ? 0.04 + 0.06 * energy : 0.03) * (desk.haze / DEFAULT_DESK.haze) * M + flash * 0.2);
     for (const cloud of haze) {
       const drift = cloud.userData.drift as number;
       cloud.position.x += Math.sin(t * 0.05 + drift) * dt * 0.08;
@@ -1022,6 +1389,8 @@ export function buildClub(theme: RoomTheme): BuiltRoom & { club: ClubRig } {
       dj: (name) => { djName = name; },
       track: (nextTitle, nextArtist) => { title = nextTitle; artist = nextArtist; },
       calm: (on) => { calm = on; },
+      brightness: (level) => { personal = Math.max(0.3, Math.min(1.5, level)); },
+      quality: (next) => { if (next !== tier) { tier = next; applyQuality(); } },
     },
   };
 }
