@@ -1,11 +1,12 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
+import type { ClubBatch } from "./club-feed";
 import type { SynthPlay } from "./gesture-synth";
 import type { SessionNotesState } from "./session-notes";
 
 /** Which room a lounge pose is in; absent means the living room, as before venues existed. */
-export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
-export const LOUNGE_VENUES: readonly LoungeVenue[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow"];
+export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow" | "club";
+export const LOUNGE_VENUES: readonly LoungeVenue[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow", "club"];
 export const isLoungeVenue = (value: unknown): value is LoungeVenue => typeof value === "string" && (LOUNGE_VENUES as readonly string[]).includes(value);
 export interface LoungeWirePose { x: number; z: number; facing: number; seat: string | null; venue?: LoungeVenue }
 
@@ -389,6 +390,10 @@ export type ClientEvent =
   | { t: "lounge-sync" }
   /** Living room: pick the room the whole call hangs out in (living room, cinema, tabletop). */
   | { t: "lounge-venue"; venue: LoungeVenue }
+  /** The club: this seat has it open, so send it the music bot's lights (sent again now and then). */
+  | { t: "club-watch"; on: boolean }
+  /** The music bot's light feed for the room's club (from its feed socket only; see club-feed.ts). */
+  | ({ t: "club" } & ClubBatch)
   /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
   /** A small JPEG of this seat's own screen share, for the "Streaming Now" hover card. */
   | { t: "stream-preview"; image: string; title?: string | null }
@@ -486,6 +491,15 @@ export type ServerEvent =
       venue: LoungeVenue;
       serverNow: number;
     }
+  | ({
+      /** The club's lights: a batch of the music bot's light frames for your voice room. */
+      t: "club";
+      channelId: string;
+      serverNow: number;
+    } & ClubBatch)
+  /** To the music bot's feed socket: nobody has the club open (club-idle), or now somebody does (club-wake). */
+  | { t: "club-idle" }
+  | { t: "club-wake" }
   | {
       /** Gesture Synth: what one seat in your voice room is playing (no notes: stopped). */
       t: "synth";

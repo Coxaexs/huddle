@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchQueue, WatchState } from "@/lib/lounge-shared";
 import {
-  FLOOR_SEAT, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
+  CLUB_DJ_SEAT, FLOOR_SEAT, GM_SEAT_ID, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
 } from "../lib/living-room";
 
@@ -114,6 +114,10 @@ export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" |
 
 export interface LivingRoom {
   open: boolean;
+  /** The voice room this is (null: not in one). */
+  roomId: string | null;
+  /** The club: tell the hub this seat has it open, so the music bot's lights come here. */
+  clubWatch: (on: boolean) => void;
   shared: LoungeShared;
   /** Put up (or, with null, clear) a piece of the room's shared state for everyone. */
   setShared: (key: LoungeSharedKey, value: unknown) => void;
@@ -134,7 +138,8 @@ export interface LivingRoom {
   move: (pose: LoungePose) => void;
   /**
    * Sit down there. The game master's chair makes you the game master if
-   * nobody in the call is; while someone else is, it answers why not.
+   * nobody in the call is; while someone else is, it answers why not. A seat
+   * someone has already is not taken (null: nothing happened).
    */
   sit: (seatId: string) => string | null;
   /** Sit (or stand back up) right where you are. */
@@ -355,8 +360,12 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     const seat = seatById(seatId, venue);
     if (!seat || !connectionId) return null;
     const takenBy = [...poses].find(([id, pose]) => pose.seat === seatId && id !== connectionId);
-    if (takenBy) return null;
-    if (seat.reserved) {
+    if (takenBy) {
+      if (seatId !== CLUB_DJ_SEAT) return null;
+      const dj = participants.find((p) => p.connectionId === takenBy[0]);
+      return `${dj?.displayName || "Someone"} has the decks right now.`;
+    }
+    if (seat.id === GM_SEAT_ID) {
       const gm = sharedRef.current.gm;
       const gmHere = gm ? participants.find((p) => p.connectionId === gm.connectionId) : undefined;
       if (gm && gmHere && gm.connectionId !== connectionId) return `${gm.name || gmHere.displayName} is the game master: that chair is theirs.`;
@@ -402,6 +411,8 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     move(seat ? { x: seat.x, z: seat.z, facing: seat.facing, seat: seat.id } : self ?? { x: venue.spawn.x, z: venue.spawn.z, facing: 0, seat: null });
   }, [open, roomId, connectionId, claimed, explicit, move, self, venue]);
 
+  const clubWatch = useCallback((on: boolean) => { sendRef.current({ t: "club-watch", on }); }, []);
+
   const live = open && Boolean(roomId);
   const heard = useMemo(() => {
     if (!live || !settings.spatial || !self || !connectionId) return null;
@@ -415,7 +426,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, roomId, clubWatch, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

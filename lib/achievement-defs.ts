@@ -219,7 +219,7 @@ const DEFS: Def[] = [
   { id: "chameleon", label: "Chameleon", description: "Try 8 different themes.", icon: "Palette", tier: "silver", category: "explorer", stat: "themes_tried", at: 8 },
   { id: "master-of-disguise", label: "Master of Disguise", description: "Try 15 different themes.", icon: "Drama", tier: "gold", category: "explorer", stat: "themes_tried", at: 15 },
   { id: "housewarming", label: "Housewarming", description: "Step into a 3D room.", icon: "Landmark", tier: "bronze", category: "explorer", stat: "venues_visited", at: 1 },
-  { id: "tourist", label: "Tourist", description: "Visit all five 3D rooms.", icon: "Footprints", tier: "gold", category: "explorer", stat: "venues_visited", at: 5 },
+  { id: "tourist", label: "Tourist", description: "Visit all six 3D rooms.", icon: "Footprints", tier: "gold", category: "explorer", stat: "venues_visited", at: 6 },
   { id: "fish-first", label: "Gone Fishing", description: "Catch something at the meadow jetty.", icon: "Fish", tier: "bronze", category: "explorer", stat: "fish_species", at: 1 },
   { id: "angler", label: "Angler", description: "Catch 8 different kinds of fish.", icon: "Anchor", tier: "silver", category: "explorer", stat: "fish_species", at: 8 },
   { id: "fish-rare", label: "The Big One", description: "Land a rare or legendary fish.", icon: "Shell", tier: "gold", category: "explorer", stat: "fish_rare", at: 1 },

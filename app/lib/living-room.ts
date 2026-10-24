@@ -113,8 +113,8 @@ export const PROP_ZONES = [
 type Box = { x0: number; x1: number; z0: number; z1: number };
 type Spot = { x: number; z: number };
 
-export type VenueId = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow";
-export const VENUE_IDS: readonly VenueId[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow"];
+export type VenueId = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow" | "club";
+export const VENUE_IDS: readonly VenueId[] = ["lounge", "cinema", "tabletop", "boardhall", "meadow", "club"];
 export const isVenueId = (value: unknown): value is VenueId => typeof value === "string" && (VENUE_IDS as readonly string[]).includes(value);
 
 /**
@@ -490,6 +490,85 @@ export const MEADOW: Venue = {
   capacity: 80,
 };
 
+/**
+ * The club: a stage across the north end with the DJ's decks in front of an
+ * LED wall, an LED dance floor in the middle, booths along the side walls and
+ * a bar at the back. The stage is for whoever has the decks: the crowd stays
+ * on the floor, and the DJ steps up by taking the decks (a seat nobody is
+ * given without choosing it, like every seat here: in a club you start on the
+ * dance floor).
+ */
+export const CLUB_HALF_X = 9;
+export const CLUB_HALF_Z = 8;
+export const CLUB_STAGE = { x0: -6.2, x1: 6.2, z0: -CLUB_HALF_Z, z1: -5.2, height: 0.8 };
+export const CLUB_DANCE_FLOOR = { x0: -5, x1: 5, z0: -4.6, z1: 2.6, tile: 0.9 };
+export const CLUB_BAR = { x0: -4.2, x1: 4.2, z0: 6.15, z1: 6.85 };
+/** The DJ's spot behind the decks, and the decks (the booth's table). */
+export const CLUB_DJ_SEAT = "club-dj";
+export const CLUB_DECKS = { x: 0, z: -6.15, width: 2.6, depth: 0.75 };
+const CLUB_BOOTH_SIDES: Array<{ side: -1 | 1; z: number }> = [-2.4, 1.6].flatMap((z) => [{ side: -1 as const, z }, { side: 1 as const, z }]);
+const CLUB_SEATS: LoungeSeat[] = [
+  { id: CLUB_DJ_SEAT, label: "DJ booth", x: CLUB_DECKS.x, z: CLUB_DECKS.z - 0.75, facing: Math.PI, height: 0.6, y: CLUB_STAGE.height, reserved: true },
+  // Booths: two sofas of three on each side wall, facing the floor.
+  ...CLUB_BOOTH_SIDES.flatMap(({ side, z }, booth) => [-0.75, 0, 0.75].map((dz, i): LoungeSeat => ({
+    id: `club-booth-${booth}-${i}`, label: "Booth", x: side * (CLUB_HALF_X - 0.75), z: z + dz,
+    facing: side < 0 ? Math.PI / 2 : -Math.PI / 2, height: 0.45, reserved: true,
+  }))),
+  // Bar stools along the counter, facing the bar.
+  ...Array.from({ length: 8 }, (_, i): LoungeSeat => ({
+    id: `club-bar-${i}`, label: "Bar stool", x: Math.round((CLUB_BAR.x0 + 0.6 + i * ((CLUB_BAR.x1 - CLUB_BAR.x0 - 1.2) / 7)) * 100) / 100,
+    z: CLUB_BAR.z0 - 0.55, facing: Math.PI, height: 0.75, reserved: true,
+  })),
+];
+const CLUB_SOLIDS: Box[] = [
+  { x0: CLUB_STAGE.x0, x1: CLUB_STAGE.x1, z0: CLUB_STAGE.z0, z1: CLUB_STAGE.z1 },
+  { x0: CLUB_BAR.x0, x1: CLUB_BAR.x1, z0: CLUB_BAR.z0, z1: CLUB_BAR.z1 },
+  // Speaker stacks either side of the stage.
+  { x0: -CLUB_HALF_X, x1: -7.0, z0: -CLUB_HALF_Z, z1: -5.6 },
+  { x0: 7.0, x1: CLUB_HALF_X, z0: -CLUB_HALF_Z, z1: -5.6 },
+  // The booths' sofas, and a low table in front of each.
+  ...CLUB_BOOTH_SIDES.flatMap(({ side, z }) => [
+    side < 0
+      ? { x0: -CLUB_HALF_X, x1: -CLUB_HALF_X + 1.1, z0: z - 1.25, z1: z + 1.25 }
+      : { x0: CLUB_HALF_X - 1.1, x1: CLUB_HALF_X, z0: z - 1.25, z1: z + 1.25 },
+    side < 0
+      ? { x0: -CLUB_HALF_X + 1.45, x1: -CLUB_HALF_X + 2.05, z0: z - 0.5, z1: z + 0.5 }
+      : { x0: CLUB_HALF_X - 2.05, x1: CLUB_HALF_X - 1.45, z0: z - 0.5, z1: z + 0.5 },
+  ]),
+];
+/** On the stage or not: the DJ stands 80 cm up. */
+const clubFloorY = (x: number, z: number) =>
+  x > CLUB_STAGE.x0 && x < CLUB_STAGE.x1 && z < CLUB_STAGE.z1 ? CLUB_STAGE.height : 0;
+
+export const CLUB: Venue = {
+  id: "club",
+  label: "Club",
+  halfX: CLUB_HALF_X,
+  halfZ: CLUB_HALF_Z,
+  height: 6,
+  seats: CLUB_SEATS,
+  seatIndex: indexSeats(CLUB_SEATS),
+  solids: CLUB_SOLIDS,
+  nook: null,
+  // The music comes off the stage: the stacks and the booth.
+  tv: { x: 0, z: -6.4, height: 2.6 },
+  focus: { x: CLUB_DECKS.x, z: CLUB_DECKS.z },
+  // Standing room is the dance floor, nearest the decks first.
+  crowd: crowdSpots({
+    halfX: CLUB_HALF_X, halfZ: CLUB_HALF_Z, solids: CLUB_SOLIDS, seats: CLUB_SEATS, centre: { x: 0, z: -3.6 }, margin: 0.9, top: 3.4, step: 0.8,
+    avoid: [{ x: 0, z: CLUB_BAR.z0 - 0.55, radius: 1.2 }],
+  }).sort((a, b) => Number(!inDanceFloor(a)) - Number(!inDanceFloor(b))),
+  spawn: { x: 0, z: 3.4 },
+  floorY: clubFloorY,
+  capacity: 80,
+};
+
+/** On the LED dance floor. */
+export function inDanceFloor(spot: Spot): boolean {
+  const f = CLUB_DANCE_FLOOR;
+  return spot.x > f.x0 && spot.x < f.x1 && spot.z > f.z0 && spot.z < f.z1;
+}
+
 /** Just outside and just inside the cabin's door. */
 export const CABIN_DOOR_OUT = { x: CABIN.x, z: cabinZ1 + 0.7 };
 export const CABIN_DOOR_IN = { x: CABIN.x, z: cabinZ1 - 0.7 };
@@ -512,7 +591,7 @@ export function fishingSpot(pose: Spot): boolean {
   return Math.hypot(pose.x - POND.x, pose.z - POND.z) < POND.radius + 2.2;
 }
 
-export const VENUES: Record<VenueId, Venue> = { lounge: LOUNGE, cinema: CINEMA, tabletop: TABLETOP, boardhall: BOARD_HALL, meadow: MEADOW };
+export const VENUES: Record<VenueId, Venue> = { lounge: LOUNGE, cinema: CINEMA, tabletop: TABLETOP, boardhall: BOARD_HALL, meadow: MEADOW, club: CLUB };
 export const venueById = (id: VenueId | null | undefined): Venue => VENUES[id ?? "lounge"] ?? LOUNGE;
 
 export const seatById = (id: string | null | undefined, venue: Venue = LOUNGE) => (id ? venue.seatIndex.get(id) ?? null : null);

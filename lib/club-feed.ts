@@ -1,0 +1,120 @@
+/**
+ * The club's light feed: what the music bot sends a voice room's club, about
+ * twelve times a second (the bot's club.py), and what the hub lets through.
+ *
+ * Each batch carries 20 ms light frames, six channels each (0..255): the kick,
+ * the snare and hats, the bass, the vocal, the rest of the music, and the
+ * overall level, as the room hears them. With stems they are the song's real
+ * parts; without, the mix's bands stand in and the vocal is 0. Frames are
+ * stamped (bot clock, which is the hub's) with when their sound plays, a
+ * little ahead, so each listener can show them on time.
+ */
+
+export const CLUB_CHANNELS = ["kick", "snare", "bass", "vocals", "melody", "level"] as const;
+export type ClubChannel = (typeof CLUB_CHANNELS)[number];
+export const CLUB_FRAME_MS = 20;
+
+/** Moments the bot announces ahead: a DJ move, or a sampler hit. */
+export const CLUB_MOMENTS = ["build", "drop", "breakdown", "beatbreak", "stutter", "echo", "sample"] as const;
+export type ClubMomentKind = (typeof CLUB_MOMENTS)[number];
+export interface ClubMoment {
+  k: ClubMomentKind;
+  /** Bot clock ms. */
+  at: number;
+  /** When a build, breakdown or stutter ends. */
+  until?: number;
+  /** A sampler hit's pad: horn, siren, laser, boom, clap, riser, scratch, rewind. */
+  name?: string;
+}
+
+/** real: Real DJ plays the set; auto: Auto DJ plays the queue; hands: a person mixes; player: the room's ordinary player. */
+export type ClubMode = "real" | "auto" | "hands" | "player";
+export type ClubVibe = "chill" | "club" | "hype";
+export interface ClubInfo {
+  mode: ClubMode;
+  vibe?: ClubVibe;
+  /** A mix under way: its style's name and how far along. */
+  mix?: { style: string; progress: number } | null;
+  next?: string | null;
+  /** Camelot key of the song that leads. */
+  key?: string | null;
+  paused?: boolean;
+}
+
+/** One batch: frames from `at`, CLUB_FRAME_MS apart, as base64 of 6 bytes each. */
+export interface ClubBatch {
+  at: number;
+  f: string;
+  /** The beat (of the song that leads) at the first frame, and its live tempo. */
+  b?: number;
+  bpm?: number;
+  /** Lit by stems (the vocal channel means something). */
+  stems?: boolean;
+  ev?: ClubMoment[];
+  info?: ClubInfo;
+}
+
+const MODES: readonly ClubMode[] = ["real", "auto", "hands", "player"];
+const VIBES: readonly ClubVibe[] = ["chill", "club", "hype"];
+const SAMPLE_NAMES = ["horn", "siren", "rewind", "laser", "boom", "clap", "riser", "scratch"];
+/** At most 2 s of frames in one batch. */
+const MAX_FRAME_CHARS = Math.ceil((100 * 6) / 3) * 4;
+
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const text = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null);
+
+/** What the hub passes on of a batch from the bot; null if it is not one. */
+export function cleanClubBatch(raw: unknown): ClubBatch | null {
+  if (!raw || typeof raw !== "object") return null;
+  const event = raw as Record<string, unknown>;
+  if (!finite(event.at) || typeof event.f !== "string" || event.f.length > MAX_FRAME_CHARS) return null;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(event.f)) return null;
+  const batch: ClubBatch = { at: Math.round(event.at), f: event.f };
+  if (finite(event.b) && Math.abs(event.b) < 1e6) batch.b = Math.round(event.b * 1000) / 1000;
+  if (finite(event.bpm) && event.bpm >= 30 && event.bpm <= 300) batch.bpm = Math.round(event.bpm * 100) / 100;
+  if (typeof event.stems === "boolean") batch.stems = event.stems;
+  if (Array.isArray(event.ev)) {
+    const moments: ClubMoment[] = [];
+    for (const item of event.ev.slice(0, 8)) {
+      const m = item as Record<string, unknown> | null;
+      if (!m || !(CLUB_MOMENTS as readonly string[]).includes(m.k as string) || !finite(m.at)) continue;
+      const moment: ClubMoment = { k: m.k as ClubMomentKind, at: Math.round(m.at) };
+      if (finite(m.until) && m.until >= m.at && m.until - m.at < 60_000) moment.until = Math.round(m.until);
+      if (typeof m.name === "string" && SAMPLE_NAMES.includes(m.name)) moment.name = m.name;
+      moments.push(moment);
+    }
+    if (moments.length) batch.ev = moments;
+  }
+  const info = event.info as Record<string, unknown> | undefined;
+  if (info && typeof info === "object" && MODES.includes(info.mode as ClubMode)) {
+    const mix = info.mix as Record<string, unknown> | null | undefined;
+    batch.info = {
+      mode: info.mode as ClubMode,
+      ...(VIBES.includes(info.vibe as ClubVibe) ? { vibe: info.vibe as ClubVibe } : {}),
+      mix: mix && typeof mix === "object" && text(mix.style, 40) && finite(mix.progress)
+        ? { style: text(mix.style, 40)!, progress: Math.max(0, Math.min(1, mix.progress)) }
+        : null,
+      next: text(info.next, 160),
+      key: text(info.key, 4),
+      paused: info.paused === true,
+    };
+  }
+  return batch;
+}
+
+/** A batch's frames: six numbers 0..1 each. */
+export function decodeFrames(f: string): number[][] {
+  let bytes: string;
+  try {
+    bytes = atob(f);
+  } catch {
+    return [];
+  }
+  const frames: number[][] = [];
+  for (let i = 0; i + 6 <= bytes.length; i += 6) {
+    const frame: number[] = [];
+    for (let c = 0; c < 6; c++) frame.push(bytes.charCodeAt(i + c) / 255);
+    frames.push(frame);
+  }
+  return frames;
+}

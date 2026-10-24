@@ -5,10 +5,10 @@ import { markAchievement } from "../lib/achievement-client";
 import { apiUrl } from "../lib/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, ChessPawn, Clapperboard, Crown, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
+import { Armchair, ChessPawn, Clapperboard, Crown, Disc3, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
-import { GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
+import { CLUB_DJ_SEAT, CLUB_STAGE, GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, type BuiltRoom, type RoomThings } from "./living-room-scene";
 import { setSurfaceStyle } from "./room-surfaces";
@@ -20,6 +20,9 @@ import { TABLE_SURFACE_Y, buildTabletop } from "./tabletop-scene";
 import { TableDice } from "./tabletop-dice";
 import { buildBoardHall, type FloorBoard } from "./board-hall-scene";
 import { buildMeadow } from "./meadow-scene";
+import { buildClub, type ClubRig } from "./club-scene";
+import { ClubBar, ClubDecksPanel, type ClubStatus } from "./club-panel";
+import { ClubLights, watchClub, type ClubShow } from "../lib/club-lights";
 import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from "../lib/board-game";
 import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
@@ -82,15 +85,32 @@ interface Props {
   serverId?: string | null;
 }
 
-const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices, boardhall: Landmark, meadow: Trees };
-const VENUE_NAMES: Record<VenueId, string> = { lounge: "Living room", cinema: "Cinema", tabletop: "Tabletop", boardhall: "Board hall", meadow: "Meadow" };
+const VENUE_ICONS: Record<VenueId, typeof Armchair> = { lounge: Armchair, cinema: Clapperboard, tabletop: Dices, boardhall: Landmark, meadow: Trees, club: Disc3 };
+const VENUE_NAMES: Record<VenueId, string> = { lounge: "Living room", cinema: "Cinema", tabletop: "Tabletop", boardhall: "Board hall", meadow: "Meadow", club: "Club" };
 const VENUE_HINTS: Record<VenueId, string> = {
   lounge: "Click or tap the floor to walk, any couch, chair or cushion to sit, or Sit here for the floor. WASD walks, Q/E turns, X sits. Scroll or pinch to zoom.",
   cinema: "Pick any seat (up to 150) and watch what is shared or played on the big screen. Voices are one volume here; turn on Spatial voices in settings to hear the room. WASD walks, X sits.",
   tabletop: "Take a chair at the table (ten fit), others can stand around it. Roll from the dice tray and the dice are thrown onto the map for everyone at the table. Take a pawn from the miniatures cabinet by the west wall.",
   boardhall: "DeepPixel, life size: the room's game is laid out on the floor and the pawns hop round it as you play. Press Play to open the game; walk the board, or sit on a bench to watch.",
   meadow: "A little world outside. Walk anywhere (WASD, Shift or double-tap W to hurry, Space to jump), sit by the campfire, go home to the cabin, or fish off the jetty (F).",
+  club: "The club: the lights play the music, part by part when a song has stems. Dance on the floor, sit in a booth or at the bar, or click the decks to DJ. Nothing on? Start the night from the club bar.",
 };
+
+/** The club's lights, per browser: strobes allowed, and how much later the lights hit (Bluetooth headphones lag). */
+const CLUB_LIGHTS_KEY = "huddle-club-lights";
+interface ClubLightSettings { strobes: boolean; nudgeMs: number }
+function readClubLights(): ClubLightSettings {
+  const calm = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLUB_LIGHTS_KEY) || "{}") as Partial<ClubLightSettings>;
+    return {
+      strobes: typeof raw.strobes === "boolean" ? raw.strobes : !calm,
+      nudgeMs: typeof raw.nudgeMs === "number" && Number.isFinite(raw.nudgeMs) ? Math.max(-150, Math.min(400, raw.nudgeMs)) : 0,
+    };
+  } catch {
+    return { strobes: !calm, nudgeMs: 0 };
+  }
+}
 /** A spell or monster card floats over the table this long, unless someone clicks it away first. */
 const CARD_SECONDS = 20;
 /** Only this many people are drawn as full tokens; the rest of a crowd are small dots. */
@@ -523,7 +543,40 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | null>(null);
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | "decks" | null>(null);
+  // The club: its lights read the music bot's feed; strobes and the timing nudge are this browser's own.
+  const [clubLightSettings, setClubLightSettingsState] = useState<ClubLightSettings>({ strobes: true, nudgeMs: 0 });
+  useEffect(() => { setClubLightSettingsState(readClubLights()); }, []);
+  const setClubLightSettings = (patch: Partial<ClubLightSettings>) => setClubLightSettingsState((current) => {
+    const next = { ...current, ...patch };
+    try { localStorage.setItem(CLUB_LIGHTS_KEY, JSON.stringify(next)); } catch { /* Session only. */ }
+    return next;
+  });
+  const clubSettingsRef = useRef(clubLightSettings);
+  clubSettingsRef.current = clubLightSettings;
+  const serverNowRef = useRef(serverNow);
+  serverNowRef.current = serverNow;
+  const clubLights = useMemo(() => (venueId === "club"
+    ? new ClubLights(() => (serverNowRef.current ?? Date.now)(), () => clubSettingsRef.current.nudgeMs, () => clubSettingsRef.current.strobes)
+    : null), [venueId]);
+  const clubLightsRef = useRef<ClubLights | null>(null);
+  clubLightsRef.current = clubLights;
+  useEffect(() => {
+    if (!clubLights || !room.roomId) return;
+    return watchClub(room.roomId, clubLights, room.clubWatch);
+  }, [clubLights, room.roomId, room.clubWatch]);
+  /** The club's show this frame, for the dancers; and what the club bar shows of it, a couple of times a second. */
+  const clubShowRef = useRef<ClubShow | null>(null);
+  const [clubStatus, setClubStatus] = useState<ClubStatus>({ live: false, bpm: null, info: null, section: "idle" });
+  useEffect(() => {
+    if (venueId !== "club") return;
+    const timer = window.setInterval(() => {
+      const show = clubShowRef.current;
+      const next: ClubStatus = { live: Boolean(show?.live), bpm: show?.bpm ? Math.round(show.bpm) : null, info: show?.info ?? null, section: show?.section ?? "idle" };
+      setClubStatus((old) => (JSON.stringify(old) === JSON.stringify(next) ? old : next));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [venueId]);
   /** The pawn I picked up: the next click on the map puts it there. */
   const [heldPawn, setHeldPawn] = useState<string | null>(null);
   /** The pawn I last put down, so its landing can tell me what it landed in. */
@@ -660,11 +713,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     scene.add(house);
     // Minecraft's venues are built from pixel blocks, not scanned wood and stone; the starship's from metal.
     setSurfaceStyle(theme === "minecraft" ? "pixel" : theme === "galaxy" ? "metal" : "real");
-    const parts: BuiltRoom & { cinemaLights?: any; board?: FloorBoard } = venueId === "cinema" ? buildCinema(theme)
+    const parts: BuiltRoom & { cinemaLights?: any; board?: FloorBoard; club?: ClubRig } = venueId === "cinema" ? buildCinema(theme)
       : venueId === "tabletop" ? buildTabletop(theme)
         : venueId === "boardhall" ? buildBoardHall(theme)
           : venueId === "meadow" ? buildMeadow(theme)
-            : buildRoom(theme);
+            : venueId === "club" ? buildClub(theme)
+              : buildRoom(theme);
+    parts.club?.calm(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     if (parts.cinemaLights) { cinemaLightsRef.current = parts.cinemaLights; applyHouse(parts.cinemaLights, live.current.room.shared.house); }
     house.add(parts.root);
     // Apple's WebKit (the Mac app, Safari) renders point-light cube shadow maps as speckle across every lit surface; skip them there.
@@ -676,7 +731,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     thingsRef.current = things;
     things?.set(switchesOf(live.current.room.shared.lounge));
     // Its light bounces: the room photographed into an environment map once the props are in, and again when a lamp changes.
-    const probeAt = venueId === "lounge" ? new THREE.Vector3(0, 1.3, -0.3) : new THREE.Vector3(venue.focus.x, venue.floorY(venue.focus.x, venue.focus.z) + 1.4, venue.focus.z);
+    const probeAt = venueId === "lounge" ? new THREE.Vector3(0, 1.3, -0.3)
+      : venueId === "club" ? new THREE.Vector3(0, 1.6, -1)
+        : new THREE.Vector3(venue.focus.x, venue.floorY(venue.focus.x, venue.focus.z) + 1.4, venue.focus.z);
     const probe = new RoomProbe(renderer, scene, probeAt, venueId === "meadow" ? 0.35 : 0.5);
     probe.request(1200);
     const reprobe = setTimeout(() => probe.request(0), 5000);
@@ -727,8 +784,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let videoStream: MediaStream | null = null;
 
     // Overhead orbit.
-    const orbit = { yaw: 0.0, pitch: 0.82, distance: venueId === "cinema" ? 12 : venueId === "tabletop" ? 5.6 : venueId === "boardhall" ? 13 : venueId === "meadow" ? 9 : 6.2 };
-    const maxDistance = venueId === "cinema" || venueId === "boardhall" ? 26 : venueId === "meadow" ? 32 : 15;
+    const orbit = { yaw: 0.0, pitch: venueId === "club" ? 0.62 : 0.82, distance: venueId === "cinema" ? 12 : venueId === "tabletop" ? 5.6 : venueId === "boardhall" ? 13 : venueId === "meadow" ? 9 : venueId === "club" ? 12 : 6.2 };
+    const maxDistance = venueId === "cinema" || venueId === "boardhall" || venueId === "club" ? 26 : venueId === "meadow" ? 32 : 15;
     // First-person look offset, added to body heading.
     const look = { yaw: 0, pitch: venueId === "tabletop" ? -0.38 : -0.08 };
     let eyeFov = EYE_FOV;
@@ -742,10 +799,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let lastActive = performance.now();
     const poke = () => { lastActive = performance.now(); };
     /** Eyes above the floor the person stands on, which rises in the cinema's tiers. */
-    const eyeAt = (pose: LoungePose) => venue.floorY(pose.x, pose.z) + (pose.seat === "floor" ? EYE_FLOOR : pose.seat ? (venueId === "tabletop" ? EYE_AT_TABLE : EYE_SEATED) : EYE_STANDING);
+    // The DJ stands at the decks.
+    const eyeAt = (pose: LoungePose) => venue.floorY(pose.x, pose.z) + (pose.seat === "floor" ? EYE_FLOOR : pose.seat && pose.seat !== CLUB_DJ_SEAT ? (venueId === "tabletop" ? EYE_AT_TABLE : EYE_SEATED) : EYE_STANDING);
 
     // The finishing: ambient occlusion, bloom, filmic tones, SMAA. Outdoors the occlusion reaches further.
-    const post = new RoomPost(renderer, scene, camera, venueId === "meadow" ? { ...ROOM_POST, aoRadius: 0.9 } : venueId === "cinema" || venueId === "boardhall" ? { ...ROOM_POST, aoRadius: 0.7, vignette: 0.5 } : ROOM_POST);
+    const post = new RoomPost(renderer, scene, camera, venueId === "meadow" ? { ...ROOM_POST, aoRadius: 0.9 }
+      : venueId === "club" ? { ...ROOM_POST, aoRadius: 0.7, vignette: 0.55, bloom: 1.25 }
+        : venueId === "cinema" || venueId === "boardhall" ? { ...ROOM_POST, aoRadius: 0.7, vignette: 0.5 } : ROOM_POST);
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = mount;
       if (!w || !h) return;
@@ -1196,11 +1256,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         if (hop) poke();
         body.group.position.set(s.x, s.floor + hop, s.z);
         body.pointer.rotation.z = -s.facing;
-        // A walking token bobs; a talking one pulses.
+        // A walking token bobs; a talking one pulses; in the club, everyone standing bounces on the beat.
         const moving = Math.hypot(pose.x - s.x, pose.z - s.z) > 0.02;
         if (moving) poke();
-        const bob = moving ? Math.abs(Math.sin(clock.elapsedTime * 9)) * 0.06 : Math.sin(clock.elapsedTime * 1.3 + s.x) * 0.012;
-        const pulse = talking ? 1 + Math.sin(clock.elapsedTime * 12) * 0.035 : 1;
+        const dance = venueId === "club" && !pose.seat ? clubShowRef.current : null;
+        const bob = moving ? Math.abs(Math.sin(clock.elapsedTime * 9)) * 0.06
+          : dance?.live ? (1 - dance.beatPhase) ** 2.2 * (0.04 + 0.08 * dance.energy)
+            : Math.sin(clock.elapsedTime * 1.3 + s.x) * 0.012;
+        const pulse = (talking ? 1 + Math.sin(clock.elapsedTime * 12) * 0.035 : 1) * (dance?.live ? 1 + dance.kickHit * 0.05 : 1);
         body.token.position.y = s.lift + bob;
         body.token.scale.setScalar(body.size * pulse);
         if (body.cam) {
@@ -1576,6 +1639,28 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
 
+    // The club: this frame's show, who stands where, who has the decks and what is playing.
+    const syncClub = () => {
+      const club = parts.club;
+      if (!club) return;
+      const show = clubShowRef.current;
+      if (show) club.show(show);
+      const r = live.current.room;
+      const spots: Array<{ x: number; z: number }> = [];
+      let dj: string | null = null;
+      for (const person of live.current.participants) {
+        if (person.bot || person.recorder) continue;
+        const pose = r.poses.get(person.connectionId);
+        if (!pose) continue;
+        if (pose.seat === CLUB_DJ_SEAT) dj = person.displayName || person.username;
+        else if (!pose.seat) spots.push({ x: pose.x, z: pose.z });
+      }
+      club.people(spots);
+      club.dj(dj);
+      const track = live.current.nowPlaying?.track;
+      club.track(track?.title ?? null, track?.artist || null);
+    };
+
     const walk = (dt: number) => {
       const pose = myPose();
       if (!pose) return;
@@ -1662,7 +1747,10 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             ? pose ? new THREE.Vector3(pose.x * 0.45, 0.4, pose.z * 0.45) : new THREE.Vector3(0, 0.4, 0)
             : venueId === "meadow"
               ? pose ? new THREE.Vector3(pose.x, venue.floorY(pose.x, pose.z) + 0.8, pose.z) : new THREE.Vector3(venue.focus.x, 0.8, venue.focus.z)
-              : pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
+              : venueId === "club"
+                // The club frames the floor and the stage behind it.
+                ? pose ? new THREE.Vector3(pose.x * 0.5, 0.9, pose.z * 0.4 - 2.2) : new THREE.Vector3(0, 0.9, -2.4)
+                : pose ? new THREE.Vector3(pose.x * 0.7, 0.5, pose.z * 0.7 - 0.6) : new THREE.Vector3(0, 0.5, -0.8);
       const yaw = orbit.yaw;
       camera.position.set(
         centre.x + Math.sin(yaw) * Math.cos(orbit.pitch) * orbit.distance,
@@ -1735,7 +1823,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       sinceFrame += dt;
-      if (walkTarget || keys.size || performance.now() - jumpedAt < 1000 || dice?.busy() || parts.board?.busy() || things?.busy() || live.current.view === "pawn" || live.current.room.emotes.length) poke();
+      if (walkTarget || keys.size || performance.now() - jumpedAt < 1000 || dice?.busy() || parts.board?.busy() || things?.busy() || live.current.view === "pawn" || live.current.room.emotes.length || parts.club) poke();
       // Nothing moving for a couple of seconds, or behind another window: 30 frames a second is plenty.
       const calm = !document.hasFocus() || performance.now() - lastActive > 2500;
       pace(performance.now(), !calm);
@@ -1743,10 +1831,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       sinceFrame = 0;
       const t = clock.elapsedTime;
       walk(dt);
+      clubShowRef.current = clubLightsRef.current?.sample() ?? null;
       syncBodies();
       syncTv();
       syncWatch();
-      syncMusicTv();
+      // The club's wall shows the music itself; the TV's "now playing" card is for the other rooms.
+      if (!parts.club) syncMusicTv();
+      syncClub();
       syncExtras(t, dt);
       syncBoard();
       if (rod) {
@@ -2255,6 +2346,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
 
   const me = connectionId ? room.poses.get(connectionId) : null;
   const inBooth = canProject && venueId === "cinema" && !!me && inAnnex(me, venue);
+  // The club's decks: who has them, and taking or leaving them.
+  const atDecks = venueId === "club" && me?.seat === CLUB_DJ_SEAT;
+  const djHolder = venueId === "club" ? [...room.poses].find(([, pose]) => pose.seat === CLUB_DJ_SEAT)?.[0] ?? null : null;
+  const djName = djHolder ? participants.find((p) => p.connectionId === djHolder)?.displayName ?? null : null;
+  const takeDecks = () => { const refused = room.sit(CLUB_DJ_SEAT); if (refused) flashHint(refused); };
+  const leaveDecks = () => room.move({ x: 0, z: CLUB_STAGE.z1 + 0.7, facing: Math.PI, seat: null });
+  const wasAtDecks = useRef(false);
+  useEffect(() => {
+    if (atDecks && !wasAtDecks.current) setPanel("decks");
+    if (!atDecks && wasAtDecks.current) setPanel((current) => (current === "decks" ? null : current));
+    wasAtDecks.current = atDecks;
+  }, [atDecks]);
   // Whatever the booth set for the house lights is what everyone's cinema shows.
   const house = room.shared.house;
   useEffect(() => {
@@ -2272,7 +2375,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     if (a && me) room.move({ x: a.doorX, z: a.z0 - 0.9, facing: 0, seat: null });
   };
   const seatName = me?.seat ? seatById(me.seat, venue)?.label : null;
-  const tvShowing = screens[0]?.name ?? (nowPlaying?.track ? `♫ ${nowPlaying.track.title}` : null);
+  const tvShowing = screens[0]?.name ?? (nowPlaying?.track && venueId !== "club" ? `♫ ${nowPlaying.track.title}` : null);
 
   return (
     <div ref={shellRef} className={`living-room living-room-${theme}`} role="region" aria-label={VENUE_NAMES[venueId]}>
@@ -2285,7 +2388,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         <div className="living-room-title">
           {(() => { const Icon = VENUE_ICONS[venueId]; return <Icon size={16} />; })()}
           <span>{VENUE_NAMES[venueId]}</span>
-          {seatName ? <small>· {venueId === "cinema" ? seatName : `on the ${seatName.toLowerCase()}`}</small> : me?.seat === "floor" ? <small>· on the floor</small> : null}
+          {atDecks ? <small>· at the decks</small> : seatName ? <small>· {venueId === "cinema" ? seatName : `on the ${seatName.toLowerCase()}`}</small> : me?.seat === "floor" ? <small>· on the floor</small> : null}
           {tvShowing && <small>· {venueId === "lounge" ? "TV" : "Screen"}: {tvShowing}</small>}
         </div>
         <div className="living-room-tools">
@@ -2306,6 +2409,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           {venueId === "cinema" && (
             <button type="button" className={panel === "seats" ? "active" : ""} onClick={() => setPanel(panel === "seats" ? null : "seats")} title="Who is where" aria-label="Who is where" aria-expanded={panel === "seats"}><Users size={16} /></button>
           )}
+          {venueId === "club" && (atDecks
+            ? <button type="button" className={panel === "decks" ? "active" : ""} onClick={() => setPanel(panel === "decks" ? null : "decks")} title="The decks: mix, remix, sampler" aria-label="The decks" aria-expanded={panel === "decks"}><Disc3 size={16} /></button>
+            : !djHolder && <button type="button" onClick={takeDecks} title="Take the decks" aria-label="Take the decks"><Disc3 size={16} /></button>)}
           {venueId === "tabletop" && (
             <>
               <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title="Initiative" aria-label="Initiative" aria-expanded={panel === "initiative"}><Swords size={16} /></button>
@@ -2338,6 +2444,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           onTackle={() => setTackle((open) => (open ? null : readTackle()))}
         />
       )}
+      {!controlsHidden && venueId === "club" && room.roomId && !(panel === "decks" && atDecks) && (
+        <ClubBar
+          roomId={room.roomId} status={clubStatus} djName={djName} isDj={atDecks} decksFree={!djHolder}
+          nowPlaying={nowPlaying?.track ? { title: nowPlaying.track.title, artist: nowPlaying.track.artist } : null}
+          onTakeDecks={takeDecks} onLeaveDecks={leaveDecks} onOpenDecks={() => setPanel("decks")}
+          onRequest={(query) => onCommand?.(`/play ${query}`)}
+        />
+      )}
       {!controlsHidden && venueId === "boardhall" && (
         <BoardHallMenu
           game={boardGame} gameId={boardGameId} bridge={bridge.state} toasts={bridge.toasts} send={bridge.send}
@@ -2361,6 +2475,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               setWatch={(value) => room.setShared("watch", value)} setHouse={(value) => room.setShared("house", value)}
               onPick={() => { if (room.shared.watch) room.setShared("watch", null); setPanel("watch"); }} onClose={() => setPanel(null)}
             />
+          )}
+          {panel === "decks" && atDecks && room.roomId && (
+            <ClubDecksPanel roomId={room.roomId} onOpenBooth={() => onCommand?.("/dj")} onClose={() => setPanel(null)} />
           )}
           {panel === "seats" && <SeatFinder participants={participants} poses={room.poses} myId={connectionId} onSitNear={sitNear} onClose={() => setPanel(null)} />}
           {panel === "initiative" && (
@@ -2490,6 +2607,20 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             <input type="range" min={0} max={1} step={0.01} value={room.settings.ambienceVolume} disabled={!room.settings.ambience}
               onChange={(event) => room.setSettings({ ambienceVolume: Number(event.target.value) })} />
           </label>}
+          {venueId === "club" && (
+            <>
+              <label className="living-room-switch">
+                <span><strong>Strobes</strong><small>The flashes on drops and builds (never more than three a second). Off for no flashing at all.</small></span>
+                <input type="checkbox" checked={clubLightSettings.strobes} onChange={(event) => setClubLightSettings({ strobes: event.target.checked })} />
+              </label>
+              <label className="living-room-slider">
+                <span>Light timing: {clubLightSettings.nudgeMs > 0 ? `${clubLightSettings.nudgeMs} ms later` : clubLightSettings.nudgeMs < 0 ? `${-clubLightSettings.nudgeMs} ms sooner` : "as sent"}</span>
+                <input type="range" min={-150} max={400} step={10} value={clubLightSettings.nudgeMs} aria-label="Light timing"
+                  onChange={(event) => setClubLightSettings({ nudgeMs: Number(event.target.value) })} />
+                <small className="lr-note">Bluetooth headphones play late: slide right until the floor hits with the kick.</small>
+              </label>
+            </>
+          )}
           {venueId === "cinema" && (
             <>
               <label className="living-room-switch">
@@ -2527,7 +2658,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
         ))}
         {me && (me.seat && me.seat !== "floor" ? (
-          <button type="button" className="living-room-stand" onClick={() => room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing })}>Stand up</button>
+          <button type="button" className="living-room-stand" onClick={() => (atDecks ? leaveDecks() : room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing }))}>{atDecks ? "Leave the decks" : "Stand up"}</button>
         ) : (
           <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
         ))}
@@ -2778,4 +2909,37 @@ const LIVING_ROOM_CSS = `
 .lr-order li button { min-height: 22px !important; padding: 0 6px !important; background: transparent !important; }
 .living-room-tip { position: absolute; pointer-events: none; z-index: 4; padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--lr-panel); color: var(--lr-ink); border: 1px solid var(--lr-edge); white-space: nowrap; }
 .living-room-dice input { flex: 1; min-width: 160px; height: 32px; padding: 0 10px; border-radius: 10px; font-size: 13px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
+/* The club: the bar everyone has, and the DJ's decks. */
+.lr-club-bar { position: absolute; left: 10px; bottom: 84px; width: min(320px, calc(100% - 20px)); display: grid; gap: 8px; padding: 10px 12px; background: var(--lr-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--lr-ink); border: 1px solid var(--lr-edge); border-radius: 16px; font-size: 13px; z-index: 3; }
+.lr-club-bar button { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 11px; border-radius: 10px; font-size: 12px; font-weight: 700; color: inherit; background: rgba(255, 220, 170, 0.1); }
+.lr-club-bar button:hover:not(:disabled) { background: rgba(255, 220, 170, 0.22); }
+.lr-club-bar button.primary { background: var(--lr-accent); color: #1b1530; }
+.lr-club-bar button:disabled { opacity: 0.45; }
+.lr-club-bar input { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border-radius: 9px; font-size: 13px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
+.lr-club-now { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.lr-club-text { display: grid; gap: 1px; min-width: 0; }
+.lr-club-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-club-text small { opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-club-dot { flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.lr-club-dot.on { background: #ff3b6b; box-shadow: 0 0 10px #ff3b6b; animation: lr-onair-pulse 1.2s ease-in-out infinite; }
+.lr-decks { max-height: calc(100vh - 220px); }
+.lr-deck-now { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.lr-deck-now img, .lr-deck-art { flex: none; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; }
+.lr-deck-now .lr-line { min-width: 0; }
+.lr-deck-now .lr-title, .lr-deck-now small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-deck-now small { opacity: 0.75; }
+.lr-mixbar { position: relative; height: 22px; border-radius: 8px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.lr-mixbar i { position: absolute; inset: 0 auto 0 0; background: var(--lr-accent); opacity: 0.55; transition: width 0.4s; }
+.lr-mixbar span { position: relative; display: flex; align-items: center; height: 100%; padding: 0 8px; font-size: 11.5px; font-weight: 700; }
+.lr-pads { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.lr-pads-4 { grid-template-columns: repeat(4, 1fr); }
+.lr-pads button { justify-content: center; min-height: 34px !important; padding: 0 6px !important; }
+.lr-pads-4 button { font-size: 11px !important; }
+.lr-decks .lr-chips button { min-height: 26px; padding: 0 9px; }
+.lr-hold { touch-action: none; user-select: none; }
+@media (max-width: 640px) {
+  /* Clear of the emote bar on a phone. */
+  .lr-club-bar { bottom: 132px; }
+}
+.lr-hold:active { background: var(--lr-accent) !important; color: #1b1530 !important; }
 `;

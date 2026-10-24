@@ -15,6 +15,7 @@ import { DurableObject } from "cloudflare:workers";
 import { stopSharedConversion } from "./jellyfin-proxy";
 import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
+import { cleanClubBatch } from "./club-feed";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, hasPermission, Permission } from "./permissions";
 import {
@@ -112,6 +113,13 @@ interface Attachment {
   recorder: boolean;
   /** Connected but appearing offline: left out of every presence list. */
   invisible?: boolean;
+  /**
+   * The music bot's light feed for a room's club (a room shard socket): it only
+   * sends, so it sits in no voice room and on no roster; channelId is its room.
+   */
+  feed?: boolean;
+  /** This seat has the club open: the music bot's lights reach it. */
+  clubWatch?: boolean;
 }
 
 /** A name for a room's shared Jellyfin conversion. */
@@ -199,6 +207,9 @@ export class HuddleHub extends DurableObject {
   /** connectionId -> living room poses relayed this second. */
   private readonly loungeBudget = new Map<string, { second: number; count: number }>();
   private readonly synthBudget = new Map<string, { second: number; count: number }>();
+  private readonly clubBudget = new Map<string, { second: number; count: number }>();
+  /** Feed socket connectionId -> when it was last told nobody has the club open. */
+  private readonly clubIdleAt = new Map<string, number>();
   /** In-memory attachment cache to avoid O(N) structured-clone deserialization on every 10Hz frame. */
   private readonly attachmentCache = new WeakMap<WebSocket, Attachment>();
   /** voice room -> its shared living room state; persisted, since the object may sleep mid-call. */
@@ -552,6 +563,8 @@ export class HuddleHub extends DurableObject {
 
     const shardRoom = url.searchParams.get("room")?.trim().slice(0, 64) || null;
     const connId = shardRoom && resumeId ? resumeId : (resumable ? resumeId : crypto.randomUUID());
+    // The worker only passes feed=1 for the music bot (its club light feed).
+    const feed = Boolean(shardRoom) && url.searchParams.get("bot") === "1" && url.searchParams.get("feed") === "1";
     const attachment: Attachment = {
       connectionId: connId,
       userId: url.searchParams.get("userId") || "",
@@ -571,6 +584,9 @@ export class HuddleHub extends DurableObject {
       recorder: url.searchParams.get("recorder") === "1",
       invisible: url.searchParams.get("invisible") === "1",
     };
+    if (feed) {
+      Object.assign(attachment, { voiceChannelId: null, voiceJoinedAt: null, invisible: true, feed: true });
+    }
     if (!attachment.userId) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -597,7 +613,7 @@ export class HuddleHub extends DurableObject {
       watching: await this.visibleRecord(attachment, await this.roomWatches()),
     };
     socket.send(JSON.stringify(ready));
-    this.broadcastPresence();
+    if (!attachment.feed) this.broadcastPresence();
     this.markSeen(attachment);
 
     return new Response(null, { status: 101, webSocket: client });
@@ -791,6 +807,55 @@ export class HuddleHub extends DurableObject {
         for (const { socket: other, attachment: peer } of this.sockets()) {
           if (peer.voiceChannelId === room && peer.connectionId !== attachment.connectionId) other.send(payload);
         }
+        return;
+      }
+
+      case "club-watch": {
+        const room = attachment.voiceChannelId;
+        if (!room || attachment.bot) return;
+        const on = event.on === true;
+        if (Boolean(attachment.clubWatch) !== on) {
+          attachment.clubWatch = on;
+          this.saveAttachment(socket, attachment);
+        }
+        if (!on) return;
+        // Someone opened the club: a feed that was told nobody had starts again now.
+        const wake = JSON.stringify({ t: "club-wake" } satisfies ServerEvent);
+        for (const { socket: other, attachment: peer } of this.sockets()) {
+          if (peer.feed && peer.channelId === room && this.clubIdleAt.has(peer.connectionId)) {
+            this.clubIdleAt.delete(peer.connectionId);
+            other.send(wake);
+          }
+        }
+        return;
+      }
+
+      case "club": {
+        // The music bot's lights, from its feed socket, to whoever has the club open.
+        const room = attachment.channelId;
+        if (!attachment.feed || !room) return;
+        const batch = cleanClubBatch(event);
+        if (!batch) return;
+        const second = Math.floor(Date.now() / 1000);
+        const budget = this.clubBudget.get(attachment.connectionId);
+        if (budget?.second === second) {
+          if (budget.count >= 30) return;
+          budget.count += 1;
+        } else {
+          this.clubBudget.set(attachment.connectionId, { second, count: 1 });
+        }
+        const watchers = this.sockets().filter(({ attachment: peer }) => peer.clubWatch && !peer.bot && peer.voiceChannelId === room);
+        if (!watchers.length) {
+          const now = Date.now();
+          if (now - (this.clubIdleAt.get(attachment.connectionId) ?? 0) > 2000) {
+            this.clubIdleAt.set(attachment.connectionId, now);
+            socket.send(JSON.stringify({ t: "club-idle" } satisfies ServerEvent));
+          }
+          return;
+        }
+        this.clubIdleAt.delete(attachment.connectionId);
+        const payload = JSON.stringify({ t: "club", channelId: room, ...batch, serverNow: Date.now() } satisfies ServerEvent);
+        for (const { socket: other } of watchers) other.send(payload);
         return;
       }
 
@@ -1454,6 +1519,8 @@ export class HuddleHub extends DurableObject {
     }
     if (attachment) this.loungeBudget.delete(attachment.connectionId);
     if (attachment) this.synthBudget.delete(attachment.connectionId);
+    if (attachment) this.clubBudget.delete(attachment.connectionId);
+    if (attachment) this.clubIdleAt.delete(attachment.connectionId);
     if (attachment) this.streamPreviews.delete(attachment.connectionId);
     if (attachment) this.watchingBy.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
@@ -1465,7 +1532,7 @@ export class HuddleHub extends DurableObject {
         this.broadcastVoice(channelId);
         this.broadcastPresence();
       });
-    } else {
+    } else if (!attachment?.feed) {
       queueMicrotask(() => this.broadcastPresence());
     }
   }

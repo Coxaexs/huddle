@@ -209,7 +209,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       connectRoomShard(null);
     }
     if (
-      (event.t === "lounge" || event.t === "synth" || event.t === "caption") &&
+      (event.t === "lounge" || event.t === "synth" || event.t === "caption" || event.t === "club-watch") &&
       roomSocketRef.current?.readyState === WebSocket.OPEN
     ) {
       roomSocketRef.current.send(JSON.stringify(event));
@@ -495,6 +495,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
           case "lounge-shared":
             // Read by the living room (see use-living-room).
             window.dispatchEvent(new CustomEvent("huddle-lounge", { detail: payload }));
+            break;
+          case "club":
+            // The club's lights, a dozen times a second: read by club-lights.ts, never React state.
+            window.dispatchEvent(new CustomEvent("huddle-club", { detail: payload }));
             break;
           case "typing":
             handlersRef.current.onTyping?.(

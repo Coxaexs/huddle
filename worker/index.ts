@@ -192,6 +192,8 @@ async function handleRequest(
         if (value) target.searchParams.set(name, value.slice(0, 200));
       }
       if (isMusicBot || isRecorder) target.searchParams.set("bot", "1");
+      // The music bot's club light feed: a room shard socket kept off the roster.
+      if (isMusicBot && roomParam && url.searchParams.get("feed") === "1") target.searchParams.set("feed", "1");
       if (isRecorder) target.searchParams.set("recorder", "1");
       if (!isMusicBot && !isRecorder && user!.status === "invisible") {
         target.searchParams.set("invisible", "1");
