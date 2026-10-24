@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MusicHistoryCard } from "@/app/components/music-cards";
 
 afterEach(cleanup);
+
+// Mid-afternoon, so songs from the last hour are still "Today" whenever the tests run.
+vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 24, 15, 0) });
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const history = Array.from({ length: 60 }, (_, n) => ({
   index: n + 1,
