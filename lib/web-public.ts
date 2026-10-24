@@ -152,6 +152,7 @@ export async function listWebPages(db: D1Database): Promise<Array<{ path: string
     const server = await loadWebServer(db, id);
     if (!server) continue;
     pages.push({ path: webServerPath(server), lastmod: null });
+    if (server.vanity) pages.push({ path: `/i/${encodeURIComponent(server.vanity)}`, lastmod: null });
     for (const channel of server.channels) {
       const last = await db
         .prepare("SELECT MAX(created_at) AS at FROM messages WHERE channel_id = ? AND deleted_at IS NULL")

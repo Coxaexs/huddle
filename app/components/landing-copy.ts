@@ -96,7 +96,7 @@ const en: LandingCopy = {
     privacy: "Privacy",
   },
   hero: {
-    title: "A chat app for small groups, with voice, screen sharing and game night built in.",
+    title: "Hoffle: a chat app for small groups, with voice, screen sharing and game night built in.",
     body:
       "I started Hoffle for my own friend group, who spent most evenings in a Discord call. It has the things we used every night: voice, 1080p screen sharing with sound, a music bot, and D&D tools. It's free and open source, and it works right in your browser.",
     open: "Open Hoffle",
@@ -249,7 +249,7 @@ const en: LandingCopy = {
     },
   },
   compare: {
-    title: "Compared to Discord",
+    title: "Hoffle compared to Discord",
     lead: "Discord's free plan next to Hoffle, in numbers. Discord is the better choice for big public communities and has proper phone apps; Hoffle is made for groups of friends.",
     caption: "Hoffle compared with Discord's free plan",
     featureColumn: "Feature",
@@ -312,7 +312,7 @@ const en: LandingCopy = {
     status: "Live status and uptime",
   },
   download: {
-    title: "Download",
+    title: "Download Hoffle",
     lead: "You don't need to install anything: Hoffle works in Chrome, Edge, Firefox and Safari. If you'd like it in your taskbar or dock, there are two ways.",
     browserTitle: "Install it from your browser",
     browserBody:
@@ -364,7 +364,7 @@ const en: LandingCopy = {
     ],
   },
   selfHost: {
-    title: "Run your own",
+    title: "Run your own Hoffle",
     body: "Hoffle runs on a spare PC, a home server or a small VPS with Docker. The first account you create becomes the owner. Accounts, messages and uploads all live in one state folder, so a backup is a copy of that folder.",
     points: [
       "No configuration needed for a first run",
@@ -451,7 +451,7 @@ const tr: LandingCopy = {
     privacy: "Gizlilik",
   },
   hero: {
-    title: "Küçük gruplar için bir sohbet uygulaması. Sesli sohbet, ekran paylaşımı ve oyun gecesi içinde.",
+    title: "Hoffle: küçük gruplar için bir sohbet uygulaması. Sesli sohbet, ekran paylaşımı ve oyun gecesi içinde.",
     body:
       "Hoffle'ı akşamlarının çoğunu Discord'daki bir sesli kanalda geçiren kendi arkadaş grubum için yaptım. Her akşam kullandığımız her şey içinde: sesli sohbet, sesli 1080p ekran paylaşımı, müzik botu ve D&D araçları. Ücretsiz, açık kaynak ve doğrudan tarayıcında çalışıyor.",
     open: "Hoffle'ı aç",
@@ -603,7 +603,7 @@ const tr: LandingCopy = {
     },
   },
   compare: {
-    title: "Discord ile karşılaştırma",
+    title: "Hoffle ve Discord karşılaştırması",
     lead: "Discord'un ücretsiz planı ile Hoffle, rakamlarla yan yana. Büyük ve herkese açık topluluklar için Discord daha iyi bir seçim ve gerçek telefon uygulamaları var; Hoffle ise arkadaş grupları için yapıldı.",
     caption: "Hoffle ile Discord'un ücretsiz planının karşılaştırması",
     featureColumn: "Özellik",
@@ -666,7 +666,7 @@ const tr: LandingCopy = {
     status: "Canlı durum ve çalışma süresi",
   },
   download: {
-    title: "İndir",
+    title: "Hoffle'ı indir",
     lead: "Bir şey kurman gerekmiyor: Hoffle Chrome, Edge, Firefox ve Safari'de çalışıyor. Görev çubuğunda ya da Dock'ta durmasını istersen iki yolu var.",
     browserTitle: "Tarayıcından yükle",
     browserBody:
@@ -718,7 +718,7 @@ const tr: LandingCopy = {
     ],
   },
   selfHost: {
-    title: "Kendi sunucunu kur",
+    title: "Kendi Hoffle sunucunu kur",
     body: "Hoffle boşta duran bir bilgisayarda, bir ev sunucusunda ya da Docker'lı küçük bir VPS'te çalışır. Açtığın ilk hesap sahibi olur. Hesaplar, mesajlar ve dosyalar tek bir state klasöründe durur; yedek almak o klasörü kopyalamaktan ibaret.",
     points: [
       "İlk çalıştırma için hiçbir ayar gerekmez",

@@ -43,7 +43,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     // The layout adds " · Hoffle" to the tab title.
     title: tabTitle,
     description,
-    robots: { index: false, follow: false },
+    ...(found?.server?.isPublic
+      ? {
+          alternates: { canonical: `https://hoffle.online/i/${encodeURIComponent(found.code)}` },
+          robots: { index: true, follow: true },
+        }
+      : { robots: { index: false, follow: false } }),
     openGraph: {
       title,
       description,

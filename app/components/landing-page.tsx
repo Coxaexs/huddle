@@ -73,6 +73,7 @@ function jsonLd(lang: LandingLang, copy: LandingCopy) {
         "@id": `${SITE}/#website`,
         url: `${SITE}/`,
         name: "Hoffle",
+        alternateName: ["Hoffle Chat", "hoffle.online"],
         inLanguage: ["en", "tr"],
       },
       {

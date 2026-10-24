@@ -132,6 +132,12 @@ fi
 # The generated config records where it was built; point it at this checkout,
 # exactly as an in-place build would have.
 sed -i "s#$STAGE/#$ROOT/#g" "$STAGE/dist/server/wrangler.json"
+# Keep recent hashed JS/CSS chunks from the previous build so crawlers (like
+# Googlebot WRS) or open tabs fetching older asset hashes do not hit 404s.
+if [[ -d "$ROOT/dist/client/assets" ]]; then
+  cp -np "$ROOT/dist/client/assets/"*.js "$ROOT/dist/client/assets/"*.css "$STAGE/dist/client/assets/" 2>/dev/null || true
+  find "$STAGE/dist/client/assets" -maxdepth 1 -type f \( -name "*.js" -o -name "*.css" \) -mtime +3 -delete 2>/dev/null || true
+fi
 echo "Writing the workerd config ..."
 "$ROOT/scripts/workerd-config.sh" "$STAGE/dist"
 lap "workerd config"

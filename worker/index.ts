@@ -291,7 +291,26 @@ async function handleRequest(
       const forwarded = new Request(target, request);
       // The root layout sets <html lang> from this; it can't see the path.
       if (isLanding && /^\/tr(\/|$)/.test(url.pathname)) forwarded.headers.set("x-hoffle-lang", "tr");
-      return handler.fetch(forwarded, env as never, ctx as never);
+      const res = await handler.fetch(forwarded, env as never, ctx as never);
+      if (
+        isLanding &&
+        request.method === "GET" &&
+        res.status === 200 &&
+        !request.headers.get("rsc") &&
+        (url.pathname === "/" ||
+          url.pathname === "/tr" ||
+          url.pathname === "/vs-discord" ||
+          url.pathname === "/tr/vs-discord" ||
+          url.pathname === "/docs" ||
+          url.pathname.startsWith("/docs/") ||
+          url.pathname === "/terms" ||
+          url.pathname === "/privacy")
+      ) {
+        const headers = new Headers(res.headers);
+        headers.set("cache-control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
+        return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+      }
+      return res;
     }
 
     return handler.fetch(request, env as never, ctx as never);

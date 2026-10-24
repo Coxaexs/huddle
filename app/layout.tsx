@@ -59,12 +59,14 @@ export async function generateMetadata(): Promise<Metadata> {
   // self-hosted server) are login screens; keep them out of search results so
   // they don't compete with the landing page or expose private servers.
   if (!isLandingHost(host)) {
+    const cleanHost = host.split(":")[0].toLowerCase();
+    const isPublicChatHost = cleanHost === "chat.hoffle.online";
     return {
       metadataBase: new URL(`${protocol}://${host}`),
-      title: { default: "Hoffle", template: "%s · Hoffle" },
-      description: "Hoffle: open-source voice channels, screen sharing and text chat with servers, DMs and friends.",
+      title: { default: "Hoffle Web App — Voice & Chat", template: "%s · Hoffle" },
+      description: "Open Hoffle in your browser: free, open-source voice channels, 1080p screen sharing and text chat with servers, DMs and friends.",
       icons,
-      robots: { index: false, follow: false },
+      robots: isPublicChatHost ? { index: true, follow: true } : { index: false, follow: false },
     };
   }
 
@@ -73,7 +75,19 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(site),
     title: LANDING_TITLE,
     description: LANDING_DESCRIPTION,
-    authors: [{ name: "coxaexs", url: "https://github.com/Coxaexs" }],
+    keywords: [
+      "Hoffle",
+      "Hoffle chat",
+      "hoffle.online",
+      "Discord alternative",
+      "open-source Discord alternative",
+      "free voice chat",
+      "1080p screen sharing",
+      "self-hosted chat",
+    ],
+    authors: [{ name: "Abdullah Türk", url: "https://abdullahturk.com" }, { name: "coxaexs", url: "https://github.com/Coxaexs" }],
+    creator: "Abdullah Türk",
+    publisher: "Hoffle",
     // www.hoffle.online and hoffle.com serve the same page; this is the one to index.
     alternates: {
       canonical: `${site}/`,

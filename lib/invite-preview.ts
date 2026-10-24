@@ -17,6 +17,7 @@ export interface InvitePreview {
     description: string | null;
     memberCount: number;
     onlineCount: number;
+    isPublic?: boolean;
   } | null;
   inviter: {
     displayName: string;
@@ -35,6 +36,7 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       `SELECT i.code, i.max_uses, i.uses, i.revoked, i.server_id,
               s.name AS server_name, s.icon AS server_icon, s.icon_url AS server_icon_url,
               s.color AS server_color, s.banner_url AS server_banner_url, s.description AS server_description,
+              s.is_public AS server_is_public, s.web_public AS server_web_public, s.vanity_code AS server_vanity_code,
               inv_user.display_name AS inviter_name, inv_user.username AS inviter_username, inv_user.avatar AS inviter_avatar,
               inv_user.avatar_url AS inviter_avatar_url, inv_user.color AS inviter_color
          FROM invites i
@@ -55,6 +57,9 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       server_color: string | null;
       server_banner_url: string | null;
       server_description: string | null;
+      server_is_public?: number | null;
+      server_web_public?: number | null;
+      server_vanity_code?: string | null;
       inviter_name: string | null;
       inviter_username: string | null;
       inviter_avatar: string | null;
@@ -93,6 +98,10 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
       description: invite.server_description || null,
       memberCount: counts?.total ?? 0,
       onlineCount: onlines?.online ?? 0,
+      isPublic: Boolean(
+        invite.max_uses === 0 &&
+          (invite.server_is_public || invite.server_web_public || (invite.server_vanity_code && invite.server_vanity_code.toUpperCase() === invite.code)),
+      ),
     };
   }
 

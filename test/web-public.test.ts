@@ -61,9 +61,10 @@ describe.skipIf(!sqliteAvailable)("servers readable on the web", () => {
     expect((await loadWebMessages(db, "c1", "2026-10-01T10:03:00.000Z")).messages.map((m) => m.id)).toEqual(["m1"]);
   });
 
-  it("puts the server and its channels with messages in the sitemap", async () => {
+  it("puts the server, its invite page and its channels with messages in the sitemap", async () => {
     expect(await listWebPages(db)).toEqual([
       { path: "/s/dndclub", lastmod: null },
+      { path: "/i/DNDCLUB", lastmod: null },
       { path: "/s/dndclub/general", lastmod: "2026-10-01" },
     ]);
   });
