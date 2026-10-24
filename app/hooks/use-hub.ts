@@ -217,7 +217,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       roomSocketRef.current.send(JSON.stringify(event));
     }
     if (
-      (event.t === "lounge" || event.t === "synth" || event.t === "caption" || event.t === "club-watch" || event.t === "club-desk" || event.t === "club-fx") &&
+      (event.t === "lounge" || event.t === "synth" || event.t === "caption" || event.t === "club-watch" || event.t === "club-desk" || event.t === "club-fx" || event.t === "club-crowd") &&
       roomSocketRef.current?.readyState === WebSocket.OPEN
     ) {
       roomSocketRef.current.send(JSON.stringify(event));

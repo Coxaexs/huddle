@@ -140,3 +140,33 @@ it("tells a newcomer who is where from the room's shard, the DJ at the decks inc
   expect(state.shared).toBeUndefined();
   expect(got(dancer, "lounge-state")).toEqual([]);
 });
+
+it("passes More / Chill and the club's cheers to the DJ, and nothing from outside the club", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(9_000_000);
+  const { feed, dancer, sitter, say, got } = club();
+  await say(dancer, { t: "club-watch", on: true });
+  await say(dancer, { t: "club-crowd", kind: "more" });
+  await say(dancer, { t: "club-crowd", kind: "hype" });
+  await say(sitter, { t: "club-crowd", kind: "chill" });
+  expect(got(feed, "club-crowd")).toEqual([{ t: "club-crowd", kind: "more", by: "c-dancer", people: 1 }]);
+  const pose = { t: "lounge", x: 0, z: 0, facing: 0, seat: null, venue: "club" };
+  await say(dancer, { ...pose, emote: "🔥" });
+  await say(dancer, { ...pose, emote: "😂" });
+  await say(sitter, { ...pose, emote: "🎉" });
+  expect(got(feed, "club-crowd").map((event) => event.kind)).toEqual(["more", "cheer"]);
+  // Four a second each, however fast someone taps.
+  for (let i = 0; i < 6; i++) await say(dancer, { ...pose, emote: "👏" });
+  expect(got(feed, "club-crowd")).toHaveLength(4);
+});
+
+it("carries what the crowd said to the DJ back to the club bar", async () => {
+  const { feed, dancer, say, got } = club();
+  await say(dancer, { t: "club-watch", on: true });
+  await say(feed, { ...batch, info: { mode: "real", vibe: "hype", crowd: { more: 2, chill: -3, said: "drop", extra: 1 } } });
+  await say(feed, { ...batch, info: { mode: "real", crowd: { more: 1, said: "louder" } } });
+  const [first, second] = got(dancer, "club");
+  expect(first.info).toMatchObject({ mode: "real", vibe: "hype", crowd: { more: 2, chill: 0, said: "drop" } });
+  expect(first.info.crowd.extra).toBeUndefined();
+  expect(second.info.crowd).toEqual({ more: 1, chill: 0, said: null });
+});

@@ -15,7 +15,7 @@ import { DurableObject } from "cloudflare:workers";
 import { stopSharedConversion } from "./jellyfin-proxy";
 import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type PawnOp, type QueueOp, type TableArea, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
-import { cleanClubBatch } from "./club-feed";
+import { CLUB_CHEERS, CLUB_CROWD_KINDS, cleanClubBatch, type ClubCrowdKind } from "./club-feed";
 import { CLUB_DECKS_SEAT, DEFAULT_DESK, cleanClubDesk, cleanClubFx, type ClubDesk } from "./club-desk";
 import { collectDueEventNotices, nextEventAlarm } from "./events";
 import { can, hasPermission, Permission } from "./permissions";
@@ -215,6 +215,8 @@ export class HuddleHub extends DurableObject {
   private readonly clubIdleAt = new Map<string, number>();
   /** connectionId -> light desk changes and moments sent this second. */
   private readonly clubDeskBudget = new Map<string, { second: number; count: number }>();
+  /** connectionId -> the crowd's taps and cheers passed to the DJ this second. */
+  private readonly clubCrowdBudget = new Map<string, { second: number; count: number }>();
   /** voice room -> its club's light desk and who last set it; persisted, like the living room's shared state. */
   private clubDesks: Record<string, { desk: ClubDesk; by: string | null }> | null = null;
   /** In-memory attachment cache to avoid O(N) structured-clone deserialization on every 10Hz frame. */
@@ -815,6 +817,17 @@ export class HuddleHub extends DurableObject {
         for (const { socket: other, attachment: peer } of this.sockets()) {
           if (peer.voiceChannelId === room && peer.connectionId !== attachment.connectionId) other.send(payload);
         }
+        // A cheer in the club is heard by the DJ too.
+        if (emote && attachment.clubWatch && (CLUB_CHEERS as readonly string[]).includes(emote)) this.tellClubCrowd(room, attachment, "cheer");
+        return;
+      }
+
+      case "club-crowd": {
+        // More / Chill from someone with the club open, for Real DJ (it follows the room's mood).
+        const room = attachment.voiceChannelId;
+        if (!room || attachment.bot || !attachment.clubWatch) return;
+        if (!(CLUB_CROWD_KINDS as readonly string[]).includes(event.kind)) return;
+        this.tellClubCrowd(room, attachment, event.kind);
         return;
       }
 
@@ -1587,6 +1600,7 @@ export class HuddleHub extends DurableObject {
     if (attachment) this.clubBudget.delete(attachment.connectionId);
     if (attachment) this.clubIdleAt.delete(attachment.connectionId);
     if (attachment) this.clubDeskBudget.delete(attachment.connectionId);
+    if (attachment) this.clubCrowdBudget.delete(attachment.connectionId);
     if (attachment) this.streamPreviews.delete(attachment.connectionId);
     if (attachment) this.watchingBy.delete(attachment.connectionId);
     if (attachment?.voiceChannelId) {
@@ -2028,6 +2042,24 @@ export class HuddleHub extends DurableObject {
   private async loadClubDesks(): Promise<Record<string, { desk: ClubDesk; by: string | null }>> {
     this.clubDesks ??= (await this.ctx.storage.get<Record<string, { desk: ClubDesk; by: string | null }>>("clubDesks")) ?? {};
     return this.clubDesks;
+  }
+
+  /** Passes the crowd's say (a tap or a cheer) to the music bot's feed socket for the room, with how many have the club open. */
+  private tellClubCrowd(room: string, from: Attachment, kind: ClubCrowdKind | "cheer"): void {
+    const second = Math.floor(Date.now() / 1000);
+    const budget = this.clubCrowdBudget.get(from.connectionId);
+    if (budget?.second === second) {
+      if (budget.count >= 4) return;
+      budget.count += 1;
+    } else {
+      this.clubCrowdBudget.set(from.connectionId, { second, count: 1 });
+    }
+    const all = this.sockets();
+    const feeds = all.filter(({ attachment: peer }) => peer.feed && peer.channelId === room);
+    if (!feeds.length) return;
+    const people = all.filter(({ attachment: peer }) => peer.clubWatch && !peer.bot && peer.voiceChannelId === room).length;
+    const payload = JSON.stringify({ t: "club-crowd", kind, by: from.connectionId, people: Math.max(1, people) } satisfies ServerEvent);
+    for (const { socket } of feeds) socket.send(payload);
   }
 
   /** Forgets a room's shared state (and its venue clock) once nobody is left in it. */

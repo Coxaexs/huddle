@@ -2493,6 +2493,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           onTakeDecks={takeDecks} onLeaveDecks={leaveDecks} onOpenDecks={() => setPanel("decks")}
           onOpenLights={() => setPanel((current) => (current === "lights" ? null : "lights"))}
           onRequest={(query) => onCommand?.(`/play ${query}`)}
+          onCrowd={room.clubCrowd}
         />
       )}
       {!controlsHidden && venueId === "boardhall" && (
@@ -2520,7 +2521,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             />
           )}
           {panel === "decks" && atDecks && room.roomId && (
-            <ClubDecksPanel roomId={room.roomId} onOpenBooth={() => onCommand?.("/dj")} onClose={() => setPanel(null)} lights={lightDesk} />
+            <ClubDecksPanel roomId={room.roomId} onOpenBooth={() => onCommand?.("/dj")} onClose={() => setPanel(null)} lights={lightDesk} crowd={clubStatus.info?.crowd ?? null} />
           )}
           {panel === "lights" && venueId === "club" && !atDecks && <ClubLightsPanel onClose={() => setPanel(null)}>{lightDesk}</ClubLightsPanel>}
           {panel === "seats" && <SeatFinder participants={participants} poses={room.poses} myId={connectionId} onSitNear={sitNear} onClose={() => setPanel(null)} />}
@@ -2964,6 +2965,8 @@ const LIVING_ROOM_CSS = `
 .lr-club-bar button:hover:not(:disabled) { background: rgba(255, 220, 170, 0.22); }
 .lr-club-bar button.primary { background: var(--lr-accent); color: #1b1530; }
 .lr-club-bar button:disabled { opacity: 0.45; }
+.lr-club-bar button[aria-pressed="true"] { background: var(--lr-accent); color: #1b1530; }
+.lr-club-crowd small { flex: 1 1 100%; opacity: 0.75; font-size: 11px; line-height: 1.35; }
 .lr-club-bar input { flex: 1; min-width: 0; height: 30px; padding: 0 9px; border-radius: 9px; font-size: 13px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
 .lr-club-now { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
 .lr-club-text { display: grid; gap: 1px; min-width: 0; }

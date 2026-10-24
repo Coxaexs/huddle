@@ -43,6 +43,22 @@ export interface ClubInfo {
   /** Camelot key of the song that leads. */
   key?: string | null;
   paused?: boolean;
+  /** The crowd's say (CLUB_CROWD_KINDS): the votes still counting, and what Real DJ did about them a moment ago. */
+  crowd?: ClubCrowd | null;
+}
+
+/** What someone with the club open can tell the DJ: more energy, or calmer. Cheers are the room's own emotes (CLUB_CHEERS). */
+export const CLUB_CROWD_KINDS = ["more", "chill"] as const;
+export type ClubCrowdKind = (typeof CLUB_CROWD_KINDS)[number];
+/** How long a tap counts for, fading (the bot's club.CROWD_VOTE_S). */
+export const CLUB_CROWD_VOTE_MS = 120_000;
+/** The emotes that cheer: the room cheering together calls Real DJ's build and drop. */
+export const CLUB_CHEERS = ["🔥", "🎉", "👏"] as const;
+export interface ClubCrowd {
+  more: number;
+  chill: number;
+  /** Real DJ heard the crowd: turned it up, took it down, or built into a drop. */
+  said: "up" | "down" | "drop" | null;
 }
 
 /** The parts whose notes come with the frames, in their order there. */
@@ -72,6 +88,7 @@ export interface ClubBatch {
 
 const MODES: readonly ClubMode[] = ["real", "auto", "hands", "player"];
 const VIBES: readonly ClubVibe[] = ["chill", "club", "hype"];
+const SAID: readonly NonNullable<ClubCrowd["said"]>[] = ["up", "down", "drop"];
 const SAMPLE_NAMES = ["horn", "siren", "rewind", "laser", "boom", "clap", "riser", "scratch"];
 /** At most 2 s of frames in one batch, and of their notes. */
 const MAX_FRAME_CHARS = Math.ceil((100 * 6) / 3) * 4;
@@ -107,6 +124,7 @@ export function cleanClubBatch(raw: unknown): ClubBatch | null {
   const info = event.info as Record<string, unknown> | undefined;
   if (info && typeof info === "object" && MODES.includes(info.mode as ClubMode)) {
     const mix = info.mix as Record<string, unknown> | null | undefined;
+    const crowd = cleanCrowd(info.crowd);
     batch.info = {
       mode: info.mode as ClubMode,
       ...(VIBES.includes(info.vibe as ClubVibe) ? { vibe: info.vibe as ClubVibe } : {}),
@@ -116,9 +134,21 @@ export function cleanClubBatch(raw: unknown): ClubBatch | null {
       next: text(info.next, 160),
       key: text(info.key, 4),
       paused: info.paused === true,
+      ...(crowd ? { crowd } : {}),
     };
   }
   return batch;
+}
+
+function cleanCrowd(value: unknown): ClubCrowd | null {
+  const crowd = value as Record<string, unknown> | null | undefined;
+  if (!crowd || typeof crowd !== "object") return null;
+  const count = (n: unknown) => (finite(n) ? Math.max(0, Math.min(999, Math.round(n))) : 0);
+  return {
+    more: count(crowd.more),
+    chill: count(crowd.chill),
+    said: SAID.includes(crowd.said as NonNullable<ClubCrowd["said"]>) ? (crowd.said as ClubCrowd["said"]) : null,
+  };
 }
 
 /** Base64 as rows of `width` bytes. */

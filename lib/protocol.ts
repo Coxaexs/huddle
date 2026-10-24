@@ -1,6 +1,6 @@
 /** Wire types shared by the Huddle hub (Durable Object) and the browser. */
 
-import type { ClubBatch } from "./club-feed";
+import type { ClubBatch, ClubCrowdKind } from "./club-feed";
 import type { ClubDesk, ClubFx } from "./club-desk";
 import type { SynthPlay } from "./gesture-synth";
 import type { SessionNotesState } from "./session-notes";
@@ -399,6 +399,8 @@ export type ClientEvent =
   | { t: "club-desk"; desk: ClubDesk }
   /** A moment from the light desk's buttons. */
   | { t: "club-fx"; fx: ClubFx }
+  /** The club: a tap of "More" or "Chill" for the DJ (Real DJ follows the room's mood; see club.Crowd in the bot). */
+  | { t: "club-crowd"; kind: ClubCrowdKind }
   /** Living room: put up or clear a piece of the room's shared state (see lounge-shared.ts). */
   /** A small JPEG of this seat's own screen share, for the "Streaming Now" hover card. */
   | { t: "stream-preview"; image: string; title?: string | null }
@@ -511,6 +513,8 @@ export type ServerEvent =
   /** To the music bot's feed socket: nobody has the club open (club-idle), or now somebody does (club-wake). */
   | { t: "club-idle" }
   | { t: "club-wake" }
+  /** To the music bot's feed socket: someone in the club wants more, or calmer, or cheered (an emote); `people` have it open. */
+  | { t: "club-crowd"; kind: ClubCrowdKind | "cheer"; by: string; people: number }
   | {
       /** Gesture Synth: what one seat in your voice room is playing (no notes: stopped). */
       t: "synth";

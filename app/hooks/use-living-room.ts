@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
 import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchQueue, WatchState } from "@/lib/lounge-shared";
 import type { ClubDesk, ClubFx } from "@/lib/club-desk";
+import type { ClubCrowdKind } from "@/lib/club-feed";
 import {
   CLUB_DJ_SEAT, FLOOR_SEAT, GM_SEAT_ID, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
@@ -123,6 +124,8 @@ export interface LivingRoom {
   clubDesk: (desk: ClubDesk) => void;
   /** A moment from the light desk: confetti, CO2, flames, a flash, a drop; a blackout or strobe held (on) and let go. */
   clubFx: (fx: ClubFx) => void;
+  /** The club: ask the DJ for more, or for it calmer (Real DJ follows the room's mood). */
+  clubCrowd: (kind: ClubCrowdKind) => void;
   shared: LoungeShared;
   /** Put up (or, with null, clear) a piece of the room's shared state for everyone. */
   setShared: (key: LoungeSharedKey, value: unknown) => void;
@@ -418,6 +421,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const clubWatch = useCallback((on: boolean) => { sendRef.current({ t: "club-watch", on }); }, []);
   const clubDesk = useCallback((desk: ClubDesk) => { sendRef.current({ t: "club-desk", desk }); }, []);
   const clubFx = useCallback((fx: ClubFx) => { sendRef.current({ t: "club-fx", fx }); }, []);
+  const clubCrowd = useCallback((kind: ClubCrowdKind) => { sendRef.current({ t: "club-crowd", kind }); }, []);
 
   const live = open && Boolean(roomId);
   const heard = useMemo(() => {
@@ -432,7 +436,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, roomId, clubWatch, clubDesk, clubFx, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, roomId, clubWatch, clubDesk, clubFx, clubCrowd, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

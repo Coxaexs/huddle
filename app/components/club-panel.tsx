@@ -13,11 +13,15 @@
  * not), patterns and the moment buttons.
  * Everyone else sees it as it is, and has their own brightness, strobes and
  * light timing underneath.
+ *
+ * The crowd has a say too: More and Chill on the club bar, and cheering
+ * together with the room's emotes. Real DJ follows the room's mood (and
+ * builds into a drop for a cheer); a DJ at the decks sees what it wants.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AudioLines, Disc3, ExternalLink, Headphones, PartyPopper, Power, SlidersHorizontal, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
-import { NOTE_NAMES, type ClubInfo, type ClubNote } from "@/lib/club-feed";
+import { CLUB_CROWD_VOTE_MS, NOTE_NAMES, type ClubCrowd, type ClubCrowdKind, type ClubInfo, type ClubNote } from "@/lib/club-feed";
 import {
   BEAM_FX, FLOOR_FX, LASER_FX, WALL_FX, sceneDesk,
   type ClubColour, type ClubDesk, type ClubFader, type ClubFx, type ClubFxThing, type ClubScene,
@@ -54,7 +58,18 @@ export function clubAction(voiceChannelId: string, body: Record<string, unknown>
 
 const MODE_LABEL: Record<string, string> = { real: "Real DJ", auto: "Auto DJ", hands: "hands on", player: "the room's player" };
 
-export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, onTakeDecks, onLeaveDecks, onOpenDecks, onOpenLights, onRequest }: {
+/** What the crowd has told the DJ lately, in a line (null when nobody has said anything). */
+export function crowdLine(crowd: ClubCrowd | null | undefined): string | null {
+  if (!crowd) return null;
+  if (crowd.said === "drop") return "The crowd cheered: here comes the drop";
+  if (crowd.said === "up") return "The DJ heard you: turning it up";
+  if (crowd.said === "down") return "The DJ heard you: taking it down";
+  const wants = (count: number, what: string) => (count ? `${count} want${count === 1 ? "s" : ""} ${what}` : null);
+  const parts = [wants(crowd.more, "more"), wants(crowd.chill, "it chill")].filter(Boolean);
+  return parts.length ? `The crowd: ${parts.join(" · ")}` : null;
+}
+
+export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, onTakeDecks, onLeaveDecks, onOpenDecks, onOpenLights, onRequest, onCrowd }: {
   roomId: string;
   status: ClubStatus;
   nowPlaying: { title: string; artist: string } | null;
@@ -66,11 +81,26 @@ export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, o
   onOpenDecks: () => void;
   onOpenLights: () => void;
   onRequest: (query: string) => void;
+  onCrowd: (kind: ClubCrowdKind) => void;
 }) {
   const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  /** My last tap of More / Chill, lit while it still counts. */
+  const [voted, setVoted] = useState<{ kind: ClubCrowdKind; at: number } | null>(null);
+  useEffect(() => {
+    if (!voted) return;
+    const timer = window.setTimeout(() => setVoted(null), Math.max(0, voted.at + CLUB_CROWD_VOTE_MS - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [voted]);
   const booth = status.info && status.info.mode !== "player";
+  // Real DJ follows the crowd; a DJ by hand sees it. Auto DJ plays the queue as it is.
+  const canVote = Boolean(booth && !isDj && (status.info!.mode === "real" || status.info!.mode === "hands"));
+  const crowd = crowdLine(status.info?.crowd);
+  const vote = (kind: ClubCrowdKind) => {
+    onCrowd(kind);
+    setVoted({ kind, at: Date.now() });
+  };
   const startNight = async () => {
     setBusy(true);
     setNote(null);
@@ -98,6 +128,15 @@ export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, o
           {status.info?.next && <small>Next: {status.info.next}</small>}
         </span>
       </div>
+      {canVote ? (
+        <div className="lr-row lr-club-crowd" role="group" aria-label="Tell the DJ">
+          <button type="button" aria-pressed={voted?.kind === "more"} onClick={() => vote("more")} title="Ask for more energy: when enough of the room asks, the DJ turns it up">🔥 More</button>
+          <button type="button" aria-pressed={voted?.kind === "chill"} onClick={() => vote("chill")} title="Ask for it calmer: when enough of the room asks, the DJ takes it down">🌙 Chill</button>
+          <small>{crowd ?? (status.info!.mode === "real" ? "Cheer together with 🔥 🎉 👏 for a drop" : "The DJ sees what the crowd wants")}</small>
+        </div>
+      ) : crowd && booth ? (
+        <small className="lr-note">{crowd}</small>
+      ) : null}
       <div className="lr-row">
         {!booth && (
           <button type="button" className="primary" onClick={() => void startNight()} disabled={busy} title="Real DJ plays the stemmed songs, mixing and remixing them; take the decks any time">
@@ -149,7 +188,14 @@ const WHO_MIXES: Array<["real" | "auto" | "hands", string, string]> = [
   ["hands", "By hand", "Nothing mixes unless you do"],
 ];
 
-export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights }: { roomId: string; onOpenBooth: () => void; onClose: () => void; lights?: ReactNode }) {
+export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: {
+  roomId: string;
+  onOpenBooth: () => void;
+  onClose: () => void;
+  lights?: ReactNode;
+  /** What the crowd is asking for (the club bar's More / Chill), for whoever has the decks. */
+  crowd?: ClubCrowd | null;
+}) {
   const [tab, setTab] = useState<"music" | "lights">("music");
   const [state, setState] = useState<ClubState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -234,6 +280,7 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights }: { roomI
         </div>
       )}
       {tab === "lights" && lights}
+      {tab === "music" && state && onAir && crowdLine(crowd) && <p className="lr-note lr-crowd">{crowdLine(crowd)}</p>}
       {tab === "music" && !state && !error && <p className="lr-note">Finding the booth…</p>}
       {tab === "music" && state && !onAir && (
         <div className="lr-line">
