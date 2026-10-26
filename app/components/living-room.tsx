@@ -1693,7 +1693,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       club.track(track?.title ?? null, track?.artist || null);
     };
 
+    // Which way your ears point: overhead (and behind a pawn) the camera's way, so voices sit where their speakers are
+    // on the screen and don't swing round when your avatar turns to walk; through your eyes, the way you face.
+    let earSent: number | null | undefined;
+    const syncEar = () => {
+      const ear = live.current.view === "overhead" ? wrapHeading(-orbit.yaw) : live.current.view === "pawn" ? wrapHeading(pawnBasis) : null;
+      if (earSent !== undefined && (ear === earSent || (ear !== null && earSent !== null && Math.abs(wrapHeading(ear - earSent)) < 0.03))) return;
+      earSent = ear;
+      live.current.room.setEar(ear);
+    };
     const walk = (dt: number) => {
+      syncEar();
       const pose = myPose();
       if (!pose) return;
       let facing = pose.facing;
