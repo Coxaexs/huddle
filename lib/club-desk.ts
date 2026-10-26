@@ -17,8 +17,11 @@ export const CLUB_DECKS_SEAT = "club-dj";
 export const CLUB_SCENES = ["auto", "warmup", "peak", "chill", "lasers", "custom"] as const;
 export type ClubScene = (typeof CLUB_SCENES)[number];
 
-/** Where the colours come from: the room theme's palette, the whole wheel, the song's key, or one picked colour. */
-export const CLUB_COLOURS = ["theme", "rainbow", "key", "pick"] as const;
+/**
+ * Where the colours come from: the song's mood (its energy and its key's mode: the room theme's palette while
+ * none is known), the room theme's palette, the whole wheel, the song's key, or one picked colour.
+ */
+export const CLUB_COLOURS = ["mood", "theme", "rainbow", "key", "pick"] as const;
 export type ClubColour = (typeof CLUB_COLOURS)[number];
 
 /** Each fixture's pattern; "auto" lets the music's sections choose. */
@@ -57,7 +60,7 @@ export interface ClubDesk extends Record<ClubFader, number> {
 export const DEFAULT_DESK: ClubDesk = {
   scene: "auto",
   master: 0.9, beams: 0.75, move: 0.5, lasers: 0.6, strobe: 0.6, haze: 0.55, floor: 0.75, react: 0.6, colourSpeed: 0.5, mix: 0.85,
-  colour: "theme", hue: 0.9,
+  colour: "mood", hue: 0.9,
   floorFx: "auto", wallFx: "auto", beamFx: "auto", laserFx: "auto",
   autoFx: true,
   notes: true,

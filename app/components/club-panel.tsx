@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AudioLines, Disc3, ExternalLink, Headphones, PartyPopper, Power, SlidersHorizontal, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
-import { CLUB_CROWD_VOTE_MS, NOTE_NAMES, type ClubCrowd, type ClubCrowdKind, type ClubInfo, type ClubNote } from "@/lib/club-feed";
+import { CLUB_CROWD_VOTE_MS, CLUB_STATIONS, NOTE_NAMES, type ClubCrowd, type ClubCrowdKind, type ClubInfo, type ClubNote, type ClubStation } from "@/lib/club-feed";
 import {
   BEAM_FX, FLOOR_FX, LASER_FX, WALL_FX, sceneDesk,
   type ClubColour, type ClubDesk, type ClubFader, type ClubFx, type ClubFxThing, type ClubScene,
@@ -38,10 +38,15 @@ export interface ClubState {
   }>;
   master: "A" | "B" | null;
   mix: { label: string; progress: number; started: boolean } | null;
-  auto: { on: boolean; mode: "real" | "auto"; vibe: "chill" | "club" | "hype"; three: boolean; next: string | null; style: string; beats: number | null };
+  auto: {
+    on: boolean; mode: "real" | "auto"; vibe: "chill" | "club" | "hype"; three: boolean; next: string | null; style: string; beats: number | null;
+    autoplay: boolean; station: ClubStation | null;
+  };
   stems: { on: boolean; available: boolean };
   crate: Array<{ title: string; artist: string }>;
   notice: string | null;
+  /** A part of another song playing over the mix now (the bot's loop crate). */
+  loop: { id: string; part: string; title: string | null } | null;
 }
 
 /** What the crowd sees of the night, from the light feed (a few times a second at most). */
@@ -54,6 +59,25 @@ export interface ClubStatus {
 
 export function clubAction(voiceChannelId: string, body: Record<string, unknown>) {
   return apiFetch<ClubState>("/api/music/club", { method: "POST", body: JSON.stringify({ voiceChannelId, ...body }) });
+}
+
+const stationName = (id: ClubStation) => {
+  const station = CLUB_STATIONS.find((s) => s.id === id);
+  return station ? `${station.emoji} ${station.label}` : id;
+};
+
+/** The mood stations as chips: "Any" and the eight moods. */
+function MoodChips({ value, onPick }: { value: ClubStation | null; onPick: (station: ClubStation | null) => void }) {
+  return (
+    <div className="lr-chips" role="radiogroup" aria-label="Mood">
+      <button type="button" role="radio" aria-checked={value === null} className={value === null ? "active" : ""} onClick={() => onPick(null)}>Any</button>
+      {CLUB_STATIONS.map((s) => (
+        <button key={s.id} type="button" role="radio" aria-checked={value === s.id} className={value === s.id ? "active" : ""} onClick={() => onPick(s.id)}>
+          {s.emoji} {s.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const MODE_LABEL: Record<string, string> = { real: "Real DJ", auto: "Auto DJ", hands: "hands on", player: "the room's player" };
@@ -126,6 +150,8 @@ export function ClubBar({ roomId, status, nowPlaying, djName, isDj, decksFree, o
             {status.info?.mix ? ` · mixing: ${status.info.mix.style.toLowerCase()} ${Math.round(status.info.mix.progress * 100)}%` : ""}
           </small>
           {status.info?.next && <small>Next: {status.info.next}</small>}
+          {status.info?.loop && <small>+ {status.info.loop.part} from {status.info.loop.title || "another song"}</small>}
+          {status.info?.station && <small>Mood: {stationName(status.info.station)}</small>}
         </span>
       </div>
       {canVote ? (
@@ -178,6 +204,14 @@ const MOVES: Array<[string, string, string]> = [
   ["echo", "🌊 Echo throw", "Throw the next beat into an echo"],
 ];
 const STEMS: Array<[string, string]> = [["drums", "Drums"], ["bass", "Bass"], ["vocals", "Vocals"], ["other", "Melody"]];
+/** The loop pads: the song's own part steps out for eight bars and another song's takes over, in its key and tempo. */
+const BORROW: Array<[string, string, string]> = [
+  ["guitar", "🎸 Guitar riff", "Another song's guitar riff under this vocal for eight bars"],
+  ["piano", "🎹 Keys", "Another song's piano part for eight bars"],
+  ["bass", "🎚️ Bass line", "Another song's bass line for eight bars"],
+  ["drums", "🥁 Drums", "Another song's drum groove for eight bars"],
+];
+const PART_ICON: Record<string, string> = { guitar: "🎸", piano: "🎹", bass: "🎚️", drums: "🥁" };
 const PADS: Array<[string, string]> = [["horn", "📯 Horn"], ["siren", "🚨 Siren"], ["laser", "🔫 Laser"], ["boom", "💥 808"], ["clap", "👏 Clap"], ["riser", "📈 Riser"], ["scratch", "💿 Scratch"], ["rewind", "⏪ Rewind"]];
 const HOLD_FX: Array<[string, string, number]> = [["roll", "Roll", 2], ["echo", "Echo", 3], ["flanger", "Flanger", 5], ["reverb", "Reverb", 4]];
 const VIBES: Array<[ClubState["auto"]["vibe"], string]> = [["chill", "Chill"], ["club", "Club"], ["hype", "Hype"]];
@@ -201,6 +235,7 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [style, setStyle] = useState("auto");
+  const [startMood, setStartMood] = useState<ClubStation | null>(null);
   const [filter, setFilter] = useState(0);
   const filterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const held = useRef<string | null>(null);
@@ -285,8 +320,10 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: 
       {tab === "music" && state && !onAir && (
         <div className="lr-line">
           <span className="lr-title">The booth is off</span>
-          <button type="button" className="primary lr-wide" onClick={() => void send({ op: "club" })} title="Real DJ picks stemmed songs and mixes and remixes them"><PartyPopper size={14} /> Start the night with Real DJ</button>
-          <button type="button" className="lr-wide-plain" onClick={() => void send({ op: "club", mode: "auto" })} title="Auto DJ mixes the queue in order; stemmed songs go in it if it's short">Start with Auto DJ</button>
+          <small className="lr-note">Mood for the night: the DJ picks songs from the whole library for it, and mixes in its style.</small>
+          <MoodChips value={startMood} onPick={setStartMood} />
+          <button type="button" className="primary lr-wide" onClick={() => void send({ op: "club", ...(startMood ? { station: startMood } : {}) })} title="Real DJ picks stemmed songs and mixes and remixes them"><PartyPopper size={14} /> Start the night with Real DJ</button>
+          <button type="button" className="lr-wide-plain" onClick={() => void send({ op: "club", mode: "auto", ...(startMood ? { station: startMood } : {}) })} title="Auto DJ mixes the queue in order; stemmed songs go in it if it's short">Start with Auto DJ</button>
         </div>
       )}
       {tab === "music" && state && onAir && (
@@ -318,6 +355,19 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: 
               <button key={move} type="button" title={hint} onClick={() => void send({ op: "club_move", move })} disabled={(move === "acapella" || move === "beatbreak") && !stemsReady}>{label}</button>
             ))}
           </div>
+          <div className="lr-heading">Borrow from another song</div>
+          <div className="lr-pads lr-pads-4">
+            {BORROW.map(([part, label, hint]) => (
+              <button key={part} type="button" title={hint} onClick={() => void send({ op: "club_loop", part }, "Finding one that fits…")} disabled={!master?.bpm}>{label}</button>
+            ))}
+          </div>
+          {state.loop && (
+            <div className="lr-row lr-loop-now">
+              <small>{PART_ICON[state.loop.part]} {state.loop.part} from {state.loop.title || "another song"}</small>
+              <button type="button" title="Sounds wrong: never play this one again" onClick={() => void send({ op: "loop_vote", id: state.loop!.id, vote: "down" })}>👎</button>
+              <button type="button" title="Sounds great: play it more" onClick={() => void send({ op: "loop_vote", id: state.loop!.id, vote: "up" })}>👍</button>
+            </div>
+          )}
           <div className="lr-heading">Stems {master ? `· deck ${master.name}` : ""}{master && !stemsReady ? (master.stems === "separating" ? " (separating…)" : " (none for this song)") : ""}</div>
           <div className="lr-row">
             {STEMS.map(([stem, label]) => {
@@ -349,6 +399,8 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: 
           <div className="lr-pads lr-pads-4">
             {PADS.map(([name, label]) => <button key={name} type="button" onClick={() => void send({ op: "sample", name })}>{label}</button>)}
           </div>
+          <div className="lr-heading">Mood</div>
+          <MoodChips value={state.auto.station} onPick={(station) => void send({ op: "auto", station }, station ? `${stationName(station)}: the next songs are picked for the mood.` : "Any mood: the queue and the whole library again.")} />
           <div className="lr-heading">Who mixes</div>
           <div className="lr-chips" role="radiogroup" aria-label="Who mixes">
             {WHO_MIXES.map(([id, label, hint]) => (
@@ -358,6 +410,13 @@ export function ClubDecksPanel({ roomId, onOpenBooth, onClose, lights, crowd }: 
               </button>
             ))}
           </div>
+          {who !== "hands" && (
+            <label className="living-room-switch">
+              <span><strong>Autoplay</strong><small>When the queue runs out, the night keeps going with stemmed songs from the library.</small></span>
+              <input type="checkbox" checked={state.auto.autoplay}
+                onChange={() => void send({ op: "auto", autoplay: !state.auto.autoplay }, state.auto.autoplay ? "Autoplay off: the night ends with the queue." : "Autoplay: when the queue runs out, songs from the library keep it going.")} />
+            </label>
+          )}
           {who === "real" && (
             <>
               <div className="lr-chips" role="radiogroup" aria-label="Vibe">
@@ -422,6 +481,7 @@ const FADERS: Array<[ClubFader, string, string]> = [
 /** With the colours, not the other faders. */
 const MIX_FADER: [ClubFader, string, string] = ["mix", "Colour mix", "Down: one colour for the whole room. Up: every light its own colour"];
 const COLOURS: Array<[ClubColour, string, string]> = [
+  ["mood", "Mood", "The song's mood: hard minor songs burn red, calm ones go blue, bright songs gold and pink"],
   ["theme", "Theme", "The room theme's colours"],
   ["rainbow", "Rainbow", "The whole colour wheel"],
   ["key", "Song key", "A colour for each key: harmonic mixes stay close, key changes leap"],

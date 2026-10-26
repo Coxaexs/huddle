@@ -19,6 +19,15 @@
  * heard lately). Notes that belong together get colours close together, a
  * part changing note changes colour, and a bass line walking walks its colour.
  *
+ * The song's map (when the bot sends one) says what is coming: every bar's
+ * weight and where the sections change. The rig opens with the song: a quiet
+ * verse closes it down to a few narrow beams, the last bar before a chorus
+ * squeezes everything in, and the chorus throws it wide open on its first
+ * beat; a chorus going back to a verse closes it on the beat too. Loud parts
+ * breathe on the kick. Without a map the music's own energy does the same,
+ * a beat late. The song's mood (its energy and its key's mode) picks the
+ * colours when the desk leaves them to it.
+ *
  * On top of the music sits the light desk (lib/club-desk.ts): how bright,
  * how much the lights move and react, where the colours come from, and the
  * moments its buttons fire. All of it is worked out here, in this browser.
@@ -26,7 +35,11 @@
  * Strobes are capped at three flashes a second, under the photosensitivity
  * guideline, and are off entirely when the listener has turned them off.
  */
-import { CLUB_FRAME_MS, decodeFrames, decodeNotes, readNote, type ClubBatch, type ClubInfo, type ClubMoment, type ClubNote } from "@/lib/club-feed";
+import {
+  CLUB_FRAME_MS, CLUB_LOOP_PARTS, CLUB_SECTION_NAMES, decodeBars, decodeFrames, decodeNotes, readNote,
+  type ClubBatch, type ClubInfo, type ClubLoopPart, type ClubMoment, type ClubMood, type ClubMoodPalette, type ClubNote,
+  type ClubSectionName, type ClubSongMap,
+} from "@/lib/club-feed";
 import { DEFAULT_DESK, HOLD_MAX_MS, cleanClubDesk, cleanClubFx, fifths, keyHue, keyMiddle, type ClubColour, type ClubDesk, type ClubFx } from "@/lib/club-desk";
 
 /** How far behind the hub clock the sound plays here, by default (jitter buffer and output). */
@@ -46,6 +59,34 @@ const NOTE_CLEAR = 0.2;
 const NOTE_HOLD_MS = 1200;
 
 export type ClubSection = "idle" | "intro" | "groove" | "breakdown" | "build" | "drop";
+
+/** A section's level (ClubSongMap): 0 quiet, 1 a verse, 2 a lift, 3 a chorus or a drop. */
+export type ClubTier = 0 | 1 | 2 | 3;
+/** How open the rig is at each level. */
+export const TIER_OPEN = [0.15, 0.38, 0.68, 1] as const;
+/** The colours a song's mood calls for (the desk's colour "mood"). */
+export type ClubMoodName = ClubMoodPalette;
+
+/**
+ * The palette for a song: the one its mood words lean to, when someone listened to it; else fierce for a minor
+ * key going hard, blue for minor and calmer, bright for major and going, warm for major and calmer.
+ */
+export function moodName(mood: ClubMood | null | undefined): ClubMoodName | null {
+  if (!mood) return null;
+  if (mood.name) return mood.name;
+  const hard = mood.energy >= 0.58;
+  if (mood.minor === null) return hard ? "fierce" : "warm";
+  return mood.minor ? (hard ? "fierce" : "blue") : hard ? "bright" : "warm";
+}
+
+interface SongMap {
+  bars: Array<{ hard: number; flags: number }>;
+  /** Sections in order: first bar, bars, level, name (null: not known). */
+  sec: Array<{ bar: number; bars: number; tier: ClubTier; name: ClubSectionName | null }>;
+  mood: ClubMood;
+  dyn: number;
+  phase: number;
+}
 
 export interface ClubShow {
   /** The music bot's light is coming; false: the idle show. */
@@ -82,7 +123,7 @@ export interface ClubShow {
   hits: Record<string, number>;
   /** The light desk as the room has it. */
   desk: ClubDesk;
-  /** How `hue` reads: a place in the room theme's palette ("theme"), else a hue on the colour wheel. */
+  /** How `hue` reads: a place in a palette (the mood's, "mood"; the room theme's, "theme"), else a hue on the colour wheel. */
   colour: ClubColour;
   /** 0..1: the desk's blackout, held down. */
   blackout: number;
@@ -96,9 +137,35 @@ export interface ClubShow {
   noteShift: [number, number, number];
   /** 0..1: how much the colours follow the notes (0: none heard lately, or the desk has it off). */
   noteFollow: number;
+  /** The section's level now, and the next one's (from the song's map, else read off the music). */
+  tier: ClubTier;
+  nextTier: ClubTier | null;
+  /** Beats until the next section (null: no map, or no next section). */
+  toNext: number | null;
+  /** 0..1: how open the rig is (narrow, few, close together .. wide, all of them, spread out). */
+  open: number;
+  /** 0..1 over the bar before a bigger section: everything pulls in, ready to burst. */
+  squeeze: number;
+  /** 1 on the first beat of a bigger section, falling away over a couple of beats. */
+  accent: number;
+  /** 0..1: how hard this bar goes, from the map (else the level). */
+  barHard: number;
+  /** The song's mood, for the colours (null: not known). */
+  mood: ClubMoodName | null;
+  /** 0..1: how far apart the song's quiet and loud parts are; a song with a lot goes darker in its verses. */
+  contrast: number;
+  /** Parts borrowed from other songs playing now, 0..1 each. */
+  loops: Partial<Record<ClubLoopPart, number>>;
+  /** The map for the song that leads is here. */
+  mapped: boolean;
+  /** The section's name, when someone listened to the song (a solo, a bridge, a chorus...). */
+  part: ClubSectionName | null;
 }
 
 interface Frame { t: number; v: number[]; n?: number[] }
+/** The tier-like reading of the music without a map. */
+const tierOf = (section: ClubSection, energy: number): ClubTier =>
+  section === "idle" || section === "breakdown" ? 0 : section === "drop" ? 3 : section === "intro" ? (energy < 0.2 ? 0 : 1) : energy > 0.55 ? 2 : 1;
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const GOLDEN = 0.618033988749895;
@@ -109,7 +176,12 @@ const phraseBeats = (speed: number) => (speed < 0.05 ? 0 : speed < 0.3 ? 64 : sp
 
 export class ClubLights {
   private frames: Frame[] = [];
-  private anchors: Array<{ t: number; beat: number; bpm: number }> = [];
+  private anchors: Array<{ t: number; beat: number; bpm: number; song: string | null }> = [];
+  private maps = new Map<string, SongMap>();
+  private open = TIER_OPEN[0] as number;
+  private accent = 0;
+  private lastSection: { song: string | null; index: number; tier: ClubTier } | null = null;
+  private barHard = 0;
   private moments: ClubMoment[] = [];
   private stems = false;
   private info: ClubInfo | null = null;
@@ -172,8 +244,9 @@ export class ClubLights {
     const frames = decodeFrames(batch.f);
     const notes = batch.n ? decodeNotes(batch.n) : [];
     frames.forEach((v, i) => this.insert({ t: batch.at + i * CLUB_FRAME_MS, v, ...(notes[i] ? { n: notes[i] } : {}) }));
+    if (batch.map) this.setMap(batch.map);
     if (typeof batch.b === "number" && typeof batch.bpm === "number") {
-      this.anchors.push({ t: batch.at, beat: batch.b, bpm: batch.bpm });
+      this.anchors.push({ t: batch.at, beat: batch.b, bpm: batch.bpm, song: batch.w ?? null });
       if (this.anchors.length > 64) this.anchors.splice(0, this.anchors.length - 64);
     }
     if (typeof batch.stems === "boolean") this.stems = batch.stems;
@@ -190,6 +263,19 @@ export class ClubLights {
     let drop = 0;
     while (drop < this.frames.length && this.frames[drop].t < oldest) drop++;
     if (drop) this.frames.splice(0, drop);
+  }
+
+  private setMap(map: ClubSongMap) {
+    this.maps.delete(map.id);
+    this.maps.set(map.id, {
+      bars: decodeBars(map.bars),
+      sec: map.sec.map(([bar, bars, tier, , name]) => ({ bar, bars, tier: tier as ClubTier, name: (CLUB_SECTION_NAMES[name] || null) as ClubSectionName | null }))
+        .sort((a, b) => a.bar - b.bar),
+      mood: map.mood,
+      dyn: map.dyn,
+      phase: map.phase ?? 0,
+    });
+    while (this.maps.size > 4) this.maps.delete(this.maps.keys().next().value!);
   }
 
   private insert(frame: Frame) {
@@ -279,16 +365,29 @@ export class ClubLights {
     return frames[lo].n ?? null;
   }
 
-  /** The beat at time t from the newest grid anchor before it. */
-  beatAt(t: number): { beat: number; bpm: number } | null {
+  /** The beat at time t from the newest grid anchor before it, and the song it belongs to. */
+  beatAt(t: number): { beat: number; bpm: number; song: string | null } | null {
     for (let i = this.anchors.length - 1; i >= 0; i--) {
       const a = this.anchors[i];
       if (a.t <= t + 200) {
         if (t - a.t > 8000) return null;               // an old grid: the song moved on
-        return { beat: a.beat + ((t - a.t) / 60_000) * a.bpm, bpm: a.bpm };
+        return { beat: a.beat + ((t - a.t) / 60_000) * a.bpm, bpm: a.bpm, song: a.song };
       }
     }
     return null;
+  }
+
+  /** Where the song that leads is in its map at `beat`: its section, the next one and the beats to it; null without a map. */
+  arrangementAt(song: string | null, beat: number) {
+    const map = song ? this.maps.get(song) : undefined;
+    if (!map || !map.sec.length) return null;
+    const bar = Math.floor((beat - map.phase) / 4);
+    let index = -1;
+    for (let i = 0; i < map.sec.length; i++) if (map.sec[i].bar <= bar) index = i;
+    const section = index >= 0 ? map.sec[index] : null;
+    if (section && bar >= section.bar + section.bars && index === map.sec.length - 1) return { map, index: map.sec.length, tier: 0 as ClubTier, next: null, toNext: null, bar };
+    const next = map.sec[index + 1] ?? null;
+    return { map, index, tier: (section?.tier ?? 0) as ClubTier, next, toNext: next ? next.bar * 4 + map.phase - beat : null, bar };
   }
 
   /** The show now. Call once per animation frame. */
@@ -367,15 +466,50 @@ export class ClubLights {
     } else if (t - this.lastKickAt > 2500 && level > 0.12) this.quietSince ??= Math.max(this.lastKickAt, t - 2500);
     if (this.quietSince !== null) breakdown = true;
 
+    // The song's map: what section this is, what comes next and when. A bigger section's first beat is a
+    // moment (the chorus of a quiet-loud song is a drop of its own), and the bar before it a squeeze (a build).
+    const where = live && grid && beat !== null ? this.arrangementAt(grid.song, beat) : null;
+    let squeeze = 0;
+    if (where) {
+      const { tier, next, toNext } = where;
+      if (next && toNext !== null && toNext <= 4 && next.tier > tier) squeeze = (1 - toNext / 4) * (next.tier - tier >= 2 ? 1 : 0.55);
+      const key = { song: grid!.song, index: where.index, tier };
+      const was = this.lastSection;
+      if (was && was.song === key.song && was.index !== key.index) {
+        if (tier > was.tier) {
+          this.accent = 1;
+          if (tier === 3 && was.tier <= 1) this.drop(t);
+        }
+      }
+      this.lastSection = key;
+      if (squeeze > 0) build = Math.max(build, squeeze * 0.999);
+      if (tier === 0 && where.index > 0) breakdown = true;
+      const barNow = where.map.bars[where.bar];
+      if (barNow) this.barHard += (barNow.hard - this.barHard) * Math.min(1, dt * 6);
+    } else {
+      this.barHard += (level - this.barHard) * Math.min(1, dt * 2);
+    }
+
     const sinceDrop = (t - this.dropAt) / 1000;
     const section: ClubSection = !live ? "idle"
       : build > 0 ? "build"
         : sinceDrop < 16 * 60 / Math.max(60, bpm ?? 120) ? "drop"
           : breakdown ? "breakdown"
             : this.energy < 0.3 ? "intro" : "groove";
+    const tier: ClubTier = where ? (where.index >= 0 ? where.tier : 0) : live ? tierOf(section, this.energy) : 0;
+    // The rig opens fast on a section's first beat and closes on the beat too, a little softer; within a section it
+    // follows the bar's weight a touch, and the squeeze pulls it in.
+    const contrast = where ? Math.max(0.3, Math.min(1, where.map.dyn * 1.6)) : 0.5;
+    const quiet = TIER_OPEN[0] * (1.3 - contrast * 0.6);
+    let wantOpen = tier === 0 ? quiet : TIER_OPEN[tier] + (where ? (this.barHard - 0.5) * 0.15 : 0);
+    if (!where && live && section === "drop") wantOpen = 1;
+    wantOpen = Math.max(0.05, Math.min(1, wantOpen * (1 - 0.85 * squeeze)));
+    const opening = wantOpen > this.open;
+    this.open += (wantOpen - this.open) * Math.min(1, dt * (opening ? (this.accent > 0.9 ? 40 : 6) : squeeze > 0 ? 8 : 5));
+    this.accent *= Math.exp(-dt / (0.7 * 60 / Math.max(60, bpm ?? 120)));      // gone in a couple of beats
 
     // The colour moves on with the phrases (how often: the desk's colour speed), and the drop throws it on.
-    // The theme's palette and the rainbow leap round the wheel; a song's key or a picked colour only sways.
+    // A palette (the mood's, the theme's) and the rainbow leap round the wheel; a song's key or a picked colour only sways.
     const every = phraseBeats(desk.colourSpeed);
     if (every !== this.phraseLength) { this.phraseLength = every; this.phrase = null; }
     if (beat !== null && every) {
@@ -384,7 +518,7 @@ export class ClubLights {
       this.phrase = phrase;
     }
     let hueTarget: number;
-    if (desk.colour === "theme" || desk.colour === "rainbow") {
+    if (desk.colour === "mood" || desk.colour === "theme" || desk.colour === "rainbow") {
       // The rainbow also drifts round on its own, a turn every couple of minutes at full colour speed.
       if (desk.colour === "rainbow") this.drift = (this.drift + dt * desk.colourSpeed * 0.008) % 1;
       hueTarget = this.hueBase + this.hueSteps * GOLDEN + this.dropTurns * 0.5 + (desk.colour === "rainbow" ? this.drift : 0);
@@ -439,7 +573,32 @@ export class ClubLights {
       desk, colour: desk.colour, blackout: this.blackout, shots: this.shots,
       mix: this.info?.mix ? this.info.mix.progress : null,
       notes: [...this.notes], noteShift: [...this.noteShift], noteFollow: this.noteFollow,
+      tier, nextTier: where?.next ? (where.next.tier as ClubTier) : null, toNext: where?.toNext ?? null,
+      open: live ? this.open : 0.25, squeeze, accent: this.accent, barHard: this.barHard,
+      mood: moodName(where?.map.mood ?? this.moodFromInfo()), contrast,
+      loops: this.loopsAt(t), mapped: Boolean(where),
+      part: where && where.index >= 0 && where.index < where.map.sec.length ? where.map.sec[where.index].name : null,
     };
+  }
+
+  /** Without a map, a mood from what the bar is told: only the key's mode is known. */
+  private moodFromInfo(): ClubMood | null {
+    const key = this.info?.key;
+    if (!key) return null;
+    return { energy: this.energy > 0.45 ? 0.7 : 0.4, minor: /A$/i.test(key), dyn: null };
+  }
+
+  /** Borrowed loops sounding at t (the bot announces each with its start and end), easing in and out over a beat. */
+  private loopsAt(t: number): Partial<Record<ClubLoopPart, number>> {
+    const out: Partial<Record<ClubLoopPart, number>> = {};
+    for (const m of this.moments) {
+      if (m.k !== "loop" || !m.name || !(CLUB_LOOP_PARTS as readonly string[]).includes(m.name) || m.until === undefined) continue;
+      if (t < m.at - 400 || t > m.until + 400) continue;
+      const level = Math.min(1, (t - m.at + 400) / 800, (m.until + 400 - t) / 800);
+      const part = m.name as ClubLoopPart;
+      out[part] = Math.max(out[part] ?? 0, Math.max(0, level));
+    }
+    return out;
   }
 
   /**
