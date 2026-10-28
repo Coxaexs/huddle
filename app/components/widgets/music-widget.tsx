@@ -5,7 +5,7 @@ import { Globe, Music2, Pause, Play, Plus, SkipForward } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { useI18n } from "@/app/lib/i18n-context";
 import { heard, playbackPosition } from "@/lib/protocol";
-import type { WidgetSize } from "@/lib/layout-prefs";
+import type { WidgetArea, WidgetSize } from "@/lib/layout-prefs";
 import { useWidgetHost } from "./widget-host";
 import { openWebView } from "./web-view";
 
@@ -18,9 +18,10 @@ function clock(ms: number): string {
  * The music bot's widget: what your voice room hears, play/pause, skip, a box
  * to queue a song next, and the bot's dashboard in a web view. Commands go
  * through /api/music/command like the slash commands do, so the DJ booth
- * (which owns playback while it is on air) gets them too.
+ * (which owns playback while it is on air) gets them too. In the call view a
+ * large one is a single wide line beside the call controls.
  */
-export function MusicWidget({ size }: { size: WidgetSize }) {
+export function MusicWidget({ size, area }: { size: WidgetSize; area?: WidgetArea }) {
   const { t } = useI18n();
   const host = useWidgetHost();
   const [, setTick] = useState(0);
@@ -183,6 +184,30 @@ export function MusicWidget({ size }: { size: WidgetSize }) {
           </button>
         )}
         {join}
+      </div>
+    );
+  }
+
+  if (area === "call") {
+    return (
+      <div className="mw mw-wide">
+        {art}
+        <span className="mw-text">
+          <strong title={track?.title}>{track?.title || t("widget.music")}</strong>
+          <small>{subtitle}</small>
+        </span>
+        {track && duration > 0 && (
+          <div className="mw-progress" aria-hidden="true">
+            <span style={{ width: `${progress}%` }} />
+            <small>{clock(position)}</small>
+            <small>{clock(duration)}</small>
+          </div>
+        )}
+        {controls}
+        {join}
+        {queueBox}
+        {webButton}
+        {note && <span className="mw-note mw-wide-note" role="status">{note}</span>}
       </div>
     );
   }

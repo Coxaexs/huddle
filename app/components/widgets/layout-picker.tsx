@@ -4,9 +4,13 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/app/lib/i18n-context";
 import { resetLayout, setCustomizing, setLayout, useLayoutPrefs } from "@/app/lib/layout-store";
 import {
+  CALL_BAR_SIDES,
   CHANNEL_SIDES,
   MEMBER_SIDES,
+  PANEL_PARTS,
   isDefaultLayout,
+  setPanelPartHidden,
+  type CallBarSide,
   type ChannelsSide,
   type MembersSide,
 } from "@/lib/layout-prefs";
@@ -40,10 +44,21 @@ function Diagram({ channels, members, highlight }: { channels: ChannelsSide; mem
   );
 }
 
+/** The call view with its control bar on one side. */
+function CallDiagram({ side }: { side: CallBarSide }) {
+  return (
+    <span className={`layout-diagram call-diagram call-${side}`} aria-hidden="true">
+      <i className="ld-stage" />
+      <i className="ld-bar" />
+    </span>
+  );
+}
+
 /**
  * Where the channel list and member list sit: four sides for channels (like
- * a browser's tab strip or sidebar), two for members. Used in Settings →
- * Appearance and, compact, in the Customize tray.
+ * a browser's tab strip or sidebar), two for members; where the call
+ * controls sit; and the parts of the window someone can switch off. Used in
+ * Settings → Appearance and, compact, in the Customize tray.
  */
 export function LayoutPicker({ compact = false }: { compact?: boolean }) {
   const { t } = useI18n();
@@ -85,6 +100,43 @@ export function LayoutPicker({ compact = false }: { compact?: boolean }) {
     </div>
   );
 
+  const callOptions = (
+    <div className="layout-options" role="radiogroup" aria-label={t("layout.callBar")}>
+      {CALL_BAR_SIDES.map((side) => (
+        <button
+          type="button"
+          role="radio"
+          aria-checked={layout.callBar === side}
+          key={side}
+          className={`layout-option ${layout.callBar === side ? "active" : ""}`}
+          onClick={() => setLayout((current) => ({ ...current, callBar: side }))}
+        >
+          <CallDiagram side={side} />
+          <span>{t(`layout.side.${side}`)}</span>
+        </button>
+      ))}
+    </div>
+  );
+  const showOptions = (
+    <div className="layout-show" role="group" aria-label={t("layout.show")}>
+      {PANEL_PARTS.map((part) => {
+        const shown = !layout.hide.includes(part);
+        return (
+          <button
+            type="button"
+            key={part}
+            className={`layout-show-toggle ${shown ? "on" : ""}`}
+            aria-pressed={shown}
+            onClick={() => setLayout((current) => setPanelPartHidden(current, part, shown))}
+          >
+            <span className="layout-show-box" aria-hidden="true">{shown ? "✓" : ""}</span>
+            {t(`layout.part.${part}`)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   if (compact) {
     return (
       <div className="layout-picker layout-picker-compact">
@@ -95,6 +147,14 @@ export function LayoutPicker({ compact = false }: { compact?: boolean }) {
         <div className="layout-picker-group">
           <span className="layout-picker-label">{t("layout.members")}</span>
           {memberOptions}
+        </div>
+        <div className="layout-picker-group">
+          <span className="layout-picker-label">{t("layout.callBar")}</span>
+          {callOptions}
+        </div>
+        <div className="layout-picker-group">
+          <span className="layout-picker-label">{t("layout.show")}</span>
+          {showOptions}
         </div>
         {owned && <p className="layout-picker-note">{t("layout.themeOwns")}</p>}
       </div>
@@ -121,6 +181,14 @@ export function LayoutPicker({ compact = false }: { compact?: boolean }) {
       <div className="layout-picker-group">
         <span className="layout-picker-label">{t("layout.members")}</span>
         {memberOptions}
+      </div>
+      <div className="layout-picker-group">
+        <span className="layout-picker-label">{t("layout.callBar")}</span>
+        {callOptions}
+      </div>
+      <div className="layout-picker-group">
+        <span className="layout-picker-label">{t("layout.show")}</span>
+        {showOptions}
       </div>
       {owned && <p className="layout-picker-note">{t("layout.themeOwns")}</p>}
       <p className="layout-picker-note">{t("layout.phoneNote")}</p>

@@ -6,8 +6,13 @@ import {
   isDefaultLayout,
   normalizeLayout,
   placeWidget,
+  moveToolbarItem,
   removeWidget,
   resizeWidget,
+  setPanelPartHidden,
+  setToolbarItemHidden,
+  toolbarState,
+  TOOLBARS,
 } from "@/lib/layout-prefs";
 
 describe("normalizeLayout", () => {
@@ -20,8 +25,8 @@ describe("normalizeLayout", () => {
 
   it("keeps valid sides and widgets, from an object or stored JSON", () => {
     const value = { channels: "bottom", members: "left", widgets: [{ id: "music", area: "header", size: "small" }] };
-    expect(normalizeLayout(value)).toEqual(value);
-    expect(normalizeLayout(JSON.stringify(value))).toEqual(value);
+    expect(normalizeLayout(value)).toEqual({ ...DEFAULT_LAYOUT, ...value });
+    expect(normalizeLayout(JSON.stringify(value))).toEqual({ ...DEFAULT_LAYOUT, ...value });
   });
 
   it("drops bad widget ids, duplicates and unknown areas", () => {
@@ -93,5 +98,59 @@ describe("placing widgets", () => {
       layout = placeWidget(layout, `bot:b:w${index}`, "header");
     }
     expect(placeWidget(layout, "music", "header")).toBe(layout);
+  });
+});
+
+describe("toolbars", () => {
+  it("ships every bar as it is, with nothing stored", () => {
+    const state = toolbarState(DEFAULT_LAYOUT, "call");
+    expect(state.order).toEqual(TOOLBARS.call.items);
+    expect([...toolbarState(DEFAULT_LAYOUT, "composer").hidden]).toEqual(["format", "poll", "games", "commands"]);
+  });
+
+  it("moves a button before or after another, and stores only what changed", () => {
+    let layout = moveToolbarItem(DEFAULT_LAYOUT, "header", "members", "invite");
+    expect(toolbarState(layout, "header").order.slice(0, 2)).toEqual(["members", "invite"]);
+    layout = moveToolbarItem(layout, "header", "members", "achievements", true);
+    expect(toolbarState(layout, "header").order).toEqual(TOOLBARS.header.items);
+    expect(layout.toolbars).toEqual({});
+    expect(isDefaultLayout(layout)).toBe(true);
+  });
+
+  it("hides a button, shows it again when it is moved back into the bar, and never hides a locked one", () => {
+    let layout = setToolbarItemHidden(DEFAULT_LAYOUT, "call", "leave", true);
+    expect(toolbarState(layout, "call").hidden.has("leave")).toBe(true);
+    expect(isDefaultLayout(layout)).toBe(false);
+    layout = moveToolbarItem(layout, "call", "leave", "mute");
+    expect(toolbarState(layout, "call").hidden.has("leave")).toBe(false);
+    expect(setToolbarItemHidden(layout, "call", "more", true)).toBe(layout);
+    // Pinning a tucked-away tool shows it in the bar.
+    const pinned = setToolbarItemHidden(DEFAULT_LAYOUT, "composer", "poll", false);
+    expect(toolbarState(pinned, "composer").hidden.has("poll")).toBe(false);
+  });
+
+  it("drops unknown items and slots new ones in next to their neighbour", () => {
+    const layout = normalizeLayout({
+      toolbars: { header: { order: ["members", "bogus", "search", "members"], hidden: ["pins", "nope"] } },
+    });
+    const order = toolbarState(layout, "header").order;
+    expect(order).toHaveLength(TOOLBARS.header.items.length);
+    // Kept items keep their order; "invite" ships first, "mentions" right after "search".
+    expect(order).toEqual(["invite", "members", "search", "mentions", "pins", "saved", "achievements"]);
+    expect([...toolbarState(layout, "header").hidden]).toEqual(["pins"]);
+  });
+
+  it("keeps the call bar side and switched-off parts, and ignores junk", () => {
+    const layout = normalizeLayout({ callBar: "left", hide: ["topic", "banner", "everything"] });
+    expect(layout.callBar).toBe("left");
+    expect(layout.hide).toEqual(["banner", "topic"]);
+    expect(normalizeLayout({ callBar: "diagonal" }).callBar).toBe("bottom");
+    expect(setPanelPartHidden(layout, "banner", false).hide).toEqual(["topic"]);
+    expect(isDefaultLayout(setPanelPartHidden(setPanelPartHidden(layout, "banner", false), "topic", false))).toBe(false);
+  });
+
+  it("puts widgets in the call view in its two sizes", () => {
+    expect(fitSize("call", "medium")).toBe("small");
+    expect(placeWidget(DEFAULT_LAYOUT, "music", "call", { size: "large" }).widgets[0]).toEqual({ id: "music", area: "call", size: "large" });
   });
 });

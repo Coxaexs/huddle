@@ -3,6 +3,7 @@
 /** The square icon button used across the chat shell's headers. */
 
 import type { ReactNode } from "react";
+import type { ToolbarItemProps } from "../widgets/toolbar";
 
 export function Icon({
   children,
@@ -10,6 +11,7 @@ export function Icon({
   onClick,
   active,
   badge,
+  tb,
 }: {
   children: ReactNode;
   label: string;
@@ -17,11 +19,14 @@ export function Icon({
   active?: boolean;
   /** A small count in the corner, hidden when zero. */
   badge?: number;
+  /** Its place in a customizable toolbar (widgets/toolbar.tsx). */
+  tb?: ToolbarItemProps;
 }) {
   return (
     <button
       type="button"
-      className={`icon-button ${active ? "active" : ""}`}
+      {...tb}
+      className={`icon-button ${active ? "active" : ""} ${tb?.className ?? ""}`}
       aria-label={label}
       title={label}
       onClick={onClick}

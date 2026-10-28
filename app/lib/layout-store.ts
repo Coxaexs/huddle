@@ -4,18 +4,20 @@ import { useSyncExternalStore } from "react";
 import { apiFetch } from "@/app/lib/client";
 import {
   DEFAULT_LAYOUT,
+  defaultLayout,
   normalizeLayout,
   type LayoutPrefs,
 } from "@/lib/layout-prefs";
 
 /**
- * Where the channel list and member list sit, and the pinned widgets.
+ * Where the channel list and member list sit, the pinned widgets, the
+ * toolbars' arrangement and the parts someone switched off.
  *
  * Like the simple/full switch (ui-mode.ts): the account holds the choice so
  * it follows you to every device, localStorage remembers it for the first
- * paint, and <html data-chan / data-members> carries the sides for CSS
- * (app/layout-custom.css). The default layout sets neither attribute, so it
- * is exactly the layout that existed before this.
+ * paint, and <html data-chan / data-members / data-callbar / data-hide>
+ * carries it for CSS (app/layout-custom.css). The default layout sets none of
+ * them, so it is exactly the layout that existed before this.
  */
 
 const KEY = "huddle-layout";
@@ -31,7 +33,7 @@ function readLayout(): LayoutPrefs {
   try {
     layout = normalizeLayout(typeof window !== "undefined" ? window.localStorage.getItem(KEY) : null);
   } catch {
-    layout = { ...DEFAULT_LAYOUT, widgets: [] };
+    layout = defaultLayout();
   }
   return layout;
 }
@@ -43,6 +45,10 @@ function applyToDocument(next: LayoutPrefs) {
   else root.dataset.chan = next.channels;
   if (next.members === "right") delete root.dataset.members;
   else root.dataset.members = next.members;
+  if (next.callBar === "bottom") delete root.dataset.callbar;
+  else root.dataset.callbar = next.callBar;
+  if (!next.hide.length) delete root.dataset.hide;
+  else root.dataset.hide = next.hide.join(" ");
 }
 
 function apply(next: LayoutPrefs) {
@@ -85,7 +91,7 @@ export function setLayout(update: LayoutPrefs | ((current: LayoutPrefs) => Layou
 }
 
 export function resetLayout() {
-  setLayout({ ...DEFAULT_LAYOUT, widgets: [] });
+  setLayout(defaultLayout());
 }
 
 function subscribe(listener: () => void) {

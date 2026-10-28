@@ -8,6 +8,8 @@ import { VoiceApi, VideoTile } from "./types";
 import type { QaQuestion } from "@/lib/qa";
 import type { CaptionLine } from "../../hooks/use-live-captions";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useToolbar } from "../widgets/toolbar";
+import { WidgetArea } from "../widgets/widget-area";
 
 export function StageBottomBar({
   voice,
@@ -89,12 +91,17 @@ export function StageBottomBar({
   windowFull: boolean;
 }) {
   const { t } = useI18n();
+  // Customize → Buttons: the order, and the controls moved into "More".
+  const tb = useToolbar("call");
+  const moved = (id: string) => (tb.hidden(id) ? " tb-moved" : "");
+  const moreItem = "vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left";
   return (
     <div className="voice-stage-bottom-bar">
-      <div className="voice-ctrls-centered">
+      <WidgetArea area="call" />
+      <div className="voice-ctrls-centered" {...tb.bar()}>
         <button
           type="button"
-          className={`vctrl-btn vctrl-wide-only ${voice.tableMode ? "active" : ""}`}
+          {...tb.item("table", `vctrl-btn vctrl-wide-only ${voice.tableMode ? "active" : ""}`)}
           aria-label={t("voiceStage.table")}
           onClick={() => setTableMenuOpen(true)}
           title={t("voiceStage.table")}
@@ -104,7 +111,7 @@ export function StageBottomBar({
         {livingRoom && joined && !stageMode && (
           <button
             type="button"
-            className={`vctrl-btn ${livingRoom.open ? "active" : ""}`}
+            {...tb.item("living", `vctrl-btn ${livingRoom.open ? "active" : ""}`)}
             aria-label="Living room"
             aria-pressed={livingRoom.open}
             onClick={() => livingRoom.setOpen(!livingRoom.open)}
@@ -115,7 +122,7 @@ export function StageBottomBar({
         )}
         <button
           type="button"
-          className={`vctrl-btn ${voice.important ? "active" : ""}`}
+          {...tb.item("important", `vctrl-btn ${voice.important ? "active" : ""}`)}
           aria-label={t("voiceStage.speakImportant")}
           onClick={voice.toggleImportant}
           disabled={voice.muted || voice.deafened || voice.forcedMute}
@@ -126,7 +133,7 @@ export function StageBottomBar({
         {voice.priorityAllowed && (
           <button
             type="button"
-            className={`vctrl-btn ${voice.prioritySpeaker ? "active" : ""}`}
+            {...tb.item("priority", `vctrl-btn ${voice.prioritySpeaker ? "active" : ""}`)}
             aria-label={t("priority.toggle")}
             aria-pressed={voice.prioritySpeaker}
             onClick={voice.togglePrioritySpeaker}
@@ -136,11 +143,11 @@ export function StageBottomBar({
           </button>
         )}
 
-        <div className="vctrl-divider" />
+        <div {...tb.item("sep1", "vctrl-divider")} />
 
         <button
           type="button"
-          className={`vctrl-btn ${voice.muted ? "danger" : ""}`}
+          {...tb.item("mute", `vctrl-btn ${voice.muted ? "danger" : ""}`)}
           onClick={voice.toggleMute}
           disabled={voice.forcedMute}
           title={voice.muted ? t("voiceStage.unmute") : t("voiceStage.mute")}
@@ -149,13 +156,13 @@ export function StageBottomBar({
         </button>
         <button
           type="button"
-          className={`vctrl-btn ${voice.deafened ? "danger" : ""}`}
+          {...tb.item("deafen", `vctrl-btn ${voice.deafened ? "danger" : ""}`)}
           onClick={voice.toggleDeafen}
           title={voice.deafened ? t("voiceStage.undeafen") : t("voiceStage.deafen")}
         >
           {voice.deafened ? <VolumeX size={18} /> : <Headphones size={18} />}
         </button>
-        <div className="relative inline-flex items-center">
+        <div {...tb.item("camera", "relative inline-flex items-center")}>
           <button
             type="button"
             className={`vctrl-btn ${voice.cameraOn ? "active" : ""}`}
@@ -453,7 +460,7 @@ export function StageBottomBar({
           )}
         </div>
         {/* Screen Share Button & Options Popover */}
-        <div className="relative inline-flex items-center vctrl-wide-only">
+        <div {...tb.item("screen", "relative inline-flex items-center vctrl-wide-only")}>
           <button
             type="button"
             className={`vctrl-btn ${voice.screenSharing ? "active" : ""}`}
@@ -507,11 +514,11 @@ export function StageBottomBar({
           )}
         </div>
 
-        <div className="vctrl-divider" />
+        <div {...tb.item("sep2", "vctrl-divider")} />
 
         <button
           type="button"
-          className={`vctrl-btn vctrl-wide-only ${!focused ? "active" : ""}`}
+          {...tb.item("focus", `vctrl-btn vctrl-wide-only ${!focused ? "active" : ""}`)}
           onClick={() => setFocusedKey(focused ? null : (videoTiles[0]?.key || null))}
           title={focused ? t("voiceStage.showGrid") : t("voiceStage.focusStream")}
         >
@@ -520,7 +527,7 @@ export function StageBottomBar({
 
         <button
           type="button"
-          className={`vctrl-btn vctrl-wide-only ${activitiesOpen ? "active" : ""}`}
+          {...tb.item("activities", `vctrl-btn vctrl-wide-only ${activitiesOpen ? "active" : ""}`)}
           onClick={() => setActivitiesOpen((open) => !open)}
           title={t("voiceStage.activities")}
         >
@@ -528,7 +535,7 @@ export function StageBottomBar({
         </button>
 
         {/* More Options Popover Menu */}
-        <div className="relative inline-flex items-center">
+        <div {...tb.item("more", "relative inline-flex items-center")}>
           <button
             type="button"
             className={`vctrl-btn ${moreMenuOpen ? "active" : ""}`}
@@ -538,11 +545,65 @@ export function StageBottomBar({
             <MoreHorizontal size={18} />
           </button>
           {moreMenuOpen && (
-            <div className="vctrl-more-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-1.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] shadow-xl flex flex-col gap-1 min-w-[180px]">
+            <div className="vctrl-more-popover absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 p-1.5 rounded-xl bg-[var(--panel)] border border-[var(--line)] shadow-xl flex flex-col gap-1 min-w-[180px] w-max max-w-[280px]">
+              {/* Controls moved out of the bar in Customize → Buttons. */}
+              {tb.hidden("mute") && (
+                <button type="button" className={moreItem} disabled={voice.forcedMute} onClick={() => { voice.toggleMute(); setMoreMenuOpen(false); }}>
+                  {voice.muted ? <MicOff size={15} className="text-[var(--coral)]" /> : <Mic size={15} className="text-[var(--lavender)]" />}
+                  <span>{voice.muted ? t("voiceStage.unmute") : t("voiceStage.mute")}</span>
+                </button>
+              )}
+              {tb.hidden("deafen") && (
+                <button type="button" className={moreItem} onClick={() => { voice.toggleDeafen(); setMoreMenuOpen(false); }}>
+                  {voice.deafened ? <VolumeX size={15} className="text-[var(--coral)]" /> : <Headphones size={15} className="text-[var(--lavender)]" />}
+                  <span>{voice.deafened ? t("voiceStage.undeafen") : t("voiceStage.deafen")}</span>
+                </button>
+              )}
+              {tb.hidden("camera") && (
+                <button
+                  type="button"
+                  className={moreItem}
+                  disabled={videoLocked && !voice.cameraOn}
+                  onClick={() => { setMoreMenuOpen(false); if (voice.cameraOn) voice.stopCamera(); else void voice.startCamera(); }}
+                >
+                  {voice.cameraOn ? <VideoOff size={15} className="text-[var(--lavender)]" /> : <Video size={15} className="text-[var(--lavender)]" />}
+                  <span>{voice.cameraOn ? t("voiceStage.turnCameraOff") : t("voiceStage.turnCameraOn")}</span>
+                </button>
+              )}
+              {tb.hidden("living") && livingRoom && joined && !stageMode && (
+                <button type="button" className={moreItem} onClick={() => { livingRoom.setOpen(!livingRoom.open); setMoreMenuOpen(false); }}>
+                  <Armchair size={15} className="text-[var(--lavender)]" />
+                  <span>{t("tb.call.living")}</span>
+                </button>
+              )}
+              {tb.hidden("important") && (
+                <button type="button" className={moreItem} disabled={voice.muted || voice.deafened || voice.forcedMute} onClick={() => { voice.toggleImportant(); setMoreMenuOpen(false); }}>
+                  <Megaphone size={15} className="text-[var(--coral)]" />
+                  <span>{t("voiceStage.speakImportant")}</span>
+                </button>
+              )}
+              {tb.hidden("priority") && voice.priorityAllowed && (
+                <button type="button" className={moreItem} onClick={() => { voice.togglePrioritySpeaker(); setMoreMenuOpen(false); }}>
+                  <Crown size={15} className="text-[var(--lavender)]" />
+                  <span>{voice.prioritySpeaker ? t("priority.on") : t("priority.toggle")}</span>
+                </button>
+              )}
+              {tb.hidden("qa") && joined && stageMode && (
+                <button type="button" className={moreItem} onClick={() => { setQaOpen((current) => !current); setMoreMenuOpen(false); }}>
+                  <MessageCircleQuestionMark size={15} className="text-[var(--coral)]" />
+                  <span>{t("voiceStage.qa")}{qa.open ? ` (${qa.open})` : ""}</span>
+                </button>
+              )}
+              {tb.hidden("leave") && (
+                <button type="button" className={moreItem} onClick={() => { setMoreMenuOpen(false); if (joined) voice.leave(); else onExit?.(); }}>
+                  <PhoneOff size={15} className="text-[var(--coral)]" />
+                  <span>{joined ? t("voiceStage.leaveCall") : t("voiceStage.close")}</span>
+                </button>
+              )}
               {/* Phones only: the controls that don't fit in the one-row bar. */}
               <button
                 type="button"
-                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("table")}`}
                 onClick={() => {
                   setTableMenuOpen(true);
                   setMoreMenuOpen(false);
@@ -554,7 +615,7 @@ export function StageBottomBar({
               {(voice.screenSharing || canShareScreen()) && (
                 <button
                   type="button"
-                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("screen")}`}
                   disabled={videoLocked && !voice.screenSharing}
                   onClick={() => {
                     setMoreMenuOpen(false);
@@ -569,7 +630,7 @@ export function StageBottomBar({
               {videoTiles.length > 0 && (
                 <button
                   type="button"
-                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("focus")}`}
                   onClick={() => {
                     setFocusedKey(focused ? null : (videoTiles[0]?.key || null));
                     setMoreMenuOpen(false);
@@ -581,7 +642,7 @@ export function StageBottomBar({
               )}
               <button
                 type="button"
-                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("activities")}`}
                 onClick={() => {
                   setActivitiesOpen((open) => !open);
                   setMoreMenuOpen(false);
@@ -593,7 +654,7 @@ export function StageBottomBar({
               {onPopout && (
                 <button
                   type="button"
-                  className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                  className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("popout")}`}
                   onClick={() => {
                     setMoreMenuOpen(false);
                     onPopout();
@@ -605,7 +666,7 @@ export function StageBottomBar({
               )}
               <button
                 type="button"
-                className="vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left"
+                className={`vctrl-more-item vctrl-phone-only flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left${moved("fullscreen")}`}
                 onClick={() => {
                   setMoreMenuOpen(false);
                   toggleFullscreen();
@@ -705,7 +766,7 @@ export function StageBottomBar({
         {joined && stageMode && (
           <button
             type="button"
-            className={`vctrl-btn ${qaOpen ? "active" : ""}`}
+            {...tb.item("qa", `vctrl-btn ${qaOpen ? "active" : ""}`)}
             aria-label={`Questions, ${qa.open} open`}
             aria-pressed={qaOpen}
             onClick={() => setQaOpen((current) => !current)}
@@ -716,11 +777,11 @@ export function StageBottomBar({
           </button>
         )}
 
-        <div className="vctrl-divider" />
+        <div {...tb.item("sep3", "vctrl-divider")} />
 
         <button
           type="button"
-          className="vctrl-btn danger active disconnect-pill-btn"
+          {...tb.item("leave", "vctrl-btn danger active disconnect-pill-btn")}
           onClick={() => (joined ? voice.leave() : onExit?.())}
           title={joined ? t("voiceStage.disconnect") : t("voiceStage.close")}
         >
@@ -728,12 +789,12 @@ export function StageBottomBar({
           <span className="disconnect-label">{joined ? t("voiceStage.leaveCall") : t("voiceStage.close")}</span>
         </button>
 
-        <div className="vctrl-divider" />
+        <div {...tb.item("sep4", "vctrl-divider")} />
 
         {onPopout && (
           <button
             type="button"
-            className="vctrl-btn vctrl-wide-only"
+            {...tb.item("popout", "vctrl-btn vctrl-wide-only")}
             onClick={onPopout}
             title={t("voiceStage.popout")}
           >
@@ -743,7 +804,7 @@ export function StageBottomBar({
 
         <button
           type="button"
-          className="vctrl-btn vctrl-wide-only"
+          {...tb.item("fullscreen", "vctrl-btn vctrl-wide-only")}
           onClick={toggleFullscreen}
           title={isFullscreen || windowFull ? t("voiceStage.exitFullScreen") : t("voiceStage.fullScreen")}
         >

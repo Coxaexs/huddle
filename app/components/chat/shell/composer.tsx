@@ -30,6 +30,7 @@ import type { PersonalEmoticon } from "@/lib/msn-contacts";
 import type { RecorderState } from "../../voice-message";
 import type { ChannelKindInfo } from "@/lib/channel-kinds";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useToolbar } from "../../widgets/toolbar";
 
 export function Composer({
   sendMessage,
@@ -181,6 +182,9 @@ export function Composer({
   user: PublicUser;
 }) {
   const { t } = useI18n();
+  // Customize → Buttons: which tools sit in the bar and which in the ^ menu.
+  const tb = useToolbar("composer");
+  const inBar = (id: string) => (tb.hidden(id) ? "" : " tb-on");
   return (
     <form className="composer-wrap" onSubmit={sendMessage}>
                 {activeSlashCommand && draft.startsWith("/") && (
@@ -645,7 +649,7 @@ export function Composer({
                       nudgeCooling={nudgeCooling || !activeChannelId}
                     />
                   )}
-                  <div className="composer">
+                  <div className="composer" {...tb.bar()}>
                     {voiceRecorder.state !== "idle" ? (
                       <VoiceRecordingBar recorder={voiceRecorder} />
                     ) : (
@@ -713,9 +717,38 @@ export function Composer({
                         className="mobile-composer-menu-popover animate-in fade-in zoom-in-95 duration-150"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {tb.hidden("emoji") && (
+                          <button
+                            type="button"
+                            className="mobile-composer-menu-item"
+                            onClick={() => {
+                              setEmojiOpen((open) => !open);
+                              setGifOpen(false);
+                              setFormatOpen(false);
+                              setMobileComposerMenuOpen(false);
+                            }}
+                          >
+                            <Smile size={18} />
+                            <span>{t("composer.openEmojiPicker")}</span>
+                          </button>
+                        )}
+                        {tb.hidden("gif") && (
+                          <button
+                            type="button"
+                            className="mobile-composer-menu-item"
+                            onClick={() => {
+                              setGifOpen((open) => !open);
+                              setEmojiOpen(false);
+                              setMobileComposerMenuOpen(false);
+                            }}
+                          >
+                            <span className="inline-flex items-center justify-center w-[18px] h-[18px] font-bold text-[10px]">GIF</span>
+                            <span>{t("composer.addGif")}</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className="mobile-composer-menu-item"
+                          className={`mobile-composer-menu-item${tb.hidden("format") ? "" : " tb-in-bar"}`}
                           onClick={() => {
                             setFormatOpen((open) => !open);
                             setMobileComposerMenuOpen(false);
@@ -728,7 +761,7 @@ export function Composer({
                         </button>
                         <button
                           type="button"
-                          className="mobile-composer-menu-item"
+                          className={`mobile-composer-menu-item${tb.hidden("poll") ? "" : " tb-in-bar"}`}
                           onClick={() => {
                             setPollDialogOpen(true);
                             setMobileComposerMenuOpen(false);
@@ -739,7 +772,7 @@ export function Composer({
                         </button>
                         <button
                           type="button"
-                          className="mobile-composer-menu-item"
+                          className={`mobile-composer-menu-item${tb.hidden("games") ? "" : " tb-in-bar"}`}
                           onClick={() => {
                             setGamesOpen((open) => !open);
                             setMobileComposerMenuOpen(false);
@@ -754,7 +787,7 @@ export function Composer({
                         </button>
                         <button
                           type="button"
-                          className="mobile-composer-menu-item"
+                          className={`mobile-composer-menu-item${tb.hidden("commands") ? "" : " tb-in-bar"}`}
                           onClick={() => {
                             setDraft("/");
                             setMobileComposerMenuOpen(false);
@@ -787,7 +820,7 @@ export function Composer({
                     {/* Formatting button (desktop only) */}
                     <button
                       type="button"
-                      className={`composer-emoji-btn composer-format-btn desktop-composer-item ${formatOpen ? "active" : ""}`}
+                      {...tb.item("format", `composer-emoji-btn composer-format-btn desktop-composer-item ${formatOpen ? "active" : ""}${inBar("format")}`)}
                       onClick={() => {
                         setFormatOpen((open) => !open);
                         setEmojiOpen(false);
@@ -803,7 +836,7 @@ export function Composer({
                     {/* Emoji button - visible on both mobile and desktop */}
                     <button
                       type="button"
-                      className="composer-emoji-btn"
+                      {...tb.item("emoji", "composer-emoji-btn")}
                       onClick={() => {
                         setEmojiOpen((open) => !open);
                         setGifOpen(false);
@@ -819,7 +852,7 @@ export function Composer({
                     {/* GIF button - visible on both mobile and desktop */}
                     <button
                       type="button"
-                      className="gif-button"
+                      {...tb.item("gif", "gif-button")}
                       onClick={() => {
                         setGifOpen((open) => !open);
                         setEmojiOpen(false);
@@ -833,7 +866,7 @@ export function Composer({
                     {/* Poll button (desktop only) */}
                     <button
                       type="button"
-                      className="composer-emoji-btn desktop-composer-item"
+                      {...tb.item("poll", `composer-emoji-btn desktop-composer-item${inBar("poll")}`)}
                       onClick={() => setPollDialogOpen(true)}
                       aria-label={t("composer.createPoll")}
                       title={t("composer.createPoll")}
@@ -844,7 +877,7 @@ export function Composer({
                     {/* Games button (desktop only) */}
                     <button
                       type="button"
-                      className={`composer-emoji-btn composer-games-btn desktop-composer-item ${gamesOpen ? "active" : ""}`}
+                      {...tb.item("games", `composer-emoji-btn composer-games-btn desktop-composer-item ${gamesOpen ? "active" : ""}${inBar("games")}`)}
                       onClick={() => {
                         setGamesOpen((open) => !open);
                         setEmojiOpen(false);
@@ -862,7 +895,7 @@ export function Composer({
                     {/* Slash command button - housed in More tools popover */}
                     <button
                       type="button"
-                      className="gif-button desktop-composer-item"
+                      {...tb.item("commands", `gif-button desktop-composer-item${inBar("commands")}`)}
                       onClick={() => {
                         setDraft("/");
                         composerRef.current?.focus();

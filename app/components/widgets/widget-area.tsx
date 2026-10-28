@@ -82,7 +82,7 @@ export function WidgetArea({ area }: { area: Area }) {
     let name = placement.id;
     if (placement.id === MUSIC_ENTRY.id) {
       name = t("widget.music");
-      body = <MusicWidget size={placement.size} />;
+      body = <MusicWidget size={placement.size} area={area} />;
     } else {
       const widget = pickWidget(serverWidgets, placement.id, [host.voiceChannelId, host.activeChannelId]);
       if (widget) {

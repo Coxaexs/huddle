@@ -384,19 +384,6 @@ export function ChannelSidebar({
           <X size={18} />
         </button>
       </div>
-      {activeServer?.bannerUrl && !inDmHome && (
-        <div
-          className="server-banner-header"
-          style={{
-            backgroundImage: `url(${activeServer.bannerUrl})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            height: "120px",
-            width: "100%",
-            flexShrink: 0,
-          }}
-        />
-      )}
       <header className="space-header" style={{ position: "relative" }}>
         <div>
           <span className="eyebrow">
@@ -406,7 +393,13 @@ export function ChannelSidebar({
                 ? t(activeServer.isPublic ? "sidebar.publicSpace" : "sidebar.privateSpace")
                 : null}
           </span>
-          <h1>{inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}</h1>
+          <h1
+            className={inDmHome ? undefined : "space-name-button"}
+            onClick={inDmHome ? undefined : () => setServerMenuOpen((o) => !o)}
+            title={inDmHome ? undefined : t("sidebar.serverSettings")}
+          >
+            {inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}
+          </h1>
         </div>
         {!inDmHome && (
           <Icon label={t("sidebar.serverSettings")} onClick={() => setServerMenuOpen((o) => !o)}>
@@ -741,6 +734,20 @@ export function ChannelSidebar({
         </nav>
       ) : (
         <nav className="channel-nav" aria-label={t("sidebar.channels")}>
+          {/* Inside the list, so it scrolls away with the channels instead of staying pinned. */}
+          {activeServer?.bannerUrl && (
+            <div
+              className="server-banner-header"
+              style={{
+                backgroundImage: `url(${activeServer.bannerUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                height: "120px",
+                width: "100%",
+                flexShrink: 0,
+              }}
+            />
+          )}
           <div className="section-label">
             <span>{t("sidebar.channels")}</span>
             {canManageChannels && (

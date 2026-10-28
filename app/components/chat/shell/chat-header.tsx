@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { Battlemap } from "@/lib/battlemap";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useToolbar } from "../../widgets/toolbar";
 
 export function ChatHeader({
   setMobileNav,
@@ -110,6 +111,9 @@ export function ChatHeader({
   setVoiceChatOpen: (open: boolean) => void;
 }) {
   const { t } = useI18n();
+  // Customize → Buttons: their order, and the ones moved into "More".
+  const tb = useToolbar("header");
+  const anyHidden = ["invite", "search", "mentions", "pins", "saved", "achievements", "members"].some(tb.hidden);
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -179,7 +183,7 @@ export function ChatHeader({
                       : t("header.createChannelHint"))}
               </span>
             </div>
-            <div className="header-actions items-center">
+            <div className="header-actions items-center" {...tb.bar()}>
               <WidgetArea area="header" />
               {stageChannel && (
                 <div className="voice-stage-header-controls flex items-center gap-2 mr-1 flex-shrink-0">
@@ -409,6 +413,7 @@ export function ChatHeader({
                   <Icon
                     label={t("header.findUsers")}
                     onClick={() => setGlobalSearchOpen(true)}
+                    tb={tb.item("invite")}
                   >
                     <UserPlus size={18} />
                   </Icon>
@@ -419,6 +424,7 @@ export function ChatHeader({
                   label={t("header.searchMessages")}
                   active={searchOpen}
                   onClick={() => setSearchOpen((open) => !open)}
+                  tb={tb.item("search")}
                 >
                   <Search size={18} />
                 </Icon>
@@ -428,6 +434,7 @@ export function ChatHeader({
                 active={mentionsOpen}
                 badge={unreadMentionTotal}
                 onClick={() => setMentionsOpen((open) => !open)}
+                tb={tb.item("mentions")}
               >
                 <AtSign size={18} />
               </Icon>
@@ -436,15 +443,17 @@ export function ChatHeader({
                   label={t("header.pinnedMessages")}
                   active={pinsOpen}
                   onClick={() => setPinsOpen((open) => !open)}
+                  tb={tb.item("pins")}
                 >
                   <Pin size={18} />
                 </Icon>
-                <Icon label={t("header.savedMessages")} active={savedOpen} onClick={toggleSaved}>
+                <Icon label={t("header.savedMessages")} active={savedOpen} onClick={toggleSaved} tb={tb.item("saved")}>
                   <Bookmark size={18} />
                 </Icon>
                 <Icon
                   label={t("header.achievements")}
                   onClick={() => openAchievements()}
+                  tb={tb.item("achievements")}
                 >
                   <Award size={18} />
                 </Icon>
@@ -459,30 +468,47 @@ export function ChatHeader({
                 label={t("header.toggleMemberList")}
                 active={membersOpen}
                 onClick={() => setMembersOpen((open) => !open)}
+                tb={tb.item("members")}
               >
                 <Users size={18} />
               </Icon>
-              <div className="header-more" ref={moreRef}>
+              <div className={`header-more ${anyHidden ? "has-hidden" : ""}`} ref={moreRef}>
                 <Icon label={t("header.more")} active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
                   <MoreHorizontal size={18} />
                 </Icon>
                 {moreOpen && (
                   <div className="header-more-menu" role="menu">
+                    {/* On desktop the menu lists only what was moved out of the bar (tb-in-bar hides the rest). */}
+                    {tb.hidden("search") && !inDmHome && (
+                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setSearchOpen((open) => !open))}>
+                        <Search size={18} /> {t("header.searchMessages")}
+                      </button>
+                    )}
+                    {tb.hidden("mentions") && (
+                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setMentionsOpen((open) => !open))}>
+                        <AtSign size={18} /> {t("header.mentions")}
+                      </button>
+                    )}
+                    {tb.hidden("members") && (
+                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setMembersOpen((open) => !open))}>
+                        <Users size={18} /> {t("header.toggleMemberList")}
+                      </button>
+                    )}
                     {!inDmHome && (
-                      <button type="button" role="menuitem" onClick={pick(() => setGlobalSearchOpen(true))}>
+                      <button type="button" role="menuitem" className={tb.hidden("invite") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => setGlobalSearchOpen(true))}>
                         <UserPlus size={18} /> {t("header.findPeople")}
                       </button>
                     )}
-                    <button type="button" role="menuitem" onClick={pick(() => setPinsOpen((open) => !open))}>
+                    <button type="button" role="menuitem" className={tb.hidden("pins") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => setPinsOpen((open) => !open))}>
                       <Pin size={18} /> {t("header.pinnedMessages")}
                     </button>
-                    <button type="button" role="menuitem" onClick={pick(toggleSaved)}>
+                    <button type="button" role="menuitem" className={tb.hidden("saved") ? "tb-moved" : "tb-in-bar"} onClick={pick(toggleSaved)}>
                       <Bookmark size={18} /> {t("header.savedMessages")}
                     </button>
-                    <button type="button" role="menuitem" onClick={pick(() => openAchievements())}>
+                    <button type="button" role="menuitem" className={tb.hidden("achievements") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => openAchievements())}>
                       <Award size={18} /> {t("header.achievements")}
                     </button>
-                    <button type="button" role="menuitem" onClick={pick(() => setSettingsOpen(true))}>
+                    <button type="button" role="menuitem" className="tb-in-bar" onClick={pick(() => setSettingsOpen(true))}>
                       <Settings size={18} /> {t("common.settings")}
                     </button>
                   </div>

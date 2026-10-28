@@ -138,25 +138,42 @@
     border-top: 1px solid var(--line);
   }
 
-  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .sidebar > :is(.server-banner-header, .mobile-drawer-header, .sidebar-resize-handle) {
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .sidebar :is(.server-banner-header, .mobile-drawer-header, .sidebar-resize-handle) {
     display: none !important;
   }
 
+  /* The server name as a small card at the start of the strip: up to two
+     lines, and the whole card opens the server menu. */
   :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .sidebar > .space-header {
     flex: 0 0 auto;
+    align-items: center;
     height: auto;
-    min-height: 0;
-    max-width: 220px;
-    padding: 0 6px 0 2px;
-    border: 0;
-    gap: 6px;
+    min-height: 40px;
+    max-width: 196px;
+    padding: 4px 2px 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    gap: 2px;
   }
 
   :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .sidebar > .space-header h1 {
-    font-size: 15px;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.2;
+    white-space: normal;
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+  }
+
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .sidebar > .space-header .icon-button {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    font-size: 11px;
   }
 
   :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .sidebar > .space-header .eyebrow {
@@ -291,7 +308,7 @@
 /* Widgets in the channel list never squeeze the channels out: past half the
    column they scroll. */
 .sidebar > .widget-area {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   max-height: 50%;
   overflow-y: auto;
@@ -854,6 +871,14 @@
   box-sizing: border-box;
 }
 
+/* The base grid row is a fixed 100dvh; while the tray is open it has to give
+   way, or the panels (and the call controls) run underneath the tray. Still a
+   fixed height, so anything the grid parks in a spare row (the member list
+   during a call) stays out of sight below it. */
+:root[data-customizing]:not([data-chan]):not([data-members]) .app-shell {
+  grid-template-rows: calc(100dvh - var(--customize-h, 196px)) !important;
+}
+
 :root[data-customizing]:not(#_) .discord-user-footer {
   bottom: calc(var(--customize-h, 196px) + 8px);
 }
@@ -1238,3 +1263,525 @@
     width: 100vw;
   }
 }
+
+/* --- Round 2: voice card in the strip, banner, parts, toolbars, call bar -- */
+
+/* The server name opens the server menu, like the ••• next to it. */
+.space-name-button {
+  cursor: pointer;
+}
+
+.space-name-button:hover {
+  opacity: 0.85;
+}
+
+/* The banner now sits inside the channel list (it scrolls away with it). */
+:root:not([data-custom-theme-id^="msn"]):not(#_) .channel-nav > .server-banner-header {
+  margin: -10px 0 14px;
+  width: 100% !important;
+}
+
+/* Parts someone switched off (Customize → Layout → Show). */
+:root[data-hide~="banner"] .server-banner-header,
+:root[data-hide~="events"] .events-chip,
+:root[data-hide~="topic"] .chat-header .channel-topic {
+  display: none !important;
+}
+
+@media (min-width: 761px) {
+  /* In a call with the channels in a strip, the voice card docks beside the
+     account card over the free end of the member list (the strip itself
+     has no room for two rows). */
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .app-shell > .sidebar {
+    position: relative;
+  }
+
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-members="left"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .app-shell.has-members > .sidebar > .mini-voice-bar {
+    position: absolute;
+    right: 8px;
+    width: calc(var(--members-w, 240px) - 16px);
+    z-index: 35;
+    border: 1px solid var(--line) !important;
+    border-radius: 14px;
+    box-shadow: var(--shadow-md, 0 10px 28px #0000002e);
+  }
+
+  :root[data-chan="bottom"]:not([data-members="left"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .app-shell.has-members > .sidebar > .mini-voice-bar {
+    bottom: calc(100% + 8px);
+  }
+
+  :root[data-chan="top"]:not([data-members="left"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .app-shell.has-members > .sidebar > .mini-voice-bar {
+    top: calc(100% + 8px);
+  }
+
+  :root[data-chan="bottom"]:not([data-members="left"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-shell.has-members:has(> .sidebar > .mini-voice-bar) > .member-panel {
+    padding-bottom: 104px;
+  }
+
+  :root[data-chan="top"]:not([data-members="left"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-shell.has-members:has(> .sidebar > .mini-voice-bar) > .member-panel {
+    padding-top: 104px;
+  }
+
+  /* A room's people show as faces only in the strip. */
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .sidebar .voice-member > span {
+    display: none;
+  }
+
+  /* No member list beside it (in the call view, closed, or on the left):
+     the voice card shrinks to one row inside the strip. */
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) :is(.app-shell:not(.has-members), :root[data-members="left"] .app-shell) > .sidebar > .mini-voice-bar {
+    padding: 4px 6px 4px 8px;
+    border: 1px solid var(--line) !important;
+    border-radius: 12px;
+  }
+
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) :is(.app-shell:not(.has-members), :root[data-members="left"] .app-shell) > .sidebar > .mini-voice-bar .mini-voice-bar-header {
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  :root:is([data-chan="top"], [data-chan="bottom"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) :is(.app-shell:not(.has-members), :root[data-members="left"] .app-shell) > .sidebar > .mini-voice-bar .mini-voice-actions {
+    width: auto;
+    gap: 4px;
+  }
+
+  /* --- Toolbars someone rearranged (Customize → Buttons) --- */
+  :is(.header-actions, .voice-ctrls-centered, .composer) [data-tb] {
+    order: var(--tb-order, 0);
+  }
+
+  .header-actions > .header-more,
+  .composer > .send-button {
+    order: 99;
+  }
+
+  /* Desktop keeps "More" out of the header until a button is moved into it,
+     and then it lists only those. */
+  .chat-header .header-more.has-hidden {
+    display: inline-flex;
+  }
+
+  .header-more-menu .tb-in-bar {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .composer .desktop-composer-item.tb-on {
+    display: inline-flex !important;
+  }
+
+  .mobile-composer-menu-item.tb-in-bar {
+    display: none !important;
+  }
+
+  .vctrl-more-item.vctrl-phone-only.tb-moved {
+    display: flex !important;
+  }
+}
+
+.tb-off {
+  display: none !important;
+}
+
+/* In Customize the bars are outlined and their buttons draggable in place. */
+:root[data-customizing] [data-tb-bar] {
+  outline: 2px dashed color-mix(in srgb, var(--lavender, var(--accent)) 55%, transparent);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+:root[data-customizing] [data-tb][draggable="true"] {
+  cursor: grab;
+}
+
+[data-tb-drop="before"] {
+  box-shadow: -3px 0 0 0 var(--lavender, var(--accent)) !important;
+}
+
+[data-tb-drop="after"] {
+  box-shadow: 3px 0 0 0 var(--lavender, var(--accent)) !important;
+}
+
+:root:is([data-callbar="left"], [data-callbar="right"]) .voice-ctrls-centered [data-tb-drop="before"] {
+  box-shadow: 0 -3px 0 0 var(--lavender, var(--accent)) !important;
+}
+
+:root:is([data-callbar="left"], [data-callbar="right"]) .voice-ctrls-centered [data-tb-drop="after"] {
+  box-shadow: 0 3px 0 0 var(--lavender, var(--accent)) !important;
+}
+
+/* --- Where the call controls sit (Customize → Layout) --- */
+
+/* A widget line beside the controls stacks with them. */
+.voice-stage-bottom-bar:has(> .widget-area) {
+  flex-direction: column;
+}
+
+.widget-area-call {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0 12px 8px;
+}
+
+.widget-area-call .widget {
+  flex: 0 1 auto;
+  max-width: min(880px, 100%);
+}
+
+.widget-area-call .widget-large {
+  flex: 1 1 560px;
+}
+
+.mw-wide {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.mw-wide .mw-art {
+  width: 38px;
+  height: 38px;
+}
+
+.mw-wide .mw-text {
+  flex: 0 1 200px;
+}
+
+.mw-wide .mw-progress {
+  flex: 1 1 120px;
+  margin: 0 0 12px;
+}
+
+.mw-wide .mw-queue {
+  flex: 0 1 220px;
+}
+
+.mw-wide-note {
+  flex: 0 1 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 769px) {
+  :root[data-callbar="top"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-stage > .voice-stage-bottom-bar {
+    order: 1;
+    flex-direction: column-reverse;
+  }
+
+  :root[data-callbar="top"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-stage > .voice-stage-body {
+    order: 2;
+  }
+
+  :root[data-callbar="top"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered {
+    margin: 4px auto 8px;
+  }
+
+  :root[data-callbar="top"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .widget-area-call {
+    padding: 0 12px 4px;
+  }
+
+  /* Popovers open away from the edge the bar sits on. */
+  :root[data-callbar="top"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-ctrls-centered .bottom-full {
+    bottom: auto !important;
+    top: 100% !important;
+    margin-bottom: 0 !important;
+    margin-top: 0.75rem !important;
+  }
+
+  /* Down a side: a column of smaller buttons, centred on that edge. */
+  :root:is([data-callbar="left"], [data-callbar="right"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-stage > .voice-stage-bottom-bar {
+    position: static;
+  }
+
+  :root:is([data-callbar="left"], [data-callbar="right"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 25;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    width: auto;
+    max-height: calc(100% - 24px);
+    margin: 0;
+    padding: 8px 6px;
+    gap: 4px;
+  }
+
+  :root[data-callbar="left"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered {
+    left: 12px;
+  }
+
+  :root[data-callbar="right"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered {
+    right: 12px;
+  }
+
+  :root:is([data-callbar="left"], [data-callbar="right"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered :is(.vctrl-btn, .disconnect-pill-btn) {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  :root:is([data-callbar="left"], [data-callbar="right"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .voice-ctrls-centered .vctrl-divider {
+    width: 22px;
+    height: 1px;
+    margin: 3px 0;
+  }
+
+  :root[data-callbar="left"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-stage-body {
+    padding-left: 78px;
+  }
+
+  :root[data-callbar="right"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-stage-body {
+    padding-right: 78px;
+  }
+
+  :root:is([data-callbar="left"], [data-callbar="right"]):not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-ctrls-centered .bottom-full {
+    bottom: auto !important;
+    top: 50% !important;
+    margin: 0 !important;
+    translate: 0 -50% !important;
+  }
+
+  :root[data-callbar="left"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-ctrls-centered .bottom-full {
+    left: calc(100% + 12px) !important;
+    right: auto !important;
+  }
+
+  :root[data-callbar="right"]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .voice-ctrls-centered .bottom-full {
+    left: auto !important;
+    right: calc(100% + 12px) !important;
+  }
+}
+
+/* --- The tray: tabs, button rows, the hide bin, show toggles ---------- */
+
+.customize-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  flex: 0 0 auto;
+}
+
+.customize-tab {
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.customize-tab.active {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 3px #0000001f;
+}
+
+.customize-bar-body {
+  overflow-x: auto;
+}
+
+.customize-call-zone {
+  display: flex;
+  margin-top: 4px;
+}
+
+.customize-call-zone .widget-zone {
+  flex: 1 1 auto;
+  max-width: 720px;
+  min-height: 46px;
+}
+
+.customize-buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 6px 16px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tb-editor {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tb-editor-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.tb-editor-reset {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--lavender, var(--accent));
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tb-chips {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 3px 2px;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--chat-bg, var(--paper)));
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: grab;
+}
+
+.tb-chip:hover {
+  border-color: color-mix(in srgb, var(--lavender, var(--accent)) 60%, var(--line));
+}
+
+.tb-chip.off {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.tb-chip.off .tb-chip-name {
+  text-decoration: line-through;
+}
+
+.tb-chip.sep {
+  padding: 0 7px;
+}
+
+.tb-chip.sep .tb-chip-name {
+  display: none;
+}
+
+.tb-chip-sep {
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+.tb-chip-text {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tb-bin {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.tb-bin.is-over {
+  border-color: var(--coral, #e86a5f);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--coral, #e86a5f) 10%, transparent);
+}
+
+.layout-show {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.layout-picker:not(.layout-picker-compact) .layout-show {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout-show-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 3px 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.layout-show-box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--line);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.layout-show-toggle.on .layout-show-box {
+  border-color: var(--lavender, var(--accent));
+  background: var(--lavender, var(--accent));
+  color: var(--accent-ink, #fff);
+}
+
+/* The call view drawing: the stage with its bar on one side. */
+.call-diagram {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "stage";
+  position: relative;
+}
+
+.call-diagram .ld-stage {
+  grid-area: stage;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.call-diagram .ld-bar {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--lavender, var(--accent));
+}
+
+.call-diagram.call-bottom .ld-bar { left: 18px; right: 18px; bottom: 5px; height: 5px; }
+.call-diagram.call-top .ld-bar { left: 18px; right: 18px; top: 5px; height: 5px; }
+.call-diagram.call-left .ld-bar { top: 9px; bottom: 9px; left: 5px; width: 5px; }
+.call-diagram.call-right .ld-bar { top: 9px; bottom: 9px; right: 5px; width: 5px; }
