@@ -1,9 +1,11 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Copy, Check, Volume2, Dices, Coins, Sparkles, BookOpen } from "lucide-react";
 import { highlight } from "../lib/highlight";
-import { LinkPreviewCard } from "./link-preview";
+import { isGifPageUrl } from "@/lib/unfurl";
+import { GifPageEmbed, LinkPreviewCard } from "./link-preview";
 import { MessageLinkCard } from "./message-link-card";
 import { parseMessageLink, type MessageLinkTarget } from "../lib/chat/message-links";
 import { extractInviteCodes } from "../lib/chat/invites";
@@ -24,22 +26,14 @@ const MAX_PREVIEWS = 3;
 
 const IMAGE_PATTERN = /\.(gif|png|jpe?g|webp|avif)(\?|#|$)/i;
 
-/**
- * Outside images load through our proxy, so posting an image link cannot
- * collect the IP address of everyone who reads the channel. Our own uploads
- * load directly.
- */
-export function proxiedImage(url: string): string {
-  if (!/^https?:\/\//i.test(url)) return url;
-  return `/hangout/api/unfurl/image?url=${encodeURIComponent(url)}`;
-}
+export { proxiedImage };
 
 export function isImageUrl(value: string): boolean {
   const url = value.trim();
   // Custom stickers are served from our own uploads under a relative path.
   if (/^\/hangout\/api\/uploads\//i.test(url)) return true;
-  // The Hoffy sticker pack ships with the app (app/lib/hoffy-stickers.ts).
-  if (/^\/hangout\/stickers\/hoffy\/[a-z-]+\.svg$/i.test(url)) return true;
+  // The Hoffy and gang sticker packs ship with the app (app/lib/hoffy-stickers.ts).
+  if (/^\/hangout\/stickers\/(hoffy\/[a-z-]+\.svg|gang\/[a-z-]+\.webp)$/i.test(url)) return true;
   if (!/^https?:\/\//i.test(url)) return false;
   // Klipy and friends serve GIFs and stickers from paths that end in the
   // extension (.gif, .webp, …).
@@ -579,6 +573,10 @@ export function MessageBody({
         onClick={() => onImage?.(proxiedImage(trimmed))}
       />
     );
+  }
+  // …and one that is nothing but a Tenor/Giphy link, as just the GIF.
+  if (linkPreviews && isGifPageUrl(trimmed)) {
+    return <GifPageEmbed url={trimmed} onImage={onImage} />;
   }
 
   const images: string[] = [];

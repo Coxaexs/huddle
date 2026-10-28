@@ -32,7 +32,7 @@ function matchesCategory(action: string, cat: AuditCategory): boolean {
     return action.startsWith("member.") || action.startsWith("invite.");
   }
   if (cat === "integrations") {
-    return action.startsWith("webhook.") || action.startsWith("bot.");
+    return action.startsWith("webhook.") || action.startsWith("bot.") || action.startsWith("feed.");
   }
   return true;
 }

@@ -40,6 +40,7 @@ export const SIDE_FEATURES = {
   digest: "Weekly digest",
   emoticons: "Custom emoticons",
   events: "Server events",
+  feeds: "Feeds (RSS, YouTube, Reddit, Bluesky) posting into channels",
   "game-servers": "Game server status and RCON",
   games: "Chat games",
   gifs: "GIF search",

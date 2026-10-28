@@ -121,50 +121,58 @@ export function WebhooksPanel({
   }
 
   return (
-    <section className="dnd-settings webhooks-settings">
-      <h2>Webhooks ({data.webhooks.length}/{data.max})</h2>
-      <div className="dnd-settings-row stacked">
+    <section className="integration-section webhooks-settings" id="integration-webhooks">
+      <header className="integration-section-head">
+        <h2>
+          Webhooks <span className="integration-count">{data.webhooks.length}/{data.max}</span>
+        </h2>
         <p>
-          A webhook is a secret URL that posts into one channel. It takes Discord&apos;s webhook format, so GitHub,
-          CI, uptime monitors and scripts that post to Discord work here too. Add <code>/github</code> to the URL for
-          GitHub&apos;s own events, or <code>/slack</code> for Slack-style tools. Each one can post 30 times a minute.
+          A secret URL that posts into one channel. Anything that can post to a Discord webhook works here too: CI,
+          uptime monitors, Home Assistant, scripts. For GitHub, GitLab or Gitea/Forgejo add <code>/github</code>,{" "}
+          <code>/gitlab</code> or <code>/gitea</code> to the URL; <code>/slack</code> takes Slack-style posts.
         </p>
-        {data.channels.length ? (
-          <div className="webhook-create">
-            <input
-              className="webhook-avatar-input"
-              value={avatar}
-              onChange={(e) => setAvatar(e.target.value)}
-              aria-label="Webhook emoji"
-              maxLength={8}
-            />
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. GitHub" maxLength={40} aria-label="Webhook name" />
-            <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Channel">
-              {data.channels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  #{c.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="discord-btn primary-indigo"
-              disabled={busy || !name.trim() || !channelId || data.webhooks.length >= data.max}
-              onClick={() => void create()}
-            >
-              New webhook
-            </button>
-          </div>
-        ) : (
-          <p>This server has no text channel to post into yet.</p>
-        )}
-      </div>
+      </header>
+      {data.channels.length ? (
+        <form
+          className="integration-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy && name.trim() && channelId && data.webhooks.length < data.max) void create();
+          }}
+        >
+          <input
+            className="webhook-avatar-input"
+            value={avatar}
+            onChange={(e) => setAvatar(e.target.value)}
+            aria-label="Webhook emoji"
+            maxLength={8}
+          />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name it, e.g. GitHub" maxLength={40} aria-label="Webhook name" />
+          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Channel">
+            {data.channels.map((c) => (
+              <option key={c.id} value={c.id}>
+                #{c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="discord-btn primary-indigo"
+            disabled={busy || !name.trim() || !channelId || data.webhooks.length >= data.max}
+          >
+            New webhook
+          </button>
+        </form>
+      ) : (
+        <p className="integration-empty">This server has no text channel to post into yet.</p>
+      )}
+      {data.webhooks.length > 0 && <ul className="integration-list">
       {data.webhooks.map((hook) => (
-        <div key={hook.id} className="dnd-settings-row webhook-row">
-          <span className="webhook-avatar" aria-hidden>
+        <li key={hook.id} className="integration-row">
+          <span className="integration-row-icon" aria-hidden>
             {hook.avatar}
           </span>
-          <div className="webhook-main">
+          <div className="integration-row-main">
             <strong>{hook.name}</strong>
             <p>
               Posts to{" "}
@@ -184,7 +192,7 @@ export function WebhooksPanel({
               {hook.uses ? `${hook.uses} post${hook.uses === 1 ? "" : "s"}, last ${new Date(hook.lastUsedAt || hook.createdAt).toLocaleString()}` : "not used yet"}
             </p>
           </div>
-          <div className="dnd-settings-toggle">
+          <div className="integration-row-actions">
             <button type="button" className="discord-btn secondary-gray" onClick={() => void copy(hook)} title="Copy URL">
               <Copy size={14} /> Copy URL
             </button>
@@ -222,8 +230,9 @@ export function WebhooksPanel({
               <Trash2 size={14} />
             </button>
           </div>
-        </div>
+        </li>
       ))}
+      </ul>}
     </section>
   );
 }

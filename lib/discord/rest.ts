@@ -852,6 +852,7 @@ const AUDIT_ACTION_TYPES: Record<string, number> = {
   "member.timeout": 24,
   "member.timeout_remove": 24,
   "member.move": 26,
+  "member.disconnect": 27,
   "bot.create": 28,
   "role.create": 30,
   "role.update": 31,

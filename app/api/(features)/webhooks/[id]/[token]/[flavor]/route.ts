@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string; token: string; flavor: string }> };
 
-/** The same webhook taking GitHub's (`/github`) or Slack's (`/slack`) payloads. */
+/** The same webhook taking GitHub's, GitLab's, Gitea's/Forgejo's or Slack's own payloads. */
 async function handle(request: Request, props: Params) {
   const db = bindings().DB;
   if (!db) return webhookError(503, 0, "Storage is not connected.");

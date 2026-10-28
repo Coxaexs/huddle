@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, Clock, HelpCircle, Pencil, Plus, Trash2, Volume2, X } from "lucide-react";
+import { CalendarDays, CalendarPlus, Check, Clock, Copy, Download, HelpCircle, Pencil, Plus, RefreshCw, Trash2, Volume2, X } from "lucide-react";
 import type { PublicEvent, RsvpStatus } from "@/lib/events";
-import { apiFetch } from "../lib/client";
+import { buildIcs } from "@/lib/ics";
+import { apiFetch, basePath } from "../lib/client";
 import { Avatar } from "./avatar";
 
 /** Upcoming events for a server, refetched whenever `refreshKey` changes. */
@@ -69,6 +70,7 @@ function nextHour(): string {
 
 interface EventsPanelProps {
   serverId: string;
+  serverName?: string;
   events: PublicEvent[];
   reload: () => Promise<void>;
   userId: string;
@@ -96,8 +98,101 @@ type Draft = {
 
 const RSVP_LABELS: Record<RsvpStatus, string> = { going: "Going", maybe: "Maybe", no: "Can't" };
 
+/** The subscription link, as calendar apps want it (webcal://) and as plain https. */
+function calendarLinks(token: string) {
+  const path = `${window.location.host}${basePath}/api/events/calendar/${token}.ics`;
+  const webcal = `webcal://${path}`;
+  return {
+    https: `${window.location.protocol}//${path}`,
+    webcal,
+    google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`,
+  };
+}
+
+/** One event as an .ics file the browser downloads (Apple, Outlook and Google all import it). */
+function downloadEvent(event: PublicEvent, serverName: string) {
+  const ics = buildIcs(
+    [
+      {
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        serverName,
+        url: `${window.location.origin}${basePath}/?server=${encodeURIComponent(event.serverId)}`,
+      },
+    ],
+    { name: event.title },
+  );
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${event.title.replace(/[^\w\s-]+/g, "").trim().slice(0, 60) || "event"}.ics`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** "Subscribe": every event from every server, in the calendar app people already use. */
+function CalendarSubscribe({ onError }: { onError: (text: string) => void }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    apiFetch<{ token: string }>("/api/events/calendar")
+      .then((data) => setToken(data.token))
+      .catch((failure) => onError(failure instanceof Error ? failure.message : "Could not make your calendar link."));
+  }, [onError]);
+  if (!token) return <div className="events-subscribe" aria-busy="true" />;
+  const links = calendarLinks(token);
+  return (
+    <div className="events-subscribe">
+      <p>
+        See every event from all your servers in your own calendar. New ones show up there by themselves.
+      </p>
+      <div className="events-subscribe-actions">
+        <a className="events-secondary" href={links.google} target="_blank" rel="noreferrer">
+          Google Calendar
+        </a>
+        <a className="events-secondary" href={links.webcal}>
+          Apple / Outlook
+        </a>
+        <button
+          type="button"
+          className="events-secondary"
+          onClick={() => {
+            void navigator.clipboard?.writeText(links.https).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1800);
+            });
+          }}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy link"}
+        </button>
+      </div>
+      <p className="events-muted">
+        Anyone with this link can see your events&apos; names and times.{" "}
+        <button
+          type="button"
+          className="events-text-btn"
+          onClick={() => {
+            void apiFetch<{ token: string }>("/api/events/calendar", {
+              method: "POST",
+              body: JSON.stringify({ reset: true }),
+            })
+              .then((data) => setToken(data.token))
+              .catch(() => onError("Could not reset the link."));
+          }}
+        >
+          <RefreshCw size={11} /> Reset link
+        </button>
+      </p>
+    </div>
+  );
+}
+
 export function EventsPanel({
   serverId,
+  serverName = "Hoffle",
   events,
   reload,
   userId,
@@ -108,6 +203,7 @@ export function EventsPanel({
   onRequestConfirm,
 }: EventsPanelProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [, setClock] = useState(0);
@@ -209,6 +305,16 @@ export function EventsPanel({
           </h2>
           <div className="events-panel-head-actions">
             {!draft && (
+              <button
+                type="button"
+                className={`events-secondary ${subscribing ? "chosen" : ""}`}
+                aria-expanded={subscribing}
+                onClick={() => setSubscribing((open) => !open)}
+              >
+                <CalendarPlus size={14} /> Subscribe
+              </button>
+            )}
+            {!draft && (
               <button type="button" className="events-primary" onClick={() => startDraft()}>
                 <Plus size={14} /> New event
               </button>
@@ -220,6 +326,7 @@ export function EventsPanel({
         </header>
 
         {error && <p className="events-error" role="alert">{error}</p>}
+        {subscribing && !draft && <CalendarSubscribe onError={setError} />}
 
         {draft ? (
           <form
@@ -314,8 +421,18 @@ export function EventsPanel({
                     <span className={`events-when ${open ? "is-open" : ""}`}>
                       <Clock size={12} /> {eventWhen(event)}
                     </span>
+                    <span className="events-card-tools">
+                      <button
+                        type="button"
+                        className="events-icon-btn"
+                        aria-label={`Add ${event.title} to your calendar`}
+                        title="Add to calendar"
+                        onClick={() => downloadEvent(event, serverName)}
+                      >
+                        <Download size={13} />
+                      </button>
                     {mine && (
-                      <span className="events-card-tools">
+                      <>
                         <button
                           type="button"
                           className="events-icon-btn"
@@ -348,8 +465,9 @@ export function EventsPanel({
                         >
                           <Trash2 size={13} />
                         </button>
-                      </span>
+                      </>
                     )}
+                    </span>
                   </div>
                   <h3>{event.title}</h3>
                   <p className="events-meta">

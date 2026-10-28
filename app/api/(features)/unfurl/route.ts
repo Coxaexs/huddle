@@ -15,7 +15,7 @@ const FRESH_MS = 24 * 60 * 60 * 1000;
 /** Pages with nothing to show are retried sooner, in case that was a blip. */
 const EMPTY_FRESH_MS = 60 * 60 * 1000;
 /** Bump when the scraper changes, so old (possibly empty) results are skipped. */
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 
 /** Link preview for one URL: cached in D1, fetched on a miss. */
 export async function GET(request: Request) {

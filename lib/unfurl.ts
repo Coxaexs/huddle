@@ -19,6 +19,8 @@ export interface LinkPreview {
   /** Large image card (summary_large_image / og:image with no twitter card). */
   largeImage?: boolean;
   themeColor?: string;
+  /** A GIF site's page: `image` is the animated GIF itself, shown bare like Discord. */
+  gif?: boolean;
 }
 
 const USER_AGENT = "Mozilla/5.0 (compatible; HuddleBot/1.0; link previews)";
@@ -207,6 +209,7 @@ export function parsePreview(html: string, pageUrl: string): LinkPreview | null 
     image,
     largeImage: Boolean(image) && (card === "summary_large_image" || card === "player" || !card),
     themeColor,
+    ...(image && isGifPageUrl(pageUrl) ? { gif: true } : {}),
   };
 }
 
@@ -238,17 +241,29 @@ async function readCapped(response: Response): Promise<string> {
   return new TextDecoder("utf-8", { fatal: false }).decode(merged);
 }
 
+/** The last two labels of a hostname: www.youtube.com and consent.youtube.com match. */
+function siteOf(host: string): string {
+  return host.toLowerCase().split(".").slice(-2).join(".");
+}
+
 /**
  * Fetches a public URL, following redirects by hand so every hop gets the
  * same checks (shape + DNS). Returns null for anything unsafe or not OK.
+ * `headers` (a consent cookie, say) go only to hops on the first URL's site.
  */
-export async function safeFetch(raw: string, accept: string): Promise<Response | null> {
+export async function safeFetch(
+  raw: string,
+  accept: string,
+  headers?: Record<string, string>,
+): Promise<Response | null> {
   let current = isSafePublicUrl(raw);
+  const site = current ? siteOf(current.hostname) : "";
   for (let hop = 0; current && hop <= MAX_REDIRECTS; hop += 1) {
     if (!(await resolvesPublic(current.hostname.toLowerCase()))) return null;
+    const extra = headers && siteOf(current.hostname) === site ? headers : {};
     const response = await fetch(current.toString(), {
       redirect: "manual",
-      headers: { "user-agent": USER_AGENT, accept, "accept-language": "en" },
+      headers: { ...extra, "user-agent": USER_AGENT, accept, "accept-language": "en" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (response.status >= 300 && response.status < 400) {
@@ -265,6 +280,17 @@ export async function safeFetch(raw: string, accept: string): Promise<Response |
     return response;
   }
   return null;
+}
+
+/**
+ * A Tenor or Giphy page link (not the file itself). Their og:image is the
+ * animated GIF, so the chat shows that instead of a card.
+ */
+export function isGifPageUrl(raw: string): boolean {
+  return (
+    /^https?:\/\/(?:www\.)?tenor\.com\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?view\/[\w%-]+\/?$/i.test(raw) ||
+    /^https?:\/\/(?:www\.)?giphy\.com\/(?:gifs|stickers)\/[\w%-]+\/?$/i.test(raw)
+  );
 }
 
 /** YouTube video id for watch / youtu.be / shorts / embed / live links. */

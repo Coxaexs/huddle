@@ -1,11 +1,22 @@
 "use client";
 
-import { Trash2, Plus, Copy, Power, Terminal } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Power, Terminal, Trash2 } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
 import { ServerBot, Tab } from "./types";
 import { DndSettingsPanel } from "./dnd-settings";
+import { FeedsPanel } from "./feeds-settings";
 import { GameServerSettingsPanel } from "./game-server-settings";
 import { WebhooksPanel } from "./webhooks-settings";
+
+/** Jumps to a panel further down and puts the cursor in its first box. */
+function goTo(id: string) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  section.classList.add("is-flashing");
+  window.setTimeout(() => section.classList.remove("is-flashing"), 1400);
+  window.setTimeout(() => section.querySelector<HTMLInputElement>("input:not(.webhook-avatar-input)")?.focus({ preventScroll: true }), 450);
+}
 
 export function ServerIntegrationsTab({
   tab,
@@ -36,227 +47,160 @@ export function ServerIntegrationsTab({
   toggleBot: (bot: ServerBot) => Promise<void>;
   removeBot: (bot: ServerBot) => Promise<void>;
 }) {
+  if (tab !== "integrations") return null;
+
+  const has = (kind: string) => bots.some((bot) => bot.kind === kind);
+  const createCustomBot = () =>
+    onRequestPrompt({
+      title: "Create a bot",
+      message: "Give your bot a name. It gets a Discord-compatible token, so discord.py and discord.js bots run here as they are.",
+      placeholder: "e.g. Trivia Bot",
+      confirmText: "Create bot",
+      onConfirm: (val) => {
+        if (val?.trim()) void addBot(val.trim(), "custom", "🤖");
+      },
+    });
+
+  const apps: Array<{
+    icon: string;
+    name: string;
+    blurb: string;
+    action: string;
+    added?: boolean;
+    onClick: () => void;
+  }> = [
+    { icon: "📰", name: "Feeds", blurb: "YouTube channels, subreddits, Bluesky, blogs and GitHub releases, posted as they come out.", action: "Follow a feed", onClick: () => goTo("integration-feeds") },
+    { icon: "🪝", name: "Webhooks", blurb: "GitHub, GitLab, CI, uptime monitors, Home Assistant: anything that posts to Discord.", action: "Make a webhook", onClick: () => goTo("integration-webhooks") },
+    { icon: "🎵", name: "Music Bot", blurb: "Plays songs in voice for everyone at once, with a queue, lyrics and autoplay.", action: "Add", added: has("music"), onClick: () => void addBot("Hoffle Music", "music", "🎵", "Synchronized voice audio & playback") },
+    { icon: "⚔️", name: "D&D Companion", blurb: "5e spells, monsters and items in chat, and fair dice for the table.", action: "Add", added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },
+    { icon: "🌉", name: "Discord Bridge", blurb: "Mirror channels with a Discord server both ways while people move over.", action: "Add", added: has("discord-bridge"), onClick: () => void addBot("Discord Bridge", "discord-bridge", "🌉", "Bidirectional Discord bridge") },
+    { icon: "🤖", name: "Your own bot", blurb: "Run discord.py or discord.js bots against Hoffle with a bot token.", action: "Create", onClick: createCustomBot },
+  ];
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://hoffle.online";
+
   return (
-    <>
-      {tab === "integrations" && (
-          <div className="tab-pane integrations-pane">
-            <div className="bans-search-row">
-              <div>
-                <h1 className="pane-title">Bots & Integrations</h1>
-                <p className="pane-subtitle">
-                  Add music bots, D&D companions, Discord bridges, or custom Discord-compatible bots to {server.name}.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="discord-btn primary-indigo"
-                onClick={() => {
-                  onRequestPrompt({
-                    title: "Create Custom Bot",
-                    message: "Give your bot a name. A unique Discord-compatible bot token will be generated.",
-                    placeholder: "e.g. Trivia Bot",
-                    confirmText: "Create Bot",
-                    onConfirm: (val) => {
-                      if (val?.trim()) void addBot(val.trim(), "custom", "🤖");
-                    },
-                  });
-                }}
-                disabled={creatingBot}
-              >
-                <Plus size={16} style={{ marginRight: 6 }} /> Create Bot Integration
-              </button>
+    <div className="tab-pane integrations-pane">
+      <header>
+        <h1 className="pane-title">Integrations</h1>
+        <p className="pane-subtitle">Bring the apps and sites {server.name} already uses into its channels.</p>
+      </header>
+
+      <div className="integration-apps">
+        {apps.map((app) => (
+          <article key={app.name} className={`integration-app ${app.added ? "is-added" : ""}`}>
+            <span className="integration-app-icon" aria-hidden>
+              {app.icon}
+            </span>
+            <div className="integration-app-text">
+              <h3>{app.name}</h3>
+              <p>{app.blurb}</p>
             </div>
+            <button
+              type="button"
+              className={`discord-btn ${app.added ? "secondary-gray" : "primary-indigo"}`}
+              disabled={app.added || creatingBot}
+              onClick={app.onClick}
+            >
+              {app.added ? (
+                <>
+                  <Check size={14} /> Added
+                </>
+              ) : (
+                app.action
+              )}
+            </button>
+          </article>
+        ))}
+      </div>
 
-            {/* Quick-Add Built-in Bot Templates */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🎵</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>Hoffle Music Bot</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>Voice Audio & Synchronized Playback</span>
-                  </div>
+      <FeedsPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
+      <WebhooksPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
+
+      <section className="integration-section" id="integration-bots">
+        <header className="integration-section-head">
+          <h2>
+            Bots <span className="integration-count">{bots.length}</span>
+          </h2>
+          <p>Bots added to {server.name}. A token is a password for the bot: keep it secret.</p>
+        </header>
+        {loadingBots ? (
+          <p className="integration-empty">Loading bots…</p>
+        ) : !bots.length ? (
+          <p className="integration-empty">No bots yet. Add one from the top of this page.</p>
+        ) : (
+          <ul className="integration-list">
+            {bots.map((bot) => (
+              <li key={bot.id} className={`integration-row ${bot.enabled ? "" : "is-off"}`}>
+                <span className="integration-row-icon" aria-hidden>
+                  {bot.avatar || "🤖"}
+                </span>
+                <div className="integration-row-main">
+                  <strong>
+                    {bot.name}{" "}
+                    <span className={`integration-badge ${bot.enabled ? "on" : "off"}`}>{bot.enabled ? "On" : "Off"}</span>
+                  </strong>
+                  <p className="integration-token">
+                    <code>{revealedTokens[bot.id] ? bot.token : `${bot.token.slice(0, 10)}••••••••••••`}</code>
+                    <button
+                      type="button"
+                      className="integration-icon-btn"
+                      aria-label={revealedTokens[bot.id] ? "Hide token" : "Show token"}
+                      title={revealedTokens[bot.id] ? "Hide token" : "Show token"}
+                      onClick={() => setRevealedTokens((prev) => ({ ...prev, [bot.id]: !prev[bot.id] }))}
+                    >
+                      {revealedTokens[bot.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="integration-icon-btn"
+                      aria-label={`Copy the token for ${bot.name}`}
+                      title="Copy token"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(bot.token).then(() => setNotice(`Copied the token for ${bot.name}.`));
+                      }}
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </p>
                 </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Streams YouTube / audio into voice channels with synchronized playback, lyrics, autoplay, and smart queue.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("Hoffle Music", "music", "🎵", "Synchronized voice audio & playback")}
-                >
-                  Add Music Bot to Server
-                </button>
-              </div>
-
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>⚔️</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>D&D 5e Bot</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>SRD Compendium & Dice Roller</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Look up 5e spells, monsters, items, conditions and roll cryptographic dice directly in chat channels.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller")}
-                >
-                  Add D&D Bot to Server
-                </button>
-              </div>
-
-              <div style={{ background: "#2b2d31", border: "1px solid #3f4147", borderRadius: 8, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🌉</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>Discord Bridge</h3>
-                    <span style={{ fontSize: 12, color: "#949ba4" }}>Bidirectional Discord &lt;-&gt; Hoffle Sync</span>
-                  </div>
-                </div>
-                <p style={{ fontSize: 13, color: "#dbdee1", margin: "8px 0 14px 0", lineHeight: 1.4 }}>
-                  Sync channels bidirectionally with your Discord server. Forwards chat, embeds, and attachments.
-                </p>
-                <button
-                  type="button"
-                  className="discord-btn secondary"
-                  style={{ width: "100%" }}
-                  onClick={() => void addBot("Discord Bridge", "discord-bridge", "🌉", "Bidirectional Discord bridge")}
-                >
-                  Add Discord Bridge to Server
-                </button>
-              </div>
-            </div>
-
-            <DndSettingsPanel serverId={server.id} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
-            <GameServerSettingsPanel serverId={server.id} onNotice={setNotice} />
-            <WebhooksPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
-
-            {/* Active Bots List */}
-            <h2 style={{ fontSize: 16, color: "#fff", marginTop: 24, marginBottom: 8 }}>Installed Bots ({bots.length})</h2>
-            {loadingBots ? (
-              <p className="pane-subtitle">Loading installed bots…</p>
-            ) : !bots.length ? (
-              <div className="empty-illustration-box">
-                <p>No bots installed on {server.name} yet. Add one above or create a custom bot!</p>
-              </div>
-            ) : (
-              <ul className="invite-list" style={{ display: "flex", flexDirection: "column", gap: 12, padding: 0, listStyle: "none" }}>
-                {bots.map((bot) => (
-                  <li
-                    key={bot.id}
-                    style={{
-                      background: "#2b2d31",
-                      border: "1px solid #3f4147",
-                      borderRadius: 8,
-                      padding: "14px 18px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 16,
-                    }}
+                <div className="integration-row-actions">
+                  <button type="button" className="discord-btn secondary-gray" onClick={() => void toggleBot(bot)}>
+                    <Power size={14} /> {bot.enabled ? "Turn off" : "Turn on"}
+                  </button>
+                  <button
+                    type="button"
+                    className="discord-btn danger-btn"
+                    aria-label={`Remove ${bot.name}`}
+                    title="Remove"
+                    onClick={() => void removeBot(bot)}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                      <span style={{ fontSize: 24 }}>{bot.avatar || "🤖"}</span>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <strong style={{ color: "#fff", fontSize: 15 }}>{bot.name}</strong>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              background: bot.enabled ? "#23a55a" : "#ed4245",
-                              color: "#fff",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {bot.enabled ? "ACTIVE" : "DISABLED"}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#949ba4" }}>{bot.kind}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                          <code style={{ fontSize: 12, background: "#1e1f22", padding: "2px 6px", borderRadius: 4, color: "#00a8fc" }}>
-                            {revealedTokens[bot.id] ? bot.token : `${bot.token.slice(0, 10)}••••••••••••••••`}
-                          </code>
-                          <button
-                            type="button"
-                            className="discord-btn"
-                            style={{ padding: "2px 8px", fontSize: 12 }}
-                            onClick={() => {
-                              setRevealedTokens((prev) => ({ ...prev, [bot.id]: !prev[bot.id] }));
-                            }}
-                          >
-                            {revealedTokens[bot.id] ? "Hide" : "Reveal"}
-                          </button>
-                          <button
-                            type="button"
-                            className="discord-btn secondary"
-                            style={{ padding: "2px 8px", fontSize: 12 }}
-                            onClick={() => {
-                              void navigator.clipboard?.writeText(bot.token).then(() => {
-                                setNotice(`Copied bot token for ${bot.name}.`);
-                              });
-                            }}
-                          >
-                            <Copy size={12} style={{ marginRight: 4 }} /> Copy Token
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="discord-btn secondary"
-                        onClick={() => void toggleBot(bot)}
-                        title={bot.enabled ? "Disable Bot" : "Enable Bot"}
-                      >
-                        <Power size={14} style={{ marginRight: 4 }} /> {bot.enabled ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        className="discord-btn danger-btn"
-                        onClick={() => void removeBot(bot)}
-                        title="Remove Bot"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+      <DndSettingsPanel serverId={server.id} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
+      <GameServerSettingsPanel serverId={server.id} onNotice={setNotice} />
 
-            {/* Developer Quick Reference */}
-            <div style={{ background: "#1e1f22", border: "1px solid #3f4147", borderRadius: 8, padding: 18, marginTop: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "#5865f2" }}>
-                <Terminal size={18} />
-                <h3 style={{ margin: 0, fontSize: 15, color: "#fff" }}>Discord-Compatible Bot API</h3>
-              </div>
-              <p style={{ fontSize: 13, color: "#949ba4", margin: "0 0 10px 0" }}>
-                Connect your custom bots or Discord bot code to Hoffle by sending standard HTTP requests:
-              </p>
-              <pre style={{ margin: 0, padding: 12, background: "#111214", borderRadius: 6, fontSize: 12, color: "#dbdee1", overflowX: "auto" }}>
-{`# Send a message to a channel:
-curl -X POST "\${typeof window !== "undefined" ? window.location.origin : "https://chat.hoffle.online"}/hangout/api/v1/channels/<CHANNEL_ID>/messages" \\
+      <details className="integration-dev">
+        <summary>
+          <Terminal size={16} /> For developers: the Discord-compatible API
+        </summary>
+        <p>Bots and scripts talk to Hoffle the way they talk to Discord. Send a message:</p>
+        <pre>{`curl -X POST "${origin}/hangout/api/v1/channels/<CHANNEL_ID>/messages" \\
   -H "Authorization: Bot <YOUR_BOT_TOKEN>" \\
   -H "Content-Type: application/json" \\
-  -d '{"content": "Hello from my self-hosted bot!"}'
-
-# Real-time event gateway:
-# Connect via WebSocket to: /hangout/api/realtime
-# Or stream SSE events: /hangout/api/v1/gateway/events?token=<YOUR_BOT_TOKEN>`}
-              </pre>
-            </div>
-          </div>
-        )}
-    </>
+  -d '{"content": "Hello from my bot!"}'`}</pre>
+        <p>
+          Live events: a WebSocket at <code>/hangout/api/realtime</code>, or server-sent events at{" "}
+          <code>/hangout/api/v1/gateway/events?token=&lt;YOUR_BOT_TOKEN&gt;</code>.
+        </p>
+      </details>
+    </div>
   );
 }

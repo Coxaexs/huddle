@@ -5,7 +5,8 @@
  *
  * The URL takes Discord's execute-webhook body, so tools that already speak
  * Discord work by swapping the host. `/github` and `/slack` suffixes take those
- * services' own payloads, as Discord's do.
+ * services' own payloads, as Discord's do; `/gitlab` and `/gitea` (or
+ * `/forgejo`) take those forges' events too.
  *
  * Cost: one insert and one broadcast per call, the same as a bot message. No
  * mentions are expanded and no pushes are sent, and each webhook is held to
@@ -356,6 +357,100 @@ export function githubToExecute(event: string, raw: Record<string, unknown>): Ex
   }
 }
 
+/**
+ * Gitea and Forgejo send GitHub-shaped JSON under their own event header, with
+ * `compare_url` for GitHub's `compare`; the GitHub reader does the rest.
+ */
+export function giteaToExecute(event: string, raw: Record<string, unknown>, name = "Gitea"): ExecuteBody | null {
+  const p = raw as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const body = githubToExecute(event, { ...p, compare: p.compare || p.compare_url });
+  return body ? { ...body, username: name } : null;
+}
+
+/**
+ * A GitLab webhook delivery (the `X-Gitlab-Event` header plus its JSON) as an
+ * embed: pushes, merge requests, issues, comments, releases and failed
+ * pipelines. Null for the rest, like the GitHub reader.
+ */
+export function gitlabToExecute(event: string, raw: Record<string, unknown>): ExecuteBody | null {
+  const p = raw as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const project: string = p.project?.path_with_namespace || p.project?.name || "project";
+  const web: string = p.project?.web_url || "";
+  const who = p.user?.username || p.user_username || p.user?.name || p.user_name;
+  const author = who ? { name: String(who), icon_url: p.user?.avatar_url || p.user_avatar } : undefined;
+  const one = (embed: Record<string, unknown>): ExecuteBody => ({ username: "GitLab", embeds: [{ author, ...embed }] });
+  const attrs = p.object_attributes || {};
+
+  switch (event) {
+    case "Push Hook": {
+      const commits: Array<Record<string, any>> = Array.isArray(p.commits) ? p.commits : []; // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!commits.length) return null;
+      const branch = String(p.ref || "").replace(/^refs\/heads\//, "");
+      const total = Number(p.total_commits_count) || commits.length;
+      const lines = commits.slice(-5).map((c) => {
+        const first = String(c.message || "").split("\n")[0].slice(0, 80);
+        return `\`${String(c.id || "").slice(0, 8)}\` ${first} — ${c.author?.name || ""}`;
+      });
+      if (total > 5) lines.unshift(`…${total - 5} earlier`);
+      return one({
+        title: `[${project}:${branch}] ${total} new commit${total === 1 ? "" : "s"}`,
+        url: web && p.before && p.after ? `${web}/-/compare/${p.before}...${p.after}` : web || undefined,
+        description: lines.join("\n"),
+        color: GITHUB_COLORS.release,
+      });
+    }
+    case "Merge Request Hook": {
+      const action = { open: "opened", close: "closed", reopen: "reopened", merge: "merged" }[String(attrs.action)];
+      if (!action) return null;
+      return one({
+        title: `[${project}] Merge request ${action}: !${attrs.iid} ${attrs.title || ""}`,
+        url: attrs.url,
+        description: action === "opened" ? String(attrs.description || "").slice(0, 500) || undefined : undefined,
+        color: action === "merged" ? GITHUB_COLORS.merged : action === "closed" ? GITHUB_COLORS.closed : GITHUB_COLORS.open,
+      });
+    }
+    case "Issue Hook": {
+      const action = { open: "opened", close: "closed", reopen: "reopened" }[String(attrs.action)];
+      if (!action) return null;
+      return one({
+        title: `[${project}] Issue ${action}: #${attrs.iid} ${attrs.title || ""}`,
+        url: attrs.url,
+        description: action === "opened" ? String(attrs.description || "").slice(0, 500) || undefined : undefined,
+        color: action === "closed" ? GITHUB_COLORS.closed : GITHUB_COLORS.open,
+      });
+    }
+    case "Note Hook": {
+      const target = p.merge_request ? `!${p.merge_request.iid} ${p.merge_request.title || ""}` : p.issue ? `#${p.issue.iid} ${p.issue.title || ""}` : "a commit";
+      return one({
+        title: `[${project}] New comment on ${target}`,
+        url: attrs.url,
+        description: String(attrs.note || "").slice(0, 500) || undefined,
+        color: GITHUB_COLORS.neutral,
+      });
+    }
+    case "Release Hook": {
+      if (p.action !== "create") return null;
+      return one({
+        title: `[${project}] New release: ${p.name || p.tag}`,
+        url: p.url,
+        description: String(p.description || "").slice(0, 800) || undefined,
+        color: GITHUB_COLORS.release,
+      });
+    }
+    case "Pipeline Hook": {
+      if (attrs.status !== "failed") return null;
+      return one({
+        title: `[${project}] Pipeline failed on ${attrs.ref}`,
+        url: attrs.url || (web && attrs.id ? `${web}/-/pipelines/${attrs.id}` : undefined),
+        description: String(p.commit?.message || "").split("\n")[0].slice(0, 200) || undefined,
+        color: GITHUB_COLORS.closed,
+      });
+    }
+    default:
+      return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Execute
 // ---------------------------------------------------------------------------
@@ -526,10 +621,22 @@ export async function handleWebhookRequest(
   const threadId = url.searchParams.get("thread_id");
   const raw = await readWebhookBody(request);
   let body: ExecuteBody | null;
-  if (flavor === "github") {
-    body = githubToExecute(request.headers.get("x-github-event") || "", raw);
+  const forge =
+    flavor === "github"
+      ? githubToExecute(request.headers.get("x-github-event") || "", raw)
+      : flavor === "gitlab"
+        ? gitlabToExecute(request.headers.get("x-gitlab-event") || "", raw)
+        : flavor === "gitea" || flavor === "forgejo"
+          ? giteaToExecute(
+              request.headers.get("x-forgejo-event") || request.headers.get("x-gitea-event") || request.headers.get("x-github-event") || "",
+              raw,
+              (request.headers.get("x-forgejo-event") || flavor === "forgejo") ? "Forgejo" : "Gitea",
+            )
+          : undefined;
+  if (forge !== undefined) {
+    body = forge;
     if (!body) {
-      // Still check the URL, so a wrong one fails loudly in GitHub's log.
+      // Still check the URL, so a wrong one fails loudly in the forge's log.
       const hook = await getWebhook(db, id);
       if (!hook || !tokensMatch(hook.token, token)) return webhookError(404, 10015, "Unknown Webhook");
       return new Response(null, { status: 204 });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { MessageBody } from "./message-body";
+import { MessageBody, proxiedImage } from "./message-body";
 
 /**
  * Discord-shaped embeds and message components, as bots running against
@@ -66,6 +66,12 @@ function safeUrl(url: string | undefined): string | undefined {
   }
 }
 
+/** An embed's image, through our proxy: a bot or webhook owner sees no reader's IP. */
+function safeImage(url: string | undefined): string | undefined {
+  const safe = safeUrl(url);
+  return safe && proxiedImage(safe);
+}
+
 export function BotEmbeds({
   embeds = [],
   components = [],
@@ -108,8 +114,9 @@ export function BotEmbeds({
   return (
     <div className="bot-embeds">
       {embeds.slice(0, 10).map((embed, index) => {
-        const thumbnail = safeUrl(embed.thumbnail?.url);
-        const image = safeUrl(embed.image?.url);
+        const thumbnail = safeImage(embed.thumbnail?.url);
+        const image = safeImage(embed.image?.url);
+        const authorIcon = safeImage(embed.author?.icon_url);
         const titleUrl = safeUrl(embed.url);
         const fields = (embed.fields || []).filter((field) => field.name || field.value);
         return (
@@ -121,9 +128,7 @@ export function BotEmbeds({
             <div className="bot-embed-main">
               {embed.author?.name && (
                 <div className="bot-embed-author">
-                  {safeUrl(embed.author.icon_url) && (
-                    <img src={safeUrl(embed.author.icon_url)} alt="" />
-                  )}
+                  {authorIcon && <img src={authorIcon} alt="" />}
                   <span>{embed.author.name}</span>
                 </div>
               )}

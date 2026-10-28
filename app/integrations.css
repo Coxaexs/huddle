@@ -1,0 +1,727 @@
+/* Integrations: feeds, webhooks and bots in Server Settings, link players in
+   chat, calendar subscriptions in Events. Also dresses Server Settings in the
+   app's theme instead of fixed Discord greys. Everything here uses the theme
+   tokens (--ink, --panel, --line…), so light and the retro themes follow. */
+
+/* Long links (no spaces to break at) wrap instead of running off a phone. */
+.message-body {
+  overflow-wrap: anywhere;
+}
+
+/* --- Link players (app/lib/embed-players.ts) ----------------------------- */
+
+.link-preview-embed .link-preview-play:hover span {
+  background: var(--player-color, var(--lavender));
+}
+
+.link-preview-player.shape-portrait {
+  aspect-ratio: 9 / 16;
+  max-width: 325px;
+}
+
+.link-preview-player.shape-audio {
+  aspect-ratio: auto;
+  background: transparent;
+  border-radius: 12px;
+}
+
+.link-preview-audio {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.link-preview-audio img {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.link-preview-audio-text {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+
+/* `.message-body p` (the chat text size) was winning over the card's own size. */
+.message-body .link-preview-description {
+  font-size: calc(var(--chat-font-size, 16px) - 3px);
+}
+
+.link-preview-audio-text .link-preview-description {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.link-preview-listen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--player-color, var(--lavender));
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.link-preview-listen:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+/* --- Events → Subscribe --------------------------------------------------- */
+
+.events-secondary.chosen {
+  background: var(--lavender-soft);
+  border-color: color-mix(in srgb, var(--lavender) 45%, transparent);
+}
+
+a.events-secondary {
+  text-decoration: none;
+}
+
+.events-subscribe {
+  display: grid;
+  gap: 10px;
+  margin: 0 16px 6px;
+  padding: 14px 16px;
+  min-height: 60px;
+  border-radius: 12px;
+  background: var(--lavender-soft);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.events-subscribe p {
+  margin: 0;
+}
+
+.events-subscribe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.events-subscribe-actions .events-secondary {
+  background: var(--paper);
+}
+
+.events-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lavender);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.events-text-btn:hover {
+  text-decoration: underline;
+}
+
+/* --- Server Settings in the app's own colours ----------------------------- */
+
+.discord-server-settings-fullscreen {
+  background: var(--chat-bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.discord-server-settings-fullscreen .discord-settings-sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.discord-server-settings-fullscreen .discord-settings-main {
+  background: var(--chat-bg);
+}
+
+.discord-server-settings-fullscreen .sidebar-group-header {
+  color: var(--muted-2);
+}
+
+.discord-server-settings-fullscreen .sidebar-item {
+  color: var(--muted);
+  border-radius: 8px;
+}
+
+.discord-server-settings-fullscreen .sidebar-item:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+
+.discord-server-settings-fullscreen .sidebar-item.active {
+  background: var(--lavender-soft);
+  color: var(--ink);
+}
+
+.discord-server-settings-fullscreen .sidebar-item.danger-item,
+.discord-server-settings-fullscreen .sidebar-item.danger-item:hover {
+  color: var(--coral);
+}
+
+.discord-server-settings-fullscreen .sidebar-divider {
+  background: var(--line);
+}
+
+.discord-server-settings-fullscreen .pane-title {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.discord-server-settings-fullscreen :is(.pane-subtitle, .field-hint) {
+  color: var(--muted);
+}
+
+.discord-server-settings-fullscreen .form-field label {
+  color: var(--muted);
+}
+
+.discord-server-settings-fullscreen :is(.discord-text-input, .discord-search-input) {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.discord-server-settings-fullscreen :is(.discord-text-input, .discord-search-input):focus {
+  border-color: var(--lavender);
+  box-shadow: var(--ring);
+}
+
+.discord-server-settings-fullscreen .discord-esc-button .esc-circle {
+  border-color: var(--muted);
+  color: var(--muted);
+}
+
+.discord-server-settings-fullscreen .discord-esc-button .esc-label {
+  color: var(--muted);
+}
+
+.discord-server-settings-fullscreen .discord-esc-button:hover .esc-circle {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Buttons: the accent for the main action, a quiet surface for the rest.
+   `.secondary` was used without ever being defined, so those showed as text. */
+.discord-server-settings-fullscreen .discord-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-family: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.discord-server-settings-fullscreen .discord-btn.primary-indigo {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+.discord-server-settings-fullscreen .discord-btn.primary-indigo:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-strong) 86%, var(--ink));
+}
+
+.discord-btn.secondary,
+.discord-server-settings-fullscreen .discord-btn.secondary-gray {
+  background: var(--surface-2);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.discord-btn.secondary:hover:not(:disabled),
+.discord-server-settings-fullscreen .discord-btn.secondary-gray:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--ink) 12%);
+}
+
+.discord-server-settings-fullscreen .discord-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.discord-server-settings-fullscreen .discord-btn.danger-btn {
+  background: color-mix(in srgb, var(--coral) 14%, transparent);
+  color: var(--coral);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--coral) 35%, transparent);
+}
+
+.discord-server-settings-fullscreen .discord-btn.danger-btn:hover:not(:disabled) {
+  background: var(--coral);
+  color: #fff;
+}
+
+/* Panels inside the tabs that kept Discord's dark boxes. */
+.discord-server-settings-fullscreen :is(
+    .empty-illustration-box,
+    .bans-empty-card,
+    .bans-search-row input,
+    .invite-list > li,
+    .trait-box,
+    .member-table-row,
+    .default-permissions-card,
+    .server-card-preview
+  ) {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.discord-server-settings-fullscreen :is(.member-table-row, .default-permissions-card):hover {
+  background: color-mix(in srgb, var(--panel) 85%, var(--ink) 8%);
+}
+
+.discord-server-settings-fullscreen .default-permissions-card.selected {
+  background: var(--lavender-soft);
+}
+
+.discord-server-settings-fullscreen :is(
+    .empty-illustration-box h2,
+    .bans-empty-card h2,
+    .default-permissions-card .card-info strong,
+    .invite-code,
+    .server-card-name
+  ) {
+  color: var(--ink);
+}
+
+.discord-server-settings-fullscreen :is(.empty-illustration-box p, .bans-empty-card p) {
+  color: var(--muted);
+}
+
+.discord-server-settings-fullscreen :is(.illustration-graphic, .ban-hammer-illustration) {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.discord-server-settings-fullscreen .invite-code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.discord-server-settings-fullscreen .server-card-avatar {
+  border-color: var(--panel);
+}
+
+/* The template tab is written in Tailwind's white-on-dark utilities. */
+.discord-server-settings-fullscreen .bg-white\/5 {
+  background: var(--panel);
+}
+
+.discord-server-settings-fullscreen .bg-black\/25 {
+  background: var(--paper);
+}
+
+.discord-server-settings-fullscreen .border-white\/10 {
+  border-color: var(--line);
+}
+
+.discord-server-settings-fullscreen .text-indigo-300 {
+  color: var(--lavender);
+}
+
+/* --- Integrations tab ----------------------------------------------------- */
+
+.integrations-pane {
+  gap: 28px;
+}
+
+.integrations-pane .pane-subtitle {
+  margin-bottom: 0;
+}
+
+.integration-apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.integration-app {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 10px 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.integration-app:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lavender) 40%, var(--line)), var(--shadow-sm);
+}
+
+.integration-app-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--lavender-soft);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.integration-app-text h3 {
+  margin: 0 0 3px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.integration-app-text p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.integration-app .discord-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 7px 14px;
+}
+
+.integration-section,
+.integrations-pane .dnd-settings {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 24px;
+  border-radius: 2px;
+  transition: background 0.4s ease;
+}
+
+.integration-section.is-flashing {
+  background: color-mix(in srgb, var(--lavender) 8%, transparent);
+}
+
+.integration-section-head h2,
+.integrations-pane .dnd-settings h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.integration-section-head p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.integration-section-head code,
+.integration-dev code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.integration-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.integration-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.integration-form :is(input, select),
+.integration-row select {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.integration-form :is(input, select):focus {
+  outline: none;
+  border-color: var(--lavender);
+  box-shadow: var(--ring);
+}
+
+.integration-form input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.integration-form select {
+  flex: 0 1 200px;
+  min-width: 0;
+}
+
+.integration-form .webhook-avatar-input {
+  flex: 0 0 48px;
+  width: 48px;
+  text-align: center;
+}
+
+.integration-form .discord-btn {
+  min-height: 38px;
+}
+
+.integration-empty {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.integration-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--coral);
+  font-size: 13px;
+}
+
+.integration-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.integration-examples button {
+  padding: 4px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.integration-examples button:hover {
+  border-style: solid;
+  border-color: var(--lavender);
+}
+
+.integration-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.integration-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.integration-row.is-off {
+  opacity: 0.65;
+}
+
+.integration-row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 19px;
+}
+
+.integration-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.integration-row-main strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integration-row-main p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.integration-row select {
+  min-height: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.integration-row-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.integration-row-actions .discord-btn {
+  padding: 7px 12px;
+}
+
+.integration-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--coral);
+}
+
+.integration-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.integration-badge.on {
+  background: color-mix(in srgb, var(--mint) 18%, transparent);
+  color: var(--mint);
+}
+
+.integration-badge.off {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.integration-token code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.integration-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.integration-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.integration-dev {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.integration-dev summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.integration-dev pre {
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+/* The tabletop panels sit in the same rhythm as the rest of the page. */
+.integrations-pane .dnd-settings-row {
+  border-radius: 12px;
+}
+
+.integrations-pane .dnd-settings-row strong,
+.integrations-pane .dnd-settings-row h3 {
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .integration-row {
+    flex-wrap: wrap;
+  }
+
+  .integration-row-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .integration-form select,
+  .integration-form .discord-btn {
+    flex: 1 1 auto;
+  }
+}

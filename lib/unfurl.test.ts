@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeEntities,
+  isGifPageUrl,
   isSafePublicUrl,
   parsePreview,
   signImageUrl,
@@ -78,6 +79,25 @@ describe("parsePreview", () => {
       "https://a.com/",
     );
     expect(preview?.image).toBeUndefined();
+  });
+});
+
+describe("GIF site links", () => {
+  it("recognises Tenor and Giphy page links but not the files themselves", () => {
+    expect(isGifPageUrl("https://tenor.com/view/cat-dance-gif-7523542997650649169")).toBe(true);
+    expect(isGifPageUrl("https://tenor.com/en-GB/view/cat-dance-gif-75235429")).toBe(true);
+    expect(isGifPageUrl("https://giphy.com/gifs/ai-cat-meme-774uK11mxE3W0cjE8L")).toBe(true);
+    expect(isGifPageUrl("https://giphy.com/stickers/hello-abc123")).toBe(true);
+    expect(isGifPageUrl("https://media1.tenor.com/m/aGj/cat.gif")).toBe(false);
+    expect(isGifPageUrl("https://tenor.com/search/cat-gifs")).toBe(false);
+    expect(isGifPageUrl("https://giphy.com/gifs/cat look")).toBe(false);
+    expect(isGifPageUrl("https://evil.example/tenor.com/view/x")).toBe(false);
+  });
+
+  it("marks a GIF site's preview so it shows as the GIF", () => {
+    const html = `<meta property="og:title" content="Cat GIF"><meta property="og:image" content="https://media1.tenor.com/m/aGj/cat.gif">`;
+    expect(parsePreview(html, "https://tenor.com/view/cat-gif-123")?.gif).toBe(true);
+    expect(parsePreview(html, "https://example.com/cat")?.gif).toBeUndefined();
   });
 });
 

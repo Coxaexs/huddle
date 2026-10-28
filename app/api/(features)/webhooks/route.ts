@@ -1,6 +1,6 @@
 import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
-import { postableChannelKindsSql } from "@/lib/channel-kinds";
+import { postableChannelKindsSql, voiceChannelKindsSql } from "@/lib/channel-kinds";
 import { can, Permission } from "@/lib/permissions";
 import { limitUser } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
@@ -44,7 +44,8 @@ export async function GET(request: Request) {
   // The channels one may point at, so the panel needs no second request.
   const channels = await auth.db
     .prepare(
-      `SELECT id, name FROM channels WHERE server_id = ? AND kind IN (${postableChannelKindsSql()}) AND kind != 'dm' ORDER BY position, name`,
+      `SELECT id, name FROM channels WHERE server_id = ? AND kind IN (${postableChannelKindsSql()}) AND kind != 'dm'
+        ORDER BY CASE WHEN kind IN (${voiceChannelKindsSql()}) THEN 1 ELSE 0 END, position, name`,
     )
     .bind(serverId)
     .all<{ id: string; name: string }>();

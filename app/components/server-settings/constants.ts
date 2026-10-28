@@ -16,6 +16,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "member.leave": "left",
   "member.kick": "kicked a member",
   "member.move": "moved a member",
+  "member.disconnect": "disconnected a member from voice",
   "member.ban": "banned a member",
   "member.unban": "unbanned a member",
   "member.nickname": "changed a nickname",
@@ -33,6 +34,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   "webhook.create": "created a webhook",
   "webhook.rotate": "rotated a webhook URL",
   "webhook.delete": "deleted a webhook",
+  "feed.create": "followed a feed in",
+  "feed.delete": "stopped following a feed",
 };
 export const BANNER_COLORS = [
   { label: "Dark", value: "linear-gradient(135deg, #1e1f29, #111218)" },
