@@ -286,6 +286,24 @@
   animation: wa-bars 520ms ease-in-out infinite alternate;
 }
 
+/* The real analyser (the music bot as heard here): a canvas over the same spot, clicked through its modes. */
+:root[data-custom-theme-id="winamp"] .wa-viz {
+  cursor: pointer;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-viz canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  image-rendering: pixelated;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-viz.real canvas {
+  display: block;
+}
+
 :root[data-custom-theme-id="winamp"] .wa-info {
   display: flex;
   flex-direction: column;
@@ -499,8 +517,55 @@
   gap: 3px;
 }
 
-:root[data-custom-theme-id="winamp"] .wa-eq-top .wide {
+:root[data-custom-theme-id="winamp"] .wa-presets {
+  position: relative;
   margin-left: auto;
+}
+
+/* Presets: a Windows 98 popup menu, as Winamp's was. */
+:root[data-custom-theme-id="winamp"] .wa-preset-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 2px;
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+  box-shadow: 1px 1px 0 #000, 3px 3px 6px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-custom-theme-id="winamp"] .wa-preset-menu button {
+  padding: 3px 18px 3px 20px;
+  border: 0;
+  background: none;
+  color: #000;
+  font: 11px/1.2 Tahoma, "MS Sans Serif", Geneva, sans-serif;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-preset-menu button.on::before {
+  content: "•";
+  position: absolute;
+  margin-left: -12px;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-preset-menu button:is(:hover, :focus-visible) {
+  background: #0a246a;
+  color: #fff;
+  outline: none;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-preset-menu hr {
+  margin: 3px 1px;
+  border: 0;
+  border-top: 1px solid #808080;
+  border-bottom: 1px solid #fff;
 }
 
 :root[data-custom-theme-id="winamp"] .wa-eq-graph {
@@ -518,6 +583,11 @@
   stroke: #d8b818;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-eq-graph svg line {
+  stroke: #3a3a2a;
+  stroke-dasharray: 1 2;
 }
 
 :root[data-custom-theme-id="winamp"] .wa-eq-bands {
@@ -570,7 +640,26 @@
   margin-top: -3px;
   background: linear-gradient(180deg, #e2e2ea, #8c8ca0);
   border: 1px solid #12121a;
-  transition: top 0.2s;
+  transition: top 0.06s;
+}
+
+/* The sliders are real: drag them, or focus one and use the arrow keys. */
+:root[data-custom-theme-id="winamp"] .wa-band-track[role="slider"] {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-band-track[role="slider"]:focus-visible {
+  outline: 1px solid var(--wa-ink);
+  outline-offset: 2px;
+}
+
+:root[data-custom-theme-id="winamp"] .wa-band-track:active i {
+  background: linear-gradient(180deg, #fff, #a8a8bc);
+}
+
+:root[data-custom-theme-id="winamp"] .wa-eq-bands.off .wa-band-track {
+  filter: saturate(0.25) brightness(0.65);
 }
 
 :root[data-custom-theme-id="winamp"] .wa-eq-bands.live .wa-band:not(.pre) .wa-band-track i {

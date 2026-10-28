@@ -20,6 +20,8 @@ interface ResolvedTrack {
 
 interface BotResolvedTrack extends ResolvedTrack {
   resolve_query?: string;
+  /** Camelot, from the bot's mix analysis (see Track.key). */
+  key?: string | null;
 }
 
 async function playableTrack(
@@ -46,6 +48,7 @@ async function playableTrack(
     audioUrl: stream.audio_url,
     pageUrl: resolved.page_url || stream.page_url || null,
     requestedBy,
+    key: resolved.key || null,
   };
 }
 

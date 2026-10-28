@@ -6,9 +6,10 @@ import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, Ho
 import type { ClubDesk, ClubFx } from "@/lib/club-desk";
 import type { ClubCrowdKind } from "@/lib/club-feed";
 import {
-  CLUB_DJ_SEAT, FLOOR_SEAT, GM_SEAT_ID, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById,
+  CLUB_DJ_SEAT, FLOOR_SEAT, GM_SEAT_ID, clampPose, defaultPoses, freeSeat, hearFrom, isLoungeEmote, isVenueId, seatById, tvPoseFor, venueById, wrapHeading,
   type HeardFrom, type LoungePose, type Venue, type VenueId,
 } from "../lib/living-room";
+import { clubSkinFor, type ClubSkin } from "@/lib/club-skins";
 
 /** use-hub re-dispatches lounge traffic as this window event. */
 export const LOUNGE_EVENT = "huddle-lounge";
@@ -22,6 +23,20 @@ export function roomThemeFor(customThemeId: string | undefined): RoomTheme {
   // The old-PC themes share a turn-of-the-millennium bedroom.
   if (customThemeId?.startsWith("msn") || customThemeId === "teamspeak" || customThemeId === "winamp") return "y2k";
   return "cozy";
+}
+
+/** The club's own dress for the app's current theme (lib/club-skins.ts), following it when it changes. */
+export function useClubSkin(): ClubSkin {
+  const [skin, setSkin] = useState<ClubSkin>("plain");
+  useEffect(() => {
+    const root = document.documentElement;
+    const read = () => setSkin(clubSkinFor(root.dataset.customThemeId));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-custom-theme-id"] });
+    return () => observer.disconnect();
+  }, []);
+  return skin;
 }
 
 /** The room dresses (and sounds) for the app's current theme, and follows it when it changes. */
@@ -153,6 +168,12 @@ export interface LivingRoom {
   /** Sit (or stand back up) right where you are. */
   toggleFloor: () => void;
   emote: (emoji: string) => void;
+  /**
+   * Which way the listener's ears point, as a pose's facing (radians): the camera's way in the overhead view, so a
+   * voice is where its speaker is on the screen, whichever way your avatar turned to walk; null: the way your body
+   * faces (first person, where the camera is your eyes).
+   */
+  setEar: (heading: number | null) => void;
   /** How the listener hears a connection, or null when the room is closed or spatial voices are off. */
   heard: Map<string, HeardFrom> | null;
   /** Where the music bot is heard from (the TV), or null. */
@@ -424,19 +445,25 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const clubCrowd = useCallback((kind: ClubCrowdKind) => { sendRef.current({ t: "club-crowd", kind }); }, []);
 
   const live = open && Boolean(roomId);
+  // Voices are placed by where you are and which way your ears point (setEar), not by which way your avatar faces.
+  const [ear, setEarState] = useState<number | null>(null);
+  const setEar = useCallback((heading: number | null) => {
+    setEarState((was) => (heading === was || (heading !== null && was !== null && Math.abs(wrapHeading(heading - was)) < 1e-3) ? was : heading));
+  }, []);
+  const listener = useMemo(() => (self && ear !== null ? { ...self, facing: ear } : self), [self, ear]);
   const heard = useMemo(() => {
-    if (!live || !settings.spatial || !self || !connectionId) return null;
+    if (!live || !settings.spatial || !listener || !connectionId) return null;
     const map = new Map<string, HeardFrom>();
-    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(self, pose, undefined, venue, settings.echo));
+    for (const [id, pose] of poses) if (id !== connectionId) map.set(id, hearFrom(listener, pose, undefined, venue, settings.echo));
     return map;
-  }, [live, settings.spatial, settings.echo, self, poses, connectionId, venue]);
+  }, [live, settings.spatial, settings.echo, listener, poses, connectionId, venue]);
   const tv = useMemo(
-    () => (live && settings.tvMusic && self ? hearFrom(self, tvPoseFor(venue), venue.tv.height, venue, settings.echo) : null),
-    [live, settings.tvMusic, settings.echo, self, venue],
+    () => (live && settings.tvMusic && listener ? hearFrom(listener, tvPoseFor(venue), venue.tv.height, venue, settings.echo) : null),
+    [live, settings.tvMusic, settings.echo, listener, venue],
   );
 
   return {
-    open: live, roomId, clubWatch, clubDesk, clubFx, clubCrowd, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, heard, tv,
+    open: live, roomId, clubWatch, clubDesk, clubFx, clubCrowd, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, setEar, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

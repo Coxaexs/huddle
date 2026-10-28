@@ -599,3 +599,83 @@ export function playGroan() {
   osc.stop(now + 2.2);
   wobble.stop(now + 2.2);
 }
+
+/** The Winamp club's llama: a wobbly, nasal bleat. */
+export function playLlama() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  const voice = context.createOscillator();
+  voice.type = "sawtooth";
+  voice.frequency.setValueAtTime(520, now);
+  voice.frequency.linearRampToValueAtTime(610, now + 0.12);
+  voice.frequency.linearRampToValueAtTime(470, now + 0.62);
+  const wobble = context.createOscillator();
+  const depth = context.createGain();
+  wobble.frequency.value = 9;
+  depth.gain.value = 38;
+  wobble.connect(depth).connect(voice.frequency);
+  // Two formants make it a throat rather than a buzzer.
+  const level = envelope(context, out, now, 0.04, 0.16, 0.62);
+  for (const [frequency, q] of [[1100, 5], [2400, 7]] as const) {
+    const formant = context.createBiquadFilter();
+    formant.type = "bandpass";
+    formant.frequency.value = frequency;
+    formant.Q.value = q;
+    voice.connect(formant).connect(level);
+  }
+  voice.start(now);
+  wobble.start(now);
+  voice.stop(now + 0.72);
+  wobble.stop(now + 0.72);
+}
+
+/** The construct's payphone: two rings of an old bell phone. */
+export function playPayphone() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  for (const ring of [0, 1.5]) {
+    for (let k = 0; k < 16; k++) {
+      // The bell's clapper, twenty strikes a second.
+      const at = now + ring + k * 0.05;
+      tone(context, out, "triangle", 1180, at, 0.002, 0.08, 0.05);
+      tone(context, out, "sine", 2360, at, 0.002, 0.04, 0.035);
+    }
+  }
+}
+
+/** The red pill: the system glitching, digital crackle falling away. */
+export function playRedPill() {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  for (let k = 0; k < 14; k++) {
+    const at = now + k * 0.07 + Math.random() * 0.03;
+    tone(context, out, "square", 120 + Math.random() * 1800, at, 0.002, 0.07, 0.04 + Math.random() * 0.05);
+    if (k % 3 === 0) burst(context, out, at, "highpass", 3000, 0.7, 0.08, 0.05);
+  }
+  const fall = context.createOscillator();
+  fall.type = "sawtooth";
+  fall.frequency.setValueAtTime(900, now + 1.0);
+  fall.frequency.exponentialRampToValueAtTime(40, now + 2.2);
+  fall.connect(envelope(context, out, now + 1.0, 0.02, 0.1, 1.2));
+  fall.start(now + 1.0);
+  fall.stop(now + 2.3);
+}
+
+/** A note block's pling (the harp), at pitch class `pc` above F♯3, as the block's lower octave goes. */
+export function playNoteBlock(pc = 0) {
+  const a = audio();
+  if (!a) return;
+  const { context, out } = a;
+  const now = context.currentTime;
+  const steps = (((pc - 6) % 12) + 12) % 12;
+  const frequency = 185 * 2 ** (steps / 12) * 2;
+  tone(context, out, "triangle", frequency, now, 0.003, 0.22, 0.55);
+  tone(context, out, "sine", frequency * 2, now, 0.003, 0.08, 0.3);
+  tone(context, out, "sine", frequency * 3, now, 0.002, 0.03, 0.12);
+}

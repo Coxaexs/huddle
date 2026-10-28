@@ -223,6 +223,29 @@ export async function POST(request: Request) {
         return Response.json({ text, state });
       }
 
+      case "radio": {
+        // A mood radio: the bot plays songs from its library that fit the mood,
+        // forever (no repeats until the station has played them all).
+        const state = await botRoomAction(voiceChannelId!, {
+          action: "radio",
+          station: value || "off",
+        });
+        const stations = (state.radio_stations || []) as Array<{
+          id: string;
+          label: string;
+          emoji: string;
+          songs: number;
+        }>;
+        const on = stations.find((station) => station.id === state.radio);
+        const text = on
+          ? `📻 **${on.emoji} ${on.label} radio** is on: ${on.songs} songs that fit the mood, one after another, no repeats until it has played them all. \`/radio off\` stops it.`
+          : value && !["off", "none", "stop"].includes(value.toLowerCase())
+            ? `No radio called **${value}**. Try ${stations.map((station) => `\`${station.id}\``).join(", ")}.`
+            : "📻 Mood radio is **off**.";
+        if (!body.silent) await say(db, textChannelId, text);
+        return Response.json({ text, state });
+      }
+
       case "artistdiversity":
       case "vibematch": {
         const action =
@@ -364,10 +387,12 @@ export async function POST(request: Request) {
           audio_filter: null,
           artist_diversity: true,
           vibe_match: true,
+          radio: null,
+          radio_stations: [],
         }));
         const text = [
           "**Music settings**",
-          `Smart Autoplay: **${state.autoplay ? "On" : "Off"}**`,
+          `Smart Autoplay: **${state.autoplay ? "On" : "Off"}**${state.radio ? ` · Mood radio: **${state.radio}**` : ""}`,
           `AutoMix: **${state.automix ? "On (auto transitions)" : "Off"}**`,
           `Filter: **${state.audio_filter || "off"}** · Crossfade: **${state.crossfade_seconds || 0}s**`,
           `Artist diversity: **${state.artist_diversity ? "On" : "Off"}** · Vibe matching: **${state.vibe_match ? "On" : "Off"}**`,
@@ -384,6 +409,8 @@ export async function POST(request: Request) {
             audio_filter: state.audio_filter || null,
             artist_diversity: Boolean(state.artist_diversity),
             vibe_match: Boolean(state.vibe_match),
+            radio: state.radio || null,
+            radio_stations: state.radio_stations || [],
           },
         });
         return Response.json({ text, state });
@@ -452,11 +479,15 @@ export async function POST(request: Request) {
           await say(db, textChannelId, text);
           return Response.json({ text, state: await playerState(voiceChannelId!) });
         }
-        if (name !== "shuffle" && name !== "clear") await refuseWhileLive(voiceChannelId!);
+        // Stop goes through: the hub ends the DJ set along with the queue.
+        const wasLive = name === "stop" && Boolean(liveTrack(await rawPlayerState(voiceChannelId!)));
+        if (name !== "shuffle" && name !== "clear" && name !== "stop") await refuseWhileLive(voiceChannelId!);
         const state = await playerCommand(voiceChannelId!, { name });
         const text =
           name === "stop"
-            ? "Stopped playback and cleared the queue."
+            ? wasLive
+              ? "Ended the DJ set, stopped playback and cleared the queue."
+              : "Stopped playback and cleared the queue."
             : name === "skip"
               ? state?.track
                 ? `Skipped. Now playing ${trackLabel(state.track)}`

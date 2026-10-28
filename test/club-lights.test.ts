@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CLUB_FRAME_MS, cleanClubBatch, decodeFrames, decodeNotes, readNote, type ClubBatch } from "@/lib/club-feed";
-import { ClubLights, MIN_FLASH_GAP_MS, NOTE_STEP, SOUND_DELAY_MS } from "@/app/lib/club-lights";
+import { CLUB_FRAME_MS, cleanClubBatch, decodeBars, decodeFrames, decodeNotes, readNote, type ClubBatch, type ClubSongMap } from "@/lib/club-feed";
+import { ClubLights, MIN_FLASH_GAP_MS, NOTE_STEP, SOUND_DELAY_MS, TIER_OPEN, moodName } from "@/app/lib/club-lights";
 import { DEFAULT_DESK, HOLD_MAX_MS, fifths, keyHue, keyMiddle } from "@/lib/club-desk";
 
 const encode = (frames: number[][]) =>
@@ -359,5 +359,129 @@ describe("the club's colours, by the notes", () => {
     const show = play(old.clock, old.lights, 0, 2500).at(-1)!.show;
     expect(show.notes).toEqual([null, null, null]);
     expect(show.noteFollow).toBe(0);
+  });
+});
+
+/** A song's map: `sections` as [first bar, bars, level], every bar as hard as its section. */
+function songMap(id: string, sections: Array<[number, number, number]>, mood = { energy: 0.8, minor: true, dyn: 0.6 }): ClubSongMap {
+  const bars: number[] = [];
+  for (const [, length, tier] of sections) for (let i = 0; i < length; i++) bars.push((Math.round([0.2, 0.45, 0.7, 1][tier] * 15) << 4) | 3);
+  return { id, bpm: 120, bars: btoa(String.fromCharCode(...bars)), sec: sections.map(([bar, length, tier]) => [bar, length, tier, 3, 0]), dyn: 0.6, mood };
+}
+
+/**
+ * A song with a map at 120 bpm, its id with every beat anchor, sent as the bot would: a batch at a time, a little
+ * ahead of the sound. Returns the shows sampled from `from` to `to` (bot time).
+ */
+function playSong(clock: { now: number }, lights: ClubLights, map: ClubSongMap, from: number, to: number) {
+  lights.push({ at: 0, f: "", map });
+  const beatMs = 500;
+  let sent = 0;
+  const shows = [];
+  for (let t = from; t < to; t += 16) {
+    for (; sent < t + 300; sent += 80) {
+      const frames: number[][] = [];
+      for (let i = 0; i < 4; i++) frames.push([(sent + i * CLUB_FRAME_MS) % beatMs < 60 ? 0.95 : 0.02, 0.1, 0.5, 0.3, 0.4, 0.6]);
+      lights.push({ at: sent, f: encode(frames), b: sent / beatMs, bpm: 120, stems: true, w: map.id });
+    }
+    clock.now = t + SOUND_DELAY_MS;
+    shows.push({ t, show: lights.sample() });
+  }
+  return shows;
+}
+
+describe("the song's map", () => {
+  it("comes over the wire whole, or not at all", () => {
+    const map = songMap("A3", [[0, 8, 1], [8, 8, 3]]);
+    const batch = cleanClubBatch({ at: 1, f: "", w: "A3", map, ev: [{ k: "loop", at: 5, until: 9, name: "guitar" }, { k: "loop", at: 5, name: "kazoo" }],
+      info: { mode: "real", loop: { part: "piano", title: "Clocks" } } });
+    expect(batch?.w).toBe("A3");
+    expect(batch?.map).toEqual(map);
+    expect(batch?.ev).toEqual([{ k: "loop", at: 5, until: 9, name: "guitar" }, { k: "loop", at: 5 }]);
+    expect(batch?.info?.loop).toEqual({ part: "piano", title: "Clocks" });
+    expect(cleanClubBatch({ at: 1, f: "", map: { ...map, bars: "<b>" } })?.map).toBeUndefined();
+    expect(cleanClubBatch({ at: 1, f: "", map: { ...map, bpm: 1000 } })?.map).toBeUndefined();
+    expect(cleanClubBatch({ at: 1, f: "", map: { ...map, sec: [[0, 4, 9, 255], ["x"], [8, 4, 3, 1, 11], [12, 4, 1, 1, 99]] } })?.map?.sec).toEqual([[0, 4, 3, 3, 0], [8, 4, 3, 1, 11], [12, 4, 1, 1, 0]]);
+    expect(decodeBars(map.bars)[9]).toEqual({ hard: 1, flags: 3 });
+  });
+
+  it("closes the rig in the verse, squeezes it in the bar before the chorus and throws it open on the chorus's first beat", () => {
+    const { clock, lights } = rig();
+    // Eight bars of verse, eight of chorus, eight of verse: the chorus starts on beat 32 (16 s), the verse again at 32 s.
+    const shows = playSong(clock, lights, songMap("A1", [[0, 8, 1], [8, 8, 3], [16, 8, 1]]), 1000, 36_000);
+    const at = (ms: number) => shows.find(({ t }) => t >= ms)!.show;
+    const verse = at(10_000);
+    expect(verse.mapped).toBe(true);
+    expect(verse.tier).toBe(1);
+    expect(verse.nextTier).toBe(3);
+    expect(verse.open).toBeCloseTo(TIER_OPEN[1], 1);
+    expect(verse.squeeze).toBe(0);
+    // The last bar before it: the squeeze builds, the rig pulls in.
+    const squeezing = at(15_500);
+    expect(squeezing.toNext).toBeCloseTo(1, 0);
+    expect(squeezing.squeeze).toBeGreaterThan(0.6);
+    expect(squeezing.section).toBe("build");
+    expect(squeezing.open).toBeLessThan(verse.open);
+    // The chorus's first beat: the hit, wide open within a few frames, and the colour thrown as on a drop.
+    const hit = at(16_050);
+    expect(hit.tier).toBe(3);
+    expect(hit.accent).toBeGreaterThan(0.8);
+    expect(hit.section).toBe("drop");
+    expect(at(16_200).open).toBeGreaterThan(0.85);
+    expect(at(17_500).accent).toBeLessThan(0.2);
+    // Back to the verse: closed down again within a beat or two.
+    expect(at(33_500).tier).toBe(1);
+    expect(at(33_500).open).toBeLessThan(0.5);
+    expect(at(33_500).accent).toBeLessThan(0.05);
+  });
+
+  it("only follows the map of the song that leads", () => {
+    const { clock, lights } = rig();
+    lights.push({ at: 0, f: "", map: songMap("B7", [[0, 4, 3]]) });
+    feed(lights, 0, 4);
+    const show = play(clock, lights, 1000, 3000).at(-1)!.show;
+    expect(show.mapped).toBe(false);
+  });
+
+  it("names the song's mood", () => {
+    expect(moodName({ energy: 0.8, minor: true, dyn: 0.5 })).toBe("fierce");
+    expect(moodName({ energy: 0.3, minor: true, dyn: 0.5 })).toBe("blue");
+    expect(moodName({ energy: 0.7, minor: false, dyn: null })).toBe("bright");
+    expect(moodName({ energy: 0.4, minor: false, dyn: null })).toBe("warm");
+    expect(moodName(null)).toBeNull();
+    expect(moodName({ energy: 0.9, minor: true, dyn: null, name: "dreamy" })).toBe("dreamy");    // the words win over the key
+    const { clock, lights } = rig();
+    expect(playSong(clock, lights, songMap("A2", [[0, 8, 2]], { energy: 0.3, minor: true, dyn: 0.2 }), 1000, 2000).at(-1)!.show.mood).toBe("blue");
+  });
+
+  it("lands a chorus on the song's own bar line when its bars start off the grid's", () => {
+    const { clock, lights } = rig();
+    const map = { ...songMap("A5", [[0, 8, 1], [8, 8, 3]]), phase: 2 };       // bars start on the grid's third beat
+    const shows = playSong(clock, lights, map, 1000, 20_000);
+    // The chorus starts at bar 8: beat 2 + 32 = 34, at 17 s, not beat 32 (16 s).
+    expect(shows.find(({ t }) => t >= 16_200)!.show.tier).toBe(1);
+    expect(shows.find(({ t }) => t >= 17_050)!.show.tier).toBe(3);
+    expect(cleanClubBatch({ at: 1, f: "", map })?.map?.phase).toBe(2);
+    expect(cleanClubBatch({ at: 1, f: "", map: { ...map, phase: 7 } })?.map?.phase).toBeUndefined();
+  });
+
+  it("names the section when the song was listened to", () => {
+    const { clock, lights } = rig();
+    const map = songMap("A4", [[0, 4, 1], [4, 4, 2]]);
+    map.sec = [[0, 4, 1, 3, 2], [4, 4, 2, 3, 11]];                 // a verse, then a solo
+    const shows = playSong(clock, lights, map, 1000, 12_000);
+    expect(shows.find(({ t }) => t >= 4000)!.show.part).toBe("verse");
+    expect(shows.find(({ t }) => t >= 9000)!.show.part).toBe("solo");
+  });
+
+  it("shows a borrowed loop while it plays", () => {
+    const { clock, lights } = rig();
+    feed(lights, 0, 6);
+    lights.push({ at: 1000, f: "", ev: [{ k: "loop", at: 2000, until: 4000, name: "guitar" }] });
+    const shows = play(clock, lights, 1000, 5000);
+    const at = (ms: number) => shows.find(({ t }) => t >= ms)!.show;
+    expect(at(1200).loops.guitar ?? 0).toBe(0);
+    expect(at(3000).loops.guitar).toBe(1);
+    expect(at(4800).loops.guitar ?? 0).toBe(0);
   });
 });

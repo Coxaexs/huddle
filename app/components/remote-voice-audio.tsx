@@ -8,6 +8,8 @@ import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../li
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 import type { SpeakingStore } from "../lib/speaking-store";
 import { PRIORITY_DUCK, talkingPriorityKey } from "../lib/priority-speaker";
+import { setHeardEq, setMusicStream } from "../lib/music-tap";
+import { useMusicEq } from "../lib/winamp-eq-store";
 
 export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false, speakingStore }: {
   streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
@@ -47,6 +49,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
     () => (speakingStore ? talkingPriorityKey(participants, speakingStore.get()) : ""),
     () => "",
   );
+  // The Winamp theme's equalizer, on the music bot only.
+  const musicEq = useMusicEq();
   const playback = useRef<SpatialAudioPlayback | null>(null);
   const status = useRef(onHeadTracking);
   status.current = onHeadTracking;
@@ -74,6 +78,15 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   }, [enabled, headTracking, headTrackingSource]);
   useEffect(() => { playback.current?.setHeadphones(headphones); }, [headphones]);
   useEffect(() => { playback.current?.setRoomShape(roomShape); }, [roomShape]);
+  // The music bot's own stream, for what dances to it (the Winamp analyser, the club's Winamp wall).
+  useEffect(() => {
+    const person = participants.find((p) => p.bot && p.id === "bot:music");
+    const music = person && streams.find(({ connectionId, stream, kind }) => connectionId === person.connectionId && kind !== "screen"
+      && stream.getAudioTracks().length > 0 && stream.getVideoTracks().length === 0 && stream.id !== person.screenStreamId);
+    setMusicStream(music ? music.stream : null);
+  }, [streams, participants]);
+  useEffect(() => () => setMusicStream(null), []);
+  useEffect(() => { setHeardEq(musicEq && musicEq.slice(1)); }, [musicEq]);
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
     const priority = new Set(talkingPriority ? talkingPriority.split(",") : []);
@@ -118,8 +131,9 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         hrtfAttenuation: seat?.privacy,
         cutoff: seat?.cutoff,
         wet: seat?.wet,
+        eq: music ? musicEq : null,
       };
     }), !spatialOff && (enabled || Boolean(livingRoom)) || Boolean(tv));
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff, talkingPriority]);
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff, talkingPriority, musicEq]);
   return null;
 }

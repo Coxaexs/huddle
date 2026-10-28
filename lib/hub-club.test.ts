@@ -170,3 +170,17 @@ it("carries what the crowd said to the DJ back to the club bar", async () => {
   expect(first.info.crowd.extra).toBeUndefined();
   expect(second.info.crowd).toEqual({ more: 1, chill: 0, said: null });
 });
+
+it("leaves the room's roster to the main hub when a shard socket drops", async () => {
+  const { dancer, sitter, got } = club();
+  // Nothing the shard knows is the whole room, so it announces none of it.
+  const hub = new HuddleHub({
+    setWebSocketAutoResponse: vi.fn(),
+    getWebSockets: () => [sitter],
+    storage: { get: vi.fn(async () => undefined), put: vi.fn(async () => undefined) },
+  } as unknown as DurableObjectState, {});
+  await hub.webSocketClose(dancer as unknown as WebSocket);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(got(sitter, "voice")).toEqual([]);
+  expect(got(sitter, "presence")).toEqual([]);
+});

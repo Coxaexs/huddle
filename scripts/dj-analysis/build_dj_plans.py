@@ -130,9 +130,30 @@ def build_song(result, song):
         "entries": points(result.get("entries"), grid), "exits": points(result.get("exits"), grid),
         "moves": sorted(moves, key=lambda x: x["at"]), "loops": sorted(loops, key=lambda x: x["at"]),
         "hooks": sorted(hooks, key=lambda x: x["at"]), "avoid": avoid[:6],
-        "sections": [{"label": s.get("label"), "start": round(s["start"], 1), "end": round(s["end"], 1), "energy": s.get("energy")}
-                     for s in result.get("sections", []) if number(s.get("start")) and number(s.get("end"))],
+        "sections": sections_of(result, grid),
     }
+
+
+SECTION_LABELS = {"intro", "verse", "prechorus", "chorus", "postchorus", "drop", "build", "bridge", "break", "breakdown",
+                  "solo", "instrumental", "outro"}
+
+
+def sections_of(result, grid):
+    """Gemini's sections, each start snapped to our grid (a phrase start within PHRASE_SNAP, else the bar):
+    [{label, at, energy 0..10}] in order, overlaps and unknown labels dropped. The club's lights read them."""
+    out = []
+    for s in result.get("sections", []):
+        label = str(s.get("label") or "").lower().replace("-", "").replace(" ", "")
+        if not number(s.get("start")) or not number(s.get("end")) or label not in SECTION_LABELS:
+            continue
+        if not (0 <= s["start"] < s["end"] <= grid.duration + 3):
+            continue
+        at, _ = grid.snap(s["start"], "bar")
+        energy = s.get("energy")
+        if out and at <= out[-1]["at"]:
+            continue
+        out.append({"label": label, "at": max(0.0, at), "energy": int(energy) if number(energy) and 0 <= energy <= 10 else None})
+    return out
 
 
 def main():
@@ -171,7 +192,8 @@ def main():
         os.makedirs(BOT_DIR, exist_ok=True)
         light = {v: s for v, s in songs.items() if s["trust"] != "low" or s["broken"]}      # low-trust notes are not used
         for s in light.values():
-            s.pop("sections", None)                       # the bot does not need them
+            if s["trust"] == "low":
+                s.pop("sections", None)                   # sections that don't sit on the music aren't used
         target = f"{BOT_DIR}/plans.json"
         json.dump({"version": 1, "models": models, "made": out["made"], "songs": light}, open(target + ".tmp", "w"), ensure_ascii=False)
         os.replace(target + ".tmp", target)

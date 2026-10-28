@@ -1,4 +1,6 @@
 import { bindings } from "@/lib/storage";
+import { PROXY_IMAGE_TYPES } from "@/lib/unfurl";
+import { sniffUpload } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
 
@@ -6,7 +8,9 @@ export const dynamic = "force-dynamic";
  * Album art / video thumbnails for the Living Room TV. Drawing a remote image
  * into WebGL needs CORS, which i.ytimg.com and friends don't send, so covers
  * go through here: fetched once, kept in R2, then served from there with CORS.
- * Only known image CDNs, so this is not an open proxy.
+ * Only known image CDNs, so this is not an open proxy, and only raster
+ * images (judged by their bytes, not the CDN's header), so nothing served from
+ * our origin here can be a script-capable document like SVG.
  */
 const ALLOWED_HOSTS = [
   /^i\d?\.ytimg\.com$/,
@@ -22,6 +26,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Cache-Control": "public, max-age=2592000, immutable",
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'; sandbox",
 };
 
 async function cacheKey(url: string): Promise<string> {
@@ -46,20 +52,20 @@ export async function GET(request: Request) {
   const key = await cacheKey(target.href);
   if (bucket) {
     const cached = await bucket.get(key);
-    if (cached) {
-      return new Response(cached.body, {
-        headers: { ...HEADERS, "Content-Type": cached.httpMetadata?.contentType || "image/jpeg" },
-      });
+    const cachedType = cached?.httpMetadata?.contentType || "";
+    if (cached && PROXY_IMAGE_TYPES.has(cachedType)) {
+      return new Response(cached.body, { headers: { ...HEADERS, "Content-Type": cachedType } });
     }
+    // Covers cached before the byte check could carry any type; fetch afresh.
+    void cached?.body.cancel().catch(() => undefined);
   }
 
   const upstream = await fetch(target.href, { redirect: "manual" }).catch(() => null);
-  const type = upstream?.headers.get("content-type") || "";
-  if (!upstream?.ok || !type.startsWith("image/")) {
-    return new Response("Cover not found.", { status: 404 });
-  }
+  if (!upstream?.ok) return new Response("Cover not found.", { status: 404 });
   const data = await upstream.arrayBuffer();
   if (data.byteLength > MAX_BYTES) return new Response("Cover too large.", { status: 413 });
+  const type = sniffUpload(data)?.contentType || "";
+  if (!PROXY_IMAGE_TYPES.has(type)) return new Response("Cover not found.", { status: 404 });
   if (bucket) {
     await bucket.put(key, data, { httpMetadata: { contentType: type } }).catch(() => undefined);
   }

@@ -3,6 +3,7 @@ import { botFetch, botSession } from "@/lib/musicbot";
 import { can, Permission } from "@/lib/permissions";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { isClubStation } from "@/lib/club-feed";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,19 @@ const MIX_STYLES = ["auto", "blend", "fade", "filter", "echo", "cut", "brake", "
 const SAMPLES = ["horn", "siren", "rewind", "laser", "boom", "clap", "riser", "scratch"];
 const FX = ["echo", "delay", "reverb", "flanger", "roll", "trans"];
 const VIBES = ["chill", "club", "hype"];
+/** Parts of other songs the club's loop pads borrow (the bot's loops.py), and how a loop's id looks. */
+const LOOP_PARTS = ["guitar", "piano", "bass", "drums"];
+const LOOP_ID = /^[0-9a-f]{12}-(guitar|piano|bass|drums)-\d{1,5}$/;
 
 /** The booth control to send for a club panel request, or a reason it is refused. */
 export function boothOp(body: Record<string, unknown>): Record<string, unknown> | string {
   const op = typeof body.op === "string" ? body.op : "";
   switch (op) {
     case "club":
-      return { op: "club", ...(VIBES.includes(body.vibe as string) ? { vibe: body.vibe } : {}), ...(body.mode === "auto" ? { mode: "auto" } : {}) };
+      return {
+        op: "club", ...(VIBES.includes(body.vibe as string) ? { vibe: body.vibe } : {}), ...(body.mode === "auto" ? { mode: "auto" } : {}),
+        ...(isClubStation(body.station) ? { station: body.station } : {}),
+      };
     case "stop":
       return { op: "stop" };
     case "auto": {
@@ -36,6 +43,10 @@ export function boothOp(body: Record<string, unknown>): Record<string, unknown> 
       if (VIBES.includes(body.vibe as string)) out.vibe = body.vibe;
       if (typeof body.on === "boolean") out.on = body.on;
       if (typeof body.three === "boolean") out.three = body.three;
+      // Autoplay: the set carries on with songs from the library when the queue runs out.
+      if (typeof body.autoplay === "boolean") out.autoplay = body.autoplay;
+      // The mood station (null: any mood).
+      if (body.station === null || isClubStation(body.station)) out.station = body.station;
       // Auto DJ's mixes: their style, and their length in beats (0: each style's own).
       if (MIX_STYLES.includes(body.style as string)) out.style = body.style;
       const beats = Number(body.beats);
@@ -48,6 +59,11 @@ export function boothOp(body: Record<string, unknown>): Record<string, unknown> 
       return MOVES.includes(body.move as string) ? { op: "club_move", move: body.move } : "Unknown move.";
     case "sample":
       return SAMPLES.includes(body.name as string) ? { op: "sample", name: body.name } : "Unknown pad.";
+    case "club_loop":
+      return LOOP_PARTS.includes(body.part as string) ? { op: "club_loop", part: body.part } : "Unknown part.";
+    case "loop_vote":
+      if (typeof body.id !== "string" || !LOOP_ID.test(body.id)) return "Unknown loop.";
+      return body.vote === "up" || body.vote === "down" || body.vote === null ? { op: "loop_vote", id: body.id, vote: body.vote } : "Unknown vote.";
     case "set": {
       if (body.deck !== "A" && body.deck !== "B") return "Choose deck A or B.";
       const value = Number(body.value);
@@ -113,6 +129,8 @@ export function slimState(state: Record<string, any>) {
     mix: transition ? { label: String(transition.label ?? transition.style ?? ""), progress: Number(transition.progress) || 0, started: Boolean(transition.started) } : null,
     auto: {
       on: Boolean(auto.on), mode: auto.mode === "real" ? "real" : "auto", vibe: VIBES.includes(auto.vibe) ? auto.vibe : "club", three: Boolean(auto.three), next: auto.real?.next ?? null,
+      autoplay: auto.autoplay !== false,
+      station: isClubStation(auto.station) ? auto.station : null,
       style: MIX_STYLES.includes(auto.style) ? auto.style : "auto", beats: typeof auto.beats === "number" && auto.beats > 0 ? auto.beats : null,
     },
     stems: { on: Boolean(state.stems?.on), available: Boolean(state.stems?.available) },
@@ -121,6 +139,11 @@ export function slimState(state: Record<string, any>) {
       artist: typeof item.artist === "string" ? item.artist : "",
     })),
     notice: typeof state.notice === "string" ? state.notice : null,
+    // A part of another song playing over the mix (Real DJ's or the loop pads'), to turn down if it sounds wrong.
+    loop: (() => {
+      const voice = (Array.isArray(state.loops) ? state.loops : []).find((v: Record<string, unknown>) => v && v.on && typeof v.id === "string");
+      return voice && LOOP_PARTS.includes(voice.part) ? { id: String(voice.id), part: String(voice.part), title: typeof voice.title === "string" ? voice.title : null } : null;
+    })(),
   };
 }
 

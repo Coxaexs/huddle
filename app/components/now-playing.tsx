@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useCallback, type MouseEvent } from "react";
 import { Volume2, Music2, ExternalLink, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
@@ -99,7 +100,7 @@ export function NowPlaying({
       </span>
       <div className="now-playing-head">
         {track.thumbnail ? (
-          <img className="now-playing-art" src={track.thumbnail} alt="" />
+          <img className="now-playing-art" src={proxiedImage(track.thumbnail)} alt="" />
         ) : (
           <div className="now-playing-art placeholder"><Music2 size={22} /></div>
         )}

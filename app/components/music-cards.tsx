@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readMicSettings, requestMicSettings } from "../lib/mic-chain";
 import {
   Settings,
   Search,
@@ -37,6 +38,9 @@ export interface MusicSettings {
   audio_filter?: string | null;
   artist_diversity?: boolean;
   vibe_match?: boolean;
+  /** The mood radio station on in this room (the bot's stations.py id), or null. */
+  radio?: string | null;
+  radio_stations?: Array<{ id: string; label: string; emoji: string; songs: number }>;
 }
 
 interface MusicSettingsCardProps {
@@ -93,6 +97,8 @@ export function MusicSettingsCard({
 
   const crossfade = settings.crossfade_seconds || 0;
   const filter = settings.audio_filter || "off";
+  // Your own mic, not the room's: the same switch as Settings → Voice → Voice effect.
+  const [singing, setSinging] = useState(() => typeof window !== "undefined" && readMicSettings().voiceEffect === "singer");
 
   return (
     <section className="music-settings-card">
@@ -141,6 +147,35 @@ export function MusicSettingsCard({
         />
       </div>
 
+      {(settings.radio_stations || []).some((station) => station.songs) && (
+        <>
+          <div className="music-card-section-label">Mood Radio</div>
+          <div className="music-filter-row" aria-label="Mood radio">
+            {(settings.radio_stations || [])
+              .filter((station) => station.songs)
+              .map((station) => (
+                <button
+                  type="button"
+                  key={station.id}
+                  title={`${station.songs} songs, endless`}
+                  className={settings.radio === station.id ? "active" : ""}
+                  aria-pressed={settings.radio === station.id}
+                  onClick={() =>
+                    void apply(`/radio ${settings.radio === station.id ? "off" : station.id}`)
+                  }
+                >
+                  {station.emoji} {station.label}
+                </button>
+              ))}
+            {settings.radio && (
+              <button type="button" onClick={() => void apply("/radio off")}>
+                Off
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="music-card-section-label">Mix & Transition Timings</div>
       <div className="music-slider-grid">
         <label>
@@ -182,6 +217,20 @@ export function MusicSettingsCard({
             {preset.label}
           </button>
         ))}
+      </div>
+
+      <div className="music-card-section-label">Your Mic</div>
+      <div className="music-toggle-grid">
+        <Toggle
+          label="Singing voice"
+          hint={filter === "karaoke" ? "Sing along gently in tune, with a little polish" : "Gently in tune, with a little polish"}
+          enabled={singing}
+          onClick={() => {
+            const next = !singing;
+            setSinging(next);
+            requestMicSettings({ voiceEffect: next ? "singer" : "none" });
+          }}
+        />
       </div>
 
       <div className="music-quick-actions">

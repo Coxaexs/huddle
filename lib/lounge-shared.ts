@@ -111,7 +111,9 @@ export const TABLE_MOODS = ["warm", "dungeon", "storm"] as const;
 export type TableMood = (typeof TABLE_MOODS)[number];
 
 /** Things in the rooms that do something for a moment when touched; everyone else sees it once. */
-export const LOUNGE_MOMENTS = ["cat", "shark", "guitar", "popcorn", "globe", "clock", "skull", "arcade", "crt", "mug", "log", "marshmallow", "stone", "bell", "trophy"] as const;
+export const LOUNGE_MOMENTS = ["cat", "shark", "guitar", "popcorn", "globe", "clock", "skull", "arcade", "crt", "mug", "log", "marshmallow", "stone", "bell", "trophy",
+  // The themed clubs' (app/components/club-skins.ts).
+  "llama", "club-droid", "payphone", "pill", "noteblock", "club-creeper"] as const;
 export type LoungeMoment = (typeof LOUNGE_MOMENTS)[number];
 export interface LoungeFx { thing: LoungeMoment; by?: string }
 

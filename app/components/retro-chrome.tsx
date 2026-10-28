@@ -12,6 +12,9 @@ import {
   Users,
 } from "lucide-react";
 import type { PlayerState } from "@/lib/protocol";
+import { EQ_LABELS, EQ_MAX_DB, EQ_PRESETS, eqGraphPoints } from "@/lib/winamp-eq";
+import { openMusicReader } from "../lib/music-tap";
+import { setWinampEq, useWinampEq } from "../lib/winamp-eq-store";
 
 /**
  * Window furniture for the two retro skins that CSS alone can't draw.
@@ -122,9 +125,233 @@ function useJoinedAt(voiceRoom: string | null): number | null {
 
 /* ------------------------------------------------------------------ Winamp */
 
-const EQ_BANDS = ["60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K"];
-/** A gentle "smile" — where the sliders rest when nothing is playing (0 = top). */
-const EQ_REST = [0.3, 0.38, 0.46, 0.52, 0.56, 0.55, 0.5, 0.42, 0.36, 0.3];
+/** Winamp's own visualisation colours: the analyser's sixteen rows, top to bottom, its peak dots and the scope's five. */
+const VIS_ROWS = ["#ef3110", "#ce2910", "#d65a00", "#d66600", "#d67300", "#c67b08", "#dea518", "#d6b521", "#bdde29", "#94de21", "#29ce10", "#32be10", "#39b510", "#319c08", "#299400", "#188408"];
+const VIS_PEAK = "#969696";
+const VIS_SCOPE = ["#ffffff", "#d6d6de", "#b5bdbd", "#a0aaaf", "#949ca5"];
+type VizMode = "bars" | "scope" | "off";
+const VIZ_MODES: VizMode[] = ["bars", "scope", "off"];
+
+/**
+ * The main window's analyser. With the music bot streaming here it is the real thing, drawn as Winamp drew
+ * it: bars that fall back slowly, peak dots that hang and drop, or the oscilloscope (click to switch, as in
+ * Winamp). Without (not in voice with the bot), the old pretend bars while the room plays something.
+ */
+function WinampViz({ playing }: { playing: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [mode, setMode] = useState<VizMode>("bars");
+  const [real, setReal] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("huddle-winamp-viz") as VizMode | null;
+      if (saved && VIZ_MODES.includes(saved)) setMode(saved);
+    } catch {
+      // Storage blocked: the bars.
+    }
+  }, []);
+  const cycle = () => {
+    const next = VIZ_MODES[(VIZ_MODES.indexOf(mode) + 1) % VIZ_MODES.length];
+    setMode(next);
+    try {
+      window.localStorage.setItem("huddle-winamp-viz", next);
+    } catch {
+      // Not remembered; fine.
+    }
+  };
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || mode === "off") { setReal(false); return; }
+    const reader = openMusicReader();
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    let raf = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let last = performance.now();
+    let wasReal = false;
+    let bands = new Float32Array(0);
+    let shown = new Float32Array(0);
+    let peaks = new Float32Array(0);
+    let holds = new Float32Array(0);
+    const wave = new Float32Array(76);
+    const draw = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const width = canvas.clientWidth;
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(16 * ratio); }
+      const n = Math.max(8, Math.floor(width / 4));
+      if (bands.length !== n) { bands = new Float32Array(n); shown = new Float32Array(n); peaks = new Float32Array(n); holds = new Float32Array(n); }
+      const ok = mode === "scope" ? reader.wave(wave) : reader.bands(bands, 50, 16000);
+      if (ok !== wasReal) { wasReal = ok; setReal(ok); }
+      const ctx = ok ? canvas.getContext("2d") : null;
+      if (ctx) {
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, 16);
+        if (mode === "scope") {
+          // The scope: a dot per pixel column, brighter the nearer the middle.
+          for (let x = 0; x < width; x++) {
+            const v = wave[Math.floor((x / width) * wave.length)];
+            const y = Math.max(0, Math.min(15, Math.round(7.5 - v * 8)));
+            ctx.fillStyle = VIS_SCOPE[Math.min(4, Math.floor(Math.abs(y - 7.5) / 2))];
+            ctx.fillRect(x, y, 1, 1);
+          }
+        } else {
+          const pitch = width / n;
+          for (let i = 0; i < n; i++) {
+            // Up at once, down slowly; the peak hangs a moment, then drops.
+            shown[i] = bands[i] > shown[i] ? bands[i] : Math.max(bands[i], shown[i] - dt * (still ? 6 : 2.4));
+            if (shown[i] >= peaks[i]) { peaks[i] = shown[i]; holds[i] = 0.35; }
+            else if ((holds[i] -= dt) < 0) peaks[i] = Math.max(0, peaks[i] - dt * 0.9);
+            const rows = Math.round(shown[i] * 16);
+            const x = Math.round(i * pitch);
+            const w = Math.max(1, Math.round(pitch) - 1);
+            for (let r = 0; r < rows; r++) {
+              ctx.fillStyle = VIS_ROWS[15 - r];
+              ctx.fillRect(x, 15 - r, w, 1);
+            }
+            const peak = Math.round(peaks[i] * 16);
+            if (peak > 0) {
+              ctx.fillStyle = VIS_PEAK;
+              ctx.fillRect(x, 16 - peak, w, 1);
+            }
+          }
+        }
+      }
+      // About 30 frames a second while there's music to draw; a look twice a second while there isn't.
+      if (ok) raf = requestAnimationFrame((next) => { timer = setTimeout(() => draw(next), 16); });
+      else timer = setTimeout(() => draw(performance.now()), 500);
+    };
+    draw(performance.now());
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      reader.close();
+    };
+  }, [mode]);
+  const pretend = playing && !real && mode !== "off";
+  return (
+    <span className={`wa-viz ${pretend ? "live" : ""} ${real ? "real" : ""}`} onClick={cycle} title="Click: analyser, oscilloscope, off">
+      <canvas ref={canvasRef} />
+      {!real && Array.from({ length: 19 }, (_, i) => (
+        <i key={i} style={{ animationDelay: `${(i * 173) % 700}ms`, animationDuration: `${420 + ((i * 97) % 300)}ms` }} />
+      ))}
+    </span>
+  );
+}
+
+const EQ_STEP = 0.5;
+
+/** One of the equalizer's sliders: drag it, or focus it and use the arrows; a double click puts it back to the middle. */
+function EqSlider({ label, value, onChange, preamp = false }: { label: string; value: number; onChange: (db: number) => void; preamp?: boolean }) {
+  const track = useRef<HTMLSpanElement>(null);
+  const set = (db: number) => {
+    const snapped = Math.round(Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, db)) / EQ_STEP) * EQ_STEP;
+    // A little detent in the middle, as the real sliders had.
+    onChange(Math.abs(snapped) < 0.75 ? 0 : snapped);
+  };
+  const fromPointer = (clientY: number) => {
+    const rect = track.current?.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return;
+    set(EQ_MAX_DB - ((clientY - rect.top) / rect.height) * EQ_MAX_DB * 2);
+  };
+  const text = `${value > 0 ? "+" : ""}${value.toFixed(1)} dB`;
+  return (
+    <span className={`wa-band ${preamp ? "pre" : ""}`}>
+      <span
+        ref={track}
+        className="wa-band-track"
+        role="slider"
+        tabIndex={0}
+        aria-label={preamp ? "Preamp" : `${label}Hz`}
+        aria-orientation="vertical"
+        aria-valuemin={-EQ_MAX_DB}
+        aria-valuemax={EQ_MAX_DB}
+        aria-valuenow={value}
+        aria-valuetext={text}
+        title={`${preamp ? "Preamp" : `${label}Hz`}: ${text}`}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          fromPointer(event.clientY);
+        }}
+        onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) fromPointer(event.clientY); }}
+        onDoubleClick={() => onChange(0)}
+        onKeyDown={(event) => {
+          const by = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 3, PageDown: -3 }[event.key];
+          if (by !== undefined) set(value + by);
+          else if (event.key === "Home") set(EQ_MAX_DB);
+          else if (event.key === "End") set(-EQ_MAX_DB);
+          else return;
+          event.preventDefault();
+        }}
+      >
+        <i style={{ top: `${((EQ_MAX_DB - value) / (EQ_MAX_DB * 2)) * 100}%` }} />
+      </span>
+      <small>{preamp ? "PREAMP" : label}</small>
+    </span>
+  );
+}
+
+/**
+ * The equalizer, for real: it shapes the music bot as you hear it (nobody else), from the ON button and the
+ * sliders to Winamp's own presets. It only applies while this theme is on.
+ */
+function WinampEqualizer() {
+  const eq = useWinampEq();
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const away = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenu(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(false); };
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("pointerdown", away); window.removeEventListener("keydown", escape); };
+  }, [menu]);
+  return (
+    <div className="wa-win wa-eq">
+      <WinampTitle label="WINAMP EQUALIZER" />
+      <div className="wa-eq-body">
+        <div className="wa-eq-top">
+          <button type="button" className={`wa-mini ${eq.on ? "on" : ""}`} aria-pressed={eq.on} onClick={() => setWinampEq({ on: !eq.on })} title="Equalizer on or off: it changes how the music bot sounds to you">ON</button>
+          <span className="wa-mini" aria-hidden="true">AUTO</span>
+          <span className="wa-eq-graph" aria-hidden="true">
+            <svg viewBox="0 0 100 20" preserveAspectRatio="none">
+              <line x1="0" y1="10" x2="100" y2="10" />
+              <polyline points={eqGraphPoints(eq.bands)} />
+            </svg>
+          </span>
+          <div className="wa-presets" ref={menuRef}>
+            <button type="button" className="wa-mini wide" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((open) => !open)} title={eq.preset ?? "Presets"}>PRESETS</button>
+            {menu && (
+              <div className="wa-preset-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setWinampEq({ preamp: 0, bands: EQ_LABELS.map(() => 0), preset: null }); setMenu(false); }}>Reset (flat)</button>
+                <hr />
+                {EQ_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={eq.preset === preset.name}
+                    className={eq.preset === preset.name ? "on" : ""}
+                    onClick={() => { setWinampEq({ on: true, preamp: 0, bands: preset.bands, preset: preset.name }); setMenu(false); }}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className={`wa-eq-bands ${eq.on ? "" : "off"}`} title="How the music bot sounds to you">
+          <EqSlider label="PREAMP" preamp value={eq.preamp} onChange={(db) => setWinampEq({ preamp: db, preset: null })} />
+          <span className="wa-eq-scale" aria-hidden="true"><small>+12db</small><small>+0db</small><small>-12db</small></span>
+          {EQ_LABELS.map((label, i) => (
+            <EqSlider key={label} label={label} value={eq.bands[i]} onChange={(db) => setWinampEq({ bands: eq.bands.map((band, j) => (j === i ? db : band)), preset: null })} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WinampTitle({ label }: { label: string }) {
   return (
@@ -204,11 +431,7 @@ function WinampChrome(p: RetroChromeProps) {
               {playing || (inVoice && !p.muted) ? "▶" : inVoice ? "❚❚" : "■"}
             </span>
             <span className="wa-lcd-time">{elapsed}</span>
-            <span className={`wa-viz ${playing ? "live" : ""}`}>
-              {Array.from({ length: 19 }, (_, i) => (
-                <i key={i} style={{ animationDelay: `${(i * 173) % 700}ms`, animationDuration: `${420 + ((i * 97) % 300)}ms` }} />
-              ))}
-            </span>
+            <WinampViz playing={playing} />
           </div>
           <div className="wa-info">
             <div className="wa-marquee" title={marquee}>
@@ -251,38 +474,7 @@ function WinampChrome(p: RetroChromeProps) {
           </div>
         </div>
       </div>
-      {eqOpen && (
-        <div className="wa-win wa-eq" aria-hidden="true">
-          <WinampTitle label="WINAMP EQUALIZER" />
-          <div className="wa-eq-body">
-            <div className="wa-eq-top">
-              <span className="wa-mini on">ON</span>
-              <span className="wa-mini">AUTO</span>
-              <span className="wa-eq-graph">
-                <svg viewBox="0 0 100 20" preserveAspectRatio="none">
-                  <polyline points={EQ_REST.map((v, i) => `${(i * 100) / 9},${(v * 20).toFixed(1)}`).join(" ")} />
-                </svg>
-              </span>
-              <span className="wa-mini wide">PRESETS</span>
-            </div>
-            <div className={`wa-eq-bands ${playing ? "live" : ""}`}>
-              <span className="wa-band pre">
-                <span className="wa-band-track"><i style={{ top: "45%" }} /></span>
-                <small>PREAMP</small>
-              </span>
-              <span className="wa-eq-scale"><small>+12db</small><small>+0db</small><small>-12db</small></span>
-              {EQ_BANDS.map((label, i) => (
-                <span className="wa-band" key={label}>
-                  <span className="wa-band-track">
-                    <i style={{ top: `${Math.round(EQ_REST[i] * 100)}%`, animationDelay: `${(i * 211) % 800}ms` }} />
-                  </span>
-                  <small>{label}</small>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {eqOpen && <WinampEqualizer />}
     </>
   );
 }

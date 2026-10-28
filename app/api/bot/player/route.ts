@@ -128,6 +128,7 @@ export async function POST(request: Request) {
           duration: resolved.duration ?? pending.duration,
           artist: pending.artist || resolved.artist,
           thumbnail: pending.thumbnail || resolved.thumbnail,
+          key: resolved.key ?? pending.key ?? null,
         },
       }),
     });

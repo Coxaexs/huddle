@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useRef, useState, useEffect } from "react";
 import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, ThumbsUp, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
 import {
@@ -373,7 +374,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                       onMouseEnter={(e) => e.currentTarget.style.background = "var(--line)"}
                       onMouseLeave={(e) => e.currentTarget.style.background = "var(--panel)"}
                     >
-                      <img src={video.thumbnail} alt="" style={{ width: 120, height: 68, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                      <img src={proxiedImage(video.thumbnail)} alt="" style={{ width: 120, height: 68, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
                         <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</div>
                         <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{video.channelTitle}</div>

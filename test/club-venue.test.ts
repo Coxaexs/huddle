@@ -44,6 +44,21 @@ describe("the club's booth controls", () => {
     expect(boothOp({ op: "skip", style: "nope" })).toEqual({ op: "skip" });
     expect(boothOp({ op: "club_move", move: "drop" })).toEqual({ op: "club_move", move: "drop" });
     expect(boothOp({ op: "club_move", move: "eject" })).toBe("Unknown move.");
+    expect(boothOp({ op: "club_loop", part: "guitar" })).toEqual({ op: "club_loop", part: "guitar" });
+    expect(boothOp({ op: "auto", autoplay: false })).toEqual({ op: "auto", autoplay: false });
+    expect(boothOp({ op: "auto", station: "heavy" })).toEqual({ op: "auto", station: "heavy" });
+    expect(boothOp({ op: "auto", station: null })).toEqual({ op: "auto", station: null });
+    expect(boothOp({ op: "auto", station: "polka" })).toBe("Nothing to change.");
+    expect(boothOp({ op: "club", station: "sad" })).toEqual({ op: "club", station: "sad" });
+    expect(slimState({ auto: { station: "dreamy" } }).auto.station).toBe("dreamy");
+    expect(slimState({ auto: { station: "polka" } }).auto.station).toBeNull();
+    expect(slimState({ auto: {} }).auto.autoplay).toBe(true);
+    expect(slimState({ auto: { autoplay: false } }).auto.autoplay).toBe(false);
+    expect(boothOp({ op: "club_loop", part: "kazoo" })).toBe("Unknown part.");
+    expect(boothOp({ op: "loop_vote", id: "03817246f8f1-guitar-16", vote: "down" })).toEqual({ op: "loop_vote", id: "03817246f8f1-guitar-16", vote: "down" });
+    expect(boothOp({ op: "loop_vote", id: "03817246f8f1-guitar-16", vote: null })).toEqual({ op: "loop_vote", id: "03817246f8f1-guitar-16", vote: null });
+    expect(boothOp({ op: "loop_vote", id: "../etc", vote: "down" })).toBe("Unknown loop.");
+    expect(boothOp({ op: "loop_vote", id: "03817246f8f1-guitar-16", vote: "meh" })).toBe("Unknown vote.");
     expect(boothOp({ op: "set", deck: "A", stem: "vocals", value: 3 })).toEqual({ op: "set", deck: "A", param: "stem_vocals", value: 1 });
     expect(boothOp({ op: "set", deck: "A", param: "pitch", value: 50 })).toBe("Unknown setting.");
     expect(boothOp({ op: "set", deck: "C", stem: "vocals", value: 0 })).toBe("Choose deck A or B.");
@@ -79,8 +94,12 @@ describe("the club's booth controls", () => {
     expect(state.decks.B.loaded).toBe(false);
     expect(state.master).toBe("A");
     expect(state.mix).toEqual({ label: "Stem swap", progress: 0.4, started: true });
-    expect(state.auto).toEqual({ on: true, mode: "real", vibe: "hype", three: false, next: "Two", style: "auto", beats: null });
+    expect(state.auto).toEqual({ on: true, mode: "real", vibe: "hype", three: false, next: "Two", style: "auto", beats: null, autoplay: true, station: null });
     expect(slimState({ auto: { on: true, mode: "auto", style: "echo", beats: 8 } }).auto).toMatchObject({ mode: "auto", style: "echo", beats: 8 });
+    // The loop sounding now (one waiting to start isn't), to turn down from the decks.
+    expect(slimState({ loops: [{ part: "drums", id: "aaaaaaaaaaaa-drums-0", on: false }, { part: "guitar", title: "Riff", id: "bbbbbbbbbbbb-guitar-4", on: true }] }).loop)
+      .toEqual({ id: "bbbbbbbbbbbb-guitar-4", part: "guitar", title: "Riff" });
+    expect(slimState({}).loop).toBeNull();
     expect(state.crate).toHaveLength(12);
     expect(state.crate[0]).toEqual({ title: "S0", artist: "" });
     expect("history" in state).toBe(false);

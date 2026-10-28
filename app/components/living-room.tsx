@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Armchair, ChessPawn, Clapperboard, Crown, Disc3, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
-import type { LivingRoom, RoomTheme } from "../hooks/use-living-room";
+import { useClubSkin, type LivingRoom, type RoomTheme } from "../hooks/use-living-room";
 import { CLUB_DJ_SEAT, CLUB_STAGE, GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
 import { FishingRod, readTackle, recordCatch, type FishingPhase, type TackleEntry } from "./meadow-fishing";
 import { buildRoom, type BuiltRoom, type RoomThings } from "./living-room-scene";
@@ -21,6 +21,8 @@ import { TableDice } from "./tabletop-dice";
 import { buildBoardHall, type FloorBoard } from "./board-hall-scene";
 import { buildMeadow } from "./meadow-scene";
 import { buildClub, type ClubRig } from "./club-scene";
+import { SPECTRUM_BANDS } from "./club-skins";
+import { openMusicReader } from "../lib/music-tap";
 import { ClubBar, ClubDecksPanel, ClubLightDesk, ClubLightsPanel, type ClubLightSettings, type ClubStatus } from "./club-panel";
 import { ClubLights, watchClub, type ClubShow } from "../lib/club-lights";
 import { DEFAULT_DESK, type ClubDesk, type ClubFx } from "@/lib/club-desk";
@@ -513,6 +515,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const theme = room.theme;
   const venueId = room.venue;
   const venue = venueById(venueId);
+  // Winamp, Star Wars, the Matrix and Minecraft dress the club as their own (club-skins.ts).
+  const themedClub = useClubSkin();
+  const clubSkin = venueId === "club" ? themedClub : "plain";
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Hide every overlay for a clean view of the room; H or the eye button brings them back.
   const [controlsHidden, setControlsHidden] = useState(false);
@@ -748,7 +753,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       : venueId === "tabletop" ? buildTabletop(theme)
         : venueId === "boardhall" ? buildBoardHall(theme)
           : venueId === "meadow" ? buildMeadow(theme)
-            : venueId === "club" ? buildClub(theme)
+            : venueId === "club" ? buildClub(theme, clubSkin)
               : buildRoom(theme);
     parts.club?.calm(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     if (parts.cinemaLights) { cinemaLightsRef.current = parts.cinemaLights; applyHouse(parts.cinemaLights, live.current.room.shared.house); }
@@ -1670,12 +1675,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       }
     };
 
-    // The club: this frame's show, who stands where, who has the decks and what is playing.
+    // The club: this frame's show, who stands where, who has the decks and what is playing; and for a theme's
+    // own club, the music as heard here.
+    const musicReader = parts.club && clubSkin !== "plain" ? openMusicReader() : null;
+    const heardBands = new Float32Array(SPECTRUM_BANDS);
+    const heardWave = new Float32Array(256);
     const syncClub = () => {
       const club = parts.club;
       if (!club) return;
       const show = clubShowRef.current;
       if (show) club.show(show);
+      if (musicReader?.bands(heardBands, 50, 16000)) club.spectrum(heardBands, musicReader.wave(heardWave) ? heardWave : null);
       club.brightness(clubSettingsRef.current.brightness);
       const r = live.current.room;
       const spots: Array<{ x: number; z: number }> = [];
@@ -1693,7 +1703,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       club.track(track?.title ?? null, track?.artist || null);
     };
 
+    // Which way your ears point: overhead (and behind a pawn) the camera's way, so voices sit where their speakers are
+    // on the screen and don't swing round when your avatar turns to walk; through your eyes, the way you face.
+    let earSent: number | null | undefined;
+    const syncEar = () => {
+      const ear = live.current.view === "overhead" ? wrapHeading(-orbit.yaw) : live.current.view === "pawn" ? wrapHeading(pawnBasis) : null;
+      if (earSent !== undefined && (ear === earSent || (ear !== null && earSent !== null && Math.abs(wrapHeading(ear - earSent)) < 0.03))) return;
+      earSent = ear;
+      live.current.room.setEar(ear);
+    };
     const walk = (dt: number) => {
+      syncEar();
       const pose = myPose();
       if (!pose) return;
       let facing = pose.facing;
@@ -1938,13 +1958,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       dropWatch();
       if (diceRef.current === dice) diceRef.current = null;
       crowd.dispose();
+      musicReader?.close();
       parts.dispose();
       renderer.dispose();
       // Browsers cap live WebGL contexts; give this one back now, not at GC.
       renderer.forceContextLoss();
       mount.removeChild(canvas);
     };
-  }, [theme, venueId]);
+  }, [theme, venueId, clubSkin]);
 
   // A roll in the call: at the tabletop it is thrown onto the table from the roller's seat.
   useEffect(() => {

@@ -93,8 +93,8 @@ export async function botFetch(
   return data;
 }
 
-/** Transport controls the DJ booth takes over while it is on air ("skip" = mix into the next song). */
-export type DjControl = "skip" | "pause" | "resume";
+/** Transport controls the DJ booth takes over while it is on air ("skip" = mix into the next song, "stop" = end the set). */
+export type DjControl = "skip" | "pause" | "resume" | "stop";
 
 /**
  * Send a transport control to a Hoffle room's DJ booth on the bot. While the
