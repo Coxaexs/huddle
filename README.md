@@ -1,18 +1,44 @@
 # Hoffle
 
-Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, a shared music bot and D&D tools, like your own private Discord. Run it on your own server, or just use it at [chat.hoffle.online](https://chat.hoffle.online), free and with nothing to install. More at [hoffle.online](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)).
+Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, a shared music bot and D&D tools, like your own private Discord. Run it on your own server, or just use it at [chat.hoffle.online](https://chat.hoffle.online), free and with nothing to install. More at [hoffle.online](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)) · [Docs](https://hoffle.online/docs) · [Download apps](https://hoffle.online/download).
+
+[![Verify CI](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml/badge.svg)](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml)
+[![Docker Image](https://github.com/Coxaexs/huddle/actions/workflows/docker.yml/badge.svg)](https://github.com/Coxaexs/huddle/pkgs/container/huddle)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-hoffle.online-7c3aed)](https://hoffle.online)
+[![Open Web App](https://img.shields.io/badge/Live-chat.hoffle.online-10b981)](https://chat.hoffle.online)
 
 ![A Hoffle server in the Cozy theme: channels on the left, a friend group's chat in the middle, who's online on the right](https://hoffle.online/shots/hoffle-cozy-theme-1280.webp)
 
 - **Text channels and DMs** with replies, reactions, edits, polls, stickers, custom emoji and link previews
 - **Search** with operators: `from:`, `in:`, `has:`, `before:`, `after:`, `pinned:` and quoted phrases
-- **Voice and video rooms** with screen sharing, spatial audio and noise suppression
+- **Voice and video rooms** with screen sharing, spatial audio, real-time singing/voice effects and noise suppression
+- **3D Living Room & Club venues**: shared 3D hangouts, beat-synced nightclub lighting, library, cinema and tabletop rooms
 - **Announcement, forum and stage channels**, alongside text and voice
 - **Automod** rules per server: block or time out on keywords, mention spam, links, caps and repeats
 - **Music bot** that plays synced music into voice rooms, plus the full [Music + Watch bot](https://github.com/Coxaexs/musicwatchtogether) (dashboard, DJ booth, lyrics, Watch Together) as an optional container
 - **Tabletop tools**: battlemaps, 3D dice and a D&D 5e companion
 - **Runs real Discord bots**: discord.js and discord.py bots work unchanged
 - **Discord bridge** to mirror channels between Discord and Hoffle
+
+## Repository structure
+
+Like [Spacebar](https://github.com/spacebarchat/server), this repository is organized into clear, self-contained modules covering the backend server, web client, native desktop/mobile apps, and companion services:
+
+| Directory / Module | Description |
+| ------------------ | ----------- |
+| [`worker/`](worker/) | **Worker Host & Gateway Router** — HTTP entrypoint, WebSocket upgrade router (`/api/realtime`, `/api/gateway`), and security header pipeline |
+| [`lib/`](lib/) | **Core Server & Domain Logic** — Auth & passkeys (`auth.ts`), SQLite schema & migrations (`schema.ts`), `HuddleHub` Durable Object (`hub.ts`), wire protocol (`protocol.ts`), permissions, automod, feeds, webhooks and i18n |
+| [`lib/discord/`](lib/discord/) | **Discord v10 Compatibility** — `DiscordGateway` WebSocket server (`gateway.ts`), Discord v10 REST API (`rest.ts`), Slash Command interactions (`interactions.ts`), CDN (`cdn.ts`) and Snowflakes |
+| [`app/api/`](app/api/) | **HTTP REST API** — Next.js App Router endpoints for channels, guilds/servers, messages, voice, uploads, admin, native bot API (`v1/`) and feature routes (`app/api/(features)/`) |
+| [`app/components/`](app/components/) | **Web Client UI** — Modular chat shell (`chat/shell/`), voice stage (`voice-stage/`), 3D Living Room & Club (`living-room.tsx`, `club-scene.ts`), battlemap, 3D dice, settings and retro skins (MSN, Winamp) |
+| [`app/hooks/`](app/hooks/) & [`app/lib/`](app/lib/) | **Client Hooks & Audio DSP** — 9-part chat shell state hooks (`chat-shell/`), WebRTC/LiveKit voice (`use-voice.ts`), AudioWorklet RNNoise/singing DSP (`mic-chain.ts`) and 3D HRTF spatial audio (`spatial-audio.ts`) |
+| [`desktop/`](desktop/) & [`desktop-tauri/`](desktop-tauri/) | **Desktop Clients** — Full Electron app (`desktop/`, with per-app audio capture) and lightweight Rust/Tauri **Hoffle Lite** (`desktop-tauri/`) |
+| [`desktop-native-macos/`](desktop-native-macos/) · [`windows/`](desktop-native-windows/) · [`linux/`](desktop-native-linux/) | **Hoffle Native** — Ultra-lightweight native C++/Objective-C desktop apps using system WebKit / WebView2 (~500 KB bundle) |
+| [`mobile/`](mobile/) | **Mobile Clients** — Android & iOS Capacitor app with background voice, CallKit, floating call bubble and FCM push notifications |
+| [`services/`](services/) & [`discord-bridge/`](discord-bridge/) | **Companion Containers** — `music-bot` (`yt-dlp`), `dnd-bot` (5e SRD), `musicwatch` (DJ booth & Watch Together), `party-bot` and the Discord bridge |
+| [`deploy/`](deploy/) & [`scripts/`](scripts/) | **Operations & Tooling** — Zero-downtime `deploy.sh`, `workerd` systemd units, Nginx/Coturn configs, Unraid template and admin CLI (`admin.mjs`) |
+| [`docs/`](docs/) & [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Documentation** — User guides (published at [hoffle.online/docs](https://hoffle.online/docs)), [System Architecture](ARCHITECTURE.md) and [Codebase Developer Guide](docs/codebase.md) |
 
 ## Quick start
 
@@ -49,6 +75,7 @@ That's it. No config files needed.
 | Add the full music bot (dashboard, DJ booth, Watch Together) | [Music bot](docs/self-hosting.md#music-bot) |
 | Run my Discord bot, or write a new one            | [Bots](docs/bots.md) |
 | Bridge a Discord server                           | [Discord bridge](docs/self-hosting.md#discord-bridge) |
+| Understand the codebase or contribute             | [Architecture](ARCHITECTURE.md) · [Codebase guide](docs/codebase.md) · [Contributing](CONTRIBUTING.md) |
 
 ## Everyday commands
 
@@ -77,7 +104,7 @@ Everything Hoffle stores (messages, accounts, uploads) is in the `state/` folder
 
 The `hoffle` container runs the web app and realtime server: a Cloudflare Worker running locally in Wrangler, with SQLite for data and the disk for uploads. The bot containers are only reachable from inside Docker. Voice is peer-to-peer by default, so it needs no extra servers until your rooms get large; then add LiveKit, which chat.hoffle.online uses.
 
-More detail: [audio architecture](docs/audio-architecture.md) · [spatial audio](docs/spatial-audio.md) · [voice input chain](docs/voice-input-chain.md).
+More detail: [system architecture](ARCHITECTURE.md) · [codebase guide](docs/codebase.md) · [audio architecture](docs/audio-architecture.md) · [spatial audio](docs/spatial-audio.md) · [voice input chain](docs/voice-input-chain.md).
 
 ## Search operators
 
@@ -168,4 +195,3 @@ Hoffle is built with and grateful to the following open source projects and comm
 - **@3d-dice/dice-box** (MIT License) - Frank S
 - **yt-dlp** (The Unlicense) - yt-dlp contributors
 - **ffmpeg** (LGPL / GPL) - FFmpeg team
-

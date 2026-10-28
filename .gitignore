@@ -66,3 +66,6 @@ public/hoffle_native.dmg
 # it built in .standby-built.
 .next/
 /.standby-built
+
+# Local runtime cache
+/.cache

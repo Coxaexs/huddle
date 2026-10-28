@@ -1,0 +1,49 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Hoffle
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the details below so we can reproduce and fix it quickly.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: When I joined a voice channel and clicked Screen Share...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we trigger this issue?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Client / Platform
+      options:
+        - Web Browser (Chrome / Edge / Brave)
+        - Web Browser (Firefox)
+        - Web Browser (Safari)
+        - Hoffle Desktop (Electron - Windows / macOS / Linux)
+        - Hoffle Lite (Tauri)
+        - Hoffle Native (macOS / Windows / Linux)
+        - Hoffle Mobile (Android / iOS)
+        - Self-Hosted Server (Docker / Systemd)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Paste any browser console errors or `docker compose logs hoffle` output here.
+      render: shell

@@ -1,0 +1,34 @@
+name: Feature Request
+description: Suggest an idea, theme, bot tool, or improvement for Hoffle
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem or use case does this solve?
+      description: Describe what you and your friend group are trying to do.
+      placeholder: During our weekly D&D session / watch party...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work and look?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Component / Subsystem
+      options:
+        - Chat, Channels & DMs
+        - Voice, Video & Screen Sharing
+        - 3D Living Room & Club Venues
+        - Music Bot & Watch Together
+        - Tabletop & D&D Tools (Battlemap / 3D Dice / 5e SRD)
+        - Themes, Cosmetics & Retro Skins (MSN / Winamp)
+        - Desktop / Mobile Clients
+        - Bots, Webhooks & Discord Compatibility
+        - Self-Hosting, Docker & Admin
