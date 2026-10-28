@@ -17,6 +17,7 @@ import { type VoicePref } from "../../components/user-menu";
 import { apiFetch } from "../../lib/client";
 import { membersText, shownCounts } from "@/lib/member-counts";
 import type { useShellState } from "./use-shell-state";
+import { adoptLayout, installLayout } from "@/app/lib/layout-store";
 
 /** ChatShell, part 2 of 9. The signed-in session: loading servers, members, friends, prefs and unread counts; message and invite links; permissions and the active server/channel/DM. */
 export function useShellSession(s: ReturnType<typeof useShellState>) {
@@ -270,6 +271,15 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
       .catch(() => undefined)
       .finally(() => setReady(true));
   }, []);
+
+  // Where the panels sit and which widgets are pinned: the account's choice
+  // wins over what this device remembered. Keyed on the JSON so a refetched
+  // session with the same layout changes nothing.
+  const accountLayout = user?.layout ? JSON.stringify(user.layout) : "";
+  useEffect(() => {
+    installLayout();
+    if (accountLayout) adoptLayout(JSON.parse(accountLayout));
+  }, [accountLayout]);
 
   // Signed-in only, so it waits for the user: asked from the sign-in screen it
   // was refused, and recording stayed hidden in that tab until a reload.

@@ -799,13 +799,17 @@ export function useShellState() {
 
   useEffect(() => {
     const move = (e: globalThis.MouseEvent) => {
+      // A panel moved to the other side (app/lib/layout-store.ts) grows the
+      // other way: its handle is on its inner edge either way.
+      const flipSidebar = document.documentElement.dataset.chan === "right";
+      const flipMembers = document.documentElement.dataset.members === "left";
       if (sidebarDragging.current) {
-        const delta = e.clientX - sidebarStartX.current;
+        const delta = (e.clientX - sidebarStartX.current) * (flipSidebar ? -1 : 1);
         const next = Math.min(460, Math.max(160, sidebarStartW.current + delta));
         setSidebarWidth(next);
       }
       if (membersDragging.current) {
-        const delta = membersStartX.current - e.clientX;
+        const delta = (membersStartX.current - e.clientX) * (flipMembers ? -1 : 1);
         const next = Math.min(460, Math.max(180, membersStartW.current + delta));
         setMembersWidth(next);
       }

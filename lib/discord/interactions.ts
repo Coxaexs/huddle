@@ -33,6 +33,7 @@ import { nativeFor, snowflakeFor } from "./snowflake";
 import { InteractionType, InteractionResponseType, MessageFlags } from "./protocol";
 import { snapshotBeforeEdit } from "../message-edits";
 import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
+import { getWidget, parseWidgetMessageId, publishWidget, saveWidget, widgetChanges } from "../bot-widgets";
 
 /** Discord's window: acknowledge within 3s, edit for 15 minutes after. */
 const INTERACTION_TTL_MS = 15 * 60 * 1000;
@@ -528,6 +529,9 @@ async function updateSourceMessage(
   messageId: string,
   data: Record<string, unknown>,
 ): Promise<StoredMessage> {
+  const widgetRef = parseWidgetMessageId(messageId);
+  if (widgetRef) return updateWidget(context, channel, messageId, widgetRef, data);
+
   const content = data.content === undefined || data.content === null
     ? undefined
     : String(data.content).slice(0, 4000);
@@ -574,6 +578,36 @@ async function updateSourceMessage(
     payload,
   });
   return { ...existing, content: content ?? existing.content, payload };
+}
+
+/**
+ * A press on a bot widget answered with an update: the widget changes for
+ * everyone in its server. Only the bot that owns it may change it, which the
+ * interaction row already guarantees (it was created for that bot).
+ */
+async function updateWidget(
+  context: RestContext,
+  channel: HoffleChannelRow,
+  messageId: string,
+  ref: NonNullable<ReturnType<typeof parseWidgetMessageId>>,
+  data: Record<string, unknown>,
+): Promise<StoredMessage> {
+  const shell = ephemeralShell(context, channel, messageId);
+  if (ref.botId !== context.bot.id) return shell;
+  const changes = widgetChanges({
+    ...(data.content !== undefined ? { content: data.content } : {}),
+    ...(data.embeds !== undefined ? { embeds: data.embeds } : {}),
+    ...(data.components !== undefined ? { components: data.components } : {}),
+  });
+  if ("error" in changes) return shell;
+  const saved = await saveWidget(context.db, context.bot, ref.serverId, ref.name, ref.channelId, changes);
+  if ("error" in saved) return shell;
+  await publishWidget(context.db, ref.serverId, { widget: saved });
+  return {
+    ...shell,
+    content: saved.content,
+    payload: JSON.stringify({ embeds: saved.embeds, components: saved.components, botId: saved.botId }),
+  };
 }
 
 /** Enough of a message for serializing one that only lives in someone's tabs. */
@@ -1036,6 +1070,28 @@ async function componentMessage(
   channelSnowflake: string,
   guildSnowflake: string | null,
 ): Promise<Record<string, unknown>> {
+  const widgetRef = parseWidgetMessageId(messageId);
+  if (widgetRef) {
+    // A widget is not a message, but libraries want one: its current look.
+    const widget = await getWidget(db, widgetRef.serverId, widgetRef.botId, widgetRef.name, widgetRef.channelId);
+    return serializeMessage(
+      {
+        id: messageId,
+        channel: channel.name,
+        channel_id: channel.id,
+        user_id: null,
+        author: widget?.botName || "bot",
+        avatar: widget?.botAvatar || "🤖",
+        color: "#b8a6ff",
+        content: widget?.content || "",
+        attachment_key: null,
+        is_bot: 1,
+        created_at: widget?.updatedAt || new Date().toISOString(),
+        payload: widget ? JSON.stringify({ embeds: widget.embeds, components: widget.components, botId: widget.botId }) : null,
+      },
+      { channelSnowflake, guildSnowflake },
+    );
+  }
   const stored = await db
     .prepare("SELECT * FROM messages WHERE id = ?")
     .bind(messageId)

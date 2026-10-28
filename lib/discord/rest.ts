@@ -57,6 +57,7 @@ import {
   updateThread,
 } from "./threads";
 import { handleCommandRoutes, handleInteractionRoutes } from "./interactions";
+import { handleWidgetRoutes, isWidgetRoute } from "./widgets";
 import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
 import { snapshotBeforeEdit } from "../message-edits";
 
@@ -210,6 +211,7 @@ async function route(context: RestContext, segments: string[]): Promise<Response
     case "channels":
       return channelRoutes(context, rest);
     case "applications":
+      if (isWidgetRoute(rest)) return handleWidgetRoutes(context, rest);
       return handleCommandRoutes(context, rest);
     case "interactions":
     case "webhooks":

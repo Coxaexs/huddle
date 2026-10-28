@@ -24,6 +24,8 @@ import { formatClientTime, formatClientDateTime } from "../../../lib/chat/format
 import { extractInviteCodes } from "../../../lib/chat/invites";
 import { Icon } from "../icon-button";
 import { MiniVoiceBar } from "../mini-voice-bar";
+import { WidgetArea } from "../../widgets/widget-area";
+import { useLayoutPrefs } from "@/app/lib/layout-store";
 import { RailQuickDms } from "../rail";
 import { StatusMenu } from "../status-menu";
 import { UserFooter } from "../../user-footer";
@@ -368,6 +370,7 @@ export function ChannelSidebar({
   onSidebarResizeDown: (e: React.MouseEvent) => void;
 }) {
   const { t } = useI18n();
+  const musicWidgetPlaced = useLayoutPrefs().widgets.some((widget) => widget.id === "music");
   return (
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
       {/* Mobile close button from Figma */}
@@ -572,6 +575,8 @@ export function ChannelSidebar({
           </div>
         )}
       </header>
+
+      <WidgetArea area="sidebar-top" />
 
       {inDmHome ? (
         <nav className="channel-nav" aria-label={t("sidebar.conversations")}>
@@ -860,8 +865,11 @@ export function ChannelSidebar({
         </nav>
       )}
 
-      {/* Synchronized Music Bar - sits on top of mini-voice-bar */}
-      {roomPlayer?.track && (
+      <WidgetArea area="sidebar-bottom" />
+
+      {/* Synchronized Music Bar - sits on top of mini-voice-bar. The Music
+          widget, when placed, already shows all of this. */}
+      {roomPlayer?.track && !musicWidgetPlaced && (
         <MiniMusicBar
           state={roomPlayer}
           position={player.position}
@@ -1378,6 +1386,8 @@ export function MemberPanel({
         onMouseDown={onMembersResizeDown}
         title={t("members.resize")}
       />
+
+      <WidgetArea area="members-top" />
 
       {/* Outside MSN the sidebar voice bar already has these controls. */}
       {msnTheme && voice.channelId && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
 import { Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
@@ -179,6 +180,7 @@ export function ChatHeader({
               </span>
             </div>
             <div className="header-actions items-center">
+              <WidgetArea area="header" />
               {stageChannel && (
                 <div className="voice-stage-header-controls flex items-center gap-2 mr-1 flex-shrink-0">
                   {activeScreenShare && (

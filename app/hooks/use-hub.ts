@@ -17,6 +17,7 @@ import { basePath } from "../lib/client";
 import type { SessionNotesState } from "@/lib/session-notes";
 import { pruneStreamPreviews } from "../lib/stream-preview";
 import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
+import { receiveBotWidget } from "../lib/widget-store";
 
 export interface HubState {
   connected: boolean;
@@ -555,6 +556,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "achievement":
             handlersRef.current.onAchievement?.(payload.ids);
+            break;
+          case "bot-widget":
+            receiveBotWidget(payload);
             break;
           case "voice-evicted":
             handlersRef.current.onVoiceEvicted?.();

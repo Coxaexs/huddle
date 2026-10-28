@@ -8,6 +8,7 @@ import { BUILTIN_THEMES, type Theme, getStoredThemes, saveCustomTheme } from "@/
 import { setRetroSoundThemeEnabled, playRetroSound } from "../../lib/msn-sounds";
 import { isParticlesEnabled, setParticlesEnabled, setThemeFxEnabled } from "../../lib/theme-fx";
 import { Tab, PrideTheme, Density, Backdrop, type AppearanceSubtab } from "./types";
+import { LayoutPicker } from "../widgets/layout-picker";
 
 export function AppearanceTab({
   tab,
@@ -137,6 +138,7 @@ export function AppearanceTab({
     <>
       {tab === "appearance" && (
             <>
+              <LayoutPicker />
               <div className="appearance-choice-row vs-mode-row appearance-sections" role="tablist" aria-label="Appearance sections">
                 {([
                   ["installed", "Themes"],

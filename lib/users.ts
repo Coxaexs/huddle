@@ -2,6 +2,7 @@
 
 import type { ProfileStyle } from "./profile-style";
 import type { TranslateFn } from "./i18n";
+import type { LayoutPrefs } from "./layout-prefs";
 
 export type { ProfileStyle } from "./profile-style";
 export { normalizeProfileStyle } from "./profile-style";
@@ -166,6 +167,8 @@ export interface PublicUser {
   canManageMedia?: boolean;
   /** Only on the signed-in user's own account: may open /admin. */
   isInstanceAdmin?: boolean;
+  /** Only on the signed-in user's own account: panel sides and pinned widgets. */
+  layout?: LayoutPrefs;
 }
 
 export interface Member {

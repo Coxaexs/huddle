@@ -10,6 +10,9 @@ import type { useShellComposer } from "../../../hooks/chat-shell/use-shell-compo
 import { withShellRenderers } from "./chat-shell-renderers";
 import { renderChatMain } from "./chat-main";
 import { renderChatOverlays } from "./chat-overlays";
+import { WidgetHostProvider, type WidgetHostValue } from "../../widgets/widget-host";
+import { CustomizeBar } from "../../widgets/customize-bar";
+import { WebViewSheet } from "../../widgets/web-view";
 
 export type ChatShellViewState = Omit<ReturnType<typeof useShellComposer>, "user"> & { user: PublicUser };
 
@@ -44,8 +47,23 @@ export function renderChatShell(s: ChatShellViewState) {
     voiceSoundboardAllowed, whatsNew, whatsNewPeople,
   } = v;
 
+  const widgetHost: WidgetHostValue = {
+    serverId: inDmHome ? null : activeServer?.id ?? null,
+    activeChannelId,
+    voiceChannelId: voice.channelId,
+    players: hub.players,
+    voiceRooms: (inDmHome ? [] : activeServer?.channels ?? [])
+      .filter((channel) => channel.kind === "voice")
+      .map((channel) => ({ id: channel.id, name: channel.name })),
+    joinVoice: (channelId) => {
+      const channel = servers.flatMap((server) => server.channels).find((item) => item.id === channelId);
+      if (channel) v.openVoiceChannel(channel);
+    },
+    membersOpen: Boolean(membersOpen && !stageChannel),
+  };
+
   return (
-    <>
+    <WidgetHostProvider value={widgetHost}>
     <MatrixRain />
     <Starfield jumpKey={inDmHome ? "home" : activeServer?.id} />
     <main
@@ -312,7 +330,9 @@ export function renderChatShell(s: ChatShellViewState) {
       />
 
       {renderChatOverlays(v)}
+      <CustomizeBar onOpen={() => setSettingsOpen(false)} />
+      <WebViewSheet />
     </main>
-    </>
+    </WidgetHostProvider>
   );
 }

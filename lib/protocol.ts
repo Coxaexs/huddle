@@ -747,6 +747,14 @@ export type ServerEvent =
   | { t: "notice"; text: string; serverNow: number }
   /** This account just unlocked these achievements (ids from achievement-defs). */
   | { t: "achievement"; ids: string[]; serverNow: number }
+  /** A bot widget in one of your servers changed or went away (lib/bot-widgets.ts). */
+  | {
+      t: "bot-widget";
+      serverId: string;
+      widget?: import("./bot-widgets").BotWidget;
+      removed?: { key: string; channelId: string | null | "*" };
+      serverNow: number;
+    }
   | {
       /** Direct message call signaling between caller and callee. */
       t: "dm-call";

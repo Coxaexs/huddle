@@ -101,6 +101,111 @@ Serve images through the CDN route by adding `cdn: "http://localhost:8730/hangou
 
 Hoffle does not rate limit bots. The standard `x-ratelimit-*` headers are returned on every response so libraries pace themselves normally, but the bucket never runs out.
 
+## Widgets
+
+A bot can also give members a **widget**: a small card it keeps up to date, which anyone in the server can pin to their channel list, member list or header (Settings → Appearance → Layout → *Customize layout & widgets…*). A music bot's now-playing card with play/pause/skip, a poll, a server status light, a match score.
+
+A widget is shaped like a message, so you build it with what your library already has: `content`, `embeds` and `components` (buttons, link buttons, string selects). Pressing a button reaches your bot as an ordinary `MESSAGE_COMPONENT` interaction, and answering it with *update message* (`interaction.response.edit_message(...)` in discord.py, `interaction.update(...)` in discord.js) changes the widget for everyone. Deferred updates followed by an edit of `@original` work too.
+
+### Publishing a widget
+
+```http
+PUT    /hangout/api/v10/applications/{appId}/guilds/{guildId}/widgets/{name}
+PATCH  /hangout/api/v10/applications/{appId}/guilds/{guildId}/widgets/{name}
+DELETE /hangout/api/v10/applications/{appId}/guilds/{guildId}/widgets/{name}
+GET    /hangout/api/v10/applications/{appId}/guilds/{guildId}/widgets
+```
+
+A bot made for one server (a token from Server Settings → Bots & Integrations) can leave out `guilds/{guildId}`.
+
+```json
+{
+  "title": "Now playing",
+  "sizes": ["small", "medium", "large"],
+  "webview_url": "https://bot.example.com/dashboard",
+  "embeds": [{ "title": "Song name", "description": "Artist", "thumbnail": { "url": "https://…/cover.jpg" } }],
+  "components": [{ "type": 1, "components": [
+    { "type": 2, "style": 1, "custom_id": "toggle", "emoji": { "name": "⏯" }, "label": "Play/pause" },
+    { "type": 2, "style": 2, "custom_id": "skip", "emoji": { "name": "⏭" }, "label": "Skip" }
+  ] }]
+}
+```
+
+- `name`: 1–32 of `a-z 0-9 _ -`. Up to 10 widgets per bot per server.
+- `title`: shown above the widget and in the Customize tray.
+- `sizes`: which of `small`, `medium`, `large` it supports (default: all three). **Small** is one line: the embed's thumbnail and title and the first row's buttons (shown by their emoji, so give them one). **Medium** is the embed's title, description and thumbnail with one row of buttons. **Large** is everything: fields, image, footer, every row. The header only takes small widgets; the channel list's top takes small and medium.
+- `webview_url`: an `https://` page shown inside Hoffle when someone presses the widget's 🌐 button (your dashboard, settings, a bigger view). Pages that forbid framing can still be opened in a new tab from there.
+- `channel_id` (body or query): keeps a separate copy of the widget for one room. Members see the copy for the voice room they are in (or the channel they have open), else the server-wide one. A room's copy starts from the server-wide one, so set `title`/`sizes` once and then send each room only its content.
+
+`PUT` replaces the message (fields you leave out are cleared, as a new message would be); `PATCH` changes only what it names. `DELETE` without `channel_id` removes every copy.
+
+### discord.py example
+
+```python
+import aiohttp, discord
+
+API = "http://localhost:8730/hangout/api/v10"
+
+class Poll(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)          # widget buttons never expire
+        self.votes = {"tea": 0, "coffee": 0}
+
+    def embed(self):
+        return discord.Embed(title="Tea or coffee?", description=" · ".join(f"{k}: {v}" for k, v in self.votes.items()))
+
+    @discord.ui.button(label="Tea", emoji="🍵", custom_id="tea")
+    async def tea(self, interaction, button):
+        self.votes["tea"] += 1
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+    @discord.ui.button(label="Coffee", emoji="☕", custom_id="coffee")
+    async def coffee(self, interaction, button):
+        self.votes["coffee"] += 1
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+class Bot(discord.Client):
+    async def setup_hook(self):
+        self.poll = Poll()
+        self.add_view(self.poll)                # routes presses by custom_id
+
+    async def on_ready(self):
+        body = {"title": "Morning poll", "embeds": [self.poll.embed().to_dict()],
+                "components": self.poll.to_components()}
+        async with aiohttp.ClientSession(headers={"Authorization": f"Bot {TOKEN}"}) as http:
+            for guild in self.guilds:
+                await http.put(f"{API}/applications/{self.application_id}/guilds/{guild.id}/widgets/poll", json=body)
+```
+
+### discord.js example
+
+```javascript
+client.once("ready", async () => {
+  for (const guild of client.guilds.cache.values()) {
+    await client.rest.put(`/applications/${client.application.id}/guilds/${guild.id}/widgets/status`, {
+      body: {
+        title: "Server status",
+        sizes: ["small", "medium"],
+        embeds: [{ title: "🟢 Online", description: "12 players" }],
+        components: [{ type: 1, components: [{ type: 2, style: 2, custom_id: "refresh", emoji: { name: "🔄" }, label: "Refresh" }] }],
+      },
+    });
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (interaction.isButton() && interaction.customId === "refresh") {
+    await interaction.update({ embeds: [{ title: "🟢 Online", description: `${await countPlayers()} players` }] });
+  }
+});
+```
+
+The interaction carries the `guild_id`, the `channel_id` the member is looking at (or the widget's room), the `member`, and a `message` standing in for the widget, whose `id` is stable per widget.
+
+### The built-in Music widget
+
+Hoffle's own music player has a widget too: what your voice room hears, play/pause, skip, a box to play a song next (the same as `/playnext`), the queue (large size) and the Music + Watch dashboard in a web view. It is in every server's Customize tray.
+
 ## Hoffle's own bot API
 
 Alongside the Discord-compatible surface, Hoffle keeps a simpler REST API at `/api/v1` for scripts that just want to post a message. You can build bots using standard HTTP clients without a Discord library.

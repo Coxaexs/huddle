@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 23;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -878,6 +878,9 @@ async function migrate(db: D1Database): Promise<void> {
     ["achievement_showcase", "ALTER TABLE users ADD COLUMN achievement_showcase TEXT NOT NULL DEFAULT '[]'"],
     // Who may start a new conversation with this person (lib/dm-policy.ts).
     ["dm_policy", "ALTER TABLE users ADD COLUMN dm_policy TEXT NOT NULL DEFAULT 'everyone'"],
+    // Where the panels sit and which widgets are pinned (lib/layout-prefs.ts).
+    // NULL is the default layout.
+    ["layout_prefs", "ALTER TABLE users ADD COLUMN layout_prefs TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }
@@ -1295,6 +1298,23 @@ async function migrate(db: D1Database): Promise<void> {
       uses INTEGER NOT NULL DEFAULT 0
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS channel_webhooks_server_idx ON channel_webhooks(server_id)"),
+    // Cards bots keep up to date for members to pin (lib/bot-widgets.ts).
+    // channel_id is '' for a server-wide widget, else the room it belongs to.
+    db.prepare(`CREATE TABLE IF NOT EXISTS bot_widgets (
+      bot_id TEXT NOT NULL,
+      server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      channel_id TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,
+      sizes TEXT NOT NULL DEFAULT '["small","medium","large"]',
+      webview_url TEXT,
+      content TEXT NOT NULL DEFAULT '',
+      embeds TEXT NOT NULL DEFAULT '[]',
+      components TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (bot_id, server_id, name, channel_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS bot_widgets_server_idx ON bot_widgets(server_id)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS message_reports (
       id TEXT PRIMARY KEY,
       server_id TEXT NOT NULL,
