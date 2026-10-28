@@ -21,9 +21,28 @@ import { nativePlatform } from "../lib/native-voice";
 import { cancelScreenEcho, type ScreenEcho } from "../lib/screen-echo";
 import { desktopAppAudio, shellCapturesShareAudio } from "../lib/app-audio";
 import { startScreenPreviewCapture } from "../lib/stream-preview";
-import { clampVoiceBitrate, VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
+import { clampVoiceBitrate } from "@/lib/voice-quality";
+import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
+import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, voiceBitrate } from "../lib/voice-bitrate";
+import { AUDIO_JITTER_TARGET_MS, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
+import {
+  gainedPublish,
+  mayPublish as mayPublishFrom,
+  meshFallbackBlocked,
+  meshIcePolicy,
+  meshPeers,
+  meshPlan,
+  rejoinKind,
+  SFU_RETRY_MS,
+  splitEarlySignals,
+  videoAllowedFrom,
+  watchdogGraceMs,
+  watchdogVerdict,
+  weCall,
+} from "../lib/voice-mesh";
 import {
   MIC_STATE_EVENT,
+  MIC_SETTINGS_EVENT,
   openMicrophone,
   silentMicChain,
   readMicSettings,
@@ -47,6 +66,9 @@ import {
 } from "../lib/virtual-background";
 
 export type { BackgroundMode };
+export * from "../lib/screen-quality";
+export { screenAudioBitrate, voiceBitrate } from "../lib/voice-bitrate";
+export { MESH_FALLBACK_MAX_PEERS, meshFallbackBlocked, videoAllowedFrom } from "../lib/voice-mesh";
 
 /** No seats latched for a whisper; one shared empty list keeps state updates stable. */
 const NO_SEATS: string[] = [];
@@ -165,87 +187,7 @@ interface UseVoiceOptions {
   signedIn?: boolean;
 }
 
-/** Screen share heights on offer, lowest first. */
-export const SCREEN_RESOLUTIONS = [480, 720, 900, 1080] as const;
-/** Screen share frame rates on offer, lowest first. */
-export const SCREEN_FRAMERATES = [15, 24, 30, 60] as const;
-export type ScreenResolution = (typeof SCREEN_RESOLUTIONS)[number];
-export type ScreenFramerate = (typeof SCREEN_FRAMERATES)[number];
-/** Resolution and frame rate together, e.g. "1080p30". */
-export type ScreenShareQuality = `${ScreenResolution}p${ScreenFramerate}`;
 
-/** Every combination, lowest first. */
-export const SCREEN_SHARE_QUALITIES: ScreenShareQuality[] = SCREEN_RESOLUTIONS.flatMap((height) =>
-  SCREEN_FRAMERATES.map((fps) => `${height}p${fps}` as ScreenShareQuality),
-);
-
-export function screenQualityParts(quality: ScreenShareQuality): {
-  height: ScreenResolution;
-  fps: ScreenFramerate;
-} {
-  const [height, fps] = quality.split("p").map(Number);
-  return { height: height as ScreenResolution, fps: fps as ScreenFramerate };
-}
-
-export function makeScreenQuality(height: ScreenResolution, fps: ScreenFramerate): ScreenShareQuality {
-  return `${height}p${fps}`;
-}
-
-function isScreenQuality(value: unknown): value is ScreenShareQuality {
-  return SCREEN_SHARE_QUALITIES.includes(value as ScreenShareQuality);
-}
-
-/** "900p 24FPS" — for the live badge. */
-export function screenQualityLabel(quality: ScreenShareQuality): string {
-  const { height, fps } = screenQualityParts(quality);
-  return `${height}p ${fps}FPS`;
-}
-
-/** The next resolution up at the same frame rate, wrapping round. */
-export function nextScreenQuality(quality: ScreenShareQuality): ScreenShareQuality {
-  const { height, fps } = screenQualityParts(quality);
-  const index = SCREEN_RESOLUTIONS.indexOf(height);
-  return makeScreenQuality(SCREEN_RESOLUTIONS[(index + 1) % SCREEN_RESOLUTIONS.length], fps);
-}
-
-/** Capture size for a quality: 16:9 at its height. */
-function screenConstraints(quality: ScreenShareQuality) {
-  const { height, fps } = screenQualityParts(quality);
-  return { width: Math.round((height * 16) / 9), height, frameRate: fps };
-}
-
-/**
- * Voice bitrate for a mesh of `listeners` other connections, under the
- * channel's own ceiling (`room`, set in its settings).
- *
- * In a mesh you upload one full copy of your voice per listener, so a busy
- * room multiplies it — and a saturated uplink drops packets, which is what a
- * robotic, choppy voice actually is. So the ceiling is what a small call gets,
- * and a fuller one spends less per copy: a share of the ceiling, and never
- * more than UPLINK_BUDGET across everyone. A camera or screen share already
- * competes for the same uplink, so it counts as a crowd of its own. At the
- * default 64 kbps that is 64 / 48 / 32 kbps for 1–2 / 3–4 / 5+ listeners.
- */
-const UPLINK_BUDGET = 600_000;
-const CROWD_FLOOR = 32_000;
-
-export function voiceBitrate(
-  listeners: number,
-  sendingVideo: boolean,
-  room: number = VOICE_BITRATE_DEFAULT,
-): number {
-  const share = listeners >= 5 ? 0.5 : listeners >= 3 || sendingVideo ? 0.75 : 1;
-  const budget = UPLINK_BUDGET / Math.max(1, listeners);
-  const wanted = Math.min(room * share, budget);
-  return Math.round(Math.min(room, Math.max(CROWD_FLOOR, wanted)));
-}
-
-/** Screen-share audio is music and games, so it keeps more — but not per copy in a crowd. */
-export function screenAudioBitrate(listeners: number): number {
-  return listeners >= 3 ? 128_000 : 256_000;
-}
-/** Screen-share audio through the media server: uploaded once, so it keeps its quality. */
-const SFU_SCREEN_AUDIO_BITRATE = 192_000;
 
 /** One remote person's stream. `kind` is set where the sender's stream id cannot be matched (LiveKit). */
 /** /say limits: up to 200 characters at a time, queued back to back. */
@@ -262,43 +204,6 @@ export interface RemoteVoiceStream {
   kind?: SfuStreamKind;
 }
 
-/**
- * Whether this tab connects to `person` directly. A seat in the LiveKit room
- * meets other LiveKit seats there, and everyone else over the mesh.
- */
-function meshWith(person: VoiceParticipant, sfu: boolean): boolean {
-  return !sfu || person.bot === true || person.sfu !== true;
-}
-
-/**
- * Most other people a seat that lost LiveKit may mesh with. Past this, falling
- * back would have it upload one copy of its voice — and of a screen share —
- * per person, which nobody's uplink survives in a big room, and every LiveKit
- * seat would open a direct connection to it too. It keeps retrying LiveKit
- * instead.
- */
-export const MESH_FALLBACK_MAX_PEERS = 8;
-/** How long a seat waits between attempts to get back into LiveKit. */
-const SFU_RETRY_MS = 5_000;
-
-/**
- * Whether this room is too big for `self` to fall back to the mesh: more than
- * MESH_FALLBACK_MAX_PEERS other people, and the room is already on LiveKit (a
- * room with no LiveKit seats is a mesh anyway, so there is nothing to protect).
- */
-export function meshFallbackBlocked(people: VoiceParticipant[], self: string | null): boolean {
-  const others = people.filter((person) => person.connectionId !== self && !person.bot);
-  return others.length > MESH_FALLBACK_MAX_PEERS && others.some((person) => person.sfu === true);
-}
-
-/**
- * Whether to show `person`'s camera or screen share. A stage audience seat has
- * no floor, so its video is dropped here, on every receiver: hiding the button
- * from the audience alone would not stop a modified client from publishing.
- */
-export function videoAllowedFrom(person: VoiceParticipant | undefined): boolean {
-  return person?.speakAllowed !== false;
-}
 
 /**
  * The LiveKit client is most of the voice code, and only people who join a
@@ -335,25 +240,6 @@ async function sfuGrant(
 /** Signals held for a seat the roster has not shown yet; older ones are dropped. */
 const EARLY_SIGNAL_LIMIT = 50;
 
-async function tuneAudioSender(
-  sender: RTCRtpSender,
-  maxBitrate: number,
-): Promise<void> {
-  if (sender.track?.kind !== "audio") return;
-  const parameters = sender.getParameters();
-  if (!parameters.encodings.length) parameters.encodings = [{}];
-  for (const encoding of parameters.encodings) {
-    encoding.maxBitrate = maxBitrate;
-    // Discontinuous transmission is useful for telephony, but its repeated
-    // noise-floor switching is distracting in a persistent friends' room.
-    // Not in the DOM typings yet, but implemented where it matters.
-    (encoding as RTCRtpEncodingParameters & { dtx?: string }).dtx = "disabled";
-    // Ask the OS/router to put voice ahead of screen share and camera packets.
-    encoding.priority = "high";
-    encoding.networkPriority = "high";
-  }
-  await sender.setParameters(parameters).catch(() => undefined);
-}
 
 /**
  * iOS (Safari, and the app's WKWebView) interrupts every AudioContext of a page
@@ -368,37 +254,7 @@ function interruptsHiddenAudio(): boolean {
   );
 }
 
-/**
- * Target for incoming audio's jitter buffer. Chrome's adaptive default often
- * idles at 80+ ms; 30 ms was tried and was too tight for Wi-Fi, where it made
- * NetEq constantly stretch and squeeze speech to keep up — a warbly,
- * "phone line" voice. 60 ms still sits below the default.
- */
-const AUDIO_JITTER_TARGET_MS = 60;
 
-/**
- * Opus parameters the default negotiation leaves loose: in-band FEC so a lost
- * packet is rebuilt from its neighbour, no DTX, and 10 ms packets when the far
- * side accepts them. Applied to every Opus payload type in the description.
- */
-function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T): T {
-  if (!description.sdp) return description;
-  const opus = [...description.sdp.matchAll(/a=rtpmap:(\d+) opus\/48000/gi)].map((m) => m[1]);
-  let sdp = description.sdp;
-  for (const pt of opus) {
-    sdp = sdp.replace(new RegExp(`a=fmtp:${pt} ([^\r\n]*)`, "g"), (_line, params: string) => {
-      const map = new Map(params.split(";").filter(Boolean).map((kv) => {
-        const [k, v = ""] = kv.trim().split("=");
-        return [k, v] as const;
-      }));
-      map.set("useinbandfec", "1");
-      map.set("usedtx", "0");
-      map.set("minptime", "10");
-      return `a=fmtp:${pt} ${[...map].map(([k, v]) => `${k}=${v}`).join(";")}`;
-    });
-  }
-  return { ...description, sdp };
-}
 
 /**
  * Voice: through the LiveKit media server when this instance has one, and
@@ -795,6 +651,12 @@ export function useVoice({
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: "stun:stun.l.google.com:19302" },
   ]);
+  /**
+   * Direct connections go through the TURN relay only (see meshIcePolicy).
+   * Until the server's list says it has no relay, assume it does: a call that
+   * cannot connect yet beats one that hands out this machine's address.
+   */
+  const hasRelayRef = useRef(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
@@ -1247,9 +1109,15 @@ export function useVoice({
           }>("/api/voice/ice");
           if (cancelled) return;
           if (data.iceServers?.length) iceServersRef.current = data.iceServers;
+          hasRelayRef.current = turnOnly(iceServersRef.current).length > 0;
           if (data.source !== "configured") {
             console.warn(
               `Huddle voice: ${data.note || "no TURN server is configured."}`,
+            );
+          }
+          if (!hasRelayRef.current) {
+            console.warn(
+              "Huddle voice: with no TURN relay, direct calls show each person's IP address to the others.",
             );
           }
           setIceGeneration((current) => current + 1);
@@ -1257,7 +1125,7 @@ export function useVoice({
         } catch (error) {
           if (attempt === 2) {
             console.warn(
-              "Huddle voice: the ICE server list did not load; sticking to public STUN.",
+              "Huddle voice: the ICE server list did not load, so direct calls cannot connect until a reload.",
               error,
             );
           } else {
@@ -1425,7 +1293,19 @@ export function useVoice({
       micTelemetryRef.current = telemetry;
       for (const listener of micListenersRef.current) listener(telemetry);
     });
+    chain.setTuneKey(tuneKeyRef.current.key, tuneKeyRef.current.shift);
     return chain;
+  }, []);
+
+  /**
+   * The key of the song playing in the room, for the singing voice (see
+   * MicChain.setTuneKey). Kept here so a new chain (another mic, a rejoin)
+   * starts in it too.
+   */
+  const tuneKeyRef = useRef<{ key: string | null; shift: number }>({ key: null, shift: 0 });
+  const setTuneKey = useCallback((key: string | null, shift = 0) => {
+    tuneKeyRef.current = { key, shift };
+    micChainRef.current?.setTuneKey(key, shift);
   }, []);
 
   /** Lets the settings meters watch the live input without re-rendering the app. */
@@ -1457,6 +1337,13 @@ export function useVoice({
     }
   }, []);
   const switchMicrophoneRef = useRef<() => Promise<void>>(async () => {});
+
+  // The same, from outside the voice settings (requestMicSettings).
+  useEffect(() => {
+    const onRequest = (event: Event) => setMicSettings((event as CustomEvent<Partial<MicSettings>>).detail || {});
+    window.addEventListener(MIC_SETTINGS_EVENT, onRequest);
+    return () => window.removeEventListener(MIC_SETTINGS_EVENT, onRequest);
+  }, [setMicSettings]);
 
   /**
    * Switches our camera/screen senders to one peer on or off to match what that
@@ -1525,8 +1412,13 @@ export function useVoice({
       const existing = peersRef.current.get(remoteId);
       if (existing) return existing;
 
+      const person = (roomsRef.current[channelIdRef.current || ""] || []).find(
+        (entry) => entry.connectionId === remoteId,
+      );
+      const iceTransportPolicy = meshIcePolicy(person, hasRelayRef.current);
       const peer = new RTCPeerConnection({
         iceServers: iceServersRef.current,
+        iceTransportPolicy,
       });
       peersRef.current.set(remoteId, peer);
       peerSinceRef.current.set(remoteId, Date.now());
@@ -1555,6 +1447,9 @@ export function useVoice({
 
       peer.onicecandidate = (event) => {
         if (!event.candidate) return;
+        // The browser should only gather relays under that policy; a webview
+        // that ignores it still does not get to post our address.
+        if (iceTransportPolicy === "relay" && event.candidate.type !== "relay") return;
         send({
           t: "signal",
           to: remoteId,
@@ -1684,6 +1579,16 @@ export function useVoice({
         await applyVideoPause(from);
         return;
       }
+
+      // Negotiate only with the seats the roster meshes us with. Anyone else's
+      // offer would have us attach the microphone and upload to them, which in
+      // a big LiveKit room is the whole room uploading to one modified client.
+      const meshed = meshPeers(
+        roomsRef.current[channelIdRef.current || ""] || [],
+        connectionId || "",
+        sfuModeRef.current,
+      ).some((person) => person.connectionId === from);
+      if (!meshed) return;
 
       // An offer for a peer that has gone bad means the other side rebuilt the
       // connection; throw ours away so the fresh handshake can land.
@@ -1988,10 +1893,10 @@ export function useVoice({
     const mine = channelId
       ? (rooms[channelId] || []).find((person) => person.connectionId === connectionId)
       : undefined;
-    const mayPublish = mine ? !mine.serverMuted && mine.speakAllowed !== false : null;
+    const mayPublish = mayPublishFrom(mine);
     const before = mayPublishRef.current;
     mayPublishRef.current = mayPublish;
-    if (before !== false || mayPublish !== true) return;
+    if (!gainedPublish(before, mayPublish)) return;
     if (!channelId || !connectionId || !sfuModeRef.current) return;
     const room = channelId;
     void sfuGrant(room, connectionId).then((grant) => {
@@ -2016,42 +1921,22 @@ export function useVoice({
   /** Offer to everyone already in the room whose id sorts below ours. */
   useEffect(() => {
     if (!channelId || !connectionId) return;
-    const others = (rooms[channelId] || [])
-      .filter((person) => person.connectionId !== connectionId && meshWith(person, sfuMode));
-
-    for (const person of others) {
-      const remoteId = person.connectionId;
-      if (peersRef.current.has(remoteId)) continue;
-      // The server-side music publisher only answers offers, so listeners
-      // always call it. Browser peers retain deterministic caller ordering.
-      if (!person.bot && connectionId > remoteId) {
-        // They place the call. Start their clock so the watchdog waits a
-        // sensible while before stepping in, instead of offering instantly.
-        if (!peerSinceRef.current.has(remoteId)) {
-          peerSinceRef.current.set(remoteId, Date.now());
-        }
-        continue;
-      }
-      callPeer(remoteId);
+    const plan = meshPlan(rooms[channelId] || [], connectionId, sfuMode, peersRef.current.keys());
+    for (const remoteId of plan.wait) {
+      // They place the call. Start their clock so the watchdog waits a
+      // sensible while before stepping in, instead of offering instantly.
+      if (!peerSinceRef.current.has(remoteId)) peerSinceRef.current.set(remoteId, Date.now());
     }
-
-    for (const remoteId of peersRef.current.keys()) {
-      if (!others.some((person) => person.connectionId === remoteId)) {
-        closePeer(remoteId);
-      }
-    }
+    for (const remoteId of plan.call) callPeer(remoteId);
+    for (const remoteId of plan.close) closePeer(remoteId);
   }, [rooms, channelId, connectionId, callPeer, closePeer, sfuMode]);
 
   // Replay anything that arrived a moment before we were ready to handle it.
   useEffect(() => {
     if (!channelId) return;
     const roster = new Set((rooms[channelId] || []).map((person) => person.connectionId));
-    const pending = earlySignalsRef.current;
-    const now = Date.now();
-    const ready = pending.filter((entry) => now - entry.at < 15_000 && roster.has(entry.from));
-    earlySignalsRef.current = pending.filter(
-      (entry) => now - entry.at < 15_000 && !roster.has(entry.from),
-    );
+    const { ready, keep } = splitEarlySignals(earlySignalsRef.current, roster, Date.now());
+    earlySignalsRef.current = keep;
     for (const entry of ready) void handleSignalRef.current(entry.from, entry.raw);
   }, [channelId, rooms]);
 
@@ -2072,9 +1957,13 @@ export function useVoice({
    */
   useEffect(() => {
     if (!channelId || !connectionId) return;
-    const sameId = announcedConnectionRef.current === connectionId;
-    if (sameId && announcedSessionRef.current === session) return;
-    const wasAnnounced = announcedConnectionRef.current !== null;
+    const kind = rejoinKind(
+      { connectionId: announcedConnectionRef.current, session: announcedSessionRef.current },
+      connectionId,
+      session,
+    );
+    if (kind === "none") return;
+    const wasAnnounced = kind !== "first";
     // Carry the seat's clock and state over, so a server restart does not
     // reset the call timer or unmute anyone. The hub ignores these on a
     // genuinely new seat's first join.
@@ -2094,7 +1983,7 @@ export function useVoice({
     if (!joined) return;
     announcedConnectionRef.current = connectionId;
     announcedSessionRef.current = session;
-    if (sameId) {
+    if (kind === "resume") {
       // Resumed after a restart: same seat, same LiveKit identity, same peer
       // ids. Only the hub forgot us, so tell it what we are sharing again and
       // leave every media connection alone.
@@ -2120,18 +2009,10 @@ export function useVoice({
     restartedRef.current.clear();
 
     // Re-mesh with the same caller rule the roster effect uses.
-    const others = (roomsRef.current[channelId] || []).filter(
-      (person) => person.connectionId !== connectionId && meshWith(person, sfuModeRef.current),
-    );
-    for (const person of others) {
-      const remoteId = person.connectionId;
-      if (!person.bot && connectionId > remoteId) {
-        // They place the call; start their clock so the watchdog waits.
-        peerSinceRef.current.set(remoteId, Date.now());
-        continue;
-      }
-      callPeer(remoteId);
-    }
+    const plan = meshPlan(roomsRef.current[channelId] || [], connectionId, sfuModeRef.current, []);
+    // They place the call; start their clock so the watchdog waits.
+    for (const remoteId of plan.wait) peerSinceRef.current.set(remoteId, Date.now());
+    for (const remoteId of plan.call) callPeer(remoteId);
   }, [channelId, connectionId, session, send, closePeer, callPeer, connectSfu, dropToMesh]);
 
   /**
@@ -2146,39 +2027,28 @@ export function useVoice({
   useEffect(() => {
     if (!channelId || !connectionId) return;
     const timer = window.setInterval(() => {
-      const others = (roomsRef.current[channelId] || []).filter(
-        (person) => person.connectionId !== connectionId && meshWith(person, sfuModeRef.current),
-      );
-
-      for (const person of others) {
+      for (const person of meshPeers(roomsRef.current[channelId] || [], connectionId, sfuModeRef.current)) {
         const remoteId = person.connectionId;
-        const peer = peersRef.current.get(remoteId);
-        // Mirrors the roster effect's rule, so both agree on who dials.
-        const weCall = person.bot || connectionId <= remoteId;
-        // The side that would normally place the call retries first; the other
+        // Mirrors the roster effect's rule, so both agree on who dials. The
+        // side that would normally place the call retries first; the other
         // waits longer, so a pair does not both re-offer at the same moment.
-        const graceMs = weCall ? 8000 : 14000;
-        const since = peerSinceRef.current.get(remoteId) ?? 0;
-
-        if (!peer) {
-          if (Date.now() - since > graceMs) callPeer(remoteId);
-          continue;
-        }
-
-        const state = peer.connectionState;
-        if (state === "connected") {
+        const callsFirst = weCall(connectionId, person);
+        const now = Date.now();
+        const verdict = watchdogVerdict({
+          callsFirst,
+          state: peersRef.current.get(remoteId)?.connectionState ?? null,
+          since: peerSinceRef.current.get(remoteId) ?? 0,
+          now,
+        });
+        if (verdict === "call") {
+          callPeer(remoteId);
+        } else if (verdict === "healthy") {
           // Healthy again: allow a future ICE restart if it drops later.
           restartedRef.current.delete(remoteId);
-          peerSinceRef.current.set(remoteId, Date.now());
-          continue;
-        }
-        if (
-          state === "failed" ||
-          state === "closed" ||
-          Date.now() - since > graceMs * 2
-        ) {
+          peerSinceRef.current.set(remoteId, now);
+        } else if (verdict === "close") {
           closePeer(remoteId);
-          peerSinceRef.current.set(remoteId, Date.now() - graceMs);
+          peerSinceRef.current.set(remoteId, now - watchdogGraceMs(callsFirst));
         }
       }
     }, 4000);
@@ -3080,6 +2950,7 @@ export function useVoice({
     activeMicrophone,
     micSettings,
     setMicSettings,
+    setTuneKey,
     subscribeMicTelemetry,
     localVideos,
     error,

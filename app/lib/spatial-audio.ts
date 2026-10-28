@@ -1,6 +1,7 @@
 import { registerMedia, unregisterMedia, savedDevice } from "./devices";
 import { setEchoSources, type EchoSource } from "./echo-reference";
 import { NEUTRAL_POSE, type HeadPose } from "./head-tracking";
+import { EQ_FREQS } from "@/lib/winamp-eq";
 
 export interface TableSeat { pan: number; x: number; y: number; z: number }
 
@@ -114,6 +115,8 @@ export interface PlaybackInput {
   cutoff?: number;
   /** Living room: this voice's reverb send, instead of the table's fixed ROOM_SEND. */
   wet?: number;
+  /** The music bot under the Winamp theme's equalizer: the preamp, then its ten bands (EQ_FREQS), in dB. */
+  eq?: readonly number[] | null;
 }
 /**
  * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
@@ -131,6 +134,8 @@ type Entry = {
   shaped?: boolean;
   filter?: BiquadFilterNode;
   send?: GainNode;
+  /** The equalizer between the stream and the rest: a preamp and a filter per band. */
+  eq?: { preamp: GainNode; bands: BiquadFilterNode[] };
 };
 /** Most voices that get the binaural panner at once; the rest use stereo. */
 const HRTF_MAX_VOICES = 12;
@@ -204,6 +209,18 @@ function holdParameter(param: AudioParam, now: number) {
     param.cancelScheduledValues(now);
     param.setValueAtTime(value, now);
   }
+}
+
+/** Sets an equalizer's preamp and bands (dB); at `now`, a short glide so a dragged slider doesn't zip. */
+function setEq(eq: NonNullable<Entry["eq"]>, gains: readonly number[], now: number | null) {
+  const db = (i: number) => Math.max(-24, Math.min(12, gains[i] ?? 0));
+  const glide = (param: AudioParam, value: number) => {
+    if (now === null) { param.value = value; return; }
+    holdParameter(param, now);
+    param.setTargetAtTime(value, now, 0.03);
+  };
+  glide(eq.preamp.gain, 10 ** (db(0) / 20));
+  eq.bands.forEach((band, i) => glide(band.gain, db(i + 1)));
 }
 
 /** One context per call. Native elements remain available for reliable fallback. */
@@ -378,7 +395,7 @@ export class SpatialAudioPlayback {
 
   update(inputs: PlaybackInput[], enabled: boolean) {
     this.enabled = enabled;
-    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || needsBoost(input.volume));
+    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || needsBoost(input.volume) || input.eq);
     if (this.needsContext && !this.context) {
       try {
         this.context = new AudioContext({ latencyHint: "interactive" });
@@ -424,16 +441,17 @@ export class SpatialAudioPlayback {
     const spatialMode = this.mode();
     const wanted = this.spatialFor(input)
       ? spatialMode === "hrtf" && !this.hrtfAllowed.has(input.key) ? "stereo" : spatialMode
-      : needsBoost(input.volume) ? "boost" : undefined;
+      : needsBoost(input.volume) || input.eq ? "boost" : undefined;
     if (!wanted) return;
     const shaped = wanted !== "boost" && (input.cutoff !== undefined || input.wet !== undefined);
-    if (entry.mode === wanted && Boolean(entry.shaped) === shaped) return;
+    if (entry.mode === wanted && Boolean(entry.shaped) === shaped && Boolean(entry.eq) === Boolean(input.eq)) return;
     if (entry.mode) this.detach(entry);
     let source: MediaStreamAudioSourceNode | undefined;
     let panner: StereoPannerNode | PannerNode | undefined;
     let gain: GainNode | undefined;
     let filter: BiquadFilterNode | undefined;
     let send: GainNode | undefined;
+    let eq: Entry["eq"];
     try {
       // The stream's source node survives a mode change; only the panner is swapped.
       source = entry.source ?? context.createMediaStreamSource(input.stream);
@@ -464,7 +482,24 @@ export class SpatialAudioPlayback {
         filter.Q.value = 0.5;
         filter.frequency.value = input.cutoff ?? 20000;
       }
-      const head = panner ? source.connect(panner) : source;
+      // The equalizer first, so the room hears the music as you set it.
+      let input0: AudioNode = source;
+      if (input.eq && typeof context.createBiquadFilter === "function") {
+        const preamp = context.createGain();
+        const bands = EQ_FREQS.map((frequency, i) => {
+          const band = context.createBiquadFilter();
+          band.type = i === 0 ? "lowshelf" : i === EQ_FREQS.length - 1 ? "highshelf" : "peaking";
+          band.frequency.value = frequency;
+          band.Q.value = 1.1;
+          return band;
+        });
+        source.connect(preamp);
+        bands.reduce<AudioNode>((from, band) => from.connect(band), preamp);
+        eq = { preamp, bands };
+        input0 = bands[bands.length - 1];
+        setEq(eq, input.eq, null);
+      }
+      const head = panner ? input0.connect(panner) : input0;
       (filter ? head.connect(filter) : head).connect(gain).connect(context.destination);
       if (wanted === "hrtf") {
         const room = this.roomInput(context);
@@ -475,10 +510,11 @@ export class SpatialAudioPlayback {
           gain.connect(send).connect(room);
         } else if (room) gain.connect(room);
       }
-      Object.assign(entry, { source, panner, gain, filter, send, shaped, mode: wanted });
+      Object.assign(entry, { source, panner, gain, filter, send, eq, shaped, mode: wanted });
     } catch {
       source?.disconnect(); panner?.disconnect(); gain?.disconnect(); filter?.disconnect(); send?.disconnect();
-      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.filter = undefined; entry.send = undefined; entry.shaped = undefined; entry.mode = undefined;
+      eq?.preamp.disconnect(); for (const band of eq?.bands ?? []) band.disconnect();
+      entry.source = undefined; entry.panner = undefined; entry.gain = undefined; entry.filter = undefined; entry.send = undefined; entry.eq = undefined; entry.shaped = undefined; entry.mode = undefined;
     }
   }
 
@@ -544,7 +580,7 @@ export class SpatialAudioPlayback {
       const { input, element, panner, gain } = entry;
       const spatial = this.spatialFor(input);
       // Web Audio carries the stream when it is spatial or boosted; otherwise the element does.
-      const routed = live && !!gain && (spatial ? !!panner : needsBoost(input.volume) && entry.mode === "boost");
+      const routed = live && !!gain && (spatial ? !!panner : (needsBoost(input.volume) || !!input.eq) && entry.mode === "boost");
       const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1)
         * (spatial && !input.important ? Math.max(0, Math.min(1, (entry.mode === "hrtf" ? input.hrtfAttenuation : input.attenuation) ?? 1)) : 1);
       element.volume = Math.min(1, volume);
@@ -569,6 +605,7 @@ export class SpatialAudioPlayback {
           holdParameter(entry.send.gain, now);
           entry.send.gain.setTargetAtTime((input.wet ?? ROOM_SEND) / ROOM_SEND, now, 0.08);
         }
+        if (entry.eq && input.eq) setEq(entry.eq, input.eq, now);
         if (!panner) continue;
         if (entry.mode === "hrtf") {
           this.seat(entry, now);
@@ -592,6 +629,9 @@ export class SpatialAudioPlayback {
     entry.gain?.disconnect();
     entry.filter?.disconnect();
     entry.send?.disconnect();
+    entry.eq?.preamp.disconnect();
+    for (const band of entry.eq?.bands ?? []) band.disconnect();
+    entry.eq = undefined;
     entry.panner = undefined;
     entry.gain = undefined;
     entry.filter = undefined;

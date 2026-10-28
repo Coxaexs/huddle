@@ -193,16 +193,27 @@ export async function publishEventsChanged(): Promise<void> {
   await stub.fetch(`${INTERNAL}/events-changed`, { method: "POST" }).catch(() => undefined);
 }
 
-/** Removes a user from whichever of these voice rooms they are sitting in. */
-export async function evictFromVoice(userId: string, channelIds: string[]): Promise<void> {
+/**
+ * Removes a user from whichever of these voice rooms they are sitting in.
+ * Returns how many of their tabs were dropped.
+ */
+export async function evictFromVoice(
+  userId: string,
+  channelIds: string[],
+  reason: "moderator" | "self" = "moderator",
+): Promise<number> {
   const stub = hub();
-  if (!stub || channelIds.length === 0) return;
-  await stub
-    .fetch(`${INTERNAL}/voice-evict`, {
+  if (!stub || channelIds.length === 0) return 0;
+  try {
+    const response = await stub.fetch(`${INTERNAL}/voice-evict`, {
       method: "POST",
-      body: JSON.stringify({ userId, channelIds }),
-    })
-    .catch(() => undefined);
+      body: JSON.stringify({ userId, channelIds, reason }),
+    });
+    if (!response.ok) return 0;
+    return ((await response.json()) as { evicted?: number }).evicted ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 /** Tells the hub whether a user's open sockets should count as online. */

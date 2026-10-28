@@ -8,6 +8,8 @@ import { VoiceApi, VideoTile } from "./types";
 import type { QaQuestion } from "@/lib/qa";
 import type { CaptionLine } from "../../hooks/use-live-captions";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useUiMode } from "@/app/lib/ui-mode";
+import { SimpleCallButtons } from "../chat/shell/simple-parts";
 import { useToolbar } from "../widgets/toolbar";
 import { WidgetArea } from "../widgets/widget-area";
 
@@ -91,10 +93,40 @@ export function StageBottomBar({
   windowFull: boolean;
 }) {
   const { t } = useI18n();
+  const simpleUi = useUiMode() === "simple";
   // Customize → Buttons: the order, and the controls moved into "More".
   const tb = useToolbar("call");
   const moved = (id: string) => (tb.hidden(id) ? " tb-moved" : "");
   const moreItem = "vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left";
+  if (simpleUi && joined) {
+    return (
+      <div className="voice-stage-bottom-bar is-simple">
+        <div className="relative">
+          <SimpleCallButtons
+            voice={voice}
+            shareOpen={screenSharePopoverOpen}
+            onShare={() => setScreenSharePopoverOpen((open) => !open)}
+          />
+          {screenSharePopoverOpen && !voice.screenSharing && (
+            <ScreenShareSetup
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-50 min-w-[300px]"
+              quality={voice.screenQuality}
+              onQuality={voice.setScreenQuality}
+              film={voice.screenFilm ?? false}
+              onFilm={(film) => voice.setScreenFilm?.(film)}
+              audio={voice.screenShareAudio ?? true}
+              onAudio={(audio) => voice.setScreenShareAudio?.(audio)}
+              onClose={() => setScreenSharePopoverOpen(false)}
+              onStart={() => {
+                setScreenSharePopoverOpen(false);
+                void voice.startScreenShare(voice.screenQuality, voice.screenShareAudio ?? true, voice.screenFilm ?? false);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="voice-stage-bottom-bar">
       <WidgetArea area="call" />

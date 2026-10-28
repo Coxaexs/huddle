@@ -15,7 +15,7 @@
 
 import { basePath } from "./client";
 import { microphoneConstraints, savedDevice } from "./devices";
-import { buildVoiceEffect, type VoiceEffect } from "./voice-effects";
+import { buildVoiceEffect, camelotScale, type VoiceEffect } from "./voice-effects";
 
 export type SuppressionMode = "off" | "browser" | "rnnoise" | "voice";
 
@@ -66,6 +66,11 @@ export interface MicChain {
   /** False while the processing graph is stopped, so `stream` carries silence. */
   readonly live: boolean;
   update(next: Partial<MicSettings>): void;
+  /**
+   * The song playing in the room (Track.key, Track.keyShift), for the singing
+   * voice: it pulls you onto that key's notes rather than any note.
+   */
+  setTuneKey(key: string | null, shift?: number): void;
   onTelemetry(listener: (telemetry: MicTelemetry) => void): () => void;
   /**
    * Wakes the processing graph. A phone suspends (iOS: "interrupts") every
@@ -141,7 +146,7 @@ export function readMicSettings(): MicSettings {
     gate: store.getItem(KEYS.gate) !== "off",
     echoCancellation: store.getItem(KEYS.echoCancellation) !== "off",
     clarity: store.getItem(KEYS.clarity) !== "off",
-    voiceEffect: (["vampire", "gramophone"] as const).find((id) => id === store.getItem(KEYS.voiceEffect)) || "none",
+    voiceEffect: (["singer", "vampire", "gramophone"] as const).find((id) => id === store.getItem(KEYS.voiceEffect)) || "none",
     delayMs,
   };
 }
@@ -204,6 +209,22 @@ function loadRnnoise(): Promise<ArrayBuffer> {
  * whoever put its track on the wire can react (see `MicChain.live`).
  */
 export const MIC_STATE_EVENT = "huddle-mic-state";
+
+/**
+ * Fired on `window` to change an input setting from outside the voice
+ * settings (the music card's "Singing voice" switch, say). The voice hook
+ * applies it to the running chain; the setting itself is saved here, so it
+ * holds for the next call even when nobody is in one.
+ */
+export const MIC_SETTINGS_EVENT = "huddle-mic-settings";
+
+export function requestMicSettings(next: Partial<MicSettings>): MicSettings {
+  const merged = writeMicSettings(next);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<Partial<MicSettings>>(MIC_SETTINGS_EVENT, { detail: next }));
+  }
+  return merged;
+}
 
 /**
  * Where auto-gain settled on a given microphone last time. Handing it to the
@@ -312,6 +333,9 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
       // it stands in for the neural modes rather than leaving you unfiltered.
       applyCapture(raw, browserFallback({ ...readMicSettings(), ...next }), false);
     },
+    setTuneKey() {
+      // No effects without Web Audio.
+    },
     onTelemetry(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -379,7 +403,14 @@ export async function openMicrophone(
 
     // Versioned so a browser holding an older copy in its cache picks up a
     // retuned worklet; bump it whenever `public/mic-worklet.js` changes.
-    await context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=4`);
+    // The singing voice's tuner rides along; without it that effect is just
+    // the polish, which is no reason to lose the rest of the chain.
+    await Promise.all([
+      context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=4`),
+      context.audioWorklet.addModule(`${basePath}/tune-worklet.js?v=2`).catch((error) => {
+        console.warn("[huddle] voice tuner unavailable", error);
+      }),
+    ]);
 
     const source = context.createMediaStreamSource(raw);
     const node = new AudioWorkletNode(context, "mic-processor", {
@@ -397,6 +428,7 @@ export async function openMicrophone(
     // The effect sits between the cleaned-up voice and the wire. Swapping it
     // rewires these nodes only; `destination` (and so the track) stays put.
     let effect = buildVoiceEffect(context, settings.voiceEffect);
+    let tuneKey: { scale: number[] | null; offset: number } = { scale: null, offset: 0 };
     const delayNode = context.createDelay(5.0);
     delayNode.delayTime.value = Math.max(0, Math.min(2, (settings.delayMs || 0) / 1000));
     node.connect(effect.input);
@@ -477,9 +509,17 @@ export async function openMicrophone(
           }
           effect.dispose();
           effect = buildVoiceEffect(context, current.voiceEffect);
+          effect.setKey?.(tuneKey.scale, tuneKey.offset);
           node.connect(effect.input);
           effect.output.connect(delayNode);
         }
+      },
+      setTuneKey(key, shift = 0) {
+        const scale = camelotScale(key);
+        const offset = scale && Number.isFinite(shift) ? shift : 0;
+        if (String(scale) === String(tuneKey.scale) && offset === tuneKey.offset) return;
+        tuneKey = { scale, offset };
+        effect.setKey?.(scale, offset);
       },
       onTelemetry(listener) {
         listeners.add(listener);
@@ -532,6 +572,7 @@ export function silentMicChain(): MicChain {
     silent: true,
     live: true,
     update() {},
+    setTuneKey() {},
     onTelemetry() {
       return () => undefined;
     },

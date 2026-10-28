@@ -37,6 +37,6 @@ describe("voice effects setting", () => {
 
   it("lists every effect with a label", async () => {
     const { VOICE_EFFECTS } = await import("../app/lib/voice-effects");
-    expect(VOICE_EFFECTS.map((effect) => effect.id)).toEqual(["none", "vampire", "gramophone"]);
+    expect(VOICE_EFFECTS.map((effect) => effect.id)).toEqual(["none", "singer", "vampire", "gramophone"]);
   });
 });

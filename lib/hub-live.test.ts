@@ -5,6 +5,8 @@ import { heard, type PlayerState } from "./protocol";
 vi.mock("cloudflare:workers", () => ({
   DurableObject: class { constructor(public ctx: unknown) {} },
 }));
+const djControl = vi.hoisted(() => vi.fn(async () => ({})));
+vi.mock("./musicbot", () => ({ djControl }));
 afterEach(() => vi.unstubAllGlobals());
 
 function room() {
@@ -74,4 +76,33 @@ it("forgets a booth that stopped reporting", async () => {
   const state = await hub.applyPlayerAction("room", { name: "live", live });
   expect(heard(state).track?.title).toBe("Youngblood");
   expect(heard(state, Date.now() + 121_000).track?.id).toBe("hub-1");
+});
+
+it("stop ends the DJ set as well as the room's own queue", async () => {
+  const { hub, send } = room();
+  djControl.mockClear();
+  await hub.applyPlayerAction("room", { name: "play", track });
+  await hub.applyPlayerAction("room", { name: "play", track: { ...track, id: "hub-2" } });
+  await hub.applyPlayerAction("room", { name: "live", live });
+  await send({ t: "player", channelId: "room", action: { name: "stop" } });
+  const state = await hub.applyPlayerAction("room", { name: "volume", volume: 50 });
+  expect(state.live).toBeNull();
+  expect(state.track).toBeNull();
+  expect(state.queue).toEqual([]);
+  expect(heard(state).track).toBeNull();
+  expect(djControl).toHaveBeenCalledWith("room", "stop");
+});
+
+it("tags /playnext for the DJ booth, and carries the booth's key to the singing voice", async () => {
+  const { hub } = room();
+  await hub.applyPlayerAction("room", { name: "play", track });
+  let state = await hub.applyPlayerAction("room", { name: "playnext", track: { ...track, id: "hub-2" } });
+  expect(state.queue[0].playNext).toBe(true);
+  // The bot putting a bumped song back keeps it untagged.
+  state = await hub.applyPlayerAction("room", { name: "playnext", track: { ...track, id: "hub-3", playNext: false } });
+  expect(state.queue.map((t) => [t.id, t.playNext])).toEqual([["hub-3", false], ["hub-2", true]]);
+
+  state = await hub.applyPlayerAction("room", { name: "live", live: { ...live, key: "8A", keyShift: 0.3 } });
+  expect(heard(state).track?.key).toBe("8A");
+  expect(heard(state).track?.keyShift).toBe(0.3);
 });

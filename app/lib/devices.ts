@@ -176,11 +176,20 @@ export async function listDevices(): Promise<DeviceLists> {
 /**
  * Asks for microphone (and optionally camera) access purely so device labels
  * become readable, then drops the stream again.
+ *
+ * Only when they are actually blank, and with processing off: on a Mac,
+ * WebKit (Lite, the native app) opens an echo-cancelled capture through
+ * Apple's voice processing, which turns every other app down, and starting
+ * and stopping it can leave the whole Mac quiet until the app quits.
+ * Opening Settings used to do that every time, in a call or not.
  */
 export async function primeDeviceLabels(video = false): Promise<void> {
   try {
+    const known = await navigator.mediaDevices.enumerateDevices();
+    const wanted = known.filter((device) => device.kind === "audioinput" || (video && device.kind === "videoinput"));
+    if (wanted.length && wanted.every((device) => device.label)) return;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       video,
     });
     stream.getTracks().forEach((track) => track.stop());

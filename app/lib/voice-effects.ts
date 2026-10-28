@@ -12,10 +12,11 @@
  * only thing an effect can add while you are silent.
  */
 
-export type VoiceEffect = "none" | "vampire" | "gramophone";
+export type VoiceEffect = "none" | "singer" | "vampire" | "gramophone";
 
 export const VOICE_EFFECTS: Array<{ id: VoiceEffect; label: string; hint: string }> = [
   { id: "none", label: "None", hint: "Your normal voice" },
+  { id: "singer", label: "Singing voice", hint: "Gently pulled in tune, with a little studio polish: for karaoke, or any time" },
   { id: "vampire", label: "Vampire", hint: "Deep, doubled and echoing, as if from a crypt" },
   { id: "gramophone", label: "Gramophone", hint: "An old recording in a wood-panelled lecture hall" },
 ];
@@ -23,7 +24,23 @@ export const VOICE_EFFECTS: Array<{ id: VoiceEffect; label: string; hint: string
 export interface VoiceEffectGraph {
   input: AudioNode;
   output: AudioNode;
+  /** The singing voice's key: the notes it pulls you onto (see camelotScale), null for any note. */
+  setKey?(scale: number[] | null, offset: number): void;
   dispose(): void;
+}
+
+/**
+ * A key in Camelot notation ("8A", "11B") as the notes in it: pitch classes,
+ * C = 0. A minor key and its relative major (8A, 8B) share their notes, so the
+ * number is all that matters. Null for anything else.
+ */
+export function camelotScale(key?: string | null): number[] | null {
+  const match = /^(\d{1,2})\s*([AB])$/i.exec((key || "").trim());
+  const number = match ? Number(match[1]) : 0;
+  if (number < 1 || number > 12) return null;
+  // 8B is C major and each step round the wheel is a fifth (seven semitones).
+  const tonic = ((((number - 8) * 7) % 12) + 12) % 12;
+  return [0, 2, 4, 5, 7, 9, 11].map((step) => (tonic + step) % 12);
 }
 
 /** A decaying noise burst: a cheap, convincing room for a ConvolverNode. */
@@ -59,12 +76,71 @@ export function buildVoiceEffect(context: AudioContext, effect: VoiceEffect): Vo
   const output = context.createGain();
   const nodes: AudioNode[] = [input, output];
   const sources: AudioScheduledSourceNode[] = [];
+  let setKey: VoiceEffectGraph["setKey"];
   const track = <T extends AudioNode>(node: T): T => {
     nodes.push(node);
     return node;
   };
 
-  if (effect === "vampire") {
+  if (effect === "singer") {
+    // A soft pitch correction first (public/tune-worklet.js, loaded with the
+    // mic worklet). Where it could not load, the polish alone still helps.
+    let head: AudioNode = input;
+    try {
+      const tune = track(new AudioWorkletNode(context, "pitch-tune", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        channelCount: 1,
+        channelCountMode: "explicit",
+      }));
+      input.connect(tune);
+      head = tune;
+      setKey = (scale, offset) => tune.port.postMessage({ scale, offset });
+    } catch {
+      // No tuner, then.
+    }
+
+    // The polish a vocal gets before it sits on a track: the rumble out, a
+    // little less boxiness, steady dynamics, presence and air.
+    const rumble = track(context.createBiquadFilter());
+    rumble.type = "highpass";
+    rumble.frequency.value = 90;
+    rumble.Q.value = 0.7;
+    const box = track(context.createBiquadFilter());
+    box.type = "peaking";
+    box.frequency.value = 300;
+    box.Q.value = 1;
+    box.gain.value = -2;
+    const squeeze = track(context.createDynamicsCompressor());
+    squeeze.threshold.value = -26;
+    squeeze.knee.value = 12;
+    squeeze.ratio.value = 3;
+    squeeze.attack.value = 0.006;
+    squeeze.release.value = 0.2;
+    const presence = track(context.createBiquadFilter());
+    presence.type = "peaking";
+    presence.frequency.value = 3200;
+    presence.Q.value = 0.9;
+    presence.gain.value = 3;
+    const air = track(context.createBiquadFilter());
+    air.type = "highshelf";
+    air.frequency.value = 10000;
+    air.gain.value = 2.5;
+    head.connect(rumble).connect(box).connect(squeeze).connect(presence).connect(air);
+
+    // A bright plate, a moment behind the voice so the words stay clear.
+    const predelay = track(context.createDelay(0.1));
+    predelay.delayTime.value = 0.025;
+    const plate = track(context.createConvolver());
+    plate.buffer = impulse(context, 1.8, 3.2, 0.3);
+    const wet = track(context.createGain());
+    wet.gain.value = 0.16;
+    air.connect(predelay).connect(plate).connect(wet).connect(output);
+    air.connect(output);
+    // The compressor's squeeze, made back up.
+    output.gain.value = 1.25;
+  } else if (effect === "vampire") {
     // Weight in the chest, the sibilance pulled back.
     const low = track(context.createBiquadFilter());
     low.type = "lowshelf";
@@ -146,6 +222,7 @@ export function buildVoiceEffect(context: AudioContext, effect: VoiceEffect): Vo
   return {
     input,
     output,
+    setKey,
     dispose() {
       for (const source of sources) {
         try {

@@ -181,3 +181,18 @@ it("refuses a seat in a private voice channel to members who cannot see it", asy
   await act("bob", { t: "voice-join", channelId: "a-secret-voice" });
   expect(byId.bob.attachment.voiceChannelId).toBe("a-secret-voice");
 });
+
+it("disconnects one person from a voice room and tells them why", async () => {
+  const { hub, sent, byId } = hubWith([
+    { connectionId: "c-alice", userId: "alice", voiceChannelId: "a-voice" },
+    { connectionId: "c-bob", userId: "bob", voiceChannelId: "a-voice" },
+  ]);
+  const response = await hub.fetch(new Request("https://huddle.hub/voice-evict", {
+    method: "POST",
+    body: JSON.stringify({ userId: "bob", channelIds: ["a-voice"], reason: "moderator" }),
+  }));
+  expect(((await response.json()) as { evicted: number }).evicted).toBe(1);
+  expect(byId.bob.attachment.voiceChannelId).toBe(null);
+  expect(byId.alice.attachment.voiceChannelId).toBe("a-voice");
+  expect(sent("bob").find((event) => event.t === "voice-evicted")?.reason).toBe("moderator");
+});

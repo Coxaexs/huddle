@@ -7,6 +7,8 @@ import { ScreenShareSetup } from "../screen-share-setup";
 import { SoundboardDrawer } from "../voice-stage/soundboard-drawer";
 import { VoiceConnectionModal } from "./voice-connection-modal";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useUiMode } from "@/app/lib/ui-mode";
+import { SimpleCallButtons } from "./shell/simple-parts";
 
 /**
  * The bar above the user footer while you are in a voice room: where you are,
@@ -40,6 +42,7 @@ export function MiniVoiceBar({
 }) {
   const { t } = useI18n();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+  const simpleUi = useUiMode() === "simple";
 
   return (
     <div className="mini-voice-bar relative">
@@ -118,6 +121,13 @@ export function MiniVoiceBar({
           </button>
         </div>
       </div>
+      {simpleUi && (
+        <SimpleCallButtons
+          voice={voice}
+          shareOpen={sidebarShareSetupOpen}
+          onShare={() => setSidebarShareSetupOpen((open) => !open)}
+        />
+      )}
       {sidebarShareSetupOpen && !voice.screenSharing && (
         <div className="soundboard-quick-popover screen-share-quick-popover">
           <ScreenShareSetup

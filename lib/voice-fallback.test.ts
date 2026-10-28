@@ -4,6 +4,7 @@ import {
   meshFallbackBlocked,
   videoAllowedFrom,
 } from "@/app/hooks/use-voice";
+import { meshIcePolicy, meshPeers } from "@/app/lib/voice-mesh";
 import type { VoiceParticipant } from "@/lib/protocol";
 
 function seat(connectionId: string, extra: Partial<VoiceParticipant> = {}): VoiceParticipant {
@@ -42,6 +43,44 @@ describe("meshFallbackBlocked", () => {
 
   it("allows the mesh when nobody in the room is on LiveKit", () => {
     expect(meshFallbackBlocked(room(40, { sfu: false }), "me")).toBe(false);
+  });
+});
+
+describe("meshPeers", () => {
+  const ids = (people: VoiceParticipant[]) => people.map((person) => person.connectionId);
+
+  it("meshes a LiveKit seat with one that lost LiveKit in a small room", () => {
+    const people = [...room(MESH_FALLBACK_MAX_PEERS - 1), seat("lost", { sfu: false })];
+    expect(ids(meshPeers(people, "me", true))).toEqual(["lost"]);
+  });
+
+  it("refuses a seat claiming no LiveKit once the room is too big to mesh", () => {
+    const people = [...room(MESH_FALLBACK_MAX_PEERS), seat("liar", { sfu: false })];
+    expect(meshPeers(people, "me", true)).toEqual([]);
+  });
+
+  it("still meets the bots directly in a big room", () => {
+    const people = [...room(40), seat("liar", { sfu: false }), seat("bot", { bot: true })];
+    expect(ids(meshPeers(people, "me", true))).toEqual(["bot"]);
+  });
+
+  it("leaves a room with no LiveKit fully meshed", () => {
+    expect(meshPeers(room(12, { sfu: false }), "me", false)).toHaveLength(12);
+  });
+});
+
+describe("meshIcePolicy", () => {
+  it("sends people through the relay so they never see each other's address", () => {
+    expect(meshIcePolicy(seat("a"), true)).toBe("relay");
+    expect(meshIcePolicy(undefined, true)).toBe("relay");
+  });
+
+  it("connects straight to our own bots", () => {
+    expect(meshIcePolicy(seat("bot", { bot: true }), true)).toBe("all");
+  });
+
+  it("connects directly when the instance has no relay at all", () => {
+    expect(meshIcePolicy(seat("a"), false)).toBe("all");
   });
 });
 

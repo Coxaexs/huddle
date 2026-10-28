@@ -78,11 +78,17 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   voiceSignalRef.current = voice.handleSignal;
   voiceWhisperRef.current = voice.handleWhisper;
   voiceChannelRef.current = voice.channelId;
-  voiceEvictedRef.current = () => {
+  voiceEvictedRef.current = (reason) => {
     if (!voice.channelId) return;
     voice.leave();
     setStageChannelId(null);
-    setNotice("You joined this voice room from another tab or device.");
+    setNotice(
+      reason === "moderator"
+        ? "A moderator disconnected you from voice."
+        : reason === "self"
+          ? "You disconnected this voice seat from another tab or device."
+          : "You joined this voice room from another tab or device.",
+    );
   };
   voiceMoveRef.current = (channelId) => {
     // A moderator moved us: open that room's stage and actually join it, which
@@ -942,6 +948,14 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   const roomPlayer: PlayerState | null = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
+
+  // The singing voice pulls you onto the key of the song the room hears.
+  const tuneKey = roomPlayer?.track?.key ?? null;
+  const tuneShift = roomPlayer?.track?.keyShift ?? 0;
+  const { setTuneKey } = voice;
+  useEffect(() => {
+    setTuneKey(tuneKey, tuneShift);
+  }, [setTuneKey, tuneKey, tuneShift]);
 
   /**
    * MSN's "Show what I'm listening to": while it's on, your status line
