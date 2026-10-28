@@ -17,6 +17,7 @@ import { basePath } from "../lib/client";
 import type { SessionNotesState } from "@/lib/session-notes";
 import { pruneStreamPreviews } from "../lib/stream-preview";
 import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
+import { shardEventAllowed, shardRetryMs } from "../lib/room-shard";
 import { receiveBotWidget } from "../lib/widget-store";
 
 export interface HubState {
@@ -112,7 +113,7 @@ interface HubHandlers {
   ) => void;
   onForceMute?: (userId: string, muted: boolean) => void;
   /** This tab lost voice because the account joined from elsewhere. */
-  onVoiceEvicted?: () => void;
+  onVoiceEvicted?: (reason?: "moderator" | "self") => void;
   /** A moderator moved this account into another voice channel. */
   onVoiceMove?: (channelId: string) => void;
   /** DM call signaling (incoming call, accepted, declined, cancelled). */
@@ -163,11 +164,24 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
   const graceRef = useRef<{ voice: Record<string, VoiceParticipant[]>; until: number } | null>(null);
   const shownVoiceRef = useRef<Record<string, VoiceParticipant[]>>({});
 
+  const shardRetryRef = useRef<{ timer?: number; attempt: number }>({ attempt: 0 });
+  /** The connection id the shard socket was opened under. */
+  const shardIdRef = useRef<string | null>(null);
+
   const connectRoomShard = useCallback((channelId: string | null) => {
     if (typeof window === "undefined") return;
-    if (activeRoomRef.current === channelId && roomSocketRef.current && roomSocketRef.current.readyState <= WebSocket.OPEN) {
+    // Open under the id this tab has now; a main reconnect that got a new id reopens it.
+    const resumeId = resumeRef.current?.connectionId ?? null;
+    if (
+      activeRoomRef.current === channelId &&
+      shardIdRef.current === resumeId &&
+      roomSocketRef.current &&
+      roomSocketRef.current.readyState <= WebSocket.OPEN
+    ) {
       return;
     }
+    window.clearTimeout(shardRetryRef.current.timer);
+    if (activeRoomRef.current !== channelId) shardRetryRef.current.attempt = 0;
     if (roomSocketRef.current) {
       try {
         roomSocketRef.current.onclose = null;
@@ -182,24 +196,35 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const resume = resumeRef.current;
+      shardIdRef.current = resume?.connectionId ?? null;
       const params = new URLSearchParams({ room: channelId });
       if (resume) {
         params.set("resume", resume.connectionId);
         params.set("ticket", resume.ticket);
       }
       const rs = new WebSocket(`${protocol}//${window.location.host}${basePath}/api/realtime?${params.toString()}`);
+      // Only the room's own traffic: the roster and the rest are the main hub's (see room-shard.ts).
       rs.onmessage = (ev) => {
-        socketRef.current?.onmessage?.(ev);
+        if (shardEventAllowed(ev.data)) socketRef.current?.onmessage?.(ev);
       };
       // The shard holds the room's living room poses: ask it who is where as soon as it's up.
       rs.onopen = () => {
+        shardRetryRef.current.attempt = 0;
         try { rs.send(JSON.stringify({ t: "lounge-sync" } satisfies ClientEvent)); } catch {}
       };
       rs.onerror = () => {
         try { rs.close(); } catch {}
       };
+      // Leaving or moving detaches this handler first, so a close here is a
+      // drop (a restart, a network blip): come back while still in the room.
       rs.onclose = () => {
-        if (roomSocketRef.current === rs) roomSocketRef.current = null;
+        if (roomSocketRef.current !== rs) return;
+        roomSocketRef.current = null;
+        const retry = shardRetryRef.current;
+        window.clearTimeout(retry.timer);
+        retry.timer = window.setTimeout(() => {
+          if (activeRoomRef.current === channelId) connectRoomShard(channelId);
+        }, shardRetryMs(retry.attempt++));
       };
       roomSocketRef.current = rs;
     } catch {
@@ -561,7 +586,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             receiveBotWidget(payload);
             break;
           case "voice-evicted":
-            handlersRef.current.onVoiceEvicted?.();
+            handlersRef.current.onVoiceEvicted?.(payload.reason);
             break;
           case "voice-move":
             handlersRef.current.onVoiceMove?.(payload.channelId);
@@ -646,6 +671,9 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
       window.clearTimeout(probe);
       window.clearTimeout(graceTimer);
       window.clearInterval(heartbeat);
+      window.clearTimeout(shardRetryRef.current.timer);
+      activeRoomRef.current = null;
+      if (roomSocketRef.current) roomSocketRef.current.onclose = null;
       roomSocketRef.current?.close();
       roomSocketRef.current = null;
       socketRef.current?.close();

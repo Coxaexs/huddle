@@ -103,12 +103,13 @@ export async function POST(request: Request) {
       last_seen_at: now,
       email: null,
       signup_source: "guest",
+      ui_mode: "simple",
     };
     const inserted = await db
       .prepare(
         `INSERT OR IGNORE INTO users
-           (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at, signup_source, signup_ip_hash)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, 0, ?, ?, 'guest', ?)`,
+           (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at, signup_source, signup_ip_hash, ui_mode)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, 0, ?, ?, 'guest', ?, 'simple')`,
       )
       .bind(candidate.id, username, username, displayName, passwordHash, candidate.avatar, candidate.color, now, now, addressHash)
       .run()

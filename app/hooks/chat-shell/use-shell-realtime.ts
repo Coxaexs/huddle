@@ -305,7 +305,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
   /** Current connected voice channel, for the soundboard event handler. */
   const voiceChannelRef = useRef<string | null>(null);
   /** Tears this tab out of voice when the account joins from another one. */
-  const voiceEvictedRef = useRef<() => void>(() => { });
+  const voiceEvictedRef = useRef<(reason?: "moderator" | "self") => void>(() => { });
   /** Joins another voice channel when a moderator moves this account. */
   const voiceMoveRef = useRef<(channelId: string) => void>(() => { });
   /** DM call signaling listener ref */
@@ -562,10 +562,10 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
       setDiceRoll(roll);
     },
     onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
-    onVoiceEvicted: () => {
+    onVoiceEvicted: (reason) => {
       // The hub already removed this tab from the room; tear the call down
       // locally so the microphone and peer connections actually stop.
-      voiceEvictedRef.current();
+      voiceEvictedRef.current(reason);
     },
     onVoiceMove: (channelId) => voiceMoveRef.current(channelId),
     onDmCall: (payload) => onDmCallRef.current?.(payload),

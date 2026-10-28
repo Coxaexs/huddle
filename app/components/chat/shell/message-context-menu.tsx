@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/app/lib/i18n-context";
 import { translateMessage } from "@/app/lib/message-translate";
+import { useUiMode } from "@/app/lib/ui-mode";
 
 interface MessageContextMenuAction {
   label: string;
@@ -97,6 +98,9 @@ export function MessageContextMenu({
 }: MessageContextMenuProps) {
   const { t, locale } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
+  // Simple mode shows the everyday actions; "More…" opens the rest in place.
+  const [expanded, setExpanded] = useState(false);
+  const full = useUiMode() === "full" || expanded;
   const [pos, setPos] = useState(() => {
     const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
     const winH = typeof window !== "undefined" ? window.innerHeight : 800;
@@ -126,7 +130,7 @@ export function MessageContextMenu({
     }
 
     setPos({ left: nextLeft, top: nextTop });
-  }, [x, y]);
+  }, [x, y, expanded]);
 
   useEffect(() => {
     const dismiss = (event: Event) => {
@@ -209,33 +213,60 @@ export function MessageContextMenu({
           {separator()}
         </>
       )}
-      {menuItem({ label: t("menu.forward"), icon: Forward, onSelect: onForward })}
-      {menuItem({ label: t("menu.createThread"), icon: MessageCircle, onSelect: onThread })}
-      {separator()}
-      {menuItem({ label: t("menu.copyText"), icon: Copy, onSelect: onCopyText })}
-      {messageContent.trim() &&
-        menuItem({
-          label: t("menu.translate"),
-          icon: Languages,
-          onSelect: () => void translateMessage(String(messageId), locale),
-        })}
-      {menuItem({
-        label: isPinned ? t("menu.unpinMessage") : t("menu.pinMessage"),
-        icon: Pin,
-        onSelect: onPin,
-        disabled: !canPin,
-      })}
-      {menuItem({
-        label: isSaved ? t("menu.removeBookmark") : t("menu.bookmarkMessage"),
-        icon: Save,
-        onSelect: onBookmark,
-      })}
-      {menuItem({ label: t("menu.createReminder"), icon: Clock, onSelect: onReminder })}
-      {menuItem({ label: t("menu.apps"), icon: MoreHorizontal, onSelect: onApps })}
-      {separator()}
-      {menuItem({ label: t("menu.markUnread"), icon: EyeOff, onSelect: onMarkUnread })}
-      {menuItem({ label: t("menu.copyMessageLink"), icon: Link, onSelect: onCopyLink })}
-      {menuItem({ label: t("menu.speakMessage"), icon: Speaker, onSelect: onSpeak })}
+      {full ? (
+        <>
+          {menuItem({ label: t("menu.forward"), icon: Forward, onSelect: onForward })}
+          {menuItem({ label: t("menu.createThread"), icon: MessageCircle, onSelect: onThread })}
+          {separator()}
+          {menuItem({ label: t("menu.copyText"), icon: Copy, onSelect: onCopyText })}
+          {messageContent.trim() &&
+            menuItem({
+              label: t("menu.translate"),
+              icon: Languages,
+              onSelect: () => void translateMessage(String(messageId), locale),
+            })}
+          {menuItem({
+            label: isPinned ? t("menu.unpinMessage") : t("menu.pinMessage"),
+            icon: Pin,
+            onSelect: onPin,
+            disabled: !canPin,
+          })}
+          {menuItem({
+            label: isSaved ? t("menu.removeBookmark") : t("menu.bookmarkMessage"),
+            icon: Save,
+            onSelect: onBookmark,
+          })}
+          {menuItem({ label: t("menu.createReminder"), icon: Clock, onSelect: onReminder })}
+          {menuItem({ label: t("menu.apps"), icon: MoreHorizontal, onSelect: onApps })}
+          {separator()}
+          {menuItem({ label: t("menu.markUnread"), icon: EyeOff, onSelect: onMarkUnread })}
+          {menuItem({ label: t("menu.copyMessageLink"), icon: Link, onSelect: onCopyLink })}
+          {menuItem({ label: t("menu.speakMessage"), icon: Speaker, onSelect: onSpeak })}
+        </>
+      ) : (
+        <>
+          {menuItem({ label: t("menu.copyText"), icon: Copy, onSelect: onCopyText })}
+          {canPin &&
+            menuItem({
+              label: isPinned ? t("menu.unpinMessage") : t("menu.pinMessage"),
+              icon: Pin,
+              onSelect: onPin,
+            })}
+          <button
+            type="button"
+            className="msg-ctx-item"
+            role="menuitem"
+            aria-expanded={false}
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpanded(true);
+            }}
+          >
+            <MoreHorizontal size={14} className="msg-ctx-icon" aria-hidden="true" />
+            <span className="msg-ctx-label">{t("menu.more")}</span>
+          </button>
+        </>
+      )}
       {!isOwn && !isBot && (
         <>
           {separator()}
@@ -246,8 +277,12 @@ export function MessageContextMenu({
           })}
         </>
       )}
-      {separator()}
-      {menuItem({ label: t("menu.copyMessageId"), icon: Award, onSelect: onCopyId })}
+      {full && (
+        <>
+          {separator()}
+          {menuItem({ label: t("menu.copyMessageId"), icon: Award, onSelect: onCopyId })}
+        </>
+      )}
     </div>
   );
 }

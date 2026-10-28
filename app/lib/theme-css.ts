@@ -8,9 +8,9 @@
 const sheets = import.meta.glob("../theme-css/*.css");
 const loading = new Map<string, Promise<unknown>>();
 
-/** The file a theme's rules are in: "msn" covers msn and msn-dark. */
+/** The file a theme's rules are in: "msn" covers msn and msn-dark, "linen" both Linens. */
 export function themeCssFile(themeId: string): string | null {
-  const group = themeId.startsWith("msn") ? "msn" : themeId;
+  const group = themeId.startsWith("msn") ? "msn" : themeId.startsWith("linen") ? "linen" : themeId;
   const path = `../theme-css/${group}.css`;
   return path in sheets ? path : null;
 }

@@ -46,6 +46,8 @@ interface UserMenuProps {
   /** The voice channel this person is currently sitting in, if any. */
   targetVoiceChannelId?: string | null;
   onMove?: (channelId: string) => void;
+  /** Drop this person (or yourself) from the voice channel they sit in. */
+  onDisconnect?: () => void;
   /** Hub-clock ms when this person's current voice seat started, if any. */
   voiceJoinedAt?: number | null;
   /** The hub's clock, so the "in voice for" timer agrees with everyone else's. */
@@ -100,6 +102,7 @@ export function UserMenu({
   voiceChannels = [],
   targetVoiceChannelId = null,
   onMove,
+  onDisconnect,
   voiceJoinedAt = null,
   serverNow,
   isOwner = false,
@@ -157,6 +160,19 @@ export function UserMenu({
     });
   }, [target.x, target.y, target.member.id]);
   const style = pos;
+  const disconnectButton = onDisconnect && (
+    <button
+      type="button"
+      role="menuitem"
+      className="danger"
+      onClick={() => {
+        onDisconnect();
+        onClose();
+      }}
+    >
+      {isSelf ? t("userMenu.disconnectSelf") : t("userMenu.disconnectVoice")}
+    </button>
+  );
 
   return (
     <div className="user-menu" ref={ref} style={style} role="menu">
@@ -270,6 +286,7 @@ export function UserMenu({
               </p>
             </>
           )}
+          {disconnectButton}
           {canModerate && onMove && targetVoiceChannelId && (
             <div className="user-menu-move">
               <span className="user-menu-move-label">{t("userMenu.moveToVoice")}</span>
@@ -384,6 +401,7 @@ export function UserMenu({
           >
             {t("userMenu.noteToSelf")}
           </button>
+          {disconnectButton}
           {onTogglePinDm && (
             <button
               type="button"

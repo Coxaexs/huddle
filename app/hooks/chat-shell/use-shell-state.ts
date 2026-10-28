@@ -28,6 +28,7 @@ import { type SlashCommand } from "../../lib/commands";
 import { type ForwardMessageTarget } from "../../components/forward-message-dialog";
 import { DRAFTS_KEY } from "../../lib/chat/shell-helpers";
 import { registerProfileStyles } from "../../lib/profile-look";
+import { useUiMode } from "@/app/lib/ui-mode";
 
 /** ChatShell, part 1 of 9. Everything ChatShell keeps in state: servers, channels, messages, drafts, menus, dialogs, panel sizes, quick reactions, contact extras. */
 /** Who or what a "Streaming Now" card is about. */
@@ -724,6 +725,12 @@ export function useShellState() {
   const [membersOpen, setMembersOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth > 760,
   );
+  // The simple interface starts without the member list (faces in the header open it).
+  const interfaceMode = useUiMode();
+  useEffect(() => {
+    if (interfaceMode === "simple") setMembersOpen(false);
+    else if (window.innerWidth > 760) setMembersOpen(true);
+  }, [interfaceMode]);
   const [markdownModalOpen, setMarkdownModalOpen] = useState(false);
   const [theme, setTheme] = useState<"cozy" | "legacy" | "light">("cozy");
   const msnTheme = useMsnTheme();

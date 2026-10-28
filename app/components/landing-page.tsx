@@ -491,7 +491,11 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
             {lounge && (
               <div className="mt-5 flex flex-col gap-4 rounded-xl border border-(--line) bg-(--paper-2) p-5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="max-w-[70ch] leading-relaxed text-(--ink-2)">{copy.community.line(lounge.memberCount >= COMMUNITY_COUNT_FROM ? lounge.memberCount : null, lounge.onlineCount)}</p>
-                <a href={COMMUNITY_URL} className={`${primaryButton} shrink-0`}>{copy.community.button}</a>
+                <div className="flex shrink-0 flex-wrap gap-3">
+                  {/* The web page is also how search engines find the community from here. */}
+                  {lounge.webPath && <a href={lounge.webPath} className={secondaryButton}>{copy.community.read}</a>}
+                  <a href={COMMUNITY_URL} className={primaryButton}>{copy.community.button}</a>
+                </div>
               </div>
             )}
           </div>

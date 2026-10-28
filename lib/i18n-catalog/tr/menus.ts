@@ -20,6 +20,7 @@ export const menus: Record<keyof typeof en, string> = {
   "menu.speakMessage": "Mesajı Seslendir",
   "menu.reportMessage": "Mesajı Bildir",
   "menu.copyMessageId": "Mesaj Kimliğini Kopyala",
+  "menu.more": "Daha Fazla…",
 
   // User Menu
   "userMenu.message": "Mesaj",
@@ -30,6 +31,8 @@ export const menus: Record<keyof typeof en, string> = {
   "userMenu.unmuteOnServer": "Sunucuda sesi aç",
   "userMenu.serverMuteNote": "Sunucu susturması mikrofonunu herkes için kapatır.",
   "userMenu.moveToVoice": "Ses kanalına taşı",
+  "userMenu.disconnectVoice": "Sesten at",
+  "userMenu.disconnectSelf": "Sesten çık",
   "userMenu.noOtherVoiceChannels": "Burada başka ses kanalı yok.",
   "userMenu.timeout": "Zaman Aşımı",
   "userMenu.timedOutUntil": "{when} tarihine kadar zaman aşımında",

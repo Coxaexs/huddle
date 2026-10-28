@@ -26,6 +26,12 @@ export const userSettings: Record<keyof typeof en, string> = {
   "userSettings.group.community": "TOPLULUK VE DESTEK",
   "userSettings.editProfiles": "Profilleri Düzenle",
   "userSettings.search": "Ayarlarda ara…",
+  "userSettings.showEverything": "Her şeyi göster",
+  "userSettings.showEverythingHint": "Basit mod ekstraları gizler. Tam arayüze geç.",
+  "userSettings.uiMode": "Arayüz",
+  "userSettings.uiMode.desc": "Basit mod günlük şeyleri önde tutar, gerisini Daha Fazla altına koyar. Hiçbir şey silinmez ve eğik çizgi komutları ikisinde de çalışır.",
+  "userSettings.uiMode.simple": "Basit",
+  "userSettings.uiMode.full": "Tam",
 
   // Profile Tab
   "profileSettings.title": "Kullanıcı Profili",

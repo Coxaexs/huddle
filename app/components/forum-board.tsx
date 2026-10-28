@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { MessageSquare, Plus } from "lucide-react";
 import { Avatar } from "./avatar";
 
@@ -176,7 +177,7 @@ export function ForumBoard({
                   {post.image && (
                     // Decorative here: the card's accessible name already
                     // describes the post, so a second description is noise.
-                    <img className="forum-card-thumb" src={post.image} alt="" loading="lazy" />
+                    <img className="forum-card-thumb" src={proxiedImage(post.image)} alt="" loading="lazy" />
                   )}
 
                   <div className="forum-card-foot">

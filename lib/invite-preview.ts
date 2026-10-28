@@ -1,4 +1,5 @@
 import { hubState } from "./hub-client";
+import { webServerPath } from "./web-public";
 
 /**
  * What an invite code leads to, for people who are not signed in yet: the
@@ -18,6 +19,8 @@ export interface InvitePreview {
     memberCount: number;
     onlineCount: number;
     isPublic?: boolean;
+    /** Its /s/ page when the server is readable on the web. */
+    webPath?: string | null;
   } | null;
   inviter: {
     displayName: string;
@@ -102,6 +105,7 @@ export async function loadInvitePreview(db: D1Database, rawCode: string): Promis
         invite.max_uses === 0 &&
           (invite.server_is_public || invite.server_web_public || (invite.server_vanity_code && invite.server_vanity_code.toUpperCase() === invite.code)),
       ),
+      webPath: invite.server_web_public ? webServerPath({ id: invite.server_id, vanity: invite.server_vanity_code ?? null }) : null,
     };
   }
 

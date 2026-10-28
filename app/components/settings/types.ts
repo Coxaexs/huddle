@@ -13,6 +13,8 @@ export interface Invite {
   defaultServerId?: string | null;
 }
 export type Tab =
+  /** The simple interface's page of tiles (settings/simple-home.tsx). */
+  | "home"
   | "profile"
   | "activities"
   | "voice"

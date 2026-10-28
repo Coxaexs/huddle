@@ -40,7 +40,7 @@ describe.skipIf(!sqliteAvailable)("quick join as a guest", () => {
     state.db = sqliteD1();
     await state.db.batch([
       state.db.prepare(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, username_lower TEXT UNIQUE, display_name TEXT, password_hash TEXT,
-        email TEXT, avatar TEXT, color TEXT, is_admin INTEGER, can_invite INTEGER, created_at TEXT, last_seen_at TEXT, signup_source TEXT, signup_ip_hash TEXT)`),
+        email TEXT, avatar TEXT, color TEXT, is_admin INTEGER, can_invite INTEGER, created_at TEXT, last_seen_at TEXT, signup_source TEXT, signup_ip_hash TEXT, ui_mode TEXT)`),
       state.db.prepare("CREATE TABLE invites (code TEXT PRIMARY KEY, server_id TEXT, max_uses INTEGER, uses INTEGER, revoked INTEGER)"),
       state.db.prepare("CREATE TABLE servers (id TEXT PRIMARY KEY, name TEXT)"),
       state.db.prepare("CREATE TABLE server_members (server_id TEXT, user_id TEXT, joined_at TEXT, PRIMARY KEY (server_id, user_id))"),
@@ -53,7 +53,7 @@ describe.skipIf(!sqliteAvailable)("quick join as a guest", () => {
     const res = await join({ displayName: "  Kai  ", invite: "crew" });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { user: { displayName: string; isGuest?: boolean; username: string }; server: { id: string } };
-    expect(body.user).toMatchObject({ displayName: "Kai", isGuest: true });
+    expect(body.user).toMatchObject({ displayName: "Kai", isGuest: true, uiMode: "simple" });
     expect(body.user.username).toMatch(/^guest-[0-9a-f]{8}$/);
     expect(body.server.id).toBe("s1");
     const member = await state.db!.prepare("SELECT 1 AS ok FROM server_members WHERE server_id = 's1'").first<{ ok: number }>();

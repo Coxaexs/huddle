@@ -1,3 +1,4 @@
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState, type ReactNode } from "react";
 import { BookOpen, Dices, EyeOff, Search, Sparkles, Swords } from "lucide-react";
 import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
@@ -123,7 +124,7 @@ function EntryCard({
           {subtitle && <small>{subtitle}</small>}
         </div>
         {image && (
-          <img className="dnd-card-portrait" src={image} alt="" loading="lazy" />
+          <img className="dnd-card-portrait" src={proxiedImage(image)} alt="" loading="lazy" />
         )}
       </header>
 

@@ -729,3 +729,35 @@
 :root:not([data-custom-theme-id^="msn"]) .member.offline-member strong {
   color: var(--muted) !important;
 }
+
+/* Light themes: dialogs are white, so their text takes the theme's ink.
+   The dialog rules in globals.css were written for the dark themes and left
+   labels, toggles and dropdowns near-white on white (Light and Linen). */
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) :is(.modal, .settings-modal) {
+  color: var(--ink);
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal :is(select, input, textarea, button:not(.primary):not(.active):not(.discord-btn), strong, label):not(.settings-preview-box *) {
+  color: var(--ink);
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal :is(.field-label, .modal-hint, .vs-footnote) {
+  color: var(--muted);
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal :is(.text-white, .text-gray-100, .text-gray-200, .text-gray-300):not(.settings-preview-box *) {
+  color: var(--ink) !important;
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal :is(.text-gray-400, .text-gray-500):not(.settings-preview-box *) {
+  color: var(--muted) !important;
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal .profile-studio-section {
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+:root[data-theme="light"]:not([data-custom-theme-id^="msn"]) .settings-modal :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(.settings-preview-box *) {
+  background-color: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+}

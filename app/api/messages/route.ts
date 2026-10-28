@@ -11,7 +11,7 @@ import { sendPushNotifications } from "@/lib/push";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { can, canAny, hasPermission, Permission } from "@/lib/permissions";
 import { CHANNEL_DEFAULTS, channelOverwritePermissions, channelViewers, mayView } from "@/lib/channel-permissions";
-import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
+import { checkMemoryRateLimit, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
@@ -505,10 +505,21 @@ export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
-  const limited = await limitUser(db, WRITE_RATE_LIMITS.message, user.id);
-  if (limited) return limited;
-
   const body = (await request.json()) as PostBody;
+  const rate = checkMemoryRateLimit(
+    body.asBot ? WRITE_RATE_LIMITS.botReply : WRITE_RATE_LIMITS.message,
+    user.id,
+  );
+  if (!rate.allowed) {
+    return Response.json(
+      {
+        error: `You're sending messages too fast. Wait ${rate.retryAfter}s and try again.`,
+        retryAfter: rate.retryAfter,
+      },
+      { status: 429, headers: { "retry-after": String(rate.retryAfter) } },
+    );
+  }
+
   return postMessageAs(db, user, body, {
     origin: new URL(request.url).origin,
     tzOffset: tzFromRequest(request),

@@ -143,6 +143,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Music",
   },
   { name: "autoplay", args: "<on|off>", description: "Keep playing smart related tracks", group: "Music" },
+  { name: "radio", args: "<sad|party|dreamy|chill|…|off>", description: "Endless songs that fit a mood", group: "Music" },
   { name: "automix", args: "<on|off>", description: "Use smooth DJ-style transitions", group: "Music" },
   { name: "like", description: "Teach the bot you like this track", group: "Music" },
   { name: "dislike", description: "Keep this track out of autoplay", group: "Music" },

@@ -19,6 +19,7 @@ export const menus = {
   "menu.speakMessage": "Speak Message",
   "menu.reportMessage": "Report Message",
   "menu.copyMessageId": "Copy Message ID",
+  "menu.more": "More…",
 
   // User Menu
   "userMenu.message": "Message",
@@ -29,6 +30,8 @@ export const menus = {
   "userMenu.unmuteOnServer": "Unmute on server",
   "userMenu.serverMuteNote": "Server mute stops their microphone for everyone.",
   "userMenu.moveToVoice": "Move to voice channel",
+  "userMenu.disconnectVoice": "Disconnect from voice",
+  "userMenu.disconnectSelf": "Disconnect me from voice",
   "userMenu.noOtherVoiceChannels": "No other voice channels here.",
   "userMenu.timeout": "Timeout",
   "userMenu.timedOutUntil": "Timed out until {when}",

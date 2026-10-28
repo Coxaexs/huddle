@@ -14,6 +14,7 @@ import { SearchPanel, SavedPanel, MentionsPanel, PinsPanel } from "./side-panels
 import { DmCallView } from "./dm-call-view";
 import { MessageList } from "./message-list";
 import { Composer } from "./composer";
+import { SimpleTips } from "./simple-parts";
 import { ChatHeader } from "./chat-header";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
@@ -31,6 +32,7 @@ if (typeof window !== "undefined") {
 /** ChatShell's middle column: the channel header, messages (or a voice stage / the friends page) and the composer. */
 export function renderChatMain(v: ShellRenderState) {
   const {
+    onlineMembers, canCreateServerInvites, setInviteDialog,
     acceptAttachment, acceptIncomingCall, activeChannel, activeChannelId, activeChannelInfo,
     activeDm, activeScreenShare, activeServer, activeServerId, activeSlashCommand, addMyToken,
     answerInvite, applyTheme, battlemap, battlemapGm, battlemapHidden, beginEdit, blockedUserIds,
@@ -163,6 +165,8 @@ export function renderChatMain(v: ShellRenderState) {
       setMembersOpen={setMembersOpen}
       voiceChatOpen={voiceChatOpen}
       setVoiceChatOpen={setVoiceChatOpen}
+      onlineFaces={onlineMembers}
+      onInvite={canCreateServerInvites ? () => setInviteDialog({ channelId: activeChannelId }) : null}
     />
 
           {stageChannel ? (
@@ -520,6 +524,16 @@ export function renderChatMain(v: ShellRenderState) {
               )}
 
               <AgeGateHidden channelId={activeChannel?.id} restricted={ageRestricted}>
+              {!inDmHome && (
+                <SimpleTips
+                  liveRoom={
+                    activeServer?.channels.find(
+                      (channel) => channel.id !== voice.channelId && (voiceRooms[channel.id]?.length ?? 0) > 0,
+                    )?.name ?? null
+                  }
+                  canInvite={canCreateServerInvites}
+                />
+              )}
               <Composer
       sendMessage={sendMessage}
       activeSlashCommand={activeSlashCommand}

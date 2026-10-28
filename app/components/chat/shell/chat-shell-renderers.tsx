@@ -2,6 +2,7 @@ import { type DragEvent } from "react";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { shouldStartMuted } from "@/lib/stage";
+import { heard, liveTrack } from "@/lib/protocol";
 import { hasPermission, Permission } from "@/lib/permissions";
 import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, Globe, Lock, UserPlus } from "lucide-react";
 import { isOnTheWeb } from "@/lib/web-public-client";
@@ -14,6 +15,7 @@ import { channelKindIcon } from "../channel-kind";
 import { RailFolder, RailServer } from "../rail";
 import { VoiceDuration } from "../../voice-duration";
 import { Speaking } from "./live-speaking";
+import { TalkRoom } from "./simple-parts";
 import { ringColor } from "../../../lib/profile-look";
 import { StyledName, VoiceAura } from "../../profile-style-parts";
 import type { ChatShellViewState } from "./chat-shell-view";
@@ -110,6 +112,20 @@ export function withShellRenderers(s: ChatShellViewState) {
     setStageChannelId(null);
     setActiveChannelId(channel.id);
     setMobileNav(false);
+  }
+
+  /** Simple interface: a voice room as a card with faces and Join. */
+  function renderTalkRoom(channel: PublicChannel) {
+    const here = voice.channelId === channel.id;
+    return (
+      <TalkRoom
+        key={channel.id}
+        channel={channel}
+        people={voiceRooms[channel.id] || []}
+        here={here}
+        onOpen={() => (here ? setStageChannelId(channel.id) : openVoiceChannel(channel))}
+      />
+    );
   }
 
   /** One server icon on the rail (loose, or inside an open folder). */
@@ -488,6 +504,9 @@ export function withShellRenderers(s: ChatShellViewState) {
   const currentPlayer = voice.channelId
     ? hub.players[voice.channelId] || null
     : null;
+  // What the room hears: during a DJ set that is the booth's track, while the
+  // room's own player sits parked (often with no track at all).
+  const heardPlayer = currentPlayer ? heard(currentPlayer) : null;
   const musicBotActions: BotMenuAction[] = [
     { label: "Play something…", onSelect: () => prepareCommand("/play ") },
     { label: "Show queue", onSelect: () => prepareCommand("/queue") },
@@ -508,10 +527,10 @@ export function withShellRenderers(s: ChatShellViewState) {
     { label: "Listening stats", onSelect: () => void runCommand("/stats") },
     { label: "Room Wrapped", onSelect: () => void runCommand("/wrapped") },
     { label: "Music settings", onSelect: () => void runCommand("/settings") },
-    ...(voice.channelId && currentPlayer?.track
+    ...(voice.channelId && heardPlayer?.track
       ? [
         {
-          label: currentPlayer.paused ? "Resume" : "Pause",
+          label: heardPlayer.paused ? "Resume" : "Pause",
           onSelect: () =>
             hub.send({
               t: "player",
@@ -529,7 +548,7 @@ export function withShellRenderers(s: ChatShellViewState) {
             }),
         },
         {
-          label: "Stop playing",
+          label: liveTrack(currentPlayer) ? "Stop playing (ends the DJ set)" : "Stop playing",
           danger: true,
           onSelect: () =>
             hub.send({
@@ -580,7 +599,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     ...s,
     rawDisplayedMembers, filterQ, displayedMembers, onlineMembers, offlineMembers,
     currentVoiceChannel, stageDm, stageChannel, openVoiceChannel, openMentionedChannel, watchStream,
-    renderRailServer, renderRailFolder, renderChannel, currentPlayer, musicBotActions,
+    renderRailServer, renderRailFolder, renderChannel, renderTalkRoom, currentPlayer, musicBotActions,
     dndBotActions,
   };
 }

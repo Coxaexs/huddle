@@ -672,3 +672,74 @@ body.portal-page-active {
   margin-left: 8px;
   vertical-align: middle;
 }
+
+/* Growth tab */
+.admin-bars-30 {
+  grid-template-columns: repeat(30, 1fr);
+  gap: 3px;
+}
+
+.admin-bar-stack span {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.admin-bar-stack i,
+.admin-key-dark {
+  background: color-mix(in srgb, var(--lavender) 55%, var(--ink));
+}
+
+.admin-bar-stack i {
+  display: block;
+  width: 100%;
+}
+
+.admin-legend {
+  margin: 10px 0 0;
+}
+
+.admin-key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 2px 0 6px;
+  border-radius: 2px;
+  background: var(--lavender);
+  vertical-align: -1px;
+}
+
+.admin-funnel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-funnel li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) 2fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.admin-funnel-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.admin-funnel-bar span {
+  display: block;
+  height: 100%;
+  background: var(--lavender);
+}
+
+.admin-funnel-value {
+  min-width: 64px;
+  text-align: right;
+}

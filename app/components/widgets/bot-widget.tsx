@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState } from "react";
 import { Globe } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
@@ -18,11 +19,13 @@ import { openWebView } from "./web-view";
 const BUTTON = 2;
 const LINK_STYLE = 5;
 
+/** Our own files load directly; anything outside goes through the image proxy. */
 function safeImage(url: string | undefined): string | undefined {
   if (!url) return undefined;
   try {
     const parsed = new URL(url, window.location.href);
-    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : undefined;
+    if (parsed.origin === window.location.origin) return parsed.toString();
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? proxiedImage(parsed.toString()) : undefined;
   } catch {
     return undefined;
   }

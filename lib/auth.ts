@@ -8,6 +8,7 @@
 
 import { normalizeShowcase } from "./achievement-defs";
 import { normalizeLayout } from "./layout-prefs";
+import { markActiveDay } from "./active-days";
 import { clientIp } from "./rate-limit";
 import { bindings } from "./storage";
 import { activeUntil } from "./timeouts";
@@ -72,6 +73,8 @@ export interface User {
   suspended_at?: string | null;
   /** "first", "invite" or "open"; null on accounts older than the column. */
   signup_source?: string | null;
+  /** "simple" or "full"; null on accounts older than the column, which means full. */
+  ui_mode?: string | null;
   /** JSON from lib/layout-prefs.ts; null is the default layout. */
   layout_prefs?: string | null;
 }
@@ -82,7 +85,7 @@ const USER_COLUMN_NAMES = [
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
   "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at", "signup_source",
-  "layout_prefs",
+  "ui_mode", "layout_prefs",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
@@ -208,6 +211,7 @@ export function publicUser(user: User): PublicUser {
     emailPromptSkipped: Boolean(user.email_prompt_skipped),
     createdAt: user.created_at,
     ...(user.signup_source === "guest" ? { isGuest: true } : {}),
+    uiMode: user.ui_mode === "simple" ? "simple" : "full",
     layout: normalizeLayout(user.layout_prefs),
   };
 }
@@ -465,6 +469,7 @@ export async function currentUser(request: Request): Promise<User | null> {
   }
   // A suspended account is treated as signed out everywhere, sockets included.
   if (row.suspended_at) return null;
+  await markActiveDay(db, row.id);
   // Throttled so a busy tab does not write on every request.
   const usedAt = row.session_used_at ? new Date(row.session_used_at).getTime() : 0;
   if (Date.now() - usedAt > SESSION_TOUCH_MS) {
@@ -482,6 +487,7 @@ export async function touchUser(db: D1Database, userId: string): Promise<void> {
     .prepare("UPDATE users SET last_seen_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), userId)
     .run();
+  await markActiveDay(db, userId);
 }
 
 export function unauthorized(): Response {

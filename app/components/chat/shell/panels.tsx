@@ -9,7 +9,7 @@ import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass } from "lucide-react";
+import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -34,6 +34,8 @@ import { screenQualityLabel } from "../../../hooks/use-voice";
 import { ScreenShareSetup } from "../../screen-share-setup";
 import { apiFetch } from "../../../lib/client";
 import { useI18n } from "../../../lib/i18n-context";
+import { useUiMode } from "../../../lib/ui-mode";
+import { channelKindInfo } from "@/lib/channel-kinds";
 import { PrideBadges } from "../../pride-badges";
 import { ForwardedMessageCard } from "../../forwarded-message-card";
 import { ThemeShareCard } from "../../theme-share-card";
@@ -281,6 +283,7 @@ export function ChannelSidebar({
   categoryDropProps,
   channelLayout,
   renderChannel,
+  renderTalkRoom,
   collapsedCats,
   toggleCategory,
   renameCategory,
@@ -349,6 +352,7 @@ export function ChannelSidebar({
   categoryDropProps: (categoryId: string | null) => { onDragOver?: undefined; onDrop?: undefined; } | { onDragOver: (event: DragEvent<HTMLElement>) => void; onDrop: (event: DragEvent<HTMLElement>) => void; };
   channelLayout: { uncategorised: PublicChannel[]; grouped: { category: PublicCategory; channels: PublicChannel[]; }[]; };
   renderChannel: (channel: PublicChannel) => React.JSX.Element;
+  renderTalkRoom: (channel: PublicChannel) => React.JSX.Element;
   collapsedCats: Set<string>;
   toggleCategory: (id: string) => void;
   renameCategory: (categoryId: string, current: string) => Promise<void>;
@@ -370,6 +374,7 @@ export function ChannelSidebar({
   onSidebarResizeDown: (e: React.MouseEvent) => void;
 }) {
   const { t } = useI18n();
+  const simpleUi = useUiMode() === "simple";
   const musicWidgetPlaced = useLayoutPrefs().widgets.some((widget) => widget.id === "music");
   return (
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
@@ -732,6 +737,8 @@ export function ChannelSidebar({
             </p>
           )}
         </nav>
+      ) : simpleUi ? (
+        <SimpleRooms channelLayout={channelLayout} renderChannel={renderChannel} renderTalkRoom={renderTalkRoom} />
       ) : (
         <nav className="channel-nav" aria-label={t("sidebar.channels")}>
           {/* Inside the list, so it scrolls away with the channels instead of staying pinned. */}
@@ -952,6 +959,38 @@ export function ChannelSidebar({
         title={t("sidebar.resize")}
       />
     </aside>
+  );
+}
+
+/** Simple interface: every room in two plain lists, Chat and Talk. */
+function SimpleRooms({
+  channelLayout,
+  renderChannel,
+  renderTalkRoom,
+}: {
+  channelLayout: { uncategorised: PublicChannel[]; grouped: { channels: PublicChannel[] }[] };
+  renderChannel: (channel: PublicChannel) => React.JSX.Element;
+  renderTalkRoom: (channel: PublicChannel) => React.JSX.Element;
+}) {
+  const { t } = useI18n();
+  const all = [...channelLayout.uncategorised, ...channelLayout.grouped.flatMap((group) => group.channels)];
+  const chat = all.filter((channel) => !channelKindInfo(channel.kind).appearsAsVoice);
+  const talk = all.filter((channel) => channelKindInfo(channel.kind).appearsAsVoice);
+  return (
+    <nav className="channel-nav simple-rooms" aria-label={t("sidebar.channels")}>
+      {chat.length > 0 && (
+        <>
+          <div className="simple-rooms-label"><MessageCircle size={16} aria-hidden="true" />{t("simple.chat")}</div>
+          {chat.map((channel) => renderChannel(channel))}
+        </>
+      )}
+      {talk.length > 0 && (
+        <>
+          <div className="simple-rooms-label"><Mic size={16} aria-hidden="true" />{t("simple.talk")}</div>
+          {talk.map((channel) => renderTalkRoom(channel))}
+        </>
+      )}
+    </nav>
   );
 }
 

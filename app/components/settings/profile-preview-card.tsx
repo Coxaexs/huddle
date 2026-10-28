@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { Calendar, MessageCircle, MoreHorizontal, Music, UserPlus } from "lucide-react";
 import { Avatar } from "../avatar";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "../cosmetics";
@@ -132,7 +133,7 @@ export function ProfilePreviewCard({
         {profile.song && (
           <div className="pv-song">
             <span className="pv-song-art">
-              {profile.song.cover ? <img src={profile.song.cover} alt="" /> : <Music size={18} />}
+              {profile.song.cover ? <img src={proxiedImage(profile.song.cover)} alt="" /> : <Music size={18} />}
             </span>
             <span className="pv-song-text">
               <small>Listening to</small>

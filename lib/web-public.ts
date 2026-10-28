@@ -82,8 +82,8 @@ export async function loadWebServer(db: D1Database, slug: string): Promise<WebSe
   };
 }
 
-/** Our own uploads and the Hoffy stickers are public files; anything else stays a link. */
-const OWN_IMAGE = /^\/hangout\/(api\/uploads\/[A-Za-z0-9._\/-]+|stickers\/hoffy\/[a-z-]+\.svg)$/;
+/** Our own uploads and the Hoffy and gang stickers are public files; anything else stays a link. */
+const OWN_IMAGE = /^\/hangout\/(api\/uploads\/[A-Za-z0-9._\/-]+|stickers\/hoffy\/[a-z-]+\.svg|stickers\/gang\/[a-z-]+\.webp)$/;
 
 function imagesOf(row: { attachment_key?: string | null; attachments?: string | null; content: string }): string[] {
   const keys: string[] = [];

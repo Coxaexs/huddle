@@ -169,7 +169,10 @@ export async function pruneRateLimits(
 /** Per-user budgets for write routes that anyone signed in can hammer. */
 export const WRITE_RATE_LIMITS = {
   upload: { action: "upload", limit: 30, windowSeconds: 60 },
-  message: { action: "message", limit: 30, windowSeconds: 10 },
+  // About what Discord allows: a quick burst, then wait a few seconds.
+  message: { action: "message", limit: 5, windowSeconds: 5 },
+  // Command replies (asBot) post from the sender's client, often several at once.
+  botReply: { action: "bot-reply", limit: 15, windowSeconds: 10 },
 } satisfies Record<string, RateLimitRule>;
 
 /**

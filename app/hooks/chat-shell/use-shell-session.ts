@@ -17,6 +17,7 @@ import { type VoicePref } from "../../components/user-menu";
 import { apiFetch } from "../../lib/client";
 import { membersText, shownCounts } from "@/lib/member-counts";
 import type { useShellState } from "./use-shell-state";
+import { adoptUiMode, installUiMode } from "@/app/lib/ui-mode";
 import { adoptLayout, installLayout } from "@/app/lib/layout-store";
 
 /** ChatShell, part 2 of 9. The signed-in session: loading servers, members, friends, prefs and unread counts; message and invite links; permissions and the active server/channel/DM. */
@@ -272,6 +273,13 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
       .finally(() => setReady(true));
   }, []);
 
+  // The account's simple/full choice wins over what this device remembered.
+  const accountUiMode = user?.uiMode;
+  useEffect(() => {
+    installUiMode();
+    adoptUiMode(accountUiMode);
+  }, [accountUiMode]);
+
   // Where the panels sit and which widgets are pinned: the account's choice
   // wins over what this device remembered. Keyed on the JSON so a refetched
   // session with the same layout changes nothing.
@@ -322,7 +330,15 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     if (!user || !servers.length || linkedMessageHandledRef.current) return;
     linkedMessageHandledRef.current = true;
     const target = parseMessageLink(window.location.href);
-    if (!target) return;
+    if (!target) {
+      // `?server=…` alone (calendar entries link this way): open that server.
+      const serverId = new URLSearchParams(window.location.search).get("server");
+      if (serverId && servers.some((server) => server.id === serverId)) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setActiveServerId(serverId);
+      }
+      return;
+    }
     window.history.replaceState({}, document.title, window.location.pathname);
     void resolveMessageLink(target)
       .then(({ serverId, channelId, messageId }) => {

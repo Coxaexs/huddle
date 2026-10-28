@@ -62,7 +62,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     handleForwardMessage, handleRemoveFriend, handleShareThemeToChat, handleUnblockUser, hub,
     inDmHome, incomingDmCall, incomingFriendUserIds, leaveGroupDm, leaveServer, lightbox,
     livingRoom, loadMembers, loadServers, markServerRead, markWelcomeChecked, markdownModalOpen,
-    members, membersById, messages, moderateMember, moveMember, msnContacts, msnTheme,
+    members, membersById, messages, moderateMember, moveMember, disconnectMember, msnContacts, msnTheme,
     musicBotActions, myPermissions, openDm, openProfile, openVoiceChannel, outgoingFriendUserIds,
     pdfViewer, pipDismissed, placeContact, pollDialogOpen, prefFor, presenceOf, profileCardTarget,
     profileMember, quickSwitcherOpen, railMenu, reactionPicker, reactionViewer, reloadEvents,
@@ -204,6 +204,7 @@ export function renderChatOverlays(v: ShellRenderState) {
         voiceRooms={voiceRooms}
         userMenuVoiceJoinedAt={userMenuVoiceJoinedAt}
         moveMember={moveMember}
+        disconnectMember={disconnectMember}
         membersById={membersById}
         activeServer={activeServer}
         myPermissions={myPermissions}
@@ -243,6 +244,7 @@ export function renderChatOverlays(v: ShellRenderState) {
       {eventsOpen && activeServer && !inDmHome && user && (
         <EventsPanel
           serverId={activeServer.id}
+          serverName={activeServer.name}
           events={serverEvents}
           reload={reloadEvents}
           userId={user.id}

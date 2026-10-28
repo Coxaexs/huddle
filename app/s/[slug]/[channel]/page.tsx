@@ -72,6 +72,7 @@ export async function generateMetadata({ params, searchParams }: Params): Promis
     description,
     alternates: { canonical: `${SITE}${webChannelPath(server, channel)}` },
     openGraph: { title: `#${channel.name} · ${server.name}`, description, siteName: "Hoffle", type: "website", images: [{ url: "/og.png", width: 1200, height: 630 }] },
+    twitter: { card: "summary_large_image", title: `#${channel.name} · ${server.name}`, description, images: ["/og.png"] },
     ...(messages.length ? {} : { robots: { index: false, follow: true } }),
   };
 }

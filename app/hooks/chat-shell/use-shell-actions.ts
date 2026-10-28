@@ -544,6 +544,30 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     }
   }
 
+  /**
+   * Drop someone from the voice channel they sit in: yourself (any seat,
+   * this tab's or one left open elsewhere), or someone else as a moderator.
+   */
+  async function disconnectMember(userId: string, channelId: string) {
+    if (userId === user?.id && voice.channelId === channelId) {
+      // This tab holds the seat: just hang up here.
+      setStageChannelId(null);
+      voice.leave();
+      return;
+    }
+    try {
+      await apiFetch("/api/voice/disconnect", {
+        method: "POST",
+        body: JSON.stringify({ userId, channelId }),
+      });
+      setNotice(
+        userId === user?.id ? "Disconnected your other voice seat." : "Disconnected them from voice.",
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not disconnect them.");
+    }
+  }
+
   /** A button or select on a bot's message: becomes a component interaction. */
   async function pressBotComponent(
     message: Message,
@@ -742,7 +766,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     applyTheme, wrapSelection, pendingInvite, answerInvite, startGame, sendWink, sendNudge,
     handleShareThemeToChat, postBotMessage, setDmClosed, togglePinDm, openDm, createGroupDm,
     addToGroupDm, renameGroupDm, removeFromGroupDm, leaveGroupDm, deleteMessage, togglePin,
-    saveVoicePref, moderateMember, editNickname, setServerAvatar, timeoutMember, moveMember, pressBotComponent,
+    saveVoicePref, moderateMember, editNickname, setServerAvatar, timeoutMember, moveMember, disconnectMember, pressBotComponent,
     openMusicDashboard, sendVoiceMessage, sendText, sendTextComposer,
   };
 }

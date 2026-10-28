@@ -13,6 +13,9 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { Battlemap } from "@/lib/battlemap";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useUiMode } from "@/app/lib/ui-mode";
+import type { Member } from "@/lib/users";
+import { HeaderFaces } from "./simple-parts";
 import { useToolbar } from "../../widgets/toolbar";
 
 export function ChatHeader({
@@ -62,6 +65,8 @@ export function ChatHeader({
   setMembersOpen,
   voiceChatOpen,
   setVoiceChatOpen,
+  onlineFaces = [],
+  onInvite = null,
 }: {
   setMobileNav: Dispatch<SetStateAction<boolean>>;
   stageChannel: PublicChannel | null;
@@ -109,8 +114,16 @@ export function ChatHeader({
   setMembersOpen: Dispatch<SetStateAction<boolean>>;
   voiceChatOpen: boolean;
   setVoiceChatOpen: (open: boolean) => void;
+  /** Simple interface: a few online members' faces stand in for the member-list button. */
+  onlineFaces?: Member[];
+  onInvite?: (() => void) | null;
 }) {
   const { t } = useI18n();
+  // Simple interface in a server's chat room: name, faces, Invite and "More".
+  const simpleUi = useUiMode() === "simple";
+  const simpleHeader = simpleUi && !inDmHome && !stageChannel;
+  // In a call too, search and the member list wait behind "More".
+  const simpleTools = simpleUi && !inDmHome;
   // Customize → Buttons: their order, and the ones moved into "More".
   const tb = useToolbar("header");
   const anyHidden = ["invite", "search", "mentions", "pins", "saved", "achievements", "members"].some(tb.hidden);
@@ -166,7 +179,7 @@ export function ChatHeader({
                   </div>
                 </>
               )}
-              <span className="text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
+              <span className="channel-topic text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
                 {stageChannel
                   ? `· ${t("header.inCall", { count: voiceParticipants.length })}`
                   : inDmHome
@@ -408,7 +421,10 @@ export function ChatHeader({
                   )}
                 </div>
               )}
-              {!inDmHome && (
+              {simpleHeader && (
+                <HeaderFaces online={onlineFaces} onFaces={() => setMembersOpen((open) => !open)} onInvite={onInvite} />
+              )}
+              {!inDmHome && !simpleHeader && (
                 <span className="header-extra">
                   <Icon
                     label={t("header.findUsers")}
@@ -419,7 +435,7 @@ export function ChatHeader({
                   </Icon>
                 </span>
               )}
-              {!inDmHome && (
+              {!inDmHome && !simpleTools && (
                 <Icon
                   label={t("header.searchMessages")}
                   active={searchOpen}
@@ -429,15 +445,17 @@ export function ChatHeader({
                   <Search size={18} />
                 </Icon>
               )}
-              <Icon
-                label={t("header.mentions")}
-                active={mentionsOpen}
-                badge={unreadMentionTotal}
-                onClick={() => setMentionsOpen((open) => !open)}
-                tb={tb.item("mentions")}
-              >
-                <AtSign size={18} />
-              </Icon>
+              {(!simpleTools || unreadMentionTotal > 0) && (
+                <Icon
+                  label={t("header.mentions")}
+                  active={mentionsOpen}
+                  badge={unreadMentionTotal}
+                  onClick={() => setMentionsOpen((open) => !open)}
+                  tb={tb.item("mentions")}
+                >
+                  <AtSign size={18} />
+                </Icon>
+              )}
               <span className="header-extra">
                 <Icon
                   label={t("header.pinnedMessages")}
@@ -464,14 +482,16 @@ export function ChatHeader({
                   <Settings size={18} />
                 </Icon>
               )}
-              <Icon
-                label={t("header.toggleMemberList")}
-                active={membersOpen}
-                onClick={() => setMembersOpen((open) => !open)}
-                tb={tb.item("members")}
-              >
-                <Users size={18} />
-              </Icon>
+              {!simpleTools && (
+                <Icon
+                  label={t("header.toggleMemberList")}
+                  active={membersOpen}
+                  onClick={() => setMembersOpen((open) => !open)}
+                  tb={tb.item("members")}
+                >
+                  <Users size={18} />
+                </Icon>
+              )}
               <div className={`header-more ${anyHidden ? "has-hidden" : ""}`} ref={moreRef}>
                 <Icon label={t("header.more")} active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
                   <MoreHorizontal size={18} />
@@ -479,18 +499,18 @@ export function ChatHeader({
                 {moreOpen && (
                   <div className="header-more-menu" role="menu">
                     {/* On desktop the menu lists only what was moved out of the bar (tb-in-bar hides the rest). */}
-                    {tb.hidden("search") && !inDmHome && (
-                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setSearchOpen((open) => !open))}>
+                    {(simpleTools || tb.hidden("search")) && !inDmHome && (
+                      <button type="button" role="menuitem" className={simpleTools ? "" : "tb-moved"} onClick={pick(() => setSearchOpen((open) => !open))}>
                         <Search size={18} /> {t("header.searchMessages")}
                       </button>
                     )}
-                    {tb.hidden("mentions") && (
-                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setMentionsOpen((open) => !open))}>
+                    {(simpleTools || tb.hidden("mentions")) && (
+                      <button type="button" role="menuitem" className={simpleTools ? "" : "tb-moved"} onClick={pick(() => setMentionsOpen((open) => !open))}>
                         <AtSign size={18} /> {t("header.mentions")}
                       </button>
                     )}
-                    {tb.hidden("members") && (
-                      <button type="button" role="menuitem" className="tb-moved" onClick={pick(() => setMembersOpen((open) => !open))}>
+                    {(simpleTools || tb.hidden("members")) && (
+                      <button type="button" role="menuitem" className={simpleTools ? "" : "tb-moved"} onClick={pick(() => setMembersOpen((open) => !open))}>
                         <Users size={18} /> {t("header.toggleMemberList")}
                       </button>
                     )}

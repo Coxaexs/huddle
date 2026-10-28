@@ -49,6 +49,8 @@ import { DiceTab } from "./settings/dice-tab";
 import { ActivitiesTab } from "./settings/activities-tab";
 import { CustomCssTab } from "./settings/custom-css-tab";
 import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
+import { setUiMode, uiMode, useUiMode } from "../lib/ui-mode";
+import { SimpleSettingsHome } from "./settings/simple-home";
 import { DICE_STYLE_IDS } from "@/lib/dice-styles";
 
 
@@ -195,7 +197,12 @@ export function SettingsDialog({
     },
     [onMicSettings],
   );
-  const [tab, setTab] = useState<Tab>("password");
+  const simpleUi = useUiMode() === "simple";
+  // The simple interface opens on its page of tiles instead of the first tab.
+  const [tab, setTab] = useState<Tab>(() => (uiMode() === "simple" ? "home" : "password"));
+  useEffect(() => {
+    if (!simpleUi && tab === "home") setTab("password");
+  }, [simpleUi, tab]);
   // The profile editor is its own full-screen page, not a settings tab.
   const [startedInEditor] = useState(() => takeProfileEditorRequest());
   const [profileEditor, setProfileEditor] = useState(startedInEditor);
@@ -1046,7 +1053,7 @@ export function SettingsDialog({
       items: [
         { id: "password" as Tab, label: t("userSettings.tab.password"), icon: ShieldCheck, desc: "Username, email, password and account security" },
         { id: "privacy" as Tab, label: t("privacy.tab"), icon: Lock, desc: t("privacy.navDesc") },
-        { id: "activities" as Tab, label: t("userSettings.tab.activities"), icon: Activity, desc: "Status sharing, games and Spotify" },
+        { id: "activities" as Tab, label: t("userSettings.tab.activities"), icon: Activity, desc: "Status sharing, games and Spotify", advanced: true },
       ],
     },
     {
@@ -1056,10 +1063,10 @@ export function SettingsDialog({
         { id: "appearance" as Tab, label: t("userSettings.tab.appearance"), icon: Palette, desc: "Themes, colours and extras" },
         { id: "language" as Tab, label: t("settings.nav.language"), icon: Languages, desc: t("settings.nav.language.desc") },
         { id: "notifications" as Tab, label: t("userSettings.tab.notifications"), icon: Bell, desc: "Desktop, phone and email digest" },
-        { id: "tts" as Tab, label: t("userSettings.tab.tts"), icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions" },
+        { id: "tts" as Tab, label: t("userSettings.tab.tts"), icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions", advanced: true },
         { id: "accessibility" as Tab, label: t("userSettings.tab.accessibility"), icon: Eye, desc: "Font size, readability, preview and animation" },
-        { id: "dice" as Tab, label: t("userSettings.tab.dice"), icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics" },
-        { id: "custom_ui_css" as Tab, label: t("userSettings.tab.customUiCss"), icon: Sparkles, desc: "Personal client-side UI styling" },
+        { id: "dice" as Tab, label: t("userSettings.tab.dice"), icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics", advanced: true },
+        { id: "custom_ui_css" as Tab, label: t("userSettings.tab.customUiCss"), icon: Sparkles, desc: "Personal client-side UI styling", advanced: true },
       ],
     },
     ...(canCreateInvites || (canManageServer && server)
@@ -1088,14 +1095,14 @@ export function SettingsDialog({
           desc: "Feature requests & suggestions sent directly to kiwi & flo",
         },
         { id: "tutorial" as Tab, label: t("userSettings.tab.tutorial"), icon: GraduationCap, desc: "Replay the welcome tour and theme picker any time" },
-        { id: "licenses" as Tab, label: t("userSettings.tab.licenses"), icon: Globe, desc: "Software licenses and legal notices" },
+        { id: "licenses" as Tab, label: t("userSettings.tab.licenses"), icon: Globe, desc: "Software licenses and legal notices", advanced: true },
       ],
     },
   ];
 
   return (
     <div className="modal-backdrop settings-modal-overlay" role="dialog" aria-modal="true">
-      <div className={`modal settings-modal ${mobilePage ? "mobile-page" : ""}`}>
+      <div className={`modal settings-modal ${mobilePage || simpleUi ? "mobile-page" : ""} ${simpleUi ? "is-simple" : ""}`}>
         {/* Discord Left Sidebar */}
         <aside className="settings-sidebar">
           <div className="settings-mobile-head">
@@ -1140,7 +1147,8 @@ export function SettingsDialog({
           <nav className="settings-nav-groups">
             {NAV_CATEGORIES.map((cat) => {
               const matchingItems = cat.items.filter((item) => {
-                if (!settingsSearch.trim()) return true;
+                // Simple mode hides the extras until you search for them.
+                if (!settingsSearch.trim()) return !(simpleUi && "advanced" in item);
                 const q = settingsSearch.toLowerCase();
                 return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q);
               });
@@ -1175,6 +1183,18 @@ export function SettingsDialog({
               );
             })}
           </nav>
+
+          {simpleUi && !settingsSearch.trim() && (
+            <button
+              type="button"
+              className="settings-nav-btn settings-show-everything"
+              title={t("userSettings.showEverythingHint")}
+              onClick={() => setUiMode("full")}
+            >
+              <Layers size={16} className="shrink-0" />
+              <span className="truncate">{t("userSettings.showEverything")}</span>
+            </button>
+          )}
 
           {KOFI_URL && !isNativeApp() && (
             <a
@@ -1233,7 +1253,14 @@ export function SettingsDialog({
             >
               <ChevronLeft size={22} />
             </button>
+            {simpleUi && tab !== "home" && (
+              <button type="button" className="settings-simple-back" onClick={() => setTab("home")}>
+                <ChevronLeft size={18} aria-hidden="true" />
+                {t("simpleSettings.back")}
+              </button>
+            )}
             <h2>
+              {tab === "home" && t("common.settings")}
               {tab === "profile" && t("userSettings.tab.profile")}
               {tab === "password" && t("userSettings.tab.password")}
               {tab === "privacy" && t("privacy.tab")}
@@ -1269,6 +1296,21 @@ export function SettingsDialog({
           <div className="settings-content-scroll">
 
 
+          {tab === "home" && (
+            <SimpleSettingsHome
+              user={user}
+              avatar={avatar}
+              avatarUrl={avatarUrl}
+              color={color}
+              displayName={displayName}
+              activeThemeId={activeThemeId}
+              onPickTheme={handleSelectTheme}
+              onOpen={(next) => setTab(next)}
+              onEditProfile={() => setProfileEditor(true)}
+              onShowEverything={() => setUiMode("full")}
+              onSignOut={onSignOut}
+            />
+          )}
           {tab === "tts" && <TtsSettings />}
           {tab === "privacy" && <PrivacyTab />}
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
 import { EmojiPicker } from "./emoji-picker";
 import { hoffyStickerItems } from "../lib/hoffy-stickers";
+import { useI18n } from "../lib/i18n-context";
 
 interface MediaItem {
   id: string;
@@ -42,6 +43,7 @@ export function GifPicker({
 }: GifPickerProps) {
   // Hoffy first: the mascot pack is there for everyone, in every server.
   const [tab, setTab] = useState<Tab>("hoffy");
+  const { locale } = useI18n();
   const [customEmojis, setCustomEmojis] = useState<
     Array<{ id: string; name: string; url: string }>
   >([]);
@@ -103,7 +105,7 @@ export function GifPicker({
 
   useEffect(() => {
     if (tab === "hoffy") {
-      setItems(hoffyStickerItems(query));
+      setItems(hoffyStickerItems(query, locale));
       setHint("");
       setLoading(false);
       return;

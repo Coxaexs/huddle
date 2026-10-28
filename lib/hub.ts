@@ -38,6 +38,7 @@ import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
 import { clearExpiredStatuses, nextStatusExpiryAlarm } from "./status-expiry";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
+import { nextFeedAlarm, pollDueFeeds } from "./feeds";
 import {
   NOTES_CHUNK,
   NOTES_GRACE_MS,
@@ -443,8 +444,14 @@ export class HuddleHub extends DurableObject {
       return Response.json({ ok: true });
     }
     if (url.pathname === "/voice-evict" && request.method === "POST") {
-      // Moderation (a timeout): drop this user from any of these voice rooms.
-      const body = (await request.json()) as { userId: string; channelIds: string[] };
+      // Moderation (a timeout or a disconnect), or someone disconnecting their
+      // own seat from elsewhere: drop this user from any of these voice rooms.
+      const body = (await request.json()) as {
+        userId: string;
+        channelIds: string[];
+        reason?: "moderator" | "self";
+      };
+      const reason = body.reason === "self" ? "self" : "moderator";
       const rooms = new Set(body.channelIds);
       const emptied = new Set<string>();
       for (const { socket, attachment } of this.sockets()) {
@@ -461,7 +468,7 @@ export class HuddleHub extends DurableObject {
         emptied.add(room);
         try {
           socket.send(
-            JSON.stringify({ t: "voice-evicted", channelId: room, serverNow: Date.now() } satisfies ServerEvent),
+            JSON.stringify({ t: "voice-evicted", channelId: room, reason, serverNow: Date.now() } satisfies ServerEvent),
           );
         } catch {
           // Already going away.
@@ -607,6 +614,15 @@ export class HuddleHub extends DurableObject {
     // still deliver events, so identity lives on the socket itself.
     this.ctx.acceptWebSocket(socket, [`user:${attachment.userId}`, `conn:${attachment.connectionId}`]);
     this.saveAttachment(socket, attachment);
+
+    // A room shard knows only its own sockets, so its idea of the rooms,
+    // presence and players is partial and would overwrite the main hub's in
+    // the tab (older pages forward everything a shard sends). It has no
+    // handshake to give: the tab is already connected to the main hub.
+    if (attachment.shard) {
+      this.markSeen(attachment);
+      return new Response(null, { status: 101, webSocket: client });
+    }
 
     const ready: ServerEvent = {
       t: "ready",
@@ -1603,7 +1619,13 @@ export class HuddleHub extends DurableObject {
     if (attachment) this.clubCrowdBudget.delete(attachment.connectionId);
     if (attachment) this.streamPreviews.delete(attachment.connectionId);
     if (attachment) this.watchingBy.delete(attachment.connectionId);
-    if (attachment?.voiceChannelId) {
+    if (attachment?.shard) {
+      // A room shard only knows its own sockets: who is in the room and who
+      // is online are the main hub's to announce, or a dropped shard socket
+      // would empty the room for everyone still on the shard.
+      const channelId = attachment.voiceChannelId;
+      if (channelId) queueMicrotask(() => void this.pruneLounge(channelId));
+    } else if (attachment?.voiceChannelId) {
       // The socket is still listed until it actually closes, so announce the
       // room on the next tick of the event loop.
       const channelId = attachment.voiceChannelId;
@@ -2301,7 +2323,9 @@ export class HuddleHub extends DurableObject {
           state.updatedAt = now;
           state.paused = false;
         } else {
-          state.queue.unshift(action.track);
+          // Tagged for the DJ booth (see Track.playNext); the bot putting a
+          // song back where it was sends playNext: false and stays untagged.
+          state.queue.unshift({ playNext: true, ...action.track });
         }
         break;
       case "move": {
@@ -2422,6 +2446,17 @@ export class HuddleHub extends DurableObject {
         }
         break;
       case "stop":
+        // Stop means silence, DJ set included: end the booth's set too, or
+        // the room keeps playing until someone opens the booth to stop it.
+        if (liveTrack(state, now)) {
+          state.live = null;
+          const p = djControl(channelId, "stop").catch((error) =>
+            console.warn("DJ booth stop failed", String(error)),
+          );
+          if (this.ctx && typeof this.ctx.waitUntil === "function") {
+            this.ctx.waitUntil(p);
+          }
+        }
         state.track = null;
         state.queue = [];
         state.positionMs = 0;
@@ -2526,6 +2561,13 @@ export class HuddleHub extends DurableObject {
       publish: (channelId, message, audience) =>
         this.publishChannelMessage(channelId, message, audience),
     }).catch(() => undefined);
+    // Followed feeds (RSS, YouTube, Reddit…) post what is new into their channel.
+    const feedsOff = (await allDisabledFeatures(this.bindingsEnv as { FEATURES_DISABLED?: string; DB?: D1Database })).includes("feeds");
+    if (!feedsOff) {
+      await pollDueFeeds(this.db, {
+        publish: (channelId, message) => this.publishChannelMessage(channelId, message),
+      }).catch(() => undefined);
+    }
     const reminders = [
       ...scheduledNotes,
       ...(await deliverDueReminders(this.db).catch(() => [])),
@@ -2555,11 +2597,12 @@ export class HuddleHub extends DurableObject {
     const nextScheduled = await nextScheduledAlarm(this.db).catch(() => null);
     const nextRecap = await nextRecapAlarm(this.db).catch(() => null);
     const nextDigest = await nextDigestAlarm(this.db).catch(() => null);
+    const nextFeed = feedsOff ? null : await nextFeedAlarm(this.db).catch(() => null);
     // Big uploads are deleted 12 hours after they were sent.
     const bigUploads = (this.bindingsEnv as { BIG_UPLOADS?: R2Bucket }).BIG_UPLOADS;
     if (bigUploads) await sweepBigUploads(this.db, bigUploads).catch(() => undefined);
     const nextBigUpload = bigUploads ? await nextBigUploadAlarm(this.db).catch(() => null) : null;
-    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload, nextDigest, nextStatusExpiry].filter((at): at is number => at !== null);
+    const candidates = [nextEvent, nextReminder, nextScheduled, nextRecap, nextBigUpload, nextDigest, nextStatusExpiry, nextFeed].filter((at): at is number => at !== null);
     if (candidates.length) await this.armAlarm(Math.max(Math.min(...candidates), Date.now() + 1000));
   }
 

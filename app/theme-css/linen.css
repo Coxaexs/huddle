@@ -1,0 +1,268 @@
+/* Linen and Linen Dark: loaded only while one is active (app/lib/theme-css.ts).
+   Flat white (or charcoal) cards on a soft linen page: the channel list and
+   the conversation are two cards with hairline borders, 12px corners and
+   10px between them. No shadows, no gradients, a plain sans in two weights
+   (400 and 500), sentence case, pill-shaped buttons. */
+:root[data-custom-theme-id^="linen"] {
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-ui);
+  --rail-bg: transparent;
+  --surface-2: var(--panel);
+  --muted-2: var(--muted);
+  --faint: #8f8d86;
+  --accent-strong: #378add;
+  --accent-hi: #0c447c;
+  --on-accent: #ffffff;
+  --accent-ink: #0c447c;
+  --line-strong: rgba(31, 30, 29, 0.28);
+  --ring: 0 0 0 2px rgba(55, 138, 221, 0.35);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 12px 32px rgba(31, 30, 29, 0.14);
+  --simple-go-bg: #eaf3de;
+  --simple-go-ink: #3b6d11;
+  --simple-tip-bg: #faeeda;
+  --simple-tip-ink: #854f0b;
+}
+
+:root[data-custom-theme-id="linen-dark"] {
+  --faint: #87857e;
+  --accent-strong: #85b7eb;
+  --accent-hi: #b5d4f4;
+  --on-accent: #042c53;
+  --accent-ink: #e6f1fb;
+  --line-strong: rgba(222, 220, 209, 0.3);
+  --ring: 0 0 0 2px rgba(133, 183, 235, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --simple-go-bg: #27500a;
+  --simple-go-ink: #c0dd97;
+  --simple-tip-bg: #633806;
+  --simple-tip-ink: #fac775;
+}
+
+:root[data-custom-theme-id^="linen"] body,
+:root[data-custom-theme-id^="linen"] .app-shell {
+  font-family: var(--font-ui) !important;
+  font-feature-settings: normal;
+  background: var(--paper) !important;
+}
+
+/* Two weights only: headings and names at 500, everything else at 400. */
+:root[data-custom-theme-id^="linen"] .app-shell :is(h1, h2, h3, strong, b, .message-author, .user-footer-name) {
+  font-weight: 500 !important;
+}
+
+:root[data-custom-theme-id^="linen"] :is(.channel-heading strong, .space-header h1) {
+  font-family: var(--font-ui) !important;
+  font-size: 15px !important;
+  letter-spacing: 0 !important;
+  line-height: 1.3 !important;
+}
+
+:root[data-custom-theme-id^="linen"] .space-header .eyebrow { display: none; }
+
+:root[data-custom-theme-id^="linen"] :is(.member-panel-title, .section-label, .category-toggle),
+:root[data-custom-theme-id^="linen"] :is(.member-panel-title, .section-label) > span:first-child {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: var(--muted) !important;
+}
+
+/* Layout: the rail sits on the page; list, conversation and members are cards. */
+@media (min-width: 769px) {
+  :root[data-custom-theme-id^="linen"] .app-shell { background: var(--paper) !important; }
+
+  :root[data-custom-theme-id^="linen"] .rail {
+    background: transparent !important;
+    border-right: 0 !important;
+  }
+
+  :root[data-custom-theme-id^="linen"] :is(.sidebar, .member-panel) {
+    background: var(--panel) !important;
+    border: 0.5px solid var(--line) !important;
+    border-radius: 12px !important;
+    margin: 10px 0 10px 0;
+    height: calc(100% - 20px);
+    box-shadow: none !important;
+    overflow: hidden;
+  }
+
+  :root[data-custom-theme-id^="linen"] .member-panel { margin-right: 10px; }
+
+  :root[data-custom-theme-id^="linen"] .chat-panel {
+    margin: 10px 10px 10px 10px !important;
+    height: calc(100% - 20px) !important;
+    border-radius: 12px !important;
+    border: 0.5px solid var(--line) !important;
+    background: var(--chat-bg) !important;
+    box-shadow: none !important;
+  }
+
+  :root[data-custom-theme-id^="linen"] .app-shell.has-members .chat-panel { margin-right: 10px !important; }
+}
+
+:root[data-custom-theme-id^="linen"] .chat-header {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="linen"] .big-hash { display: none; }
+
+/* Rail: square-ish tiles for servers, a dashed circle to add one. */
+:root[data-custom-theme-id^="linen"] .space-mark,
+:root[data-custom-theme-id^="linen"] .brand-mark {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+/* Channel rows: a soft accent pill when selected, no side bar. */
+:root[data-custom-theme-id^="linen"] :is(.channel, .voice-room) span { font-weight: 400 !important; }
+:root[data-custom-theme-id^="linen"] .channel.has-unread span { font-weight: 500 !important; }
+:root[data-custom-theme-id^="linen"] .channel.selected :is(span, svg) { color: var(--accent-ink) !important; }
+
+:root[data-custom-theme-id^="linen"] .channel,
+:root[data-custom-theme-id^="linen"] .voice-room {
+  border-radius: 8px !important;
+  color: var(--muted);
+}
+
+:root[data-custom-theme-id^="linen"] .channel:hover,
+:root[data-custom-theme-id^="linen"] .voice-room:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent) !important;
+  color: var(--ink);
+}
+
+:root[data-custom-theme-id^="linen"] :is(.channel.selected, .voice-room.selected) {
+  background: var(--lavender-soft) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="linen"] .channel.has-unread { color: var(--ink); }
+
+/* Messages: plain rows, names at 500, no bubbles, glows or card shadows. */
+:root[data-custom-theme-id^="linen"] .message,
+:root[data-custom-theme-id^="linen"] .messages :is(div, a, button, section, article) { box-shadow: none !important; }
+:root[data-custom-theme-id^="linen"] .message p { line-height: 1.6; }
+
+/* Composer: a pill with a hairline border and a round send button. */
+:root[data-custom-theme-id^="linen"] .composer {
+  background: var(--chat-bg) !important;
+  border: 0.5px solid var(--line-strong) !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  padding-left: 8px;
+}
+
+:root[data-custom-theme-id^="linen"] .composer:focus-within {
+  border-color: var(--lavender) !important;
+  box-shadow: var(--ring) !important;
+}
+
+:root[data-custom-theme-id^="linen"] .composer :is(.attach-button, .composer-emoji-btn, .gif-button) {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+:root[data-custom-theme-id^="linen"] .composer .send-button,
+:root[data-custom-theme-id^="linen"] .composer .voice-record-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50% !important;
+  background: var(--lavender-soft) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Buttons and inputs across dialogs: flat, hairline, 8px corners. */
+:root[data-custom-theme-id^="linen"] :is(.modal, .settings-modal, .user-menu, .header-more-menu, .server-menu-dropdown, .mobile-composer-menu-popover) {
+  background: var(--panel) !important;
+  border: 0.5px solid var(--line) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-lg) !important;
+  backdrop-filter: none !important;
+}
+
+:root[data-custom-theme-id^="linen"] .app-shell :is(input[type="text"], input[type="search"], textarea, select):not(.composer textarea) {
+  border-radius: 8px;
+}
+
+/* Footer: the person, their name, the cog, at the foot of the channel card
+   behind a hairline (not a floating dock across the rail). */
+:root[data-custom-theme-id^="linen"] .discord-user-footer {
+  background: var(--panel) !important;
+  border: 0 !important;
+  border-top: 0.5px solid var(--line) !important;
+  box-shadow: none !important;
+}
+
+@media (min-width: 769px) {
+  :root[data-custom-theme-id^="linen"]:not(#_) .discord-user-footer {
+    left: 61px;
+    bottom: 10.5px;
+    width: calc(var(--sidebar-w, 240px) - 1px);
+    border-radius: 0 0 12px 12px;
+    padding: 8px 12px;
+  }
+
+  :root[data-custom-theme-id^="linen"] .rail { padding-bottom: 0 !important; }
+
+  :root[data-custom-theme-id^="linen"]:not(#_) .mini-voice-bar {
+    margin: 0 10px 8px;
+    border: 0.5px solid var(--line) !important;
+    border-radius: 10px;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  :root[data-custom-theme-id^="linen"]:not(#_) .mini-voice-bar + .discord-user-footer {
+    border: 0 !important;
+    border-top: 0.5px solid var(--line) !important;
+    border-radius: 0 0 12px 12px;
+  }
+}
+
+/* Moved panels (Settings → Appearance → Layout): the gaps and the account
+   card follow the channel card to its new side. */
+@media (min-width: 769px) {
+  :root[data-custom-theme-id^="linen"][data-members="left"] .member-panel {
+    margin-left: 10px;
+    margin-right: 0;
+  }
+
+  :root[data-custom-theme-id^="linen"][data-chan="right"]:not(#_):not(#_) .discord-user-footer {
+    left: auto;
+    right: 61px;
+  }
+
+  :root[data-custom-theme-id^="linen"]:is([data-chan="top"], [data-chan="bottom"]) .sidebar {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+
+  :root[data-custom-theme-id^="linen"]:is([data-chan="top"], [data-chan="bottom"]):not(#_):not(#_) .sidebar > .discord-user-footer {
+    border: 0 !important;
+    border-left: 0.5px solid var(--line) !important;
+    border-radius: 0;
+  }
+}
+
+:root[data-custom-theme-id^="linen"] .user-footer-btn {
+  background: transparent !important;
+  color: var(--muted) !important;
+}
+
+/* Simple-interface pieces in Linen's colours (app/easy.css lays them out). */
+:root[data-custom-theme-id^="linen"] .talk-room { border-width: 0.5px; }
+:root[data-custom-theme-id^="linen"] .talk-room.is-live { border-color: var(--line-strong); }
+:root[data-custom-theme-id^="linen"] .simple-invite { border: 0.5px solid var(--line-strong); }
+:root[data-custom-theme-id^="linen"] .simple-tip-foot button { font-weight: 500; }
+
+/* No ambient effects: the page is calm. */
+:root[data-custom-theme-id^="linen"] body::before,
+:root[data-custom-theme-id^="linen"] body::after { display: none !important; }

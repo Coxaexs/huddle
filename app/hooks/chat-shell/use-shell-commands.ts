@@ -537,6 +537,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
     const name = raw.trim().split(/\s+/)[0].replace(/^\//, "");
     const silent = new Set([
       "autoplay",
+      "radio",
       "automix",
       "artistdiversity",
       "vibematch",

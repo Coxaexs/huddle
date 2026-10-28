@@ -196,6 +196,8 @@ export async function POST(request: Request) {
     last_seen_at: now,
     email: null,
     signup_source: source,
+    // Newcomers start on the simple interface; the owner setting up the instance does not.
+    ui_mode: isFirstUser ? "full" : "simple",
   };
 
   // Hash first: it is the slow part, and a crash after the invite is claimed
@@ -231,8 +233,8 @@ export async function POST(request: Request) {
     inserted = await db
       .prepare(
         `INSERT OR IGNORE INTO users
-           (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at, signup_source, signup_ip_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, username, username_lower, display_name, password_hash, email, avatar, color, is_admin, can_invite, created_at, last_seen_at, signup_source, signup_ip_hash, ui_mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         user.id,
@@ -249,6 +251,7 @@ export async function POST(request: Request) {
         now,
         source,
         addressHash,
+        user.ui_mode,
       )
       .run();
   } catch (error) {

@@ -6,6 +6,7 @@ import { applyPersonalEmoticons } from "@/lib/msn-contacts";
 import { applyMessageFont } from "@/lib/text-style";
 import { playScreenShareStartSound, playScreenShareStopSound } from "../../lib/audio-cues";
 import { isImageUrl } from "../../components/message-body";
+import { isGifPageUrl } from "@/lib/unfurl";
 import { announceUnlocked } from "../../lib/achievement-client";
 import { type Message } from "../../lib/chat/types";
 import { applyReaction } from "../../lib/chat/reactions";
@@ -346,7 +347,7 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
       // bare GIF/sticker link, which has to stay a link to show as a picture).
       // Your own emoticons turn into their pictures for everyone, too.
       const styled =
-        msnTheme && !isImageUrl(processedText)
+        msnTheme && !isImageUrl(processedText) && !isGifPageUrl(processedText.trim())
           ? applyMessageFont(applyPersonalEmoticons(processedText, personalEmoticons.emoticons), messageFont)
           : processedText;
       const res = await sendText(styled, keys, Object.keys(imageAlts).length ? { imageAlts } : undefined);

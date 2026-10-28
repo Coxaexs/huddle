@@ -24,15 +24,17 @@ import {
   Trash2,
   Flag,
   File,
+  TrendingUp,
 } from "lucide-react";
 import type { AdminAuditEntry, AdminFeature, AdminOverview, AdminServer, AdminUser } from "@/lib/admin";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
 import { BigFilesTab } from "./big-files-tab";
+import { GrowthTab } from "./growth-tab";
 import { ConfirmDialog, FilesTab, InvitesTab, MessagesTab, ReportsTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
-type Tab = "overview" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
+type Tab = "overview" | "growth" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
 
 interface AdminData {
   overview: AdminOverview;
@@ -151,6 +153,7 @@ interface HostStatus {
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: "overview", label: "Overview", icon: Activity },
+  { id: "growth", label: "Growth", icon: TrendingUp },
   { id: "hosts", label: "Hosts & backups", icon: HardDrive },
   { id: "users", label: "Users", icon: Users },
   { id: "bigfiles", label: "Big files", icon: FileUp },
@@ -1088,6 +1091,8 @@ export function AdminPanel() {
         </div>
       ) : tab === "overview" ? (
         <Overview data={data} />
+      ) : tab === "growth" ? (
+        <GrowthTab />
       ) : tab === "users" ? (
         <UsersTab users={data.users} me={user.id} onAction={userAction} />
       ) : tab === "bigfiles" ? (

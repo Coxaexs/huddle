@@ -878,6 +878,9 @@ async function migrate(db: D1Database): Promise<void> {
     ["achievement_showcase", "ALTER TABLE users ADD COLUMN achievement_showcase TEXT NOT NULL DEFAULT '[]'"],
     // Who may start a new conversation with this person (lib/dm-policy.ts).
     ["dm_policy", "ALTER TABLE users ADD COLUMN dm_policy TEXT NOT NULL DEFAULT 'everyone'"],
+    // "simple" hides the extras (app/lib/ui-mode.ts). New accounts start there;
+    // NULL is everyone from before the column, who keep the full interface.
+    ["ui_mode", "ALTER TABLE users ADD COLUMN ui_mode TEXT"],
     // Where the panels sit and which widgets are pinned (lib/layout-prefs.ts).
     // NULL is the default layout.
     ["layout_prefs", "ALTER TABLE users ADD COLUMN layout_prefs TEXT"],
@@ -1298,6 +1301,33 @@ async function migrate(db: D1Database): Promise<void> {
       uses INTEGER NOT NULL DEFAULT 0
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS channel_webhooks_server_idx ON channel_webhooks(server_id)"),
+    // RSS/Atom feeds a channel follows (lib/feeds.ts); the hub alarm polls them.
+    db.prepare(`CREATE TABLE IF NOT EXISTS server_feeds (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'rss',
+      title TEXT NOT NULL,
+      seen TEXT NOT NULL DEFAULT '[]',
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      next_check_at INTEGER NOT NULL,
+      last_ok_at TEXT,
+      last_post_at TEXT,
+      last_error TEXT,
+      failures INTEGER NOT NULL DEFAULT 0,
+      posts INTEGER NOT NULL DEFAULT 0
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS server_feeds_server_idx ON server_feeds(server_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS server_feeds_due_idx ON server_feeds(next_check_at)"),
+    // The secret behind each person's calendar subscription link (lib/calendar.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS calendar_tokens (
+      user_id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    )`),
     // Cards bots keep up to date for members to pin (lib/bot-widgets.ts).
     // channel_id is '' for a server-wide widget, else the room it belongs to.
     db.prepare(`CREATE TABLE IF NOT EXISTS bot_widgets (
@@ -1353,10 +1383,18 @@ async function migrate(db: D1Database): Promise<void> {
     // Achievement stats read a member's own messages and reactions.
     db.prepare("CREATE INDEX IF NOT EXISTS messages_user_time_idx ON messages(user_id, created_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS reactions_user_idx ON reactions(user_id)"),
+    // The UTC days each person used Hoffle, for the admin Growth tab (lib/active-days.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_active_days (
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      PRIMARY KEY (user_id, day)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS user_active_days_day_idx ON user_active_days(day)"),
   ]);
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);
+  await backfillActiveDays(db);
   await migrateProfileImages(db);
   await ensureFts(db);
 
@@ -1398,6 +1436,45 @@ async function backfillServerMembers(db: D1Database): Promise<void> {
     )
     .bind(now)
     .run();
+}
+
+/**
+ * One-time backfill of `user_active_days` from what the database already
+ * remembers: the days people posted, signed up, signed in and were last seen.
+ * Days someone only read are lost, so older weeks undercount a little.
+ */
+export async function backfillActiveDays(db: D1Database): Promise<void> {
+  const done = await db
+    .prepare("SELECT value FROM meta WHERE key = 'active_days_backfilled'")
+    .first<{ value: string }>();
+  if (done) return;
+
+  await db.batch([
+    db.prepare(
+      `INSERT OR IGNORE INTO user_active_days (user_id, day)
+         SELECT DISTINCT user_id, substr(created_at, 1, 10) FROM messages
+          WHERE user_id IS NOT NULL AND is_bot = 0 AND created_at LIKE '____-__-__%'`,
+    ),
+    db.prepare(
+      `INSERT OR IGNORE INTO user_active_days (user_id, day)
+         SELECT id, substr(created_at, 1, 10) FROM users WHERE created_at LIKE '____-__-__%'`,
+    ),
+    db.prepare(
+      `INSERT OR IGNORE INTO user_active_days (user_id, day)
+         SELECT id, substr(last_seen_at, 1, 10) FROM users WHERE last_seen_at LIKE '____-__-__%'`,
+    ),
+    db.prepare(
+      `INSERT OR IGNORE INTO user_active_days (user_id, day)
+         SELECT user_id, substr(created_at, 1, 10) FROM sessions WHERE created_at LIKE '____-__-__%'`,
+    ),
+    db.prepare(
+      `INSERT OR IGNORE INTO user_active_days (user_id, day)
+         SELECT user_id, substr(last_used_at, 1, 10) FROM sessions WHERE last_used_at LIKE '____-__-__%'`,
+    ),
+    db
+      .prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('active_days_backfilled', ?)")
+      .bind(new Date().toISOString()),
+  ]);
 }
 
 /**

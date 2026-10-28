@@ -11,7 +11,7 @@ import { GamesPicker } from "../../game-card";
 import { type GameKind } from "@/lib/games";
 import { saveMessageFont, type MessageFont } from "@/lib/text-style";
 import { type Member, type PublicUser } from "@/lib/users";
-import { Radio, Smile, Vote, Gamepad2, Type, ChevronUp, AtSign, Send, ShieldAlert, Timer, EyeOff } from "lucide-react";
+import { Image as ImageIcon, Radio, Smile, Vote, Gamepad2, Type, ChevronUp, AtSign, Send, ShieldAlert, Timer, EyeOff } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { GifPicker } from "../../gif-picker";
 import { StyledText } from "../../message-body";
@@ -30,6 +30,7 @@ import type { PersonalEmoticon } from "@/lib/msn-contacts";
 import type { RecorderState } from "../../voice-message";
 import type { ChannelKindInfo } from "@/lib/channel-kinds";
 import { useI18n } from "@/app/lib/i18n-context";
+import { useUiMode } from "@/app/lib/ui-mode";
 import { useToolbar } from "../../widgets/toolbar";
 
 export function Composer({
@@ -182,6 +183,8 @@ export function Composer({
   user: PublicUser;
 }) {
   const { t } = useI18n();
+  // Simple interface: picture, words, emoji, send. The rest stays one "/" away.
+  const simpleUi = useUiMode() === "simple";
   // Customize → Buttons: which tools sit in the bar and which in the ^ menu.
   const tb = useToolbar("composer");
   const inBar = (id: string) => (tb.hidden(id) ? "" : " tb-on");
@@ -658,9 +661,10 @@ export function Composer({
                       type="button"
                       className="attach-button"
                       onClick={() => fileRef.current?.click()}
-                      aria-label={t("composer.attachFiles")}
+                      aria-label={simpleUi ? t("simple.sendPicture") : t("composer.attachFiles")}
+                      title={simpleUi ? t("simple.sendPicture") : undefined}
                     >
-                      +
+                      {simpleUi ? <ImageIcon size={19} aria-hidden="true" /> : "+"}
                     </button>
                     <input
                       ref={fileRef}
@@ -690,7 +694,9 @@ export function Composer({
                         }
                       }}
                       placeholder={
-                        activeChannelId
+                        activeChannelId && simpleUi
+                          ? t("simple.typeHere")
+                          : activeChannelId
                           ? isSelfDm
                             ? t("composer.notePlaceholder")
                             : activeChannelInfo.threadContainer
@@ -904,7 +910,7 @@ export function Composer({
                     >
                       /
                     </button>
-                    {!draft.trim() && pendingFiles.length === 0 ? (
+                    {!draft.trim() && pendingFiles.length === 0 && !simpleUi ? (
                       <VoiceRecordButton
                         recorder={voiceRecorder}
                         disabled={!activeChannelId}

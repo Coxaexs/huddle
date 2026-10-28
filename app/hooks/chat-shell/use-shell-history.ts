@@ -248,6 +248,37 @@ export function useShellHistory(s: ReturnType<typeof useShellVoice>) {
     setUnreadBarVisible(false);
   }, [activeChannelId]);
 
+  // Link previews, images and players load after their message is laid out
+  // and push the latest message below the fold. While the reader is at the
+  // bottom, follow that growth. New rows are left to the scroll above (which
+  // animates); only rows already on screen that grow are followed here.
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sized = new WeakSet<Element>();
+    const resize = new ResizeObserver((entries) => {
+      let grew = false;
+      for (const entry of entries) {
+        if (sized.has(entry.target)) grew = true;
+        else sized.add(entry.target);
+      }
+      if (grew && nearBottomRef.current && !detachedRef.current) el.scrollTop = el.scrollHeight;
+    });
+    for (const child of el.children) resize.observe(child);
+    const rows = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node instanceof Element) resize.observe(node);
+        for (const node of record.removedNodes) if (node instanceof Element) resize.unobserve(node);
+      }
+    });
+    rows.observe(el, { childList: true });
+    return () => {
+      resize.disconnect();
+      rows.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChannelId, messagesLoadedFor]);
+
   const handleMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;

@@ -58,5 +58,10 @@ KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=15
 
+# workerd logs an "error" every time a client goes away mid-write (a closed
+# tab, a phone losing signal): about 450 a day, nearly all the error lines,
+# which buries the real ones. journald drops just those.
+LogFilterPatterns=~kj-rs-io/ffi\.rs:[0-9]+: disconnected: write\(\): (Connection reset by peer|Broken pipe)
+
 [Install]
 WantedBy=multi-user.target

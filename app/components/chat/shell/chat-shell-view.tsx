@@ -30,7 +30,7 @@ export function renderChatShell(s: ChatShellViewState) {
     onMembersResizeDown, onSidebarResizeDown, onThreadResizeDown, onlineMembers, openDm,
     openMentionedChannel, openProfile, openProfileByHandle, openUserMenu, pendingFriendCount,
     pictureOpen, player, prefFor, presenceOf, queueHoverCard, quickSoundboardOpen,
-    rawDisplayedMembers, renameCategory, renameContactGroup, renderChannel, renderKindMenu,
+    rawDisplayedMembers, renameCategory, renameContactGroup, renderChannel, renderKindMenu, renderTalkRoom,
     renderRailFolder, renderRailServer, resolvedInvites, roleColorFor, roomPlayer, savePresence,
     sendNudge, sendThreadReply, serverEvents, serverFolders, serverMenuOpen, servers,
     setActiveChannelId, setActiveServerId, setAutoReply, setCollapsedGroups, setDirectoryOpen,
@@ -240,6 +240,7 @@ export function renderChatShell(s: ChatShellViewState) {
         categoryDropProps={categoryDropProps}
         channelLayout={channelLayout}
         renderChannel={renderChannel}
+        renderTalkRoom={renderTalkRoom}
         collapsedCats={collapsedCats}
         toggleCategory={toggleCategory}
         renameCategory={renameCategory}

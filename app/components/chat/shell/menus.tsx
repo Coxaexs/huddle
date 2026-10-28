@@ -59,6 +59,7 @@ export function UserMenuLayer({
   voiceRooms,
   userMenuVoiceJoinedAt,
   moveMember,
+  disconnectMember,
   membersById,
   activeServer,
   myPermissions,
@@ -95,6 +96,7 @@ export function UserMenuLayer({
   voiceRooms: Record<string, VoiceParticipant[]>;
   userMenuVoiceJoinedAt: number | null;
   moveMember: (userId: string, channelId: string) => Promise<void>;
+  disconnectMember: (userId: string, channelId: string) => Promise<void>;
   membersById: Map<string, Member>;
   activeServer: PublicServer | null;
   myPermissions: number;
@@ -104,6 +106,15 @@ export function UserMenuLayer({
   setServerAvatar: (userId: string, clear: boolean) => Promise<void>;
 }) {
   const { t } = useI18n();
+  // The voice room the menu's person sits in: one of this server's, or for
+  // yourself any room at all (another server, a DM call).
+  const sitsIn = (id: string) => (roomId: string) =>
+    (voiceRooms[roomId] || []).some((person) => person.id === id);
+  const menuVoiceRoom = userMenu
+    ? voiceChannels.map((channel) => channel.id).find(sitsIn(userMenu.member.id)) ||
+      (userMenu.member.id === user.id ? Object.keys(voiceRooms).find(sitsIn(user.id)) : undefined) ||
+      null
+    : null;
   return (
     <>
       {userMenu && (
@@ -279,6 +290,11 @@ export function UserMenuLayer({
             void moveMember(userMenu.member.id, channelId);
             setUserMenu(null);
           }}
+          onDisconnect={
+            menuVoiceRoom && (userMenu.member.id === user.id || (canModerate && !inDmHome))
+              ? () => void disconnectMember(userMenu.member.id, menuVoiceRoom)
+              : undefined
+          }
           timeoutUntil={activeUntil(membersById.get(userMenu.member.id)?.timeoutUntil)}
           onTimeout={
             !inDmHome &&

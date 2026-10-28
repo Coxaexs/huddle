@@ -205,6 +205,18 @@ export interface Track {
   playlist?: { name: string; cover: string | null } | null;
   /** Transition out of this track into the next (the bot's mixer spec). */
   mix?: Record<string, unknown> | null;
+  /**
+   * Someone asked to hear it next (/playnext). The DJ booth picks its own
+   * order from the queue, so it needs telling that this one is not up to it.
+   */
+  playNext?: boolean;
+  /**
+   * The song's key in Camelot ("8A"), when the music bot knows it; the
+   * singing voice pulls singers onto its notes (public/tune-worklet.js).
+   */
+  key?: string | null;
+  /** How far the song is played off its key, in semitones (the DJ booth's pitch faders). */
+  keyShift?: number;
 }
 
 /**
@@ -222,6 +234,9 @@ export interface LiveTrack {
   updatedAt: number;
   paused: boolean;
   source: "dj";
+  /** As Track.key and Track.keyShift. */
+  key?: string | null;
+  keyShift?: number;
 }
 
 export interface PlayerState {
@@ -292,6 +307,8 @@ export function heard(state: PlayerState | null | undefined, now = Date.now()): 
       audioUrl: "",
       pageUrl: null,
       requestedBy: "DJ booth",
+      key: live.key ?? null,
+      keyShift: live.keyShift ?? 0,
     },
     paused: live.paused,
     positionMs: live.positionMs,
@@ -313,9 +330,9 @@ export function liveTrack(
   return live && now - live.updatedAt < LIVE_STALE_MS ? live : null;
 }
 
-/** Transport controls that belong to the DJ booth while it is on air. */
+/** Transport controls that belong to the DJ booth while it is on air ("stop" ends the set from the hub). */
 export const LIVE_OWNED_ACTIONS: ReadonlySet<PlayerAction["name"]> = new Set([
-  "pause", "resume", "toggle", "seek", "skip", "skipto", "stop", "ended",
+  "pause", "resume", "toggle", "seek", "skip", "skipto", "ended",
 ]);
 
 export function playbackPosition(state: PlayerState, now = Date.now()): number {
@@ -732,9 +749,11 @@ export type ServerEvent =
   | { t: "force-mute"; userId: string; muted: boolean; serverNow: number }
   | {
       /** This tab was dropped from voice because the same account joined
-       *  from somewhere else. */
+       *  from somewhere else, or (`reason`) a moderator or you yourself
+       *  disconnected it. */
       t: "voice-evicted";
       channelId: string;
+      reason?: "moderator" | "self";
       serverNow: number;
     }
   | {

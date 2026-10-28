@@ -1,5 +1,6 @@
 "use client";
 
+import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState, type FormEvent } from "react";
 import { Globe, Music2, Pause, Play, Plus, SkipForward } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
@@ -154,7 +155,7 @@ export function MusicWidget({ size, area }: { size: WidgetSize; area?: WidgetAre
     </button>
   );
   const art = track?.thumbnail ? (
-    <img className="mw-art" src={track.thumbnail} alt="" loading="lazy" />
+    <img className="mw-art" src={proxiedImage(track.thumbnail)} alt="" loading="lazy" />
   ) : (
     <span className="mw-art mw-art-empty" aria-hidden="true"><Music2 size={size === "small" ? 13 : 18} /></span>
   );

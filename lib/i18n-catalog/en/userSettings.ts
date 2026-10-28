@@ -25,6 +25,12 @@ export const userSettings = {
   "userSettings.group.community": "COMMUNITY & SUPPORT",
   "userSettings.editProfiles": "Edit Profiles",
   "userSettings.search": "Search settings…",
+  "userSettings.showEverything": "Show everything",
+  "userSettings.showEverythingHint": "Simple mode hides the extras. Switch to the full interface.",
+  "userSettings.uiMode": "Interface",
+  "userSettings.uiMode.desc": "Simple keeps the everyday things in view and tucks the rest behind More. Nothing is removed, and slash commands work in both.",
+  "userSettings.uiMode.simple": "Simple",
+  "userSettings.uiMode.full": "Full",
 
   // Profile Tab
   "profileSettings.title": "User Profile",

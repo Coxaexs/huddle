@@ -3,6 +3,7 @@ import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
 import { normalizeDisabledModules } from "@/lib/features";
+import { normalizeProfileImage } from "@/lib/profile-media";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { deleteServerData, listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -71,6 +72,21 @@ export async function PATCH(
   }
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
+  // Every member's app (and the public invite page) loads these, so an outside
+  // link goes through the image proxy rather than to whoever runs that host.
+  let iconUrl = server.icon_url || null;
+  let bannerUrl = server.banner_url || null;
+  if (body.iconUrl !== undefined) {
+    const icon = await normalizeProfileImage(db, body.iconUrl, "Server icon");
+    if (!icon.ok) return Response.json({ error: icon.error }, { status: 400 });
+    iconUrl = icon.url;
+  }
+  if (body.bannerUrl !== undefined) {
+    const banner = await normalizeProfileImage(db, body.bannerUrl, "Server banner", true);
+    if (!banner.ok) return Response.json({ error: banner.error }, { status: 400 });
+    bannerUrl = banner.url;
+  }
+
   const isPublic = body.isPublic !== undefined ? (body.isPublic ? 1 : 0) : (server.is_public ?? 0);
   const description = body.description !== undefined ? String(body.description || "").trim().slice(0, 240) : (server.description || "");
   const disabledModules = body.disabledModules !== undefined
@@ -106,8 +122,8 @@ export async function PATCH(
       body.name?.trim().slice(0, 50) || server.name,
       body.icon?.trim().slice(0, 2).toUpperCase() || server.icon,
       body.color?.trim().slice(0, 24) || server.color,
-      body.iconUrl !== undefined ? body.iconUrl : server.icon_url || null,
-      body.bannerUrl !== undefined ? body.bannerUrl : server.banner_url || null,
+      iconUrl,
+      bannerUrl,
       isPublic,
       description,
       disabledModules,

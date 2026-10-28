@@ -167,6 +167,8 @@ export interface PublicUser {
   canManageMedia?: boolean;
   /** Only on the signed-in user's own account: may open /admin. */
   isInstanceAdmin?: boolean;
+  /** Only on the signed-in user's own account: how much of the interface to show. */
+  uiMode?: "simple" | "full";
   /** Only on the signed-in user's own account: panel sides and pinned widgets. */
   layout?: LayoutPrefs;
 }

@@ -168,7 +168,9 @@ if healthy; then
   # with that is exactly when the site is slowest.
   if [[ -x "$HOME/.local/bin/hoffle-backup.sh" ]]; then
     mkdir -p "$HOME/.cache"
-    nohup bash -c 'sleep 300; exec nice -n 19 ionice -c3 "$HOME/.local/bin/hoffle-backup.sh"' >"$HOME/.cache/hoffle-deploy-sync.log" 2>&1 </dev/null &
+    # 9>&-: the copy must not inherit the build lock, or a slow or hung copy
+    # holds up every deploy after this one (seen 2026-10-27, 19 hours).
+    nohup bash -c 'sleep 300; exec nice -n 19 ionice -c3 "$HOME/.local/bin/hoffle-backup.sh"' >"$HOME/.cache/hoffle-deploy-sync.log" 2>&1 </dev/null 9>&- &
     echo "Syncing the standby in five minutes, at low priority (log: ~/.cache/hoffle-deploy-sync.log)."
   fi
 else
