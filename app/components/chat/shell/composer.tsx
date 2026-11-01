@@ -203,6 +203,7 @@ export function Composer({
                 {slashActive && (
                   <SlashMenu
                     query={draft.split(/\s+/)[0]}
+                    commands={slashMatches}
                     highlighted={slashIndex}
                     onHighlight={setSlashIndex}
                     onPick={(command) =>

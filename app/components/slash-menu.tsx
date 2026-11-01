@@ -6,6 +6,12 @@ import { useI18n } from "@/app/lib/i18n-context";
 
 interface SlashMenuProps {
   query: string;
+  /**
+   * The composer's own list (server bots' commands in, switched-off modules
+   * and bots that are not in this server out), so what is shown is what the
+   * arrow keys and Enter pick from.
+   */
+  commands?: SlashCommand[];
   highlighted: number;
   onHighlight: (index: number) => void;
   onPick: (command: SlashCommand) => void;
@@ -18,6 +24,7 @@ interface SlashMenuProps {
  */
 export function SlashMenu({
   query,
+  commands: given,
   highlighted,
   onHighlight,
   onPick,
@@ -25,7 +32,7 @@ export function SlashMenu({
 }: SlashMenuProps) {
   const { t } = useI18n();
   const listRef = useRef<HTMLDivElement>(null);
-  const commands = useMemo(() => matchCommands(query), [query]);
+  const commands = useMemo(() => given ?? matchCommands(query), [given, query]);
 
   useEffect(() => {
     const active = listRef.current?.querySelector<HTMLElement>(
