@@ -65,7 +65,7 @@ export function PasswordTab({
     <>
       {tab === "password" && (
             <div className="account-settings">
-              <section className="profile-studio-section">
+              <section className="profile-studio-section" data-settings-anchor="username" data-settings-label="Username">
                 <h3 className="profile-studio-section-title">Username</h3>
                 <label htmlFor="settings-username">Username</label>
                 <input
@@ -100,7 +100,7 @@ export function PasswordTab({
                 </button>
               </section>
 
-              <section className="profile-studio-section">
+              <section className="profile-studio-section" data-settings-anchor="email" data-settings-label="Email">
                 <h3 className="profile-studio-section-title">Email</h3>
                 {!user.email && (
                   <p className="auth-error">
@@ -168,7 +168,7 @@ export function PasswordTab({
                 )}
               </section>
 
-              <section className="profile-studio-section">
+              <section className="profile-studio-section" data-settings-anchor="password" data-settings-label="Password">
                 <h3 className="profile-studio-section-title">Password</h3>
                 <p className="modal-hint">Changing it signs you out on every other device.</p>
                 <label htmlFor="settings-current">Current password</label>
@@ -198,7 +198,7 @@ export function PasswordTab({
               </section>
               <SecuritySection />
               {!user.isAdmin && (
-                <section className="profile-studio-section danger-zone">
+                <section className="profile-studio-section danger-zone" data-settings-anchor="delete" data-settings-label="Delete account">
                   <h3 className="profile-studio-section-title">Delete account</h3>
                   <p className="modal-hint">
                     This signs you out everywhere and removes your profile, friends and settings.

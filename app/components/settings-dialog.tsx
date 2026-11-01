@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Mic, Activity, Sparkles, Palette, Share2, Edit3, Globe, Eye, X, Layers, User, ShieldCheck, LogOut, Search, ChevronLeft, Coffee, Heart, Dices, MessageSquarePlus, AudioLines, GraduationCap, Bell, FileText, Languages, Lock } from "lucide-react";
 import { LicensesTab } from "./licenses-tab";
 import { LanguageTab } from "./settings/language-tab";
@@ -51,6 +51,7 @@ import { CustomCssTab } from "./settings/custom-css-tab";
 import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
 import { setUiMode, uiMode, useUiMode } from "../lib/ui-mode";
 import { SimpleSettingsHome } from "./settings/simple-home";
+import { useSettingsSections } from "./settings/use-settings-sections";
 import { DICE_STYLE_IDS } from "@/lib/dice-styles";
 
 
@@ -212,6 +213,8 @@ export function SettingsDialog({
   }
   // Phones show one pane at a time: the section list, then the chosen page.
   const [mobilePage, setMobilePage] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pageSections = useSettingsSections(contentRef, tab);
   const [devices, setDevices] = useState<DeviceLists>({
     microphones: [],
     speakers: [],
@@ -1059,7 +1062,7 @@ export function SettingsDialog({
     {
       title: t("userSettings.group.app"),
       items: [
-        { id: "voice" as Tab, label: t("userSettings.tab.voice"), icon: Mic, desc: "Mic, speakers, mic test and camera" },
+        { id: "voice" as Tab, label: t("userSettings.tab.voice"), icon: Mic, desc: "Mic, speakers, mic test, camera and sounds" },
         { id: "appearance" as Tab, label: t("userSettings.tab.appearance"), icon: Palette, desc: "Themes, colours and extras" },
         { id: "language" as Tab, label: t("settings.nav.language"), icon: Languages, desc: t("settings.nav.language.desc") },
         { id: "notifications" as Tab, label: t("userSettings.tab.notifications"), icon: Bell, desc: "Desktop, phone and email digest" },
@@ -1099,6 +1102,28 @@ export function SettingsDialog({
       ],
     },
   ];
+
+  // The open page's sections, listed under it in the sidebar. Appearance's are
+  // its own tabs; every other page's are the sections it marks for jumping to.
+  const subItems: Array<{ id: string; label: string; active: boolean; open: () => void }> =
+    tab === "appearance"
+      ? ([
+          ["installed", "Themes"],
+          ["community", "Community"],
+          ["look", "Customize"],
+          ["extras", "Extras"],
+        ] as const).map(([id, label]) => ({
+          id,
+          label,
+          active: appearanceSubtab === id,
+          open: () => setAppearanceSubtab(id),
+        }))
+      : pageSections.sections.map(({ id, label }) => ({
+          id,
+          label,
+          active: pageSections.current === id,
+          open: () => pageSections.jump(id),
+        }));
 
   return (
     <div className="modal-backdrop settings-modal-overlay" role="dialog" aria-modal="true">
@@ -1159,24 +1184,44 @@ export function SettingsDialog({
                   {matchingItems.map((item) => {
                     const Icon = item.icon;
                     return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
-                        onClick={() => {
-                          if ("href" in item && typeof item.href === "string") {
-                            window.open(item.href, "_blank", "noopener");
-                            return;
-                          }
-                          setTab(item.id);
-                          setMobilePage(true);
-                          setError("");
-                          setStatus("");
-                        }}
-                      >
-                        <Icon size={16} className="shrink-0" />
-                        <span className="truncate">{item.label}</span>
-                      </button>
+                      <Fragment key={item.id}>
+                        <button
+                          type="button"
+                          className={`settings-nav-btn ${tab === item.id ? "active" : ""}`}
+                          onClick={() => {
+                            if ("href" in item && typeof item.href === "string") {
+                              window.open(item.href, "_blank", "noopener");
+                              return;
+                            }
+                            setTab(item.id);
+                            setMobilePage(true);
+                            setError("");
+                            setStatus("");
+                          }}
+                        >
+                          <Icon size={16} className="shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                        {tab === item.id && subItems.length > 1 && (
+                          <div className="settings-subnav">
+                            {subItems.map((sub) => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                className={`settings-subnav-btn ${sub.active ? "active" : ""}`}
+                                aria-current={sub.active ? "true" : undefined}
+                                onClick={() => {
+                                  setMobilePage(true);
+                                  // On a phone the page has to be showing before it can scroll.
+                                  window.requestAnimationFrame(sub.open);
+                                }}
+                              >
+                                {sub.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </div>
@@ -1293,7 +1338,7 @@ export function SettingsDialog({
             </button>
           </header>
 
-          <div className="settings-content-scroll">
+          <div className="settings-content-scroll" ref={contentRef}>
 
 
           {tab === "home" && (

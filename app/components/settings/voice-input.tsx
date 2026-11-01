@@ -376,7 +376,7 @@ export function VoiceInput({
 
   return (
     <>
-      <section className="vs-section">
+      <section className="vs-section" data-settings-anchor="devices" data-settings-label="Devices">
         <h3 className="field-label">Devices</h3>
         <div className="vs-device-grid">
           <div>
@@ -413,7 +413,7 @@ export function VoiceInput({
         </div>
       </section>
 
-      <section className="vs-section">
+      <section className="vs-section" data-settings-anchor="mic-test" data-settings-label="Mic test">
         <h3 className="field-label">Mic test</h3>
         <div className="vs-mic-check">
           <button
@@ -442,7 +442,7 @@ export function VoiceInput({
         <audio ref={loopbackRef} hidden />
       </section>
 
-      <section className="vs-section">
+      <section className="vs-section" data-settings-anchor="input-mode" data-settings-label="Input mode">
         <h3 className="field-label">Input mode</h3>
         <div className="appearance-choice-row vs-mode-row" role="radiogroup" aria-label="Input mode">
           {modes.map(([id, label]) => (

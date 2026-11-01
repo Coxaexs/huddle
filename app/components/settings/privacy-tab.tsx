@@ -40,7 +40,7 @@ export function PrivacyTab() {
 
   return (
     <>
-      <section className="profile-studio-section">
+      <section className="profile-studio-section" data-settings-anchor="dms" data-settings-label={t("privacy.dmTitle")}>
         <h3 className="profile-studio-section-title">{t("privacy.dmTitle")}</h3>
         <p className="modal-hint">{t("privacy.dmDesc")}</p>
         <div role="radiogroup" aria-label={t("privacy.dmTitle")} style={{ display: "grid", gap: "8px" }}>
@@ -62,7 +62,7 @@ export function PrivacyTab() {
         {status && <p className="modal-hint" role="status">{status}</p>}
       </section>
 
-      <section className="profile-studio-section">
+      <section className="profile-studio-section" data-settings-anchor="streamer" data-settings-label={t("privacy.streamerTitle")}>
         <h3 className="profile-studio-section-title">
           {t("privacy.streamerTitle")}{" "}
           {streamer.active && <span className="streamer-badge">{t("streamer.badge")}</span>}
