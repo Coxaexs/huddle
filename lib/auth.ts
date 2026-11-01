@@ -343,7 +343,13 @@ export function readCookie(request: Request, name: string): string | null {
   if (!header) return null;
   for (const part of header.split(";")) {
     const [key, ...rest] = part.trim().split("=");
-    if (key === name) return decodeURIComponent(rest.join("="));
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(rest.join("="));
+    } catch {
+      // A stray "%" in a cookie we did not write: signed out, not a crash.
+      return null;
+    }
   }
   return null;
 }
@@ -503,10 +509,7 @@ export async function canUserCreateInvites(
   user: User,
 ): Promise<boolean> {
   if (Boolean(user.is_admin) || Boolean(user.can_invite)) return true;
-  const firstUser = await db
-    .prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
-    .first<{ id: string }>();
-  return Boolean(firstUser && firstUser.id === user.id);
+  return (await instanceOwnerId(db)) === user.id;
 }
 
 /**
@@ -518,10 +521,45 @@ export async function isFirstUserOrOwner(
   user: User,
 ): Promise<boolean> {
   if (Boolean(user.is_admin)) return true;
-  const firstUser = await db
-    .prepare("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
+  return (await instanceOwnerId(db)) === user.id;
+}
+
+const OWNER_META_KEY = "instance_owner_id";
+
+/**
+ * The instance owner's account: the one that signed up first. It is written
+ * down the first time it is asked for, so deleting that account later leaves
+ * the instance with no owner (instance admins still run it) instead of handing
+ * the role to whoever happens to be oldest next.
+ *
+ * Accounts made since `signup_source` existed say "first" for the owner. On an
+ * instance older than that column, the oldest account is the owner, but only
+ * while it is itself one of those older accounts.
+ */
+export async function instanceOwnerId(db: D1Database): Promise<string | null> {
+  const pinned = await db
+    .prepare("SELECT value FROM meta WHERE key = ?")
+    .bind(OWNER_META_KEY)
+    .first<{ value: string }>();
+  if (pinned) return pinned.value || null;
+
+  const recorded = await db
+    .prepare("SELECT id FROM users WHERE signup_source = 'first' ORDER BY created_at ASC LIMIT 1")
     .first<{ id: string }>();
-  return Boolean(firstUser && firstUser.id === user.id);
+  let owner = recorded?.id ?? null;
+  if (!owner) {
+    const oldest = await db
+      .prepare("SELECT id, signup_source FROM users ORDER BY created_at ASC LIMIT 1")
+      .first<{ id: string; signup_source: string | null }>();
+    // Nobody has signed up yet: nothing to write down.
+    if (!oldest) return null;
+    owner = oldest.signup_source == null ? oldest.id : null;
+  }
+  await db
+    .prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)")
+    .bind(OWNER_META_KEY, owner ?? "")
+    .run();
+  return owner;
 }
 
 export const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{2,24}$/;

@@ -421,7 +421,7 @@ export class Bridge {
 
   async startCursors(entry) {
     const { discordChannelId, hoffleChannelSnowflake } = entry.channel;
-    if (!this.store.cursor("discord", discordChannelId) && this.discordReady) {
+    if (!this.store.cursor("discord", discordChannelId) && this.discordReady && this.pairInGuild(entry)) {
       const latest = await this.discord.rest.get(`/channels/${discordChannelId}/messages`, {
         query: new URLSearchParams({ limit: "1" }),
       });
@@ -567,20 +567,31 @@ export class Bridge {
   // Targets and webhooks
   // -------------------------------------------------------------------------
 
+  /**
+   * One bot serves every bridged server, so a pair only counts when its Discord
+   * channel is in that bridge's own Discord server. A pair naming a channel of
+   * some other server is ignored rather than carried, both ways.
+   */
+  pairInGuild(entry) {
+    const guild = this.discord?.guilds.cache.get(entry.bridge.discordGuildId);
+    return Boolean(guild?.channels.cache.has(entry.channel.discordChannelId));
+  }
+
   discordTarget(channel) {
     if (!channel) return null;
+    const inGuild = (entry) => Boolean(channel.guildId) && channel.guildId === entry.bridge.discordGuildId;
     const direct = this.byDiscordChannel.get(channel.id);
-    if (direct) return { ...direct, discordThreadId: null };
+    if (direct) return inGuild(direct) ? { ...direct, discordThreadId: null } : null;
     if (channel.isThread?.() && channel.parentId) {
       const parent = this.byDiscordChannel.get(channel.parentId);
-      if (parent?.bridge.settings.threads) return { ...parent, discordThreadId: channel.id };
+      if (parent?.bridge.settings.threads && inGuild(parent)) return { ...parent, discordThreadId: channel.id };
     }
     return null;
   }
 
   async hoffleTarget(channelId) {
     const direct = this.byHoffleChannel.get(channelId);
-    if (direct) return { ...direct, hoffleThreadId: null };
+    if (direct) return this.pairInGuild(direct) ? { ...direct, hoffleThreadId: null } : null;
     let info = this.hoffleThreads.get(channelId);
     if (info === undefined && this.hoffleReady) {
       try {
@@ -596,7 +607,7 @@ export class Bridge {
     }
     if (!info) return null;
     const parent = this.byHoffleChannel.get(info.parent);
-    if (!parent?.bridge.settings.threads) return null;
+    if (!parent?.bridge.settings.threads || !this.pairInGuild(parent)) return null;
     return { ...parent, hoffleThreadId: channelId };
   }
 
@@ -795,12 +806,14 @@ export class Bridge {
       };
       const query = new URLSearchParams({ wait: "true" });
       if (threadId) query.set("thread_id", threadId);
+      // Sent with the bridge's own token: Hoffle only posts a linked person's
+      // message as theirs when the bridge itself asks, not anyone holding the URL.
       const send = (h) =>
         this.hoffle.rest.post(`/webhooks/${h.id}/${h.token}`, {
           body,
           files: first ? files : undefined,
           query,
-          auth: false,
+          auth: true,
         });
       let result;
       try {
@@ -841,7 +854,7 @@ export class Bridge {
       const starter = await this.hoffle.rest.post(`/webhooks/${hook.id}/${hook.token}`, {
         body: { content: `🧵 **${discordThread.name}**`, username: "Discord", hoffle_source_url: discordThread.url },
         query: new URLSearchParams({ wait: "true" }),
-        auth: false,
+        auth: true,
       });
       anchor = starter.id;
     }
@@ -882,7 +895,7 @@ export class Bridge {
     try {
       await this.hoffle.rest.patch(`/webhooks/${hook.id}/${hook.token}/messages/${mapped.hoffle_id}`, {
         body: { content, embeds },
-        auth: false,
+        auth: true,
       });
       this.store.setHash(message.id, hash);
       this.noteRelay(mapped.server_id);
@@ -906,7 +919,7 @@ export class Bridge {
         if (!hook) return;
         for (const messageId of [mapped.hoffle_id, ...JSON.parse(mapped.extra_hoffle || "[]")]) {
           await this.hoffle.rest
-            .delete(`/webhooks/${hook.id}/${hook.token}/messages/${messageId}`, { auth: false })
+            .delete(`/webhooks/${hook.id}/${hook.token}/messages/${messageId}`, { auth: true })
             .catch((error) => {
               if (error?.code !== 10008) throw error;
             });
@@ -1352,6 +1365,7 @@ export class Bridge {
     let carried = 0;
     for (const entry of this.byDiscordChannel.values()) {
       const { discordChannelId, hoffleChannelSnowflake } = entry.channel;
+      if (!this.pairInGuild(entry)) continue;
       try {
         if (side === "discord") {
           const cursor = this.store.cursor("discord", discordChannelId);

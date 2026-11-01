@@ -776,9 +776,14 @@ export class HuddleHub extends DurableObject {
         this.saveAttachment(socket, attachment);
         return;
 
-      case "typing":
+      case "typing": {
         // Fire-and-forget: everyone else in the channel sees it for a moment.
         if (typeof event.channelId !== "string" || !event.channelId) return;
+        // Only from someone who can see the channel. Otherwise anyone could
+        // make "typing…" show in any channel of any server by its id, for its
+        // members and its bots (and so on Discord, through the bridge).
+        const audience = await this.channelAudience(event.channelId).catch(() => null);
+        if (!audience?.(attachment)) return;
         await this.broadcastTo(
           event.channelId,
           {
@@ -788,7 +793,7 @@ export class HuddleHub extends DurableObject {
             displayName: attachment.displayName,
             serverNow: Date.now(),
           },
-          { skipConnectionId: attachment.connectionId },
+          { skipConnectionId: attachment.connectionId, allowed: audience },
         );
         // Bots hear it too (TYPING_START), at most every 8 s per person and
         // channel: the Discord bridge shows "typing…" on the Discord side.
@@ -805,6 +810,7 @@ export class HuddleHub extends DurableObject {
           }
         }
         return;
+      }
 
       case "caption": {
         // Only to the people in the same room, only from a seat that may be
@@ -2014,14 +2020,19 @@ export class HuddleHub extends DurableObject {
   private async broadcastTo(
     channelId: string,
     event: ServerEvent,
-    options?: { skipConnectionId?: string; audience?: string[] | null },
+    options?: {
+      skipConnectionId?: string;
+      audience?: string[] | null;
+      /** The channel's audience, when the caller already worked it out. */
+      allowed?: (attachment: Attachment) => boolean;
+    },
   ): Promise<void> {
     const send = async () => {
       if (options?.audience?.length) {
         this.broadcast(event, options);
         return;
       }
-      const allowed = await this.channelAudience(channelId);
+      const allowed = options?.allowed ?? (await this.channelAudience(channelId));
       const payload = JSON.stringify(event);
       for (const { socket, attachment } of this.sockets()) {
         if (options?.skipConnectionId && attachment.connectionId === options.skipConnectionId) continue;

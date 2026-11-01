@@ -117,6 +117,26 @@ it("delivers a server's messages only to that server's members", async () => {
   expect(sent("eve").some((event) => event.t === "message")).toBe(false);
 });
 
+it("passes on typing only from someone who can see the channel", async () => {
+  const { act, sent } = hubWith([
+    { connectionId: "c-alice", userId: "alice" },
+    { connectionId: "c-bob", userId: "bob" },
+    { connectionId: "c-eve", userId: "eve" },
+  ]);
+  const typing = (userId: string) => sent(userId).filter((event) => event.t === "typing");
+  // eve is not in server A: her "typing" in one of its channels goes nowhere.
+  await act("eve", { t: "typing", channelId: "a-text" });
+  expect(typing("alice")).toHaveLength(0);
+  expect(typing("bob")).toHaveLength(0);
+  // alice is in server A but cannot see its secret channel.
+  await act("alice", { t: "typing", channelId: "a-secret" });
+  expect(typing("bob")).toHaveLength(0);
+  // A member typing where she belongs reaches the others there, as before.
+  await act("alice", { t: "typing", channelId: "a-text" });
+  expect(typing("bob")).toMatchObject([{ userId: "alice", channelId: "a-text" }]);
+  expect(typing("eve")).toHaveLength(0);
+});
+
 it("keeps DM traffic to the DM's participants even with no audience passed", async () => {
   const { hub, sent } = hubWith([
     { connectionId: "c-alice", userId: "alice" },

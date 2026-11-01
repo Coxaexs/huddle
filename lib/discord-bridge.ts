@@ -234,7 +234,8 @@ export class BridgeError extends Error {
 /**
  * Replaces the server's channel pairs. Each Hoffle channel must be a text
  * channel of this server, each Discord channel one the service reported in the
- * linked Discord server, and neither side may appear twice.
+ * linked Discord server, and neither side may appear twice. Until the service
+ * has reported that server (`guild` is null), saved pairs can only be removed.
  */
 export async function setPairs(
   db: D1Database,
@@ -252,6 +253,9 @@ export async function setPairs(
     .all<{ id: string; kind: string }>();
   const ours = new Map((channels.results || []).map((row) => [row.id, row.kind]));
   const theirs = guild ? new Map(guild.channels.map((channel) => [channel.id, channel.type])) : null;
+  const kept = theirs
+    ? null
+    : new Set((await loadPairs(db, serverId)).map((pair) => `${pair.channelId}\n${pair.discordChannelId}`));
 
   const seenHoffle = new Set<string>();
   const seenDiscord = new Set<string>();
@@ -261,7 +265,19 @@ export async function setPairs(
     const discordChannelId = String(pair.discordChannelId || "");
     if (!channelId || !discordChannelId) continue;
     if (!ours.has(channelId)) throw new BridgeError("One of those Hoffle channels is not a text channel here.");
-    if (!/^\d{5,25}$/.test(discordChannelId) || (theirs && !theirs.has(discordChannelId))) {
+    // Without the service's list of the linked server's channels there is no
+    // telling whose channel an id is: one bot serves every bridged server, so
+    // an unchecked id could be a channel of somebody else's Discord server.
+    // Pairs already saved (checked when they were made) may stay, so a pair
+    // can still be removed while the bridge is away.
+    if (!theirs) {
+      if (!kept?.has(`${channelId}\n${discordChannelId}`)) {
+        throw new BridgeError(
+          "The bridge can't see your Discord server right now. Check the bot is still in it and the bridge is online, then try again.",
+          409,
+        );
+      }
+    } else if (!/^\d{5,25}$/.test(discordChannelId) || !theirs.has(discordChannelId)) {
       throw new BridgeError("One of those Discord channels is not in the linked Discord server.");
     }
     // A Discord voice channel only pairs with a Hoffle voice room (call and chat).

@@ -6,6 +6,7 @@ import { limitUser } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import {
+  BRIDGE_WEBHOOK_SOURCE,
   cleanWebhookAvatar,
   cleanWebhookName,
   createWebhook,
@@ -50,7 +51,9 @@ export async function GET(request: Request) {
     .bind(serverId)
     .all<{ id: string; name: string }>();
   return Response.json({
-    webhooks: rows.map(publicWebhook),
+    // The Discord bridge's own webhooks are its business: their URLs stay with
+    // it, and the panel has its own place for the bridge.
+    webhooks: rows.filter((row) => row.source !== BRIDGE_WEBHOOK_SOURCE).map(publicWebhook),
     channels: channels.results || [],
     max: MAX_WEBHOOKS_PER_SERVER,
   });
@@ -97,6 +100,10 @@ export async function PATCH(request: Request) {
   if (!hook) return Response.json({ error: "That webhook is gone." }, { status: 404 });
   const auth = await manager(request, hook.server_id);
   if ("error" in auth) return auth.error;
+  // Its answer carries the URL, which for the bridge's webhooks is the bridge's alone.
+  if (hook.source === BRIDGE_WEBHOOK_SOURCE) {
+    return Response.json({ error: "The Discord bridge manages this webhook." }, { status: 403 });
+  }
 
   const name = body.name === undefined ? hook.name : cleanWebhookName(body.name);
   if (!name) return Response.json({ error: "Give the webhook a name." }, { status: 400 });

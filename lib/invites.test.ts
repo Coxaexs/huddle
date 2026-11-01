@@ -11,6 +11,7 @@ vi.mock("cloudflare:workers", () => ({
 }));
 
 import { canUserCreateInvites, isFirstUserOrOwner } from "./auth";
+import { sqliteAvailable, sqliteD1 } from "../test/stubs/sqlite-d1";
 
 describe("buildUserInviteLink and extractInviteCodeFromUrl", () => {
   it("builds a short /i/ link", () => {
@@ -140,13 +141,62 @@ describe("addServerMember", () => {
   });
 });
 
-describe("canUserCreateInvites and isFirstUserOrOwner", () => {
+describe.skipIf(!sqliteAvailable)("canUserCreateInvites and isFirstUserOrOwner", () => {
+  /** Accounts as [id, created_at, signup_source], oldest first or not. */
+  const dbWith = async (users: Array<[string, string, string | null]>) => {
+    const db = sqliteD1();
+    await db.batch([
+      db.prepare("CREATE TABLE users (id TEXT PRIMARY KEY, created_at TEXT, signup_source TEXT)"),
+      db.prepare("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+      ...users.map(([id, createdAt, source]) =>
+        db.prepare("INSERT INTO users VALUES (?, ?, ?)").bind(id, createdAt, source),
+      ),
+    ]);
+    return db;
+  };
   const mockDbWithFirstUser = (firstUserId: string) =>
-    ({
-      prepare: (query: string) => ({
-        first: async () => ({ id: firstUserId }),
-      }),
-    }) as unknown as D1Database;
+    dbWith([
+      [firstUserId, "2025-12-01T00:00:00Z", "first"],
+      ["u-later", "2026-02-01T00:00:00Z", "invite"],
+    ]);
+  const person = (id: string) => ({
+    id,
+    username: id,
+    display_name: id,
+    avatar: "P",
+    color: "#000",
+    is_admin: 0,
+    can_invite: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    last_seen_at: "2026-01-01T00:00:00Z",
+  });
+
+  it("keeps ownership with the first account, and nobody inherits it when that account is deleted", async () => {
+    const db = await dbWith([
+      ["u-owner", "2025-12-01T00:00:00Z", "first"],
+      ["u-next", "2025-12-02T00:00:00Z", "invite"],
+    ]);
+    expect(await isFirstUserOrOwner(db, person("u-owner"))).toBe(true);
+    await db.prepare("DELETE FROM users WHERE id = 'u-owner'").run();
+    expect(await isFirstUserOrOwner(db, person("u-next"))).toBe(false);
+    expect(await canUserCreateInvites(db, person("u-next"))).toBe(false);
+  });
+
+  it("on an instance older than signup_source, the oldest account is the owner, written down once", async () => {
+    const db = await dbWith([
+      ["u-old-owner", "2024-01-01T00:00:00Z", null],
+      ["u-old-member", "2024-02-01T00:00:00Z", null],
+    ]);
+    expect(await isFirstUserOrOwner(db, person("u-old-owner"))).toBe(true);
+    await db.prepare("DELETE FROM users WHERE id = 'u-old-owner'").run();
+    // The next-oldest account predates the column too, but the owner was already recorded.
+    expect(await isFirstUserOrOwner(db, person("u-old-member"))).toBe(false);
+  });
+
+  it("names no owner when the first account is already gone on a newer instance", async () => {
+    const db = await dbWith([["u-invited", "2026-01-01T00:00:00Z", "invite"]]);
+    expect(await isFirstUserOrOwner(db, person("u-invited"))).toBe(false);
+  });
 
   it("permits owner (is_admin = 1)", async () => {
     const ownerUser = {
@@ -160,7 +210,7 @@ describe("canUserCreateInvites and isFirstUserOrOwner", () => {
       created_at: "2026-01-01T00:00:00Z",
       last_seen_at: "2026-01-01T00:00:00Z",
     };
-    const db = mockDbWithFirstUser("u-owner");
+    const db = await mockDbWithFirstUser("u-owner");
     expect(await canUserCreateInvites(db, ownerUser)).toBe(true);
     expect(await isFirstUserOrOwner(db, ownerUser)).toBe(true);
   });
@@ -177,7 +227,7 @@ describe("canUserCreateInvites and isFirstUserOrOwner", () => {
       created_at: "2026-01-02T00:00:00Z",
       last_seen_at: "2026-01-02T00:00:00Z",
     };
-    const db = mockDbWithFirstUser("u-owner");
+    const db = await mockDbWithFirstUser("u-owner");
     expect(await canUserCreateInvites(db, selectedUser)).toBe(true);
     expect(await isFirstUserOrOwner(db, selectedUser)).toBe(false);
   });
@@ -194,7 +244,7 @@ describe("canUserCreateInvites and isFirstUserOrOwner", () => {
       created_at: "2026-01-03T00:00:00Z",
       last_seen_at: "2026-01-03T00:00:00Z",
     };
-    const db = mockDbWithFirstUser("u-owner");
+    const db = await mockDbWithFirstUser("u-owner");
     expect(await canUserCreateInvites(db, regularUser)).toBe(false);
     expect(await isFirstUserOrOwner(db, regularUser)).toBe(false);
   });
@@ -211,7 +261,7 @@ describe("canUserCreateInvites and isFirstUserOrOwner", () => {
       created_at: "2025-12-01T00:00:00Z",
       last_seen_at: "2025-12-01T00:00:00Z",
     };
-    const db = mockDbWithFirstUser("u-earliest");
+    const db = await mockDbWithFirstUser("u-earliest");
     expect(await canUserCreateInvites(db, firstCreatedUser)).toBe(true);
     expect(await isFirstUserOrOwner(db, firstCreatedUser)).toBe(true);
   });

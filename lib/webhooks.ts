@@ -21,6 +21,8 @@ import { attachmentColumns, BotUploadError, storeBotFiles } from "./bot-uploads"
 import { publishMessageEvent } from "./hub-client";
 import { snapshotBeforeEdit } from "./message-edits";
 import { linkedActor } from "./discord-accounts";
+import { enforceAutomod } from "./automod";
+import { can, Permission } from "./permissions";
 
 /** Discord's own budget for one webhook. */
 export const WEBHOOK_RATE_LIMIT = { action: "webhook", limit: 30, windowSeconds: 60 };
@@ -208,6 +210,17 @@ export interface ExecuteOptions {
   basePath?: string;
   /** The answer for wait=true; the versioned Discord surface needs snowflake ids. */
   respond?: (stored: StoredMessage, hook: WebhookRow) => Promise<Record<string, unknown>>;
+  /**
+   * The request also carried the Discord bridge's own bot token. A bridge
+   * webhook's URL alone is not enough to post as a linked person: anyone who
+   * saw the URL could otherwise speak as any of them.
+   */
+  bridgeCaller?: boolean;
+}
+
+/** Whether this call is the Discord bridge using its own webhook, proven by its token. */
+export function isBridgeCall(hook: Pick<WebhookRow, "source">, bridgeCaller: boolean | undefined): boolean {
+  return hook.source === BRIDGE_WEBHOOK_SOURCE && bridgeCaller === true;
 }
 
 /**
@@ -545,7 +558,7 @@ export async function executeWebhook(
 ): Promise<Response> {
   const hook = await getWebhook(db, id);
   if (!hook || !tokensMatch(hook.token, token)) return webhookError(404, 10015, "Unknown Webhook");
-  const isBridge = hook.source === BRIDGE_WEBHOOK_SOURCE;
+  const isBridge = isBridgeCall(hook, options.bridgeCaller);
 
   const limited = checkMemoryRateLimit(isBridge ? BRIDGE_WEBHOOK_RATE_LIMIT : WEBHOOK_RATE_LIMIT, hook.id);
   if (!limited.allowed) {
@@ -586,6 +599,27 @@ export async function executeWebhook(
     threadId = threadParam;
   }
 
+  // A linked person's Discord message is theirs here, only marked as from
+  // Discord, so it answers to the same automod rules as their own posts.
+  const linked =
+    isBridge && typeof body.hoffle_discord_user_id === "string"
+      ? await linkedActor(db, body.hoffle_discord_user_id, channel.id)
+      : null;
+  if (linked && hook.server_id) {
+    const refused = await enforceAutomod(db, {
+      serverId: hook.server_id,
+      channelId: channel.id,
+      userId: linked.id,
+      text: content,
+      mayModerate: () => can(db, linked.id, hook.server_id, Permission.MODERATE).catch(() => false),
+    });
+    if (refused) {
+      const reason = ((await refused.json().catch(() => ({}))) as { error?: unknown }).error;
+      // Discord's own code for a message automod blocked.
+      return webhookError(400, 200000, typeof reason === "string" ? reason : "Blocked by this server's automod");
+    }
+  }
+
   let stored_files;
   try {
     stored_files = await storeBotFiles(files, `webhook:${hook.id}`);
@@ -602,11 +636,6 @@ export async function executeWebhook(
     const sourceUrl = discordMessageUrl(body.hoffle_source_url);
     extras.bridge = { platform: "discord", ...(sourceUrl ? { url: sourceUrl } : {}) };
   }
-  // A linked person's Discord message is theirs here, only marked as from Discord.
-  const linked =
-    isBridge && typeof body.hoffle_discord_user_id === "string"
-      ? await linkedActor(db, body.hoffle_discord_user_id, channel.id)
-      : null;
   if (linked) delete extras.avatarUrl;
   const payload = JSON.stringify({ embeds, components: [], webhookId: hook.id, ...extras });
   const stored: StoredMessage = {
@@ -703,6 +732,7 @@ export async function webhookMessage(
   db: D1Database,
   hook: WebhookRow,
   messageId: string,
+  options: { bridgeCaller?: boolean } = {},
 ): Promise<StoredMessage | null> {
   const row = await db
     .prepare(
@@ -711,7 +741,8 @@ export async function webhookMessage(
     )
     // The bridge also posts linked people's messages as them (user_id set);
     // payload.webhookId, which only Hoffle writes, still ties them to the hook.
-    .bind(messageId, hook.channel_id, hook.source === BRIDGE_WEBHOOK_SOURCE ? 1 : 0)
+    // Changing one of those takes the bridge's own token, not just the URL.
+    .bind(messageId, hook.channel_id, isBridgeCall(hook, options.bridgeCaller) ? 1 : 0)
     .first<StoredMessage>();
   if (!row) return null;
   try {

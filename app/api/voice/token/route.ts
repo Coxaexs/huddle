@@ -216,6 +216,11 @@ async function bridgeSeatToken(
   const region: "nl" | "de" = wanted === "de" || !lk.livekitUrlNl ? "de" : "nl";
   const url = region === "de" ? lk.livekitUrlDe : lk.livekitUrlNl!;
 
+  // A linked person's seat is their account: a timeout here silences it as it
+  // would their own tab (a Discord stand-in has no Hoffle account to time out).
+  const timedOut =
+    db && !seat.id.startsWith("discord:") ? await timeoutInChannel(db, channelId, seat.id) : null;
+
   const identity = `${seat.id}|${connectionId}`;
   const at = new AccessToken(lk.apiKey, lk.apiSecret, {
     identity,
@@ -225,7 +230,7 @@ async function bridgeSeatToken(
   at.addGrant({
     roomJoin: true,
     room: channelId,
-    canPublish: !seat.serverMuted && seat.speakAllowed !== false,
+    canPublish: !timedOut && !seat.serverMuted && seat.speakAllowed !== false,
     canPublishSources: [TrackSource.MICROPHONE],
     canSubscribe: true,
     canPublishData: false,

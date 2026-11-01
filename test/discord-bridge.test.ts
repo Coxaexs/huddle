@@ -127,9 +127,42 @@ describe.skipIf(!sqliteAvailable)("linking a Discord server", () => {
     ).rejects.toThrow(/paired once/);
   });
 
+  it("won't pair a channel it can't see in the linked server, but lets saved pairs go", async () => {
+    await linked();
+    const seen = {
+      id: guild.id,
+      name: guild.name,
+      icon: null,
+      missing: [],
+      channels: [
+        { id: "900000000001", name: "genel", type: 0, parent: null, position: 0, missing: [] },
+        { id: "900000000002", name: "miksiz", type: 0, parent: null, position: 1, missing: [] },
+      ],
+    };
+    await bridge.setPairs(db, "s1", [
+      { channelId: "genel", discordChannelId: "900000000001" },
+      { channelId: "mikrofonsuz", discordChannelId: "900000000002" },
+    ], seen);
+    // The service has not reported the linked server (the bot was kicked, or
+    // it is offline): an id could be a channel of anybody's Discord server.
+    await expect(
+      bridge.setPairs(db, "s1", [{ channelId: "genel", discordChannelId: "777000000001" }], null),
+    ).rejects.toThrow(/can't see your Discord server/);
+    // ...but a pair already saved can stay while another is removed, or all cleared.
+    expect(await bridge.setPairs(db, "s1", [{ channelId: "genel", discordChannelId: "900000000001" }], null)).toHaveLength(1);
+    expect(await bridge.setPairs(db, "s1", [], null)).toHaveLength(0);
+  });
+
   it("gives the service everything it needs, and unlink clears the pairs", async () => {
     await linked();
-    await bridge.setPairs(db, "s1", [{ channelId: "genel", discordChannelId: "900000000001" }], null);
+    const seen = {
+      id: guild.id,
+      name: guild.name,
+      icon: null,
+      missing: [],
+      channels: [{ id: "900000000001", name: "genel", type: 0, parent: null, position: 0, missing: [] }],
+    };
+    await bridge.setPairs(db, "s1", [{ channelId: "genel", discordChannelId: "900000000001" }], seen);
     await bridge.updateSettings(db, "s1", { typing: false, mirrorDeletes: false, bogus: true } as never);
     const config = await bridge.bridgeConfig(db);
     expect(config.bridges).toHaveLength(1);
@@ -235,13 +268,13 @@ describe.skipIf(!sqliteAvailable)("linking a Discord account to a Hoffle account
   beforeEach(async () => {
     await schema();
     await db.batch([
-      db.prepare("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, color TEXT, is_admin INTEGER DEFAULT 0, created_at TEXT)"),
-      db.prepare("CREATE TABLE server_members (server_id TEXT, user_id TEXT)"),
+      db.prepare("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, color TEXT, is_admin INTEGER DEFAULT 0, created_at TEXT, suspended_at TEXT)"),
+      db.prepare("CREATE TABLE server_members (server_id TEXT, user_id TEXT, timeout_until TEXT)"),
       db.prepare("CREATE TABLE bans (server_id TEXT, user_id TEXT)"),
       db.prepare("CREATE TABLE discord_account_links (user_id TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at TEXT NOT NULL)"),
       db.prepare("CREATE TABLE discord_account_codes (code TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)"),
-      db.prepare("INSERT INTO users VALUES ('mewis', 'mewis', 'Mewis', 'M', '#ff00ff', 0, '2026-01-01'), ('other', 'other', 'Other', 'O', '#00ff00', 0, '2026-01-01')"),
-      db.prepare("INSERT INTO server_members VALUES ('s1', 'mewis'), ('s1', 'other')"),
+      db.prepare("INSERT INTO users (id, username, display_name, avatar, color, is_admin, created_at) VALUES ('mewis', 'mewis', 'Mewis', 'M', '#ff00ff', 0, '2026-01-01'), ('other', 'other', 'Other', 'O', '#00ff00', 0, '2026-01-01')"),
+      db.prepare("INSERT INTO server_members (server_id, user_id) VALUES ('s1', 'mewis'), ('s1', 'other')"),
     ]);
   });
 
@@ -265,6 +298,23 @@ describe.skipIf(!sqliteAvailable)("linking a Discord account to a Hoffle account
     expect(await accounts.accountLinkFor(db, "mewis")).toBeNull();
   });
 
+  it("doesn't let a suspended or timed-out account act through its Discord link", async () => {
+    await accounts.linkAccountWithCode(db, (await accounts.newAccountCode(db, "mewis")).code, { id: "777777777777", name: "q" });
+    expect((await accounts.linkedActor(db, "777777777777", "genel"))?.id).toBe("mewis");
+
+    // Timed out in this server: bridged like anyone, not as their account.
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    await db.prepare("UPDATE server_members SET timeout_until = ? WHERE user_id = 'mewis'").bind(later).run();
+    expect(await accounts.linkedActor(db, "777777777777", "genel")).toBeNull();
+    // Once it runs out, theirs again.
+    await db.prepare("UPDATE server_members SET timeout_until = '2000-01-01T00:00:00Z' WHERE user_id = 'mewis'").run();
+    expect((await accounts.linkedActor(db, "777777777777", "genel"))?.id).toBe("mewis");
+
+    // Suspended: signed out everywhere, Discord included.
+    await db.prepare("UPDATE users SET suspended_at = '2026-10-31' WHERE id = 'mewis'").run();
+    expect(await accounts.linkedActor(db, "777777777777", "genel")).toBeNull();
+  });
+
   it("moves a Discord account to whichever Hoffle account proves it last", async () => {
     await accounts.linkAccountWithCode(db, (await accounts.newAccountCode(db, "mewis")).code, { id: "777777777777", name: "q" });
     await accounts.linkAccountWithCode(db, (await accounts.newAccountCode(db, "other")).code, { id: "777777777777", name: "q" });
@@ -284,9 +334,9 @@ describe.skipIf(!sqliteAvailable)("Discord people's voice seats", () => {
   beforeEach(async () => {
     db = sqliteD1();
     await db.batch([
-      db.prepare("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, avatar_url TEXT, color TEXT)"),
+      db.prepare("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, avatar_url TEXT, color TEXT, suspended_at TEXT)"),
       db.prepare("CREATE TABLE discord_account_links (user_id TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at TEXT NOT NULL)"),
-      db.prepare("INSERT INTO users VALUES ('mewis', 'mewis', 'Mewis', 'M', '/hangout/api/files/m.png', '#ff00ff')"),
+      db.prepare("INSERT INTO users (id, username, display_name, avatar, avatar_url, color) VALUES ('mewis', 'mewis', 'Mewis', 'M', '/hangout/api/files/m.png', '#ff00ff')"),
       db.prepare("INSERT INTO discord_account_links VALUES ('mewis', '777777777777', 'qwerse', '2026-10-31')"),
     ]);
   });
@@ -304,6 +354,15 @@ describe.skipIf(!sqliteAvailable)("Discord people's voice seats", () => {
       avatar: "M",
       avatarUrl: "/hangout/api/files/m.png",
       color: "#ff00ff",
+      discord: true,
+    });
+  });
+
+  it("sits a suspended account as a Discord stand-in, never as the account", async () => {
+    await db.prepare("UPDATE users SET suspended_at = '2026-10-31' WHERE id = 'mewis'").run();
+    expect(await seats.bridgeSeatIdentity(db, params({ discordUser: "777777777777", name: "qwerse" }), "/hangout")).toMatchObject({
+      userId: "discord:777777777777",
+      displayName: "qwerse",
       discord: true,
     });
   });

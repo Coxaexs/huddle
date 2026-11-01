@@ -402,6 +402,8 @@ export class VoiceLink {
     if (this.connection || Date.now() < this.rejoinAfter) return;
     const guild = this.manager.bridge.discord?.guilds.cache.get(this.guildId);
     if (!guild || !this.manager.bridge.discordReady) return;
+    // Only a voice channel of the bridge's own Discord server, never one elsewhere.
+    if (!guild.channels.cache.has(this.discordChannelId)) return;
     if (!this.manager.claimGuild(this.guildId, this)) return;
     const connection = joinVoiceChannel({
       channelId: this.discordChannelId,

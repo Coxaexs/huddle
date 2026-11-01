@@ -66,11 +66,21 @@ export async function bridgeSeatIdentity(
   const link = db ? await accountLinkByDiscord(db, discordUser).catch(() => null) : null;
   if (link && db) {
     const user = await db
-      .prepare("SELECT id, username, display_name, avatar, avatar_url, color FROM users WHERE id = ?")
+      .prepare("SELECT id, username, display_name, avatar, avatar_url, color, suspended_at FROM users WHERE id = ?")
       .bind(link.userId)
-      .first<{ id: string; username: string; display_name: string; avatar: string; avatar_url: string | null; color: string }>()
+      .first<{
+        id: string;
+        username: string;
+        display_name: string;
+        avatar: string;
+        avatar_url: string | null;
+        color: string;
+        suspended_at: string | null;
+      }>()
       .catch(() => null);
-    if (user) {
+    // A suspended account is signed out everywhere, so it does not sit as itself
+    // here either: the person is a Discord stand-in like anyone unlinked.
+    if (user && !user.suspended_at) {
       return {
         userId: user.id,
         username: user.username,

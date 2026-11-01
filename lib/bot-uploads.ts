@@ -60,7 +60,9 @@ export async function storeBotFiles(
   const bucket = bindings().UPLOADS;
   if (!bucket) throw new BotUploadError("File storage is not connected", 503);
 
-  const stored: StoredBotFile[] = [];
+  // Every file is checked before any is stored, so a refused one never leaves
+  // the others behind in the bucket with no message pointing at them.
+  const ready: Array<{ file: File; key: string; name: string; contentType: string }> = [];
   for (const file of files) {
     if (!file.size) throw new BotUploadError(`${file.name || "A file"} is empty`);
     if (file.size > BOT_FILE_MAX_BYTES) {
@@ -93,14 +95,31 @@ export async function storeBotFiles(
     if (sniffed.family === "image" && !isSvg && !/\.(png|jpe?g|gif|webp|avif)$/i.test(name)) {
       name += `.${sniffed.extension}`;
     }
-    const key = `${crypto.randomUUID()}--${name}`;
-    await bucket.put(key, file, {
-      httpMetadata: { contentType: sniffed.contentType },
-      customMetadata: { uploader },
-    });
-    stored.push({ key, name, contentType: sniffed.contentType, size: file.size });
+    ready.push({ file, key: `${crypto.randomUUID()}--${name}`, name, contentType: sniffed.contentType });
+  }
+
+  const stored: StoredBotFile[] = [];
+  try {
+    for (const { file, key, name, contentType } of ready) {
+      await bucket.put(key, file, {
+        httpMetadata: { contentType },
+        customMetadata: { uploader },
+      });
+      stored.push({ key, name, contentType, size: file.size });
+    }
+  } catch (error) {
+    // A write that failed part way: take back the ones that made it.
+    await removeBotFiles(stored);
+    throw error;
   }
   return stored;
+}
+
+/** Deletes stored files again (a message that was refused after they were stored). */
+export async function removeBotFiles(files: StoredBotFile[]): Promise<void> {
+  const bucket = bindings().UPLOADS;
+  if (!bucket || !files.length) return;
+  await bucket.delete(files.map((file) => file.key)).catch(() => undefined);
 }
 
 /** `attachment_key` + `attachments` column values for a set of stored files. */

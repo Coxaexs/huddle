@@ -499,20 +499,30 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
   if (sub === "roles" && subId) {
     const nativeRoleId = await nativeFor("role", subId);
     if (!nativeRoleId) return discordError(404, ErrorCode.UnknownRole, "Unknown Role");
+    // The role has to be this guild's. Role ids are taken raw as well as by
+    // snowflake, so without this a bot could edit another server's roles.
+    const existing = await context.db
+      .prepare(
+        "SELECT id, server_id, name, color, icon, permissions, position, created_at FROM roles WHERE id = ? AND server_id = ?",
+      )
+      .bind(nativeRoleId, nativeGuildId)
+      .first<HoffleRoleRow>();
+    if (!existing) return discordError(404, ErrorCode.UnknownRole, "Unknown Role");
 
     if (context.request.method === "DELETE") {
-      await context.db
-        .prepare("DELETE FROM roles WHERE id = ? AND server_id = ?")
-        .bind(nativeRoleId, nativeGuildId)
-        .run();
-      await context.db
-        .prepare("DELETE FROM member_roles WHERE role_id = ?")
-        .bind(nativeRoleId)
-        .run();
-      await context.db
-        .prepare("DELETE FROM channel_overwrites WHERE target_type = 'role' AND target_id = ?")
-        .bind(nativeRoleId)
-        .run();
+      await context.db.batch([
+        context.db
+          .prepare("DELETE FROM roles WHERE id = ? AND server_id = ?")
+          .bind(nativeRoleId, nativeGuildId),
+        context.db
+          .prepare("DELETE FROM member_roles WHERE role_id = ? AND server_id = ?")
+          .bind(nativeRoleId, nativeGuildId),
+        context.db
+          .prepare(
+            "DELETE FROM channel_overwrites WHERE target_type = 'role' AND target_id = ? AND server_id = ?",
+          )
+          .bind(nativeRoleId, nativeGuildId),
+      ]);
       return new Response(null, { status: 204 });
     }
 
@@ -523,13 +533,6 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
         permissions?: string | number;
         position?: number;
       };
-      const existing = await context.db
-        .prepare(
-          "SELECT id, server_id, name, color, icon, permissions, position, created_at FROM roles WHERE id = ?",
-        )
-        .bind(nativeRoleId)
-        .first<HoffleRoleRow>();
-      if (!existing) return discordError(404, ErrorCode.UnknownRole, "Unknown Role");
 
       const updated: HoffleRoleRow = {
         ...existing,
@@ -543,9 +546,9 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
       };
       await context.db
         .prepare(
-          "UPDATE roles SET name = ?, color = ?, permissions = ?, position = ? WHERE id = ?",
+          "UPDATE roles SET name = ?, color = ?, permissions = ?, position = ? WHERE id = ? AND server_id = ?",
         )
-        .bind(updated.name, updated.color, updated.permissions, updated.position, nativeRoleId)
+        .bind(updated.name, updated.color, updated.permissions, updated.position, nativeRoleId, nativeGuildId)
         .run();
       return json(await serializeRole(updated));
     }
@@ -698,8 +701,18 @@ async function memberRoutes(
   if (sub === "roles" && subId) {
     const nativeRoleId = await nativeFor("role", subId);
     if (!nativeRoleId) return discordError(404, ErrorCode.UnknownRole, "Unknown Role");
+    const role = await db
+      .prepare("SELECT 1 FROM roles WHERE id = ? AND server_id = ?")
+      .bind(nativeRoleId, nativeGuildId)
+      .first();
+    if (!role) return discordError(404, ErrorCode.UnknownRole, "Unknown Role");
 
     if (request.method === "PUT") {
+      const member = await db
+        .prepare("SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?")
+        .bind(nativeGuildId, nativeUserId)
+        .first();
+      if (!member) return discordError(404, ErrorCode.UnknownMember, "Unknown Member");
       await db
         .prepare(
           "INSERT OR IGNORE INTO member_roles (server_id, user_id, role_id) VALUES (?, ?, ?)",
@@ -1609,7 +1622,10 @@ async function messageRoutes(
 
   if (messageId === "bulk-delete" && request.method === "POST") {
     const body = (await request.json().catch(() => ({}))) as { messages?: string[] };
-    const ids = Array.isArray(body.messages) ? body.messages : [];
+    // Discord takes at most 100 at a time.
+    const ids = (Array.isArray(body.messages) ? body.messages : [])
+      .filter((id): id is string => typeof id === "string")
+      .slice(0, 100);
     const native = (
       await Promise.all(ids.map((id) => nativeFor("message", id)))
     ).filter((id): id is string => Boolean(id));
@@ -1617,14 +1633,22 @@ async function messageRoutes(
       return discordError(400, ErrorCode.InvalidFormBody, "No valid messages");
     }
     const now = new Date().toISOString();
-    for (const id of native) {
-      await db
-        .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
-        .bind(now, id)
+    const deleted: string[] = [];
+    for (const id of new Set(native)) {
+      // Only this channel's messages: ids are taken raw as well as by
+      // snowflake, so an unscoped update could delete anything anywhere.
+      const result = await db
+        .prepare(
+          "UPDATE messages SET deleted_at = ? WHERE id = ? AND channel_id = ? AND deleted_at IS NULL",
+        )
+        .bind(now, id, channel.id)
         .run();
+      if ((result.meta?.changes ?? 0) === 0) continue;
+      deleted.push(id);
       await publishMessageEvent(channel.id, { t: "message-deleted", id });
     }
-    const snowflakes = await Promise.all(native.map((id) => snowflakeFor("message", id)));
+    if (!deleted.length) return new Response(null, { status: 204 });
+    const snowflakes = await Promise.all(deleted.map((id) => snowflakeFor("message", id)));
     const { dispatchToBots } = await import("./dispatch");
     await dispatchToBots(
       "MESSAGE_DELETE_BULK",
@@ -1960,8 +1984,16 @@ export async function createMessage(
   const columns = attachmentColumns(storedFiles);
   const avatarUrl = cleanAvatarUrl(body.avatar_url);
 
-  const replyTo = body.message_reference?.message_id
-    ? await nativeFor("message", body.message_reference.message_id)
+  // A reply only to a message in this channel: the preview shows the parent's
+  // words, so any other id would show a message from somewhere else here.
+  const referenced = body.message_reference?.message_id
+    ? await nativeFor("message", String(body.message_reference.message_id))
+    : null;
+  const replyTo = referenced
+    ? (await context.db
+        .prepare("SELECT id FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+        .bind(referenced, channel.id)
+        .first<{ id: string }>())?.id ?? null
     : null;
 
   const stored: StoredMessage = {
@@ -2251,18 +2283,26 @@ async function pinRoutes(
     return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
   }
 
+  if (request.method !== "PUT" && request.method !== "DELETE") {
+    return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+  }
+  // Only a message of this channel, as for every other message route.
+  const inChannel = await db
+    .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+    .bind(nativeMessageId, channel.id)
+    .first();
+  if (!inChannel) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+
   if (request.method === "PUT") {
     await db
-      .prepare("UPDATE messages SET pinned_at = ?, pinned_by = ? WHERE id = ?")
-      .bind(new Date().toISOString(), null, nativeMessageId)
-      .run();
-  } else if (request.method === "DELETE") {
-    await db
-      .prepare("UPDATE messages SET pinned_at = NULL, pinned_by = NULL WHERE id = ?")
-      .bind(nativeMessageId)
+      .prepare("UPDATE messages SET pinned_at = ?, pinned_by = ? WHERE id = ? AND channel_id = ?")
+      .bind(new Date().toISOString(), null, nativeMessageId, channel.id)
       .run();
   } else {
-    return discordError(404, ErrorCode.GeneralError, "404: Not Found");
+    await db
+      .prepare("UPDATE messages SET pinned_at = NULL, pinned_by = NULL WHERE id = ? AND channel_id = ?")
+      .bind(nativeMessageId, channel.id)
+      .run();
   }
 
   await publishMessageEvent(channel.id, {

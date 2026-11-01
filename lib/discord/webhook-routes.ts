@@ -14,7 +14,7 @@
  * The rows are the same `channel_webhooks` people make in Server Settings, so a
  * webhook a bot creates shows up there too (tagged with who made it).
  */
-import type { BotIdentity } from "../bot-auth";
+import { authenticateBot, isBridgeBot, type BotIdentity } from "../bot-auth";
 import type { StoredMessage } from "../storage";
 import {
   BRIDGE_WEBHOOK_SOURCE,
@@ -82,6 +82,11 @@ function botMadeIt(row: WebhookRow, bot: BotIdentity): boolean {
   return row.created_by === `bot:${bot.id}`;
 }
 
+/** The Discord bridge's webhooks keep their URL to the bridge (and the operator's master token). */
+function mayHoldToken(row: WebhookRow, bot: BotIdentity): boolean {
+  return row.source !== BRIDGE_WEBHOOK_SOURCE || isBridgeBot(bot);
+}
+
 /** GET/POST /channels/{id}/webhooks. */
 export async function channelWebhookRoutes(
   context: WebhookRouteContext & { bot: BotIdentity },
@@ -94,7 +99,9 @@ export async function channelWebhookRoutes(
       .bind(channel.id)
       .all<WebhookRow>();
     return json(
-      await Promise.all((rows.results || []).map((row) => serializeWebhook(row, context, true))),
+      await Promise.all(
+        (rows.results || []).map((row) => serializeWebhook(row, context, mayHoldToken(row, bot))),
+      ),
     );
   }
   if (request.method !== "POST") return webhookError(405, 0, "405: Method Not Allowed");
@@ -131,7 +138,7 @@ export async function channelWebhookRoutes(
 
 /** GET /guilds/{id}/webhooks. */
 export async function guildWebhooks(
-  context: WebhookRouteContext,
+  context: WebhookRouteContext & { bot: BotIdentity },
   serverId: string,
 ): Promise<Response> {
   const rows = await context.db
@@ -139,7 +146,9 @@ export async function guildWebhooks(
     .bind(serverId)
     .all<WebhookRow>();
   return json(
-    await Promise.all((rows.results || []).map((row) => serializeWebhook(row, context, true))),
+    await Promise.all(
+      (rows.results || []).map((row) => serializeWebhook(row, context, mayHoldToken(row, context.bot))),
+    ),
   );
 }
 
@@ -153,7 +162,7 @@ export async function webhookByIdRoutes(
   const row = await getWebhook(db, webhookId);
   if (!row || !canSeeServer(row.server_id)) return webhookError(404, 10015, "Unknown Webhook");
 
-  if (request.method === "GET") return json(await serializeWebhook(row, context, true));
+  if (request.method === "GET") return json(await serializeWebhook(row, context, mayHoldToken(row, bot)));
 
   if (request.method === "DELETE") {
     // A bot may remove its own webhooks; people's ones stay people's, unless
@@ -182,7 +191,9 @@ export async function webhookByIdRoutes(
       .prepare("UPDATE channel_webhooks SET name = ?, channel_id = ? WHERE id = ?")
       .bind(name, channelId, row.id)
       .run();
-    return json(await serializeWebhook({ ...row, name, channel_id: channelId }, context, true));
+    return json(
+      await serializeWebhook({ ...row, name, channel_id: channelId }, context, mayHoldToken(row, bot)),
+    );
   }
 
   return webhookError(405, 0, "405: Method Not Allowed");
@@ -248,6 +259,12 @@ export async function webhookTokenRoutes(
     return webhookError(404, 10015, "Unknown Webhook");
   }
   const url = new URL(request.url);
+  // The URL is the whole credential for posting, as on Discord. Speaking as a
+  // linked person through a bridge webhook also takes the bridge's bot token.
+  const bridgeCaller =
+    row.source === BRIDGE_WEBHOOK_SOURCE && request.headers.has("authorization")
+      ? isBridgeBot(await authenticateBot(request).catch(() => null))
+      : false;
 
   if (!sub) {
     if (request.method === "GET") return json(await serializeWebhook(row, context, true));
@@ -271,12 +288,13 @@ export async function webhookTokenRoutes(
       origin: context.origin,
       basePath: context.basePath,
       respond: (stored) => serializeStored(context, stored),
+      bridgeCaller,
     });
   }
 
   if (sub !== "messages" || !messageRef) return webhookError(404, 0, "404: Not Found");
   const nativeId = await nativeFor("message", messageRef);
-  const message = nativeId ? await webhookMessage(db, row, nativeId) : null;
+  const message = nativeId ? await webhookMessage(db, row, nativeId, { bridgeCaller }) : null;
   if (!message) return webhookError(404, 10008, "Unknown Message");
 
   if (request.method === "GET") return json(await serializeStored(context, message));

@@ -449,15 +449,16 @@ async function decorateMessages(
         .filter((id): id is string => Boolean(id) && !inPage.has(id as string)),
     ),
   ];
-  const fetched = new Map<string, { author: string; content: string }>();
+  const fetched = new Map<string, { author: string; content: string; channel_id: string | null }>();
   if (missing.length) {
     const rows = await queryByIds<{
       id: string;
       author: string;
       content: string;
-    }>(db, "SELECT id, author, content FROM messages WHERE deleted_at IS NULL AND id IN", missing);
+      channel_id: string | null;
+    }>(db, "SELECT id, author, content, channel_id FROM messages WHERE deleted_at IS NULL AND id IN", missing);
     for (const row of rows) {
-      fetched.set(row.id, { author: row.author, content: row.content });
+      fetched.set(row.id, { author: row.author, content: row.content, channel_id: row.channel_id });
     }
   }
 
@@ -477,7 +478,10 @@ async function decorateMessages(
     if (threadCount) message.threadCount = threadCount;
     if (message.replyTo) {
       const parent = inPage.get(message.replyTo) || fetched.get(message.replyTo);
-      message.replyPreview = parent
+      // A reply only ever quotes its own channel; a parent from anywhere else
+      // would show words the reader may not be allowed to see.
+      const sameChannel = parent && (parent.channel_id ?? null) === (message.channelId ?? null);
+      message.replyPreview = parent && sameChannel
         ? { author: parent.author, text: stripTextStyle(parent.content).slice(0, 120) }
         : null;
     }

@@ -19,6 +19,7 @@ import { channelAccess } from "./access";
 import { newLinkCode, normalizeLinkCode, BridgeError } from "./discord-bridge";
 import { snowflakeFor } from "./discord/snowflake";
 import { Permission, type PermissionFlag } from "./permissions";
+import { timeoutInChannel } from "./timeouts";
 
 export const ACCOUNT_CODE_TTL_MS = 15 * 60_000;
 
@@ -123,6 +124,10 @@ export async function unlinkAccount(db: D1Database, by: { userId?: string; disco
 /**
  * The Hoffle person behind a Discord account, if linked and allowed to do
  * `need` in this channel themselves. Null means "bridge them like anyone".
+ *
+ * Everything that stops them in Hoffle stops the link too: a suspended
+ * account (signed out everywhere) and a timeout in this server both leave
+ * them bridged as a plain Discord person, never as their account.
  */
 export async function linkedActor(
   db: D1Database,
@@ -134,15 +139,25 @@ export async function linkedActor(
   const link = await accountLinkByDiscord(db, discordUserId);
   if (!link) return null;
   const user = await db
-    .prepare("SELECT id, username, display_name, avatar, color, is_admin FROM users WHERE id = ?")
+    .prepare("SELECT id, username, display_name, avatar, color, is_admin, suspended_at FROM users WHERE id = ?")
     .bind(link.userId)
-    .first<{ id: string; username: string; display_name: string; avatar: string; color: string; is_admin: number }>();
-  if (!user) return null;
+    .first<{
+      id: string;
+      username: string;
+      display_name: string;
+      avatar: string;
+      color: string;
+      is_admin: number;
+      suspended_at: string | null;
+    }>();
+  if (!user || user.suspended_at) return null;
   const access = await channelAccess(db, channelId, { id: user.id, is_admin: user.is_admin }, { need }).catch(
     () => null,
   );
   if (!access?.ok || access.channel.isDm) return null;
-  return user;
+  if (await timeoutInChannel(db, channelId, user.id)) return null;
+  const { is_admin: _admin, suspended_at: _suspended, ...actor } = user;
+  return actor;
 }
 
 /** Every link, as the bridge service needs them (Hoffle ids as snowflakes). */

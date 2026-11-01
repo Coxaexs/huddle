@@ -180,7 +180,7 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
 
   it("lets the Discord bridge post with each person's picture, a link back, and as a reply", async () => {
     const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Discord", avatar: "🌉", createdBy: "bot:discord-bridge", source: BRIDGE_WEBHOOK_SOURCE });
-    const first = await executeWebhook(db, hook.id, hook.token, { content: "first" }, { wait: true });
+    const first = await executeWebhook(db, hook.id, hook.token, { content: "first" }, { wait: true, bridgeCaller: true });
     const { id: firstId } = (await first.json()) as { id: string };
     const response = await executeWebhook(
       db,
@@ -192,7 +192,7 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
         avatar_url: "https://cdn.discordapp.com/avatars/1/a.png",
         hoffle_source_url: "https://discord.com/channels/1517821810626789436/900000000001/900000000777",
       },
-      { wait: true, replyTo: firstId },
+      { wait: true, replyTo: firstId, bridgeCaller: true },
     );
     expect(response.status).toBe(200);
     const { id } = (await response.json()) as { id: string };
@@ -248,19 +248,22 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
   });
 
   it("posts a linked person's Discord message as their own, only where they may post", async () => {
-    await db.exec(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, color TEXT, is_admin INTEGER DEFAULT 0, created_at TEXT)`);
-    await db.exec(`CREATE TABLE server_members (server_id TEXT, user_id TEXT)`);
+    await db.exec(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, color TEXT, is_admin INTEGER DEFAULT 0, created_at TEXT, suspended_at TEXT)`);
+    await db.exec(`CREATE TABLE server_members (server_id TEXT, user_id TEXT, timeout_until TEXT)`);
     await db.exec(`CREATE TABLE bans (server_id TEXT, user_id TEXT)`);
     await db.exec(`CREATE TABLE channel_overwrites (channel_id TEXT, server_id TEXT, target_type TEXT, target_id TEXT, allow INTEGER, deny INTEGER)`);
     await db.exec(`CREATE TABLE discord_account_links (user_id TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at TEXT NOT NULL)`);
-    await db.exec(`INSERT INTO users VALUES ('mewis', 'mewis', 'Mewis', 'M', '#ff00ff', 0, '2026-01-01')`);
-    await db.exec(`INSERT INTO server_members VALUES ('s1', 'mewis')`);
+    await db.exec(`CREATE TABLE automod_rules (id TEXT PRIMARY KEY, server_id TEXT NOT NULL, kind TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+      action TEXT NOT NULL DEFAULT 'block', timeout_minutes INTEGER NOT NULL DEFAULT 0, config TEXT NOT NULL DEFAULT '{}', created_by TEXT, created_at TEXT NOT NULL)`);
+    await db.exec(`INSERT INTO users (id, username, display_name, avatar, color, is_admin, created_at) VALUES ('mewis', 'mewis', 'Mewis', 'M', '#ff00ff', 0, '2026-01-01')`);
+    await db.exec(`INSERT INTO server_members (server_id, user_id) VALUES ('s1', 'mewis')`);
     await db.exec(`INSERT INTO discord_account_links VALUES ('mewis', '777777777777', 'qwerse', '2026-10-31')`);
     const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Discord", avatar: "🌉", createdBy: "u1", source: BRIDGE_WEBHOOK_SOURCE });
     const plain = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "CI", avatar: "🤖", createdBy: "u1" });
 
-    const send = async (h: typeof hook, discordId: string) => {
-      const response = await executeWebhook(db, h.id, h.token, { content: "hi", username: "qwerse", hoffle_discord_user_id: discordId }, { wait: true });
+    const send = async (h: typeof hook, discordId: string, bridgeCaller = true, content = "hi") => {
+      const response = await executeWebhook(db, h.id, h.token, { content, username: "qwerse", hoffle_discord_user_id: discordId }, { wait: true, bridgeCaller });
+      if (response.status !== 200) return { status: response.status };
       const { id } = (await response.json()) as { id: string };
       return (await db.prepare("SELECT user_id, author, is_bot FROM messages WHERE id = ?").bind(id).first<Record<string, unknown>>())!;
     };
@@ -268,10 +271,26 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
     // An unlinked Discord person, or any webhook but the bridge's: a bot message as before.
     expect(await send(hook, "888888888888")).toMatchObject({ user_id: null, author: "qwerse", is_bot: 1 });
     expect(await send(plain, "777777777777")).toMatchObject({ user_id: null, is_bot: 1 });
+    // The bridge webhook's URL alone, without the bridge's own token, speaks for nobody.
+    expect(await send(hook, "777777777777", false)).toMatchObject({ user_id: null, author: "qwerse", is_bot: 1 });
 
-    // The bridge can still edit what it posted for them.
+    // The bridge can still edit what it posted for them; the URL alone cannot.
     const row = await db.prepare("SELECT id FROM messages WHERE user_id = 'mewis'").first<{ id: string }>();
-    expect(await webhookMessage(db, hook, row!.id)).not.toBeNull();
-    expect(await webhookMessage(db, plain, row!.id)).toBeNull();
+    expect(await webhookMessage(db, hook, row!.id, { bridgeCaller: true })).not.toBeNull();
+    expect(await webhookMessage(db, hook, row!.id)).toBeNull();
+    expect(await webhookMessage(db, plain, row!.id, { bridgeCaller: true })).toBeNull();
+
+    // Their posts answer to the server's automod, as their own would.
+    await db.exec(`INSERT INTO automod_rules (id, server_id, kind, config, created_at) VALUES ('r1', 's1', 'keyword', '{"words":["badword"]}', '2026-01-01')`);
+    expect(await send(hook, "777777777777", true, "this has badword in it")).toEqual({ status: 400 });
+    expect(await send(hook, "777777777777", true, "this is fine")).toMatchObject({ user_id: "mewis" });
+
+    // Timed out, or suspended: no longer posting as them.
+    const later = new Date(Date.now() + 3_600_000).toISOString();
+    await db.prepare("UPDATE server_members SET timeout_until = ? WHERE user_id = 'mewis'").bind(later).run();
+    expect(await send(hook, "777777777777")).toMatchObject({ user_id: null, is_bot: 1 });
+    await db.exec(`UPDATE server_members SET timeout_until = NULL`);
+    await db.exec(`UPDATE users SET suspended_at = '2026-10-31' WHERE id = 'mewis'`);
+    expect(await send(hook, "777777777777")).toMatchObject({ user_id: null, is_bot: 1 });
   });
 });

@@ -32,8 +32,40 @@ import {
 import { nativeFor, snowflakeFor } from "./snowflake";
 import { InteractionType, InteractionResponseType, MessageFlags } from "./protocol";
 import { snapshotBeforeEdit } from "../message-edits";
-import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
+import { botPayload, mergeBotPayload, payloadOwner, publishBotEdit } from "./bot-messages";
 import { getWidget, parseWidgetMessageId, publishWidget, saveWidget, widgetChanges } from "../bot-widgets";
+
+/**
+ * What an interaction may do with a message id it names. Message ids are taken
+ * raw as well as by snowflake, so the id alone proves nothing: only this bot's
+ * own post, in the interaction's channel, may be changed. An id with no row at
+ * all is an ephemeral reply, which lives only in the runner's tabs.
+ */
+type BotMessageLookup =
+  | { kind: "own"; message: StoredMessage }
+  | { kind: "ephemeral" }
+  | { kind: "foreign" };
+
+async function lookupBotMessage(
+  context: RestContext,
+  channelId: string,
+  messageId: string,
+): Promise<BotMessageLookup> {
+  const row = await context.db
+    .prepare("SELECT * FROM messages WHERE id = ?")
+    .bind(messageId)
+    .first<StoredMessage>();
+  if (!row) return { kind: "ephemeral" };
+  if (
+    row.deleted_at ||
+    row.channel_id !== channelId ||
+    row.user_id ||
+    payloadOwner(row.payload) !== context.bot.id
+  ) {
+    return { kind: "foreign" };
+  }
+  return { kind: "own", message: row };
+}
 
 /** Discord's window: acknowledge within 3s, edit for 15 minutes after. */
 const INTERACTION_TTL_MS = 15 * 60 * 1000;
@@ -535,10 +567,10 @@ async function updateSourceMessage(
   const content = data.content === undefined || data.content === null
     ? undefined
     : String(data.content).slice(0, 4000);
-  const existing = await context.db
-    .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
-    .bind(messageId)
-    .first<StoredMessage>();
+  const lookup = await lookupBotMessage(context, channel.id, messageId);
+  // Someone else's message, or one from elsewhere: nothing changes.
+  if (lookup.kind === "foreign") return ephemeralShell(context, channel, messageId);
+  const existing = lookup.kind === "own" ? lookup.message : null;
 
   if (!existing) {
     // Only the runner's tabs know this message's current buttons, so send
@@ -568,8 +600,8 @@ async function updateSourceMessage(
 
   const payload = mergeBotPayload(existing.payload, data, context.bot.id);
   await context.db
-    .prepare("UPDATE messages SET content = COALESCE(?, content), payload = ? WHERE id = ?")
-    .bind(content ?? null, payload, messageId)
+    .prepare("UPDATE messages SET content = COALESCE(?, content), payload = ? WHERE id = ? AND channel_id = ?")
+    .bind(content ?? null, payload, messageId, channel.id)
     .run();
   await publishBotEdit(channel.id, {
     id: messageId,
@@ -779,15 +811,16 @@ async function interactionMessage(
       return messageResponse(context, located.channel, located.guildSnowflake, updated);
     }
 
-    const existing = await context.db
-      .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
-      .bind(targetId)
-      .first<StoredMessage>();
-    if (!existing) {
+    const lookup = await lookupBotMessage(context, located.channel.id, targetId);
+    if (lookup.kind === "foreign") {
+      return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+    }
+    if (lookup.kind === "ephemeral") {
       // An ephemeral reply: it only exists in the runner's tabs.
       const updated = await updateSourceMessage(context, row, located.channel, targetId, body);
       return messageResponse(context, located.channel, located.guildSnowflake, updated);
     }
+    const existing = lookup.message;
 
     const content = body.content === undefined || body.content === null ? null : String(body.content);
     const payload = mergeBotPayload(existing.payload, body, context.bot.id);
@@ -797,9 +830,9 @@ async function interactionMessage(
       context.db
         .prepare(
           `UPDATE messages SET content = COALESCE(?, content),
-             payload = ?, edited_at = ? WHERE id = ?`,
+             payload = ?, edited_at = ? WHERE id = ? AND channel_id = ?`,
         )
-        .bind(content, payload, now, targetId),
+        .bind(content, payload, now, targetId, located.channel.id),
     ]);
     await publishBotEdit(located.channel.id, {
       id: targetId,
@@ -813,10 +846,16 @@ async function interactionMessage(
 
   if (context.request.method === "DELETE") {
     if (targetId) {
-      await context.db
-        .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
-        .bind(new Date().toISOString(), targetId)
-        .run();
+      const lookup = await lookupBotMessage(context, located.channel.id, targetId);
+      if (lookup.kind === "foreign") {
+        return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+      }
+      if (lookup.kind === "own") {
+        await context.db
+          .prepare("UPDATE messages SET deleted_at = ? WHERE id = ? AND channel_id = ?")
+          .bind(new Date().toISOString(), targetId, located.channel.id)
+          .run();
+      }
       await publishMessageEvent(located.channel.id, {
         t: "message-deleted",
         id: targetId,
@@ -828,15 +867,15 @@ async function interactionMessage(
   if (!targetId) {
     return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
   }
-  const stored = await context.db
-    .prepare("SELECT * FROM messages WHERE id = ? AND deleted_at IS NULL")
-    .bind(targetId)
-    .first<StoredMessage>();
+  const lookup = await lookupBotMessage(context, located.channel.id, targetId);
+  if (lookup.kind === "foreign") {
+    return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+  }
   return messageResponse(
     context,
     located.channel,
     located.guildSnowflake,
-    stored || ephemeralShell(context, located.channel, targetId),
+    lookup.kind === "own" ? lookup.message : ephemeralShell(context, located.channel, targetId),
   );
 }
 
