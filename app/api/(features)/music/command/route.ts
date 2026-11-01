@@ -10,7 +10,8 @@ import { botFetch, botSession, djControl, fetchLyrics } from "@/lib/musicbot";
 import { heard, liveTrack, playbackPosition, type PlayerState } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { can, Permission } from "@/lib/permissions";
-import { findChannel } from "@/lib/servers";
+import { findChannel, isServerMember } from "@/lib/servers";
+import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
 
@@ -160,7 +161,10 @@ export async function POST(request: Request) {
   );
   const name = rawName.replace(/^\//, "").toLowerCase();
   const value = parts.join(" ").trim();
-  const textChannelId = body.textChannelId || null;
+  // The bot only answers in a channel of a server the caller is in.
+  const textChannel = body.textChannelId ? await findChannel(db, body.textChannelId) : null;
+  const textChannelId =
+    textChannel && (await isServerMember(db, textChannel.server_id, user.id)) ? textChannel.id : null;
 
   // Attribute the bot's first reply to whoever ran the command, then stop —
   // later replies in the same command are follow-ups, not the invocation.
@@ -198,6 +202,13 @@ export async function POST(request: Request) {
         { error: "That is not a voice channel." },
         { status: 400 },
       );
+    }
+    if (!(await isServerMember(db, voiceChannel.server_id, user.id))) {
+      return Response.json({ error: "You're not in that server." }, { status: 403 });
+    }
+    // Like a Discord bot, it only works in servers that added it.
+    if (!(await musicBotInServer(db, voiceChannel.server_id))) {
+      return Response.json({ error: MUSIC_BOT_MISSING, text: MUSIC_BOT_MISSING }, { status: 409 });
     }
   }
 

@@ -3,6 +3,7 @@ import { botFetch, botSession } from "@/lib/musicbot";
 import { can, Permission } from "@/lib/permissions";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,9 @@ export async function POST(request: Request) {
       { error: "You can't open that voice room." },
       { status: 403 },
     );
+  }
+  if (!(await musicBotInServer(db, channel.server_id))) {
+    return Response.json({ error: MUSIC_BOT_MISSING }, { status: 409 });
   }
 
   try {

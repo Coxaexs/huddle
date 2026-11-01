@@ -1,6 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { generateBotToken } from "@/lib/bot-auth";
+import { publishStructureChange } from "@/lib/hub-client";
+import { MUSIC_BOT_KIND } from "@/lib/music-bot";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -82,6 +84,33 @@ export async function POST(
   const avatar = body.avatar?.trim().slice(0, 4) || "🤖";
   const description = body.description?.trim().slice(0, 200) || "";
   const kind = body.kind?.trim() || "custom";
+
+  // A server has one music bot: adding it again turns the one it has back on.
+  if (kind === MUSIC_BOT_KIND) {
+    const existing = await db
+      .prepare(
+        `SELECT id, server_id, name, avatar, token, description, kind, created_at
+           FROM server_bots WHERE server_id = ? AND kind = ? LIMIT 1`,
+      )
+      .bind(id, MUSIC_BOT_KIND)
+      .first<{ id: string; server_id: string; name: string; avatar: string; token: string; description: string; kind: string; created_at: string }>();
+    if (existing) {
+      await db.prepare("UPDATE server_bots SET enabled = 1 WHERE id = ?").bind(existing.id).run();
+      await publishStructureChange(id);
+      return Response.json({
+        id: existing.id,
+        serverId: existing.server_id,
+        name: existing.name,
+        avatar: existing.avatar,
+        token: existing.token,
+        description: existing.description,
+        kind: existing.kind,
+        enabled: 1,
+        createdAt: existing.created_at,
+      });
+    }
+  }
+
   const botId = crypto.randomUUID();
   const token = generateBotToken();
   const now = new Date().toISOString();
@@ -102,6 +131,8 @@ export async function POST(
     targetName: name,
     detail: `Added ${kind} bot`,
   });
+  // Members' open tabs pick up the music bot's commands and widget.
+  if (kind === MUSIC_BOT_KIND) await publishStructureChange(id);
 
   return Response.json(
     {

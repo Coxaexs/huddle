@@ -31,8 +31,13 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
   } = s;
 
   const activeDisabledModules = useMemo(
-    () => [...(activeServer?.disabledModules || []), ...(user?.disabledModules || [])],
-    [activeServer?.disabledModules, user?.disabledModules],
+    () => [
+      ...(activeServer?.disabledModules || []),
+      ...(user?.disabledModules || []),
+      // The music bot's commands only exist in servers that added it.
+      ...(activeServer?.musicBot === false ? ["music-bot"] : []),
+    ],
+    [activeServer?.disabledModules, activeServer?.musicBot, user?.disabledModules],
   );
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(

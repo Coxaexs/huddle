@@ -15,7 +15,7 @@ Server administrators can manage bots directly from the Hoffle web interface:
 1. Open Server Settings (click the server name header -> Server Settings).
 2. Navigate to "Bots & Integrations".
 3. Add built-in bots with one click:
-   - Hoffle Music Bot: Synchronized voice audio, queue, and playback control.
+   - Hoffle Music Bot: Synchronized voice audio, queue, and playback control. Like a Discord bot, it is only in servers that add it: until then `/play` and the other music commands, the DJ booth and the Music widget are not there. Servers that existed before this change got it added once, so they keep it until they remove it.
    - D&D Companion: 5e spell, monster, and item compendium lookups and cryptographic dice rolls.
    - Discord Bridge: Live channel bridging between Hoffle and Discord.
 4. Or click "Create Bot Integration" to generate a dedicated bot token for custom scripts.
@@ -218,7 +218,7 @@ The interaction carries the `guild_id`, the `channel_id` the member is looking a
 
 ### The built-in Music widget
 
-Hoffle's own music player has a widget too: what your voice room hears, play/pause, skip, a box to play a song next (the same as `/playnext`), the queue (large size) and the Music + Watch dashboard in a web view. It is in every server's Customize tray.
+Hoffle's own music player has a widget too: what your voice room hears, play/pause, skip, a box to play a song next (the same as `/playnext`), the queue (large size) and the Music + Watch dashboard in a web view. It is in the Customize tray of every server that added the music bot.
 
 ## Hoffle's own bot API
 

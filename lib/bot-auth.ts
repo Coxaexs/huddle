@@ -10,14 +10,7 @@ export interface BotIdentity {
   kind: string;
 }
 
-export function generateBotToken(): string {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  const randomHex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `hfl_bot_${randomHex}`;
-}
+export { generateBotToken } from "./bot-token";
 
 /** The companion D&D bot: one identity across every server, like the system bot. */
 const DND_BOT: BotIdentity = {

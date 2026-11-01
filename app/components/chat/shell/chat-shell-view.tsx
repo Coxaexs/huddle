@@ -60,6 +60,7 @@ export function renderChatShell(s: ChatShellViewState) {
       if (channel) v.openVoiceChannel(channel);
     },
     membersOpen: Boolean(membersOpen && !stageChannel),
+    musicBot: inDmHome || activeServer?.musicBot !== false,
   };
 
   // The member list hides itself on the Friends page (DM home, nothing open);

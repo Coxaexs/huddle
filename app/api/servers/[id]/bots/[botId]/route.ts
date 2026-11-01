@@ -1,5 +1,7 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { publishStructureChange } from "@/lib/hub-client";
+import { MUSIC_BOT_KIND } from "@/lib/music-bot";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -29,9 +31,9 @@ export async function PATCH(
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   const bot = await db
-    .prepare("SELECT id, name, enabled FROM server_bots WHERE id = ? AND server_id = ?")
+    .prepare("SELECT id, name, enabled, kind FROM server_bots WHERE id = ? AND server_id = ?")
     .bind(botId, id)
-    .first<{ id: string; name: string; enabled: number }>();
+    .first<{ id: string; name: string; enabled: number; kind: string }>();
 
   if (!bot) {
     return Response.json({ error: "Bot not found on this server." }, { status: 404 });
@@ -59,6 +61,8 @@ export async function PATCH(
     targetName: newName,
     detail: `Toggled status: ${newEnabled ? "enabled" : "disabled"}`,
   });
+  // Members' open tabs show or hide the music bot's commands and widget.
+  if (bot.kind === MUSIC_BOT_KIND) await publishStructureChange(id);
 
   return Response.json({ ok: true, enabled: newEnabled, name: newName });
 }
@@ -79,9 +83,9 @@ export async function DELETE(
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   const bot = await db
-    .prepare("SELECT id, name FROM server_bots WHERE id = ? AND server_id = ?")
+    .prepare("SELECT id, name, kind FROM server_bots WHERE id = ? AND server_id = ?")
     .bind(botId, id)
-    .first<{ id: string; name: string }>();
+    .first<{ id: string; name: string; kind: string }>();
 
   if (!bot) {
     return Response.json({ error: "Bot not found." }, { status: 404 });
@@ -100,6 +104,7 @@ export async function DELETE(
     targetName: bot.name,
     detail: "Removed bot from server",
   });
+  if (bot.kind === MUSIC_BOT_KIND) await publishStructureChange(id);
 
   return Response.json({ ok: true });
 }

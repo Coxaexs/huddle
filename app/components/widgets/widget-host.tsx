@@ -20,6 +20,8 @@ export interface WidgetHostValue {
   voiceRooms: Array<{ id: string; name: string }>;
   joinVoice: (channelId: string) => void;
   membersOpen: boolean;
+  /** The music bot is in the server on screen (always true in DMs). */
+  musicBot: boolean;
 }
 
 const WidgetHost = createContext<WidgetHostValue | null>(null);
@@ -55,12 +57,14 @@ export const MUSIC_ENTRY: Omit<WidgetEntry, "title" | "description"> = {
 export function useWidgetCatalog(
   serverId: string | null,
   t: (key: "widget.music" | "widget.music.desc") => string,
+  musicBot = true,
 ): WidgetEntry[] {
   const widgets = useServerWidgets(serverId);
   return useMemo(() => {
-    const entries: WidgetEntry[] = [
-      { ...MUSIC_ENTRY, title: t("widget.music"), description: t("widget.music.desc") },
-    ];
+    // Like any bot's widget, the music one is offered where its bot is.
+    const entries: WidgetEntry[] = musicBot
+      ? [{ ...MUSIC_ENTRY, title: t("widget.music"), description: t("widget.music.desc") }]
+      : [];
     for (const widget of distinctWidgets(widgets)) {
       const embed = widget.embeds[0] as { description?: string } | undefined;
       entries.push({
@@ -74,5 +78,5 @@ export function useWidgetCatalog(
       });
     }
     return entries;
-  }, [widgets, t]);
+  }, [widgets, t, musicBot]);
 }

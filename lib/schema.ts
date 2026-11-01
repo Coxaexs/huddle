@@ -8,6 +8,7 @@
  */
 
 import { migrateProfileImages } from "./profile-media";
+import { generateBotToken } from "./bot-token";
 
 export const DEFAULT_SERVER_ID = "hangout";
 
@@ -1457,6 +1458,7 @@ async function migrate(db: D1Database): Promise<void> {
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);
+  await backfillMusicBot(db);
   await backfillActiveDays(db);
   await migrateProfileImages(db);
   await ensureFts(db);
@@ -1499,6 +1501,45 @@ async function backfillServerMembers(db: D1Database): Promise<void> {
     )
     .bind(now)
     .run();
+}
+
+/**
+ * One-time backfill: the music bot used to be in every server without being
+ * added. Now a server has it only after adding it (lib/music-bot.ts), so every
+ * server that exists at upgrade gets it added once and keeps it. Servers made
+ * after this start without it. The `meta` flag stops it coming back to a
+ * server that later removes it.
+ */
+export async function backfillMusicBot(db: D1Database): Promise<void> {
+  const done = await db
+    .prepare("SELECT value FROM meta WHERE key = 'music_bot_backfilled'")
+    .first<{ value: string }>();
+  if (done) return;
+
+  const { results } = await db
+    .prepare(
+      `SELECT s.id, s.created_by FROM servers s
+        WHERE s.id != ?
+          AND NOT EXISTS (SELECT 1 FROM server_bots b WHERE b.server_id = s.id AND b.kind = 'music')`,
+    )
+    .bind(DM_SERVER_ID)
+    .all<{ id: string; created_by: string | null }>();
+  const now = new Date().toISOString();
+  // The check sits in each insert too, so two first requests racing through
+  // here after a deploy still add one bot per server.
+  const statements = (results || []).map((server) =>
+    db
+      .prepare(
+        `INSERT INTO server_bots (id, server_id, name, avatar, token, description, kind, enabled, created_by, created_at)
+         SELECT ?1, ?2, 'Hoffle Music', '🎵', ?3, 'Synchronized voice audio & playback', 'music', 1, ?4, ?5
+          WHERE NOT EXISTS (SELECT 1 FROM server_bots WHERE server_id = ?2 AND kind = 'music')`,
+      )
+      .bind(crypto.randomUUID(), server.id, generateBotToken(), server.created_by, now),
+  );
+  statements.push(
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('music_bot_backfilled', ?)").bind(now),
+  );
+  await db.batch(statements);
 }
 
 /**

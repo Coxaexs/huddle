@@ -6,6 +6,7 @@
  * posting. See `lib/channel-kinds.ts` for those rules.
  */
 import { DM_SERVER_ID } from "./schema";
+import { serversWithMusicBot } from "./music-bot";
 import { channelKindInfo, isChannelKind, type ChannelKind } from "./channel-kinds";
 import { clampVoiceBitrate } from "./voice-quality";
 import {
@@ -137,6 +138,8 @@ export interface PublicServer {
   vanityCode?: string | null;
   /** What every member holds before any role (@everyone). */
   everyonePermissions?: number;
+  /** The Music + Watch bot was added to this server (lib/music-bot.ts). */
+  musicBot?: boolean;
   channels: PublicChannel[];
   categories: PublicCategory[];
   roles: PublicRole[];
@@ -264,7 +267,7 @@ export async function listServers(
       ? db.prepare(sql(memberFilter)).bind(DM_SERVER_ID, userId).all()
       : db.prepare(sql("server_id != ?2")).bind(DM_SERVER_ID, DM_SERVER_ID).all();
 
-  const [servers, channels, categories, roles] = await Promise.all([
+  const [servers, channels, categories, roles, musicBotServers] = await Promise.all([
     userId
       ? db
           .prepare(
@@ -305,6 +308,8 @@ export async function listServers(
            FROM roles WHERE server_id != ?1 AND ${filter}
           ORDER BY position DESC, name ASC`,
     ),
+    // A database from before server_bots existed has no table yet.
+    serversWithMusicBot(db).catch(() => new Set<string>()),
   ]);
 
   // Per-channel permissions: a member's list leaves out what they may not see,
@@ -379,6 +384,7 @@ export async function listServers(
       ...(server.vanity_code !== undefined ? { vanityCode: server.vanity_code || null } : {}),
       ...(server.everyone_permissions !== undefined ? { everyonePermissions: server.everyone_permissions || 0 } : {}),
       ...(server.web_public !== undefined ? { webPublic: Boolean(server.web_public) } : {}),
+      musicBot: musicBotServers.has(server.id),
       channels: channelsByServer.get(server.id) || [],
       categories: categoriesByServer.get(server.id) || [],
       roles: rolesByServer.get(server.id) || [],

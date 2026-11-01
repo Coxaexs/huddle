@@ -34,7 +34,7 @@ export function CustomizeBar({ onOpen }: { onOpen: () => void }) {
   const armed = useArmedWidget();
   const layout = useLayoutPrefs();
   const host = useWidgetHost();
-  const catalog = useWidgetCatalog(host.serverId, t);
+  const catalog = useWidgetCatalog(host.serverId, t, host.musicBot);
   const [tab, setTab] = useState<Tab>("layout");
   const [binOver, setBinOver] = useState(false);
 

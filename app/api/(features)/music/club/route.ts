@@ -4,6 +4,7 @@ import { can, Permission } from "@/lib/permissions";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 import { isClubStation } from "@/lib/club-feed";
+import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +161,10 @@ async function allowed(request: Request, voiceChannelId: unknown): Promise<Respo
     !(await can(db, user.id, channel.server_id, Permission.CONNECT))
   ) {
     return Response.json({ error: "You can't use that room's club." }, { status: 403 });
+  }
+  // The DJ is the music bot, so the booth only works where it was added.
+  if (!(await musicBotInServer(db, channel.server_id))) {
+    return Response.json({ error: MUSIC_BOT_MISSING }, { status: 409 });
   }
   return channel.id;
 }
