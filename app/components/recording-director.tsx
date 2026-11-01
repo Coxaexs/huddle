@@ -813,7 +813,7 @@ export function RecordingDirector({
             ) : null}
             <p className="privacy-note">
               Files remain on recorder storage for {recording.retentionDays} days.
-              Huddle exposes filenames and diagnostics, never host paths.
+              Hoffle shows filenames and diagnostics, never host paths.
             </p>
           </section>
         </div>

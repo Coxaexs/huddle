@@ -152,6 +152,12 @@
   box-shadow: var(--ring);
 }
 
+/* Message boxes light up as a whole (:focus-within); a second ring on the
+   text box inside reads as a stray rectangle. */
+:root:not([data-custom-theme-id^="msn"]) .app-shell :is(.composer, .thread-composer-inner, .voice-chat-composer) textarea:focus-visible {
+  box-shadow: none;
+}
+
 /* Touch: the per-message "more" toggle is always visible, so keep it quiet. */
 :root:not([data-custom-theme-id^="msn"]) .message-actions-toggle {
   border-color: transparent;

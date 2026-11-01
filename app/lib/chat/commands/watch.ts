@@ -23,7 +23,7 @@ export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext
   const { voiceChannelId, channelTitle, postBotMessage, onActivity, what, sendLoungeSet, onWatchStarted } = ctx;
   if (!voiceChannelId) {
     await postBotMessage(
-      "Join a Huddle voice room first so everyone there gets the same activity.",
+      "Join a Hoffle voice room first so everyone there gets the same activity.",
     );
     return;
   }
@@ -61,7 +61,7 @@ export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext
       "/api/integrations/musicwatch",
       {
         method: "POST",
-        body: JSON.stringify({ mode: name, name: `${channelTitle} · Huddle` }),
+        body: JSON.stringify({ mode: name, name: `${channelTitle} · Hoffle` }),
       },
     );
     if (name === "watch") {
@@ -85,7 +85,7 @@ export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext
     await postBotMessage(
       name === "reels"
         ? "Your shared reels room is ready. Everyone who opens this link joins the same synchronized feed."
-        : "Watch Together is now live inside your Huddle voice room. The link still works outside Huddle too.",
+        : "Watch Together is now live inside your Hoffle voice room. The link still works outside Hoffle too.",
       {
         link: data.url,
         actionLabel: name === "reels" ? "Open reels room" : "Open watch room",
@@ -93,7 +93,7 @@ export async function runWatchCommand(name: "watch" | "reels", ctx: WatchContext
     );
   } catch {
     await postBotMessage(
-      "I couldn’t reach the Music + Watch server. Start it on your server and set MUSICWATCH_BASE_URL in Huddle.",
+      "I couldn’t reach the Music + Watch server. Start it on your server and set MUSICWATCH_BASE_URL in Hoffle.",
     );
   }
   return;

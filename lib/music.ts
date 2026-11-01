@@ -102,7 +102,7 @@ async function resolveTrackDirect(
 
   const resolved = (await response.json().catch(() => ({}))) as ResolvedTrack;
   if (!response.ok || !resolved.audio_url) {
-    throw new Error(resolved.error || "The Huddle music resolver failed.");
+    throw new Error(resolved.error || "The Hoffle music resolver failed.");
   }
 
   return {

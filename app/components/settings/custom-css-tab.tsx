@@ -104,7 +104,7 @@ export function CustomCssTab({
                       setLocalClientUiCss(next);
                       setClientUiCss(next, clientUiCssEnabled);
                     }}
-                    placeholder={`/* Write custom CSS to style the Huddle interface (personal to this client) */\n:root {\n  --lavender: #a78bfa !important;\n}\n.sidebar {\n  backdrop-filter: blur(14px) !important;\n}`}
+                    placeholder={`/* Write custom CSS to style the Hoffle interface (personal to this client) */\n:root {\n  --lavender: #a78bfa !important;\n}\n.sidebar {\n  backdrop-filter: blur(14px) !important;\n}`}
                     className="w-full font-mono text-xs p-3 rounded-lg bg-black/40 border border-white/10 text-gray-200 focus:outline-none focus:border-indigo-500"
                     style={{ resize: "vertical", minHeight: 220 }}
                   />

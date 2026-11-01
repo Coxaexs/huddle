@@ -62,16 +62,20 @@ export function renderChatShell(s: ChatShellViewState) {
     membersOpen: Boolean(membersOpen && !stageChannel),
   };
 
+  // The member list hides itself on the Friends page (DM home, nothing open);
+  // the grid must drop its column too, or the page ends in an empty strip.
+  const membersShown = Boolean(membersOpen && !stageChannel && !(inDmHome && !activeChannelId));
+
   return (
     <WidgetHostProvider value={widgetHost}>
     <MatrixRain />
     <Starfield jumpKey={inDmHome ? "home" : activeServer?.id} />
     <main
-      className={`app-shell ${mobileNav ? "nav-open" : ""} ${threadRoot ? "has-thread" : ""} ${membersOpen && !stageChannel ? "has-members" : ""}`}
+      className={`app-shell ${mobileNav ? "nav-open" : ""} ${threadRoot ? "has-thread" : ""} ${membersShown ? "has-members" : ""}`}
       style={{
         "--sidebar-w": `${sidebarWidth}px`,
         "--thread-w": threadRoot ? `${threadWidth}px` : "0px",
-        "--members-w": membersOpen && !stageChannel ? `${membersWidth}px` : "0px",
+        "--members-w": membersShown ? `${membersWidth}px` : "0px",
       } as React.CSSProperties}
     >
       <ConnectionBanner connected={hub.connected} />

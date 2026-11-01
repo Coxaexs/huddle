@@ -1065,6 +1065,20 @@ function MessageRowImpl({
                         >
                           <Reply size={16} />
                         </button>
+                        {/* Your own message: Edit sits in plain sight, next to Reply. */}
+                        {message.userId === user.id && !message.bot && (
+                          <button
+                            type="button"
+                            title={t("message.edit")}
+                            onClick={() => {
+                              beginEdit(message);
+                              setOpenActionsId(null);
+                              setMobileActionsMoreId(null);
+                            }}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                        )}
                         {/* Show extra actions when Shift is held on desktop or when More is tapped on mobile */}
                         {(shiftPressed || mobileActionsMoreId === message.id) && (
                           <>
@@ -1132,19 +1146,6 @@ function MessageRowImpl({
                             >
                               <Vote size={16} />
                             </button>
-                            {message.userId === user.id && !message.bot && (
-                              <button
-                                type="button"
-                                title={t("message.edit")}
-                                onClick={() => {
-                                  beginEdit(message);
-                                  setOpenActionsId(null);
-                                  setMobileActionsMoreId(null);
-                                }}
-                              >
-                                <Pencil size={16} />
-                              </button>
-                            )}
                             {canPin && (
                               <button
                                 type="button"

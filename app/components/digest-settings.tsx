@@ -68,7 +68,7 @@ export function DigestSettings() {
         <strong>Weekly digest</strong>
         <small>
           Every Sunday: the messages people reacted to most, events coming up and who joined, on each of your servers.
-          {next && mode !== "off" ? ` Next one: ${next.toLocaleString(undefined, { weekday: "long", hour: "2-digit", minute: "2-digit" })}.` : ""}
+          {next && mode !== "off" ? ` Next one: ${next.toLocaleString(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" })}.` : ""}
         </small>
       </span>
       <div className="digest-modes" role="radiogroup" aria-label="Weekly digest">
@@ -94,7 +94,7 @@ export function DigestSettings() {
       </div>
       {!hasEmail && <small>Add an email address to your account to get it by email.</small>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" disabled={busy} onClick={() => void preview()}>
+        <button type="button" className="secondary" disabled={busy} onClick={() => void preview()}>
           Send me this week's now
         </button>
       </div>

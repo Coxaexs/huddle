@@ -222,7 +222,7 @@ export function RecordingsPortal() {
         <div className="portal-card portal-empty">
           <p>Session recording is currently disabled on this Hoffle.</p>
           <a className="portal-btn" href={`${basePath}/`}>
-            <ArrowLeft size={16} /> Go to Huddle
+            <ArrowLeft size={16} /> Go to Hoffle
           </a>
         </div>
       </div>
@@ -235,7 +235,7 @@ export function RecordingsPortal() {
         <div className="portal-card portal-empty">
           <p>Sign in to Hoffle to manage recordings.</p>
           <a className="portal-btn" href={`${basePath}/`}>
-            <ArrowLeft size={16} /> Go to Huddle
+            <ArrowLeft size={16} /> Go to Hoffle
           </a>
         </div>
       </div>

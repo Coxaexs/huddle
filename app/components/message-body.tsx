@@ -48,7 +48,7 @@ export function isImageUrl(value: string): boolean {
  * Messenger Plus!-style `[tag]…[/tag]` decorations come last (named groups).
  */
 const MARKDOWN_PATTERN =
-  /(https?:\/\/[^\s<>"']+)|(@[a-zA-Z0-9._-]{2,32})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)|((?<![\w#/&])#[a-zA-Z0-9._-]{1,32})/;
+  /(https?:\/\/[^\s<>"']+)|((?<![\w.+/@-])@[a-zA-Z0-9._-]{2,32})|(`[^`\n]+`)|(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(__[\s\S]+?__)|(~~[\s\S]+?~~)|(\*[^*\n]+\*)|(_[^_\n]+_)|(:[a-z0-9_]{1,32}:)|((?<![\w#/&])#[a-zA-Z0-9._-]{1,32})/;
 
 const INLINE_PATTERN = new RegExp(
   MARKDOWN_PATTERN.source +

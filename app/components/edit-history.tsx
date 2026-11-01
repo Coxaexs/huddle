@@ -86,7 +86,7 @@ export function EditHistoryDialog({
           <ol className="edit-history-list">
             {versions.length === 0 && (
               <li className="edit-history-empty">
-                This was edited before Huddle kept history, so the earlier text is gone.
+                This was edited before Hoffle kept history, so the earlier text is gone.
               </li>
             )}
             {versions.map((version, index) => (

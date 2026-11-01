@@ -187,7 +187,7 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
       showCustomConfirm({
         title: "Show voice controls over other apps?",
         message:
-          "While you're in voice, a small Huddle bubble floats over other apps so you can mute or leave without switching back. Android will ask you to allow \"Display over other apps\".",
+          "While you're in voice, a small Hoffle bubble floats over other apps so you can mute or leave without switching back. Android will ask you to allow \"Display over other apps\".",
         confirmText: "Allow",
         cancelText: "Not now",
         onConfirm: requestVoiceBubblePermission,

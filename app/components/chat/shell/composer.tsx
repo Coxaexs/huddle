@@ -804,6 +804,19 @@ export function Composer({
                           <span className="inline-flex items-center justify-center w-[18px] h-[18px] font-mono font-bold text-[15px] text-[var(--lavender,#5865f2)]">/</span>
                           <span>{t("composer.slashCommands")}</span>
                         </button>
+                        <button
+                          type="button"
+                          className="mobile-composer-menu-item composer-menu-gif"
+                          onClick={() => {
+                            setGifOpen(true);
+                            setMobileComposerMenuOpen(false);
+                            setEmojiOpen(false);
+                            setFormatOpen(false);
+                          }}
+                        >
+                          <span className="inline-flex items-center justify-center w-[18px] h-[18px] text-[9px] font-extrabold tracking-tight">GIF</span>
+                          <span>{t("composer.addGif")}</span>
+                        </button>
                       </div>
                     )}
 
@@ -858,7 +871,7 @@ export function Composer({
                     {/* GIF button - visible on both mobile and desktop */}
                     <button
                       type="button"
-                      {...tb.item("gif", "gif-button")}
+                      {...tb.item("gif", "gif-button composer-gif-btn")}
                       onClick={() => {
                         setGifOpen((open) => !open);
                         setEmojiOpen(false);

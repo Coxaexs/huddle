@@ -71,9 +71,11 @@ export function MiniVoiceBar({
             </span>
             <span className="mini-voice-status">
               <span className="mini-voice-dot animate-pulse" aria-hidden="true" />
-              {voice.isSfu && voice.voiceRegion
-                ? t("voiceStage.connectedRegion", { region: voice.voiceRegion === "de" ? "Germany" : "Netherlands" })
-                : t("voiceStage.connected")}
+              <span className="mini-voice-status-text">
+                {voice.isSfu && voice.voiceRegion
+                  ? t("voiceStage.connectedRegion", { region: voice.voiceRegion === "de" ? "Germany" : "Netherlands" })
+                  : t("voiceStage.connected")}
+              </span>
             </span>
           </div>
         </div>

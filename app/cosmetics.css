@@ -1633,3 +1633,6 @@ html[data-motion="reduced"] .pframe-art * { animation-play-state: paused !import
   -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
   mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
 }
+
+/* The wide name-style tile keeps its words on the left, so its chip goes right. */
+.pe-tile-style .pe-tile-hover { left: auto; right: 10px; }

@@ -34,7 +34,7 @@ export const sidebar: Record<keyof typeof en, string> = {
   "sidebar.menu.delete": "Sunucuyu Sil",
   "sidebar.conversations": "Sohbetler",
   "sidebar.searchUsers": "Tüm kullanıcılarda ara (⌘K)",
-  "sidebar.findConversation": "Sohbet ya da kullanıcı bul",
+  "sidebar.findConversation": "Sohbet ya da kişi bul",
   "sidebar.friends": "Arkadaşlar",
   "sidebar.directMessages": "DOĞRUDAN MESAJLAR",
   "sidebar.createDm": "DM ya da grup oluştur",

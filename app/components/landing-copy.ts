@@ -102,7 +102,7 @@ const en: LandingCopy = {
     open: "Open Hoffle",
     downloadFor: (os) => `Download for ${os}`,
     downloadGeneric: "Get the desktop app",
-    onPhone: "Open it on your phone",
+    onPhone: "Add it to your home screen",
   },
   live: {
     lead: "This channel is live.",
@@ -458,7 +458,7 @@ const tr: LandingCopy = {
     open: "Hoffle'ı aç",
     downloadFor: (os) => `${os} için indir`,
     downloadGeneric: "Masaüstü uygulamasını indir",
-    onPhone: "Telefonunda aç",
+    onPhone: "Ana ekranına ekle",
   },
   live: {
     lead: "Bu kanal canlı.",

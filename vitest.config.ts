@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,9 @@ export default defineConfig({
     // `.test.tsx` matters: without it a component test is written, silently not
     // collected, and the suite still reports green.
     include: ["**/*.test.ts", "**/*.test.tsx"],
+    // Worktrees under .claude/ are other branches; their "@/" imports resolve
+    // to this checkout, so their tests can't pass or fail meaningfully here.
+    exclude: [...configDefaults.exclude, ".claude/**"],
   },
   resolve: {
     alias: {

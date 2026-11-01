@@ -91,7 +91,7 @@ describe("/watch and /reels", () => {
   it("asks you to join voice first", async () => {
     const postBotMessage = vi.fn(async () => {});
     await runWatchCommand("watch", { voiceChannelId: null, channelTitle: "#general", postBotMessage, onActivity: vi.fn() });
-    expect(postBotMessage).toHaveBeenCalledWith(expect.stringMatching(/Join a Huddle voice room first/));
+    expect(postBotMessage).toHaveBeenCalledWith(expect.stringMatching(/Join a Hoffle voice room first/));
     expect(apiFetch).not.toHaveBeenCalled();
   });
 

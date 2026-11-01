@@ -533,7 +533,7 @@ export function ProductionStudio() {
 
   if (fatal) return <main className="production-fatal">{fatal}</main>;
   return (
-    <main className="production-studio" aria-label="Huddle production recorder">
+    <main className="production-studio" aria-label="Hoffle production recorder">
       <canvas
         ref={canvasRef}
         width={config?.state.resolution === "1280x720" ? 1280 : 1920}

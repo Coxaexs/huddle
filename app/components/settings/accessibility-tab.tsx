@@ -137,13 +137,16 @@ export function AccessibilityTab({
                       onChange={(e) => setChatFontSize(Number(e.target.value))}
                       className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />
-                    <div className="flex justify-between text-[11px] text-gray-400 mt-2 px-1">
+                    {/* Each mark sits where its size is on the 12-24 track, inset by half the
+                        thumb so it lines up with the thumb's centre. */}
+                    <div className="relative h-4 text-[11px] text-gray-400 mt-2">
                       {[12, 14, 15, 16, 18, 20, 24].map((size) => (
                         <button
                           key={size}
                           type="button"
                           onClick={() => setChatFontSize(size)}
-                          className={`hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-[11px] ${
+                          style={{ left: `calc(8px + (100% - 16px) * ${(size - 12) / 12})` }}
+                          className={`absolute top-0 -translate-x-1/2 whitespace-nowrap hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-[11px] ${
                             chatFontSize === size ? "text-indigo-400 font-bold" : "text-gray-400"
                           }`}
                         >

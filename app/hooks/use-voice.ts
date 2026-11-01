@@ -2966,6 +2966,8 @@ export function useVoice({
     [send],
   );
 
+  /** Set when deafening is what muted the mic, so undeafening can open it again. */
+  const mutedByDeafenRef = useRef(false);
   const toggleDeafen = useCallback(() => {
     const next = !deafened;
     setDeafened(next);
@@ -2974,15 +2976,30 @@ export function useVoice({
     } else {
       playUndeafenSound();
     }
-    // Deafening also mutes you, the way Discord does it.
-    if (next && !muted) {
-      micTracks().forEach((track) => {
-        track.enabled = false;
-      });
-      setMuted(true);
+    // Deafening also mutes you, and undeafening gives the mic back when
+    // deafening is what took it, the way Discord does it. The mic gate effect
+    // turns the track back on from `muted`.
+    if (next) {
+      mutedByDeafenRef.current = !muted;
+      if (!muted) {
+        micTracks().forEach((track) => {
+          track.enabled = false;
+        });
+        setMuted(true);
+      }
+      send({ t: "voice-state", deafened: true, muted: true });
+      return;
     }
-    send({ t: "voice-state", deafened: next, muted: next ? true : muted });
-  }, [deafened, muted, send, micTracks]);
+    const reopen = mutedByDeafenRef.current && muted && !forcedMute;
+    mutedByDeafenRef.current = false;
+    if (reopen) {
+      setMuted(false);
+      setHandRaised(false);
+      send({ t: "voice-state", deafened: false, muted: false, handRaised: false });
+      return;
+    }
+    send({ t: "voice-state", deafened: false, muted });
+  }, [deafened, muted, forcedMute, send, micTracks]);
 
   /**
    * The Settings mic check: deafen (and so mute) while you listen to yourself,

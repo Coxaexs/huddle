@@ -444,7 +444,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
     windows: manifest ? "/download/windows" : sectionHref(lang, "download"),
     linux: manifest ? "/download/linux" : sectionHref(lang, "download"),
     mac: sectionHref(lang, "download"),
-    phone: APP_URL,
+    phone: sectionHref(lang, "on-your-phone"),
     generic: sectionHref(lang, "download"),
   };
   const downloadLabels = {
@@ -557,21 +557,21 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
             <h2 className={sectionTitle}>{copy.compare.title}</h2>
             <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.compare.lead}</p>
             <div className="mt-8 overflow-x-auto rounded-xl border border-(--line)">
-              <table className="w-full min-w-[560px] border-collapse text-left text-[14px] sm:text-[15px]">
+              <table className="w-full border-collapse text-left text-[13px] sm:min-w-[560px] sm:text-[15px]">
                 <caption className="sr-only">{copy.compare.caption}</caption>
                 <thead>
                   <tr className="border-b border-(--line) bg-(--paper-2) text-sm">
-                    <th scope="col" className="w-[28%] px-4 py-3 font-semibold text-(--muted)"><span className="sr-only">{copy.compare.featureColumn}</span></th>
-                    <th scope="col" className="w-[34%] px-4 py-3 font-semibold">{copy.compare.discord}</th>
-                    <th scope="col" className="w-[38%] px-4 py-3 font-semibold">Hoffle</th>
+                    <th scope="col" className="w-[28%] px-3 py-3 font-semibold text-(--muted) sm:px-4"><span className="sr-only">{copy.compare.featureColumn}</span></th>
+                    <th scope="col" className="w-[34%] px-3 py-3 font-semibold sm:px-4">{copy.compare.discord}</th>
+                    <th scope="col" className="w-[38%] px-3 py-3 font-semibold sm:px-4">Hoffle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {copy.compare.rows.map((row) => (
                     <tr key={row.label} className="border-b border-(--line) last:border-b-0">
-                      <th scope="row" className="px-4 py-3 align-top font-semibold">{row.label}</th>
-                      <td className="px-4 py-3 align-top text-(--ink-2)">{row.discord}</td>
-                      <td className="px-4 py-3 align-top">{row.hoffle}</td>
+                      <th scope="row" className="px-3 py-3 align-top font-semibold sm:px-4">{row.label}</th>
+                      <td className="px-3 py-3 align-top text-(--ink-2) sm:px-4">{row.discord}</td>
+                      <td className="px-3 py-3 align-top sm:px-4">{row.hoffle}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -622,7 +622,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 </div>
               )}
 
-              <h3 className="mt-10 text-lg font-medium">{copy.download.phoneTitle}</h3>
+              <h3 id="on-your-phone" className="mt-10 scroll-mt-4 text-lg font-medium">{copy.download.phoneTitle}</h3>
               <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-(--ink-2)">{copy.download.phoneBody}</p>
             </div>
             <div className="mx-auto w-full max-w-[300px] lg:mt-20">
@@ -760,7 +760,7 @@ function withCode(text: string): ReactNode {
   return (
     <>
       {match[1]}
-      <code className="text-[14px]">{match[2]}</code>
+      <code className="whitespace-nowrap text-[14px]">{match[2]}</code>
     </>
   );
 }

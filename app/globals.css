@@ -1401,13 +1401,28 @@ body:has(.media-admin) {
   overscroll-behavior: auto !important;
 }
 
-button,
-textarea,
-input {
+/* Base resets sit in the base layer so a utility on a button or field
+   (text-xs, font-mono, text-[var(--on-accent)]) wins, as written. Unlayered,
+   they beat every utility: buttons lost their sizes and colours. */
+@layer base {
+  button,
+  textarea,
+  input {
+    font: inherit;
+  }
+
+  button {
+    color: inherit;
+  }
+}
+
+/* The MSN skins were drawn against the old unlayered reset; keep it for them
+   so they stay pixel-identical. :where() keeps the reset's old specificity. */
+:where(:root[data-custom-theme-id^="msn"]) :is(button, textarea, input) {
   font: inherit;
 }
 
-button {
+:where(:root[data-custom-theme-id^="msn"]) button {
   color: inherit;
 }
 
@@ -10190,6 +10205,7 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
 
 .message-gutter time {
   font-size: 9px;
+  white-space: nowrap;
   color: var(--muted);
   opacity: 0;
   transition: opacity .1s;
@@ -18946,6 +18962,14 @@ html[data-motion="reduced"] .bat-wing {
   font-weight: 700;
   color: #4ade80;
   letter-spacing: 0.02em;
+  max-width: 100%;
+}
+
+.mini-voice-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-voice-dot {
@@ -22879,7 +22903,7 @@ input:checked+.toggle-slider:before {
   display: block;
 }
 
-:where(.settings-content-scroll) :where(input:not([class]):is([type=text], [type=password], :not([type]))) {
+:where(.settings-content-scroll) :where(input:not([class]):is([type=text], [type=password], [type=email], [type=url], :not([type]))) {
   color: #fff;
   background: #17181e;
   border: 1px solid #4b4d5b;
@@ -22890,7 +22914,7 @@ input:checked+.toggle-slider:before {
   padding: 0 12px;
 }
 
-:where(.settings-content-scroll) :where(input:not([class]):is([type=text], [type=password], :not([type]))):focus {
+:where(.settings-content-scroll) :where(input:not([class]):is([type=text], [type=password], [type=email], [type=url], :not([type]))):focus {
   border-color: var(--lavender);
 }
 
@@ -22912,6 +22936,29 @@ input:checked+.toggle-slider:before {
 }
 
 :where(.settings-content-scroll) :where(button.primary):disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* The quieter button beside a .primary one ("Make me a topic", "Turn off"). */
+:where(.settings-content-scroll) :where(button.secondary) {
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 10px;
+  height: 42px;
+  margin-top: 16px;
+  padding: 0 16px;
+  font-weight: 700;
+  transition: background-color .15s ease;
+}
+
+:where(.settings-content-scroll) :where(button.secondary):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+:where(.settings-content-scroll) :where(button.secondary):disabled {
   opacity: .45;
   cursor: not-allowed;
 }
@@ -29701,4 +29748,143 @@ a.link-preview-author:hover {
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* Settings → Language (app/components/language-picker.tsx). */
+.language-picker {
+  position: relative;
+  display: inline-block;
+  margin: 12px 0 6px;
+}
+
+.language-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-picker-trigger:hover,
+.language-picker[data-open="true"] .language-picker-trigger {
+  border-color: color-mix(in srgb, var(--lavender) 60%, transparent);
+}
+
+.language-picker-trigger svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform .15s ease;
+}
+
+.language-picker-value {
+  flex: 1;
+}
+
+.language-picker[data-open="true"] .language-picker-trigger svg:last-child {
+  transform: rotate(180deg);
+}
+
+.language-picker-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: 12px;
+  background: var(--panel, #1a1628);
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .55);
+  outline: none;
+}
+
+.language-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.language-picker-option.is-active {
+  background: color-mix(in srgb, var(--lavender) 16%, transparent);
+}
+
+.language-picker-option[aria-selected="true"] {
+  font-weight: 600;
+}
+
+.language-picker-option > svg {
+  flex-shrink: 0;
+  color: var(--lavender);
+}
+
+/* Names line up whether or not the row carries the check mark. */
+.language-picker-option:not([aria-selected="true"]) .language-picker-option-name {
+  padding-left: 22px;
+}
+
+.language-picker-option-name {
+  flex: 1;
+}
+
+.language-picker-partial {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.language-picker-option-code {
+  margin-left: 18px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+
+/* Phones: GIF moves into the ^ menu so the message box keeps room to type. */
+.mobile-composer-menu-item.composer-menu-gif {
+  display: none;
+}
+
+@media (width <= 480px) {
+  .composer .gif-button.composer-gif-btn {
+    display: none !important;
+  }
+
+  .mobile-composer-menu-item.composer-menu-gif {
+    display: flex;
+  }
+}
+
+/* The landing page's live #say-hi frame is a snapshot of an older composer
+   whose extra buttons aren't marked desktop-only; keep its text box usable. */
+@media (width <= 560px) {
+  .composer :is(.composer-format-btn, .composer-games-btn):not(.desktop-composer-item) {
+    display: none;
+  }
+}
+
+/* Touch and narrow screens: the per-message "…" sits top right; keep the
+   "X used /command" line from running under it. */
+@media (width <= 760px), (pointer: coarse) {
+  .message .command-invocation {
+    padding-right: 36px;
+  }
 }

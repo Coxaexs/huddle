@@ -585,11 +585,11 @@ export function ChannelSidebar({
               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[var(--muted)] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
               title={t("sidebar.searchUsers")}
             >
-              <span className="flex items-center gap-2">
-                <Search size={14} className="text-[var(--lavender)]" />
-                <span>{t("sidebar.findConversation")}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <Search size={14} className="shrink-0 text-[var(--lavender)]" />
+                <span className="truncate">{t("sidebar.findConversation")}</span>
               </span>
-              <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
+              <kbd className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
                 ⌘K
               </kbd>
             </button>

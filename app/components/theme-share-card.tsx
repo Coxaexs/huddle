@@ -250,7 +250,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                       Ada Lovelace <span className="mock-time">12:34 PM</span>
                     </div>
                     <div className="mock-msg-text">
-                      Welcome to Huddle! Here is how messages look in <strong>{theme.name}</strong>.
+                      Welcome to Hoffle! Here is how messages look in <strong>{theme.name}</strong>.
                     </div>
                   </div>
                 </div>

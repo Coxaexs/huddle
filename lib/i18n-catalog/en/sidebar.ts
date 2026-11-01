@@ -33,7 +33,7 @@ export const sidebar = {
   "sidebar.menu.leaveMessage": "You can join again any time from Explore public servers or an invite link.",
   "sidebar.conversations": "Conversations",
   "sidebar.searchUsers": "Search all users (⌘K)",
-  "sidebar.findConversation": "Find conversation or user",
+  "sidebar.findConversation": "Find or start a chat",
   "sidebar.friends": "Friends",
   "sidebar.directMessages": "DIRECT MESSAGES",
   "sidebar.createDm": "Create DM or group",

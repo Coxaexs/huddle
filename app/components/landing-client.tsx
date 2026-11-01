@@ -63,7 +63,7 @@ function detectPlatform(): Platform {
 /**
  * "Download for <your OS>", straight from this site (/download/<platform>).
  * Macs go to the download list instead, since a browser can't tell an Apple
- * chip from an Intel one; phones get the web app.
+ * chip from an Intel one; phones get the add-to-home-screen steps.
  */
 export function DownloadButton({
   labels,

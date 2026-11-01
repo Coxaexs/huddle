@@ -183,3 +183,7 @@ button.simple-tile:hover { border-color: color-mix(in srgb, var(--lavender) 55%,
 :root[data-custom-theme-id^="linen"] :is(.simple-tile strong, .simple-settings-hello h3) { font-weight: 500; }
 :root[data-ui="simple"] .chat-header .header-extra { display: none; }
 :root[data-ui="simple"] .chat-header .header-more { display: inline-flex; }
+
+/* Simple settings has no sidebar, so its single column sits in the middle. */
+.settings-modal.is-simple .settings-content-scroll { max-width: none; }
+:where(.settings-modal.is-simple .settings-content-scroll) > * { max-width: 772px; margin-inline: auto; }

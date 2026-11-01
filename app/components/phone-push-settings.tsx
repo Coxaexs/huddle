@@ -92,12 +92,12 @@ export function PhonePushSettings() {
           {saved ? "Update & test" : "Save & test"}
         </button>
         {!endpoint && (
-          <button type="button" onClick={suggest}>
+          <button type="button" className="secondary" onClick={suggest}>
             Make me a topic
           </button>
         )}
         {saved && (
-          <button type="button" disabled={busy} onClick={remove}>
+          <button type="button" className="secondary" disabled={busy} onClick={remove}>
             Turn off
           </button>
         )}
