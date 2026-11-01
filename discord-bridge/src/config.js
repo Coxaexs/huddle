@@ -2,6 +2,10 @@
  * Settings from the environment (discord-bridge/.env under systemd or Docker).
  *
  *   DISCORD_BOT_TOKEN   the Discord bot every Hoffle server shares (required)
+ *   DISCORD_VOICE_BOT_TOKENS  optional: more Discord bots, comma separated, as
+ *                       voice helpers. Each one stands in for one Hoffle person
+ *                       in a Discord voice channel, so Hoffle people show up
+ *                       there one by one instead of as the one bridge bot.
  *   HOFFLE_URL          where Hoffle answers locally   (default http://127.0.0.1:8730)
  *   HOFFLE_BASE_PATH    Hoffle's base path              (default /hangout)
  *   HOFFLE_PUBLIC_URL   the public site, for links and pictures Discord fetches
@@ -22,6 +26,15 @@ import { resolve } from "node:path";
 export function derivedBridgeToken(botToken) {
   const hex = createHash("sha256").update(`hoffle-discord-bridge:${botToken}`).digest("hex");
   return `hfl_bridge_${hex}`;
+}
+
+/** A list of tokens: commas, spaces or new lines between them; repeats and `skip` left out. */
+export function splitTokens(raw, skip = "") {
+  const out = [];
+  for (const token of String(raw || "").split(/[\s,]+/)) {
+    if (token && token !== skip && !out.includes(token)) out.push(token);
+  }
+  return out;
 }
 
 /** KEY=value lines, quotes optional, # comments. */
@@ -63,8 +76,11 @@ export function loadConfig(env = process.env) {
   }
   if (hoffleToken && !hoffleToken.startsWith("hfl_bridge_")) hoffleToken = derivedBridgeToken(hoffleToken);
 
+  const discordToken = pick("DISCORD_BOT_TOKEN");
   return {
-    discordToken: pick("DISCORD_BOT_TOKEN"),
+    discordToken,
+    /** Voice helpers: one Discord bot per Hoffle person shown on Discord. */
+    voiceBotTokens: splitTokens(pick("DISCORD_VOICE_BOT_TOKENS"), discordToken),
     hoffleUrl,
     basePath,
     publicUrl: (pick("HOFFLE_PUBLIC_URL") || hoffleUrl).replace(/\/+$/, ""),

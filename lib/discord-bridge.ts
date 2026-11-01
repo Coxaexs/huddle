@@ -86,6 +86,29 @@ export const DISCORD_INVITE_PERMISSIONS = (
   (1n << 38n) // SEND_MESSAGES_IN_THREADS
 ).toString();
 
+/**
+ * What a voice helper needs (a bot that shows one Hoffle person in a Discord
+ * call): see the channel, connect, speak, and change its own nickname to
+ * that person's name.
+ */
+export const DISCORD_HELPER_INVITE_PERMISSIONS = (
+  (1n << 10n) | // VIEW_CHANNEL
+  (1n << 20n) | // CONNECT
+  (1n << 21n) | // SPEAK
+  (1n << 26n) // CHANGE_NICKNAME
+).toString();
+
+/** A voice helper only joins calls: no slash commands, so the plain bot scope. */
+export function discordHelperInviteUrl(appId: string, guildId?: string | null): string {
+  const params = new URLSearchParams({ client_id: appId, scope: "bot", permissions: DISCORD_HELPER_INVITE_PERMISSIONS });
+  // Straight to the linked Discord server, already picked.
+  if (guildId) {
+    params.set("guild_id", guildId);
+    params.set("disable_guild_select", "true");
+  }
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
 export function discordInviteUrl(appId: string): string {
   const params = new URLSearchParams({
     client_id: appId,
@@ -131,6 +154,16 @@ export interface ServiceGuild {
     /** Permissions the bot lacks in this channel. */
     missing?: string[];
   }>;
+  /** Application ids of the voice helpers in this Discord server. */
+  voiceHelpers?: string[];
+}
+
+/** A voice helper: one more Discord bot, so Hoffle people show up in a Discord call one by one. */
+export interface VoiceHelperInfo {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  connected: boolean;
 }
 
 export interface ServiceStatus {
@@ -142,6 +175,8 @@ export interface ServiceStatus {
   guilds?: ServiceGuild[];
   /** Per Hoffle server: what last happened. */
   bridges?: Record<string, { lastRelayAt?: string | null; lastError?: string | null; relayed?: number }>;
+  /** The bridge's voice helpers (DISCORD_VOICE_BOT_TOKENS), if it has any. */
+  voiceHelpers?: VoiceHelperInfo[];
 }
 
 export function parseSettings(raw: string | null | undefined): BridgeSettings {
@@ -452,6 +487,8 @@ export async function saveServiceStatus(db: D1Database, raw: unknown): Promise<v
     return url && /^https:\/\/[^\s"'<>]+$/i.test(url) ? url : null;
   };
   const ids = (value: unknown) => (Array.isArray(value) ? value.filter((v) => typeof v === "string").slice(0, 20).map((v) => v.slice(0, 40)) : undefined);
+  const snowflakes = (value: unknown) =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && /^\d{5,25}$/.test(v)).slice(0, 25) : [];
   const guilds: ServiceGuild[] = (Array.isArray(input.guilds) ? input.guilds : []).slice(0, 200).flatMap((guild) => {
     if (!guild || typeof guild.id !== "string" || !/^\d{5,25}$/.test(guild.id)) return [];
     return [
@@ -474,9 +511,17 @@ export async function saveServiceStatus(db: D1Database, raw: unknown): Promise<v
               ]
             : [],
         ),
+        voiceHelpers: snowflakes(guild.voiceHelpers),
       },
     ];
   });
+  const voiceHelpers: VoiceHelperInfo[] = (Array.isArray(input.voiceHelpers) ? input.voiceHelpers : [])
+    .slice(0, 25)
+    .flatMap((helper) =>
+      helper && typeof helper.id === "string" && /^\d{5,25}$/.test(helper.id)
+        ? [{ id: helper.id, name: str(helper.name, 100) || "Voice helper", avatarUrl: picture(helper.avatarUrl), connected: Boolean(helper.connected) }]
+        : [],
+    );
   const bridges: ServiceStatus["bridges"] = {};
   if (input.bridges && typeof input.bridges === "object") {
     for (const [serverId, value] of Object.entries(input.bridges).slice(0, 500)) {
@@ -499,6 +544,7 @@ export async function saveServiceStatus(db: D1Database, raw: unknown): Promise<v
     hoffle: { connected: Boolean(input.hoffle?.connected), error: str(input.hoffle?.error, 300) ?? null },
     guilds,
     bridges,
+    voiceHelpers,
   };
   await db
     .prepare(

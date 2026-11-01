@@ -131,7 +131,10 @@ export class Bridge {
     this.every(this.cfg.statusEveryMs, () => this.reportStatus());
     this.every(6 * 3600_000, () => this.store.prune());
     void this.superviseHoffle();
-    if (this.cfg.discordToken) void this.superviseDiscord();
+    if (this.cfg.discordToken) {
+      void this.superviseDiscord();
+      this.voice.start();
+    }
   }
 
   every(ms, task) {
@@ -147,7 +150,7 @@ export class Bridge {
   async stop() {
     this.stopping = true;
     for (const timer of this.timers) clearInterval(timer);
-    this.voice.stop();
+    await this.voice.shutdown();
     this.health?.close();
     await Promise.allSettled([this.discord?.destroy(), this.hoffle?.destroy()]);
     this.store.close();
@@ -478,6 +481,7 @@ export class Bridge {
           icon: guild.iconURL({ extension: "png", size: 64 }),
           missing: guildMissing,
           channels,
+          voiceHelpers: this.voice.helpers?.inGuild(guild.id) ?? [],
         });
       }
     }
@@ -491,6 +495,8 @@ export class Bridge {
       hoffle: { connected: this.hoffleReady, error: this.hoffleReady ? null : this.hoffleError },
       guilds,
       bridges,
+      // Voice helpers, so Settings can offer to add each to a Discord server.
+      voiceHelpers: this.voice.helpers?.report() ?? [],
     };
   }
 
@@ -526,6 +532,7 @@ export class Bridge {
         bridges: this.bridges.size,
         pairs: this.byDiscordChannel.size,
         voice: this.voice.status(),
+        voiceHelpers: this.voice.helpers?.status() ?? [],
         startedAt: this.startedAt,
       });
       response.writeHead(request.url === "/healthz" ? 200 : 404, { "Content-Type": "application/json" });

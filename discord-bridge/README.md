@@ -65,9 +65,10 @@ on in the bridge settings.
   as their Hoffle self). Their voice is their own LiveKit track, so Hoffle
   shows who is talking and can turn each of them up or down.
 - While anyone is in the Hoffle room, the bot sits in the Discord channel and
-  plays the room's mix there: the Hoffle side sounds like one voice on
-  Discord, because a bot is one voice. It only shows as talking while someone
-  on Hoffle is.
+  plays the room's mix there. On its own that makes the Hoffle side one voice
+  on Discord, because a bot is one voice; with **voice helpers** (below) each
+  Hoffle person shows up there on their own. Either way a voice only shows as
+  talking while someone on Hoffle is.
 - `/hoffle-voice effect:` changes how a Discord person sounds to Hoffle
   (deep, chipmunk, robot, radio, echo, vampire, alien). Hoffle people's own
   voice effects reach Discord as they are.
@@ -86,6 +87,39 @@ on in the bridge settings.
 - The bot needs **Connect** and **Speak** in the channel (on a stage, also
   **Mute Members** to speak). Each Discord person in a call costs the bridge
   about 35 MB of memory.
+
+### Voice helpers: each Hoffle person on their own
+
+Discord gives a bot exactly one voice in a server, so separate voices take
+separate bots. Each voice helper is one more Discord application whose bot
+stands in for one Hoffle person in the Discord call: it sits in the channel
+under their name and picture (in that server only), mirrors their mute and
+deafen, and shows as talking exactly while they do. Hoffle people beyond the
+helpers on hand are heard through the main bot's mix, as before. The main bot
+still listens to Discord and runs the chat; helpers only play.
+
+1. Make one application per helper in the
+   [Developer Portal](https://discord.com/developers/applications) and give
+   each a name and picture, e.g. "Hoffle Voice 1". No privileged intents are
+   needed. With N helpers, up to N Hoffle people show up separately at once.
+2. Put their bot tokens in `.env`, comma separated:
+   `DISCORD_VOICE_BOT_TOKENS=token1,token2,token3`, and restart the bridge.
+3. Each Discord server adds each helper once: **Server Settings →
+   Integrations → Discord Bridge → Voices on Discord** has a button per helper
+   (View Channel, Connect, Speak and Change Nickname).
+
+- A helper sits in one channel per server, like the main bot, and serves
+  every server it has been added to.
+- People keep their helper while they stay; newcomers take free ones in the
+  order they joined, and get the same helper as last time when it is free, so
+  Discord isn't renaming helpers back and forth. A helper takes its own name
+  back a minute after its person leaves.
+- Pictures are Hoffle uploads (fetched from Hoffle on this machine) or
+  Discord's own CDN; any other picture link leaves the helper's own picture.
+- Someone on Discord who disconnects or moves a helper keeps it out of that
+  server for a minute; its person is mixed into the main bot meanwhile.
+- `/healthz` lists the helpers under `voiceHelpers`, and per call under
+  `voice[].helpers` who each one is standing in for.
 
 Discord voice is end-to-end encrypted (DAVE); `@discordjs/voice` with
 `@snazzah/davey` handles it. Opus runs in WebAssembly (`opusscript`): the

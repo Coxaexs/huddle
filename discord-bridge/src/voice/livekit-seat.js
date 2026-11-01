@@ -27,7 +27,7 @@ export class LiveKitSeat {
   /**
    * @param {{ hoffleUrl: string, basePath: string, hoffleToken: string }} cfg
    * @param {{ channelId: string, connectionId: string, isOurs: (identity: string) => boolean,
-   *   onAudio: (key: string, samples: Int16Array) => void, onGone: (key: string) => void,
+   *   onAudio: (key: string, samples: Int16Array, identity: string) => void, onGone: (key: string) => void,
    *   onDown: () => void }} options
    */
   constructor(cfg, options) {
@@ -59,7 +59,7 @@ export class LiveKitSeat {
     this.room = room;
     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
       if (track.kind !== TrackKind.KIND_AUDIO || this.options.isOurs(participant.identity)) return;
-      this.listen(`${participant.identity}/${publication.sid}`, track);
+      this.listen(`${participant.identity}/${publication.sid}`, track, participant.identity);
     });
     room.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
       this.stopListening(`${participant.identity}/${publication.sid}`);
@@ -117,7 +117,8 @@ export class LiveKitSeat {
     if (!on) for (const key of [...this.readers.keys()]) this.stopListening(key);
   }
 
-  listen(key, track) {
+  /** `identity` is whose track it is, so the bridge can play it through that person's own helper. */
+  listen(key, track, identity) {
     if (!this.ears || this.readers.has(key)) return;
     const reader = new AudioStream(track, { sampleRate: SAMPLE_RATE, numChannels: 1 }).getReader();
     this.readers.set(key, reader);
@@ -126,7 +127,7 @@ export class LiveKitSeat {
         while (this.readers.get(key) === reader) {
           const { value, done } = await reader.read();
           if (done) break;
-          this.options.onAudio(key, value.data);
+          this.options.onAudio(key, value.data, identity);
         }
       } catch {
         // The track went away.

@@ -9,39 +9,28 @@
  *                     own LiveKit participant; their voice is decoded, put
  *                     through their /hoffle-voice effect, and published there.
  *   Hoffle → Discord  one Discord person's LiveKit participant also listens
- *                     (the "ears"); the Hoffle people are mixed and the bot
- *                     plays the mix into the Discord channel, in bursts, so it
- *                     only shows as talking while someone is.
+ *                     (the "ears"). Each Hoffle person with a voice helper
+ *                     (helpers.js) is played by that helper, a Discord bot
+ *                     sitting in the channel under their name; everyone else
+ *                     is mixed and the main bot plays the mix. Both play in
+ *                     bursts, so each only shows as talking while someone is.
  *
  * Discord lets a bot sit in one voice channel per server, so when a server
- * has several bridged voice channels, the first busy one gets the bot.
+ * has several bridged voice channels, the first busy one gets the bot (and
+ * each helper, likewise, sits in one channel per server).
  */
-import { Readable } from "node:stream";
 import { performance } from "node:perf_hooks";
-import {
-  EndBehaviorType,
-  NoSubscriberBehavior,
-  StreamType,
-  VoiceConnectionStatus,
-  createAudioPlayer,
-  createAudioResource,
-  entersState,
-  joinVoiceChannel,
-} from "@discordjs/voice";
-import { Leveler, Mixer, createEffect, dbOf, int16ToMono, monoToInt16, monoToStereo, peak, rms, stereoToMono } from "./dsp.js";
+import { EndBehaviorType, VoiceConnectionStatus, entersState, joinVoiceChannel } from "@discordjs/voice";
+import { Leveler, createEffect, dbOf, int16ToMono, monoToInt16, peak, rms, stereoToMono } from "./dsp.js";
+import { HelperVoice, VoiceHelpers } from "./helpers.js";
 import { HubSeat } from "./hub-seat.js";
 import { createOpus } from "./opus.js";
 import { LiveKitSeat } from "./livekit-seat.js";
-import { connectionOf, planVoice, seatState } from "./plan.js";
+import { assignHelpers, connectionOf, planVoice, seatState, showable, userOf } from "./plan.js";
+import { DiscordSpeaker } from "./speaker.js";
 
 /** How long the bot stays in Discord after the Hoffle room empties, and audio after a side empties. */
 const LINGER_MS = 15_000;
-/** A burst to Discord ends after this much quiet. */
-const QUIET_FRAMES = 15;
-/** Quieter than this (about -48 dBFS) is silence, not someone talking. */
-const SPEECH_PEAK = 0.004;
-/** Don't let more than this much wait to be played on Discord. */
-const MAX_BURST_QUEUE = 8;
 /** Discord frames (20 ms each) held back at the start of a stretch of speech. */
 const CUSHION_FRAMES = 3;
 const VOICE_CHANNEL_TYPES = new Set([2, 13]);
@@ -55,6 +44,21 @@ export class VoiceBridge {
     this.monitor = null;
     /** guild id → the link holding the bot's one voice connection there */
     this.guildHolder = new Map();
+    /** Extra Discord bots that show Hoffle people one by one (DISCORD_VOICE_BOT_TOKENS). */
+    this.helpers = bridge.cfg?.voiceBotTokens?.length
+      ? new VoiceHelpers(bridge.cfg, { log, onChange: () => this.helpersChanged() })
+      : null;
+  }
+
+  /** Logs the voice helpers in (the main bot logs in with the bridge). */
+  start() {
+    this.helpers?.start();
+  }
+
+  /** A helper logged in, dropped out, joined a server or came free. */
+  helpersChanged() {
+    for (const link of this.links.values()) link.reconcileSoon();
+    this.bridge.scheduleStatus?.();
   }
 
   get cfg() {
@@ -110,6 +114,17 @@ export class VoiceBridge {
         if (link.connection && newState.channelId !== link.discordChannelId) link.backOff();
       }
     }
+    // A helper moved to another channel: that one also steps back for a minute.
+    const helper = this.helpers?.byUserId(newState?.id);
+    if (helper && newState.channelId) {
+      for (const link of this.links.values()) {
+        for (const voice of link.voices.values()) {
+          if (voice.helper === helper && voice.guildId === newState.guild?.id && newState.channelId !== voice.channelId) {
+            voice.lose("was moved to another channel");
+          }
+        }
+      }
+    }
     for (const id of new Set([oldState?.channelId, newState?.channelId])) {
       if (id) this.links.get(id)?.reconcileSoon();
     }
@@ -150,11 +165,18 @@ export class VoiceBridge {
     return [...this.links.values()].map((link) => link.status());
   }
 
+  /** Leaves every call (the main bot's client is being replaced, or the bridge stops). */
   stop() {
     for (const link of this.links.values()) link.stop();
     this.links.clear();
     this.monitor?.close();
     this.monitor = null;
+  }
+
+  /** The bridge is stopping: the helpers log out too. */
+  async shutdown() {
+    this.stop();
+    await this.helpers?.stop();
   }
 }
 
@@ -165,11 +187,14 @@ export class VoiceLink {
     this.people = new Map();
     this.blocked = new Set();
     this.connection = null;
-    this.player = null;
-    this.mixer = new Mixer();
-    this.encoder = null;
-    this.burst = null;
-    this.quiet = 0;
+    /** The main bot's sound on Discord: everyone without a helper, mixed. */
+    this.speaker = null;
+    /** Hoffle connection id → the voice helper standing in for that person on Discord. */
+    this.voices = new Map();
+    /** Hoffle user id → the helper they had last, to give them the same one back. */
+    this.lastHelper = new Map();
+    /** LiveKit track → the mixer its sound goes to (a helper's, or the main mix). */
+    this.routes = new Map();
     this.clock = null;
     this.ears = null;
     this.leaveTimer = null;
@@ -232,6 +257,7 @@ export class VoiceLink {
       discord: members.map((member) => ({ id: member.id, bot: member.user.bot })),
       hoffle: room,
       selfId: this.manager.bridge.discordUserId,
+      selfIds: this.manager.helpers?.userIds() ?? [],
       blocked: this.blocked,
     });
     this.plan = plan;
@@ -256,6 +282,7 @@ export class VoiceLink {
         if (!this.plan.onDiscord) this.leaveDiscord();
       }, LINGER_MS);
     }
+    this.reconcileHelpers(room);
 
     // Sound, while there is someone on both sides.
     // A seat that came back under a new connection id needs a LiveKit identity to match.
@@ -347,8 +374,8 @@ export class VoiceLink {
       channelId: this.hoffleChannelId,
       connectionId: person.seat.connectionId,
       isOurs: (identity) => this.manager.isOurs(identity),
-      onAudio: (key, samples) => this.mixer.push(key, int16ToMono(samples)),
-      onGone: (key) => this.mixer.drop(key),
+      onAudio: (key, samples, identity) => this.hear(key, identity, samples),
+      onGone: (key) => this.forget(key),
       onDown: () => {
         if (person.lk !== lk) return;
         person.lk = null;
@@ -396,6 +423,95 @@ export class VoiceLink {
     wanted?.lk.setEars(true);
   }
 
+  /**
+   * One frame of a Hoffle person's sound: to their own helper on Discord once
+   * it is connected, otherwise into the main bot's mix. When it moves from
+   * one to the other, what was waiting in the old place is dropped.
+   */
+  hear(key, identity, samples) {
+    const voice = this.voiceFor(identity);
+    const target = voice?.live ? voice.speaker.mixer : this.speaker?.mixer;
+    const before = this.routes.get(key);
+    if (before && before !== target) before.drop(key);
+    if (!target) {
+      this.routes.delete(key);
+      return;
+    }
+    this.routes.set(key, target);
+    target.push(key, int16ToMono(samples));
+  }
+
+  /** Whose helper a LiveKit identity is heard through, if anyone's. */
+  voiceFor(identity) {
+    const connection = connectionOf(identity);
+    if (connection) return this.voices.get(connection) ?? null;
+    // A bot that joins LiveKit without its seat's connection id: by user, when it has one seat.
+    const user = userOf(identity);
+    let found = null;
+    for (const voice of this.voices.values()) {
+      if (voice.person.id !== user) continue;
+      if (found) return null;
+      found = voice;
+    }
+    return found;
+  }
+
+  forget(key) {
+    this.routes.get(key)?.drop(key);
+    this.routes.delete(key);
+  }
+
+  // ------------------------------------------------------------ voice helpers
+
+  /**
+   * While the bot is in the Discord channel, each Hoffle person it can spare a
+   * helper for gets one there (plan.js assignHelpers decides who).
+   */
+  reconcileHelpers(room) {
+    const helpers = this.manager.helpers;
+    if (!helpers?.size) return;
+    const people = this.connection ? showable(room) : [];
+    const free = this.connection ? helpers.freeFor(this.guildId, this.discordChannelId, this) : [];
+    const current = new Map([...this.voices].map(([connectionId, voice]) => [connectionId, voice.helper.key]));
+    const wanted = assignHelpers({ people, helpers: free, current, last: this.lastHelper });
+    for (const [connectionId, voice] of this.voices) {
+      if (wanted.get(connectionId) === voice.helper.key) continue;
+      this.voices.delete(connectionId);
+      voice.stop();
+    }
+    for (const person of people) {
+      const key = wanted.get(person.connectionId);
+      if (!key) continue;
+      const existing = this.voices.get(person.connectionId);
+      if (existing) {
+        existing.update(person);
+        continue;
+      }
+      const voice = new HelperVoice({
+        helper: helpers.byKey(key),
+        owner: this,
+        guildId: this.guildId,
+        channelId: this.discordChannelId,
+        person,
+        log: this.log,
+        onLost: (lost) => {
+          if (this.voices.get(person.connectionId) === lost) this.voices.delete(person.connectionId);
+          this.reconcileSoon();
+        },
+      });
+      if (!voice.start()) continue;
+      this.voices.set(person.connectionId, voice);
+      this.lastHelper.set(person.id, key);
+      if (this.lastHelper.size > 500) this.lastHelper.delete(this.lastHelper.keys().next().value);
+    }
+  }
+
+  stopHelpers() {
+    const voices = [...this.voices.values()];
+    this.voices.clear();
+    for (const voice of voices) voice.stop();
+  }
+
   // ----------------------------------------------------------- Discord side
 
   joinDiscord() {
@@ -428,6 +544,8 @@ export class VoiceLink {
     connection.on(VoiceConnectionStatus.Destroyed, () => {
       if (this.connection === connection) {
         this.connection = null;
+        // The helpers play on the bot's clock: they leave with it, and come back when it does.
+        this.stopHelpers();
         this.stopPlayback();
         this.manager.releaseGuild(this.guildId, this);
       }
@@ -446,6 +564,7 @@ export class VoiceLink {
   leaveDiscord() {
     const connection = this.connection;
     this.connection = null;
+    this.stopHelpers();
     this.stopPlayback();
     for (const person of this.people.values()) {
       person.listening?.destroy();
@@ -510,11 +629,7 @@ export class VoiceLink {
   }
 
   startPlayback(connection) {
-    this.player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
-    this.player.on("error", (error) => this.log("voice: Discord player:", error?.message || error));
-    connection.subscribe(this.player);
-    // The room can include music and screen-share sound, not only voices.
-    this.encoder = createOpus({ music: true, bitrate: 64_000 });
+    this.speaker = new DiscordSpeaker({ connection, log: this.log });
     let next = performance.now();
     const tick = () => {
       const now = performance.now();
@@ -529,42 +644,18 @@ export class VoiceLink {
     this.clock = setTimeout(tick, 20);
   }
 
-  /**
-   * Every 20 ms: one mixed frame of the Hoffle room for Discord. LiveKit keeps
-   * handing over (silent) frames from a quiet microphone, so a burst starts
-   * only on real sound and ends after a moment of quiet: the bot shows as
-   * talking on Discord exactly while someone on Hoffle is.
-   */
+  /** Every 20 ms: one frame for Discord from the main bot and from each helper (speaker.js). */
   step() {
-    const frame = this.mixer.pull();
-    const loud = frame !== null && peak(frame) > SPEECH_PEAK;
-    if (loud) {
-      this.quiet = 0;
-      if (!this.burst) {
-        this.burst = new Readable({ objectMode: true, read() {} });
-        this.player.play(createAudioResource(this.burst, { inputType: StreamType.Opus }));
-      }
-    } else if (this.burst && ++this.quiet > QUIET_FRAMES) {
-      this.burst.push(null);
-      this.burst = null;
-      return;
-    }
-    // The quiet tail of a burst still plays, so words aren't clipped.
-    if (this.burst && frame && this.burst.readableLength < MAX_BURST_QUEUE) {
-      this.burst.push(this.encoder.encode(monoToStereo(frame)));
-    }
+    this.speaker?.step();
+    for (const voice of this.voices.values()) voice.speaker?.step();
   }
 
   stopPlayback() {
     clearTimeout(this.clock);
     this.clock = null;
-    this.burst?.push(null);
-    this.burst = null;
-    this.player?.stop(true);
-    this.player = null;
-    this.encoder?.free();
-    this.encoder = null;
-    this.mixer = new Mixer();
+    this.speaker?.stop();
+    this.speaker = null;
+    this.routes.clear();
   }
 
   status() {
@@ -578,6 +669,13 @@ export class VoiceLink {
       seats: this.people.size,
       audio: this.plan.audio,
       ears: this.ears?.name ?? null,
+      // Hoffle people shown on Discord by a helper of their own; the rest are in the main bot's mix.
+      helpers: [...this.voices.values()].map((voice) => ({
+        name: voice.name,
+        helper: voice.helper.tag || voice.helper.key,
+        live: voice.live,
+        talking: Boolean(voice.speaker?.talking),
+      })),
       // How each Discord voice arrives, to tell "too quiet" from "cutting out".
       people: [...this.people.values()].map((person) => ({
         name: person.name,

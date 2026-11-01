@@ -4,6 +4,7 @@ import { postableChannelKindsSql } from "@/lib/channel-kinds";
 import { isPrivateChannel, loadServerOverwrites } from "@/lib/channel-permissions";
 import {
   BridgeError,
+  discordHelperInviteUrl,
   discordInviteUrl,
   loadBridge,
   loadPairs,
@@ -102,6 +103,16 @@ async function snapshot(db: D1Database, serverId: string) {
       hoffleConnected: Boolean(service.status.hoffle?.connected),
       error: service.status.discord?.error || service.status.hoffle?.error || null,
       activity: service.status.bridges?.[serverId] ?? null,
+      // Voice helpers: each shows one Hoffle person in a Discord call. Each is
+      // added to the Discord server once; `inServer` says which already are.
+      voiceHelpers: (service.status.voiceHelpers ?? []).map((helper) => ({
+        id: helper.id,
+        name: helper.name,
+        avatarUrl: helper.avatarUrl ?? null,
+        connected: helper.connected,
+        inServer: Boolean(guild?.voiceHelpers?.includes(helper.id)),
+        inviteUrl: discordHelperInviteUrl(helper.id, bridge?.guild_id),
+      })),
     },
   };
 }

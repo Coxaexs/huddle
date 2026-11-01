@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { derivedBridgeToken, loadConfig, parseEnvFile } from "../src/config.js";
+import { derivedBridgeToken, loadConfig, parseEnvFile, splitTokens } from "../src/config.js";
 
 test("the derived token matches Hoffle's (lib/bot-auth.ts discordBridgeToken)", () => {
   const expected = `hfl_bridge_${createHash("sha256").update("hoffle-discord-bridge:secret").digest("hex")}`;
@@ -37,4 +37,11 @@ test("BOT_TOKEN can come from Hoffle's .env", () => {
   writeFileSync(join(dir, ".env"), "OTHER=1\nBOT_TOKEN=from-file\n");
   assert.equal(loadConfig({ HOFFLE_ENV_FILE: join(dir, ".env") }).hoffleToken, derivedBridgeToken("from-file"));
   assert.equal(loadConfig({ HOFFLE_ENV_FILE: join(dir, "missing") }).hoffleToken, "");
+});
+
+test("voice helper tokens: a list, without repeats or the main bot's own token", () => {
+  assert.deepEqual(splitTokens("a, b\nc,,a"), ["a", "b", "c"]);
+  const cfg = loadConfig({ DISCORD_BOT_TOKEN: "main", DISCORD_VOICE_BOT_TOKENS: "one,main, two" });
+  assert.deepEqual(cfg.voiceBotTokens, ["one", "two"]);
+  assert.deepEqual(loadConfig({}).voiceBotTokens, []);
 });

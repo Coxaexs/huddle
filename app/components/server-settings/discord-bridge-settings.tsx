@@ -47,6 +47,15 @@ interface Snapshot {
     hoffleConnected: boolean;
     error: string | null;
     activity: { lastRelayAt?: string | null; lastError?: string | null; relayed?: number } | null;
+    /** Extra Discord bots that show each Hoffle person in a Discord call on their own. */
+    voiceHelpers?: Array<{
+      id: string;
+      name: string;
+      avatarUrl: string | null;
+      connected: boolean;
+      inServer: boolean;
+      inviteUrl: string;
+    }>;
   };
 }
 
@@ -64,7 +73,7 @@ const OPTIONS: Array<{ key: keyof BridgeSettings; label: string; hint: string }>
   {
     key: "voice",
     label: "Voice chat",
-    hint: "A voice room paired with a Discord voice channel carries the call: each Discord person shows here as their own seat, and everyone here is heard on Discord through the bot.",
+    hint: "A voice room paired with a Discord voice channel carries the call: each Discord person shows here as their own seat, and everyone here is heard on Discord through the bot (or each as their own voice, with voice helpers).",
   },
 ];
 
@@ -223,6 +232,8 @@ export function DiscordBridgePanel({
   const pairedMissing = (discord?.channels || []).filter(
     (c) => data.pairs.some((p) => p.discordChannelId === c.id) && c.missing?.length,
   );
+  const helpers = service.voiceHelpers ?? [];
+  const helpersIn = helpers.filter((helper) => helper.inServer).length;
 
   return (
     <section className="integration-section discord-bridge" id="integration-discord-bridge">
@@ -430,6 +441,31 @@ export function DiscordBridgePanel({
               </li>
             ))}
           </ul>
+
+          {bridge.settings.voice && helpers.length > 0 && (
+            <>
+              <h3 className="bridge-subhead">Voices on Discord</h3>
+              <p className="integration-empty">
+                Each person in a voice room here can show up on Discord on their own, with their name and picture, through a
+                voice helper bot. {helpersIn} of {helpers.length} helper{helpers.length === 1 ? " is" : "s are"} in{" "}
+                {bridge.guild?.name || "the Discord server"}
+                {helpersIn
+                  ? `, so up to ${helpersIn} ${helpersIn === 1 ? "person shows" : "people show"} up one by one; anyone beyond that is heard through ${service.app?.name || "the bot"}.`
+                  : `; until one is added, everyone here is heard through ${service.app?.name || "the bot"}.`}
+              </p>
+              {helpers.some((helper) => !helper.inServer) && (
+                <div className="integration-form bridge-actions">
+                  {helpers
+                    .filter((helper) => !helper.inServer)
+                    .map((helper) => (
+                      <a key={helper.id} className="discord-btn secondary-gray" href={helper.inviteUrl} target="_blank" rel="noreferrer noopener">
+                        <ExternalLink size={14} /> Add {helper.name}
+                      </a>
+                    ))}
+                </div>
+              )}
+            </>
+          )}
 
           <div className="integration-form bridge-actions">
             {service.inviteUrl && (

@@ -70,6 +70,16 @@ describe("link codes", () => {
     expect(permissions & (1n << 3n)).toBe(0n); // never Administrator
     expect(permissions & (3n << 20n)).toBe(3n << 20n); // Connect + Speak, for voice channels
   });
+
+  it("voice helper invites ask only to join calls under a person's name, in the linked server", () => {
+    const url = new URL(bridge.discordHelperInviteUrl("1534110008453763094", "1100000000000000001"));
+    expect(url.searchParams.get("client_id")).toBe("1534110008453763094");
+    expect(url.searchParams.get("scope")).toBe("bot");
+    expect(url.searchParams.get("guild_id")).toBe("1100000000000000001");
+    const permissions = BigInt(url.searchParams.get("permissions") || "0");
+    expect(permissions).toBe((1n << 10n) | (1n << 20n) | (1n << 21n) | (1n << 26n)); // view, connect, speak, change nickname
+    expect(new URL(bridge.discordHelperInviteUrl("1534110008453763094")).searchParams.has("guild_id")).toBe(false);
+  });
 });
 
 describe.skipIf(!sqliteAvailable)("linking a Discord server", () => {
@@ -223,7 +233,20 @@ describe.skipIf(!sqliteAvailable)("linking a Discord server", () => {
       app: { id: "1534110008453763093", name: "huddle", avatarUrl: "https://cdn.discordapp.com/x.png" },
       discord: { connected: true, error: null },
       hoffle: { connected: true, error: null },
-      guilds: [{ id: guild.id, name: guild.name, icon: "javascript:alert(1)", missing: ["ManageWebhooks"], channels: [] }],
+      guilds: [
+        {
+          id: guild.id,
+          name: guild.name,
+          icon: "javascript:alert(1)",
+          missing: ["ManageWebhooks"],
+          channels: [],
+          voiceHelpers: ["1534110008453763094", "not-an-id", 7],
+        },
+      ],
+      voiceHelpers: [
+        { id: "1534110008453763094", name: "Hoffle Voice 1", avatarUrl: "http://plain.example/x.png", connected: true },
+        { id: "<script>", name: "bad" },
+      ],
       evil: "x".repeat(10),
     });
     const status = await bridge.loadServiceStatus(db);
@@ -232,6 +255,10 @@ describe.skipIf(!sqliteAvailable)("linking a Discord server", () => {
     expect(status.status.guilds?.[0].missing).toEqual(["ManageWebhooks"]);
     expect(status.status.guilds?.[0].icon).toBeNull();
     expect(status.status.app?.avatarUrl).toBe("https://cdn.discordapp.com/x.png");
+    expect(status.status.guilds?.[0].voiceHelpers).toEqual(["1534110008453763094"]);
+    expect(status.status.voiceHelpers).toEqual([
+      { id: "1534110008453763094", name: "Hoffle Voice 1", avatarUrl: null, connected: true },
+    ]);
     expect(status.status).not.toHaveProperty("evil");
   });
 });

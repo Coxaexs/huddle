@@ -450,6 +450,8 @@ Mirrors chosen Discord channels with Hoffle channels, both ways. Each person kee
 
 Settings shows whether the bridge is running, when it last carried a message, and which Discord permissions are missing in which channel. `/hoffle status` in Discord shows the same from that side, and `/hoffle unlink` stops it.
 
+**Voice calls.** A Hoffle voice room paired with a Discord voice channel carries the call too. Discord people each get their own seat in Hoffle. On Discord, the Hoffle side is one voice (the bot) unless you add **voice helpers**: one more Discord application per Hoffle person you want shown on their own, with their tokens in `DISCORD_VOICE_BOT_TOKENS` (comma separated). Each helper sits in the Discord call under a Hoffle person's name and picture; each server adds the helpers with the buttons under **Voices on Discord** in its bridge settings. See `discord-bridge/README.md` → Voice.
+
 ## Music bot
 
 The full music bot is a separate open-source project, [musicwatchtogether](https://github.com/Coxaexs/musicwatchtogether). It is the bot chat.hoffle.online uses, and it adds to the basic player:
