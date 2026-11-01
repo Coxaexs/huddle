@@ -13,6 +13,7 @@ import { channelAudience } from "./dms";
 import { publishMemberUpdate, publishMessageEvent, publishStructureChange } from "./hub-client";
 import { DEFAULT_SERVER_ID } from "./schema";
 import { deleteServerData } from "./servers";
+import { afterResponse } from "./after-response";
 
 // ---- Invites ----
 
@@ -340,7 +341,7 @@ export async function adminDeleteMessage(db: D1Database, id: string, actor: User
       { t: "message-deleted", id },
       await channelAudience(db, message.channel_id),
     );
-    void dispatchMessageDelete(id, message.channel_id);
+    afterResponse(dispatchMessageDelete(id, message.channel_id));
   }
   return true;
 }

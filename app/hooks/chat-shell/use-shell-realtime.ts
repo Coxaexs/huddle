@@ -464,13 +464,15 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
         ),
       );
     },
-    onReaction: (channelId, messageId, emoji, userId, added) => {
+    onReaction: (channelId, messageId, emoji, userId, added, external) => {
       if (channelId !== activeChannelRef.current) return;
       // Resolve the reacting person from the roster so the tooltip can name
       // them even when the reaction arrives over the socket. Falls back to the
       // signed-in user's own profile when the reactor is us (they may not be
       // in the current server's roster, e.g. a DM partner).
       const reactor = membersById.get(userId);
+      // A bot or a Discord person (through the bridge) is in no roster; the
+      // event carries their name instead.
       const reactorInfo =
         reactor || (user && userId === user.id)
           ? {
@@ -481,7 +483,9 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
             avatarUrl: reactor?.avatarUrl ?? user!.avatarUrl,
             color: reactor?.color || user!.color,
           }
-          : undefined;
+          : external && external.id === userId
+            ? external
+            : undefined;
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId

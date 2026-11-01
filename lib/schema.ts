@@ -17,7 +17,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 25;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -1390,7 +1390,70 @@ async function migrate(db: D1Database): Promise<void> {
       PRIMARY KEY (user_id, day)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS user_active_days_day_idx ON user_active_days(day)"),
+    // The Discord bridge (lib/discord-bridge.ts): one row per Hoffle server that
+    // set it up. guild_id is filled in once someone runs /hoffle link on Discord.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_bridges (
+      server_id TEXT PRIMARY KEY,
+      guild_id TEXT,
+      guild_name TEXT,
+      guild_icon TEXT,
+      link_code TEXT,
+      link_expires_at TEXT,
+      linked_by TEXT,
+      linked_at TEXT,
+      settings TEXT NOT NULL DEFAULT '{}',
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS discord_bridges_guild_idx ON discord_bridges(guild_id) WHERE guild_id IS NOT NULL"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS discord_bridges_code_idx ON discord_bridges(link_code) WHERE link_code IS NOT NULL"),
+    // Which Hoffle channel mirrors which Discord channel. One partner each way.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_bridge_channels (
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      discord_channel_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (server_id, channel_id)
+    )`),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS discord_bridge_channels_discord_idx ON discord_bridge_channels(discord_channel_id)"),
+    // What the bridge service last reported: its Discord app, the Discord
+    // servers it is in and their channels. One row ('service').
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_bridge_service (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    // A Hoffle account linked to a Discord account (lib/discord-accounts.ts):
+    // what that person says on a bridged Discord server shows as theirs here.
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_account_links (
+      user_id TEXT PRIMARY KEY,
+      discord_user_id TEXT NOT NULL,
+      discord_name TEXT,
+      linked_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS discord_account_links_discord_idx ON discord_account_links(discord_user_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS discord_account_codes (
+      code TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )`),
+    // People on another platform who reacted through a bridge, so a reaction
+    // row (user_id 'ext:discord:<id>') can still say who it was.
+    db.prepare(`CREATE TABLE IF NOT EXISTS external_actors (
+      id TEXT PRIMARY KEY,
+      platform TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar_url TEXT,
+      updated_at TEXT NOT NULL
+    )`),
   ]);
+
+  // Webhooks a bot made (and the bridge's own) are told apart from ones people made.
+  const webhookColumns = await columnNames(db, "channel_webhooks");
+  if (!webhookColumns.has("source")) {
+    await db.prepare("ALTER TABLE channel_webhooks ADD COLUMN source TEXT").run();
+  }
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);

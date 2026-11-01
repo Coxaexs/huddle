@@ -72,7 +72,7 @@ class Bot(discord.Client):
 Bot(intents=intents).run("hfl_bot_your_token_here")
 ```
 
-Use `wss://` and `https://` when your Hoffle is behind TLS. Tokens are the same ones used everywhere else: the global `BOT_TOKEN` (see `state/secrets.env`), or a per-server token from Server Settings -> Bots & Integrations.
+Use `wss://` and `https://` when your Hoffle is behind TLS. `GET /gateway/bot` answers with `wss://` whenever the request came in over https, including behind Cloudflare or a proxy that sets `X-Forwarded-Proto`, so discord.js finds the right gateway by itself. Tokens are the same ones used everywhere else: the global `BOT_TOKEN` (see `state/secrets.env`), or a per-server token from Server Settings -> Bots & Integrations.
 
 Serve images through the CDN route by adding `cdn: "http://localhost:8730/hangout/api/cdn"` to the discord.js `rest` options.
 
@@ -88,14 +88,28 @@ Serve images through the CDN route by adding `cdn: "http://localhost:8730/hangou
 - **Embeds and components**: embeds render as cards (fields, colours, thumbnails, images, footers). Buttons, link buttons and string selects work: a press becomes a `MESSAGE_COMPONENT` interaction carrying the message, so discord.py Views and discord.js collectors route it. `UpdateMessage` and deferred-update responses edit that message in place, for everyone or, on an ephemeral message, for the one person who can see it. Only the bot that sent a message receives presses on it.
 - **Ephemeral**: `defer(ephemeral=True)` followed by a follow-up, and `followup.send(ephemeral=True)`, stay private.
 - **The MESSAGE_CONTENT intent** behaves as on Discord: without it, message events arrive with the content blanked rather than not at all.
+- **Threads**: `POST /channels/{id}/threads` and `/channels/{id}/messages/{mid}/threads`, thread members, active and archived lists. Every Hoffle thread is public.
+- **Reactions**: bots react as themselves (`PUT /channels/{id}/messages/{mid}/reactions/{emoji}/@me`) and remove their own; the reaction shows under the bot's name. Server emoji are written `name:id` as on Discord. `GET .../reactions/{emoji}` lists who reacted.
+- **Files**: messages, edits and webhooks take Discord's multipart form (`payload_json` plus `files[n]`), up to 10 files of 40 MB each. Libraries' `files=` / `files:` options just work.
+- **Webhooks**: `POST/GET /channels/{id}/webhooks`, `GET /guilds/{id}/webhooks`, `GET/PATCH/DELETE /webhooks/{id}`, and the token routes (`POST /webhooks/{id}/{token}` with `wait`, `thread_id`, `username`, `avatar_url` and files; `GET/PATCH/DELETE /webhooks/{id}/{token}/messages/{mid}`). Webhooks a bot makes don't count toward the 15 people can make in Server Settings.
+- **Typing**: `POST /channels/{id}/typing` shows the bot typing, and `TYPING_START` reaches bots when people type (at most once every 8 seconds per person and channel).
+- **Edits** are limited to the bot's own messages, as on Discord (`50005 Cannot edit a message authored by another user`).
 
 ### What does not work
 
 - **Voice.** Discord's voice gateway needs raw UDP with Opus and xsalsa20 encryption, and Cloudflare Workers cannot open UDP sockets. Music bots and anything else that joins a voice channel will not connect. Use Hoffle's own music bot instead, which plays into Hoffle voice rooms directly.
-- **Bots adding reactions.** Reactions belong to an account in Hoffle's schema and a bot has none. Bots can read reactions and receive reaction events, but `PUT /reactions/.../@me` returns 403.
-- **Modals**, **autocomplete suggestions**, **user/channel/role/attachment options**, **threads**, **webhooks**, **scheduled events**, **stage instances**, and **per-channel permission overwrites**: Hoffle has no equivalent surface, so these return empty or an explicit error rather than pretending.
+- **Modals**, **autocomplete suggestions**, **user/channel/role/attachment options**, **scheduled events**, **stage instances**, and **editing per-channel permission overwrites** through the API: Hoffle has no equivalent surface yet, so these return empty or an explicit error rather than pretending.
 - **Sharding** beyond a single shard, which a self-hosted instance never needs.
 - **RESUME after the gateway hibernates.** The replay buffer is in memory, so a resume against an evicted object answers `INVALID_SESSION`; clients handle this by re-identifying.
+
+### Hoffle extensions
+
+Fields Discord does not have, added where a bot benefits. Libraries ignore them.
+
+- `author.hoffle_avatar_url` (a picture URL, absolute or under your base path) and `author.hoffle_avatar` (the emoji avatar) on users.
+- `message.hoffle`: `{ kind, audio_url, link, bridge }` — a voice message's audio, a Hoffle link card, and `bridge.url` for a message the Discord bridge carried over.
+- `thread.hoffle_anchor_message_id`: the message a thread was started from.
+- `MESSAGE_REACTION_*` events carry `hoffle_reactor` when the reactor is a bot (`bot:<id>`) or someone the Discord bridge reacts for (`ext:discord:<id>`).
 
 ### Rate limits
 
@@ -359,4 +373,4 @@ sendMessage("general", "Greetings from Node.js!");
 
 ## Discord bridge
 
-To mirror messages between a Discord server and Hoffle, see [Discord bridge](self-hosting.md#discord-bridge) in the self-hosting guide.
+Mirrors channels with a Discord server both ways: each person keeps their name and picture, and edits, deletes, replies, reactions, files, threads and typing follow. Each server sets it up on its own in **Server Settings → Integrations → Discord Bridge**; the instance runs one bridge service for all of them. See [Discord bridge](self-hosting.md#discord-bridge) for running it.

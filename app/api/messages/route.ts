@@ -1,3 +1,4 @@
+import { isExternalReactorId, reactorUsers } from "@/lib/reactors";
 import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
 import { canSeeServer, channelAccess, messageAccess } from "@/lib/access";
@@ -19,6 +20,7 @@ import { blockIfTimedOut } from "@/lib/timeouts";
 import { blockIfUnverified } from "@/lib/verification-level";
 import { slowmodeResponse, slowmodeWait } from "@/lib/slowmode";
 import { stripTextStyle } from "@/lib/text-style";
+import { afterResponse } from "@/lib/after-response";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,8 @@ export interface PublicMessage {
       avatar: string;
       avatarUrl?: string | null;
       color: string;
+      /** "discord" for a person reacting through the bridge, "bot" for a bot. */
+      via?: string;
     }>;
   }>;
   /** User ids named in this message, for highlighting and unread badges. */
@@ -356,10 +360,12 @@ async function decorateMessages(
       color: string;
     }>(
       db,
+      // LEFT JOIN: a bot or a Discord person (through the bridge) reacts
+      // without an account; reactorUsers below names them.
       `SELECT r.message_id, r.emoji, r.user_id,
               u.username, u.display_name, u.avatar, u.avatar_url, u.color
          FROM reactions r
-         JOIN users u ON u.id = r.user_id
+         LEFT JOIN users u ON u.id = r.user_id
         WHERE r.message_id IN`,
       ids,
     ),
@@ -377,6 +383,10 @@ async function decorateMessages(
     ),
   ]);
   const threadCounts = new Map(threadRows.map((r) => [r.thread_id, r.count]));
+  const otherReactors = await reactorUsers(
+    db,
+    reactionRows.filter((row) => !row.username && isExternalReactorId(row.user_id)).map((row) => row.user_id),
+  );
 
   // Aggregate reactions per message + emoji, keeping the list of who reacted.
   const byMessage = new Map<
@@ -393,6 +403,7 @@ async function decorateMessages(
           avatar: string;
           avatarUrl?: string | null;
           color: string;
+          via?: string;
         }>;
       }
     >
@@ -404,16 +415,21 @@ async function decorateMessages(
       mine: false,
       users: [],
     };
+    const other = row.username ? null : otherReactors.get(row.user_id);
+    // A row whose account is gone (and is not a bot or bridged person) is not shown.
+    if (!row.username && !other) continue;
     entry.count += 1;
     if (row.user_id === userId) entry.mine = true;
-    entry.users.push({
-      id: row.user_id,
-      username: row.username,
-      displayName: row.display_name,
-      avatar: row.avatar,
-      avatarUrl: row.avatar_url,
-      color: row.color,
-    });
+    entry.users.push(
+      other ?? {
+        id: row.user_id,
+        username: row.username,
+        displayName: row.display_name,
+        avatar: row.avatar,
+        avatarUrl: row.avatar_url,
+        color: row.color,
+      },
+    );
     emojis.set(row.emoji, entry);
     byMessage.set(row.message_id, emojis);
   }
@@ -466,6 +482,21 @@ async function decorateMessages(
         : null;
     }
   }
+}
+
+/**
+ * Payload fields only Hoffle itself writes: which bot or webhook sent a message,
+ * the picture a webhook used, and the Discord bridge's marker. A person's own
+ * message never carries them, or anyone could post a fake DISCORD tag or make
+ * the bridge take their message for its own echo.
+ */
+const SERVER_PAYLOAD_FIELDS = ["webhookId", "botId", "avatarUrl", "bridge"];
+
+function withoutServerFields(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const copy = { ...(payload as Record<string, unknown>) };
+  for (const key of SERVER_PAYLOAD_FIELDS) delete copy[key];
+  return copy;
 }
 
 export interface PostBody {
@@ -717,7 +748,7 @@ export async function postMessageAs(
   }
   // A forwarded card is rebuilt from the original message, which the sender
   // must be able to read; nothing about it is taken from the client.
-  let payload = body.payload;
+  let payload = withoutServerFields(body.payload);
   if (hasPayloadForward) {
     const forwarded = await forwardedCard(
       db,
@@ -951,7 +982,7 @@ export async function postMessageAs(
 
   // Connected Discord bots see the same message. This runs after the hub
   // publish so a slow or absent gateway never delays the sender's own tabs.
-  void dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin });
+  afterResponse(dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin }));
 
   const pushTargets = new Set<string>();
   if (message.mentions) {

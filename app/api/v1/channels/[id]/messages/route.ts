@@ -5,6 +5,7 @@ import { publicMessage } from "@/app/api/messages/route";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
+import { afterResponse } from "@/lib/after-response";
 
 export const dynamic = "force-dynamic";
 
@@ -214,9 +215,11 @@ export async function POST(
 
   // Bots on the gateway see messages posted through the older REST APIs too,
   // so a bot's view of a channel does not depend on which API wrote to it.
-  void dispatchMessage("MESSAGE_CREATE", stored, {
-    origin: new URL(request.url).origin,
-  });
+  afterResponse(
+    dispatchMessage("MESSAGE_CREATE", stored, {
+      origin: new URL(request.url).origin,
+    }),
+  );
 
   return Response.json(
     {

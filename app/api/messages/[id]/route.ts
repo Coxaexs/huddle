@@ -14,6 +14,7 @@ import { postSystemMessage } from "@/lib/system-messages";
 import { messageAccess } from "@/lib/access";
 import { publicMessage } from "@/app/api/messages/route";
 import type { StoredMessage } from "@/lib/storage";
+import { afterResponse } from "@/lib/after-response";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +135,7 @@ export async function DELETE(
       { t: "message-deleted", id },
       await channelAudience(db, message.channel_id),
     );
-    void dispatchMessageDelete(id, message.channel_id);
+    afterResponse(dispatchMessageDelete(id, message.channel_id));
   }
   return Response.json({ ok: true });
 }
@@ -212,9 +213,11 @@ export async function PATCH(
         { t: "message-edited", id, content, editedAt },
         await channelAudience(db, message.channel_id),
       );
-      void dispatchMessageById("MESSAGE_UPDATE", id, {
-        origin: new URL(request.url).origin,
-      });
+      afterResponse(
+        dispatchMessageById("MESSAGE_UPDATE", id, {
+          origin: new URL(request.url).origin,
+        }),
+      );
     }
     return Response.json({ ok: true, content, editedAt });
   }

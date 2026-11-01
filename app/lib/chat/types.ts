@@ -63,6 +63,7 @@ export interface Message {
       avatar: string;
       avatarUrl?: string | null;
       color: string;
+      via?: string;
     }>;
   }>;
   mentions?: string[];
@@ -120,6 +121,11 @@ export interface Message {
     modifier?: number;
     mode?: string;
     roller?: string;
+    /** A webhook post's own picture (a bridged Discord message carries its author's). */
+    avatarUrl?: string;
+    webhookId?: string;
+    /** Set on messages the Discord bridge carried over; `url` is the original. */
+    bridge?: { platform: string; url?: string };
     /** Discord-style bot replies: embeds and button rows. */
     embeds?: BotEmbedData[];
     components?: BotComponentRow[];
@@ -226,6 +232,7 @@ export type ReactionList = Array<{
     avatar: string;
     avatarUrl?: string | null;
     color: string;
+    via?: string;
   }>;
 }>;
 

@@ -65,6 +65,16 @@ interface HubHandlers {
     emoji: string,
     userId: string,
     added: boolean,
+    /** Sent when the reactor is not a member: a bot, or a Discord person via the bridge. */
+    reactor?: {
+      id: string;
+      username: string;
+      displayName: string;
+      avatar: string;
+      avatarUrl?: string | null;
+      color: string;
+      via?: string;
+    },
   ) => void;
   onSoundboard?: (channelId: string, url: string, name: string, by: string) => void;
   /** An administrator force-stopped /tts and /say in this channel. */
@@ -487,6 +497,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               payload.emoji,
               payload.userId,
               payload.added,
+              payload.reactor,
             );
             break;
           case "tts-stop":

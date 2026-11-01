@@ -216,6 +216,13 @@ export async function evictFromVoice(
   }
 }
 
+/** A LiveKit token went out: the hub keeps its rooms to seated people until it expires. */
+export async function watchLiveKit(): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub.fetch(`${INTERNAL}/livekit-watch`, { method: "POST" }).catch(() => undefined);
+}
+
 /** Tells the hub whether a user's open sockets should count as online. */
 export async function publishPresenceStatus(userId: string, invisible: boolean): Promise<void> {
   const stub = hub();

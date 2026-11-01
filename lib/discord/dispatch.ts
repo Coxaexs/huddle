@@ -13,7 +13,7 @@ import { bindings } from "../storage";
 import { DM_SERVER_ID } from "../schema";
 import type { StoredMessage } from "../storage";
 import { channelWithGuild, loadMentionedUsers, loadReactions, loadUser } from "./guild-data";
-import { serializeMessage } from "./serialize";
+import { serializeMessage, serializeUser } from "./serialize";
 import { snowflakeFor } from "./snowflake";
 
 const INTERNAL = "https://hoffle.gateway";
@@ -155,17 +155,33 @@ export async function dispatchMessageDelete(
 export async function dispatchReaction(
   event: "MESSAGE_REACTION_ADD" | "MESSAGE_REACTION_REMOVE",
   input: { messageId: string; channelId: string; userId: string; emoji: string },
+  options: { excludeBotId?: string | null } = {},
 ): Promise<void> {
   const db = bindings().DB;
   if (!db || !bindings().DISCORD_GATEWAY) return;
   try {
     const located = await channelWithGuild(db, input.channelId);
     if (!located) return;
+    // A reaction in a thread belongs to the thread, as its message does.
+    const row = await db
+      .prepare("SELECT thread_id FROM messages WHERE id = ?")
+      .bind(input.messageId)
+      .first<{ thread_id: string | null }>();
     const [messageId, channelSnowflake, userId] = await Promise.all([
       snowflakeFor("message", input.messageId),
-      snowflakeFor("channel", input.channelId, located.channel.created_at),
+      row?.thread_id
+        ? snowflakeFor("channel", row.thread_id)
+        : snowflakeFor("channel", input.channelId, located.channel.created_at),
       snowflakeFor("user", input.userId),
     ]);
+    // Discord sends the reacting member along; bots name people from it. A
+    // custom emoji is stored as ":name:" and goes out as its bare name.
+    const reactor = input.userId.startsWith("ext:") || input.userId.startsWith("bot:")
+      ? null
+      : await loadUser(db, input.userId);
+    const member = reactor
+      ? { user: await serializeUser(reactor), roles: [], joined_at: reactor.created_at, deaf: false, mute: false }
+      : undefined;
     const guildSnowflake = located.server
       ? await snowflakeFor("guild", located.server.id, located.server.created_at)
       : undefined;
@@ -176,11 +192,20 @@ export async function dispatchReaction(
         channel_id: channelSnowflake,
         message_id: messageId,
         guild_id: guildSnowflake,
-        emoji: { id: null, name: input.emoji },
+        emoji: { id: null, name: input.emoji.replace(/^:(.+):$/, "$1") },
+        ...(member ? { member } : {}),
         burst: false,
         type: 0,
+        // Hoffle extension: who reacted when it was not a Hoffle account.
+        ...(input.userId.startsWith("ext:") || input.userId.startsWith("bot:")
+          ? { hoffle_reactor: input.userId }
+          : {}),
       },
-      { serverId: located.server?.id ?? DM_SERVER_ID, isDm: located.isDm },
+      {
+        serverId: located.server?.id ?? DM_SERVER_ID,
+        isDm: located.isDm,
+        excludeBotId: options.excludeBotId ?? null,
+      },
     );
   } catch {
     // Best effort.

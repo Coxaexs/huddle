@@ -19,8 +19,8 @@ describe("bot message payloads", () => {
     expect(payloadHasComponent(stored, "forged")).toBe(false);
   });
 
-  it("stores nothing for a plain text message", () => {
-    expect(botPayload("dnd-bot", [], [])).toBeNull();
+  it("still records which bot sent a plain text message, so only it may edit it", () => {
+    expect(JSON.parse(botPayload("dnd-bot", [], []))).toEqual({ embeds: [], components: [], botId: "dnd-bot" });
   });
 
   it("keeps buttons when an edit only replaces the embed", () => {

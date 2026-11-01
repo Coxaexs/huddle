@@ -106,7 +106,9 @@ services:
       music-bot:
         condition: service_started
 
-  # Discord bridge. Needs discord-bridge/.env (see discord-bridge/.env.example).
+  # Discord bridge: one bot for every server. Each server links its own Discord
+  # server in Server Settings -> Integrations -> Discord Bridge. Needs
+  # DISCORD_BOT_TOKEN in discord-bridge/.env (see discord-bridge/.env.example).
   discord-bridge:
     profiles: [bridge]
     build:
@@ -118,8 +120,15 @@ services:
       - path: ./discord-bridge/.env
         required: false
     environment:
-      HUDDLE_URL: http://hoffle:8730
-      HUDDLE_BASE_PATH: ${BASE_PATH:-/hangout}
+      HOFFLE_URL: http://hoffle:8730
+      HOFFLE_BASE_PATH: ${BASE_PATH:-/hangout}
+      # BOT_TOKEN from .env, or the one Hoffle generated into state/secrets.env.
+      HOFFLE_BOT_TOKEN: ${BOT_TOKEN:-}
+      HOFFLE_ENV_FILE: /hoffle-state/secrets.env
+      BRIDGE_HEALTH_PORT: "0"
+    volumes:
+      - ./state/discord-bridge:/app/state
+      - ./state:/hoffle-state:ro
     depends_on:
       hoffle:
         condition: service_healthy
@@ -128,7 +137,8 @@ services:
   # start. Browsers use it once LIVEKIT_URL is set in .env; until then voice
   # stays peer-to-peer.
   livekit:
-    image: livekit/livekit-server:latest
+    # Pinned: a new LiveKit should be a reviewed bump, not a nightly auto-update.
+    image: livekit/livekit-server:v1.13.11
     container_name: hoffle-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml

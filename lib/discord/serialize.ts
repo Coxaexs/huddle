@@ -166,6 +166,11 @@ export async function serializeUser(
     flags: 0,
     premium_type: 0,
     public_flags: 0,
+    // Hoffle extensions (libraries ignore unknown keys): the picture as stored,
+    // which may be an upload path or an emoji avatar, so a bridge can show the
+    // same face on the other side.
+    hoffle_avatar_url: user.avatar_url || null,
+    hoffle_avatar: user.avatar || null,
   };
 }
 
@@ -411,6 +416,11 @@ export async function serializeThread(
     // Discord counts messages that were sent rather than messages that exist,
     // so the starter message shows up here but never in message_count.
     total_message_sent: stats.messageCount + (thread.anchor_message_id ? 1 : 0),
+    // Hoffle extension: the message the thread hangs off (Discord gives a
+    // message thread the message's id; Hoffle snowflakes are per kind).
+    hoffle_anchor_message_id: thread.anchor_message_id
+      ? await snowflakeFor("message", thread.anchor_message_id)
+      : null,
   };
 
   if (parts.viewerBotId) {
@@ -549,8 +559,11 @@ export interface MessageContext {
  */
 async function syntheticAuthor(
   message: StoredMessage,
+  extras: MessageExtras,
 ): Promise<Record<string, unknown>> {
-  const id = await snowflakeFor("user", `author:${message.author}`);
+  // Discord gives a webhook message the webhook's id as its author id, which is
+  // how libraries tell webhook posts apart (message.webhookId === author.id).
+  const id = extras.webhookId || (await snowflakeFor("user", `author:${message.author}`));
   return {
     id,
     username: message.author,
@@ -565,7 +578,36 @@ async function syntheticAuthor(
     flags: 0,
     accent_color: colorToInt(message.color) || null,
     banner: null,
+    hoffle_avatar_url: extras.avatarUrl || null,
+    hoffle_avatar: message.avatar || null,
   };
+}
+
+interface MessageExtras {
+  webhookId?: string;
+  avatarUrl?: string;
+  bridge?: { platform: string; url?: string };
+}
+
+/** The bits of `payload` that change how a message is addressed, not just shown. */
+function messageExtras(message: StoredMessage): MessageExtras {
+  if (!message.payload) return {};
+  try {
+    const parsed = JSON.parse(message.payload) as Record<string, unknown>;
+    const extras: MessageExtras = {};
+    if (typeof parsed.webhookId === "string" && parsed.webhookId) extras.webhookId = parsed.webhookId;
+    if (typeof parsed.avatarUrl === "string" && parsed.avatarUrl) extras.avatarUrl = parsed.avatarUrl;
+    const bridge = parsed.bridge as { platform?: unknown; url?: unknown } | undefined;
+    if (bridge && typeof bridge.platform === "string") {
+      extras.bridge = {
+        platform: bridge.platform,
+        ...(typeof bridge.url === "string" ? { url: bridge.url } : {}),
+      };
+    }
+    return extras;
+  } catch {
+    return {};
+  }
 }
 
 function parseAttachmentKeys(message: StoredMessage): string[] {
@@ -681,9 +723,10 @@ export async function serializeMessage(
   context: MessageContext,
 ): Promise<Record<string, unknown>> {
   const id = await snowflakeFor("message", message.id, message.created_at);
+  const extras = messageExtras(message);
   const author = context.author
     ? await serializeUser(context.author, { bot: Boolean(message.is_bot) })
-    : await syntheticAuthor(message);
+    : await syntheticAuthor(message, extras);
 
   const mentions = await Promise.all(
     (context.mentions || []).map((user) => serializeUser(user)),
@@ -722,7 +765,7 @@ export async function serializeMessage(
     reactions,
     nonce: undefined,
     pinned: Boolean(message.pinned_at),
-    webhook_id: undefined,
+    webhook_id: extras.webhookId,
     type: message.command_text
       ? MessageType.ChatInputCommand
       : isReply
@@ -731,6 +774,19 @@ export async function serializeMessage(
     flags: 0,
     position: undefined,
   };
+
+  // Hoffle extension: what a voice message, a link card or a bridged message
+  // carries beyond text, so a bridge can pass it on rather than drop it.
+  const hoffle: Record<string, unknown> = {};
+  if (message.kind) hoffle.kind = message.kind;
+  if (message.audio_url) {
+    hoffle.audio_url = /^https?:/.test(message.audio_url)
+      ? message.audio_url
+      : `${context.origin || ""}${message.audio_url}`;
+  }
+  if (message.link) hoffle.link = message.link;
+  if (extras.bridge) hoffle.bridge = extras.bridge;
+  if (Object.keys(hoffle).length) payload.hoffle = hoffle;
 
   if (isReply) {
     const referencedId = await snowflakeFor("message", message.reply_to!);

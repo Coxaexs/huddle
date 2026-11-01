@@ -51,7 +51,17 @@ import { publicMessage } from "../app/api/messages/route";
 import { isBlockedBetween } from "./friends";
 import { MAX_WHISPER_TARGETS } from "./whisper";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
+import { bridgedVoiceRooms } from "./discord-bridge";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
+import { liveKitClients, liveKitRooms, removeFromLiveKit, silenceInLiveKit } from "./livekit-admin";
+import {
+  emptySweepState,
+  LIVEKIT_SWEEP_EVERY_MS,
+  LIVEKIT_TOKEN_TTL_MS,
+  planSweep,
+  splitIdentity,
+  type LiveKitSweepState,
+} from "./livekit-sweep";
 import {
   emptyPlayer,
   LIVE_OWNED_ACTIONS,
@@ -72,7 +82,7 @@ import {
   type VoiceParticipant,
 } from "./protocol";
 
-interface Attachment {
+export interface Attachment {
   connectionId: string;
   userId: string;
   username: string;
@@ -87,6 +97,8 @@ interface Attachment {
   muted: boolean;
   deafened: boolean;
   important?: boolean;
+  /** Holds the room's karaoke lead (see VoiceParticipant.karaokeLead). */
+  karaokeLead?: boolean;
   /** Priority Speaker switched on (only ever true while priorityAllowed). */
   prioritySpeaker?: boolean;
   /** Holds PRIORITY_SPEAKER in this room's server; decided on join. */
@@ -113,6 +125,14 @@ interface Attachment {
   sfu?: boolean;
   bot: boolean;
   recorder: boolean;
+  /**
+   * A socket of the Discord bridge service: a Discord person's seat (with
+   * `discord`), or its monitor (without). Either sees only the voice rooms
+   * paired with a Discord voice channel, and a seat may sit only in one.
+   */
+  bridge?: boolean;
+  /** A Discord person's seat, carried in by the bridge (VoiceParticipant.discord). */
+  discord?: boolean;
   /** Connected but appearing offline: left out of every presence list. */
   invisible?: boolean;
   /**
@@ -124,6 +144,20 @@ interface Attachment {
   shard?: boolean;
   /** This seat has the club open: the music bot's lights reach it. */
   clubWatch?: boolean;
+  /**
+   * A dead socket whose connection resumed on a new one (see handleSocket):
+   * its seat and everything keyed by its id belong to the new socket now.
+   */
+  replaced?: boolean;
+}
+
+/**
+ * The seat a resumed connection takes over from the socket it replaces: where
+ * it sits and what it is doing stay, who it is comes from the new connect.
+ */
+export function resumedSeat(fresh: Attachment, old: Attachment): Attachment {
+  const { connectionId, userId, username, displayName, avatar, avatarUrl, color, bot, recorder, invisible, shard, feed, bridge, discord } = fresh;
+  return { ...old, connectionId, userId, username, displayName, avatar, avatarUrl, color, bot, recorder, invisible, shard, feed, bridge, discord };
 }
 
 /** A name for a room's shared Jellyfin conversion. */
@@ -144,6 +178,8 @@ const IDLE_LEAVE_MS = 60_000;
  * path a query, and clearing it costs at most one extra read per channel.
  */
 const CHANNEL_CACHE_LIMIT = 500;
+/** How long the hub trusts its list of voice rooms bridged to Discord. */
+const BRIDGED_VOICE_TTL_MS = 20_000;
 
 export class HuddleHub extends DurableObject {
   private players = new Map<string, PlayerState>();
@@ -208,6 +244,8 @@ export class HuddleHub extends DurableObject {
   private outbox: Promise<void> = Promise.resolve();
   /** connectionId -> caption lines sent this second, to cap a chatty tab. */
   private readonly captionBudget = new Map<string, { second: number; count: number }>();
+  /** When each person last had typing passed on to bots, per channel. */
+  private readonly botTypingAt = new Map<string, number>();
   /** connectionId -> living room poses relayed this second. */
   private readonly loungeBudget = new Map<string, { second: number; count: number }>();
   private readonly synthBudget = new Map<string, { second: number; count: number }>();
@@ -303,7 +341,9 @@ export class HuddleHub extends DurableObject {
 
   /** A track just left the player: into /history and /longhistory. */
   private remember(state: PlayerState, track: Track): void {
-    state.history = [track, ...(state.history || [])].slice(0, 25);
+    // The melody is only for singing along while it plays.
+    const { melody: _melody, ...kept } = track;
+    state.history = [kept, ...(state.history || [])].slice(0, 25);
     const played: PlayedTrack = {
       title: track.title,
       artist: track.artist,
@@ -475,6 +515,9 @@ export class HuddleHub extends DurableObject {
         }
       }
       for (const room of emptied) this.broadcastVoice(room);
+      // A modified client would ignore voice-evicted and keep its LiveKit
+      // connection, or come back on the token it already holds.
+      if (reason === "moderator") await this.removeFromLiveKitNow(body.userId, rooms);
       return Response.json({ ok: true, evicted: emptied.size });
     }
     if (url.pathname === "/presence-status" && request.method === "POST") {
@@ -526,6 +569,12 @@ export class HuddleHub extends DurableObject {
       };
       return Response.json(await this.toggleSessionNotes(body));
     }
+    if (url.pathname === "/livekit-watch" && request.method === "POST") {
+      // A LiveKit token was just handed out: from here on, its holder needs a
+      // seat to stay in the room (see livekit-sweep.ts).
+      await this.watchLiveKit(Date.now() + LIVEKIT_TOKEN_TTL_MS + 60_000);
+      return Response.json({ ok: true });
+    }
     if (url.pathname === "/state") {
       return Response.json({
         online: this.onlineUserIds(),
@@ -568,17 +617,22 @@ export class HuddleHub extends DurableObject {
       this.ctx.waitUntil(this.runEvents().catch(() => undefined));
     }
 
-    // A reconnect after a restart keeps its old id when its ticket checks out
-    // and nobody holds that id now, so its seat and LiveKit identity carry on.
+    // A reconnect keeps its old id when its ticket checks out, so its seat and
+    // LiveKit identity carry on. After a restart nobody holds the id any more;
+    // after a wifi blip this person's own dead socket still does, because the
+    // hub has not seen it drop yet. That socket is retired and its seat moves
+    // over, so the room never sees them leave and their call is left alone.
     const userId = url.searchParams.get("userId") || "";
     const resumeId = url.searchParams.get("resume") || "";
+    const holders = resumeId ? this.sockets().filter((entry) => entry.attachment.connectionId === resumeId) : [];
     const resumable =
       Boolean(userId && resumeId) &&
-      !this.sockets().some((entry) => entry.attachment.connectionId === resumeId) &&
+      holders.every((entry) => entry.attachment.userId === userId) &&
       (await verifyResumeTicket(this.resumeKey, userId, resumeId, url.searchParams.get("ticket") || ""));
 
     const shardRoom = url.searchParams.get("room")?.trim().slice(0, 64) || null;
     const connId = shardRoom && resumeId ? resumeId : (resumable ? resumeId : crypto.randomUUID());
+    const retired = connId === resumeId ? holders.filter((entry) => entry.attachment.userId === userId) : [];
     // The worker only passes feed=1 for the music bot (its club light feed).
     const feed = Boolean(shardRoom) && url.searchParams.get("bot") === "1" && url.searchParams.get("feed") === "1";
     const attachment: Attachment = {
@@ -600,12 +654,25 @@ export class HuddleHub extends DurableObject {
       recorder: url.searchParams.get("recorder") === "1",
       invisible: url.searchParams.get("invisible") === "1",
       ...(shardRoom ? { shard: true } : {}),
+      // Only the worker sets these, and only for the bridge service's token.
+      ...(url.searchParams.get("bridge") === "1" ? { bridge: true } : {}),
+      ...(url.searchParams.get("bridge") === "1" && url.searchParams.get("discord") === "1" ? { discord: true } : {}),
     };
     if (feed) {
       Object.assign(attachment, { voiceChannelId: null, voiceJoinedAt: null, invisible: true, feed: true });
     }
     if (!attachment.userId) {
       return new Response("Unauthorized", { status: 401 });
+    }
+    const carried = retired.find((entry) => entry.attachment.voiceChannelId) ?? retired[0];
+    if (carried && !feed) Object.assign(attachment, resumedSeat(attachment, carried.attachment));
+    for (const entry of retired) {
+      this.saveAttachment(entry.socket, { ...entry.attachment, replaced: true });
+      try {
+        entry.socket.close(4000, "Resumed on a new connection");
+      } catch {
+        // Already gone.
+      }
     }
 
     const pair = new WebSocketPair();
@@ -723,6 +790,20 @@ export class HuddleHub extends DurableObject {
           },
           { skipConnectionId: attachment.connectionId },
         );
+        // Bots hear it too (TYPING_START), at most every 8 s per person and
+        // channel: the Discord bridge shows "typing…" on the Discord side.
+        if (attachment.userId) {
+          const key = `${event.channelId}:${attachment.userId}`;
+          const now = Date.now();
+          if ((this.botTypingAt.get(key) ?? 0) < now - 8000) {
+            this.botTypingAt.set(key, now);
+            if (this.botTypingAt.size > 2000) this.botTypingAt.clear();
+            const typing = import("./discord/dispatch")
+              .then(({ dispatchTyping }) => dispatchTyping(event.channelId as string, attachment.userId))
+              .catch(() => undefined);
+            if (typeof this.ctx?.waitUntil === "function") this.ctx.waitUntil(typing);
+          }
+        }
         return;
 
       case "caption": {
@@ -1137,11 +1218,13 @@ export class HuddleHub extends DurableObject {
 
         // One person occupies one seat: a second tab joining takes over, and
         // the others are dropped so nobody appears in the room twice.
+        // A linked person's Discord seat is a second place they can be heard
+        // from, not a second tab: neither one pushes the other out.
         const evicted = new Set<string>();
-        if (!attachment.bot) {
+        if (!attachment.bot && !attachment.discord) {
           for (const entry of this.sockets()) {
             const other = entry.attachment;
-            if (other.bot) continue;
+            if (other.bot || other.discord) continue;
             if (other.userId !== attachment.userId) continue;
             if (other.connectionId === attachment.connectionId) continue;
             if (!other.voiceChannelId) continue;
@@ -1170,7 +1253,15 @@ export class HuddleHub extends DurableObject {
           }
         }
 
+        // The tab re-announcing the very seat this socket holds (it resumed
+        // after a blip, see handleSocket): its call carried on, so the floor, a
+        // raised hand and what it is sharing all stay as they were.
+        const sameSeat =
+          previous === event.channelId &&
+          attachment.voiceJoinedAt != null &&
+          event.since === attachment.voiceJoinedAt;
         attachment.important = false;
+        attachment.karaokeLead = false;
         attachment.sfu = event.sfu === true;
         if (attachment.voiceChannelId !== event.channelId) attachment.lounge = null;
         attachment.voiceChannelId = event.channelId;
@@ -1185,27 +1276,29 @@ export class HuddleHub extends DurableObject {
         // itself on join, but a modified one simply would not, and then it would
         // be heard by the whole room.
         const info = await this.channelInfo(event.channelId);
-        if (info.kind === "stage") {
-          attachment.speakAllowed = await this.seatMaySpeak(info.serverId, attachment.userId);
-        } else {
+        if (info.kind !== "stage") {
           // Not a stage, so the floor is not something anyone has to be granted.
           attachment.speakAllowed = true;
+        } else if (!sameSeat) {
+          attachment.speakAllowed = await this.seatMaySpeak(info.serverId, attachment.userId);
         }
-        attachment.handRaised = false;
+        if (!sameSeat) attachment.handRaised = false;
         // Like the floor, decided from the database rather than the client.
-        attachment.prioritySpeaker = false;
         attachment.priorityAllowed = await this.seatMayPrioritySpeak(info.serverId, attachment.userId);
+        attachment.prioritySpeaker = sameSeat && attachment.prioritySpeaker === true && attachment.priorityAllowed;
         attachment.muted = resolveSeatMute({
           kind: info.kind,
-          speakAllowed: attachment.speakAllowed,
+          speakAllowed: attachment.speakAllowed === true,
           requestedMuted: event.muted === true,
         });
         attachment.deafened = event.deafened === true;
-        attachment.cameraStreamId = null;
-        attachment.screenStreamId = null;
-        attachment.screenStartedAt = null;
-        this.streamPreviews.delete(attachment.connectionId);
-        this.watchingBy.delete(attachment.connectionId);
+        if (!sameSeat) {
+          attachment.cameraStreamId = null;
+          attachment.screenStreamId = null;
+          attachment.screenStartedAt = null;
+          this.streamPreviews.delete(attachment.connectionId);
+          this.watchingBy.delete(attachment.connectionId);
+        }
         this.saveAttachment(socket, attachment);
 
         if (previous && previous !== event.channelId) {
@@ -1222,6 +1315,7 @@ export class HuddleHub extends DurableObject {
 
       case "voice-leave": {
         attachment.important = false;
+        attachment.karaokeLead = false;
         attachment.prioritySpeaker = false;
         const previous = attachment.voiceChannelId;
         const joinedAt = attachment.voiceJoinedAt;
@@ -1298,6 +1392,13 @@ export class HuddleHub extends DurableObject {
         }
         if (typeof event.sfu === "boolean") {
           attachment.sfu = event.sfu;
+        }
+        if (typeof event.karaokeLead === "boolean") {
+          // One lead a room: two people each sending the song would play it twice, out of step.
+          const room = attachment.voiceChannelId;
+          const taken = Boolean(room) && [...this.sockets()].some(({ attachment: other }) =>
+            other.connectionId !== attachment.connectionId && other.voiceChannelId === room && other.karaokeLead);
+          attachment.karaokeLead = event.karaokeLead && Boolean(room) && !taken;
         }
         this.saveAttachment(socket, attachment);
         if (attachment.voiceChannelId) {
@@ -1606,6 +1707,8 @@ export class HuddleHub extends DurableObject {
 
   async webSocketClose(socket: WebSocket) {
     const attachment = this.readAttachment(socket);
+    // Retired by a resume: its seat and budgets are the new socket's now.
+    if (attachment?.replaced) return;
     if (attachment) this.markSeen(attachment);
     if (attachment) {
       this.captionBudget.delete(attachment.connectionId);
@@ -1682,7 +1785,7 @@ export class HuddleHub extends DurableObject {
     for (const socket of this.ctx.getWebSockets()) {
       if (socket.readyState !== WebSocket.OPEN) continue;
       const attachment = this.readAttachment(socket);
-      if (attachment) out.push({ socket, attachment });
+      if (attachment && !attachment.replaced) out.push({ socket, attachment });
     }
     return out;
   }
@@ -1690,7 +1793,7 @@ export class HuddleHub extends DurableObject {
   private socketFor(connectionId: string): WebSocket | null {
     const tagged = this.ctx.getWebSockets(`conn:${connectionId}`);
     for (const socket of tagged) {
-      if (socket.readyState === WebSocket.OPEN) return socket;
+      if (socket.readyState === WebSocket.OPEN && !this.readAttachment(socket)?.replaced) return socket;
     }
     for (const { socket, attachment } of this.sockets()) {
       if (attachment.connectionId === connectionId) return socket;
@@ -1786,6 +1889,31 @@ export class HuddleHub extends DurableObject {
     // Without a database there is no membership to consult (a bare dev
     // instance, or tests): everything is one shared space, as it always was.
     if (!this.db) return () => true;
+    const allowed = await this.memberAudience(channelId);
+    // The Discord bridge sees the voice rooms it carries, and nothing else.
+    if (!this.sockets().some((entry) => entry.attachment.bridge)) return allowed;
+    const bridged = (await this.bridgedVoiceRooms()).has(channelId);
+    return (attachment) => (attachment.bridge ? bridged : allowed(attachment));
+  }
+
+  /**
+   * Voice rooms paired with a Discord voice channel while the bridge carries
+   * voice there. Cached briefly: pairs change rarely and this is consulted on
+   * every broadcast while a bridge socket is connected.
+   */
+  private bridgedVoice: { at: number; rooms: Set<string> } | null = null;
+  private async bridgedVoiceRooms(): Promise<Set<string>> {
+    if (!this.db) return new Set();
+    if (this.bridgedVoice && Date.now() - this.bridgedVoice.at < BRIDGED_VOICE_TTL_MS) return this.bridgedVoice.rooms;
+    const rooms = await bridgedVoiceRooms(this.db).catch(() => null);
+    // A failed lookup carries nobody, and is not cached.
+    if (!rooms) return new Set();
+    this.bridgedVoice = { at: Date.now(), rooms };
+    return rooms;
+  }
+
+  private async memberAudience(channelId: string): Promise<(attachment: Attachment) => boolean> {
+    if (!this.db) return () => true;
     const info = await this.channelInfo(channelId);
     if (info.serverId === DM_SERVER_ID) {
       const people = await this.dmAudience(channelId);
@@ -1814,6 +1942,13 @@ export class HuddleHub extends DurableObject {
 
   /** Whether this seat may sit in a voice room: member (or DM participant), not banned. */
   private async mayJoinVoice(attachment: Attachment, channelId: string): Promise<boolean> {
+    if (attachment.bridge) {
+      // The monitor never sits anywhere; a Discord seat only in a bridged room.
+      if (!attachment.discord || !(await this.bridgedVoiceRooms()).has(channelId)) return false;
+      // Someone with no Hoffle account is the Discord channel's business.
+      if (attachment.userId.startsWith("discord:")) return true;
+      // A linked person also needs everything they would need in Hoffle itself.
+    }
     if (attachment.bot || !this.db) return true;
     const info = await this.channelInfo(channelId);
     if (!info.serverId) return false;
@@ -1989,8 +2124,10 @@ export class HuddleHub extends DurableObject {
           screenStartedAt: attachment.screenStreamId ? attachment.screenStartedAt ?? null : null,
           screenViewers: attachment.screenStreamId ? this.viewersOf(channelId, attachment.connectionId) : undefined,
           sfu: attachment.sfu || undefined,
+          karaokeLead: attachment.karaokeLead || undefined,
           bot: attachment.bot || undefined,
           recorder: attachment.recorder || undefined,
+          discord: attachment.discord || undefined,
           // Stage state. Without these, clients cannot tell the stage from the
           // audience (they fell back to "unmuted means on stage"), hosts never
           // saw raised hands, and the audience video lock never engaged.
@@ -2166,6 +2303,8 @@ export class HuddleHub extends DurableObject {
     });
     // The watch party's viewers may have come or gone with this change.
     this.noteRoomWatch(channelId);
+    // A seat that left (or lost the floor) may still be connected to LiveKit.
+    void this.scheduleLiveKitSweep().catch(() => undefined);
     // An emptied room's notes end after a grace period (see alarm()).
     const notes = this.sessionNotes.get(channelId);
     const empty = participants.length === 0;
@@ -2378,6 +2517,12 @@ export class HuddleHub extends DurableObject {
         break;
       case "resolve": {
         const { id: _id, ...patch } = action.track;
+        // Every room member gets the player state, so a melody stays small and numeric.
+        if ("melody" in patch) {
+          const notes = patch.melody;
+          patch.melody = Array.isArray(notes) && notes.length % 3 === 0 && notes.length <= 3 * 1500
+            && notes.every((n) => typeof n === "number" && Number.isFinite(n)) ? notes : null;
+        }
         if (state.track?.id === action.trackId) {
           const wasPending = !state.track.audioUrl;
           state.track = { ...state.track, ...patch };
@@ -2535,6 +2680,107 @@ export class HuddleHub extends DurableObject {
     }
   }
 
+  // ---------------------------------------------------------- LiveKit sweep
+
+  /** Read from storage on first use after a wake; see livekit-sweep.ts. */
+  private liveKitSweepState: LiveKitSweepState | null = null;
+
+  /**
+   * Only the main hub sees every voice seat. A room shard runs this same
+   * class with a sliver of the roster, and sweeping from there would throw
+   * everyone in every other room out of LiveKit.
+   */
+  private sweepsLiveKit(): boolean {
+    const namespace = this.bindingsEnv.HUB as DurableObjectNamespace | undefined;
+    if (!namespace || !liveKitClients(this.bindingsEnv).length) return false;
+    return namespace.idFromName("huddle").equals(this.ctx.id);
+  }
+
+  private async liveKitState(): Promise<LiveKitSweepState> {
+    if (!this.liveKitSweepState) {
+      this.liveKitSweepState =
+        (await this.ctx.storage.get<LiveKitSweepState>("livekitSweep")) ?? emptySweepState();
+    }
+    return this.liveKitSweepState;
+  }
+
+  private async saveLiveKitState(state: LiveKitSweepState): Promise<void> {
+    this.liveKitSweepState = state;
+    await this.ctx.storage.put("livekitSweep", state);
+    if (state.dueAt) await this.armAlarm(state.dueAt);
+  }
+
+  /** The next sweep no later than `at`. */
+  private sooner(state: LiveKitSweepState, at: number): number {
+    return state.dueAt && state.dueAt <= at ? state.dueAt : at;
+  }
+
+  /** Someone came or went: check LiveKit agrees once the dust settles. */
+  private async scheduleLiveKitSweep(): Promise<void> {
+    if (!this.sweepsLiveKit()) return;
+    const state = await this.liveKitState();
+    const at = Date.now() + LIVEKIT_SWEEP_EVERY_MS;
+    if (state.dueAt && state.dueAt <= at) return;
+    await this.saveLiveKitState({ ...state, dueAt: at });
+  }
+
+  /** Keep sweeping until `until`, by when every token minted so far has run out. */
+  private async watchLiveKit(until: number): Promise<void> {
+    if (!this.sweepsLiveKit()) return;
+    const state = await this.liveKitState();
+    await this.saveLiveKitState({
+      ...state,
+      watchUntil: Math.max(state.watchUntil, until),
+      dueAt: this.sooner(state, Date.now() + LIVEKIT_SWEEP_EVERY_MS),
+    });
+  }
+
+  /** A moderator took this person out of these rooms: out of LiveKit now, and no grace while their token lives. */
+  private async removeFromLiveKitNow(userId: string, rooms: Set<string>): Promise<void> {
+    if (!userId || !rooms.size || !this.sweepsLiveKit()) return;
+    const found = await liveKitRooms(liveKitClients(this.bindingsEnv), rooms);
+    await Promise.all(
+      found.flatMap((room) =>
+        room.participants
+          .filter((person) => splitIdentity(person.identity).userId === userId)
+          .map((person) => removeFromLiveKit(room.client, room.name, person.identity)),
+      ),
+    );
+    const state = await this.liveKitState();
+    const until = Date.now() + LIVEKIT_TOKEN_TTL_MS + 60_000;
+    const blocked = { ...state.blocked };
+    for (const room of rooms) blocked[`${room}\n${userId}`] = until;
+    await this.saveLiveKitState({
+      ...state,
+      blocked,
+      dueAt: this.sooner(state, Date.now() + LIVEKIT_SWEEP_EVERY_MS),
+    });
+  }
+
+  /** Removes LiveKit participants with no seat behind them, and silences seats that may not be heard. */
+  private async runLiveKitSweep(): Promise<void> {
+    if (!this.sweepsLiveKit()) return;
+    const state = await this.liveKitState();
+    if (!state.dueAt || Date.now() < state.dueAt - 1000) return;
+    const rooms = await liveKitRooms(liveKitClients(this.bindingsEnv));
+    const now = Date.now();
+    const plan = planSweep(rooms, this.voiceRooms(), state, now);
+    const apply = (
+      targets: { room: string; identity: string }[],
+      act: typeof removeFromLiveKit,
+    ) =>
+      targets.flatMap(({ room, identity }) =>
+        rooms
+          .filter((entry) => entry.name === room && entry.participants.some((person) => person.identity === identity))
+          .map((entry) => act(entry.client, room, identity)),
+      );
+    await Promise.all([...apply(plan.remove, removeFromLiveKit), ...apply(plan.silence, silenceInLiveKit)]);
+    if (plan.remove.length) {
+      console.warn(`Hoffle voice: removed ${plan.remove.length} LiveKit participant(s) with no seat.`);
+    }
+    await this.saveLiveKitState({ ...plan.state, dueAt: plan.again ? now + LIVEKIT_SWEEP_EVERY_MS : 0 });
+  }
+
   /** Sends due event reminders and schedules the next one. */
   private async runEvents(): Promise<void> {
     if (!this.db) return;
@@ -2624,6 +2870,7 @@ export class HuddleHub extends DurableObject {
   async alarm(): Promise<void> {
     await this.load();
     await this.runEvents();
+    await this.runLiveKitSweep().catch((error) => console.warn("Hoffle voice: LiveKit sweep failed", error));
     const now = Date.now();
     // Calls that stayed empty past the grace period: their notes become a recap.
     for (const [room, notes] of [...this.sessionNotes.entries()]) {

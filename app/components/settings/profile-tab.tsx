@@ -13,6 +13,7 @@ import { SocialPlatformIcon } from "../user-profile-card";
 import { BANNER_PRESETS, COLOR_SWATCHES, STATUS_EMOJIS, PROFILE_CSS_SNIPPETS } from "./constants";
 import { DecorationPicker, DecorationSwatch, DecoratedAvatar, cosmeticName, type DecorationKind } from "./decoration-picker";
 import { ProfilePreviewCard, bannerBackground, type PreviewProfile } from "./profile-preview-card";
+import { DiscordAccountLink } from "./discord-account";
 
 type DetailsTab = "identity" | "about" | "links" | "music" | "css";
 
@@ -612,6 +613,7 @@ export function ProfileTab({
 
           {details === "links" && (
             <>
+              <DiscordAccountLink />
               <Field label="Add a Connection" hint="Links show at the bottom of your profile.">
                 <div className="pe-link-form">
                   <select className="pe-input" value={newPlatform} onChange={(event) => setNewPlatform(event.target.value)} aria-label="Platform">

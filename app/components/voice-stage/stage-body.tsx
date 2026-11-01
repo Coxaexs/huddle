@@ -668,6 +668,11 @@ export function StageBody({
                       ? "You"
                       : <StyledName name={person.displayName} style={look.style} live />}
                   </span>
+                  {person.discord && (
+                    <span className="bot-tag bridge-tag bridge-discord" title="In the Discord voice channel">
+                      DISCORD
+                    </span>
+                  )}
                   {seatTime(person, "tile-voice-time")}
                   {person.important && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Speaking important"><Megaphone size={13} /> Important</span>}
                   {person.prioritySpeaker && !person.muted && !person.serverMuted && <span className="table-dm-badge" title="Priority Speaker: others are quieter while they talk"><Crown size={13} /> Priority</span>}

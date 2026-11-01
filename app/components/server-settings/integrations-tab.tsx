@@ -7,6 +7,7 @@ import { DndSettingsPanel } from "./dnd-settings";
 import { FeedsPanel } from "./feeds-settings";
 import { GameServerSettingsPanel } from "./game-server-settings";
 import { WebhooksPanel } from "./webhooks-settings";
+import { DiscordBridgePanel } from "./discord-bridge-settings";
 
 /** Jumps to a panel further down and puts the cursor in its first box. */
 function goTo(id: string) {
@@ -73,7 +74,7 @@ export function ServerIntegrationsTab({
     { icon: "🪝", name: "Webhooks", blurb: "GitHub, GitLab, CI, uptime monitors, Home Assistant: anything that posts to Discord.", action: "Make a webhook", onClick: () => goTo("integration-webhooks") },
     { icon: "🎵", name: "Music Bot", blurb: "Plays songs in voice for everyone at once, with a queue, lyrics and autoplay.", action: "Add", added: has("music"), onClick: () => void addBot("Hoffle Music", "music", "🎵", "Synchronized voice audio & playback") },
     { icon: "⚔️", name: "D&D Companion", blurb: "5e spells, monsters and items in chat, and fair dice for the table.", action: "Add", added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },
-    { icon: "🌉", name: "Discord Bridge", blurb: "Mirror channels with a Discord server both ways while people move over.", action: "Add", added: has("discord-bridge"), onClick: () => void addBot("Discord Bridge", "discord-bridge", "🌉", "Bidirectional Discord bridge") },
+    { icon: "🌉", name: "Discord Bridge", blurb: "Mirror channels with a Discord server both ways: names, pictures, replies, edits, reactions, files and threads.", action: "Set up", onClick: () => goTo("integration-discord-bridge") },
     { icon: "🤖", name: "Your own bot", blurb: "Run discord.py or discord.js bots against Hoffle with a bot token.", action: "Create", onClick: createCustomBot },
   ];
 
@@ -116,6 +117,7 @@ export function ServerIntegrationsTab({
 
       <FeedsPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
       <WebhooksPanel serverId={server.id} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
+      <DiscordBridgePanel serverId={server.id} serverName={server.name} onNotice={setNotice} onRequestConfirm={onRequestConfirm} />
 
       <section className="integration-section" id="integration-bots">
         <header className="integration-section-head">

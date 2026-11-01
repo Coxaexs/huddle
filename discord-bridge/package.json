@@ -1,12 +1,22 @@
 {
   "name": "hoffle-discord-bridge",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
-    "start": "node src/index.js",
-    "check": "node --check src/index.js"
+    "start": "node --no-warnings=ExperimentalWarning src/index.js",
+    "check": "node --check src/index.js && node --check src/bridge.js && node --check src/voice/voice.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
   },
   "dependencies": {
-    "discord.js": "^14.16.3"
+    "@discordjs/voice": "^0.19.2",
+    "@livekit/rtc-node": "^1.2.1",
+    "@snazzah/davey": "^0.1.12",
+    "discord.js": "^14.27.0",
+    "opusscript": "^0.1.1",
+    "ws": "^8.18.0"
   }
 }

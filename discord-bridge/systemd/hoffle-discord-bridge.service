@@ -1,0 +1,23 @@
+# Runs the bridge as a user service next to Hoffle (no Docker):
+#   cp systemd/hoffle-discord-bridge.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now hoffle-discord-bridge
+# Needs `loginctl enable-linger <user>` so it runs without a login.
+# Adjust the paths if Hoffle is not in ~/huddle.
+[Unit]
+Description=Hoffle Discord bridge
+After=network-online.target huddle.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/huddle/discord-bridge
+Environment=HOFFLE_ENV_FILE=%h/huddle/.env
+ExecStart=%h/huddle/node_modules/node/bin/node --no-warnings=ExperimentalWarning src/index.js
+Restart=always
+RestartSec=5
+# A wedged process is replaced rather than left half-alive.
+TimeoutStopSec=10
+# Each Discord person in a bridged call holds a LiveKit connection (~35 MB).
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

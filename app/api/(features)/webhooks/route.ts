@@ -69,7 +69,9 @@ export async function POST(request: Request) {
   if (!name) return Response.json({ error: "Give the webhook a name." }, { status: 400 });
   const channel = await webhookChannel(auth.db, serverId, String(body.channelId || "").slice(0, 64));
   if (!channel) return Response.json({ error: "Pick a text channel on this server." }, { status: 400 });
-  const existing = await listWebhooks(auth.db, serverId);
+  // Webhooks bots and the Discord bridge made for themselves do not use up
+  // the server's own allowance.
+  const existing = (await listWebhooks(auth.db, serverId)).filter((hook) => !hook.source);
   if (existing.length >= MAX_WEBHOOKS_PER_SERVER) {
     return Response.json({ error: `A server can have ${MAX_WEBHOOKS_PER_SERVER} webhooks.` }, { status: 400 });
   }

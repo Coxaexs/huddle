@@ -11,7 +11,7 @@ export function applyReaction(
   emoji: string,
   isMine: boolean,
   added: boolean,
-  me?: { id: string; username: string; displayName: string; avatar: string; avatarUrl?: string | null; color: string },
+  me?: { id: string; username: string; displayName: string; avatar: string; avatarUrl?: string | null; color: string; via?: string },
 ): ReactionList {
   const list = (reactions || []).map((r) => ({ ...r, users: r.users ? [...r.users] : [] }));
   const entry = list.find((r) => r.emoji === emoji);
@@ -39,7 +39,9 @@ export function applyReaction(
 
 /** Hover text for a reaction pill: who reacted with this emoji. */
 export function reactionTooltip(reaction: ReactionList[number]): string {
-  const names = (reaction.users || []).map((u) => u.displayName);
+  const names = (reaction.users || []).map((u) =>
+    u.via === "discord" ? `${u.displayName} (Discord)` : u.displayName,
+  );
   if (!names.length) return `${reaction.count} reaction${reaction.count === 1 ? "" : "s"}`;
   const list = names.join(", ");
   return `${list} reacted with ${reaction.emoji}`;

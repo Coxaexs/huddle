@@ -80,6 +80,17 @@ export interface VoiceParticipant extends PresenceUser {
   bot?: boolean;
   /** Recorder bots are always labelled independently from ordinary bots. */
   recorder?: boolean;
+  /**
+   * Someone in the paired Discord voice channel, carried in by the Discord
+   * bridge (their own seat and their own LiveKit track). `id` is their linked
+   * Hoffle account, or `discord:<snowflake>` when they have none.
+   */
+  discord?: boolean;
+  /**
+   * Karaoke lead: this seat sends the room's song with its voice on top, in
+   * time, so listeners play that instead of the bot. One seat per room.
+   */
+  karaokeLead?: boolean;
 }
 
 export type RecordingStatus =
@@ -217,6 +228,14 @@ export interface Track {
   key?: string | null;
   /** How far the song is played off its key, in semitones (the DJ booth's pitch faders). */
   keyShift?: number;
+  /**
+   * The original singer's notes, flat [startMs, endMs, midi, ...] in song
+   * time, when the bot has read them off the vocal stem: the singing voice
+   * pulls you onto the one you mean (public/tune-worklet.js).
+   */
+  melody?: number[] | null;
+  /** The room is in karaoke mode (the bot plays the song without its vocals), as the bot reports it. */
+  karaoke?: boolean;
 }
 
 /**
@@ -234,9 +253,10 @@ export interface LiveTrack {
   updatedAt: number;
   paused: boolean;
   source: "dj";
-  /** As Track.key and Track.keyShift. */
+  /** As Track.key, Track.keyShift and Track.karaoke. */
   key?: string | null;
   keyShift?: number;
+  karaoke?: boolean;
 }
 
 export interface PlayerState {
@@ -309,6 +329,7 @@ export function heard(state: PlayerState | null | undefined, now = Date.now()): 
       requestedBy: "DJ booth",
       key: live.key ?? null,
       keyShift: live.keyShift ?? 0,
+      karaoke: live.karaoke === true,
     },
     paused: live.paused,
     positionMs: live.positionMs,
@@ -375,6 +396,8 @@ export type ClientEvent =
       screenStreamId?: string | null;
       /** Dropped back to peer-to-peer after the media server failed. */
       sfu?: boolean;
+      /** Take or give up the room's karaoke lead (granted only while nobody else holds it). */
+      karaokeLead?: boolean;
     }
   | { t: "signal"; to: string; data: unknown }
   /**
@@ -693,6 +716,16 @@ export type ServerEvent =
       emoji: string;
       userId: string;
       added: boolean;
+      /** Who it was, when not a member: a bot, or a Discord person via the bridge. */
+      reactor?: {
+        id: string;
+        username: string;
+        displayName: string;
+        avatar: string;
+        avatarUrl?: string | null;
+        color: string;
+        via?: string;
+      };
       serverNow: number;
     }
   | {

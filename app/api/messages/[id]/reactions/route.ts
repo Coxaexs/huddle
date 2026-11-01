@@ -7,6 +7,7 @@ import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
+import { afterResponse } from "@/lib/after-response";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +79,11 @@ export async function POST(
       { t: "reaction", messageId: id, emoji, userId: user.id, added },
       await channelAudience(db, message.channel_id),
     );
-    void dispatchReaction(
-      added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
-      { messageId: id, channelId: message.channel_id, userId: user.id, emoji },
+    afterResponse(
+      dispatchReaction(
+        added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
+        { messageId: id, channelId: message.channel_id, userId: user.id, emoji },
+      ),
     );
   }
   if (added) {

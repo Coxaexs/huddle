@@ -5,9 +5,11 @@ import { isDmMember } from "@/lib/dms";
 import { DM_SERVER_ID } from "@/lib/schema";
 import { AccessToken, TrackSource } from "livekit-server-sdk";
 import { timeoutInChannel } from "@/lib/timeouts";
-import { hubState } from "@/lib/hub-client";
+import { hubState, watchLiveKit } from "@/lib/hub-client";
+import { LIVEKIT_TOKEN_TTL_MS } from "@/lib/livekit-sweep";
 import { can, hasPermission, Permission } from "@/lib/permissions";
 import { channelOverwritePermissions, mayView } from "@/lib/channel-permissions";
+import { authenticateBot, isBridgeBot } from "@/lib/bot-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,12 @@ export async function GET(request: Request) {
         `Bearer ${b.RECORDER_SERVICE_TOKEN}`,
   );
 
-  if (!user && !recorder) return unauthorized();
+  if (!user && !recorder) {
+    // The Discord bridge, for one of its Discord people's seats.
+    const bot = await authenticateBot(request).catch(() => null);
+    if (!isBridgeBot(bot)) return unauthorized();
+    return bridgeSeatToken(request, { livekitUrlNl, livekitUrlDe, apiKey, apiSecret });
+  }
 
   const { searchParams } = new URL(request.url);
   const channelId = searchParams.get("channelId")?.trim();
@@ -142,10 +149,13 @@ export async function GET(request: Request) {
   const identity = connectionId ? `${base}|${connectionId}` : base;
   const name = user ? user.display_name || user.username : "Session Recorder";
 
+  // Short-lived: LiveKit checks the token only on connect (and refreshes it
+  // for whoever stays connected), so a long one let a kicked or banned member
+  // walk back in on it for a day. The hub removes anyone without a seat.
   const at = new AccessToken(apiKey, apiSecret, {
     identity,
     name,
-    ttl: "24h",
+    ttl: LIVEKIT_TOKEN_TTL_MS / 1000,
   });
 
   // Channel permissions: no SPEAK is a listen-only seat; no VIDEO keeps it to the microphone.
@@ -161,6 +171,7 @@ export async function GET(request: Request) {
   });
 
   const token = await at.toJwt();
+  if (!recorder) await watchLiveKit();
 
   return Response.json({
     enabled: true,
@@ -170,6 +181,58 @@ export async function GET(request: Request) {
     identity,
     room: channelId,
   });
+}
+
+/**
+ * A token for a Discord person's seat. The seat must already exist in the
+ * hub, in this room, as a Discord seat: the identity is that seat's user and
+ * connection, so receivers match it to the roster like anyone's. It can only
+ * ever publish a microphone, and nothing while the seat may not be heard.
+ */
+async function bridgeSeatToken(
+  request: Request,
+  lk: { livekitUrlNl?: string; livekitUrlDe: string; apiKey: string; apiSecret: string },
+): Promise<Response> {
+  const { searchParams } = new URL(request.url);
+  const channelId = searchParams.get("channelId")?.trim() || "";
+  const connectionId = searchParams.get("connectionId")?.trim() || "";
+  if (!channelId || !/^[A-Za-z0-9_-]{1,64}$/.test(connectionId)) {
+    return Response.json({ error: "channelId and connectionId are required" }, { status: 400 });
+  }
+  const state = await hubState().catch(() => null);
+  const seats = state?.voice[channelId] || [];
+  const seat = seats.find((person) => person.connectionId === connectionId && person.discord === true);
+  if (!seat) return Response.json({ error: "No such Discord seat in that room." }, { status: 403 });
+
+  // The same choice a member joining now would get (no explicit switch).
+  const db = bindings().DB;
+  const channel = db ? await findChannel(db, channelId) : null;
+  const wanted: "nl" | "de" =
+    channel?.rtc_region === "de" || channel?.rtc_region === "nl"
+      ? channel.rtc_region
+      : seats.filter((person) => !person.bot).length >= 40
+        ? "de"
+        : "nl";
+  const region: "nl" | "de" = wanted === "de" || !lk.livekitUrlNl ? "de" : "nl";
+  const url = region === "de" ? lk.livekitUrlDe : lk.livekitUrlNl!;
+
+  const identity = `${seat.id}|${connectionId}`;
+  const at = new AccessToken(lk.apiKey, lk.apiSecret, {
+    identity,
+    name: seat.displayName,
+    ttl: LIVEKIT_TOKEN_TTL_MS / 1000,
+  });
+  at.addGrant({
+    roomJoin: true,
+    room: channelId,
+    canPublish: !seat.serverMuted && seat.speakAllowed !== false,
+    canPublishSources: [TrackSource.MICROPHONE],
+    canSubscribe: true,
+    canPublishData: false,
+  });
+  const token = await at.toJwt();
+  await watchLiveKit();
+  return Response.json({ enabled: true, url, region, token, identity, room: channelId });
 }
 
 /** True when this seat should not be able to send audio or video at all. */

@@ -26,6 +26,7 @@ import { PollCard } from "../../poll-card";
 import type { MusicSettings } from "../../music-cards";
 import { NowPlaying } from "../../now-playing";
 import { OutlineEmoji } from "../../outline-emoji";
+import { proxiedImage } from "../../../lib/image-proxy";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
 import { DM_HOME, QUICK_VOTES } from "../../../lib/chat/constants";
 import { buildMessageLink, resolveMessageLink, type MessageLinkTarget } from "../../../lib/chat/message-links";
@@ -503,7 +504,12 @@ function MessageRowImpl({
                         <Avatar
                           className={`avatar ${message.bot ? "bot-avatar" : ""}`}
                           avatar={author?.avatar || message.avatar}
-                          avatarUrl={author?.avatarUrl}
+                          // A webhook post (a bridged Discord message) brings its own picture,
+                          // fetched through Hoffle so Discord never sees who is reading.
+                          avatarUrl={
+                            author?.avatarUrl ??
+                            (message.payload?.avatarUrl ? proxiedImage(message.payload.avatarUrl) : undefined)
+                          }
                           color={author?.color || message.color}
                           onContextMenu={(event) => {
                             if (author) openUserMenu(event, author);
@@ -563,7 +569,25 @@ function MessageRowImpl({
                               <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
                             )}
                             {author && <PrideBadges badges={author.prideBadges} mini />}
-                            {message.bot && <span className="bot-tag">BOT</span>}
+                            {message.payload?.bridge?.platform === "discord" ? (
+                              message.payload.bridge.url ? (
+                                <a
+                                  className="bot-tag bridge-tag bridge-discord"
+                                  href={message.payload.bridge.url}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  title="Sent from Discord. Open it there"
+                                >
+                                  DISCORD
+                                </a>
+                              ) : (
+                                <span className="bot-tag bridge-tag bridge-discord" title="Sent from Discord">
+                                  DISCORD
+                                </span>
+                              )
+                            ) : (
+                              message.bot && <span className="bot-tag">BOT</span>
+                            )}
                             {message.payload?.tts && (
                               <span
                                 className={`tts-tag ${ttsSpeakingId === String(message.id) ? "speaking" : ""}`}

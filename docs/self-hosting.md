@@ -428,17 +428,27 @@ The basic music player and the D&D companion start automatically with `docker co
 
 ### Discord bridge
 
-Mirrors messages between Discord channels and Hoffle channels, both ways.
+Mirrors chosen Discord channels with Hoffle channels, both ways. Each person keeps their own name and picture on the other side; pictures and files are copied; edits, deletes, replies, reactions, threads and "is typing…" follow; and messages sent while the bridge was down are carried over when it is back. One bridge and one Discord bot serve every server on your Hoffle, and each server links its own Discord server.
 
-1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications). Add a bot and turn on **Message Content Intent**.
-2. Invite that bot to your Discord server with permission to read and send messages.
-3. In Hoffle, create a bot token under **Server Settings → Bots & Integrations → Create Bot Integration**.
-4. Copy `discord-bridge/.env.example` to `discord-bridge/.env` and fill it in.
-5. Start it:
+**Once, for the whole instance:**
+
+1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications). On its **Bot** tab, turn on **Message Content Intent** and copy the token. Leave **Public Bot** on if other people's Discord servers should be able to add it.
+2. Copy `discord-bridge/.env.example` to `discord-bridge/.env`, set `DISCORD_BOT_TOKEN`, and set `HOFFLE_PUBLIC_URL` to your public https address (Discord loads pictures and files from there).
+3. Start it:
 
    ```bash
    docker compose --profile bridge up -d
    ```
+
+   Without Docker, run `npm install && npm start` in `discord-bridge/` (Node 22.5 or newer) with `HOFFLE_BOT_TOKEN` set to Hoffle's `BOT_TOKEN`, or use `discord-bridge/systemd/hoffle-discord-bridge.service`.
+
+**For each server**, in **Server Settings → Integrations → Discord Bridge**:
+
+1. **Add the bot** to your Discord server with the button there (it asks for exactly the permissions the bridge uses).
+2. In Discord, run `/hoffle link` with the code shown. Only people with **Manage Server** on Discord can.
+3. Pick which channels pair up, and what crosses over.
+
+Settings shows whether the bridge is running, when it last carried a message, and which Discord permissions are missing in which channel. `/hoffle status` in Discord shows the same from that side, and `/hoffle unlink` stops it.
 
 ## Music bot
 

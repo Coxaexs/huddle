@@ -13,6 +13,7 @@ interface Webhook {
   createdAt: string;
   lastUsedAt: string | null;
   uses: number;
+  source?: string | null;
 }
 
 interface ListResponse {
@@ -52,7 +53,8 @@ export function WebhooksPanel({
     apiFetch<ListResponse>(`/api/webhooks?serverId=${encodeURIComponent(serverId)}`)
       .then((result) => {
         if (cancelled) return;
-        setData(result);
+        // The Discord bridge's own webhooks are run from its panel, not here.
+        setData({ ...result, webhooks: result.webhooks.filter((hook) => hook.source !== "discord-bridge") });
         setChannelId((current) => current || result.channels[0]?.id || "");
       })
       .catch(() => undefined);
@@ -124,7 +126,7 @@ export function WebhooksPanel({
     <section className="integration-section webhooks-settings" id="integration-webhooks">
       <header className="integration-section-head">
         <h2>
-          Webhooks <span className="integration-count">{data.webhooks.length}/{data.max}</span>
+          Webhooks <span className="integration-count">{data.webhooks.filter((hook) => !hook.source).length}/{data.max}</span>
         </h2>
         <p>
           A secret URL that posts into one channel. Anything that can post to a Discord webhook works here too: CI,
@@ -137,7 +139,7 @@ export function WebhooksPanel({
           className="integration-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!busy && name.trim() && channelId && data.webhooks.length < data.max) void create();
+            if (!busy && name.trim() && channelId && data.webhooks.filter((hook) => !hook.source).length < data.max) void create();
           }}
         >
           <input
@@ -158,7 +160,7 @@ export function WebhooksPanel({
           <button
             type="submit"
             className="discord-btn primary-indigo"
-            disabled={busy || !name.trim() || !channelId || data.webhooks.length >= data.max}
+            disabled={busy || !name.trim() || !channelId || data.webhooks.filter((hook) => !hook.source).length >= data.max}
           >
             New webhook
           </button>

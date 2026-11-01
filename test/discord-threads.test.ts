@@ -184,6 +184,8 @@ class FakeDatabase {
         avatar,
         color,
         content,
+        _attachmentKey,
+        _attachments,
         createdAt,
         payload,
         replyTo,

@@ -20,7 +20,14 @@ vi.mock("@/lib/servers", () => ({
   isServerMember: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("@/lib/hub-client", () => ({
+  hubState: vi.fn().mockResolvedValue(null),
+  watchLiveKit: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { currentUser } from "@/lib/auth";
+import { hubState } from "@/lib/hub-client";
+import { discordBridgeToken } from "@/lib/bot-auth";
 
 beforeEach(() => {
   setBindings({
@@ -165,4 +172,67 @@ it("respects channel rtc_region configuration", async () => {
   expect(data.enabled).toBe(true);
   expect(data.url).toBe("wss://test-de.livekit.local");
   expect(data.region).toBe("de");
+});
+
+function claims(token: string): Record<string, any> {
+  return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+}
+
+it("gives the Discord bridge a token only for a Discord seat it holds, microphone only", async () => {
+  setBindings({
+    LIVEKIT_URL: "wss://test.livekit.local",
+    LIVEKIT_API_KEY: "testkey",
+    LIVEKIT_API_SECRET: "testsecret1234567890123456789012",
+    BOT_TOKEN: "master-token",
+  });
+  vi.mocked(currentUser).mockResolvedValue(null);
+  const seat = (extra: Record<string, unknown>) => ({
+    connectionId: "c-discord",
+    id: "discord:888888888888",
+    username: "Ayşe",
+    displayName: "Ayşe",
+    avatar: "A",
+    color: "#5865f2",
+    joinedAt: 1,
+    muted: false,
+    deafened: false,
+    sfu: true,
+    discord: true,
+    speakAllowed: true,
+    ...extra,
+  });
+  vi.mocked(hubState).mockResolvedValue({
+    online: [],
+    voice: { v1: [seat({}), seat({ connectionId: "c-member", id: "u1", discord: undefined })] },
+    players: {},
+    recordings: {},
+    serverNow: 0,
+  } as never);
+  const auth = { authorization: `Bot ${await discordBridgeToken("master-token")}` };
+  const ask = (query: string, headers: Record<string, string> = auth) =>
+    GET(new Request(`http://localhost/hangout/api/voice/token?${query}`, { headers }));
+
+  const res = await ask("channelId=v1&connectionId=c-discord");
+  expect(res.status).toBe(200);
+  const data = (await res.json()) as { token: string; identity: string };
+  expect(data.identity).toBe("discord:888888888888|c-discord");
+  const grant = claims(data.token).video;
+  expect(grant).toMatchObject({ room: "v1", roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: false });
+  expect(grant.canPublishSources).toEqual(["microphone"]);
+
+  // Someone else's seat, a seat in another room, a wrong token: no.
+  expect((await ask("channelId=v1&connectionId=c-member")).status).toBe(403);
+  expect((await ask("channelId=v2&connectionId=c-discord")).status).toBe(403);
+  expect((await ask("channelId=v1&connectionId=c-discord", { authorization: "Bot hfl_bridge_nope" })).status).toBe(401);
+
+  // A seat that may not be heard gets a listen-only token.
+  vi.mocked(hubState).mockResolvedValue({
+    online: [],
+    voice: { v1: [seat({ serverMuted: true })] },
+    players: {},
+    recordings: {},
+    serverNow: 0,
+  } as never);
+  const muted = (await (await ask("channelId=v1&connectionId=c-discord")).json()) as { token: string };
+  expect(claims(muted.token).video.canPublish).toBe(false);
 });

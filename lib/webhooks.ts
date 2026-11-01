@@ -17,9 +17,20 @@ import { publishMessage } from "./hub-client";
 import { checkMemoryRateLimit } from "./rate-limit";
 import type { StoredMessage } from "./storage";
 import { postableChannelKindsSql } from "./channel-kinds";
+import { attachmentColumns, BotUploadError, storeBotFiles } from "./bot-uploads";
+import { publishMessageEvent } from "./hub-client";
+import { snapshotBeforeEdit } from "./message-edits";
+import { linkedActor } from "./discord-accounts";
 
 /** Discord's own budget for one webhook. */
 export const WEBHOOK_RATE_LIMIT = { action: "webhook", limit: 30, windowSeconds: 60 };
+/**
+ * The Discord bridge relays a whole busy Discord channel through one webhook,
+ * so it gets Discord's own channel pace rather than a single integration's.
+ */
+export const BRIDGE_WEBHOOK_RATE_LIMIT = { action: "webhook-bridge", limit: 600, windowSeconds: 60 };
+/** Webhooks the Discord bridge service made for itself (one per bridged channel). */
+export const BRIDGE_WEBHOOK_SOURCE = "discord-bridge";
 export const MAX_WEBHOOKS_PER_SERVER = 15;
 const CONTENT_LIMIT = 2000;
 const MAX_EMBEDS = 10;
@@ -36,6 +47,8 @@ export interface WebhookRow {
   created_at: string;
   last_used_at: string | null;
   uses: number;
+  /** null for one a person made in settings; 'bot' or 'discord-bridge' otherwise. */
+  source?: string | null;
 }
 
 export interface PublicWebhook {
@@ -48,6 +61,8 @@ export interface PublicWebhook {
   createdAt: string;
   lastUsedAt: string | null;
   uses: number;
+  /** Set when a bot or the Discord bridge made it, so settings can say so. */
+  source?: string | null;
 }
 
 /** 32 random bytes, URL-safe: the whole credential, so it must be unguessable. */
@@ -77,6 +92,7 @@ export function publicWebhook(row: WebhookRow): PublicWebhook {
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
     uses: row.uses,
+    source: row.source ?? null,
   };
 }
 
@@ -117,7 +133,14 @@ export async function webhookChannel(
 
 export async function createWebhook(
   db: D1Database,
-  input: { serverId: string; channelId: string; name: string; avatar: string; createdBy: string },
+  input: {
+    serverId: string;
+    channelId: string;
+    name: string;
+    avatar: string;
+    createdBy: string;
+    source?: string | null;
+  },
 ): Promise<WebhookRow> {
   const row: WebhookRow = {
     id: newWebhookId(),
@@ -130,13 +153,14 @@ export async function createWebhook(
     created_at: new Date().toISOString(),
     last_used_at: null,
     uses: 0,
+    source: input.source ?? null,
   };
   await db
     .prepare(
-      `INSERT INTO channel_webhooks (id, server_id, channel_id, name, avatar, token, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO channel_webhooks (id, server_id, channel_id, name, avatar, token, created_by, created_at, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(row.id, row.server_id, row.channel_id, row.name, row.avatar, row.token, row.created_by, row.created_at)
+    .bind(row.id, row.server_id, row.channel_id, row.name, row.avatar, row.token, row.created_by, row.created_at, row.source)
     .run();
   return row;
 }
@@ -156,8 +180,52 @@ export function tokensMatch(a: string, b: string): boolean {
 export interface ExecuteBody {
   content?: unknown;
   username?: unknown;
+  /** A picture for this one message, as on Discord. */
+  avatar_url?: unknown;
   embeds?: unknown;
   thread_id?: unknown;
+  /**
+   * Hoffle extension, honoured only for the Discord bridge's own webhooks: the
+   * original message on Discord, linked from the DISCORD tag in chat.
+   */
+  hoffle_source_url?: unknown;
+  /**
+   * Hoffle extension, honoured only for the Discord bridge's own webhooks: the
+   * Discord account that wrote this. When it is linked to a Hoffle account that
+   * may post here, the message is stored as that person's (lib/discord-accounts.ts).
+   */
+  hoffle_discord_user_id?: unknown;
+}
+
+export interface ExecuteOptions {
+  wait?: boolean;
+  /** The thread's root message (native id). */
+  threadId?: string | null;
+  /** Native id of the message this answers. Hoffle extension: Discord webhooks cannot reply. */
+  replyTo?: string | null;
+  files?: File[];
+  origin?: string;
+  basePath?: string;
+  /** The answer for wait=true; the versioned Discord surface needs snowflake ids. */
+  respond?: (stored: StoredMessage, hook: WebhookRow) => Promise<Record<string, unknown>>;
+}
+
+/**
+ * An avatar picture: an http(s) URL, or one of Hoffle's own uploads. Anything
+ * else (javascript:, data:, a path elsewhere on this host) is dropped.
+ */
+export function cleanAvatarUrl(value: unknown): string | undefined {
+  const raw = text(value, 1000)?.trim();
+  if (!raw) return undefined;
+  if (/^\/hangout\/api\/uploads\/[^/?#]+$/.test(raw)) return raw;
+  return webUrl(raw);
+}
+
+/** Only a real discord.com message link may sit behind the DISCORD tag. */
+function discordMessageUrl(value: unknown): string | undefined {
+  const url = webUrl(value);
+  if (!url) return undefined;
+  return /^https:\/\/(?:[a-z]+\.)?discord(?:app)?\.com\/channels\/\d+\/\d+\/\d+$/.test(url) ? url : undefined;
 }
 
 interface Embed {
@@ -473,12 +541,13 @@ export async function executeWebhook(
   id: string,
   token: string,
   body: ExecuteBody,
-  options: { wait?: boolean; threadId?: string | null; origin?: string; basePath?: string } = {},
+  options: ExecuteOptions = {},
 ): Promise<Response> {
   const hook = await getWebhook(db, id);
   if (!hook || !tokensMatch(hook.token, token)) return webhookError(404, 10015, "Unknown Webhook");
+  const isBridge = hook.source === BRIDGE_WEBHOOK_SOURCE;
 
-  const limited = checkMemoryRateLimit(WEBHOOK_RATE_LIMIT, hook.id);
+  const limited = checkMemoryRateLimit(isBridge ? BRIDGE_WEBHOOK_RATE_LIMIT : WEBHOOK_RATE_LIMIT, hook.id);
   if (!limited.allowed) {
     return discordJson(
       429,
@@ -489,10 +558,22 @@ export async function executeWebhook(
 
   const content = (text(body.content, CONTENT_LIMIT) || "").trim();
   const embeds = cleanEmbeds(body.embeds);
-  if (!content && !embeds.length) return webhookError(400, 50006, "Cannot send an empty message");
+  const files = options.files ?? [];
+  if (!content && !embeds.length && !files.length) {
+    return webhookError(400, 50006, "Cannot send an empty message");
+  }
 
   const channel = await webhookChannel(db, hook.server_id, hook.channel_id);
   if (!channel) return webhookError(404, 10003, "Unknown Channel");
+
+  let replyTo: string | null = null;
+  if (options.replyTo) {
+    const original = await db
+      .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+      .bind(options.replyTo, channel.id)
+      .first();
+    if (original) replyTo = options.replyTo;
+  }
 
   const threadParam = options.threadId || text(body.thread_id, 64) || null;
   let threadId: string | null = null;
@@ -505,25 +586,51 @@ export async function executeWebhook(
     threadId = threadParam;
   }
 
-  const payload = JSON.stringify({ embeds, components: [], webhookId: hook.id });
+  let stored_files;
+  try {
+    stored_files = await storeBotFiles(files, `webhook:${hook.id}`);
+  } catch (error) {
+    if (error instanceof BotUploadError) return webhookError(error.status, 50035, error.message);
+    throw error;
+  }
+  const columns = attachmentColumns(stored_files);
+
+  const extras: Record<string, unknown> = {};
+  const avatarUrl = cleanAvatarUrl(body.avatar_url);
+  if (avatarUrl) extras.avatarUrl = avatarUrl;
+  if (isBridge) {
+    const sourceUrl = discordMessageUrl(body.hoffle_source_url);
+    extras.bridge = { platform: "discord", ...(sourceUrl ? { url: sourceUrl } : {}) };
+  }
+  // A linked person's Discord message is theirs here, only marked as from Discord.
+  const linked =
+    isBridge && typeof body.hoffle_discord_user_id === "string"
+      ? await linkedActor(db, body.hoffle_discord_user_id, channel.id)
+      : null;
+  if (linked) delete extras.avatarUrl;
+  const payload = JSON.stringify({ embeds, components: [], webhookId: hook.id, ...extras });
   const stored: StoredMessage = {
     id: crypto.randomUUID(),
     channel: channel.name,
     channel_id: channel.id,
-    user_id: null,
-    author: (text(body.username, 80) || hook.name).trim(),
-    avatar: hook.avatar,
-    color: "#b8a6ff",
+    user_id: linked?.id ?? null,
+    author: linked?.display_name ?? (text(body.username, 80) || hook.name).trim(),
+    avatar: linked?.avatar ?? hook.avatar,
+    color: linked?.color ?? "#b8a6ff",
     content,
-    attachment_key: null,
-    is_bot: 1,
+    attachment_key: columns.attachment_key,
+    attachments: columns.attachments,
+    is_bot: linked ? 0 : 1,
     created_at: new Date().toISOString(),
     link: null,
     action_label: null,
     audio_url: null,
     kind: null,
-    payload: payload.length <= MAX_PAYLOAD ? payload : JSON.stringify({ embeds: embeds.slice(0, 1), components: [], webhookId: hook.id }).slice(0, MAX_PAYLOAD),
-    reply_to: null,
+    payload:
+      payload.length <= MAX_PAYLOAD
+        ? payload
+        : JSON.stringify({ embeds: embeds.slice(0, 1), components: [], webhookId: hook.id, ...extras }).slice(0, MAX_PAYLOAD),
+    reply_to: replyTo,
     thread_id: threadId,
   };
 
@@ -532,10 +639,26 @@ export async function executeWebhook(
       .prepare(
         `INSERT INTO messages
            (id, channel, channel_id, user_id, author, avatar, color, content,
-            attachment_key, is_bot, created_at, payload, reply_to, thread_id)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?, NULL, ?)`,
+            attachment_key, attachments, is_bot, created_at, payload, reply_to, thread_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(stored.id, stored.channel, stored.channel_id, stored.author, stored.avatar, stored.color, stored.content, stored.created_at, stored.payload, stored.thread_id),
+      .bind(
+        stored.id,
+        stored.channel,
+        stored.channel_id,
+        stored.user_id,
+        stored.author,
+        stored.avatar,
+        stored.color,
+        stored.content,
+        stored.attachment_key,
+        stored.attachments ?? null,
+        stored.is_bot,
+        stored.created_at,
+        stored.payload,
+        stored.reply_to,
+        stored.thread_id,
+      ),
     db
       .prepare("UPDATE channel_webhooks SET uses = uses + 1, last_used_at = ? WHERE id = ?")
       .bind(stored.created_at, hook.id),
@@ -546,6 +669,7 @@ export async function executeWebhook(
   await dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin, basePath: options.basePath }).catch(() => undefined);
 
   if (!options.wait) return new Response(null, { status: 204 });
+  if (options.respond) return discordJson(200, await options.respond(stored, hook));
   return discordJson(200, {
     id: stored.id,
     type: 0,
@@ -572,6 +696,121 @@ export async function describeWebhook(db: D1Database, id: string, token: string)
     token: hook.token,
     application_id: null,
   });
+}
+
+/** A message this webhook posted, still there. */
+export async function webhookMessage(
+  db: D1Database,
+  hook: WebhookRow,
+  messageId: string,
+): Promise<StoredMessage | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL
+         AND (user_id IS NULL OR ? = 1)`,
+    )
+    // The bridge also posts linked people's messages as them (user_id set);
+    // payload.webhookId, which only Hoffle writes, still ties them to the hook.
+    .bind(messageId, hook.channel_id, hook.source === BRIDGE_WEBHOOK_SOURCE ? 1 : 0)
+    .first<StoredMessage>();
+  if (!row) return null;
+  try {
+    const payload = JSON.parse(row.payload || "{}") as { webhookId?: string };
+    return payload.webhookId === hook.id ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PATCH /webhooks/{id}/{token}/messages/{message}: Discord's edit, limited to
+ * what this webhook posted. Fields left out are kept; new files are added.
+ */
+export async function editWebhookMessage(
+  db: D1Database,
+  hook: WebhookRow,
+  message: StoredMessage,
+  body: { content?: unknown; embeds?: unknown },
+  options: { files?: File[]; origin?: string; basePath?: string } = {},
+): Promise<StoredMessage | Response> {
+  const content = body.content === undefined ? undefined : (text(body.content, CONTENT_LIMIT) || "").trim();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(message.payload || "{}") as Record<string, unknown>;
+  } catch {
+    payload = {};
+  }
+  if (body.embeds !== undefined) payload.embeds = cleanEmbeds(body.embeds);
+
+  let stored_files;
+  try {
+    stored_files = await storeBotFiles(options.files ?? [], `webhook:${hook.id}`);
+  } catch (error) {
+    if (error instanceof BotUploadError) return webhookError(error.status, 50035, error.message);
+    throw error;
+  }
+  const keys = [
+    ...(message.attachment_key ? [message.attachment_key] : []),
+    ...parseKeys(message.attachments),
+    ...stored_files.map((file) => file.key),
+  ];
+  const nextContent = content ?? message.content;
+  const embeds = Array.isArray(payload.embeds) ? payload.embeds : [];
+  if (!nextContent && !embeds.length && !keys.length) {
+    return webhookError(400, 50006, "Cannot send an empty message");
+  }
+  // Nothing to change (Discord sends an edit when a link preview lands): not an edit.
+  const nextPayload = JSON.stringify(payload).slice(0, MAX_PAYLOAD);
+  if (nextContent === message.content && nextPayload === (message.payload || "{}") && !stored_files.length) {
+    return message;
+  }
+
+  const now = new Date().toISOString();
+  const [first, ...rest] = keys;
+  await db.batch([
+    snapshotBeforeEdit(db, message.id, nextContent, now),
+    db
+      .prepare(
+        `UPDATE messages SET content = ?, payload = ?, attachment_key = ?, attachments = ?, edited_at = ?
+          WHERE id = ?`,
+      )
+      .bind(nextContent, nextPayload, first ?? null, rest.length ? JSON.stringify(rest) : null, now, message.id),
+  ]);
+  const updated: StoredMessage = {
+    ...message,
+    content: nextContent,
+    payload: nextPayload,
+    attachment_key: first ?? null,
+    attachments: rest.length ? JSON.stringify(rest) : null,
+    edited_at: now,
+  };
+  const { publishBotEdit } = await import("./discord/bot-messages");
+  await publishBotEdit(hook.channel_id, { id: message.id, content: nextContent, editedAt: now, payload: nextPayload });
+  await dispatchMessage("MESSAGE_UPDATE", updated, { origin: options.origin, basePath: options.basePath }).catch(
+    () => undefined,
+  );
+  return updated;
+}
+
+/** DELETE /webhooks/{id}/{token}/messages/{message}. */
+export async function deleteWebhookMessage(db: D1Database, hook: WebhookRow, message: StoredMessage): Promise<void> {
+  await db
+    .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
+    .bind(new Date().toISOString(), message.id)
+    .run();
+  await publishMessageEvent(hook.channel_id, { t: "message-deleted", id: message.id });
+  const { dispatchMessageDelete } = await import("./discord/dispatch");
+  await dispatchMessageDelete(message.id, hook.channel_id).catch(() => undefined);
+}
+
+function parseKeys(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const keys = JSON.parse(raw) as unknown;
+    return Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Reads the request body as JSON, or Discord's multipart `payload_json`, or a form. */

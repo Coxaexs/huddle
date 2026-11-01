@@ -15,7 +15,7 @@ import { authenticateBot, botById, type BotIdentity } from "../bot-auth";
 import { ensureSchema, DM_SERVER_ID } from "../schema";
 import { bindings, type StoredMessage } from "../storage";
 import { publishMessage, publishMessageEvent } from "../hub-client";
-import { dispatchMessage, dispatchMessageDelete } from "./dispatch";
+import { dispatchMessage, dispatchMessageDelete, dispatchReaction } from "./dispatch";
 import {
   botCanSeeServer,
   botServers,
@@ -58,8 +58,29 @@ import {
 } from "./threads";
 import { handleCommandRoutes, handleInteractionRoutes } from "./interactions";
 import { handleWidgetRoutes, isWidgetRoute } from "./widgets";
-import { botPayload, mergeBotPayload, publishBotEdit } from "./bot-messages";
+import { botPayload, mergeBotPayload, payloadOwner, publishBotEdit } from "./bot-messages";
 import { snapshotBeforeEdit } from "../message-edits";
+import { publicOrigin } from "../public-origin";
+import { linkedActor } from "../discord-accounts";
+import { Permission } from "../permissions";
+import { attachmentColumns, BotUploadError, filesInForm, storeBotFiles } from "../bot-uploads";
+import { cleanAvatarUrl } from "../webhooks";
+import {
+  channelWebhookRoutes,
+  guildWebhooks,
+  isChannelWebhook,
+  webhookByIdRoutes,
+  webhookTokenRoutes,
+} from "./webhook-routes";
+import {
+  botReactorId,
+  botReactorUser,
+  externalReactorUser,
+  publishReaction,
+  reactorFromBridgeQuery,
+  reactorUsers,
+  rememberActor,
+} from "../reactors";
 
 /** Discord JSON error codes, for the subset of failures we can produce. */
 export const ErrorCode = {
@@ -158,7 +179,9 @@ export async function handleDiscordRest(
   }
 
   const url = new URL(request.url);
-  const origin = url.origin;
+  // https/wss when the bot reached us through Cloudflare, even though the
+  // worker itself is spoken to over plain http.
+  const origin = publicOrigin(request);
 
   // The gateway endpoints are the one thing an unauthenticated client may ask
   // for; everything else needs a token.
@@ -176,8 +199,25 @@ export async function handleDiscordRest(
   // interaction token in the path is the credential, and libraries send these
   // with auth explicitly disabled. The identity comes from the stored
   // interaction, which also scopes the call to that one channel and bot.
+  // /webhooks/{id}/{token}: an interaction followup when the token is an
+  // interaction's, else one of Hoffle's own channel webhooks — whose URL is the
+  // whole credential, as on Discord.
+  if (segments[0] === "webhooks" && segments.length >= 3) {
+    const interactionBot = await botForInteractionToken(db, segments);
+    if (!interactionBot && (await isChannelWebhook(db, segments[1], segments[2]))) {
+      try {
+        return withRateLimitHeaders(
+          await webhookTokenRoutes({ db, request, origin, basePath }, segments.slice(1), parseMessageRequest),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Internal error";
+        return withRateLimitHeaders(discordError(500, ErrorCode.GeneralError, message));
+      }
+    }
+  }
+
   const bot =
-    segments[0] === "interactions" || segments[0] === "webhooks"
+    segments[0] === "interactions" || (segments[0] === "webhooks" && segments.length >= 3)
       ? await botForInteractionToken(db, segments)
       : await authenticateBot(request);
 
@@ -213,8 +253,13 @@ async function route(context: RestContext, segments: string[]): Promise<Response
     case "applications":
       if (isWidgetRoute(rest)) return handleWidgetRoutes(context, rest);
       return handleCommandRoutes(context, rest);
-    case "interactions":
     case "webhooks":
+      // /webhooks/{id} with the bot's own token: manage a webhook.
+      if (rest.length === 1) {
+        return webhookByIdRoutes(context, rest[0], (serverId) => botCanSeeServer(context.bot, serverId));
+      }
+      return handleInteractionRoutes(context, head, rest);
+    case "interactions":
       return handleInteractionRoutes(context, head, rest);
     case "oauth2":
       return oauthRoutes(context, rest);
@@ -583,6 +628,10 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
 
   if (sub === "commands" || sub === "application-commands") {
     return handleCommandRoutes(context, ["@me", "guilds", guildSnowflake, "commands", subId]);
+  }
+
+  if (sub === "webhooks" && context.request.method === "GET") {
+    return guildWebhooks(context, nativeGuildId);
   }
 
   if (sub === "preview" || sub === "widget.json") {
@@ -1211,8 +1260,20 @@ async function channelRoutes(
   }
 
   if (sub === "typing") {
-    // Bots "type" to signal a slow command. Hoffle shows typing from accounts
-    // only, so this is accepted and dropped rather than faked as a user.
+    // Bots "type" to signal a slow command; the bridge types on behalf of the
+    // Discord person who is typing. Shown under the composer like anyone's.
+    if (context.request.method === "POST") {
+      const reactor = reactorFromBridgeQuery(context.bot, context.url);
+      const linked = reactor ? await linkedActor(context.db, reactor.id.split(":")[2], channel.id) : null;
+      const name = reactor?.name || context.bot.name;
+      await publishMessageEvent(channel.id, {
+        t: "typing",
+        channelId: channel.id,
+        userId: linked?.id || reactor?.id || botReactorId(context.bot),
+        displayName: linked ? linked.display_name : reactor ? `${name} (Discord)` : name,
+        serverNow: Date.now(),
+      });
+    }
     return new Response(null, { status: 204 });
   }
 
@@ -1244,9 +1305,14 @@ async function channelRoutes(
     return threadMemberRoutes(context, thread, messageId);
   }
 
+  if (sub === "webhooks" && !thread) {
+    return channelWebhookRoutes(context, channel);
+  }
+
   if (sub === "permissions" || sub === "invites" || sub === "webhooks") {
-    // Hoffle has no channel overwrites, channel invites or webhooks. An empty
-    // list is truthful; a 404 would read as "this channel is gone".
+    // Hoffle has no channel invites, and Discord-shaped overwrites are not
+    // exposed here. An empty list is truthful; a 404 would read as "this
+    // channel is gone".
     return json([]);
   }
 
@@ -1611,12 +1677,14 @@ async function messageRoutes(
 
   if (!sub) {
     if (request.method === "GET") {
-      const row = await loadMessageRow(db, nativeMessageId);
+      const row = await loadMessageRow(db, nativeMessageId, channel.id);
       if (!row) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
       return json(await buildMessage(context, row, channel, guildSnowflake, thread));
     }
 
     if (request.method === "DELETE") {
+      const existing = await loadMessageRow(db, nativeMessageId, channel.id);
+      if (!existing) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
       await db
         .prepare("UPDATE messages SET deleted_at = ? WHERE id = ?")
         .bind(new Date().toISOString(), nativeMessageId)
@@ -1630,13 +1698,33 @@ async function messageRoutes(
     }
 
     if (request.method === "PATCH") {
-      const body = (await parseMessageBody(request)) as {
+      const parsed = await parseMessageRequest(request);
+      const body = parsed.body as {
         content?: string;
         embeds?: unknown[];
         components?: unknown[];
       };
-      const before = await loadMessageRow(db, nativeMessageId);
+      const before = await loadMessageRow(db, nativeMessageId, channel.id);
       if (!before) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+      // As on Discord, a bot edits only what it sent: never a person's words,
+      // and not another bot's or a webhook's post either.
+      if (!botOwnsMessage(context.bot, before)) {
+        return discordError(403, 50005, "Cannot edit a message authored by another user");
+      }
+      let added;
+      try {
+        added = await storeBotFiles(parsed.files, `bot:${context.bot.id}`);
+      } catch (error) {
+        if (error instanceof BotUploadError) {
+          return discordError(error.status, ErrorCode.InvalidFormBody, error.message);
+        }
+        throw error;
+      }
+      const keys = [
+        ...(before.attachment_key ? [before.attachment_key] : []),
+        ...parseKeyList(before.attachments),
+        ...added.map((file) => file.key),
+      ];
       const now = new Date().toISOString();
       const payload = mergeBotPayload(before.payload, body, context.bot.id);
       await db.batch([
@@ -1644,11 +1732,18 @@ async function messageRoutes(
         db
           .prepare(
             `UPDATE messages SET content = COALESCE(?, content),
-               payload = ?, edited_at = ? WHERE id = ?`,
+               payload = ?, edited_at = ?, attachment_key = ?, attachments = ? WHERE id = ?`,
           )
-          .bind(body.content ?? null, payload, now, nativeMessageId),
+          .bind(
+            body.content ?? null,
+            payload,
+            now,
+            keys[0] ?? null,
+            keys.length > 1 ? JSON.stringify(keys.slice(1)) : null,
+            nativeMessageId,
+          ),
       ]);
-      const row = await loadMessageRow(db, nativeMessageId);
+      const row = await loadMessageRow(db, nativeMessageId, channel.id);
       if (!row) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
       await publishBotEdit(channel.id, {
         id: nativeMessageId,
@@ -1672,13 +1767,19 @@ const MESSAGE_COLUMNS = `id, channel, channel_id, user_id, author, avatar, color
   pinned_at, pinned_by, deleted_at, reply_to, edited_at, attachments, thread_id,
   command_text, command_by`;
 
+/**
+ * A live message of this channel (a thread's replies are rows of the parent
+ * channel too). Never by id alone: a per-server bot must not reach a message in
+ * another server by guessing its snowflake.
+ */
 async function loadMessageRow(
   db: D1Database,
   messageId: string,
+  channelId: string,
 ): Promise<StoredMessage | null> {
   return db
-    .prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ? AND deleted_at IS NULL`)
-    .bind(messageId)
+    .prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL`)
+    .bind(messageId, channelId)
     .first<StoredMessage>();
 }
 
@@ -1692,7 +1793,7 @@ async function buildMessage(
   const [author, mentions, reactions, channelSnowflake] = await Promise.all([
     row.user_id ? loadUser(context.db, row.user_id) : Promise.resolve(null),
     loadMentionedUsers(context.db, row.id),
-    loadReactions(context.db, row.id),
+    loadReactions(context.db, row.id, botReactorId(context.bot)),
     visibleChannelSnowflake(channel, thread),
   ]);
   return serializeMessage(row, {
@@ -1823,22 +1924,41 @@ export async function createMessage(
   guildSnowflake: string | null,
   override?: CreateMessageBody,
   thread?: HoffleThreadRow,
+  overrideFiles?: File[],
 ): Promise<Response> {
-  const body =
-    override ??
-    ((await parseMessageBody(context.request)) as CreateMessageBody);
+  let files = overrideFiles ?? [];
+  let body: CreateMessageBody;
+  if (override) {
+    body = override;
+  } else {
+    const parsed = await parseMessageRequest(context.request);
+    body = parsed.body as CreateMessageBody;
+    files = parsed.files;
+  }
 
   const content = (body.content || "").trim();
   const embeds = Array.isArray(body.embeds) ? body.embeds : [];
   const components = Array.isArray(body.components) ? body.components : [];
 
-  if (!content && !embeds.length && !components.length) {
+  if (!content && !embeds.length && !components.length && !files.length) {
     return discordError(
       400,
       ErrorCode.CannotSendEmptyMessage,
       "Cannot send an empty message",
     );
   }
+
+  let storedFiles;
+  try {
+    storedFiles = await storeBotFiles(files, `bot:${context.bot.id}`);
+  } catch (error) {
+    if (error instanceof BotUploadError) {
+      return discordError(error.status, ErrorCode.InvalidFormBody, error.message);
+    }
+    throw error;
+  }
+  const columns = attachmentColumns(storedFiles);
+  const avatarUrl = cleanAvatarUrl(body.avatar_url);
 
   const replyTo = body.message_reference?.message_id
     ? await nativeFor("message", body.message_reference.message_id)
@@ -1853,7 +1973,8 @@ export async function createMessage(
     avatar: (context.bot.avatar || "🤖").slice(0, 4),
     color: "#b8a6ff",
     content,
-    attachment_key: null,
+    attachment_key: columns.attachment_key,
+    attachments: columns.attachments,
     is_bot: 1,
     created_at: new Date().toISOString(),
     link: null,
@@ -1862,7 +1983,8 @@ export async function createMessage(
     kind: null,
     // Embeds and components round-trip through `payload`, which is how the
     // serializer reads them back out for other bots and for message fetches.
-    payload: botPayload(context.bot.id, embeds, components),
+    // It always names the bot, which is what lets it (and only it) edit later.
+    payload: botPayload(context.bot.id, embeds, components, avatarUrl ? { avatarUrl } : undefined),
     reply_to: replyTo,
     // A thread reply is stored against the parent channel and points at the
     // thread, exactly as the web UI writes one — that is what keeps the same
@@ -1874,8 +1996,8 @@ export async function createMessage(
     .prepare(
       `INSERT INTO messages
          (id, channel, channel_id, user_id, author, avatar, color, content,
-          attachment_key, is_bot, created_at, payload, reply_to, thread_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?)`,
+          attachment_key, attachments, is_bot, created_at, payload, reply_to, thread_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
     )
     .bind(
       stored.id,
@@ -1886,6 +2008,8 @@ export async function createMessage(
       stored.avatar,
       stored.color,
       stored.content,
+      stored.attachment_key,
+      stored.attachments ?? null,
       stored.created_at,
       stored.payload,
       stored.reply_to,
@@ -1914,23 +2038,55 @@ export async function createMessage(
  * discord.js switches to multipart the moment a bot adds an attachment, so a
  * JSON-only parser would fail on exactly the bots that send images.
  */
-/** JSON or multipart (`payload_json`), as libraries send with attachments. */
-export async function parseMessageBody(request: Request): Promise<Record<string, unknown>> {
+/** JSON or multipart (`payload_json` + `files[n]`), as libraries send with attachments. */
+export async function parseMessageRequest(
+  request: Request,
+): Promise<{ body: Record<string, unknown>; files: File[] }> {
   const contentType = request.headers.get("content-type") || "";
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
+    const files = filesInForm(form);
     const payload = form.get("payload_json");
     if (typeof payload === "string") {
       try {
-        return JSON.parse(payload) as Record<string, unknown>;
+        return { body: JSON.parse(payload) as Record<string, unknown>, files };
       } catch {
-        return {};
+        return { body: {}, files };
       }
     }
     const content = form.get("content");
-    return typeof content === "string" ? { content } : {};
+    return { body: typeof content === "string" ? { content } : {}, files };
   }
-  return (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  return { body: (await request.json().catch(() => ({}))) as Record<string, unknown>, files: [] };
+}
+
+export async function parseMessageBody(request: Request): Promise<Record<string, unknown>> {
+  return (await parseMessageRequest(request)).body;
+}
+
+/** Whether this bot sent the message (and so may edit it). */
+function botOwnsMessage(bot: BotIdentity, row: StoredMessage): boolean {
+  if (row.user_id) return false;
+  const owner = payloadOwner(row.payload);
+  if (owner) return owner === bot.id;
+  // Bot posts from before payloads always named their bot, and not a webhook's.
+  if (!row.is_bot) return false;
+  try {
+    if (row.payload && (JSON.parse(row.payload) as { webhookId?: unknown }).webhookId) return false;
+  } catch {
+    // An unreadable payload is treated as unowned.
+  }
+  return row.author === bot.name || bot.isMaster;
+}
+
+function parseKeyList(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const keys = JSON.parse(raw) as unknown;
+    return Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 async function reactionRoutes(
@@ -1942,6 +2098,13 @@ async function reactionRoutes(
 ): Promise<Response> {
   const { db, request } = context;
 
+  // The message has to be in this channel, as for every other message route.
+  const inChannel = await db
+    .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+    .bind(messageId, channel.id)
+    .first();
+  if (!inChannel) return discordError(404, ErrorCode.UnknownMessage, "Unknown Message");
+
   if (!emoji) {
     if (request.method === "DELETE") {
       await db.prepare("DELETE FROM reactions WHERE message_id = ?").bind(messageId).run();
@@ -1950,49 +2113,103 @@ async function reactionRoutes(
     return discordError(404, ErrorCode.GeneralError, "404: Not Found");
   }
 
-  // Custom emoji arrive as "name:id"; unicode arrives percent-encoded.
+  // Custom emoji arrive as "name:id" and are kept as ":name:", the way Hoffle
+  // stores a server emoji reaction; unicode arrives percent-encoded.
   const decoded = decodeURIComponent(emoji);
-  const name = decoded.includes(":") ? decoded.split(":")[0] : decoded;
+  const name = (decoded.includes(":") ? `:${decoded.split(":")[0]}:` : decoded).slice(0, 24);
+  if (!name || name === "::") return discordError(400, ErrorCode.UnknownEmoji, "Unknown Emoji");
 
   if (request.method === "GET") {
     const rows = await db
       .prepare("SELECT user_id FROM reactions WHERE message_id = ? AND emoji = ?")
       .bind(messageId, name)
       .all<{ user_id: string }>();
+    const ids = (rows.results || []).map((row) => row.user_id);
+    const others = await reactorUsers(db, ids);
     return json(
       await Promise.all(
-        (rows.results || []).map(async (row) => {
-          const found = await loadUser(db, row.user_id);
-          return found ? await serializeUser(found) : { id: row.user_id };
+        ids.map(async (id) => {
+          const other = others.get(id);
+          if (other) {
+            return {
+              id: await snowflakeFor("user", id),
+              username: other.username,
+              global_name: other.displayName,
+              discriminator: "0",
+              avatar: null,
+              bot: other.via === "bot",
+              hoffle_avatar_url: other.avatarUrl ?? null,
+              hoffle_via: other.via,
+            };
+          }
+          const found = await loadUser(db, id);
+          return found ? await serializeUser(found) : { id };
         }),
       ),
     );
   }
 
-  // A bot reacting would need a Hoffle account to own the row, and it has
-  // none. Reading reactions works; writing them does not.
+  // A bot reacts as itself. The bridge may instead react for a Discord person
+  // (?on_behalf_of=discord:<id>), so each of them counts and is named.
   if (user === "@me" && (request.method === "PUT" || request.method === "DELETE")) {
-    return discordError(
-      403,
-      ErrorCode.MissingPermissions,
-      "Bots cannot add reactions on Hoffle: reactions belong to an account",
-    );
+    let external = reactorFromBridgeQuery(context.bot, context.url);
+    // A linked Discord account reacts as its Hoffle person, where they may.
+    const linked = external
+      ? await linkedActor(db, external.id.split(":")[2], channel.id, [Permission.ADD_REACTIONS])
+      : null;
+    if (linked) external = null;
+    const actorId = linked?.id ?? external?.id ?? botReactorId(context.bot);
+    const added = request.method === "PUT";
+    if (external) await rememberActor(db, external);
+    const result = added
+      ? await db
+          .prepare(
+            "INSERT OR IGNORE INTO reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)",
+          )
+          .bind(messageId, actorId, name, new Date().toISOString())
+          .run()
+      : await db
+          .prepare("DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?")
+          .bind(messageId, actorId, name)
+          .run();
+    if ((result.meta?.changes ?? 0) > 0) {
+      await publishReaction(db, channel.id, {
+        messageId,
+        emoji: name,
+        userId: actorId,
+        added,
+        reactor: linked ? undefined : external ? externalReactorUser(external) : botReactorUser(context.bot),
+      });
+      // Every other bot hears it; the one that made it does not get its own echo.
+      await dispatchReaction(
+        added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
+        { messageId, channelId: channel.id, userId: actorId, emoji: name },
+        { excludeBotId: context.bot.id },
+      );
+    }
+    return new Response(null, { status: 204 });
   }
 
   if (request.method === "DELETE" && user) {
     const nativeUserId = await nativeFor("user", user);
     if (!nativeUserId) return discordError(404, ErrorCode.UnknownUser, "Unknown User");
-    await db
+    const result = await db
       .prepare("DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?")
       .bind(messageId, nativeUserId, name)
       .run();
-    await publishMessageEvent(channel.id, {
-      t: "reaction",
-      messageId,
-      emoji: name,
-      userId: nativeUserId,
-      removed: true,
-    });
+    if ((result.meta?.changes ?? 0) > 0) {
+      await publishReaction(db, channel.id, {
+        messageId,
+        emoji: name,
+        userId: nativeUserId,
+        added: false,
+      });
+      await dispatchReaction(
+        "MESSAGE_REACTION_REMOVE",
+        { messageId, channelId: channel.id, userId: nativeUserId, emoji: name },
+        { excludeBotId: context.bot.id },
+      );
+    }
     return new Response(null, { status: 204 });
   }
 

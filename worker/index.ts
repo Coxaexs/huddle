@@ -8,9 +8,12 @@
 import handler from "vinext/server/app-router-entry";
 import { extractInviteCodeFromUrl } from "../app/lib/chat/invites";
 import { currentUser } from "../lib/auth";
+import { discordBridgeToken } from "../lib/bot-auth";
+import { bridgeSeatIdentity } from "../lib/discord-voice-seat";
 import { hub, roomHub } from "../lib/hub-client";
 import { allDisabledFeatures, disabledFeatureFor, featureFlags, SIDE_FEATURES } from "../lib/features";
 import { withSecurityHeaders } from "../lib/security-headers";
+import { publicWsOrigin } from "../lib/public-origin";
 import { SPEECH_HOST } from "../lib/speech";
 
 export { HuddleHub } from "../lib/hub";
@@ -150,6 +153,39 @@ async function handleRequest(
           env.RECORDER_SERVICE_TOKEN &&
           authorization === `Bearer ${env.RECORDER_SERVICE_TOKEN}`,
       );
+      // The Discord bridge: its monitor, or one seat per person in a paired
+      // Discord voice channel. Who that person is here is decided below, not
+      // by the service (see lib/discord-voice-seat.ts).
+      const isBridge = Boolean(
+        !isMusicBot &&
+          !isRecorder &&
+          env.BOT_TOKEN &&
+          authorization?.startsWith("Bearer hfl_bridge_") &&
+          authorization === `Bearer ${await discordBridgeToken(env.BOT_TOKEN)}`,
+      );
+      if (isBridge) {
+        const seat = await bridgeSeatIdentity(env.DB, url.searchParams, effectiveBasePath);
+        if (!seat) return new Response("Bad Discord account.", { status: 400 });
+        const stub = hub();
+        if (!stub) return new Response("Realtime is not configured.", { status: 503 });
+        const target = new URL("https://huddle.hub/socket");
+        target.searchParams.set("userId", seat.userId);
+        target.searchParams.set("username", seat.username);
+        target.searchParams.set("displayName", seat.displayName);
+        target.searchParams.set("avatar", seat.avatar);
+        if (seat.avatarUrl) target.searchParams.set("avatarUrl", seat.avatarUrl);
+        target.searchParams.set("color", seat.color);
+        target.searchParams.set("bridge", "1");
+        if (seat.discord) target.searchParams.set("discord", "1");
+        // Not "online" anywhere: a Discord seat is a seat, not a presence.
+        target.searchParams.set("invisible", "1");
+        for (const name of ["resume", "ticket"]) {
+          const value = url.searchParams.get(name);
+          if (value) target.searchParams.set(name, value.slice(0, 200));
+        }
+        return stub.fetch(target.toString(), { headers: { upgrade: "websocket" } });
+      }
+
       const user = isMusicBot || isRecorder ? null : await currentUser(request);
       if (!isMusicBot && !isRecorder && !user) {
         return new Response("Unauthorized", { status: 401 });
@@ -246,7 +282,7 @@ async function handleRequest(
       // the public origin a bot reached us on, so it is passed down here.
       target.searchParams.set(
         "resumeUrl",
-        `${url.origin.replace(/^http/, "ws")}${effectiveBasePath}/api/gateway`,
+        `${publicWsOrigin(request)}${effectiveBasePath}/api/gateway`,
       );
       return stub.fetch(target.toString(), {
         headers: { upgrade: "websocket" },

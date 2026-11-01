@@ -325,6 +325,11 @@ export function withShellRenderers(s: ChatShellViewState) {
                         ? "You"
                         : <StyledName name={person.displayName} style={membersById.get(person.id)?.profileStyle} />}
                       {isSpeaking && isConnectedVoice ? " (speaking)" : ""}
+                      {person.discord && (
+                        <span className="bot-tag bridge-tag bridge-discord voice-discord-tag" title="In the Discord voice channel">
+                          DISCORD
+                        </span>
+                      )}
                     </span>
                     <VoiceDuration
                       className="voice-member-timer"

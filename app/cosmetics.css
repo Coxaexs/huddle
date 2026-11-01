@@ -463,6 +463,17 @@ html[data-motion="reduced"] .pframe-art * { animation-play-state: paused !import
 .pe-css-guide { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
 .pe-css-guide code { font-size: 12px; color: var(--lavender, #c4b5fd); }
 .pe-error { margin: 0; font-size: 12.5px; color: #ff8f93; }
+/* Settings → Profile → Connections → Discord account (discord-account.tsx) */
+.discord-account-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--ink, #fff) 12%, transparent); }
+.discord-account-badge { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: #5865f2; color: #fff; }
+.discord-account-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.discord-account-text small { font-size: 12.5px; color: var(--muted, #b5bac1); }
+.discord-account-steps { display: grid; gap: 8px; }
+.discord-account-command { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.discord-account-command code { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.25); font-size: 13px; overflow-wrap: anywhere; }
+.discord-account-steps .pe-link-btn { display: inline-flex; align-items: center; gap: 4px; }
+.discord-account-error { color: #ff8f93; }
+@media (max-width: 520px) { .discord-account-row { flex-wrap: wrap; } }
 
 .pe-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 16px; border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s, filter 0.15s; }
 .pe-btn:disabled { opacity: 0.5; cursor: default; }

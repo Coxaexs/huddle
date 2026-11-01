@@ -49,6 +49,38 @@ export async function dndBotToken(botToken: string): Promise<string> {
 }
 
 /**
+ * The Discord bridge service (discord-bridge/): one identity across every
+ * server that turned the bridge on. Like the D&D bot it is master-scoped, since
+ * it serves every bridged server from one connection, and its token is derived
+ * from BOT_TOKEN so the service on the same machine needs no setup.
+ */
+export const DISCORD_BRIDGE_BOT: BotIdentity = {
+  id: "discord-bridge",
+  name: "Discord Bridge",
+  avatar: "🌉",
+  serverId: null,
+  isMaster: true,
+  kind: "discord-bridge",
+};
+
+/** Mirrored in discord-bridge/src/config.js (`derivedBridgeToken`); keep them in step. */
+export async function discordBridgeToken(botToken: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`hoffle-discord-bridge:${botToken}`),
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `hfl_bridge_${hex}`;
+}
+
+/** The bridge service, or the operator's own master token standing in for it. */
+export function isBridgeBot(bot: BotIdentity | null | undefined): boolean {
+  return Boolean(bot && (bot.kind === "discord-bridge" || bot.kind === "system"));
+}
+
+/**
  * Extracts and verifies the bot token from the request.
  * Accepts `Authorization: Bot <token>` or `Authorization: Bearer <token>`.
  */
@@ -89,7 +121,13 @@ export async function authenticateBot(
     return null;
   }
 
-  // 3. Check server-specific bot in DB
+  // 3. The Discord bridge service
+  if (runtime.BOT_TOKEN && token.startsWith("hfl_bridge_")) {
+    if (token === (await discordBridgeToken(runtime.BOT_TOKEN))) return { ...DISCORD_BRIDGE_BOT };
+    return null;
+  }
+
+  // 4. Check server-specific bot in DB
   const db = runtime.DB;
   if (!db) return null;
 
@@ -135,6 +173,7 @@ export async function botById(
   botId: string,
 ): Promise<BotIdentity | null> {
   if (botId === DND_BOT.id) return { ...DND_BOT };
+  if (botId === DISCORD_BRIDGE_BOT.id) return { ...DISCORD_BRIDGE_BOT };
   if (botId === "system-bot") {
     return {
       id: "system-bot",

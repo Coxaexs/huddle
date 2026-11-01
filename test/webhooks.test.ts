@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetMemoryRateLimits } from "@/lib/rate-limit";
 import {
+  BRIDGE_WEBHOOK_SOURCE,
+  cleanAvatarUrl,
   cleanEmbeds,
   createWebhook,
+  deleteWebhookMessage,
+  editWebhookMessage,
+  executeWebhook,
+  webhookMessage,
   githubToExecute,
   handleWebhookRequest,
   slackToExecute,
@@ -15,8 +21,14 @@ vi.mock("@/lib/hub-client", () => ({
   publishMessage: vi.fn(async (channelId: string, message: Record<string, unknown>) => {
     published.push({ channelId, message });
   }),
+  publishMessageEvent: vi.fn(async (channelId: string, event: Record<string, unknown>) => {
+    published.push({ channelId, message: event });
+  }),
 }));
-vi.mock("@/lib/discord/dispatch", () => ({ dispatchMessage: vi.fn(async () => undefined) }));
+vi.mock("@/lib/discord/dispatch", () => ({
+  dispatchMessage: vi.fn(async () => undefined),
+  dispatchMessageDelete: vi.fn(async () => undefined),
+}));
 
 describe("webhook payloads", () => {
   it("keeps only the embed fields Hoffle renders, capped", () => {
@@ -89,9 +101,10 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
     resetMemoryRateLimits();
     db = sqliteD1();
     await db.exec(`CREATE TABLE channels (id TEXT PRIMARY KEY, server_id TEXT, name TEXT, kind TEXT, position INTEGER DEFAULT 0)`);
-    await db.exec(`CREATE TABLE channel_webhooks (id TEXT PRIMARY KEY, server_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT NOT NULL, avatar TEXT NOT NULL DEFAULT '🪝', token TEXT NOT NULL, created_by TEXT, created_at TEXT NOT NULL, last_used_at TEXT, uses INTEGER NOT NULL DEFAULT 0)`);
+    await db.exec(`CREATE TABLE channel_webhooks (id TEXT PRIMARY KEY, server_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT NOT NULL, avatar TEXT NOT NULL DEFAULT '🪝', token TEXT NOT NULL, created_by TEXT, created_at TEXT NOT NULL, last_used_at TEXT, uses INTEGER NOT NULL DEFAULT 0, source TEXT)`);
     await db.exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, channel TEXT, channel_id TEXT, user_id TEXT, author TEXT, avatar TEXT,
-      color TEXT, content TEXT, attachment_key TEXT, is_bot INTEGER, created_at TEXT, payload TEXT, reply_to TEXT, thread_id TEXT, deleted_at TEXT)`);
+      color TEXT, content TEXT, attachment_key TEXT, attachments TEXT, is_bot INTEGER, created_at TEXT, payload TEXT, reply_to TEXT, thread_id TEXT, deleted_at TEXT, edited_at TEXT)`);
+    await db.exec(`CREATE TABLE message_edits (id TEXT PRIMARY KEY, message_id TEXT, content TEXT, written_at TEXT, replaced_at TEXT)`);
     await db.exec(`INSERT INTO channels VALUES ('c1', 's1', 'deploys', 'text', 0), ('c2', 's2', 'other', 'text', 0), ('v1', 's1', 'Lounge', 'voice', 1)`);
   });
 
@@ -163,5 +176,102 @@ describe.skipIf(!sqliteAvailable)("executing a webhook", () => {
     const response = await handleWebhookRequest(db, new Request("https://chat.test/x"), [hook.id, hook.token]);
     expect(await response.json()).toMatchObject({ id: hook.id, channel_id: "c1", name: "CI", type: 1 });
     expect(hook.id).toMatch(/^\d{17,20}$/);
+  });
+
+  it("lets the Discord bridge post with each person's picture, a link back, and as a reply", async () => {
+    const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Discord", avatar: "🌉", createdBy: "bot:discord-bridge", source: BRIDGE_WEBHOOK_SOURCE });
+    const first = await executeWebhook(db, hook.id, hook.token, { content: "first" }, { wait: true });
+    const { id: firstId } = (await first.json()) as { id: string };
+    const response = await executeWebhook(
+      db,
+      hook.id,
+      hook.token,
+      {
+        content: "hi from Discord",
+        username: "Ayşe",
+        avatar_url: "https://cdn.discordapp.com/avatars/1/a.png",
+        hoffle_source_url: "https://discord.com/channels/1517821810626789436/900000000001/900000000777",
+      },
+      { wait: true, replyTo: firstId },
+    );
+    expect(response.status).toBe(200);
+    const { id } = (await response.json()) as { id: string };
+    const row = await db.prepare("SELECT * FROM messages WHERE id = ?").bind(id).first<Record<string, string>>();
+    expect(row?.reply_to).toBe(firstId);
+    expect(JSON.parse(row!.payload)).toMatchObject({
+      webhookId: hook.id,
+      avatarUrl: "https://cdn.discordapp.com/avatars/1/a.png",
+      bridge: { platform: "discord", url: "https://discord.com/channels/1517821810626789436/900000000001/900000000777" },
+    });
+  });
+
+  it("ignores the bridge-only link from an ordinary webhook, and unsafe pictures", async () => {
+    const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "CI", avatar: "🤖", createdBy: "u1" });
+    const response = await executeWebhook(
+      db,
+      hook.id,
+      hook.token,
+      { content: "x", avatar_url: "javascript:alert(1)", hoffle_source_url: "https://discord.com/channels/1/2/3" },
+      { wait: true },
+    );
+    const { id } = (await response.json()) as { id: string };
+    const row = await db.prepare("SELECT payload FROM messages WHERE id = ?").bind(id).first<{ payload: string }>();
+    expect(JSON.parse(row!.payload)).not.toHaveProperty("bridge");
+    expect(JSON.parse(row!.payload)).not.toHaveProperty("avatarUrl");
+    expect(cleanAvatarUrl("/hangout/api/uploads/abc--me.png")).toBe("/hangout/api/uploads/abc--me.png");
+    expect(cleanAvatarUrl("/hangout/api/admin")).toBeUndefined();
+  });
+
+  it("edits and deletes only its own messages, and skips edits that change nothing", async () => {
+    const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Discord", avatar: "🌉", createdBy: "u1" });
+    const other = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Other", avatar: "🤖", createdBy: "u1" });
+    const sent = await executeWebhook(db, hook.id, hook.token, { content: "typo" }, { wait: true });
+    const { id } = (await sent.json()) as { id: string };
+    expect(await webhookMessage(db, other, id)).toBeNull();
+    const message = (await webhookMessage(db, hook, id))!;
+    expect(message.content).toBe("typo");
+
+    published.length = 0;
+    const same = await editWebhookMessage(db, hook, message, { content: "typo" });
+    expect(same).toBe(message);
+    expect(published).toHaveLength(0);
+
+    const edited = await editWebhookMessage(db, hook, message, { content: "fixed" });
+    expect(edited).toMatchObject({ content: "fixed" });
+    const history = await db.prepare("SELECT content FROM message_edits WHERE message_id = ?").bind(id).all<{ content: string }>();
+    expect(history.results?.map((r) => r.content)).toEqual(["typo"]);
+    expect(published.length).toBeGreaterThan(0);
+
+    await deleteWebhookMessage(db, hook, (await webhookMessage(db, hook, id))!);
+    expect(await webhookMessage(db, hook, id)).toBeNull();
+    expect(published.some((p) => p.message.t === "message-deleted" && p.message.id === id)).toBe(true);
+  });
+
+  it("posts a linked person's Discord message as their own, only where they may post", async () => {
+    await db.exec(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT, display_name TEXT, avatar TEXT, color TEXT, is_admin INTEGER DEFAULT 0, created_at TEXT)`);
+    await db.exec(`CREATE TABLE server_members (server_id TEXT, user_id TEXT)`);
+    await db.exec(`CREATE TABLE bans (server_id TEXT, user_id TEXT)`);
+    await db.exec(`CREATE TABLE channel_overwrites (channel_id TEXT, server_id TEXT, target_type TEXT, target_id TEXT, allow INTEGER, deny INTEGER)`);
+    await db.exec(`CREATE TABLE discord_account_links (user_id TEXT PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at TEXT NOT NULL)`);
+    await db.exec(`INSERT INTO users VALUES ('mewis', 'mewis', 'Mewis', 'M', '#ff00ff', 0, '2026-01-01')`);
+    await db.exec(`INSERT INTO server_members VALUES ('s1', 'mewis')`);
+    await db.exec(`INSERT INTO discord_account_links VALUES ('mewis', '777777777777', 'qwerse', '2026-10-31')`);
+    const hook = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "Discord", avatar: "🌉", createdBy: "u1", source: BRIDGE_WEBHOOK_SOURCE });
+    const plain = await createWebhook(db, { serverId: "s1", channelId: "c1", name: "CI", avatar: "🤖", createdBy: "u1" });
+
+    const send = async (h: typeof hook, discordId: string) => {
+      const response = await executeWebhook(db, h.id, h.token, { content: "hi", username: "qwerse", hoffle_discord_user_id: discordId }, { wait: true });
+      const { id } = (await response.json()) as { id: string };
+      return (await db.prepare("SELECT user_id, author, is_bot FROM messages WHERE id = ?").bind(id).first<Record<string, unknown>>())!;
+    };
+    expect(await send(hook, "777777777777")).toEqual({ user_id: "mewis", author: "Mewis", is_bot: 0 });
+    // An unlinked Discord person, or any webhook but the bridge's: a bot message as before.
+    expect(await send(hook, "888888888888")).toMatchObject({ user_id: null, author: "qwerse", is_bot: 1 });
+    expect(await send(plain, "777777777777")).toMatchObject({ user_id: null, is_bot: 1 });
+
+    // The bridge can still edit what it posted for them.
+    const row = await db.prepare("SELECT id FROM messages WHERE user_id = 'mewis'").first<{ id: string }>();
+    expect(await webhookMessage(db, hook, row!.id)).not.toBeNull();
+    expect(await webhookMessage(db, plain, row!.id)).toBeNull();
   });
 });

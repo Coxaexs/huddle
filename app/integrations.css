@@ -725,3 +725,302 @@ a.events-secondary {
     flex: 1 1 auto;
   }
 }
+
+/* Messages the Discord bridge carried over: a Discord-blue tag that opens the
+   original. Stays readable on every theme (white on blurple). */
+.bot-tag.bridge-discord {
+  background: #5865f2;
+  color: #fff;
+  text-decoration: none;
+}
+a.bot-tag.bridge-discord:hover,
+a.bot-tag.bridge-discord:focus-visible {
+  background: #4752c4;
+  color: #fff;
+}
+/* The same tag on a Discord person's voice seat (sidebar list). */
+.voice-discord-tag {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+/* ---- Discord Bridge panel (server-settings/discord-bridge-settings.tsx) ---- */
+.bridge-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.bridge-status-sub {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.bridge-light {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.bridge-status-ok .bridge-light {
+  background: var(--mint);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mint) 22%, transparent);
+}
+
+.bridge-status-warn .bridge-light {
+  background: #e3a008;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #e3a008 22%, transparent);
+}
+
+.bridge-status-bad .bridge-light {
+  background: var(--coral);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 22%, transparent);
+}
+
+.bridge-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: bridge-step;
+}
+
+.bridge-steps > li {
+  position: relative;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 14px 12px 48px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  counter-increment: bridge-step;
+}
+
+.bridge-steps > li::before {
+  content: counter(bridge-step);
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--lavender-soft);
+  color: var(--accent-hi);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bridge-steps strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.bridge-steps .discord-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  text-decoration: none;
+}
+
+.bridge-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bridge-code {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
+.bridge-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bridge-link-btn:hover {
+  text-decoration: underline;
+}
+
+.bridge-linked {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #5865f2 9%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #5865f2 30%, var(--line));
+}
+
+.bridge-linked > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bridge-linked strong {
+  color: var(--ink);
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.bridge-linked span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.bridge-guild-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #5865f2;
+  color: #fff;
+  font-weight: 800;
+  object-fit: cover;
+}
+
+.bridge-pairs-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bridge-pairs-head h3,
+.bridge-subhead {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.bridge-pairs-head .discord-btn,
+.bridge-actions .discord-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  text-decoration: none;
+}
+
+.bridge-pairs .integration-row {
+  padding: 8px 12px;
+}
+
+.bridge-pairs .integration-row.is-off {
+  opacity: 0.8;
+}
+
+.bridge-pairs .integration-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.bridge-arrow {
+  flex: none;
+  color: var(--muted);
+}
+
+.bridge-pairs select {
+  flex: 0 1 220px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+}
+
+.bridge-options {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bridge-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.bridge-options input {
+  margin-top: 3px;
+  accent-color: var(--lavender);
+}
+
+.bridge-options span {
+  display: grid;
+  gap: 2px;
+}
+
+.bridge-options strong {
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.bridge-options small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.bridge-saving {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .bridge-pairs .integration-row {
+    flex-wrap: nowrap;
+  }
+
+  .bridge-pairs select {
+    flex-basis: 46%;
+  }
+
+  .bridge-steps > li {
+    padding-left: 44px;
+  }
+}

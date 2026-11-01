@@ -27,14 +27,16 @@ function parse(json: string | null | undefined): Partial<BotPayload> {
   }
 }
 
-/** The stored payload for a new bot message, or null when it has neither. */
+/** The stored payload for a new bot message. Always set: `botId` is how an edit or delete checks that the message is the bot's own. */
 export function botPayload(
   botId: string,
   embeds: unknown[],
   components: unknown[],
-): string | null {
-  if (!embeds.length && !components.length) return null;
-  return JSON.stringify({ embeds, components, botId }).slice(0, MAX_PAYLOAD);
+  extras?: Record<string, unknown>,
+): string {
+  // Always written, even for plain text: `botId` is what tells a bot's own
+  // message from one it may not edit.
+  return JSON.stringify({ embeds, components, botId, ...extras }).slice(0, MAX_PAYLOAD);
 }
 
 /**
@@ -57,7 +59,8 @@ export function mergeBotPayload(
   const components = touchesComponents
     ? Array.isArray(body.components) ? body.components : []
     : previous.components || [];
-  return JSON.stringify({ embeds, components, botId }).slice(0, MAX_PAYLOAD);
+  // Anything else on the message (its avatar, a bridge tag) stays as it was.
+  return JSON.stringify({ ...previous, embeds, components, botId }).slice(0, MAX_PAYLOAD);
 }
 
 export function payloadOwner(json: string | null | undefined): string | null {
