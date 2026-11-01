@@ -15,6 +15,7 @@ import { DmCallView } from "./dm-call-view";
 import { MessageList } from "./message-list";
 import { Composer } from "./composer";
 import { SimpleTips } from "./simple-parts";
+import { NotifyPrompt } from "../../notify-prompt";
 import { ChatHeader } from "./chat-header";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
@@ -524,6 +525,7 @@ export function renderChatMain(v: ShellRenderState) {
               )}
 
               <AgeGateHidden channelId={activeChannel?.id} restricted={ageRestricted}>
+              <NotifyPrompt user={user} />
               {!inDmHome && (
                 <SimpleTips
                   liveRoom={

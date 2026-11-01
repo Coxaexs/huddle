@@ -96,6 +96,15 @@ export const userSettings: Record<keyof typeof en, string> = {
   "notificationSettings.enableSounds": "Ses Efektleri",
   "notificationSettings.unreadBadge": "Okunmamış Mesaj Rozeti",
 
+  // Bildirim önerisi (app/components/notify-prompt.tsx)
+  "notifyPrompt.title": "Arkadaşların yazınca haber verelim mi?",
+  "notifyPrompt.afterSend": "Hoffle, bu sekme kapalıyken bile DM'leri ve @bahsetmeleri sana bildirebilir.",
+  "notifyPrompt.afterMessage": "Az önce biri sana yazdı. Hoffle bir sonrakini, sekme kapalıyken bile sana haber verebilir.",
+  "notifyPrompt.turnOn": "Aç",
+  "notifyPrompt.notNow": "Şimdi değil",
+  "notifyPrompt.on": "Bildirimler açık. İstediğin zaman Ayarlar → Bildirimler'den değiştirebilirsin.",
+  "notifyPrompt.blocked": "Tarayıcın Hoffle bildirimlerini engelledi. Adres çubuğundaki kilit simgesinden izin verebilirsin.",
+
 
   // Accessibility Tab
   "accessibilitySettings.title": "Erişilebilirlik",

@@ -95,6 +95,15 @@ export const userSettings = {
   "notificationSettings.enableSounds": "Sound Effects",
   "notificationSettings.unreadBadge": "Unread Message Badge",
 
+  // Notification prompt (app/components/notify-prompt.tsx)
+  "notifyPrompt.title": "Get a ping when friends reply?",
+  "notifyPrompt.afterSend": "Hoffle can tell you about DMs and @mentions, even with this tab closed.",
+  "notifyPrompt.afterMessage": "Someone just wrote to you. Hoffle can tell you about the next one, even with this tab closed.",
+  "notifyPrompt.turnOn": "Turn on",
+  "notifyPrompt.notNow": "Not now",
+  "notifyPrompt.on": "Notifications are on. Change them any time in Settings → Notifications.",
+  "notifyPrompt.blocked": "Your browser blocked notifications for Hoffle. You can allow them from the lock icon next to the address.",
+
 
   // Accessibility Tab
   "accessibilitySettings.title": "Accessibility",

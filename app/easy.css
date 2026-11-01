@@ -26,6 +26,15 @@
 .username-card .guest-switch { display: block; width: 100%; margin-top: 4px; }
 @media (max-width: 640px) { .guest-bar { bottom: 76px; } }
 
+/* The notification offer (app/components/notify-prompt.tsx) is one of Hoffy's
+   tips; while it is up, the tip of the moment waits its turn. */
+.notify-tip + .simple-tip { display: none; }
+.notify-tip strong { font-weight: 700; }
+.notify-tip-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.notify-tip-on { padding: 6px 14px; border: 0; border-radius: 9px; background: var(--accent-strong, #6a4ddb); color: var(--on-accent, #fff); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.notify-tip-on:disabled { opacity: .6; cursor: default; }
+.notify-tip-later { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 12.5px; font-weight: 600; text-decoration: underline; opacity: .85; cursor: pointer; }
+
 /* Hoffy and gang stickers (app/lib/hoffy-stickers.ts) sit in the chat like stickers, not photos. */
 img.message-image[src*="/stickers/hoffy/"],
 img.message-image[src*="/stickers/gang/"] {

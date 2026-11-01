@@ -7,6 +7,7 @@ import { type Message } from "../../lib/chat/types";
 import { notifyLevel } from "../../lib/chat/format";
 import { applyReaction } from "../../lib/chat/reactions";
 import { showNotification, playSound } from "../../lib/chat/browser";
+import { notifyMoment } from "../../lib/notify-moment";
 import { clampTtsVoice, stopTtsPlayback, speakMessage, ttsPlaybackEnabled } from "../../lib/tts/client";
 import { useHub } from "../use-hub";
 import { type LiveCaptions } from "../use-live-captions";
@@ -154,6 +155,18 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
           Boolean(incoming.mentions?.includes(user.id)))
       ) {
         flashTitle(`${stripTextStyle(incoming.author)} says…`);
+      }
+      // A natural moment to offer notifications (app/components/notify-prompt.tsx):
+      // you just sent something, or someone wrote to you.
+      if (user && incoming.userId === user.id) {
+        notifyMoment("sent");
+      } else if (
+        user &&
+        !incoming.bot &&
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        (isDm || incoming.mentions?.includes(user.id))
+      ) {
+        notifyMoment(isDm ? "dm" : "mention");
       }
       // A voice room's chat open beside its stage is being read, so it is not unread.
       if (emitVoiceChat(channelId, { type: "message", message: incoming }) && channelId !== activeChannelRef.current) {
