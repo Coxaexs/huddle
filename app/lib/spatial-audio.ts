@@ -117,6 +117,13 @@ export interface PlaybackInput {
   wet?: number;
   /** The music bot under the Winamp theme's equalizer: the preamp, then its ten bands (EQ_FREQS), in dB. */
   eq?: readonly number[] | null;
+  /**
+   * Karaoke lead: this stream's sound is also handed out (tapStream) for the
+   * mic chain to mix under your voice. Taken from this graph rather than the
+   * remote stream opened a second time: Safari plays a remote stream to only
+   * one consumer, so a second one left you hearing nothing.
+   */
+  tap?: boolean;
 }
 /**
  * Stereo panning is for loudspeakers; HRTF adds height, front/back, a room and head tracking.
@@ -227,6 +234,11 @@ function setEq(eq: NonNullable<Entry["eq"]>, gains: readonly number[], now: numb
 export class SpatialAudioPlayback {
   private context: SinkContext | null = null;
   private entries = new Map<string, Entry>();
+  /** The karaoke tap: one destination per context (a stable stream), and what feeds it now. */
+  private tapNode: MediaStreamAudioDestinationNode | null = null;
+  private tapFrom: AudioNode | null = null;
+  /** Told whenever tapStream() changes (it can start late, once the context runs). */
+  onTapChange: ((stream: MediaStream | null) => void) | null = null;
   private enabled = false;
   private needsContext = false;
   private disposed = false;
@@ -340,6 +352,9 @@ export class SpatialAudioPlayback {
    */
   private watchContext(context: AudioContext) {
     context.onstatechange = () => {
+      if (context.state === "running") {
+        for (const entry of this.entries.values()) if (entry.input.tap) this.chain(entry);
+      }
       this.refresh();
       clearTimeout(this.stallTimer);
       if (context.state === "running" || !this.needsContext || this.disposed) return;
@@ -395,7 +410,7 @@ export class SpatialAudioPlayback {
 
   update(inputs: PlaybackInput[], enabled: boolean) {
     this.enabled = enabled;
-    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || needsBoost(input.volume) || input.eq);
+    this.needsContext = enabled || inputs.some((input) => (input.important && input.pan !== null) || needsBoost(input.volume) || input.eq || input.tap);
     if (this.needsContext && !this.context) {
       try {
         this.context = new AudioContext({ latencyHint: "interactive" });
@@ -429,8 +444,39 @@ export class SpatialAudioPlayback {
       entry.input = input;
       this.chain(entry);
     }
+    this.wireTap();
     this.orientListener();
     this.refresh();
+  }
+
+  /** Feeds the karaoke tap from the entry that asks for it (see PlaybackInput.tap). */
+  private wireTap() {
+    const context = this.context;
+    const entry = [...this.entries.values()].find((e) => e.input.tap && e.source);
+    const from = (context && entry?.source) || null;
+    if (this.tapNode && this.tapNode.context !== context) {
+      this.tapNode = null;
+      this.tapFrom = null;
+    }
+    if (from === this.tapFrom) return;
+    if (this.tapFrom && this.tapNode) {
+      try {
+        this.tapFrom.disconnect(this.tapNode);
+      } catch {
+        // Already disconnected (detach).
+      }
+    }
+    this.tapFrom = from;
+    if (from && context) {
+      this.tapNode ||= context.createMediaStreamDestination();
+      from.connect(this.tapNode);
+    }
+    this.onTapChange?.(this.tapStream());
+  }
+
+  /** The tapped stream (silent while nothing feeds it), or null. */
+  tapStream(): MediaStream | null {
+    return this.tapFrom && this.tapNode ? this.tapNode.stream : null;
   }
 
   /** Builds the spatial path an entry currently wants, rebuilding it when the mode flips. */
@@ -441,8 +487,17 @@ export class SpatialAudioPlayback {
     const spatialMode = this.mode();
     const wanted = this.spatialFor(input)
       ? spatialMode === "hrtf" && !this.hrtfAllowed.has(input.key) ? "stereo" : spatialMode
-      : needsBoost(input.volume) || input.eq ? "boost" : undefined;
-    if (!wanted) return;
+      // A tap waits for a running context: until then the element plays the
+      // stream, and a second reader beside it would silence it on Safari.
+      : needsBoost(input.volume) || input.eq || (input.tap && context.state === "running") ? "boost" : undefined;
+    if (!wanted) {
+      // Back to the element alone (a karaoke lead ended): let the stream's reader go too.
+      if (entry.mode === "boost") {
+        this.detach(entry);
+        entry.source = undefined;
+      }
+      return;
+    }
     const shaped = wanted !== "boost" && (input.cutoff !== undefined || input.wet !== undefined);
     if (entry.mode === wanted && Boolean(entry.shaped) === shaped && Boolean(entry.eq) === Boolean(input.eq)) return;
     if (entry.mode) this.detach(entry);
@@ -511,6 +566,7 @@ export class SpatialAudioPlayback {
         } else if (room) gain.connect(room);
       }
       Object.assign(entry, { source, panner, gain, filter, send, eq, shaped, mode: wanted });
+      if (input.tap) this.wireTap();
     } catch {
       source?.disconnect(); panner?.disconnect(); gain?.disconnect(); filter?.disconnect(); send?.disconnect();
       eq?.preamp.disconnect(); for (const band of eq?.bands ?? []) band.disconnect();
@@ -580,7 +636,9 @@ export class SpatialAudioPlayback {
       const { input, element, panner, gain } = entry;
       const spatial = this.spatialFor(input);
       // Web Audio carries the stream when it is spatial or boosted; otherwise the element does.
-      const routed = live && !!gain && (spatial ? !!panner : (needsBoost(input.volume) || !!input.eq) && entry.mode === "boost");
+      // A karaoke tap is played by Web Audio alone too: the tap and the element both
+      // reading the remote stream is what Safari will not do.
+      const routed = live && !!gain && (spatial ? !!panner : (needsBoost(input.volume) || !!input.eq || !!input.tap) && entry.mode === "boost");
       const volume = Math.max(0, Math.min(MAX_VOLUME, input.volume)) * (input.important ? IMPORTANT_VOLUME_BOOST : 1)
         * (spatial && !input.important ? Math.max(0, Math.min(1, (entry.mode === "hrtf" ? input.hrtfAttenuation : input.attenuation) ?? 1)) : 1);
       element.volume = Math.min(1, volume);
@@ -624,6 +682,8 @@ export class SpatialAudioPlayback {
 
   /** Drops the spatial path but keeps the stream's source node for reuse. */
   private detach(entry: Entry) {
+    // That also cut the tap; wireTap connects it again.
+    if (entry.source && entry.source === this.tapFrom) this.tapFrom = null;
     entry.source?.disconnect();
     entry.panner?.disconnect();
     entry.gain?.disconnect();
@@ -647,6 +707,13 @@ export class SpatialAudioPlayback {
     entry.element.srcObject = null;
     unregisterMedia(entry.element);
     // Remote tracks belong to useVoice; never stop them here.
+  }
+
+  /** Seconds this playback's output takes to reach the speakers, or null without a context. */
+  outputLatency(): number | null {
+    const context = this.context;
+    if (!context) return null;
+    return (context.outputLatency || 0) + (context.baseLatency || 0) || null;
   }
 
   dispose() {

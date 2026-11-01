@@ -8,11 +8,11 @@ import { HEAD_RECENTER_EVENT, HeadTracker, type HeadTrackingStatus } from "../li
 import { WebcamHeadTracker } from "../lib/webcam-head-tracking";
 import type { SpeakingStore } from "../lib/speaking-store";
 import { PRIORITY_DUCK, talkingPriorityKey } from "../lib/priority-speaker";
-import { setHeardEq, setMusicStream } from "../lib/music-tap";
+import { setHeardEq, setKaraokeTap, setMusicOutputLatency, setMusicStream } from "../lib/music-tap";
 import { useMusicEq } from "../lib/winamp-eq-store";
 
-export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false, speakingStore }: {
-  streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" }>;
+export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, headTracking, headTrackingSource = "airpods", headphones = true, onHeadTracking, preferenceFor, streamPreferenceFor, livingRoom = null, tv = null, roomShape = "table", spatialOff = false, speakingStore, audibleSongs = "" }: {
+  streams: Array<{ connectionId: string; stream: MediaStream; kind?: "voice" | "camera" | "screen" | "tts" | "karaoke" }>;
   participants: VoiceParticipant[];
   listenerId: string | null;
   enabled: boolean;
@@ -37,6 +37,8 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   spatialOff?: boolean;
   /** Who is talking, so a Priority Speaker can lower everyone else. */
   speakingStore?: SpeakingStore;
+  /** Connections whose karaoke song has had sound in the last few seconds (comma-joined). */
+  audibleSongs?: string;
 }) {
   // A string, so this re-renders only when a Priority Speaker starts or stops,
   // not on every 200 ms change in who is talking.
@@ -56,7 +58,10 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   status.current = onHeadTracking;
   useEffect(() => {
     playback.current = new SpatialAudioPlayback();
-    return () => { playback.current?.dispose(); playback.current = null; };
+    playback.current.onTapChange = setKaraokeTap;
+    // How late the song reaches your ears, for lining your singing up with it.
+    setMusicOutputLatency(() => playback.current?.outputLatency() ?? null);
+    return () => { setMusicOutputLatency(null); setKaraokeTap(null); playback.current?.dispose(); playback.current = null; };
   }, []);
   // Poses arrive tens of times a second, so they go straight to the audio graph
   // rather than through React state.
@@ -90,22 +95,41 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
   useEffect(() => {
     const seats = personalTableLayout(seatOrder, hostId, seatPans, width);
     const priority = new Set(talkingPriority ? talkingPriority.split(",") : []);
+    // Karaoke: the lead singer sends the song on a track of its own, in time
+    // with their voice. Only while that track is really here does it replace
+    // the bot for us; anything else (no lead, a stale flag, a track that never
+    // came) leaves the bot playing. The singer keeps the bot's, to sing to.
+    const lead = participants.find((p) => p.karaokeLead && !p.muted && !p.deafened && !p.serverMuted);
+    const leadSong = lead && lead.connectionId !== listenerId && audibleSongs.split(",").includes(lead.connectionId)
+      ? streams.find((s) => s.connectionId === lead.connectionId && s.kind === "karaoke"
+        && s.stream.getAudioTracks().some((track) => track.readyState === "live"))
+      : undefined;
+    // We are the lead: the bot's song, as we hear it, goes out on our song track.
+    const leadHere = Boolean(participants.find((p) => p.connectionId === listenerId)?.karaokeLead);
+    const botPref = preferenceFor("bot:music");
     playback.current?.update(streams.filter(({ stream }) => stream.getAudioTracks().length > 0).map(({ connectionId, stream, kind }) => {
       const person = participants.find((p) => p.connectionId === connectionId);
       const pref = person ? preferenceFor(person.id) : { volume: 1, muted: false };
       const isScreen = kind
         ? kind === "screen"
         : stream.id === person?.screenStreamId || stream.getVideoTracks().length > 0;
-      const voice = person && !person.bot && !person.recorder && !isScreen;
+      const song = kind === "karaoke";
+      const voice = person && !person.bot && !person.recorder && !isScreen && !song;
       const music = Boolean(person?.bot && person.id === "bot:music" && !isScreen);
-      const placed = music ? tv ?? undefined : spatialOff ? undefined : livingRoom?.get(connectionId);
+      // A lead's song is the room's music: it plays from where the music does.
+      const placed = music || song ? tv ?? undefined : spatialOff ? undefined : livingRoom?.get(connectionId);
       const tableSeat = !spatialOff && (voice || (kind === "tts" && person)) ? seats.get(connectionId) : undefined;
       const seat = placed && (music || voice || (kind === "tts" && person))
         ? { pan: placed.pan, ...placed.seat, attenuation: placed.attenuation, privacy: placed.privacy, cutoff: placed.cutoff, wet: placed.wet }
         : tableSeat && { ...tableSeat, attenuation: 1, privacy: 1, cutoff: undefined, wet: undefined };
 
       let volume = pref.volume;
-      let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted);
+      let muted = deafened || pref.muted || Boolean(person?.muted || person?.serverMuted) || (music && Boolean(leadSong));
+      // The song goes by the bot's slider, and only the lead's plays.
+      if (song) {
+        volume = botPref.volume;
+        muted = deafened || botPref.muted || stream !== leadSong?.stream;
+      }
       // /say speech is typed, so a muted mic does not silence it; a server mute does.
       if (kind === "tts") muted = deafened || pref.muted || Boolean(person?.serverMuted);
 
@@ -131,9 +155,11 @@ export function RemoteVoiceAudio({ streams, participants, listenerId, enabled, h
         hrtfAttenuation: seat?.privacy,
         cutoff: seat?.cutoff,
         wet: seat?.wet,
-        eq: music ? musicEq : null,
+        eq: music || song ? musicEq : null,
+        tap: music && leadHere,
       };
     }), !spatialOff && (enabled || Boolean(livingRoom)) || Boolean(tv));
-  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff, talkingPriority, musicEq]);
+    setKaraokeTap(leadHere ? playback.current?.tapStream() ?? null : null);
+  }, [streams, participants, listenerId, enabled, hostId, seatOrder, seatPans, width, deafened, preferenceFor, streamPreferenceFor, livingRoom, tv, spatialOff, talkingPriority, musicEq, audibleSongs]);
   return null;
 }

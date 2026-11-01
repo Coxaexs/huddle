@@ -39,7 +39,21 @@ export interface MicSettings {
   voiceEffect: VoiceEffect;
   /** Audio delay in milliseconds to sync microphone with stream or video (0 to 2000 ms). */
   delayMs?: number;
+  /** The singing voice: snapped hard onto the note, or "natural" (vibrato and slides kept). */
+  tuneStyle: TuneStyle;
+  /**
+   * Karaoke: while you sing with the singing voice on, send the room the song
+   * as you hear it with your voice on top, so everyone hears you in time with
+   * it (see setKaraokeMusic).
+   */
+  karaokeLead: boolean;
+  /** Fine timing of that mix (ms, + delays the song), for what the browser cannot measure (Bluetooth). */
+  karaokeOffsetMs: number;
 }
+
+export type TuneStyle = "hard" | "natural";
+
+export const KARAOKE_OFFSET_RANGE = { min: -150, max: 400 };
 
 export interface MicTelemetry {
   /** Level arriving at the gate, which is what a threshold is compared against. */
@@ -71,6 +85,21 @@ export interface MicChain {
    * voice: it pulls you onto that key's notes rather than any note.
    */
   setTuneKey(key: string | null, shift?: number): void;
+  /**
+   * The song playing in the room (its id, so a new one starts the tuner's ear
+   * afresh) and its melody, flat [startMs, endMs, midi, ...], when the bot has it.
+   */
+  setTuneSong(songId: string | null, melody: readonly number[] | null): void;
+  /** Where the song is now (ms), so the tuner reads the melody at the right place. */
+  setTuneClock(positionMs: number, playing: boolean): void;
+  /**
+   * Karaoke lead: the music bot's song as this browser hears it, sent out on
+   * `karaoke` in time with your voice (null stops). `outputLatency` (s) is how
+   * long the song takes from here to your ears, which your voice then trails it by.
+   */
+  setKaraokeMusic(stream: MediaStream | null, outputLatency?: number): void;
+  /** The song track a karaoke lead publishes beside `stream`; absent without Web Audio. */
+  karaoke?: MediaStream;
   onTelemetry(listener: (telemetry: MicTelemetry) => void): () => void;
   /**
    * Wakes the processing graph. A phone suspends (iOS: "interrupts") every
@@ -91,6 +120,9 @@ const KEYS = {
   clarity: "huddle-mic-clarity",
   voiceEffect: "huddle-voice-effect",
   delayMs: "huddle-audio-delay",
+  tuneStyle: "huddle-tune-style",
+  karaokeLead: "huddle-karaoke-lead",
+  karaokeOffsetMs: "huddle-karaoke-offset",
 };
 
 export const DEFAULT_SETTINGS: MicSettings = {
@@ -103,6 +135,9 @@ export const DEFAULT_SETTINGS: MicSettings = {
   clarity: true,
   voiceEffect: "none",
   delayMs: 0,
+  tuneStyle: "hard",
+  karaokeLead: true,
+  karaokeOffsetMs: 0,
 };
 
 export const GAIN_RANGE = { min: -12, max: 30 };
@@ -148,6 +183,9 @@ export function readMicSettings(): MicSettings {
     clarity: store.getItem(KEYS.clarity) !== "off",
     voiceEffect: (["singer", "vampire", "gramophone"] as const).find((id) => id === store.getItem(KEYS.voiceEffect)) || "none",
     delayMs,
+    tuneStyle: store.getItem(KEYS.tuneStyle) === "natural" ? "natural" : "hard",
+    karaokeLead: store.getItem(KEYS.karaokeLead) !== "off",
+    karaokeOffsetMs: clamp(Number(store.getItem(KEYS.karaokeOffsetMs)) || 0, KARAOKE_OFFSET_RANGE.min, KARAOKE_OFFSET_RANGE.max),
   };
 }
 
@@ -176,6 +214,9 @@ export function writeMicSettings(next: Partial<MicSettings>): MicSettings {
   if (typeof merged.delayMs === "number") {
     store.setItem(KEYS.delayMs, String(merged.delayMs));
   }
+  store.setItem(KEYS.tuneStyle, merged.tuneStyle);
+  store.setItem(KEYS.karaokeLead, merged.karaokeLead ? "on" : "off");
+  store.setItem(KEYS.karaokeOffsetMs, String(merged.karaokeOffsetMs));
   return merged;
 }
 
@@ -336,6 +377,11 @@ function rawChain(raw: MediaStream, context: AudioContext | null): MicChain {
     setTuneKey() {
       // No effects without Web Audio.
     },
+    setTuneSong() {},
+    setTuneClock() {},
+    setKaraokeMusic() {
+      // Nothing to mix with, either.
+    },
     onTelemetry(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -407,7 +453,7 @@ export async function openMicrophone(
     // the polish, which is no reason to lose the rest of the chain.
     await Promise.all([
       context.audioWorklet.addModule(`${basePath}/mic-worklet.js?v=4`),
-      context.audioWorklet.addModule(`${basePath}/tune-worklet.js?v=2`).catch((error) => {
+      context.audioWorklet.addModule(`${basePath}/tune-worklet.js?v=4`).catch((error) => {
         console.warn("[huddle] voice tuner unavailable", error);
       }),
     ]);
@@ -429,6 +475,15 @@ export async function openMicrophone(
     // rewires these nodes only; `destination` (and so the track) stays put.
     let effect = buildVoiceEffect(context, settings.voiceEffect);
     let tuneKey: { scale: number[] | null; offset: number } = { scale: null, offset: 0 };
+    // What the tuner is told besides the key, kept to tell a rebuilt one.
+    let tuneSong: { id: string | null; melody: readonly number[] | null } = { id: null, melody: null };
+    let tuneClock: { positionMs: number; at: number; playing: boolean } | null = null;
+    const tellTuner = (target: typeof effect) => {
+      target.tune?.({ style: current.tuneStyle });
+      target.setKey?.(tuneKey.scale, tuneKey.offset);
+      target.tune?.({ song: tuneSong.id, melody: tuneSong.melody ? [...tuneSong.melody] : null });
+      if (tuneClock) target.tune?.({ clock: tuneClock });
+    };
     const delayNode = context.createDelay(5.0);
     delayNode.delayTime.value = Math.max(0, Math.min(2, (settings.delayMs || 0) / 1000));
     node.connect(effect.input);
@@ -436,6 +491,44 @@ export async function openMicrophone(
     delayNode.connect(destination);
 
     let current = settings;
+    tellTuner(effect);
+
+    // Karaoke lead: the song, on its own track (`karaoke`), lined up with the
+    // voice: held back by as long as the voice takes to get here after you
+    // heard it, then through the same sync delay as the voice. Kept apart so
+    // listeners set the song's level with the bot's slider and yours with yours.
+    const karaokeOut = new MediaStreamAudioDestinationNode(context, { channelCount: 2 });
+    const karaokeDelay = context.createDelay(5.0);
+    karaokeDelay.delayTime.value = delayNode.delayTime.value;
+    karaokeDelay.connect(karaokeOut);
+    let music: { stream: MediaStream; source: MediaStreamAudioSourceNode; align: DelayNode; level: GainNode; outputLatency: number } | null = null;
+    // The voice reaches the wire this long after you heard the song: the
+    // capture, the cleanup worklet (21 ms), and the tuner (1664 + 128 samples).
+    const voiceLag = () => {
+      const capture = Number((raw.getAudioTracks()[0]?.getSettings?.() as { latency?: number } | undefined)?.latency);
+      return (Number.isFinite(capture) && capture > 0 ? capture : 0.01) + (context?.baseLatency || 0) + 0.021 + 1792 / 48000;
+    };
+    const alignMusic = () => {
+      if (!music || !context) return;
+      const seconds = music.outputLatency + voiceLag() + current.karaokeOffsetMs / 1000;
+      music.align.delayTime.setTargetAtTime(Math.max(0, Math.min(1.4, seconds)), context.currentTime, 0.05);
+    };
+    const stopMusic = () => {
+      if (!music || !context) return;
+      const old = music;
+      music = null;
+      old.level.gain.setTargetAtTime(0, context.currentTime, 0.08);
+      setTimeout(() => {
+        try {
+          old.source.disconnect();
+          old.align.disconnect();
+          old.level.disconnect();
+        } catch {
+          // Already torn down.
+        }
+      }, 500);
+    };
+
     const listeners = new Set<(telemetry: MicTelemetry) => void>();
     let rnnoiseReady = false;
     let settledGain: number | null = null;
@@ -480,6 +573,7 @@ export async function openMicrophone(
 
     const chain: MicChain = {
       stream: destination.stream,
+      karaoke: karaokeOut.stream,
       raw,
       processing: true,
       get rnnoise() {
@@ -496,6 +590,7 @@ export async function openMicrophone(
         if (typeof next.delayMs === "number" && context) {
           const clamped = Math.max(0, Math.min(2000, next.delayMs));
           delayNode.delayTime.setTargetAtTime(clamped / 1000, context.currentTime, 0.05);
+          karaokeDelay.delayTime.setTargetAtTime(clamped / 1000, context.currentTime, 0.05);
         }
 
         const previous = current;
@@ -509,10 +604,12 @@ export async function openMicrophone(
           }
           effect.dispose();
           effect = buildVoiceEffect(context, current.voiceEffect);
-          effect.setKey?.(tuneKey.scale, tuneKey.offset);
+          tellTuner(effect);
           node.connect(effect.input);
           effect.output.connect(delayNode);
         }
+        if (current.tuneStyle !== previous.tuneStyle) effect.tune?.({ style: current.tuneStyle });
+        if (current.karaokeOffsetMs !== previous.karaokeOffsetMs) alignMusic();
       },
       setTuneKey(key, shift = 0) {
         const scale = camelotScale(key);
@@ -520,6 +617,43 @@ export async function openMicrophone(
         if (String(scale) === String(tuneKey.scale) && offset === tuneKey.offset) return;
         tuneKey = { scale, offset };
         effect.setKey?.(scale, offset);
+      },
+      setTuneSong(id, melody) {
+        if (id === tuneSong.id && melody === tuneSong.melody) return;
+        const newSong = id !== tuneSong.id;
+        tuneSong = { id, melody };
+        effect.tune?.(newSong ? { song: id, melody: melody ? [...melody] : null } : { melody: melody ? [...melody] : null });
+      },
+      setTuneClock(positionMs, playing) {
+        if (!context) return;
+        tuneClock = { positionMs, at: context.currentTime, playing };
+        effect.tune?.({ clock: tuneClock });
+      },
+      setKaraokeMusic(stream, outputLatency = 0.03) {
+        if (!context) return;
+        if (!stream || !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+          stopMusic();
+          return;
+        }
+        if (music?.stream === stream) {
+          music.outputLatency = outputLatency;
+          alignMusic();
+          return;
+        }
+        stopMusic();
+        try {
+          const source = context.createMediaStreamSource(stream);
+          const align = context.createDelay(1.5);
+          const level = context.createGain();
+          // As loud as the bot sends it (listeners have its slider); faded in, not switched.
+          level.gain.value = 0;
+          level.gain.setTargetAtTime(1, context.currentTime, 0.15);
+          source.connect(align).connect(level).connect(karaokeDelay);
+          music = { stream, source, align, level, outputLatency };
+          align.delayTime.value = Math.max(0, Math.min(1.4, outputLatency + voiceLag() + current.karaokeOffsetMs / 1000));
+        } catch (error) {
+          console.warn("[huddle] karaoke mix unavailable", error);
+        }
       },
       onTelemetry(listener) {
         listeners.add(listener);
@@ -532,6 +666,7 @@ export async function openMicrophone(
       },
       stop() {
         listeners.clear();
+        stopMusic();
         node.port.onmessage = null;
         if (settledGain !== null) saveSettledGain(settledGain);
         if (context) context.onstatechange = null;
@@ -543,6 +678,7 @@ export async function openMicrophone(
           // Already torn down.
         }
         destination.stream.getTracks().forEach((track) => track.stop());
+        karaokeOut.stream.getTracks().forEach((track) => track.stop());
         raw.getTracks().forEach((track) => track.stop());
         void context?.close().catch(() => undefined);
       },
@@ -573,6 +709,9 @@ export function silentMicChain(): MicChain {
     live: true,
     update() {},
     setTuneKey() {},
+    setTuneSong() {},
+    setTuneClock() {},
+    setKaraokeMusic() {},
     onTelemetry() {
       return () => undefined;
     },

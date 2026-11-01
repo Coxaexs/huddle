@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { readMicSettings, requestMicSettings } from "../lib/mic-chain";
+import { KARAOKE_OFFSET_RANGE, readMicSettings, requestMicSettings, type MicSettings } from "../lib/mic-chain";
 import {
   Settings,
   Search,
@@ -99,6 +99,14 @@ export function MusicSettingsCard({
   const filter = settings.audio_filter || "off";
   // Your own mic, not the room's: the same switch as Settings → Voice → Voice effect.
   const [singing, setSinging] = useState(() => typeof window !== "undefined" && readMicSettings().voiceEffect === "singer");
+  const [mic, setMic] = useState<Pick<MicSettings, "tuneStyle" | "karaokeLead" | "karaokeOffsetMs">>(() => {
+    const saved = typeof window !== "undefined" ? readMicSettings() : null;
+    return { tuneStyle: saved?.tuneStyle ?? "hard", karaokeLead: saved?.karaokeLead ?? true, karaokeOffsetMs: saved?.karaokeOffsetMs ?? 0 };
+  });
+  const changeMic = (next: Partial<typeof mic>) => {
+    setMic((current) => ({ ...current, ...next }));
+    requestMicSettings(next);
+  };
 
   return (
     <section className="music-settings-card">
@@ -223,7 +231,7 @@ export function MusicSettingsCard({
       <div className="music-toggle-grid">
         <Toggle
           label="Singing voice"
-          hint={filter === "karaoke" ? "Sing along gently in tune, with a little polish" : "Gently in tune, with a little polish"}
+          hint={filter === "karaoke" ? "Sing along with autotune" : "Autotune on your mic"}
           enabled={singing}
           onClick={() => {
             const next = !singing;
@@ -231,7 +239,39 @@ export function MusicSettingsCard({
             requestMicSettings({ voiceEffect: next ? "singer" : "none" });
           }}
         />
+        {singing && (
+          <>
+            <Toggle
+              label="Keep my vibrato"
+              hint={mic.tuneStyle === "natural" ? "Natural: slides and vibrato come through, centred on the note" : "Off: snapped hard onto each note"}
+              enabled={mic.tuneStyle === "natural"}
+              onClick={() => changeMic({ tuneStyle: mic.tuneStyle === "natural" ? "hard" : "natural" })}
+            />
+            <Toggle
+              label="Sync the room to me"
+              hint="Everyone hears the song with your voice on it, in time. Wear headphones"
+              enabled={mic.karaokeLead}
+              onClick={() => changeMic({ karaokeLead: !mic.karaokeLead })}
+            />
+          </>
+        )}
       </div>
+      {singing && mic.karaokeLead && (
+        <div className="music-slider-grid">
+          <label>
+            <span>Song timing <b>{mic.karaokeOffsetMs > 0 ? "+" : ""}{mic.karaokeOffsetMs} ms</b></span>
+            <input
+              type="range"
+              min={KARAOKE_OFFSET_RANGE.min}
+              max={KARAOKE_OFFSET_RANGE.max}
+              step={10}
+              value={mic.karaokeOffsetMs}
+              aria-label="Delay the song under your voice: raise it if your voice comes out late, as on Bluetooth headphones"
+              onChange={(event) => changeMic({ karaokeOffsetMs: Number(event.target.value) })}
+            />
+          </label>
+        </div>
+      )}
 
       <div className="music-quick-actions">
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> Wrapped</button>

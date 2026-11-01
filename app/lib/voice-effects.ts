@@ -16,7 +16,7 @@ export type VoiceEffect = "none" | "singer" | "vampire" | "gramophone";
 
 export const VOICE_EFFECTS: Array<{ id: VoiceEffect; label: string; hint: string }> = [
   { id: "none", label: "None", hint: "Your normal voice" },
-  { id: "singer", label: "Singing voice", hint: "Gently pulled in tune, with a little studio polish: for karaoke, or any time" },
+  { id: "singer", label: "Singing voice", hint: "Autotune: snapped onto the note, with a little studio polish. For karaoke, or any time" },
   { id: "vampire", label: "Vampire", hint: "Deep, doubled and echoing, as if from a crypt" },
   { id: "gramophone", label: "Gramophone", hint: "An old recording in a wood-panelled lecture hall" },
 ];
@@ -26,6 +26,8 @@ export interface VoiceEffectGraph {
   output: AudioNode;
   /** The singing voice's key: the notes it pulls you onto (see camelotScale), null for any note. */
   setKey?(scale: number[] | null, offset: number): void;
+  /** Anything else for the tuner: its style, the song, its melody and clock (see public/tune-worklet.js). */
+  tune?(message: Record<string, unknown>): void;
   dispose(): void;
 }
 
@@ -77,26 +79,28 @@ export function buildVoiceEffect(context: AudioContext, effect: VoiceEffect): Vo
   const nodes: AudioNode[] = [input, output];
   const sources: AudioScheduledSourceNode[] = [];
   let setKey: VoiceEffectGraph["setKey"];
+  let tune: VoiceEffectGraph["tune"];
   const track = <T extends AudioNode>(node: T): T => {
     nodes.push(node);
     return node;
   };
 
   if (effect === "singer") {
-    // A soft pitch correction first (public/tune-worklet.js, loaded with the
+    // The autotune first (public/tune-worklet.js, loaded with the
     // mic worklet). Where it could not load, the polish alone still helps.
     let head: AudioNode = input;
     try {
-      const tune = track(new AudioWorkletNode(context, "pitch-tune", {
+      const tuner = track(new AudioWorkletNode(context, "pitch-tune", {
         numberOfInputs: 1,
         numberOfOutputs: 1,
         outputChannelCount: [1],
         channelCount: 1,
         channelCountMode: "explicit",
       }));
-      input.connect(tune);
-      head = tune;
-      setKey = (scale, offset) => tune.port.postMessage({ scale, offset });
+      input.connect(tuner);
+      head = tuner;
+      setKey = (scale, offset) => tuner.port.postMessage({ scale, offset });
+      tune = (message) => tuner.port.postMessage(message);
     } catch {
       // No tuner, then.
     }
@@ -129,14 +133,13 @@ export function buildVoiceEffect(context: AudioContext, effect: VoiceEffect): Vo
     air.gain.value = 2.5;
     head.connect(rumble).connect(box).connect(squeeze).connect(presence).connect(air);
 
-    // A bright plate, a moment behind the voice so the words stay clear.
-    const predelay = track(context.createDelay(0.1));
-    predelay.delayTime.value = 0.025;
-    const plate = track(context.createConvolver());
-    plate.buffer = impulse(context, 1.8, 3.2, 0.3);
+    // A small, quiet room: enough to sound finished, too short to hear as an
+    // echo (a long plate here came across as one).
+    const room = track(context.createConvolver());
+    room.buffer = impulse(context, 0.45, 4, 0.4);
     const wet = track(context.createGain());
-    wet.gain.value = 0.16;
-    air.connect(predelay).connect(plate).connect(wet).connect(output);
+    wet.gain.value = 0.07;
+    air.connect(room).connect(wet).connect(output);
     air.connect(output);
     // The compressor's squeeze, made back up.
     output.gain.value = 1.25;
@@ -223,6 +226,7 @@ export function buildVoiceEffect(context: AudioContext, effect: VoiceEffect): Vo
     input,
     output,
     setKey,
+    tune,
     dispose() {
       for (const source of sources) {
         try {

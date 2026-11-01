@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { readStatusExpiresAt, writeStatusExpiresAt } from "../../lib/status-clear";
-import type { DiceRollEvent, PlayerState } from "@/lib/protocol";
+import { playbackPosition, type DiceRollEvent, type PlayerState } from "@/lib/protocol";
 import { canShowVoiceBubble, onNativeVoiceAction, requestVoiceBubblePermission, syncNativeVoice } from "../../lib/native-voice";
 import { registerNativePush } from "../../lib/native-push";
 import { useMobileShell } from "../use-mobile-shell";
@@ -956,6 +956,24 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   useEffect(() => {
     setTuneKey(tuneKey, tuneShift);
   }, [setTuneKey, tuneKey, tuneShift]);
+  // Karaoke mode, which a singer's lead (sending the song in time with them) waits for.
+  const roomKaraoke = Boolean(roomPlayer?.track?.karaoke);
+  const { setRoomKaraoke } = voice;
+  useEffect(() => {
+    setRoomKaraoke(roomKaraoke);
+  }, [setRoomKaraoke, roomKaraoke]);
+  // And onto the song's own melody, where the bot has read it, at the place the song is.
+  const tuneSongId = roomPlayer?.track?.id ?? null;
+  const tuneMelody = roomPlayer?.track?.melody ?? null;
+  const { setTuneSong, setTuneClock } = voice;
+  useEffect(() => {
+    setTuneSong(tuneSongId, tuneMelody);
+  }, [setTuneSong, tuneSongId, tuneMelody]);
+  const serverNow = hub.serverNow;
+  useEffect(() => {
+    if (!roomPlayer?.track) return;
+    setTuneClock(playbackPosition(roomPlayer, serverNow()), !roomPlayer.paused);
+  }, [setTuneClock, roomPlayer, serverNow]);
 
   /**
    * MSN's "Show what I'm listening to": while it's on, your status line

@@ -1484,7 +1484,7 @@ export function MemberPanel({
                     ? t("members.muted")
                     : t("members.micOn")}
               </button>
-              <button className="leave-outline" onClick={voice.leave}>
+              <button className="leave-outline" onClick={() => voice.leave()}>
                 {t("members.leave")}
               </button>
             </div>

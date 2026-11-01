@@ -425,8 +425,8 @@ export function ProductionStudio() {
       } catch {
         // The host health monitor reports silent or missing tracks.
       }
-      // A stem is someone's voice, not the game they are sharing or /say speech.
-      if (kind === "screen" || kind === "tts") continue;
+      // A stem is someone's voice, not the game they are sharing, /say speech or a karaoke song.
+      if (kind === "screen" || kind === "tts" || kind === "karaoke") continue;
       if (recorderRef.current?.state === "recording") {
         startStem(connectionId, stream);
       }
@@ -480,7 +480,7 @@ export function ProductionStudio() {
         recorderRef.current = recorder;
         setCaptureStatus("recording");
         for (const { connectionId, stream: remote, kind } of remoteStreamsRef.current) {
-          if (kind !== "screen") startStem(connectionId, remote);
+          if (kind !== "screen" && kind !== "tts" && kind !== "karaoke") startStem(connectionId, remote);
         }
         return;
       }

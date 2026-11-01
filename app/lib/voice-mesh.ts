@@ -163,10 +163,10 @@ export function splitEarlySignals<T extends { from: string; at: number }>(
  * What to do when the hub connection or its session changes while in a room.
  * - "none": already announced under this connection and session.
  * - "first": the first announcement; the roster effect does the meshing.
- * - "resume": same connection id after a hub restart; only the hub forgot the
- *   seat, so re-announce and leave media alone.
- * - "reconnect": a new connection id (a wifi blip, a laptop lid); everyone else
- *   rebuilds against the new id, so tear down and re-mesh (and rejoin LiveKit).
+ * - "resume": same connection id after a hub restart or a wifi blip (the hub
+ *   hands a dead socket's seat to the new one); re-announce, leave media alone.
+ * - "reconnect": a new connection id (the hub refused the resume); everyone
+ *   else rebuilds against the new id, so tear down and re-mesh (and rejoin LiveKit).
  */
 export function rejoinKind(
   announced: { connectionId: string | null; session: unknown },

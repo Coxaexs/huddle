@@ -7,6 +7,7 @@ import { headTrackingHint } from "../table-audio-menu";
 import { saveDevice, type DeviceLists } from "../../lib/devices";
 import { type MicSettings, type MicTelemetry } from "../../lib/mic-chain";
 import { VoiceInput } from "./voice-input";
+import { VoiceSounds } from "./voice-sounds";
 import { ComboButton } from "./roles-tab";
 import { Tab } from "./types";
 
@@ -132,7 +133,7 @@ export function VoiceTab({
             onMicTestHold={onMicTestHold}
           />
 
-          <section className="vs-section vs-section-video">
+          <section className="vs-section vs-section-video" data-settings-anchor="video" data-settings-label="Video">
             <h3 className="field-label">Video</h3>
             <label htmlFor="settings-camera">Camera</label>
             <select
@@ -163,7 +164,9 @@ export function VoiceTab({
             </label>
           </section>
 
-          <details className="vs-more">
+          <VoiceSounds />
+
+          <details className="vs-more" data-settings-anchor="keybinds" data-settings-label="Keybinds">
             <summary>Keybinds</summary>
             <div className="vs-more-body">
               <p className="modal-hint">
@@ -202,7 +205,7 @@ export function VoiceTab({
           </details>
 
           {onTableMode && (
-            <details className="vs-more">
+            <details className="vs-more" data-settings-anchor="spatial" data-settings-label="Spatial audio">
               <summary>Spatial audio</summary>
               <div className="vs-more-body">
                 <label className="appearance-switch">
@@ -261,7 +264,7 @@ export function VoiceTab({
           )}
 
           {relay && (
-            <details className="vs-more">
+            <details className="vs-more" data-settings-anchor="connection" data-settings-label="Connection">
               <summary>Connection</summary>
               <div className="vs-more-body">
                 <p className="modal-hint" role="status">{relay.detail}</p>

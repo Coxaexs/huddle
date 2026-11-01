@@ -5,11 +5,103 @@
  * - Screen Share Start / Stop
  * - Outgoing DM Call Phone Ringing Tone
  * - Call Connected / Call Ended
+ * - Someone joining or leaving your voice room, and you disconnecting
+ * - Push to talk and camera on / off
+ *
+ * Each one can be switched off in Settings → Voice & Video → Sounds. The sounds
+ * themselves are in `voice-cue-sounds.ts`, and themes with their own set in
+ * `themed-cues.ts`, which is asked first.
  */
 
-import { playThemedCue, themedLoop } from "./themed-cues";
+import { savedDevice } from "./devices";
+import { cueOutput, type CueId, type RingId } from "./cue-kit";
+import { themedCue, themedRing } from "./themed-cues";
+import { STANDARD } from "./voice-cue-sounds";
+
+export type VoiceSoundId =
+  | "deafen"
+  | "undeafen"
+  | "mute"
+  | "unmute"
+  | "disconnect"
+  | "pttOn"
+  | "pttOff"
+  | "userJoin"
+  | "userLeave"
+  | "cameraOn"
+  | "cameraOff"
+  | "shareStart"
+  | "shareStop"
+  | "callAnswer"
+  | "callEnd"
+  | "ringOut"
+  | "ringIn";
+
+/** In the order the settings list them; the first four are always shown. */
+export const VOICE_SOUNDS: Array<{ id: VoiceSoundId; label: string }> = [
+  { id: "deafen", label: "Deafen" },
+  { id: "undeafen", label: "Undeafen" },
+  { id: "mute", label: "Mute" },
+  { id: "unmute", label: "Unmute" },
+  { id: "userJoin", label: "User join" },
+  { id: "userLeave", label: "User leave" },
+  { id: "disconnect", label: "Voice disconnected" },
+  { id: "pttOn", label: "Push to talk activate" },
+  { id: "pttOff", label: "Push to talk deactivate" },
+  { id: "cameraOn", label: "Camera on" },
+  { id: "cameraOff", label: "Camera off" },
+  { id: "shareStart", label: "Stream started" },
+  { id: "shareStop", label: "Stream stopped" },
+  { id: "callAnswer", label: "Call answered" },
+  { id: "callEnd", label: "Call ended" },
+  { id: "ringOut", label: "Outgoing ring" },
+  { id: "ringIn", label: "Incoming ring" },
+];
+
+const SOUNDS_KEY = "huddle:voice-sounds";
+
+/** Only the switched-off sounds are stored, so new sounds start on. */
+function switchedOff(): Partial<Record<VoiceSoundId, false>> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(SOUNDS_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function voiceSoundOn(id: VoiceSoundId): boolean {
+  if (typeof window === "undefined") return false;
+  return switchedOff()[id] !== false;
+}
+
+export function setVoiceSoundOn(id: VoiceSoundId, on: boolean): void {
+  try {
+    const off = switchedOff();
+    if (on) delete off[id];
+    else off[id] = false;
+    window.localStorage.setItem(SOUNDS_KEY, JSON.stringify(off));
+  } catch {
+    // Storage blocked: applies until reload.
+  }
+}
 
 let audioCtx: AudioContext | null = null;
+/** The output the context was last pointed at ("" is the system default). */
+let audioSink = "";
+
+type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
+
+/** Cues play on the speaker picked in Voice settings, like the voices do. */
+function followSpeaker(ctx: AudioContext) {
+  const sink = savedDevice("speaker");
+  const context = ctx as SinkContext;
+  if (sink === audioSink || !context.setSinkId) return;
+  audioSink = sink;
+  void context.setSinkId(sink).catch(() => {
+    audioSink = "";
+  });
+}
 
 /**
  * A running context keeps an audio thread rendering silence for as long as the
@@ -46,250 +138,84 @@ function getAudioContext(): AudioContext | null {
     if (audioCtx && audioCtx.state === "suspended") {
       void audioCtx.resume();
     }
-    if (audioCtx) sleepWhenIdle();
+    if (audioCtx) {
+      followSpeaker(audioCtx);
+      sleepWhenIdle();
+    }
     return audioCtx;
   } catch {
     return null;
   }
 }
 
-/** Crisp descending tone when microphone is muted */
-export function playMuteSound() {
+function play(id: CueId) {
+  if (!voiceSoundOn(id)) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-  if (playThemedCue(ctx, "mute")) return;
   try {
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(360, now);
-    osc.frequency.exponentialRampToValueAtTime(180, now + 0.09);
-
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.1);
+    const cue = themedCue(id) ?? STANDARD.cues[id];
+    cue.play(ctx, cueOutput(ctx, cue), ctx.currentTime + 0.01);
   } catch {
-    // Ignore audio play errors
+    // A failed cue is silent, never an error.
   }
 }
 
-/** Crisp ascending tone when microphone is unmuted */
-export function playUnmuteSound() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "unmute")) return;
+/** Fades a ringtone out instead of cutting it mid-note. */
+function silence(gain: GainNode | null) {
+  if (!gain) return;
   try {
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(220, now);
-    osc.frequency.exponentialRampToValueAtTime(440, now + 0.09);
-
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.1);
-  } catch {
-    // Ignore audio play errors
-  }
-}
-
-/** Low descending double chime when deafened */
-export function playDeafenSound() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "deafen")) return;
-  try {
-    const now = ctx.currentTime;
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc1.type = "triangle";
-    osc2.type = "sine";
-
-    osc1.frequency.setValueAtTime(280, now);
-    osc1.frequency.exponentialRampToValueAtTime(160, now + 0.14);
-
-    osc2.frequency.setValueAtTime(200, now);
-    osc2.frequency.exponentialRampToValueAtTime(120, now + 0.14);
-
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc1.start(now);
-    osc2.start(now);
-    osc1.stop(now + 0.15);
-    osc2.stop(now + 0.15);
+    const now = gain.context.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0, now, 0.025);
   } catch {
     // Ignore
   }
 }
 
-/** High ascending double chime when undeafened */
-export function playUndeafenSound() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "undeafen")) return;
+/** Starts one ringtone burst; the returned gain fades it out. */
+function ringBurst(ctx: AudioContext, id: RingId): GainNode | null {
   try {
-    const now = ctx.currentTime;
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc1.type = "sine";
-    osc2.type = "triangle";
-
-    osc1.frequency.setValueAtTime(220, now);
-    osc1.frequency.exponentialRampToValueAtTime(440, now + 0.14);
-
-    osc2.frequency.setValueAtTime(330, now);
-    osc2.frequency.exponentialRampToValueAtTime(550, now + 0.14);
-
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc1.start(now);
-    osc2.start(now);
-    osc1.stop(now + 0.15);
-    osc2.stop(now + 0.15);
+    const ring = themedRing(id) ?? STANDARD.rings[id];
+    const out = cueOutput(ctx, ring);
+    ring.play(ctx, out, ctx.currentTime + 0.01);
+    return out;
   } catch {
-    // Ignore
+    return null;
   }
 }
 
-/** Joyful chime when screen share starts */
-export function playScreenShareStartSound() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "shareStart")) return;
-  try {
-    const now = ctx.currentTime;
-    [
-      { f: 440, t: 0 },
-      { f: 554.37, t: 0.08 },
-      { f: 659.25, t: 0.16 },
-    ].forEach(({ f, t }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(f, now + t);
-      gain.gain.setValueAtTime(0.12, now + t);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + t);
-      osc.stop(now + t + 0.13);
-    });
-  } catch {
-    // Ignore
-  }
-}
+/** The theme's ring period, read once when ringing starts. */
+const ringPeriod = (id: RingId) => (themedRing(id) ?? STANDARD.rings[id]).period;
 
-/** Gentle chime when screen share stops or someone leaves screen share */
-export function playScreenShareStopSound() {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "shareStop")) return;
-  try {
-    const now = ctx.currentTime;
-    [
-      { f: 659.25, t: 0 },
-      { f: 440, t: 0.09 },
-    ].forEach(({ f, t }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(f, now + t);
-      gain.gain.setValueAtTime(0.12, now + t);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + t);
-      osc.stop(now + t + 0.13);
-    });
-  } catch {
-    // Ignore
-  }
-}
+export const playMuteSound = () => play("mute");
+export const playUnmuteSound = () => play("unmute");
+export const playDeafenSound = () => play("deafen");
+export const playUndeafenSound = () => play("undeafen");
+export const playScreenShareStartSound = () => play("shareStart");
+export const playScreenShareStopSound = () => play("shareStop");
+export const playUserJoinSound = () => play("userJoin");
+export const playUserLeaveSound = () => play("userLeave");
+export const playVoiceDisconnectSound = () => play("disconnect");
+export const playPttOnSound = () => play("pttOn");
+export const playPttOffSound = () => play("pttOff");
+export const playCameraOnSound = () => play("cameraOn");
+export const playCameraOffSound = () => play("cameraOff");
 
-// Active calling ring tone oscillator references
+// Active calling ring tone references
 let ringInterval: number | null = null;
 let ringGainNode: GainNode | null = null;
 
-/** Plays realistic standard phone ring tone (440Hz + 480Hz dual tone cadence) */
+/** Rings while your DM call waits to be picked up. */
 export function startCallingTone() {
   stopCallingTone();
+  if (!voiceSoundOn("ringOut")) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
-  const themed = themedLoop("calling");
-  if (themed) {
-    const burst = () => {
-      ringGainNode = themed.burst(ctx);
-    };
-    burst();
-    ringInterval = window.setInterval(burst, themed.period);
-    return;
-  }
-
-  const playOneBurst = () => {
-    try {
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc1.type = "sine";
-      osc2.type = "sine";
-      osc1.frequency.setValueAtTime(440, now);
-      osc2.frequency.setValueAtTime(480, now);
-
-      gain.gain.setValueAtTime(0.09, now);
-      // Fade in slightly
-      gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
-      // Hold for 1.6s
-      gain.gain.setValueAtTime(0.12, now + 1.55);
-      // Fade out
-      gain.gain.linearRampToValueAtTime(0.001, now + 1.65);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      ringGainNode = gain;
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 1.7);
-      osc2.stop(now + 1.7);
-    } catch {
-      // Ignore
-    }
+  const burst = () => {
+    ringGainNode = ringBurst(ctx, "ringOut");
   };
-
-  playOneBurst();
-  ringInterval = window.setInterval(playOneBurst, 3500);
+  burst();
+  ringInterval = window.setInterval(burst, ringPeriod("ringOut"));
 }
 
 /** Stops the phone ring tone */
@@ -298,129 +224,38 @@ export function stopCallingTone() {
     clearInterval(ringInterval);
     ringInterval = null;
   }
-  if (ringGainNode) {
-    try {
-      ringGainNode.gain.setValueAtTime(0, 0);
-    } catch {
-      // Ignore
-    }
-    ringGainNode = null;
-  }
+  silence(ringGainNode);
+  ringGainNode = null;
 }
 
 /** Positive connected chime when DM call is answered */
 export function playCallAnswerSound() {
   stopCallingTone();
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "callAnswer")) return;
-  try {
-    const now = ctx.currentTime;
-    [
-      { f: 523.25, t: 0 },
-      { f: 659.25, t: 0.1 },
-      { f: 783.99, t: 0.2 },
-    ].forEach(({ f, t }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(f, now + t);
-      gain.gain.setValueAtTime(0.15, now + t);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.15);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + t);
-      osc.stop(now + t + 0.16);
-    });
-  } catch {
-    // Ignore
-  }
+  play("callAnswer");
 }
 
 /** Disconnect tone when call ends */
 export function playCallEndSound() {
   stopCallingTone();
   stopIncomingCallTone();
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (playThemedCue(ctx, "callEnd")) return;
-  try {
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(290, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.19);
-  } catch {
-    // Ignore
-  }
+  play("callEnd");
 }
 
 // Incoming call ringtone references
 let incomingRingInterval: number | null = null;
 let incomingRingGainNode: GainNode | null = null;
 
-/** Plays recognizable musical chime cadence for incoming DM calls */
+/** Rings while someone is calling you. */
 export function startIncomingCallTone() {
   stopIncomingCallTone();
+  if (!voiceSoundOn("ringIn")) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-
-  const themed = themedLoop("incoming");
-  if (themed) {
-    const burst = () => {
-      incomingRingGainNode = themed.burst(ctx);
-    };
-    burst();
-    incomingRingInterval = window.setInterval(burst, themed.period);
-    return;
-  }
-
-  const playChimeBurst = () => {
-    try {
-      const now = ctx.currentTime;
-      // Vibrant modern chime pattern: C5, E5, G5, B5, C6
-      const notes = [
-        { f: 523.25, t: 0, d: 0.12 },
-        { f: 659.25, t: 0.12, d: 0.12 },
-        { f: 783.99, t: 0.24, d: 0.14 },
-        { f: 987.77, t: 0.38, d: 0.16 },
-        { f: 1046.5, t: 0.54, d: 0.32 },
-      ];
-
-      const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(0.14, now);
-      masterGain.connect(ctx.destination);
-      incomingRingGainNode = masterGain;
-
-      notes.forEach(({ f, t, d }) => {
-        const osc = ctx.createOscillator();
-        const noteGain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(f, now + t);
-
-        noteGain.gain.setValueAtTime(0.15, now + t);
-        noteGain.gain.exponentialRampToValueAtTime(0.001, now + t + d);
-
-        osc.connect(noteGain);
-        noteGain.connect(masterGain);
-
-        osc.start(now + t);
-        osc.stop(now + t + d + 0.05);
-      });
-    } catch {
-      // Ignore
-    }
+  const burst = () => {
+    incomingRingGainNode = ringBurst(ctx, "ringIn");
   };
-
-  playChimeBurst();
-  incomingRingInterval = window.setInterval(playChimeBurst, 2400);
+  burst();
+  incomingRingInterval = window.setInterval(burst, ringPeriod("ringIn"));
 }
 
 /** Stops the incoming call ringtone */
@@ -429,13 +264,44 @@ export function stopIncomingCallTone() {
     clearInterval(incomingRingInterval);
     incomingRingInterval = null;
   }
-  if (incomingRingGainNode) {
-    try {
-      incomingRingGainNode.gain.setValueAtTime(0, 0);
-    } catch {
-      // Ignore
-    }
-    incomingRingGainNode = null;
-  }
+  silence(incomingRingGainNode);
+  incomingRingGainNode = null;
 }
 
+const PREVIEWS: Record<VoiceSoundId, () => void> = {
+  deafen: playDeafenSound,
+  undeafen: playUndeafenSound,
+  mute: playMuteSound,
+  unmute: playUnmuteSound,
+  disconnect: playVoiceDisconnectSound,
+  pttOn: playPttOnSound,
+  pttOff: playPttOffSound,
+  userJoin: playUserJoinSound,
+  userLeave: playUserLeaveSound,
+  cameraOn: playCameraOnSound,
+  cameraOff: playCameraOffSound,
+  shareStart: playScreenShareStartSound,
+  shareStop: playScreenShareStopSound,
+  callAnswer: playCallAnswerSound,
+  callEnd: playCallEndSound,
+  // One burst of the ring, stopped just before the next would start.
+  ringOut: () => {
+    startCallingTone();
+    window.setTimeout(stopCallingTone, ringPeriod("ringOut") - 100);
+  },
+  ringIn: () => {
+    startIncomingCallTone();
+    window.setTimeout(stopIncomingCallTone, ringPeriod("ringIn") - 100);
+  },
+};
+
+/** Plays a sound for the settings list, even while it is switched off. */
+export function previewVoiceSound(id: VoiceSoundId) {
+  const wasOn = voiceSoundOn(id);
+  if (!wasOn) setVoiceSoundOn(id, true);
+  try {
+    PREVIEWS[id]();
+  } finally {
+    if (!wasOn) setVoiceSoundOn(id, false);
+  }
+}

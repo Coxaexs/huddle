@@ -107,6 +107,7 @@ export function renderChatOverlays(v: ShellRenderState) {
           streams={voice.remoteStreams}
           participants={voiceParticipants}
           listenerId={hub.connectionId}
+          audibleSongs={voice.audibleSongs}
           enabled={voice.tableMode}
           hostId={voice.tableHostId}
           seatOrder={voice.tableSeatOrder}

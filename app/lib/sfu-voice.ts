@@ -33,8 +33,11 @@ try {
  * from the hub, exactly as it does for the mesh.
  */
 
-/** "tts": text-to-speech said into the call (/say), separate from the mic. */
-export type SfuStreamKind = "voice" | "camera" | "screen" | "tts";
+/**
+ * "tts": text-to-speech said into the call (/say), separate from the mic.
+ * "karaoke": a karaoke lead's song, lined up with their voice (see useVoice).
+ */
+export type SfuStreamKind = "voice" | "camera" | "screen" | "tts" | "karaoke";
 
 export interface SfuRemoteStream {
   /** The hub connection id this media belongs to, as the identity claims it. */
@@ -45,10 +48,11 @@ export interface SfuRemoteStream {
   stream: MediaStream;
 }
 
-export type SfuPublishKind = "mic" | "camera" | "screen" | "screen-audio" | "tts";
+export type SfuPublishKind = "mic" | "camera" | "screen" | "screen-audio" | "tts" | "karaoke";
 
 /** Track name that marks a published track as text-to-speech. */
 const TTS_TRACK_NAME = "tts";
+const KARAOKE_TRACK_NAME = "karaoke";
 
 /** The token route's identity: `<userId>|<connectionId>`, user half server-set. */
 export function parseSfuIdentity(identity: string): { userId: string; connectionId: string } | null {
@@ -67,7 +71,7 @@ function kindOf(source: Track.Source, trackName = ""): SfuStreamKind | null {
     case Track.Source.ScreenShareAudio:
       return "screen";
     default:
-      return trackName === TTS_TRACK_NAME ? "tts" : null;
+      return trackName === TTS_TRACK_NAME ? "tts" : trackName === KARAOKE_TRACK_NAME ? "karaoke" : null;
   }
 }
 
@@ -105,7 +109,7 @@ export interface SfuHandlers {
   /** The full set of remote streams, whenever it changes. */
   onStreams: (streams: SfuRemoteStream[]) => void;
   /** A remote microphone arrived: for the speaking meter and jitter tuning. */
-  onVoice: (connectionId: string, stream: MediaStream, receiver: RTCRtpReceiver | undefined, kind: "voice" | "tts") => void;
+  onVoice: (connectionId: string, stream: MediaStream, receiver: RTCRtpReceiver | undefined, kind: "voice" | "tts" | "karaoke") => void;
   /** The connection is gone for good — not a reconnect, not our own leave. */
   onLost: () => void;
   /** Whether this tab asked not to receive someone's camera or screen. */
@@ -121,6 +125,11 @@ export class SfuVoice {
   private leaving = false;
   /** Identities our microphone is currently restricted to, while whispering. */
   private whispering: string[] | null = null;
+  /**
+   * Handed to LiveKit as is: it keeps this object and reads it again on every
+   * resume and reconnect, so new relay logins put here are used from then on.
+   */
+  private readonly rtcConfig: RTCConfiguration = {};
 
   constructor(private readonly handlers: SfuHandlers) {
     try {
@@ -157,12 +166,18 @@ export class SfuVoice {
   }
 
   async connect(url: string, token: string, iceServers: RTCIceServer[]): Promise<void> {
+    this.rtcConfig.iceServers = iceServers;
     await this.room.connect(url, token, {
       autoSubscribe: true,
       // Our TURN relay, for networks that block LiveKit's own ports. The
       // server sends none of its own, so this replaces nothing.
-      rtcConfig: { iceServers },
+      rtcConfig: this.rtcConfig,
     });
+  }
+
+  /** Fresh relay logins (minted ones run out); LiveKit uses them from its next resume. */
+  setIceServers(iceServers: RTCIceServer[]): void {
+    this.rtcConfig.iceServers = iceServers;
   }
 
   /** Puts one of our tracks in the room. */
@@ -182,6 +197,15 @@ export class SfuVoice {
         red: true,
         audioPreset: { maxBitrate: options.bitrate ?? 64_000, priority: "high" },
         stopMicTrackOnMute: false,
+      };
+    } else if (kind === "karaoke") {
+      // Music: no DTX and no redundancy to spend on it, but a music bitrate.
+      publish = {
+        source: Track.Source.Unknown,
+        name: KARAOKE_TRACK_NAME,
+        dtx: false,
+        red: false,
+        audioPreset: { maxBitrate: 128_000 },
       };
     } else if (kind === "tts") {
       publish = {
@@ -344,7 +368,7 @@ export class SfuVoice {
     if (!list.includes(track.mediaStreamTrack)) list.push(track.mediaStreamTrack);
     this.tracks.set(key, list);
     const stream = this.rebuild(key, who, kind);
-    if ((kind === "voice" || kind === "tts") && stream) this.handlers.onVoice(who.connectionId, stream, track.receiver, kind);
+    if ((kind === "voice" || kind === "tts" || kind === "karaoke") && stream) this.handlers.onVoice(who.connectionId, stream, track.receiver, kind);
     this.emit();
   }
 

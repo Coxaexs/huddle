@@ -51,6 +51,7 @@ import {
   type MicSettings,
   type MicTelemetry,
 } from "../lib/mic-chain";
+import { musicOutputLatency, subscribeKaraokeTap, subscribeMusicStream } from "../lib/music-tap";
 import {
   playMuteSound,
   playUnmuteSound,
@@ -58,6 +59,13 @@ import {
   playUndeafenSound,
   playScreenShareStartSound,
   playScreenShareStopSound,
+  playUserJoinSound,
+  playUserLeaveSound,
+  playVoiceDisconnectSound,
+  playPttOnSound,
+  playPttOffSound,
+  playCameraOnSound,
+  playCameraOffSound,
 } from "../lib/audio-cues";
 import {
   createVirtualBackgroundPipeline,
@@ -211,6 +219,17 @@ export interface RemoteVoiceStream {
  */
 let sfuModule: Promise<typeof import("../lib/sfu-voice")> | null = null;
 const loadSfu = () => (sfuModule ??= import("../lib/sfu-voice"));
+
+/** /api/voice/ice. `expiresAt` is set when the relay logins are minted per person. */
+interface IceList {
+  iceServers: RTCIceServer[];
+  source?: string;
+  note?: string;
+  expiresAt?: number;
+}
+
+/** Fetch new relay logins when the old ones have less than this left (and on joining). */
+const ICE_REFRESH_MARGIN_MS = 2 * 60 * 60_000;
 
 /** LiveKit's address and a token for one room, or null when this instance has none. */
 async function sfuGrant(
@@ -424,6 +443,8 @@ export function useVoice({
     ? rooms[channelId]?.find((person) => person.connectionId === connectionId)
     : undefined;
   const important = Boolean(ownSeat?.important);
+  /** This seat sends the room the song in time with its singing (see the karaoke lead below). */
+  const karaokeLead = Boolean(ownSeat?.karaokeLead);
   /** Priority Speaker: the hub sets both from this member's PRIORITY_SPEAKER. */
   const prioritySpeaker = Boolean(ownSeat?.prioritySpeaker);
   const priorityAllowed = Boolean(ownSeat?.priorityAllowed);
@@ -648,15 +669,24 @@ export function useVoice({
     quality: "excellent",
   });
   const pendingCandidatesRef = useRef(new Map<string, RTCIceCandidateInit[]>());
-  const iceServersRef = useRef<RTCIceServer[]>([
-    { urls: "stun:stun.l.google.com:19302" },
-  ]);
+  // Empty until /api/voice/ice answers: direct calls are relay-only anyway, and
+  // a public STUN server would only hand this person's address to a third party.
+  const iceServersRef = useRef<RTCIceServer[]>([]);
   /**
    * Direct connections go through the TURN relay only (see meshIcePolicy).
    * Until the server's list says it has no relay, assume it does: a call that
    * cannot connect yet beats one that hands out this machine's address.
    */
   const hasRelayRef = useRef(true);
+  /** When the relay logins in iceServersRef run out (epoch ms); 0 for fixed ones. */
+  const iceExpiresAtRef = useRef(0);
+  const [iceExpiresAt, setIceExpiresAt] = useState(0);
+  const takeIce = useCallback((data: IceList) => {
+    if (data.iceServers?.length) iceServersRef.current = data.iceServers;
+    iceExpiresAtRef.current = data.expiresAt || 0;
+    setIceExpiresAt(iceExpiresAtRef.current);
+    hasRelayRef.current = turnOnly(iceServersRef.current).length > 0;
+  }, []);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analysersRef = useRef(new Map<string, AnalyserNode>());
   const channelIdRef = useRef<string | null>(null);
@@ -664,7 +694,10 @@ export function useVoice({
   const negotiateRef = useRef<
     (remoteId: string, peer: RTCPeerConnection) => Promise<void>
   >(async () => {});
-  const participantCountRef = useRef(0);
+  /** Our account id, as our own seat in the roster gives it. */
+  const myUserIdRef = useRef<string | undefined>(undefined);
+  /** The other seats in our room as the last join/leave chime saw them. */
+  const heardSeatsRef = useRef<{ room: string; seats: Set<string> } | null>(null);
   /** Signals that arrived before this tab finished joining. */
   const earlySignalsRef = useRef<Array<{ from: string; raw: unknown; at: number }>>(
     [],
@@ -1102,14 +1135,9 @@ export function useVoice({
     const load = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const data = await apiFetch<{
-            iceServers: RTCIceServer[];
-            source?: string;
-            note?: string;
-          }>("/api/voice/ice");
+          const data = await apiFetch<IceList>("/api/voice/ice");
           if (cancelled) return;
-          if (data.iceServers?.length) iceServersRef.current = data.iceServers;
-          hasRelayRef.current = turnOnly(iceServersRef.current).length > 0;
+          takeIce(data);
           if (data.source !== "configured") {
             console.warn(
               `Huddle voice: ${data.note || "no TURN server is configured."}`,
@@ -1140,7 +1168,35 @@ export function useVoice({
     return () => {
       cancelled = true;
     };
-  }, [signedIn, iceLoaded]);
+  }, [signedIn, iceLoaded, takeIce]);
+
+  // Minted relay logins run out (see /api/voice/ice). Fetch new ones ahead of
+  // that and hand them to the connections already up, so a call that outlives
+  // its login (someone parked in a room for a day) reconnects with ones the
+  // relay still takes. takeIce moves iceExpiresAt on, which re-arms this.
+  useEffect(() => {
+    if (!iceExpiresAt) return;
+    let timer = 0;
+    const refresh = () => {
+      apiFetch<IceList>("/api/voice/ice")
+        .then((data) => {
+          takeIce(data);
+          for (const peer of peersRef.current.values()) {
+            try {
+              peer.setConfiguration({ ...peer.getConfiguration(), iceServers: iceServersRef.current });
+            } catch {
+              // Closing; its replacement is built with the new list.
+            }
+          }
+          sfuRef.current?.setIceServers(iceServersRef.current);
+        })
+        .catch(() => {
+          timer = window.setTimeout(refresh, 5 * 60_000);
+        });
+    };
+    timer = window.setTimeout(refresh, Math.max(60_000, iceExpiresAt - ICE_REFRESH_MARGIN_MS - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [iceExpiresAt, takeIce]);
 
   /**
    * Gathers a relay candidate and reports what came back. Worth doing because
@@ -1209,31 +1265,6 @@ export function useVoice({
     void checkRelay();
   }, [channelId, iceGeneration, checkRelay]);
 
-  const playRoomTone = useCallback((kind: "join" | "leave") => {
-    try {
-      audioContextRef.current ||= new AudioContext();
-      const context = audioContextRef.current;
-      void context.resume();
-      const start = context.currentTime;
-      const gain = context.createGain();
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.09, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
-      gain.connect(context.destination);
-      const notes = kind === "join" ? [520, 700] : [620, 410];
-      notes.forEach((frequency, index) => {
-        const oscillator = context.createOscillator();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequency;
-        oscillator.connect(gain);
-        oscillator.start(start + index * 0.055);
-        oscillator.stop(start + 0.11 + index * 0.055);
-      });
-    } catch {
-      // Voice remains usable when Web Audio is unavailable.
-    }
-  }, []);
-
   /** Watches a stream's level so the UI can show who is talking. */
   const watchLevel = useCallback((id: string, stream: MediaStream) => {
     try {
@@ -1252,14 +1283,23 @@ export function useVoice({
   useEffect(() => {
     if (!channelId) return;
     const buffer = new Uint8Array(256);
+    const songHeardAt = new Map<string, number>();
     const timer = window.setInterval(() => {
       const loud = new Set<string>();
       for (const [id, analyser] of analysersRef.current.entries()) {
         analyser.getByteTimeDomainData(buffer);
         let peak = 0;
         for (const sample of buffer) peak = Math.max(peak, Math.abs(sample - 128));
+        // A karaoke song is no one speaking; it only counts as arriving.
+        if (id.endsWith(":karaoke")) {
+          if (peak > 2) songHeardAt.set(id.slice(0, -":karaoke".length), Date.now());
+          continue;
+        }
         if (peak > 8) loud.add(id.replace(/:tts$/, ""));
       }
+      // Songs heard in the last three seconds (a gap between songs is not a lost one).
+      const audible = [...songHeardAt].filter(([, at]) => Date.now() - at < 3000).map(([id]) => id).sort().join(",");
+      setAudibleSongs((previous) => (previous === audible ? previous : audible));
       // Your own tile reads the input chain instead of a second analyser: it
       // already decided whether this is speech, and it decided on the audio
       // everyone else is actually receiving. Mute and push-to-talk live further
@@ -1294,6 +1334,10 @@ export function useVoice({
       for (const listener of micListenersRef.current) listener(telemetry);
     });
     chain.setTuneKey(tuneKeyRef.current.key, tuneKeyRef.current.shift);
+    chain.setTuneSong(tuneSongRef.current.id, tuneSongRef.current.melody);
+    const clock = tuneClockRef.current;
+    if (clock) chain.setTuneClock(clock.positionMs + (clock.playing ? performance.now() - clock.at : 0), clock.playing);
+    chain.setKaraokeMusic(karaokeMusicRef.current, musicOutputLatency());
     return chain;
   }, []);
 
@@ -1307,6 +1351,88 @@ export function useVoice({
     tuneKeyRef.current = { key, shift };
     micChainRef.current?.setTuneKey(key, shift);
   }, []);
+  /** The same for the song itself and its melody (MicChain.setTuneSong). */
+  const tuneSongRef = useRef<{ id: string | null; melody: readonly number[] | null }>({ id: null, melody: null });
+  const setTuneSong = useCallback((id: string | null, melody: readonly number[] | null) => {
+    tuneSongRef.current = { id, melody };
+    micChainRef.current?.setTuneSong(id, melody);
+  }, []);
+  /** And where in the song the room is (MicChain.setTuneClock); `at` is performance.now(). */
+  const tuneClockRef = useRef<{ positionMs: number; at: number; playing: boolean } | null>(null);
+  const setTuneClock = useCallback((positionMs: number, playing: boolean) => {
+    tuneClockRef.current = { positionMs, at: performance.now(), playing };
+    micChainRef.current?.setTuneClock(positionMs, playing);
+  }, []);
+
+  /**
+   * Karaoke lead. Everyone hears the bot a moment after it plays and a singer
+   * a moment after *they* heard it, so a singer always trails the song for the
+   * rest of the room. The fix is to let the singer be the clock: while the
+   * room is in karaoke mode and you sing with the singing voice on, you take
+   * the room's lead (one at a time; the hub decides) and send the song as you
+   * hear it on a track of its own, lined up with your voice. Listeners play it
+   * in place of the bot, at the bot's volume, only while it actually arrives
+   * (see RemoteVoiceAudio). Through the voice server only: the mesh would need
+   * every peer renegotiated for the extra track. The song comes from your own
+   * playback (its karaoke tap), never the bot's stream opened a second time.
+   */
+  const [roomKaraoke, setRoomKaraoke] = useState(false);
+  /** Connections whose karaoke song is really arriving with sound (comma-joined, for cheap compares). */
+  const [audibleSongs, setAudibleSongs] = useState("");
+  const [musicStream, setMusicStreamState] = useState<MediaStream | null>(null);
+  useEffect(() => subscribeMusicStream(setMusicStreamState), []);
+  const [karaokeTap, setKaraokeTapState] = useState<MediaStream | null>(null);
+  useEffect(() => subscribeKaraokeTap(setKaraokeTapState), []);
+  const leadTaken = Boolean(
+    channelId && rooms[channelId]?.some((person) => person.karaokeLead && person.connectionId !== connectionId),
+  );
+  const wantKaraokeLead = Boolean(
+    channelId && roomKaraoke && sfuMode && musicStream && micSettings.voiceEffect === "singer" && micSettings.karaokeLead
+      && !muted && !deafened && !forcedMute
+      // A mic without Web Audio has no song track to send.
+      && micChainRef.current?.karaoke,
+  );
+  useEffect(() => {
+    if (!channelId) return;
+    if (wantKaraokeLead && !karaokeLead && !leadTaken) send({ t: "voice-state", karaokeLead: true });
+    else if (!wantKaraokeLead && karaokeLead) send({ t: "voice-state", karaokeLead: false });
+  }, [channelId, wantKaraokeLead, karaokeLead, leadTaken, send]);
+  const karaokeMusicRef = useRef<MediaStream | null>(null);
+  /** The song track as published, to take back when the lead ends (or the mic or server changes). */
+  const karaokePubRef = useRef<{ sfu: SfuVoice; track: MediaStreamTrack } | null>(null);
+  const syncKaraokeTrack = useCallback((on: boolean) => {
+    const sfu = sfuRef.current;
+    const track = on && sfu && sfuModeRef.current ? micChainRef.current?.karaoke?.getAudioTracks()[0] ?? null : null;
+    const published = karaokePubRef.current;
+    if (published && (published.track !== track || published.sfu !== sfu)) {
+      karaokePubRef.current = null;
+      void published.sfu.unpublish([published.track]).catch(() => undefined);
+    }
+    if (track && sfu && !karaokePubRef.current) {
+      karaokePubRef.current = { sfu, track };
+      void sfu.publish(track, "karaoke").catch(() => {
+        if (karaokePubRef.current?.track === track) karaokePubRef.current = null;
+      });
+    }
+  }, []);
+  useEffect(() => {
+    // Sent only once the hub has made us the lead, so the room never hears two
+    // songs, and only while the song really flows in: a silent song track
+    // would only teach listeners to wait for it.
+    const on = karaokeLead && wantKaraokeLead;
+    const stream = on ? karaokeTap : null;
+    karaokeMusicRef.current = stream;
+    micChainRef.current?.setKaraokeMusic(stream, musicOutputLatency());
+    syncKaraokeTrack(Boolean(stream));
+    if (!on) return;
+    // Headphones change mid-song, and a new mic brings a new song track; check now and then.
+    const timer = window.setInterval(() => {
+      micChainRef.current?.setKaraokeMusic(karaokeMusicRef.current, musicOutputLatency());
+      syncKaraokeTrack(Boolean(karaokeMusicRef.current));
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [karaokeLead, wantKaraokeLead, karaokeTap, syncKaraokeTrack]);
+  useEffect(() => () => syncKaraokeTrack(false), [syncKaraokeTrack]);
 
   /** Lets the settings meters watch the live input without re-rendering the app. */
   const subscribeMicTelemetry = useCallback(
@@ -1824,8 +1950,8 @@ export function useVoice({
         },
         onVoice: (remoteId, stream, receiver, kind) => {
           // /say speech lights its speaker's tile too, so everyone can see who it is.
-          if (kind === "tts") {
-            watchLevel(`${remoteId}:tts`, stream);
+          if (kind === "tts" || kind === "karaoke") {
+            watchLevel(`${remoteId}:${kind}`, stream);
             return;
           }
           const tunable = receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined;
@@ -1984,9 +2110,9 @@ export function useVoice({
     announcedConnectionRef.current = connectionId;
     announcedSessionRef.current = session;
     if (kind === "resume") {
-      // Resumed after a restart: same seat, same LiveKit identity, same peer
-      // ids. Only the hub forgot us, so tell it what we are sharing again and
-      // leave every media connection alone.
+      // Resumed after a restart or a blip: same seat, same LiveKit identity,
+      // same peer ids. At most the hub forgot us, so tell it what we are
+      // sharing again and leave every media connection alone.
       announceVideoRef.current();
       return;
     }
@@ -2055,18 +2181,60 @@ export function useVoice({
     return () => window.clearInterval(timer);
   }, [channelId, connectionId, callPeer, closePeer]);
 
+  // Someone joining or leaving the room chimes. The roster is compared seat by
+  // seat, a moment after it settles: a reconnect that drops and restores a seat
+  // (or swaps our own connection id) is silent, and a leave and a join landing
+  // together still sound. Our own seats, bots and recorders never chime.
   useEffect(() => {
     if (!channelId) {
-      participantCountRef.current = 0;
+      heardSeatsRef.current = null;
       return;
     }
-    const count = (rooms[channelId] || []).filter((person) => !person.bot).length;
-    const previous = participantCountRef.current;
-    if (previous && count !== previous) {
-      playRoomTone(count > previous ? "join" : "leave");
+    const roster = rooms[channelId] || [];
+    // Kept across reconnects, while the old seat lingers and the new one has not arrived.
+    const me = roster.find((person) => person.connectionId === connectionId)?.id ?? myUserIdRef.current;
+    myUserIdRef.current = me;
+    const seats = new Set(
+      roster
+        .filter((person) => !person.bot && !person.recorder && person.connectionId !== connectionId && person.id !== me)
+        .map((person) => person.connectionId),
+    );
+    const heard = heardSeatsRef.current;
+    // Whoever is already here when we arrive was here first.
+    if (!heard || heard.room !== channelId) {
+      heardSeatsRef.current = { room: channelId, seats };
+      return;
     }
-    participantCountRef.current = count;
-  }, [channelId, rooms, playRoomTone]);
+    const timer = window.setTimeout(() => {
+      const joined = [...seats].some((id) => !heard.seats.has(id));
+      const left = [...heard.seats].some((id) => !seats.has(id));
+      heardSeatsRef.current = { room: channelId, seats };
+      if (joined) playUserJoinSound();
+      else if (left) playUserLeaveSound();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [channelId, rooms, connectionId]);
+
+  // Push to talk ticks on press and release.
+  const pttHeardRef = useRef(false);
+  useEffect(() => {
+    const live = pttHeld && pushToTalk && Boolean(channelId);
+    if (live === pttHeardRef.current) return;
+    pttHeardRef.current = live;
+    if (!channelId) return;
+    if (live) playPttOnSound();
+    else playPttOffSound();
+  }, [pttHeld, pushToTalk, channelId]);
+
+  // Camera on/off, but not the camera going off because we left.
+  const cameraHeardRef = useRef(false);
+  useEffect(() => {
+    if (cameraOn === cameraHeardRef.current) return;
+    cameraHeardRef.current = cameraOn;
+    if (!channelId) return;
+    if (cameraOn) playCameraOnSound();
+    else playCameraOffSound();
+  }, [cameraOn, channelId]);
 
   const negotiatePeer = useCallback(
     async (remoteId: string, peer: RTCPeerConnection) => {
@@ -2583,9 +2751,10 @@ export function useVoice({
     if (cameraOn) stopCamera();
   }, [rooms, channelId, connectionId, screenSharing, cameraOn, stopScreenShare, stopCamera]);
 
-  const leave = useCallback(() => {
+  /** Switching rooms skips the disconnect sound: the new room's join plays instead. */
+  const leave = useCallback((options?: { switching?: boolean }) => {
     joinSeqRef.current += 1;
-    playRoomTone("leave");
+    if (channelIdRef.current && options?.switching !== true) playVoiceDisconnectSound();
     // First, so the screen and camera below are not unpublished one by one.
     const sfu = sfuRef.current;
     sfuRef.current = null;
@@ -2625,7 +2794,7 @@ export function useVoice({
     setChannelId(null);
     setLocalVideos([]);
     send({ t: "voice-leave" });
-  }, [closePeer, playRoomTone, send, stopCamera, stopScreenShare]);
+  }, [closePeer, send, stopCamera, stopScreenShare]);
 
   const join = useCallback(
     async (nextChannelId: string, options?: { startMuted?: boolean }) => {
@@ -2633,7 +2802,19 @@ export function useVoice({
       // Re-selecting the room you are already in is a no-op: the stage view owns
       // "leave" now (an explicit Disconnect button), so a click never drops you.
       if (channelIdRef.current === nextChannelId) return;
-      if (channelIdRef.current) leave();
+      // Some Linux WebKitGTK builds (Ubuntu's and Debian's among them) have no
+      // WebRTC at all, so Hoffle Native there cannot call. Say so instead of
+      // taking a seat nobody would ever hear.
+      if (typeof RTCPeerConnection === "undefined") {
+        const shell = (window as { huddle?: { native?: boolean; platform?: string } }).huddle;
+        setError(
+          shell?.native && shell.platform === "linux"
+            ? "Voice calls don't work in Hoffle Native on Linux yet: this system's web engine has no WebRTC. Use the Hoffle desktop app or a browser for calls."
+            : "This browser can't make voice calls (it has no WebRTC). Try another browser or the Hoffle desktop app.",
+        );
+        return;
+      }
+      if (channelIdRef.current) leave({ switching: true });
       // Two quick joins race through the awaits below; only the latest may
       // finish, and a superseded one must release the microphone it opened.
       const attempt = ++joinSeqRef.current;
@@ -2647,6 +2828,11 @@ export function useVoice({
         // Joining is a real gesture, which is the only moment a phone will let
         // us start playing everyone else's audio.
         unlockAudio();
+        // Minted relay logins run out (see /api/voice/ice), and a tab left open
+        // past that would join with ones the relay refuses.
+        if (iceExpiresAtRef.current && iceExpiresAtRef.current - Date.now() < ICE_REFRESH_MARGIN_MS) {
+          await apiFetch<IceList>("/api/voice/ice").then(takeIce).catch(() => undefined);
+        }
         // LiveKit or mesh is decided before entering the room, so neither this
         // tab nor anyone else starts meshing with a seat about to be in
         // LiveKit. The identity carries the hub connection, so without one
@@ -2675,10 +2861,6 @@ export function useVoice({
         // render, which can lose a race with the first offer coming back.
         channelIdRef.current = nextChannelId;
         setChannelId(nextChannelId);
-        participantCountRef.current = Math.max(
-          1,
-          (rooms[nextChannelId] || []).filter((person) => !person.bot).length + 1,
-        );
         // Record which connection id we announced with. If the send fails (the
         // socket is briefly down) the ref stays unset, and the re-announce
         // effect below fires the join again once a connection id exists.
@@ -2694,14 +2876,14 @@ export function useVoice({
         // Tell the room about the opening mute, or it would list this seat as
         // "on stage" until the user touched a control.
         if (startMuted) send({ t: "voice-state", muted: true });
-        playRoomTone("join");
+        playUserJoinSound();
       } catch {
         setError(
           "Microphone access was blocked. Allow it in your browser settings to join voice.",
         );
       }
     },
-    [connectionId, connectSfu, leave, openMicChain, playRoomTone, rooms, send],
+    [connectionId, connectSfu, leave, openMicChain, rooms, send, takeIce],
   );
 
   /** Seamlessly migrate to another voice server region without leaving the room. */
@@ -2951,6 +3133,11 @@ export function useVoice({
     micSettings,
     setMicSettings,
     setTuneKey,
+    setRoomKaraoke,
+    audibleSongs,
+    setTuneSong,
+    setTuneClock,
+    karaokeLead,
     subscribeMicTelemetry,
     localVideos,
     error,

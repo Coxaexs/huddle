@@ -59,11 +59,49 @@ function connect() {
   }
 }
 
+const streamListeners = new Set<(stream: MediaStream | null) => void>();
+let outputLatency: (() => number | null) | null = null;
+
 /** The voice playback: the music bot's stream now, or null. */
 export function setMusicStream(next: MediaStream | null) {
   if (next === stream) return;
   stream = next;
   connect();
+  for (const listener of streamListeners) listener(stream);
+}
+
+/** The music bot's stream as this browser receives it, now and whenever it changes (karaoke lead). */
+export function subscribeMusicStream(listener: (stream: MediaStream | null) => void): () => void {
+  streamListeners.add(listener);
+  listener(stream);
+  return () => streamListeners.delete(listener);
+}
+
+let karaokeTap: MediaStream | null = null;
+const tapListeners = new Set<(stream: MediaStream | null) => void>();
+
+/** The voice playback: the bot's song as you hear it, for the karaoke mix (SpatialAudioPlayback.tapStream). */
+export function setKaraokeTap(next: MediaStream | null) {
+  if (next === karaokeTap) return;
+  karaokeTap = next;
+  for (const listener of tapListeners) listener(karaokeTap);
+}
+
+export function subscribeKaraokeTap(listener: (stream: MediaStream | null) => void): () => void {
+  tapListeners.add(listener);
+  listener(karaokeTap);
+  return () => tapListeners.delete(listener);
+}
+
+/** The voice playback: how to read how long its sound takes to reach the speakers. */
+export function setMusicOutputLatency(read: (() => number | null) | null) {
+  outputLatency = read;
+}
+
+/** Seconds from the music arriving here to your ears: the playback's own figure, else a typical one. */
+export function musicOutputLatency(): number {
+  const measured = outputLatency?.();
+  return typeof measured === "number" && Number.isFinite(measured) && measured >= 0 ? measured : 0.04;
 }
 
 /** The voice playback: the equalizer the music goes through here (ten bands, dB), or null. */

@@ -31,9 +31,9 @@ beforeAll(() => {
   runInContext(source, sandbox);
 });
 
-function render(input: Float32Array, key?: { scale: number[]; offset?: number }): Float32Array {
+function render(input: Float32Array, key?: object, ...messages: object[]): Float32Array {
   const processor = new Processor({ processorOptions: {} });
-  if (key) processor.port.onmessage({ data: key });
+  for (const data of [key, ...messages]) if (data) processor.port.onmessage({ data });
   const output = new Float32Array(input.length);
   for (let i = 0; i + QUANTUM <= input.length; i += QUANTUM) {
     const block = new Float32Array(QUANTUM);
@@ -88,13 +88,27 @@ describe("tune worklet", () => {
     [-25, 440],
     [35, 440],
     [-30, 220],
-  ])("pulls a note %i cents off nearly in tune", (off, reference) => {
+  ])("snaps a note %i cents off onto it", (off, reference) => {
     const input = note(reference * Math.pow(2, off / 1200), 1.5);
     const output = render(input);
     const after = centsFrom(pitch(output, RATE, RATE + 4000), reference);
-    // Most of the way, but not snapped dead on (that is the robot sound).
-    expect(Math.abs(after)).toBeLessThan(Math.abs(off) * 0.3);
-    expect(Math.abs(after)).toBeGreaterThan(Math.abs(off) * 0.05);
+    expect(Math.abs(after)).toBeLessThan(4);
+  });
+
+  it("holds a wobbly, off-key note steady on one note", () => {
+    // A 5.5 Hz vibrato, 35 cents each way, around a centre 40 cents sharp of A3:
+    // its peaks come nearer A#3 than A3, but it is one note, sung badly.
+    const input = new Float32Array(RATE * 2);
+    let phase = 0;
+    for (let i = 0; i < input.length; i++) {
+      const cents = 40 + 35 * Math.sin((2 * Math.PI * 5.5 * i) / RATE);
+      phase += (2 * Math.PI * 220 * Math.pow(2, cents / 1200)) / RATE;
+      input[i] = 0.3 * (Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.3 * Math.sin(3 * phase));
+    }
+    const output = render(input);
+    for (let at = RATE / 2; at < RATE * 1.8; at += 2400) {
+      expect(Math.abs(centsFrom(pitch(output, at, at + 2400), 220))).toBeLessThan(30);
+    }
   });
 
   it("in a key, pulls a wrong note onto the key's nearest one", () => {
@@ -134,6 +148,71 @@ describe("tune worklet", () => {
     const output = render(input);
     const peak = (x: Float32Array) => x.reduce((most, v) => Math.max(most, Math.abs(v)), 0);
     expect(peak(output)).toBeLessThan(peak(input) * 1.1);
+  });
+});
+
+/** A held note per entry (MIDI, seconds), back to back. */
+function melodyOf(notes: Array<[number, number]>): Float32Array {
+  const total = notes.reduce((sum, [, seconds]) => sum + Math.floor(RATE * seconds), 0);
+  const out = new Float32Array(total);
+  let at = 0;
+  let phase = 0;
+  for (const [midi, seconds] of notes) {
+    const hz = 440 * Math.pow(2, (midi - 69) / 12);
+    const n = Math.floor(RATE * seconds);
+    for (let i = 0; i < n; i++) {
+      phase += (2 * Math.PI * hz) / RATE;
+      out[at + i] = 0.3 * (Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.3 * Math.sin(3 * phase));
+    }
+    at += n;
+  }
+  return out;
+}
+
+const hzOf = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
+
+describe("tune worklet: knowing what you mean", () => {
+  it("pulls a far-off note onto the song's melody, in your octave", () => {
+    // The original sings E4 (64) for three seconds; you sing D4 and a bit (62.2),
+    // or D3 and a bit (50.2): both are taken to mean E, in the octave sung.
+    const melody = { melody: [0, 3000, 64], clock: { positionMs: 0, at: 0, playing: true } };
+    for (const [sung, meant] of [[62.2, 64], [50.2, 52]]) {
+      const output = render(note(hzOf(sung), 1.5), undefined, melody);
+      expect(Math.abs(centsFrom(pitch(output, RATE, RATE + 4000), hzOf(meant)))).toBeLessThan(25);
+    }
+    // Once the song moves past that note, it no longer applies.
+    const later = { melody: [0, 3000, 64], clock: { positionMs: 10000, at: 0, playing: true } };
+    const output = render(note(hzOf(62.2), 1.5), undefined, later);
+    expect(Math.abs(centsFrom(pitch(output, RATE, RATE + 4000), hzOf(62)))).toBeLessThan(15);
+  });
+
+  it("learns the key from the notes you hold when the song's is unknown", () => {
+    // Eight seconds of a C major tune, then a note between C# and D, nearer C#:
+    // having heard the key, it is taken to be D.
+    const tune: Array<[number, number]> = [];
+    const steps = [60, 62, 64, 65, 67, 69, 71, 72, 67, 64, 60, 62, 64, 67, 65, 64];
+    for (let i = 0; i < 16; i++) tune.push([steps[i], 0.5]);
+    tune.push([61.3, 1.2]);
+    const input = melodyOf(tune);
+    const output = render(input);
+    const at = input.length - RATE / 2;
+    expect(Math.abs(centsFrom(pitch(output, at, at + 4000), hzOf(62)))).toBeLessThan(25);
+  });
+
+  it("natural style lets a vibrato through and still centres it on the note", () => {
+    const input = new Float32Array(RATE * 2);
+    let phase = 0;
+    for (let i = 0; i < input.length; i++) {
+      const cents = 40 + 35 * Math.sin((2 * Math.PI * 5.5 * i) / RATE);
+      phase += (2 * Math.PI * 220 * Math.pow(2, cents / 1200)) / RATE;
+      input[i] = 0.3 * (Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.3 * Math.sin(3 * phase));
+    }
+    const output = render(input, { style: "natural" });
+    const cents: number[] = [];
+    for (let at = RATE; at < RATE * 1.9; at += 600) cents.push(centsFrom(pitch(output, at, at + 1200), 220));
+    const mean = cents.reduce((a, b) => a + b, 0) / cents.length;
+    expect(Math.abs(mean)).toBeLessThan(12);
+    expect(Math.max(...cents) - Math.min(...cents)).toBeGreaterThan(30);
   });
 });
 
