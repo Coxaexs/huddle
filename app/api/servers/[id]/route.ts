@@ -5,7 +5,7 @@ import { can, Permission } from "@/lib/permissions";
 import { normalizeDisabledModules } from "@/lib/features";
 import { normalizeProfileImage } from "@/lib/profile-media";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
-import { deleteServerData, listServers } from "@/lib/servers";
+import { deleteServerData, listServers, serverColor } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 import { clampVerificationLevel } from "@/lib/verification-level";
 import { normalizeVanityCode, setVanityCode } from "@/lib/vanity";
@@ -121,7 +121,7 @@ export async function PATCH(
     .bind(
       body.name?.trim().slice(0, 50) || server.name,
       body.icon?.trim().slice(0, 2).toUpperCase() || server.icon,
-      body.color?.trim().slice(0, 24) || server.color,
+      serverColor(body.color, server.color),
       iconUrl,
       bannerUrl,
       isPublic,

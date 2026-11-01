@@ -9,6 +9,7 @@ import {
   verifyImageSignature,
 } from "@/lib/unfurl";
 import { sniffUpload } from "@/lib/upload-sniff";
+import { cachedImage, chargeUpstreamBytes, storeImage, takeUpstreamFetch } from "@/lib/image-proxy-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ const INLINE_IMAGE_LIMIT = { action: "inline-image", limit: 240, windowSeconds: 
  * URLs the preview route signed, or — for inline image links in chat — any
  * URL a signed-in member asks for, rate limited. Either way only raster
  * images, and only from public hosts, so it can't reach the home network.
+ * Recent images are kept in memory, and unsigned outside fetches share one
+ * budget for the whole instance (lib/image-proxy-cache.ts).
  */
 export async function GET(request: Request) {
   const user = await currentUser(request);
@@ -40,6 +43,12 @@ export async function GET(request: Request) {
   } else {
     const limited = await limitUser(db, INLINE_IMAGE_LIMIT, user.id);
     if (limited) return limited;
+  }
+
+  const hit = cachedImage(imageUrl);
+  if (hit) return imageResponse(hit.body, hit.type);
+  if (!signature && !takeUpstreamFetch()) {
+    return new Response("Busy", { status: 503, headers: { "retry-after": "30" } });
   }
 
   const upstream = await safeFetch(imageUrl, "image/avif,image/webp,image/*;q=0.8").catch(
@@ -80,6 +89,7 @@ export async function GET(request: Request) {
     }
     chunks.push(value);
   }
+  if (!signature) chargeUpstreamBytes(total);
   const merged = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
@@ -96,7 +106,12 @@ export async function GET(request: Request) {
     type = sniffed.contentType;
   }
 
-  return new Response(merged.buffer, {
+  storeImage(imageUrl, merged, type);
+  return imageResponse(merged, type);
+}
+
+function imageResponse(body: Uint8Array<ArrayBuffer>, type: string) {
+  return new Response(body, {
     headers: {
       "content-type": type,
       "cache-control": "private, max-age=86400",

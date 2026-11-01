@@ -7,7 +7,7 @@ import {
   SOCIAL_RATE_LIMITS,
 } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
-import { addServerMember, deleteServerData, listServers } from "@/lib/servers";
+import { addServerMember, deleteServerData, listServers, serverColor } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 import { isRestrictedAccount } from "@/lib/trust";
 import { fetchDiscordTemplate } from "@/lib/discord-import";
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
       id,
       name,
       icon || "H",
-      body.color?.trim().slice(0, 24) || "#7b63e6",
+      serverColor(body.color, "#7b63e6"),
       user.id,
       now,
       position?.count ?? 0,

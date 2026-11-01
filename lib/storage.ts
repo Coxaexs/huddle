@@ -29,6 +29,8 @@ export interface HuddleBindings {
   FEATURES_DISABLED?: string;
   /** JSON array of RTCIceServer entries; falls back to public STUN. */
   HUDDLE_ICE_SERVERS?: string;
+  /** coturn's static-auth-secret: TURN entries listed without a login get one minted per person (lib/turn-login.ts). */
+  HUDDLE_TURN_SECRET?: string;
   /** "1" lets users point phone notifications at LAN/compose-network ntfy servers. */
   HUDDLE_PUSH_ALLOW_PRIVATE?: string;
   /** Optional: enables GIF and sticker search (Klipy) in the composer. */

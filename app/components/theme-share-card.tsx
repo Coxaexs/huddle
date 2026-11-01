@@ -6,6 +6,7 @@ import {
   type Theme,
   applyThemeToDocument,
   exportThemeCode,
+  safeThemeColors,
   saveCustomTheme,
   scopeProfileCss,
 } from "@/lib/themes";
@@ -15,7 +16,9 @@ interface ThemeShareCardProps {
   onApplyTheme?: (theme: Theme) => void;
 }
 
-export function ThemeShareCard({ theme, onApplyTheme }: ThemeShareCardProps) {
+export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardProps) {
+  // Someone else's message: only plain colours get painted, saved or applied.
+  const theme: Theme = { ...shared, colors: safeThemeColors(shared.colors) };
   const [applied, setApplied] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);

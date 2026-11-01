@@ -28,6 +28,8 @@
  * Options:
  *   --ice-servers <json>   the same JSON array HUDDLE_ICE_SERVERS holds
  *   --host --port --transport udp|tcp|tls --username --credential
+ *   --turn-secret <s>      coturn's static-auth-secret, for entries listed without
+ *                          a login (default: $HUDDLE_TURN_SECRET)
  *   --expect <address>     relay address to expect (default: the host reached)
  *   --timeout <ms>         per request, default 5000
  *   --json                 machine-readable output
@@ -451,9 +453,10 @@ async function checkOne(target, options) {
       { ...target, address: resolved.address },
       {
         ...options,
-        // Credentials belong to the entry they were listed in.
-        username: target.username ?? options.username,
-        credential: target.credential ?? options.credential,
+        // Credentials belong to the entry they were listed in; an entry with
+        // none gets a login minted the way /api/voice/ice mints them.
+        username: target.username ?? options.username ?? restLogin(options.turnSecret)?.username,
+        credential: target.credential ?? options.credential ?? restLogin(options.turnSecret)?.credential,
       },
     );
   } catch (error) {
@@ -523,6 +526,7 @@ function parseArgs(argv) {
       case "--transport": options.transport = next(); break;
       case "--username": options.username = next(); break;
       case "--credential": options.credential = next(); break;
+      case "--turn-secret": options.turnSecret = next(); break;
       case "--expect": options.expect = next(); break;
       case "--timeout": options.timeout = Number(next()); break;
       case "--json": options.json = true; break;
@@ -533,12 +537,20 @@ function parseArgs(argv) {
         options.urls.push(arg);
     }
   }
+  options.turnSecret ??= process.env.HUDDLE_TURN_SECRET;
   if (options.host) {
     const scheme = options.transport === "tls" ? "turns" : "turn";
     const transport = options.transport === "tcp" ? "?transport=tcp" : "";
     options.urls.push(`${scheme}:${options.host}:${options.port || 3478}${transport}`);
   }
   return options;
+}
+
+/** An hour's login in coturn's use-auth-secret scheme, or null without a secret. */
+export function restLogin(secret, now = Date.now()) {
+  if (!secret) return null;
+  const username = `${Math.floor(now / 1000) + 3600}:check-turn`;
+  return { username, credential: crypto.createHmac("sha1", secret).update(username).digest("base64") };
 }
 
 /** Every turn:/turns:/stun: entry in an HUDDLE_ICE_SERVERS JSON array. */

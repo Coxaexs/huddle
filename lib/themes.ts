@@ -514,6 +514,24 @@ export function exportThemeCode(theme: Theme): string {
 /**
  * Decodes and validates a shared theme string (supports huddle-theme:v1:... or raw JSON).
  */
+/**
+ * A colour a shared theme may carry: hex, or rgb()/hsl() with plain numbers.
+ * Themes arrive in other people's messages and their colours are painted as
+ * CSS backgrounds, so anything else (a `url(...)`) would load from wherever
+ * the sender likes and hand them every reader's IP address.
+ */
+const SAFE_THEME_COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d.,%\s/]+\))$/i;
+
+export function safeThemeColors(colors: ThemeColors | undefined): ThemeColors {
+  const safe: ThemeColors = {};
+  for (const [key, value] of Object.entries(colors || {})) {
+    if (typeof value === "string" && SAFE_THEME_COLOR.test(value.trim())) {
+      safe[key as keyof ThemeColors] = value.trim();
+    }
+  }
+  return safe;
+}
+
 export function importThemeCode(raw: string): Theme | null {
   if (!raw || typeof raw !== "string") return null;
   const trimmed = raw.trim();
@@ -551,10 +569,9 @@ export function importThemeCode(raw: string): Theme | null {
         "ink", "muted", "line", "paper", "panel", "chatBg",
         "lavender", "lavenderSoft", "lavenderMuted", "coral", "mint",
       ];
+      const safe = safeThemeColors(data.colors);
       for (const k of allowedKeys) {
-        if (typeof data.colors[k] === "string") {
-          colors[k] = data.colors[k];
-        }
+        if (safe[k]) colors[k] = safe[k];
       }
     }
 

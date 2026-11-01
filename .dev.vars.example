@@ -41,5 +41,10 @@ TENOR_API_KEY=
 # carrier-grade NATs (CGNAT), specify your coturn server credentials here:
 # HUDDLE_ICE_SERVERS=[{"urls":["turn:turn.example.com:3478?transport=udp"],"username":"hoffle","credential":"secretturnpassword"},{"urls":["stun:stun.cloudflare.com:3478"]}]
 HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]
+# Better than a fixed TURN login, which every signed-in person receives and can
+# keep using forever: run coturn with `use-auth-secret` and
+# `static-auth-secret=<this>`, and list the TURN entry without username or
+# credential. Each person then gets a login that expires after a day.
+# HUDDLE_TURN_SECRET=
 # Comma-separated list of developer usernames who see verbose WebRTC/SFU console logs
 DEV_USERS=kiwi,flo

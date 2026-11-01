@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
+import { withTurnLogins } from "@/lib/turn-login";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,12 @@ export async function GET(request: Request) {
   try {
     const parsed = JSON.parse(configured);
     if (Array.isArray(parsed) && parsed.length) {
-      return Response.json({ iceServers: parsed, source: "configured" });
+      const { iceServers, expiresAt } = await withTurnLogins(
+        parsed,
+        bindings().HUDDLE_TURN_SECRET?.trim(),
+        user ? user.id : "recorder",
+      );
+      return Response.json({ iceServers, source: "configured", ...(expiresAt ? { expiresAt } : {}) });
     }
     return Response.json({
       iceServers: DEFAULT_ICE,

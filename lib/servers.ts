@@ -142,6 +142,16 @@ export interface PublicServer {
   roles: PublicRole[];
 }
 
+/**
+ * A server's colour is painted as a CSS background in every member's rail and
+ * on public pages (the invite page, /s/), so it is a hex colour or nothing:
+ * anything else could be `url(...)` and load from the owner's own host.
+ */
+export function serverColor(value: unknown, fallback: string): string {
+  const color = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
 export function publicChannel(channel: ChannelRow): PublicChannel {
   return {
     id: channel.id,
