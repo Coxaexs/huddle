@@ -336,6 +336,10 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
 
     if (DISCORD_ONLY_COMMANDS.has(name)) {
       // These drive the bot's Discord voice connection, not Huddle playback.
+      if (!user?.isAdmin) {
+        setNotice("Only Hoffle admins can control the Discord music bot.");
+        return;
+      }
       try {
         const data = await apiFetch<{
           text?: string;

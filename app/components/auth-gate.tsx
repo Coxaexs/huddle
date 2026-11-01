@@ -37,6 +37,7 @@ interface TurnstileApi {
     container: HTMLElement,
     options: {
       sitekey: string;
+      theme?: "light" | "dark" | "auto";
       callback: (token: string) => void;
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
@@ -47,6 +48,23 @@ interface TurnstileApi {
 }
 
 const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+/**
+ * Light or dark, from the first solid background behind the challenge, so the
+ * widget matches the sign-up card whatever theme it is in. Turnstile's own
+ * "auto" follows the system setting instead, which can put a white box on a
+ * dark card.
+ */
+function challengeTheme(el: HTMLElement): "light" | "dark" | "auto" {
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    const match = getComputedStyle(node).backgroundColor.match(/^rgba?\(([^)]+)\)$/);
+    if (!match) continue;
+    const [r, g, b, a = 1] = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    if (!(a > 0.5)) continue;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? "dark" : "light";
+  }
+  return "auto";
+}
 
 function loadTurnstile(): Promise<TurnstileApi | null> {
   const existing = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
@@ -166,6 +184,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
       }
       const id = api.render(challengeBox.current, {
         sitekey: turnstileSiteKey,
+        theme: challengeTheme(challengeBox.current),
         callback: (token) => setChallengeToken(token),
         "expired-callback": () => setChallengeToken(""),
         "error-callback": () => setChallengeToken(""),

@@ -36,8 +36,10 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
       ...(user?.disabledModules || []),
       // The music bot's commands only exist in servers that added it.
       ...(activeServer?.musicBot === false ? ["music-bot"] : []),
+      // The Discord-side music commands are for this Hoffle's admins.
+      ...(user?.isAdmin ? [] : ["discord-music"]),
     ],
-    [activeServer?.disabledModules, activeServer?.musicBot, user?.disabledModules],
+    [activeServer?.disabledModules, activeServer?.musicBot, user?.disabledModules, user?.isAdmin],
   );
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(

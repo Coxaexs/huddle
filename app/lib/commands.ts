@@ -426,6 +426,7 @@ export function matchCommands(
   ].filter((command) => {
     if (disabled.has("dnd") && command.group === "D&D") return false;
     if ((disabled.has("music") || disabled.has("music-bot")) && (command.group === "Music" || command.group === "Discord music" || command.name === "web" || command.name === "dj")) return false;
+    if (disabled.has("discord-music") && command.group === "Discord music") return false;
     if (disabled.has("games") && command.name === "game") return false;
     return true;
   });

@@ -84,6 +84,14 @@ export async function POST(request: Request) {
   // must never answer someone who is not signed in.
   const user = await currentUser(request);
   if (!user) return unauthorized();
+  // It is one bot in the owner's Discord server, not anything per Hoffle
+  // server, so only the people who run this Hoffle may drive it.
+  if (!user.is_admin) {
+    return Response.json(
+      { error: "Only Hoffle admins can control the Discord music bot." },
+      { status: 403 },
+    );
+  }
   const limited = await limitUser(bindings().DB, MUSIC_COMMAND_LIMIT, user.id);
   if (limited) return limited;
   const body = (await request.json().catch(() => ({}))) as { command?: string };
