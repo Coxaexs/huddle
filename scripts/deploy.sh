@@ -149,7 +149,9 @@ fi
 # Record what the machine is doing from before the restart until a few minutes
 # after it (~/.cache/huddle-stall/), so a slow stall can be explained.
 if [[ -x "$ROOT/scripts/stall-probe.sh" ]]; then
-  nohup "$ROOT/scripts/stall-probe.sh" 360 >/dev/null 2>&1 </dev/null &
+  # 9>&-: like the standby copy below, the probe must not hold the deploy lock
+  # for its six minutes, or the next deploy waits on it.
+  nohup "$ROOT/scripts/stall-probe.sh" 360 >/dev/null 2>&1 </dev/null 9>&- &
 fi
 
 echo "Swapping the new build in ..."
