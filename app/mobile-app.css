@@ -437,3 +437,6 @@
     justify-content: flex-end;
   }
 }
+
+/* It sat on top of the Settings sheet on phones; it waits until Settings closes. */
+body:has(.settings-modal) .install-prompt { display: none; }

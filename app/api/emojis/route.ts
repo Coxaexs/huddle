@@ -34,7 +34,11 @@ export async function GET(request: Request) {
         .bind(serverId)
         .all()
     : await db
-        .prepare("SELECT id, server_id, name, key FROM emojis ORDER BY name")
+        // Only emoji whose server still exists: a deleted server's leftovers
+        // used to show up in everyone's reaction bar.
+        .prepare(
+          "SELECT e.id, e.server_id, e.name, e.key FROM emojis e JOIN servers s ON s.id = e.server_id ORDER BY e.name",
+        )
         .all();
 
   return Response.json({

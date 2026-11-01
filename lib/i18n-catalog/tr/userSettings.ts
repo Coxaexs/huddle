@@ -15,7 +15,7 @@ export const userSettings: Record<keyof typeof en, string> = {
   "userSettings.tab.customUiCss": "Özel CSS",
   "userSettings.tab.accessibility": "Erişilebilirlik",
   "userSettings.tab.roles": "Roller",
-  "userSettings.tab.requests": "Arkadaşlık İstekleri",
+  "userSettings.tab.requests": "Fikir ve Hata Bildir",
   "userSettings.tab.tutorial": "Rehber",
   "userSettings.tab.language": "Dil",
   "userSettings.tab.licenses": "Açık Kaynak Lisansları",

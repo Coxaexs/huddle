@@ -66,10 +66,11 @@ export function PasswordTab({
       {tab === "password" && (
             <div className="account-settings">
               <section className="profile-studio-section" data-settings-anchor="username" data-settings-label="Username">
-                <h3 className="profile-studio-section-title">Username</h3>
-                <label htmlFor="settings-username">Username</label>
+                <h3 id="settings-username-title" className="profile-studio-section-title">Username</h3>
                 <input
                   id="settings-username"
+                  aria-labelledby="settings-username-title"
+                  style={{ marginTop: 10 }}
                   value={newUsername}
                   autoComplete="username"
                   maxLength={24}
@@ -107,9 +108,10 @@ export function PasswordTab({
                     You have no email yet. Add one so you can reset your password if you forget it.
                   </p>
                 )}
-                <label htmlFor="settings-email">Email</label>
                 <input
                   id="settings-email"
+                  aria-label="Email"
+                  style={{ marginTop: 10 }}
                   type="email"
                   data-streamer-hide
                   value={newEmail}

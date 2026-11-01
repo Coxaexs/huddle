@@ -32,7 +32,7 @@ export const sidebar = {
   "sidebar.menu.leaveTitle": "Leave '{name}'?",
   "sidebar.menu.leaveMessage": "You can join again any time from Explore public servers or an invite link.",
   "sidebar.conversations": "Conversations",
-  "sidebar.searchUsers": "Search all users (⌘K)",
+  "sidebar.searchUsers": "Search all users (Ctrl+K, or ⌘K on a Mac)",
   "sidebar.findConversation": "Find or start a chat",
   "sidebar.friends": "Friends",
   "sidebar.directMessages": "DIRECT MESSAGES",

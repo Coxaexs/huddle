@@ -3,7 +3,7 @@
 import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
+import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
@@ -329,7 +329,7 @@ export function ChatHeader({
                     onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
                     title={activeDm.pinned ? t("header.unpinGroup") : t("header.pinGroup")}
                   >
-                    <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
+                    <ArrowUpToLine size={15} className={activeDm.pinned ? "text-[var(--lavender)]" : ""} />
                     <span>{activeDm.pinned ? t("header.pinned") : t("header.pin")}</span>
                   </button>
                   <button
@@ -366,7 +366,7 @@ export function ChatHeader({
                     onClick={() => void togglePinDm(activeDm.channelId, !activeDm.pinned)}
                     title={activeDm.pinned ? t("header.unpinConversation") : t("header.pinConversation")}
                   >
-                    <Pin size={15} className={activeDm.pinned ? "fill-current" : ""} />
+                    <ArrowUpToLine size={15} className={activeDm.pinned ? "text-[var(--lavender)]" : ""} />
                     <span>{activeDm.pinned ? t("header.pinned") : t("header.pin")}</span>
                   </button>
                   {!isSelfDm && (

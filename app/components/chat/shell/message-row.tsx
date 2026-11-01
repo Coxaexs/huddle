@@ -994,6 +994,8 @@ function MessageRowImpl({
                           {/* The server's own emoji, right where you react. */}
                           {emojis
                             .filter((emoji) => {
+                              // This server's own emoji only, and none in DMs.
+                              if (inDmHome || emoji.serverId !== activeServer?.id) return false;
                               const code = `:${emoji.name}:`;
                               const clean = emoji.name;
                               return (

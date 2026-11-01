@@ -6,5 +6,8 @@ export const DM_HOME = "@me";
 /** Default one-tap reactions shown on message hover. */
 export const DEFAULT_QUICK_REACTIONS = ["👍", "👎", "❤️", "😂", "🔥", "🎉"];
 
+/** What the hover bar offers someone who has never picked quick reactions (their saved list is empty). */
+export const STARTER_QUICK_REACTIONS = ["👍", "❤️", "😂"];
+
 /** Options for the one-tap "quick vote" on a message. */
 export const QUICK_VOTES = ["👍", "👎", "🍕", "🌮", "😂", "😢"];

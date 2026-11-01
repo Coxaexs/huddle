@@ -29888,3 +29888,16 @@ a.link-preview-author:hover {
     padding-right: 36px;
   }
 }
+
+/* The main .discord-btn follows the theme's accent and its paired text colour
+   (as the profile card's Message button already did), not Discord's blurple.
+   MSN keeps its own look; theme-panels.css still wins inside its themes. */
+:root:not([data-custom-theme-id^="msn"]) .discord-btn.primary-indigo {
+  background: var(--lavender, #5865f2);
+  color: var(--on-accent, #ffffff);
+}
+
+:root:not([data-custom-theme-id^="msn"]) .discord-btn.primary-indigo:hover {
+  background: var(--lavender, #5865f2);
+  filter: brightness(1.1);
+}

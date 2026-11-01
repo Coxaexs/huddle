@@ -14,7 +14,7 @@ import { showToast } from "../../components/toast";
 import { announceUnlocked } from "../../lib/achievement-client";
 import { type DialogOptions } from "../../components/custom-dialog";
 import { type Message, type DmSummary, type MentionEntry, type PendingFile } from "../../lib/chat/types";
-import { DM_HOME, DEFAULT_QUICK_REACTIONS } from "../../lib/chat/constants";
+import { DM_HOME, DEFAULT_QUICK_REACTIONS, STARTER_QUICK_REACTIONS } from "../../lib/chat/constants";
 import { notifyLevel } from "../../lib/chat/format";
 import { pickImageFile } from "../../lib/chat/browser";
 import { type VoiceChatEvent } from "../../components/voice-chat-panel";
@@ -361,7 +361,8 @@ export function useShellState() {
   const removeQuickReaction = (emojiToRemove: string) => {
     const cleanEmoji = emojiToRemove.replace(/^:|:$/g, "");
     setQuickReactions((prev) => {
-      const next = prev.filter(
+      // An empty list shows the starters, so removing one keeps the other two.
+      const next = (prev.length ? prev : STARTER_QUICK_REACTIONS).filter(
         (e) => e !== emojiToRemove && e.replace(/^:|:$/g, "") !== cleanEmoji,
       );
       try {
@@ -423,11 +424,13 @@ export function useShellState() {
   const addQuickReaction = (emojiToAdd: string) => {
     const cleanName = emojiToAdd.replace(/^:|:$/g, "");
     setQuickReactions((prev) => {
-      if (prev.includes(emojiToAdd)) {
+      // Adding the first one of your own keeps the starters you were looking at.
+      const base = prev.length ? prev : STARTER_QUICK_REACTIONS;
+      if (base.includes(emojiToAdd)) {
         showToast(`${emojiToAdd} is already in quick reactions`);
         return prev;
       }
-      const next = [...prev, emojiToAdd];
+      const next = [...base, emojiToAdd];
       try {
         window.localStorage.setItem("huddle_quick_reactions_v2", JSON.stringify(next));
       } catch {}
@@ -1387,7 +1390,7 @@ export function useShellState() {
     searchQuery, setSearchQuery, searchResults, setSearchResults, runMessageSearch, pendingFiles,
     setPendingFiles, notice, setNotice, mobileNav, setMobileNav, openActionsId, setOpenActionsId,
     shiftPressed, setShiftPressed, mobileActionsMoreId, setMobileActionsMoreId,
-    mobileComposerMenuOpen, setMobileComposerMenuOpen, quickVoteId, setQuickVoteId, quickReactions,
+    mobileComposerMenuOpen, setMobileComposerMenuOpen, quickVoteId, setQuickVoteId, quickReactions: quickReactions.length ? quickReactions : STARTER_QUICK_REACTIONS,
     setQuickReactions, hiddenServerEmojiIds, setHiddenServerEmojiIds, syncProfileEmojis,
     removeQuickReaction, hideServerEmoji, addQuickReaction, reactionPicker, setReactionPicker,
     forwardTarget, setForwardTarget, reactionViewer, setReactionViewer, resolvedInvites,

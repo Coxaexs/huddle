@@ -381,9 +381,9 @@ export function MessageList({
                         ? isSelfDm
                           ? "This is your personal space for notes, drafts, and reminders."
                           : activeDm?.group
-                            ? `welcome to the beginning of ${channelTitle}`
-                            : `this is the beginning of your conversation with ${channelTitle}`
-                        : `welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
+                            ? `Welcome to the beginning of ${channelTitle}`
+                            : `This is the beginning of your conversation with ${channelTitle}`
+                        : `Welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
                     </span>
                   </div>
                   <div className="legacy-intro-content">

@@ -171,6 +171,12 @@ const STREAM_PREVIEW_MAX = 80_000;
 const IDLE_LEAVE_MS = 60_000;
 
 /**
+ * Music playing to a voice room with nobody in it stops after this long, and
+ * the bot leaves with it (on Discord the bot leaves after 30 s alone).
+ */
+export const EMPTY_ROOM_STOP_MS = 5 * 60_000;
+
+/**
  * Ceiling on the hub's channel-kind cache.
  *
  * Sized for "every voice channel anyone is likely to touch in one wake of the
@@ -192,6 +198,8 @@ export class HuddleHub extends DurableObject {
   private recordings = new Map<string, RecordingState>();
   /** Voice room -> its session notes (/recap start); persisted, the call may outlive a sleep. */
   private sessionNotes = new Map<string, SessionNotesState>();
+  /** Voice room -> when its music started playing to nobody (ms); persisted, so a wake doesn't restart the clock. */
+  private musicAloneSince = new Map<string, number>();
   /** Voice room -> its note lines, read back from storage on first use after a wake. */
   private readonly noteLines = new Map<string, NoteLine[]>();
   private readonly bindingsEnv: Record<string, unknown>;
@@ -308,6 +316,10 @@ export class HuddleHub extends DurableObject {
         const notes = await this.ctx.storage.get<Record<string, SessionNotesState>>("sessionNotes");
         for (const [channelId, state] of Object.entries(notes || {})) {
           this.sessionNotes.set(channelId, state);
+        }
+        const alone = await this.ctx.storage.get<Record<string, number>>("musicAloneSince");
+        for (const [channelId, since] of Object.entries(alone || {})) {
+          this.musicAloneSince.set(channelId, since);
         }
         let resumeKey = await this.ctx.storage.get<string>("resumeKey");
         if (!resumeKey) {
@@ -2324,6 +2336,8 @@ export class HuddleHub extends DurableObject {
       void this.persistSessionNotes();
       if (empty) void this.armAlarm(Date.now() + NOTES_GRACE_MS + 1000);
     }
+    // Music left playing to an empty room stops after a while (see checkMusicListeners).
+    void this.checkMusicListeners(channelId).catch(() => undefined);
   }
 
   // ---------------------------------------------------------- session notes
@@ -2691,6 +2705,53 @@ export class HuddleHub extends DurableObject {
     }
   }
 
+  /** People in a voice room: not the music bot, a recorder or the Discord bridge's monitor. */
+  private listenersIn(channelId: string): number {
+    return this.sockets().filter(
+      ({ attachment }) =>
+        attachment.voiceChannelId === channelId &&
+        !attachment.bot &&
+        !attachment.recorder &&
+        (!attachment.bridge || Boolean(attachment.discord)),
+    ).length;
+  }
+
+  /**
+   * Music playing to nobody: the clock starts when the last person leaves and
+   * clears when someone is back. Once the room has been empty for
+   * EMPTY_ROOM_STOP_MS the player stops (a DJ set too) and the bot leaves.
+   */
+  private async checkMusicListeners(channelId: string, now = Date.now()): Promise<void> {
+    await this.load();
+    const state = this.players.get(channelId);
+    const playing = Boolean(state && (state.track || liveTrack(state, now)));
+    const since = this.musicAloneSince.get(channelId);
+    if (!playing || this.listenersIn(channelId) > 0) {
+      if (since !== undefined) {
+        this.musicAloneSince.delete(channelId);
+        await this.persistMusicAlone();
+      }
+      return;
+    }
+    if (since === undefined) {
+      this.musicAloneSince.set(channelId, now);
+      await this.persistMusicAlone();
+      await this.armAlarm(now + EMPTY_ROOM_STOP_MS + 1000);
+      return;
+    }
+    if (now - since < EMPTY_ROOM_STOP_MS) {
+      await this.armAlarm(since + EMPTY_ROOM_STOP_MS + 1000);
+      return;
+    }
+    this.musicAloneSince.delete(channelId);
+    await this.persistMusicAlone();
+    await this.applyPlayerAction(channelId, { name: "stop" });
+  }
+
+  private async persistMusicAlone(): Promise<void> {
+    await this.ctx.storage.put("musicAloneSince", Object.fromEntries(this.musicAloneSince.entries()));
+  }
+
   // ---------------------------------------------------------- LiveKit sweep
 
   /** Read from storage on first use after a wake; see livekit-sweep.ts. */
@@ -2894,6 +2955,10 @@ export class HuddleHub extends DurableObject {
       } else {
         await this.armAlarm(notes.emptySince + NOTES_GRACE_MS + 1000);
       }
+    }
+    // Music left playing to an empty room (see checkMusicListeners).
+    for (const channelId of new Set([...this.players.keys(), ...this.musicAloneSince.keys()])) {
+      await this.checkMusicListeners(channelId, now);
     }
     for (const state of this.players.values()) {
       if (!state.track || state.paused) continue;

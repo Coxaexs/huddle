@@ -2,7 +2,7 @@
 
 import type { VoiceApi } from "../../../hooks/use-voice";
 import { GameServerWidget } from "../../game-server-widget";
-import { type DragEvent, type MouseEvent, type ReactNode } from "react";
+import { type DragEvent, type MouseEvent, type ReactNode, useEffect, useState } from "react";
 import type { PlayerState } from "@/lib/protocol";
 import { MessageAttachmentFiles } from "../../message-file-card";
 import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
@@ -49,6 +49,17 @@ import type { PublicCategory } from "@/lib/servers";
 import { RoleIcon } from "../../role-icon";
 import type { MsnContacts } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../../../hooks/use-msn-extras";
+
+/** "⌘K" on a Mac; elsewhere Ctrl+K works but the badge would only crowd the label. Decided after mount, so the first render matches the server's. */
+function SearchShortcut() {
+  const [mac, setMac] = useState(true);
+  useEffect(() => {
+    setMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
+  }, []);
+  return mac ? (
+    <kbd className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">⌘K</kbd>
+  ) : null;
+}
 
 export function ServerRail({
   inDmHome,
@@ -589,9 +600,7 @@ export function ChannelSidebar({
                 <Search size={14} className="shrink-0 text-[var(--lavender)]" />
                 <span className="truncate">{t("sidebar.findConversation")}</span>
               </span>
-              <kbd className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">
-                ⌘K
-              </kbd>
+              <SearchShortcut />
             </button>
           </div>
 

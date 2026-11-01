@@ -1095,7 +1095,7 @@ export function SettingsDialog({
           id: "requests" as Tab,
           label: t("userSettings.tab.requests"),
           icon: MessageSquarePlus,
-          desc: "Feature requests & suggestions sent directly to kiwi & flo",
+          desc: "Ideas, bug reports and feature requests, sent straight to kiwi & flo",
         },
         { id: "tutorial" as Tab, label: t("userSettings.tab.tutorial"), icon: GraduationCap, desc: "Replay the welcome tour and theme picker any time" },
         { id: "licenses" as Tab, label: t("userSettings.tab.licenses"), icon: Globe, desc: "Software licenses and legal notices", advanced: true },

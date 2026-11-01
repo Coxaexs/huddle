@@ -215,7 +215,7 @@ export function AppearanceTab({
                               <span className="font-bold text-xs text-white">{th.name}</span>
                               {th.isBuiltin && (
                                 <span className="text-[9px] uppercase px-1.5 py-0.2 bg-white/10 text-gray-300 rounded">
-                                  Default
+                                  {th.id === "cozy" ? "Default" : "Built-in"}
                                 </span>
                               )}
                               {th.customCss && (

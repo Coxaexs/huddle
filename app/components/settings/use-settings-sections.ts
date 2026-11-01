@@ -53,6 +53,12 @@ export function useSettingsSections(scrollRef: RefObject<HTMLElement | null>, pa
     }
     const spy = () => {
       if (Date.now() < jumpingUntilRef.current) return;
+      // Hidden (the phone's settings list): every section reads as top 0 and
+      // the last one ("Delete account") would light up.
+      if (!root.clientHeight) {
+        setCurrent("");
+        return;
+      }
       const line = root.getBoundingClientRect().top + 64;
       const elements = [...root.querySelectorAll<HTMLElement>(SELECTOR)];
       let seen = elements[0]?.dataset.settingsAnchor || "";

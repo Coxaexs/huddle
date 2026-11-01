@@ -115,6 +115,8 @@ export const ANTI_VENOM: SymbiotePalette = {
 
 // One cycle, in seconds.
 const CYCLE = 10.5;
+/** Cycles per opening: then it stays down in the goo, off the card's buttons. */
+const PLAYS = 2;
 
 interface State {
   rise: number;
@@ -608,6 +610,9 @@ export function symbiote(palette: SymbiotePalette = VENOM): Scene {
     frame(ctx, _t, dt) {
       DPR = ctx.getTransform().a || 1;
       clock += dt;
+      // Two lunges, then it rests in the goo so the card can be read and
+      // used; opening the card again plays it again.
+      if (clock >= CYCLE * PLAYS) clock = CYCLE * PLAYS - 0.001;
       const c = clock % CYCLE;
       const cycle = Math.floor(clock / CYCLE);
       stateAt(c, st);

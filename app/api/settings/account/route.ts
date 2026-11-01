@@ -87,6 +87,7 @@ export async function DELETE(request: Request) {
       db.prepare("DELETE FROM server_members WHERE server_id = ?").bind(id),
       db.prepare("DELETE FROM bans WHERE server_id = ?").bind(id),
       db.prepare("DELETE FROM stickers WHERE server_id = ?").bind(id),
+      db.prepare("DELETE FROM emojis WHERE server_id = ?").bind(id),
       db.prepare("DELETE FROM audit_log WHERE server_id = ?").bind(id),
       db.prepare("DELETE FROM servers WHERE id = ?").bind(id),
     );

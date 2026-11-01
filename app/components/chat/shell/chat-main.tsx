@@ -528,7 +528,7 @@ export function renderChatMain(v: ShellRenderState) {
                 <SimpleTips
                   liveRoom={
                     activeServer?.channels.find(
-                      (channel) => channel.id !== voice.channelId && (voiceRooms[channel.id]?.length ?? 0) > 0,
+                      (channel) => channel.id !== voice.channelId && (voiceRooms[channel.id] ?? []).some((seat) => !seat.bot && !seat.recorder),
                     )?.name ?? null
                   }
                   canInvite={canCreateServerInvites}

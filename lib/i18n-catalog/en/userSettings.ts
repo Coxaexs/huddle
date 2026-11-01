@@ -14,7 +14,7 @@ export const userSettings = {
   "userSettings.tab.customUiCss": "Custom CSS",
   "userSettings.tab.accessibility": "Accessibility",
   "userSettings.tab.roles": "Roles",
-  "userSettings.tab.requests": "Friend Requests",
+  "userSettings.tab.requests": "Ideas & Bug Reports",
   "userSettings.tab.tutorial": "Tutorial",
   "userSettings.tab.language": "Language",
   "userSettings.tab.licenses": "Open Source Licenses",
