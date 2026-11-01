@@ -12,6 +12,7 @@ import { discordBridgeToken } from "../lib/bot-auth";
 import { bridgeSeatIdentity } from "../lib/discord-voice-seat";
 import { hub, roomHub } from "../lib/hub-client";
 import { allDisabledFeatures, disabledFeatureFor, featureFlags, SIDE_FEATURES } from "../lib/features";
+import { apiRateLimit } from "../lib/api-rate-limits";
 import { withSecurityHeaders } from "../lib/security-headers";
 import { publicWsOrigin } from "../lib/public-origin";
 import { SPEECH_HOST } from "../lib/speech";
@@ -262,6 +263,12 @@ async function handleRequest(
       );
     }
 
+    // One budget per caller across the whole API, before any route runs.
+    if (discordPath) {
+      const limited = await apiRateLimit(request, discordPath);
+      if (limited) return limited;
+    }
+
     if (discordPath === "/api/gateway") {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
         return new Response("Expected a WebSocket upgrade.", { status: 426 });
@@ -318,6 +325,11 @@ async function handleRequest(
         .map((d) => d.trim().toLowerCase())
         .filter(Boolean);
       const isLanding = configuredLandingDomains.includes(host);
+      // Downloads are a section of the landing page; /download/<platform> are files.
+      if (isLanding && /^\/(tr\/)?download\/?$/.test(url.pathname)) {
+        const home = url.pathname.startsWith("/tr/") ? "/tr" : "/";
+        return new Response(null, { status: 302, headers: { location: `${home}#download` } });
+      }
       if (url.pathname === "/" && isLanding) {
         target.pathname = `${effectiveBasePath}/landing`;
       } else {

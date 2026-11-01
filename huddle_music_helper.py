@@ -114,18 +114,69 @@ if not os.path.isfile(YTDLP_BIN):
 
 _active_downloads: dict[str, asyncio.Task] = {}
 
+# Watch Together downloads land on this machine's disk, so each one is capped
+# and the folder is trimmed. All of these can be changed in the environment.
+WATCH_MAX_SECONDS = int(os.environ.get("WATCH_MAX_SECONDS", str(4 * 3600)) or 0)
+WATCH_MAX_FILESIZE = os.environ.get("WATCH_MAX_FILESIZE", "8G").strip()
+WATCH_DIR_MAX_BYTES = int(float(os.environ.get("WATCH_DIR_MAX_GB", "20") or 0) * 1024**3)
+WATCH_MIN_FREE_BYTES = int(float(os.environ.get("WATCH_MIN_FREE_GB", "10") or 0) * 1024**3)
+WATCH_PARALLEL = max(1, int(os.environ.get("WATCH_PARALLEL", "2") or 1))
+_download_slots = asyncio.Semaphore(WATCH_PARALLEL)
+
+
+def _ytdlp_error(stderr: bytes, fallback: str) -> str:
+    """The last line yt-dlp printed, short, without the 'ERROR:' prefix."""
+    lines = [line.strip() for line in stderr.decode(errors="replace").splitlines() if line.strip()]
+    if not lines:
+        return fallback
+    return lines[-1].removeprefix("ERROR:").strip()[:300] or fallback
+
+
+def _trim_watch_dir(keep: str) -> None:
+    """Deletes the least recently watched videos while the folder is too big."""
+    if WATCH_DIR_MAX_BYTES <= 0:
+        return
+    # Anything touched in the last few minutes may be a download in progress.
+    recent = time.time() - 600
+    files = []
+    for name in os.listdir(WATCH_DIR):
+        path = os.path.join(WATCH_DIR, name)
+        if not os.path.isfile(path):
+            continue
+        stat = os.stat(path)
+        files.append((stat.st_mtime, stat.st_size, path, name))
+    total = sum(size for _, size, _, _ in files)
+    for _, size, path, name in sorted(files):
+        if total <= WATCH_DIR_MAX_BYTES:
+            break
+        if path == keep or os.stat(path).st_mtime > recent:
+            continue
+        try:
+            os.remove(path)
+            total -= size
+        except OSError:
+            pass
+
 
 async def run_yt_dlp_download(url_or_id: str) -> dict:
+    url_or_id = url_or_id.strip()
+    # yt-dlp reads anything starting with "-" as an option, never as a video.
+    if not url_or_id or url_or_id.startswith("-") or len(url_or_id) > 500:
+        raise ValueError("Give a YouTube link or a few words to search for.")
+    cookies = ["--cookies", YDL_OPTIONS["cookiefile"]] if "cookiefile" in YDL_OPTIONS else []
+
     # First get metadata
     meta_cmd = [
         YTDLP_BIN,
         "--no-warnings",
+        "--no-playlist",
+        "--playlist-items", "1",
         "--default-search", "ytsearch1",
-        "--print", "%(id)s\t%(title)s\t%(duration)s",
+        "--print", "%(id)s\t%(title)s\t%(duration)s\t%(is_live)s",
+        *cookies,
+        "--",
         url_or_id,
     ]
-    if "cookiefile" in YDL_OPTIONS:
-        meta_cmd.extend(["--cookies", YDL_OPTIONS["cookiefile"]])
 
     proc = await asyncio.create_subprocess_exec(
         *meta_cmd,
@@ -134,8 +185,7 @@ async def run_yt_dlp_download(url_or_id: str) -> dict:
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-        err = stderr.decode().strip() or "Could not fetch YouTube video details."
-        raise ValueError(err)
+        raise ValueError(_ytdlp_error(stderr, "Could not fetch YouTube video details."))
 
     line = stdout.decode().strip().split("\n")[-1]
     parts = line.split("\t")
@@ -148,32 +198,48 @@ async def run_yt_dlp_download(url_or_id: str) -> dict:
         duration = float(parts[2].strip()) if len(parts) > 2 and parts[2].strip() != "NA" else 0
     except ValueError:
         duration = 0
+    if len(parts) > 3 and parts[3].strip() == "True":
+        raise ValueError("Live streams can't be saved for Watch Together. Try it once the stream has ended.")
+    if WATCH_MAX_SECONDS and duration > WATCH_MAX_SECONDS:
+        hours = WATCH_MAX_SECONDS / 3600
+        raise ValueError(f"That video is longer than {hours:g} hours, the most Watch Together can save.")
+    # A video id only ever holds letters, digits, "-" and "_".
+    if not video_id.replace("-", "").replace("_", "").isalnum():
+        raise ValueError("Invalid YouTube video information.")
 
     target_file = os.path.join(WATCH_DIR, f"{video_id}.mp4")
     if os.path.isfile(target_file) and os.path.getsize(target_file) > 1000:
+        os.utime(target_file)  # watched again, so it is the last one trimmed
         return {"id": video_id, "title": title, "duration": duration, "cached": True}
 
-    # Download format: best 1080p mp4 with audio, merged to mp4
-    dl_cmd = [
-        YTDLP_BIN,
-        "--no-warnings",
-        "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-        "--merge-output-format", "mp4",
-        "-o", os.path.join(WATCH_DIR, f"{video_id}.%(ext)s"),
-        f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 and not url_or_id.startswith("http") else url_or_id,
-    ]
-    if "cookiefile" in YDL_OPTIONS:
-        dl_cmd.extend(["--cookies", YDL_OPTIONS["cookiefile"]])
+    async with _download_slots:
+        _trim_watch_dir(keep=target_file)
+        if WATCH_MIN_FREE_BYTES and shutil.disk_usage(WATCH_DIR).free < WATCH_MIN_FREE_BYTES:
+            raise ValueError("The server is short on disk space right now, so it can't save new videos.")
 
-    proc_dl = await asyncio.create_subprocess_exec(
-        *dl_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, dl_stderr = await proc_dl.communicate()
-    if proc_dl.returncode != 0 or not os.path.isfile(target_file):
-        err = dl_stderr.decode().strip() or "Failed to download video from YouTube."
-        raise ValueError(err)
+        # Download format: best 1080p mp4 with audio, merged to mp4
+        dl_cmd = [
+            YTDLP_BIN,
+            "--no-warnings",
+            "--no-playlist",
+            "--playlist-items", "1",
+            "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "--merge-output-format", "mp4",
+            *(["--max-filesize", WATCH_MAX_FILESIZE] if WATCH_MAX_FILESIZE else []),
+            "-o", os.path.join(WATCH_DIR, f"{video_id}.%(ext)s"),
+            *cookies,
+            "--",
+            f"https://www.youtube.com/watch?v={video_id}" if len(video_id) == 11 and not url_or_id.startswith("http") else url_or_id,
+        ]
+
+        proc_dl = await asyncio.create_subprocess_exec(
+            *dl_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, dl_stderr = await proc_dl.communicate()
+        if proc_dl.returncode != 0 or not os.path.isfile(target_file):
+            raise ValueError(_ytdlp_error(dl_stderr, "Failed to download video from YouTube."))
 
     return {"id": video_id, "title": title, "duration": duration, "cached": False}
 

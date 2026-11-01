@@ -13,6 +13,10 @@ export async function POST(request: Request) {
     if (!rawUrl) {
       return Response.json({ error: "Missing YouTube URL or search query." }, { status: 400 });
     }
+    // The helper hands this to yt-dlp, which reads a leading "-" as an option.
+    if (rawUrl.startsWith("-") || rawUrl.length > 500) {
+      return Response.json({ error: "Give a YouTube link or a few words to search for." }, { status: 400 });
+    }
 
     const helperBase = bindings().MUSIC_HELPER_BASE_URL?.trim() || "http://127.0.0.1:8731";
     const res = await fetch(`${helperBase}/watch/download`, {
