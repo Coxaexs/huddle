@@ -1,5 +1,6 @@
 export type RoomActivityKind =
   | "watch"
+  | "reels"
   | "whiteboard"
   | "tierlist"
   | "drawguess"
@@ -64,6 +65,7 @@ export interface RoomActivity {
 
 export const ACTIVITY_KINDS: RoomActivityKind[] = [
   "watch",
+  "reels",
   "whiteboard",
   "tierlist",
   "drawguess",
@@ -77,6 +79,24 @@ export const ACTIVITY_KINDS: RoomActivityKind[] = [
 export function isActivityKind(value: unknown): value is RoomActivityKind {
   return ACTIVITY_KINDS.includes(value as RoomActivityKind);
 }
+
+/**
+ * Activities the Music + Watch bot runs: Watch Together and Reels Together.
+ * They exist only in servers that added the bot, and each member opens them
+ * with a ticket of their own (POST /api/integrations/musicwatch), so the
+ * shared state holds no link.
+ */
+export const BOT_ACTIVITY_KINDS = ["watch", "reels"] as const;
+export type BotActivityKind = (typeof BOT_ACTIVITY_KINDS)[number];
+
+export function isBotActivity(kind: unknown): kind is BotActivityKind {
+  return BOT_ACTIVITY_KINDS.includes(kind as BotActivityKind);
+}
+
+export const BOT_ACTIVITY_NAMES: Record<BotActivityKind, string> = {
+  watch: "Watch Together",
+  reels: "Reels Together",
+};
 
 export const DEFAULT_TIERS: TierRow[] = [
   { id: "s", label: "S", color: "#ef6b8f", items: [] },

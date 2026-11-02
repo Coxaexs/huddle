@@ -7416,6 +7416,33 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   background: var(--line);
 }
 
+.voice-chat-system {
+  margin: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.voice-chat-system strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.voice-chat-system svg {
+  color: var(--lavender);
+  flex: none;
+}
+
+.voice-chat-system time {
+  color: var(--faint);
+  font-size: 11px;
+}
+
 .voice-chat-msg {
   position: relative;
   display: grid;
@@ -8238,6 +8265,102 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   border: 0;
   border-radius: 11px;
   background: #0e0e16;
+}
+
+/* Watch Together / Reels Together: the Music Bot's own page, themed by Hoffle
+   (TogetherFrame in room-activities posts the theme tokens into it). */
+.together-embed {
+  position: relative;
+}
+
+.together-embed.kind-watch,
+.together-embed.kind-watch iframe {
+  background: var(--paper);
+}
+
+.together-embed.kind-reels,
+.together-embed.kind-reels iframe {
+  background: #000;
+}
+
+.together-loading,
+.together-problem {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.together-problem {
+  flex: 1;
+  min-height: 0;
+  background: var(--paper);
+}
+
+.together-problem p {
+  max-width: 380px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.together-problem button {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.together-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid color-mix(in srgb, var(--lavender) 25%, transparent);
+  border-top-color: var(--lavender);
+  border-radius: 50%;
+  animation: together-spin .9s linear infinite;
+}
+
+@keyframes together-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.activity-picker .activity-bot-tag {
+  margin-top: 2px;
+  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--lavender);
+  background: var(--lavender-soft);
+  border-radius: 999px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.activity-picker button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.activity-picker button:disabled:hover {
+  transform: none;
+  border-color: var(--line);
+  background: var(--paper);
 }
 
 /* DeepPixel is a full board game: give it the whole stage and a matching backdrop */

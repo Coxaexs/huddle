@@ -368,7 +368,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
         voiceChannelId: voice.channelId,
         channelTitle,
         postBotMessage,
-        what: name === "watch" && value ? value : undefined,
+        what: value || undefined,
         sendLoungeSet: (key, val) => hub.send({ t: "lounge-set", key, value: val }),
         onWatchStarted: (channelId) => {
           // You started it, so you are watching: open the stage on it, past the tune-in prompt.

@@ -13,7 +13,9 @@ export type SystemKind =
   | "system-group-leave"
   | "system-group-remove"
   | "system-group-rename"
-  | "system-group-create";
+  | "system-group-create"
+  /** Someone started one of the music bot's activities (Watch or Reels Together) in a voice room. */
+  | "system-activity";
 
 /**
  * Stores and broadcasts a notice in a channel, attributed to `actor` so the

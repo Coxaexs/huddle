@@ -73,6 +73,8 @@ interface VoiceStageProps {
   userName: string;
   activity: RoomActivity | null;
   onActivity: (activity: RoomActivity | null) => void;
+  /** The room's server added the Music Bot, so Watch and Reels Together are on offer. */
+  botActivities?: boolean;
   /** Whether the viewer is actually connected to this room's voice. */
   joined?: boolean;
   /** Join this room's voice (needs a real gesture for the microphone). */
@@ -152,6 +154,7 @@ export function VoiceStage({
   userName,
   activity,
   onActivity,
+  botActivities = true,
   joined,
   onJoin,
   onExit,
@@ -822,6 +825,7 @@ export function VoiceStage({
         onActivity={onActivity}
         open={activitiesOpen}
         onOpen={setActivitiesOpen}
+        musicBot={botActivities}
       />}
       {participants.some((person) => person.important && !person.muted && !person.serverMuted) && (
         <div className="voice-important-banner" role="status"><Megaphone size={16} />

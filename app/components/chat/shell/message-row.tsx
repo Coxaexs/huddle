@@ -11,7 +11,7 @@ import { stripTextStyle } from "@/lib/text-style";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { getMemberTagInfo } from "@/lib/permissions";
 import { type Member, type PublicUser } from "@/lib/users";
-import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut } from "lucide-react";
+import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut, Clapperboard, Smartphone } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -292,6 +292,12 @@ function MessageRowImpl({
                             <LogOut size={15} />
                           ) : message.kind === "system-group-rename" ? (
                             <Pencil size={15} />
+                          ) : message.kind === "system-activity" ? (
+                            (message.payload as { kind?: string } | undefined)?.kind === "reels" ? (
+                              <Smartphone size={15} />
+                            ) : (
+                              <Clapperboard size={15} />
+                            )
                           ) : (
                             <UserPlus size={15} />
                           )}

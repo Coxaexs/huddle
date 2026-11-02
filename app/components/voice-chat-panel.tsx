@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { MessageCircle, Plus, Trash2, X } from "lucide-react";
+import { MessageCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import type { Message } from "../lib/chat/types";
 import type { Member } from "@/lib/users";
@@ -223,6 +223,26 @@ export function VoiceChatPanel({
       at !== null &&
       at.getTime() - prevAt < GROUP_GAP_MS;
     const author = message.userId ? membersById.get(message.userId) : undefined;
+    if (message.kind?.startsWith("system-")) {
+      // A one-line notice ("Ana started Watch Together in this room."), centred
+      // like in the channel view, with the name as it is now.
+      const rest = message.text.startsWith(message.author)
+        ? message.text.slice(message.author.length)
+        : ` ${message.text}`;
+      rows.push(
+        <div key={String(message.id)} className="voice-chat-system">
+          <Sparkles size={13} aria-hidden="true" />
+          <span>
+            <strong>{author?.displayName || message.author}</strong>
+            {rest}
+          </span>
+          {at && <time dateTime={message.createdAt}>{stampLabel(at)}</time>}
+        </div>,
+      );
+      previous = null;
+      previousDay = day;
+      continue;
+    }
     const images = [message.image, ...(message.images || [])].filter((url): url is string => Boolean(url));
     const files = (message.files || []).filter((file) => !images.includes(file.url));
     const mayDelete = message.userId === userId || canModerate;

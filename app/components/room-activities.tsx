@@ -11,10 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import {
+  BOT_ACTIVITY_NAMES,
   DEEPPIXEL_URL,
   DEEPPIXEL_FROM_GAME,
   DEEPPIXEL_TO_GAME,
   DEFAULT_TIERS,
+  isBotActivity,
   RICHUP_URL,
   richupRoomUrl,
   type ActivityStroke,
@@ -44,6 +46,8 @@ import {
   Maximize2,
   Landmark,
   Hand,
+  Smartphone,
+  Bot,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { deferred } from "./chat/shell/deferred";
@@ -59,6 +63,8 @@ interface RoomActivitiesProps {
   onActivity: (activity: RoomActivity | null) => void;
   open: boolean;
   onOpen: (open: boolean) => void;
+  /** The room's server added the Music Bot, which runs Watch and Reels Together. */
+  musicBot?: boolean;
 }
 
 const ACTIVITY_CHOICES: Array<{
@@ -71,7 +77,13 @@ const ACTIVITY_CHOICES: Array<{
     kind: "watch",
     icon: <Play size={20} />,
     name: "Watch Together",
-    description: "The bot’s synced player, right inside this room",
+    description: "Search YouTube or paste a link; everyone sees the same moment",
+  },
+  {
+    kind: "reels",
+    icon: <Smartphone size={20} />,
+    name: "Reels Together",
+    description: "Swipe Shorts as a group; the feed learns what you all like",
   },
   {
     kind: "whiteboard",
@@ -209,14 +221,139 @@ function renderStrokes(strokes: ActivityStroke[], maskPrefix: string): ReactNode
   );
 }
 
-function embeddedWatchUrl(raw: string) {
-  try {
-    const url = new URL(raw);
-    url.searchParams.set("embed", "1");
-    return url.toString();
-  } catch {
-    return raw;
+/** Hoffle's theme tokens, handed to the bot's Watch/Reels pages so they look like the rest of the app. */
+const THEME_TOKENS = [
+  "--paper", "--panel", "--chat-bg", "--rail-bg", "--ink", "--muted", "--faint", "--line",
+  "--lavender", "--lavender-soft", "--accent-strong", "--on-accent", "--coral", "--mint",
+  "--ui-corners", "--font-ui",
+];
+
+function isLightColor(value: string) {
+  const hex = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+  let rgb: number[] | null = null;
+  if (hex) {
+    const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+    rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  } else {
+    const match = value.match(/rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/i);
+    if (match) rgb = match.slice(1, 4).map(Number);
   }
+  if (!rgb) return false;
+  return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 > 0.55;
+}
+
+function themeMessage(from: Element) {
+  const style = getComputedStyle(from);
+  const vars: Record<string, string> = {};
+  for (const name of THEME_TOKENS) vars[name] = style.getPropertyValue(name).trim();
+  return { type: "hoffle-theme", vars, scheme: isLightColor(vars["--paper"] || "") ? "light" : "dark" };
+}
+
+/** A one-time link into this voice room's Watch or Reels room, for the member asking. */
+async function togetherUrl(channelId: string, mode: "watch" | "reels") {
+  const data = await apiFetch<{ url: string }>("/api/integrations/musicwatch", {
+    method: "POST",
+    body: JSON.stringify({ channelId, mode }),
+  });
+  return data.url;
+}
+
+/**
+ * Watch Together / Reels Together, served by the Music + Watch bot. Each
+ * member gets their own ticket, so the bot knows who they are (name, picture,
+ * host or moderator) without asking; the page asks for Hoffle's theme when it
+ * loads and for a new ticket if its session runs out.
+ */
+function TogetherFrame({ channelId, mode }: { channelId: string; mode: "watch" | "reels" }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const renewals = useRef<number[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    setUrl(null);
+    setError("");
+    togetherUrl(channelId, mode)
+      .then((next) => {
+        if (live) setUrl(next);
+      })
+      .catch((requestError) => {
+        if (live) {
+          setError(
+            requestError instanceof Error ? requestError.message : `${BOT_ACTIVITY_NAMES[mode]} is unavailable.`,
+          );
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [channelId, mode, attempt]);
+
+  useEffect(() => {
+    if (!url) return;
+    const origin = new URL(url, window.location.href).origin;
+    const send = () => {
+      const frame = frameRef.current;
+      if (frame?.contentWindow) frame.contentWindow.postMessage(themeMessage(frame), origin);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== origin || event.source !== frameRef.current?.contentWindow) return;
+      const type = (event.data as { type?: string } | null)?.type;
+      if (type === "hoffle-together:ready") send();
+      if (type === "hoffle-together:expired") {
+        // A fresh ticket, but not in a loop if the bot keeps refusing.
+        const now = Date.now();
+        renewals.current = renewals.current.filter((at) => now - at < 60_000);
+        if (renewals.current.length < 3) {
+          renewals.current.push(now);
+          setAttempt((count) => count + 1);
+        }
+      }
+    };
+    window.addEventListener("message", onMessage);
+    // Theme switches change the root's attributes, classes or inline tokens.
+    const observer = new MutationObserver(send);
+    observer.observe(document.documentElement, { attributes: true });
+    return () => {
+      window.removeEventListener("message", onMessage);
+      observer.disconnect();
+    };
+  }, [url]);
+
+  if (error) {
+    return (
+      <div className="together-embed together-problem">
+        <Bot size={28} />
+        <p>{error}</p>
+        <button type="button" onClick={() => setAttempt((count) => count + 1)}>
+          <RotateCcw size={14} /> Try again
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className={`watch-embed together-embed kind-${mode}`}>
+      {url ? (
+        <iframe
+          ref={frameRef}
+          key={url}
+          src={url}
+          title={BOT_ACTIVITY_NAMES[mode]}
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowFullScreen
+          // The bot's page: it may run and play video, not navigate this window.
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+        />
+      ) : (
+        <div className="together-loading" role="status">
+          <span className="together-spinner" aria-hidden="true" />
+          Opening {BOT_ACTIVITY_NAMES[mode]}…
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -786,6 +923,7 @@ export function RoomActivities({
   onActivity,
   open,
   onOpen,
+  musicBot = true,
 }: RoomActivitiesProps) {
   const [busy, setBusy] = useState(false);
   const gameFrameRef = useRef<HTMLDivElement>(null);
@@ -873,33 +1011,9 @@ export function RoomActivities({
   }
 
   async function openActivity(kind: RoomActivityKind) {
-    if (kind === "watch") {
-      try {
-        setBusy(true);
-        setError("");
-        const room = await apiFetch<{ url: string }>("/api/integrations/musicwatch", {
-          method: "POST",
-          body: JSON.stringify({
-            mode: "watch",
-            name: `${channelName} · Hoffle`,
-          }),
-        });
-        const next = await postActivity({
-          channelId,
-          action: "open",
-          kind,
-          state: { url: room.url, title: `${channelName} Watch Party` },
-        });
-        onActivity(next);
-      } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Watch Together is unavailable.",
-        );
-      } finally {
-        setBusy(false);
-      }
+    if (isBotActivity(kind)) {
+      // Each member gets their own link when the frame opens (TogetherFrame).
+      await action({ action: "open", kind, state: { title: BOT_ACTIVITY_NAMES[kind] } });
       return;
     }
     const state =
@@ -936,9 +1050,28 @@ export function RoomActivities({
   }
 
   // Embedded games stay mounted while collapsed so players don't drop out,
-  // and so does the synth, so a collapsed panel doesn't cut your chord off.
+  // and so do the synth and the bot's watch parties, so collapsing the panel
+  // doesn't cut your chord off or drop you out of the film.
   const isGame = activity?.kind === "deeppixel" || activity?.kind === "richup";
-  if (!open && !isGame && activity?.kind !== "synth") return null;
+  const botActivity = activity && isBotActivity(activity.kind) ? activity.kind : null;
+  if (!open && !isGame && !botActivity && activity?.kind !== "synth") return null;
+
+  async function popOut(mode: "watch" | "reels") {
+    // Opened before the request so the browser treats it as the click's window.
+    const win = window.open("", "_blank");
+    try {
+      const url = await togetherUrl(channelId, mode);
+      if (win) {
+        win.opener = null;
+        win.location.href = url;
+      } else {
+        window.open(url, "_blank", "noopener");
+      }
+    } catch (requestError) {
+      win?.close();
+      setError(requestError instanceof Error ? requestError.message : "That didn’t open.");
+    }
+  }
 
   const deepPixelSrc =
     activity?.kind === "deeppixel"
@@ -990,14 +1123,15 @@ export function RoomActivities({
               <Maximize2 size={15} />
             </button>
           )}
-          {(activity?.kind === "watch" || isGame) && (
-            <a
-              href={isGame ? gameSrc : String(activity?.state.url || "")}
-              target="_blank"
-              rel="noreferrer"
-            >
+          {isGame && (
+            <a href={gameSrc} target="_blank" rel="noreferrer">
               Pop out <ExternalLink size={12} />
             </a>
+          )}
+          {botActivity && (
+            <button type="button" onClick={() => void popOut(botActivity)} title="Open in its own tab">
+              Pop out <ExternalLink size={12} />
+            </button>
           )}
           {activity && (
             <button
@@ -1017,30 +1151,33 @@ export function RoomActivities({
 
       {!activity ? (
         <div className="activity-picker">
-          {ACTIVITY_CHOICES.map((choice) => (
-            <button
-              type="button"
-              key={choice.kind}
-              disabled={busy}
-              onClick={() => void openActivity(choice.kind)}
-            >
-              <span>{choice.icon}</span>
-              <strong>{choice.name}</strong>
-              <small>{choice.description}</small>
-            </button>
-          ))}
+          {ACTIVITY_CHOICES.map((choice) => {
+            const needsBot = isBotActivity(choice.kind) && !musicBot;
+            return (
+              <button
+                type="button"
+                key={choice.kind}
+                disabled={busy || needsBot}
+                className={isBotActivity(choice.kind) ? "bot-activity" : undefined}
+                title={needsBot ? "Add the Music Bot in Server Settings → Integrations" : undefined}
+                onClick={() => void openActivity(choice.kind)}
+              >
+                <span>{choice.icon}</span>
+                <strong>{choice.name}</strong>
+                <small>
+                  {needsBot ? "Needs the Music Bot: add it in Server Settings → Integrations" : choice.description}
+                </small>
+                {isBotActivity(choice.kind) && (
+                  <em className="activity-bot-tag">
+                    <Bot size={11} /> Music Bot
+                  </em>
+                )}
+              </button>
+            );
+          })}
         </div>
-      ) : activity.kind === "watch" ? (
-        <div className="watch-embed">
-          <iframe
-            src={embeddedWatchUrl(String(activity.state.url || ""))}
-            title="Watch Together"
-            allow="autoplay; fullscreen"
-            // The room is another site: let it run and play video, but not
-            // navigate this window or reach the clipboard.
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-          />
-        </div>
+      ) : botActivity ? (
+        <TogetherFrame key={`${channelId}:${botActivity}`} channelId={channelId} mode={botActivity} />
       ) : isGame ? (
         <div className="watch-embed deeppixel-embed" ref={gameFrameRef}>
           {activity.kind === "richup" && (

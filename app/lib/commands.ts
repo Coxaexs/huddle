@@ -171,12 +171,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "watch",
     args: "[link or search] [original|8|4]",
-    description: "Play a YouTube, Jellyfin or video link for the whole voice room (no link: a Watch Together room)",
+    description: "Watch Together in your voice room; with a link, add it to the party (or play it on the room's screen)",
     group: "Rooms",
   },
   {
     name: "reels",
-    description: "Create a synchronized ReelsTogether room",
+    args: "[topics]",
+    description: "Reels Together in your voice room: swipe Shorts as a group, the feed learns what you like",
     group: "Rooms",
   },
   { name: "web", description: "Open the music dashboard", group: "Rooms" },

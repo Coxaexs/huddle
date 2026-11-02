@@ -213,6 +213,7 @@ export function renderChatMain(v: ShellRenderState) {
               userName={user.displayName}
               activity={roomActivity}
               onActivity={setRoomActivity}
+              botActivities={servers.find((server) => server.id === stageChannel.serverId)?.musicBot !== false}
               diceRoll={diceRoll}
               onDiceRollDone={() => setDiceRoll(null)}
               onRollCommand={(command) => void runCommand(command)}

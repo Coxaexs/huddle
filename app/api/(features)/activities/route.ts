@@ -1,7 +1,9 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import {
+  BOT_ACTIVITY_NAMES,
   DEFAULT_TIERS,
   isActivityKind,
+  isBotActivity,
   richupRoomUrl,
   type ActivityStroke,
   type RoomActivity,
@@ -10,25 +12,13 @@ import {
 } from "@/lib/activities";
 import { synthSettings } from "@/lib/gesture-synth";
 import { publishMessageEvent } from "@/lib/hub-client";
+import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
+import { postSystemMessage } from "@/lib/system-messages";
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
-
-/** Hosts a watch-together room may be framed from. */
-function watchHosts(): Set<string> {
-  const hosts = new Set<string>();
-  const runtime = bindings() as { MUSICWATCH_PUBLIC_URL?: string; MUSICWATCH_BASE_URL?: string };
-  for (const raw of [runtime.MUSICWATCH_PUBLIC_URL, runtime.MUSICWATCH_BASE_URL, "https://deeppixel.online"]) {
-    try {
-      if (raw?.trim()) hosts.add(new URL(raw.trim()).host);
-    } catch {
-      // Not a URL: skip it.
-    }
-  }
-  return hosts;
-}
 
 interface ActivityRow {
   channel_id: string;
@@ -182,24 +172,10 @@ function cleanState(
     value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
-  if (kind === "watch") {
-    const rawUrl = String(input.url || "");
-    let url = "";
-    try {
-      const parsed = new URL(rawUrl);
-      // Only the Music + Watch server's own rooms: this URL is framed in
-      // everyone's voice view, so any other site would be a ready-made
-      // phishing page ("your session expired, sign in again").
-      if (["http:", "https:"].includes(parsed.protocol) && watchHosts().has(parsed.host)) {
-        url = parsed.toString();
-      }
-    } catch {
-      // Rejected below by the client as an empty room.
-    }
-    return {
-      url: url.slice(0, 1200),
-      title: String(input.title || "Watch Together").slice(0, 80),
-    };
+  if (isBotActivity(kind)) {
+    // No link here: each member gets their own one-time ticket from
+    // /api/integrations/musicwatch when the activity opens for them.
+    return { title: String(input.title || BOT_ACTIVITY_NAMES[kind]).slice(0, 80) };
   }
   if (kind === "whiteboard") {
     const strokes = Array.isArray(input.strokes)
@@ -365,7 +341,8 @@ export async function POST(request: Request) {
     guess?: string;
   };
   const channelId = String(body.channelId || "").slice(0, 64);
-  if (!(await channelForMember(db, channelId, user.id))) {
+  const room = await channelForMember(db, channelId, user.id);
+  if (!room) {
     return Response.json({ error: "Voice room not found." }, { status: 404 });
   }
 
@@ -382,6 +359,10 @@ export async function POST(request: Request) {
     if (!isActivityKind(body.kind)) {
       return Response.json({ error: "Unknown activity." }, { status: 400 });
     }
+    if (isBotActivity(body.kind) && !(await musicBotInServer(db, room.server_id))) {
+      return Response.json({ error: MUSIC_BOT_MISSING }, { status: 409 });
+    }
+    const before = isBotActivity(body.kind) ? await rowFor(db, channelId) : null;
     let state = cleanState(body.kind, body.state);
     let secret: string | null = null;
     if (body.kind === "drawguess") {
@@ -406,6 +387,18 @@ export async function POST(request: Request) {
     });
     const activity = publicActivity(row!, user.id);
     await broadcast(channelId, publicActivity(row!));
+    // A watch party or reels feed starting is worth a line in the room's chat
+    // (not a re-open of the one already running).
+    if (isBotActivity(body.kind) && before?.kind !== body.kind) {
+      await postSystemMessage(
+        db,
+        channelId,
+        user,
+        "system-activity",
+        `${user.display_name} started ${BOT_ACTIVITY_NAMES[body.kind]} in this room.`,
+        { kind: body.kind },
+      ).catch((error) => console.warn("activity notice failed", String(error)));
+    }
     return Response.json({ activity }, { status: 201 });
   }
 

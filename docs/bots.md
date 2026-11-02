@@ -16,6 +16,7 @@ Server administrators can manage bots directly from the Hoffle web interface:
 2. Navigate to "Bots & Integrations".
 3. Add built-in bots with one click:
    - Hoffle Music Bot: Synchronized voice audio, queue, and playback control. Like a Discord bot, it is only in servers that add it: until then `/play` and the other music commands, the DJ booth and the Music widget are not there. Servers that existed before this change got it added once, so they keep it until they remove it.
+     It also brings two voice-room activities, **Watch Together** (one synced player: search YouTube or paste a link) and **Reels Together** (a synced Shorts feed that learns each person's taste). Open them from the room's activities or with `/watch` and `/reels`. Each member gets their own one-time ticket into the bot's room, carrying their name, picture and role: whoever started the activity is its host, and people who can manage channels or moderate are its moderators. They are not reachable from Discord or by link.
    - D&D Companion: 5e spell, monster, and item compendium lookups and cryptographic dice rolls.
    - Discord Bridge: Live channel bridging between Hoffle and Discord.
 4. Or click "Create Bot Integration" to generate a dedicated bot token for custom scripts.

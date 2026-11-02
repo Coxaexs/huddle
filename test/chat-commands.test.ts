@@ -88,6 +88,8 @@ describe("/record", () => {
 });
 
 describe("/watch and /reels", () => {
+  const url = (call: number) => apiFetch.mock.calls[call][0];
+
   it("asks you to join voice first", async () => {
     const postBotMessage = vi.fn(async () => {});
     await runWatchCommand("watch", { voiceChannelId: null, channelTitle: "#general", postBotMessage, onActivity: vi.fn() });
@@ -95,22 +97,45 @@ describe("/watch and /reels", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it("opens the watch party as the voice room's activity", async () => {
-    apiFetch.mockResolvedValueOnce({ url: "https://watch.example/r/1" }).mockResolvedValueOnce({ activity: { kind: "watch" } });
+  it("opens Watch Together as the voice room's activity, with no link to share", async () => {
+    apiFetch.mockResolvedValueOnce({ activity: null }).mockResolvedValueOnce({ activity: { kind: "watch" } });
     const onActivity = vi.fn();
     const postBotMessage = vi.fn(async () => {});
     await runWatchCommand("watch", { voiceChannelId: "voice-1", channelTitle: "#general", postBotMessage, onActivity });
-    expect(body(1)).toMatchObject({ channelId: "voice-1", action: "open", kind: "watch" });
+    expect(url(0)).toBe("/api/activities?channelId=voice-1");
+    expect(url(1)).toBe("/api/activities");
+    expect(body(1)).toMatchObject({ channelId: "voice-1", action: "open", kind: "watch", state: { title: "Watch Together" } });
     expect(onActivity).toHaveBeenCalledWith({ kind: "watch" }, "voice-1");
-    expect(postBotMessage).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ link: "https://watch.example/r/1" }));
+    expect(postBotMessage).toHaveBeenLastCalledWith(expect.stringMatching(/Watch Together is open/));
   });
 
-  it("does not open an activity for reels", async () => {
-    apiFetch.mockResolvedValueOnce({ url: "https://watch.example/r/2" });
+  it("queues a link on Watch Together when the room has it open", async () => {
+    apiFetch.mockResolvedValueOnce({ activity: { kind: "watch" } }).mockResolvedValueOnce({ ok: true });
+    const postBotMessage = vi.fn(async () => {});
+    const sendLoungeSet = vi.fn();
+    await runWatchCommand("watch", { voiceChannelId: "voice-1", channelTitle: "#general", postBotMessage, onActivity: vi.fn(),
+      what: "https://youtu.be/abc", sendLoungeSet });
+    expect(url(1)).toBe("/api/integrations/musicwatch");
+    expect(body(1)).toEqual({ channelId: "voice-1", action: "add", q: "https://youtu.be/abc" });
+    expect(sendLoungeSet).not.toHaveBeenCalled();
+    expect(postBotMessage).toHaveBeenCalledWith(expect.stringMatching(/Added to Watch Together/));
+  });
+
+  it("opens Reels Together and passes on your topics", async () => {
+    apiFetch.mockResolvedValueOnce({ activity: null }).mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ activity: { kind: "reels" } });
     const onActivity = vi.fn();
-    await runWatchCommand("reels", { voiceChannelId: "voice-1", channelTitle: "#general", postBotMessage: vi.fn(async () => {}), onActivity });
-    expect(apiFetch).toHaveBeenCalledTimes(1);
-    expect(onActivity).not.toHaveBeenCalled();
+    const postBotMessage = vi.fn(async () => {});
+    await runWatchCommand("reels", { voiceChannelId: "voice-1", channelTitle: "#general", postBotMessage, onActivity, what: "cats, street food" });
+    expect(body(1)).toEqual({ channelId: "voice-1", action: "seed", q: "cats, street food" });
+    expect(body(2)).toMatchObject({ action: "open", kind: "reels" });
+    expect(onActivity).toHaveBeenCalledWith({ kind: "reels" }, "voice-1");
+  });
+
+  it("says why when the server has no music bot", async () => {
+    apiFetch.mockResolvedValueOnce({ activity: null }).mockRejectedValueOnce(new Error("The Music Bot isn't in this server yet."));
+    const postBotMessage = vi.fn(async () => {});
+    await runWatchCommand("reels", { voiceChannelId: "voice-1", channelTitle: "#general", postBotMessage, onActivity: vi.fn() });
+    expect(postBotMessage).toHaveBeenLastCalledWith("The Music Bot isn't in this server yet.");
   });
 });
 
