@@ -12,6 +12,7 @@ export interface ResolvedInvite {
     id: string;
     name: string;
     icon: string;
+    iconUrl?: string | null;
     color: string;
     bannerUrl?: string | null;
     memberCount: number;
@@ -41,6 +42,7 @@ export function ServerInviteCard({
   const isMember = isMemberProp !== undefined ? isMemberProp : Boolean(invite.isMember);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(isMember);
+  const [iconFailed, setIconFailed] = useState(false);
 
   if (!invite.valid) {
     return (
@@ -153,7 +155,13 @@ export function ServerInviteCard({
           className="server-invite-icon"
           style={{ backgroundColor: server.color || "#5865F2" }}
         >
-          {server.icon?.length <= 4 ? server.icon : server.name.charAt(0).toUpperCase()}
+          {server.iconUrl && !iconFailed ? (
+            <img src={server.iconUrl} alt="" onError={() => setIconFailed(true)} />
+          ) : server.icon?.length <= 4 ? (
+            server.icon
+          ) : (
+            server.name.charAt(0).toUpperCase()
+          )}
         </div>
 
         <div className="server-invite-details">

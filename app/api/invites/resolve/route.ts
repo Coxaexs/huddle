@@ -39,6 +39,7 @@ export async function GET(request: Request) {
           id: preview.server.id,
           name: preview.server.name,
           icon: preview.server.icon,
+          iconUrl: preview.server.iconUrl,
           color: preview.server.color,
           bannerUrl: preview.server.bannerUrl,
           memberCount: preview.server.memberCount,
