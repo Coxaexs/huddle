@@ -8,7 +8,7 @@
 import handler from "vinext/server/app-router-entry";
 import { extractInviteCodeFromUrl } from "../app/lib/chat/invites";
 import { currentUser } from "../lib/auth";
-import { discordBridgeToken } from "../lib/bot-auth";
+import { discordBridgeToken, dndBotToken } from "../lib/bot-auth";
 import { bridgeSeatIdentity } from "../lib/discord-voice-seat";
 import { hub, roomHub } from "../lib/hub-client";
 import { allDisabledFeatures, disabledFeatureFor, featureFlags, SIDE_FEATURES } from "../lib/features";
@@ -164,6 +164,28 @@ async function handleRequest(
           authorization?.startsWith("Bearer hfl_bridge_") &&
           authorization === `Bearer ${await discordBridgeToken(env.BOT_TOKEN)}`,
       );
+      // The D&D bot's bard: a voice seat that plays the table's music, ambience
+      // and sound effects (dndbot's bard/hoffle_voice.py), like the music bot.
+      const isBard = Boolean(
+        !isMusicBot &&
+          !isRecorder &&
+          !isBridge &&
+          env.BOT_TOKEN &&
+          authorization?.startsWith("Bearer hfl_dnd_") &&
+          authorization === `Bearer ${await dndBotToken(env.BOT_TOKEN)}`,
+      );
+      if (isBard) {
+        const stub = hub();
+        if (!stub) return new Response("Realtime is not configured.", { status: 503 });
+        const target = new URL("https://huddle.hub/socket");
+        target.searchParams.set("userId", "bot:bard");
+        target.searchParams.set("username", "bard");
+        target.searchParams.set("displayName", "The Bard");
+        target.searchParams.set("avatar", "🎻");
+        target.searchParams.set("color", "#c9a45c");
+        target.searchParams.set("bot", "1");
+        return stub.fetch(target.toString(), { headers: { upgrade: "websocket" } });
+      }
       if (isBridge) {
         const seat = await bridgeSeatIdentity(env.DB, url.searchParams, effectiveBasePath);
         if (!seat) return new Response("Bad Discord account.", { status: 400 });

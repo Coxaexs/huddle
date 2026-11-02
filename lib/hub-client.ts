@@ -326,7 +326,7 @@ export async function playerState(
 }
 
 /** The D&D companion acting at the table for one person (lib/dnd-table.ts). */
-export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ ok: boolean; rooms: string[] }> {
+export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ ok: boolean; rooms: string[]; ids?: Record<string, string> }> {
   const stub = hub();
   if (!stub) return { ok: false, rooms: [] };
   try {
@@ -336,7 +336,7 @@ export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ 
       body: JSON.stringify(op),
     });
     if (!response.ok) return { ok: false, rooms: [] };
-    return (await response.json()) as { ok: boolean; rooms: string[] };
+    return (await response.json()) as { ok: boolean; rooms: string[]; ids?: Record<string, string> };
   } catch {
     return { ok: false, rooms: [] };
   }

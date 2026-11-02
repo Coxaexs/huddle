@@ -1012,8 +1012,9 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listeningTo, user?.id]);
+  // Only the music bot streams the room player; another bot (the D&D bard) is not it.
   const botStreaming = voiceParticipants.some(
-    (participant) => participant.bot,
+    (participant) => participant.bot && participant.id === "bot:music",
   );
 
   const musicBotPref = prefFor("bot:music");

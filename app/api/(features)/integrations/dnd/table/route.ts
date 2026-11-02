@@ -1,5 +1,12 @@
 import { authenticateBot } from "@/lib/bot-auth";
-import { companionRoll, DND_TABLE_OPS, type DndTableOp } from "@/lib/dnd-table";
+import {
+  companionRoll,
+  DND_TABLE_OPS,
+  sanitizeCompanionPawn,
+  type CompanionInitiative,
+  type CompanionPawn,
+  type DndTableOp,
+} from "@/lib/dnd-table";
 import { nativeFor } from "@/lib/discord/snowflake";
 import { dndTable, publishMessageEvent } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
@@ -19,6 +26,12 @@ const MAP_MAX_BYTES = 15 * 1024 * 1024;
  *   spellfx    value: { spell, damageType?, heals?, count?, area? } → drawn from their pawn
  *   roll       roll: { expression, sides, values, modifier, total }  → thrown onto the table
  *   where                                                 → { rooms } they sit in
+ *   pawn       value: a token as a pawn, or { remove: id }  → stood on / taken off the table
+ *   pawns      value: every token on the companion's map    → the table's pawns become them
+ *   initiative value: { entries, turn, round } or null      → the table's order
+ *
+ * pawn, pawns and initiative also take `also`: more people (snowflakes) whose
+ * rooms they reach, since the board belongs to the whole table.
  *
  * Everything acts in the voice rooms the person is sitting in right now, with
  * the same checks as their own tab at the table.
@@ -33,6 +46,8 @@ export async function POST(request: Request) {
   if (!body || (op !== "roll" && !DND_TABLE_OPS.has(op))) {
     return Response.json({ error: "Unknown op." }, { status: 400 });
   }
+  if (op === "pawn" || op === "pawns" || op === "initiative") return sharedBoard(op, body);
+
   const userId = typeof body.user === "string" ? await nativeFor("user", body.user) : null;
   if (!userId) return Response.json({ error: "No such user here." }, { status: 404 });
 
@@ -66,6 +81,73 @@ export async function POST(request: Request) {
   const value = body.value === null ? null : ((body.value ?? {}) as Record<string, unknown>);
   const result = await dndTable({ op, userId, value } as DndTableOp);
   return Response.json(result);
+}
+
+/** A companion person who is a Hoffle user too (native id), or null. */
+async function hoffleUser(snowflake: unknown): Promise<string | null> {
+  if (typeof snowflake !== "string" || !/^\d{5,25}$/.test(snowflake)) return null;
+  const id = await nativeFor("user", snowflake).catch(() => null);
+  return id && !id.startsWith("discord:") && !id.startsWith("bot:") ? id : null;
+}
+
+/**
+ * The battle map and the initiative order, which belong to the whole table:
+ * they act in every room where the sender (`user`) or anyone in `also` (the
+ * companion's party and game master, snowflakes) sits. Players who are not on
+ * Hoffle are skipped rather than refused.
+ */
+async function sharedBoard(op: "pawn" | "pawns" | "initiative", body: Record<string, unknown>) {
+  const also = Array.isArray(body.also) ? body.also.slice(0, 30) : [];
+  const people = [...new Set((await Promise.all([body.user, ...also].map(hoffleUser))).filter((id): id is string => Boolean(id)))];
+  if (!people.length) return Response.json({ ok: true, rooms: [] });
+  const [userId, ...rest] = people;
+  const names = new Map<string, string>();
+  const ownerOf = async (raw: unknown): Promise<{ id: string; name: string }> => {
+    const id = (await hoffleUser(raw)) ?? userId;
+    if (!names.has(id)) names.set(id, await displayName(id));
+    return { id, name: names.get(id)! };
+  };
+  const pawn = async (raw: unknown) => {
+    const owner = await ownerOf((raw as Record<string, unknown> | null)?.owner);
+    return sanitizeCompanionPawn(raw, owner.id, owner.name);
+  };
+
+  if (op === "pawn") {
+    const value = (body.value ?? {}) as Record<string, unknown>;
+    if (typeof value.remove === "string") {
+      if (!/^[\w-]{4,24}$/.test(value.remove)) return Response.json({ error: "Not a pawn." }, { status: 400 });
+      return Response.json(await dndTable({ op, userId, also: rest, value: { remove: value.remove } }));
+    }
+    const clean = await pawn(value);
+    if (!clean) return Response.json({ error: "Not a pawn the table can stand." }, { status: 400 });
+    return Response.json(await dndTable({ op, userId, also: rest, value: clean }));
+  }
+  if (op === "pawns") {
+    const list = Array.isArray(body.value) ? body.value.slice(0, 60) : [];
+    const clean = (await Promise.all(list.map(pawn))).filter((p): p is CompanionPawn => Boolean(p));
+    return Response.json(await dndTable({ op, userId, also: rest, value: clean }));
+  }
+  // initiative
+  const raw = body.value as Record<string, unknown> | null;
+  if (raw === null) return Response.json(await dndTable({ op, userId, also: rest, value: null }));
+  const entries = Array.isArray(raw?.entries) ? raw.entries.slice(0, 30) : [];
+  const value: CompanionInitiative = {
+    entries: await Promise.all(
+      entries.map(async (entry) => {
+        const e = (entry ?? {}) as Record<string, unknown>;
+        const owner = await hoffleUser(e.owner);
+        return {
+          id: String(e.id ?? "").slice(0, 24),
+          name: String(e.name ?? "").slice(0, 40),
+          value: Math.round(Number(e.value) || 0),
+          ...(owner ? { owner } : {}),
+        };
+      }),
+    ),
+    turn: Math.floor(Number(raw?.turn) || 0),
+    round: Math.max(1, Math.floor(Number(raw?.round) || 1)),
+  };
+  return Response.json(await dndTable({ op, userId, also: rest, value }));
 }
 
 async function displayName(userId: string): Promise<string> {
