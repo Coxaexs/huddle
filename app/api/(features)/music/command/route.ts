@@ -784,9 +784,15 @@ export async function POST(request: Request) {
           title,
           value ? null : state?.track?.artist,
           value ? null : state?.track?.duration,
-          // Musixmatch (a small paid plan) only for the song that is playing.
-          { musixmatch: name === "lyricsnow" && !value },
+          // Musixmatch (a small paid plan) only for the song that is playing;
+          // lyrics someone in this server picked by hand win.
+          { musixmatch: name === "lyricsnow" && !value, pickScope: voiceChannel?.server_id },
         );
+        if (lyrics.unavailable && !lyrics.lines.length && !lyrics.lyrics) {
+          const text = "The lyrics site didn't answer just now. Try again in a moment.";
+          await say(db, textChannelId, text);
+          return Response.json({ text });
+        }
 
         if (name === "lyricsnow") {
           if (!lyrics.lines.length) {

@@ -75,3 +75,11 @@ it("names lrclib for older cards, and only links to the sources themselves", () 
   render(<LyricsNow track="Song" lines={lines} sourceUrl="https://evil.example/" />);
   expect(screen.getByRole("link", { name: "LRCLIB" }).getAttribute("href")).toBe("https://lrclib.net/");
 });
+
+it("Wrong lyrics? opens the picker while the song plays", () => {
+  const onFix = vi.fn();
+  render(<LyricsNow track="Song" lines={lines} live positionMs={33_000} onFix={onFix} loose />);
+  fireEvent.click(screen.getByText("Wrong lyrics?"));
+  fireEvent.click(screen.getByText("Pick the right one"));
+  expect(onFix).toHaveBeenCalledTimes(2);
+});

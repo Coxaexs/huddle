@@ -28,6 +28,8 @@ interface LyricsNowProps {
   onSeek?: (positionMs: number) => void;
   /** Opens the full-screen player with these lyrics. */
   onExpand?: () => void;
+  /** Opens the player on "Wrong lyrics?" to pick the right ones (while live). */
+  onFix?: () => void;
 }
 
 function timestamp(seconds: number): string {
@@ -49,6 +51,7 @@ export function LyricsNow({
   versionLength,
   onSeek,
   onExpand,
+  onFix,
 }: LyricsNowProps) {
   const storeKey = `lyricsOffset:${trackKey || `${artist || ""}|${track || ""}`}`;
   // Seconds the lyrics run ahead (+) or behind (-); only this song's card has it.
@@ -134,6 +137,14 @@ export function LyricsNow({
         <p className="lyrics-now-loose">
           Matched by song name only. Is this the right song?
           {lines.slice(0, 2).map((item) => ` “${item.line}”`).join(" /")}
+          {live && onFix && (
+            <>
+              {" "}
+              <button type="button" className="lyrics-now-fix" onClick={onFix}>
+                Pick the right one
+              </button>
+            </>
+          )}
         </p>
       )}
       {!loose && versionLength ? (
@@ -182,6 +193,11 @@ export function LyricsNow({
           <button type="button" onClick={() => nudge(1)} title="Show lyrics 1 second earlier">+1s</button>
           {offset !== 0 && (
             <button type="button" onClick={() => nudge(0)} title="Reset timing">reset</button>
+          )}
+          {onFix && (
+            <button type="button" onClick={onFix} title="Pick the right lyrics from songs with this name">
+              Wrong lyrics?
+            </button>
           )}
           {playing && lines.length > 5 && (
             <button

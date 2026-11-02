@@ -68,6 +68,8 @@ interface MusicPlayerView {
   channelId: string | null;
   tab: MusicPlayerTab;
   seed: MusicPlayerSeed | null;
+  /** Open the lyrics tab straight on "Wrong lyrics?" (the card's button). */
+  fix?: boolean;
 }
 
 let current: MusicPlayerView | null = null;
@@ -82,6 +84,7 @@ export function openMusicPlayer(view: Partial<MusicPlayerView> = {}) {
     channelId: view.channelId ?? null,
     tab: view.tab ?? "lyrics",
     seed: view.seed ?? null,
+    fix: view.fix ?? false,
   };
   emit();
 }
@@ -517,6 +520,8 @@ function MusicPlayer({
               canSeek={controls}
               onSeek={seek}
               active={tab === "lyrics"}
+              pickRequest={view.fix ? view : null}
+              onNote={setNote}
             />
           </div>
           <div role="tabpanel" id="mp-pane-queue" aria-labelledby="mp-tab-queue" hidden={tab !== "queue"} className="mp-pane-inner">
@@ -562,6 +567,8 @@ interface LyricsData {
   loose: boolean;
   /** A full search ran for this song ("Search for lyrics"). */
   checked: boolean;
+  /** Someone in this server picked these by hand ("Wrong lyrics?"). */
+  picked: boolean;
 }
 
 interface LyricsResponse {
@@ -573,6 +580,23 @@ interface LyricsResponse {
   sourceUrl?: string | null;
   versionLength?: number | null;
   musixmatchChecked?: boolean;
+  picked?: boolean;
+  /** lrclib did not answer the search: nothing was looked up. */
+  unavailable?: boolean;
+}
+
+function lyricsData(body: LyricsResponse, trackId: string, checked: boolean): LyricsData {
+  return {
+    trackId,
+    lines: (body.lines || []).map(([at, line]) => ({ at, line })),
+    plain: body.lyrics || "",
+    source: body.source || null,
+    sourceUrl: body.sourceUrl || null,
+    versionLength: body.versionLength || null,
+    loose: Boolean(body.loose),
+    checked,
+    picked: Boolean(body.picked),
+  };
 }
 
 function LyricsPane({
@@ -583,6 +607,8 @@ function LyricsPane({
   canSeek,
   onSeek,
   active,
+  pickRequest,
+  onNote,
 }: {
   roomId: string | null;
   track: Track | null;
@@ -591,13 +617,20 @@ function LyricsPane({
   canSeek: boolean;
   onSeek: (ms: number) => void;
   active: boolean;
+  /** Set when the player was opened to fix the lyrics: open the picker. */
+  pickRequest: unknown;
+  onNote: (text: string) => void;
 }) {
   const trackId = track?.id ?? null;
   const [data, setData] = useState<LyricsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [finding, setFinding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What "Try again" repeats: the saved-lyrics check, or the search.
+  const [retrySearch, setRetrySearch] = useState(false);
   const [offset, setOffset] = useState(0);
+  // "Wrong lyrics?": songs on lrclib with that name, to pick the right one.
+  const [picking, setPicking] = useState(Boolean(pickRequest));
   const ticket = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const handScrolledAt = useRef(0);
@@ -616,18 +649,15 @@ function LyricsPane({
         if (find) params.set("find", "1");
         const body = await apiFetch<LyricsResponse>(`/api/music/lyrics?${params}`);
         if (mine !== ticket.current || (body.trackId && body.trackId !== trackId)) return;
-        setData({
-          trackId,
-          lines: (body.lines || []).map(([at, line]) => ({ at, line })),
-          plain: body.lyrics || "",
-          source: body.source || null,
-          sourceUrl: body.sourceUrl || null,
-          versionLength: body.versionLength || null,
-          loose: Boolean(body.loose),
-          checked: find,
-        });
+        if (body.unavailable) {
+          setRetrySearch(find);
+          setError("The lyrics site didn't answer just now. Try again in a moment.");
+          return;
+        }
+        setData(lyricsData(body, trackId, find));
       } catch (problem) {
         if (mine === ticket.current) {
+          setRetrySearch(find);
           setError(problem instanceof Error ? problem.message : "Could not load the lyrics.");
         }
       } finally {
@@ -654,11 +684,16 @@ function LyricsPane({
         versionLength: seed.versionLength ?? null,
         loose: Boolean(seed.loose),
         checked: true,
+        picked: false,
       });
       return;
     }
     void load(false);
   }, [trackId, seed, load]);
+
+  useEffect(() => {
+    if (pickRequest) setPicking(true);
+  }, [pickRequest]);
 
   useEffect(() => {
     if (!storeKey) return;
@@ -719,6 +754,35 @@ function LyricsPane({
     );
   }
 
+  if (picking && trackId && roomId) {
+    return (
+      <LyricsPicker
+        roomId={roomId}
+        trackId={trackId}
+        duration={track.duration}
+        picked={Boolean(data?.picked)}
+        onClose={() => setPicking(false)}
+        onPicked={(body) => {
+          ticket.current += 1;
+          setData(lyricsData(body, trackId, true));
+          setPicking(false);
+          onNote("Saved: these lyrics show for this song in this server from now on.");
+        }}
+        onCleared={() => {
+          setPicking(false);
+          onNote("Back to the automatic lyrics for this song.");
+          void load(false);
+        }}
+      />
+    );
+  }
+
+  const pickButton = (label: string) => (
+    <button type="button" className="mp-link" onClick={() => setPicking(true)}>
+      {label}
+    </button>
+  );
+
   // Opening a song shows only lyrics already saved; looking them up (lrclib,
   // then Musixmatch, like /lyricsnow) waits for someone to ask.
   const findButton = data && !data.checked && !lines.length && (
@@ -742,7 +806,7 @@ function LyricsPane({
     if (error) {
       return (
         <Empty icon={<MicVocal size={28} />} title="No lyrics right now" text={error}>
-          <button type="button" className="mp-button" onClick={() => void load(false)}>Try again</button>
+          <button type="button" className="mp-button" onClick={() => void load(retrySearch)}>Try again</button>
         </Empty>
       );
     }
@@ -752,6 +816,7 @@ function LyricsPane({
           <p className="mp-lyrics-note">
             {data.checked ? "Only unsynced lyrics exist for this song." : "These lyrics are not synced to the song."}
             {findButton}
+            {pickButton("Wrong song?")}
           </p>
           <div className="mp-plain">{data.plain}</div>
           <p className="mp-source">
@@ -774,6 +839,7 @@ function LyricsPane({
         }
       >
         {findButton}
+        {pickButton(data?.checked ? "Search by hand" : "Or pick them by hand")}
       </Empty>
     );
   }
@@ -785,6 +851,7 @@ function LyricsPane({
           {data.loose
             ? "Matched by song name only. Is this the right song?"
             : `These lyrics follow a ${clock(data.versionLength)} version of the song, so the timing may drift. Nudge it below.`}
+          {pickButton(data.loose ? "Pick the right one" : "Pick another version")}
         </p>
       )}
       <div
@@ -828,6 +895,9 @@ function LyricsPane({
             Reset
           </button>
         )}
+        <button type="button" onClick={() => setPicking(true)} title="Pick the right lyrics from songs with this name">
+          Wrong lyrics?
+        </button>
         <small>
           {canSeek ? "Click a line to jump there" : "Join the room to jump around"}
           {" · Lyrics from "}
@@ -1599,6 +1669,167 @@ function DjPane({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/* ---------- Wrong lyrics? ---------- */
+
+interface LyricsCandidate {
+  id: number;
+  track: string;
+  artist: string;
+  album: string | null;
+  duration: number | null;
+  synced: boolean;
+  snippet: string[];
+  url: string;
+}
+
+/**
+ * Songs on lrclib with this song's name, a few lines of each, to pick the
+ * right lyrics. The pick is saved for the song in this server, so /lyricsnow
+ * and the player show it from then on. lrclib is free: nothing here touches
+ * the Musixmatch plan.
+ */
+function LyricsPicker({
+  roomId,
+  trackId,
+  duration,
+  picked,
+  onClose,
+  onPicked,
+  onCleared,
+}: {
+  roomId: string;
+  trackId: string;
+  duration: number | null;
+  picked: boolean;
+  onClose: () => void;
+  onPicked: (body: LyricsResponse) => void;
+  onCleared: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<LyricsCandidate[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [choosing, setChoosing] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const search = useCallback(
+    async (text?: string) => {
+      setSearching(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({ voiceChannelId: roomId });
+        if (text) params.set("q", text);
+        const data = await apiFetch<{ query?: string; candidates?: LyricsCandidate[] }>(
+          `/api/music/lyrics/pick?${params}`,
+        );
+        setResults(data.candidates || []);
+        if (!text && data.query) setQuery(data.query);
+      } catch (problem) {
+        setError(problem instanceof Error ? problem.message : "lrclib did not answer.");
+      } finally {
+        setSearching(false);
+      }
+    },
+    [roomId],
+  );
+
+  // Opening the picker is asking: look up songs with this name right away.
+  useEffect(() => {
+    void search();
+  }, [search, trackId]);
+
+  const choose = async (lrclibId: number | null) => {
+    setChoosing(lrclibId ?? 0);
+    setError(null);
+    try {
+      const body = await apiFetch<LyricsResponse & { cleared?: boolean }>("/api/music/lyrics/pick", {
+        method: "POST",
+        body: JSON.stringify({ voiceChannelId: roomId, trackId, lrclibId }),
+      });
+      if (body.cleared) onCleared();
+      else onPicked(body);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "That did not save.");
+    } finally {
+      setChoosing(null);
+    }
+  };
+
+  return (
+    <div className="mp-list-wrap mp-picker">
+      <header className="mp-list-head">
+        <strong>Pick the right lyrics</strong>
+        <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label="Back to the lyrics" title="Back to the lyrics">
+          <X size={16} />
+        </button>
+      </header>
+      <form
+        className="mp-search"
+        role="search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (query.trim()) void search(query.trim());
+        }}
+      >
+        <Search size={18} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Song and artist"
+          aria-label="Search lyrics by song and artist"
+          maxLength={200}
+        />
+        <button type="submit" className="mp-button" disabled={!query.trim() || searching}>
+          {searching ? <LoaderCircle size={16} className="mp-spin" /> : "Search"}
+        </button>
+      </form>
+      {error && <p className="mp-error">{error}</p>}
+      {searching && !results && <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Looking for songs with this name…" />}
+      {results && !results.length && !searching && (
+        <Empty icon={<MicVocal size={28} />} title="No lyrics with that name" text="Try other words: the song's name and the artist usually work best." />
+      )}
+      {results && results.length > 0 && (
+        <ol className="mp-candidates">
+          {results.map((item) => {
+            const sameLength = Boolean(duration && item.duration && Math.abs(item.duration - duration) <= 5);
+            return (
+              <li key={item.id} className="mp-candidate">
+                <div className="mp-candidate-head">
+                  <span className="mp-row-text">
+                    <strong>{item.track}</strong>
+                    <small>{[item.artist, item.album, item.duration ? clock(item.duration) : null].filter(Boolean).join(" · ")}</small>
+                  </span>
+                  <span className={`mp-badge ${item.synced ? "" : "muted"}`}>{item.synced ? "Synced" : "Words only"}</span>
+                  {sameLength && <span className="mp-badge good">Same length</span>}
+                </div>
+                <blockquote className="mp-snippet">
+                  {item.snippet.map((line, index) => (
+                    <span key={index}>{line}</span>
+                  ))}
+                </blockquote>
+                <div className="mp-candidate-actions">
+                  <button type="button" className="mp-button small" disabled={choosing !== null} onClick={() => void choose(item.id)}>
+                    {choosing === item.id ? <LoaderCircle size={14} className="mp-spin" /> : null}
+                    Use these
+                  </button>
+                  <a href={item.url} target="_blank" rel="noreferrer">See them on LRCLIB</a>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <footer className="mp-picker-foot">
+        {picked && (
+          <button type="button" className="mp-link" disabled={choosing !== null} onClick={() => void choose(null)}>
+            Go back to the automatic match
+          </button>
+        )}
+        <small>Your pick is saved for this song in this server: /lyricsnow and the player show it from now on.</small>
+      </footer>
     </div>
   );
 }

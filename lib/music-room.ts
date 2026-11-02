@@ -11,7 +11,7 @@ import { bindings } from "./storage";
 export async function musicRoom(
   request: Request,
   voiceChannelId: string | null | undefined,
-): Promise<{ userId: string; userName: string; channelId: string } | Response> {
+): Promise<{ userId: string; userName: string; channelId: string; serverId: string } | Response> {
   const db = bindings().DB;
   if (!db) {
     return Response.json({ error: "Message storage is not connected." }, { status: 503 });
@@ -29,5 +29,5 @@ export async function musicRoom(
   if (!(await musicBotInServer(db, channel.server_id))) {
     return Response.json({ error: MUSIC_BOT_MISSING }, { status: 409 });
   }
-  return { userId: user.id, userName: user.display_name, channelId: channel.id };
+  return { userId: user.id, userName: user.display_name, channelId: channel.id, serverId: channel.server_id };
 }

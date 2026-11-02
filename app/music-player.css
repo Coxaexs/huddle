@@ -1297,3 +1297,126 @@ button.now-playing-source:hover {
     font-size: 12px;
   }
 }
+
+/* ---- "Wrong lyrics?": pick the right ones ---- */
+
+.mp-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lavender);
+  font: 600 13px var(--font-ui);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.mp-link:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.mp-empty .mp-link {
+  margin-top: 4px;
+}
+
+.mp-picker .mp-list-head {
+  align-items: center;
+}
+
+.mp-candidates {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mp-candidate {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.mp-candidate-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mp-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lavender) 18%, transparent);
+  color: var(--lavender);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mp-badge.muted {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--muted);
+}
+
+.mp-badge.good {
+  background: color-mix(in srgb, var(--mint) 18%, transparent);
+  color: var(--mint);
+}
+
+.mp-snippet {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--lavender) 50%, transparent);
+  color: var(--ink);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.mp-snippet span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.mp-candidate-actions a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mp-picker-foot {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lyrics-now-fix {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}

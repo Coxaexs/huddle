@@ -241,3 +241,63 @@ it("runs a simple DJ set: start, mix into the next song, settings", async () => 
   fireEvent.click(screen.getByText("AutoMix"));
   await waitFor(() => expect(commands()).toEqual(["/settings", "/automix off"]));
 });
+
+function pickerRoutes(path: string, init?: RequestInit) {
+  if (path.startsWith("/api/music/lyrics/pick")) {
+    if (init?.method === "POST") {
+      return { trackId: "t1", lines: [[3, "The right words"]], source: "lrclib", sourceUrl: "https://lrclib.net/tracks/12", picked: true };
+    }
+    return {
+      trackId: "t1",
+      query: "Şebnem Ferah Mayın Tarlası",
+      candidates: [
+        { id: 11, track: "Mayın Tarlası (Live)", artist: "Şebnem Ferah", album: "10 Mart", duration: 448, synced: true, snippet: ["Wrong one"], url: "https://lrclib.net/tracks/11" },
+        { id: 12, track: "Mayın Tarlası", artist: "Şebnem Ferah", album: "Kelimeler", duration: 300, synced: true, snippet: ["Mayın tarlasında dolaşıp durmuşum", "Herkes arkamdan bağırmış"], url: "https://lrclib.net/tracks/12" },
+      ],
+    };
+  }
+  return path.startsWith("/api/music/playlists") ? PLAYLISTS : { trackId: "t1", lines: [] };
+}
+
+it("Wrong lyrics? lists songs with that name and saves the pick", async () => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => pickerRoutes(path, init));
+  show();
+  act(() => openMusicPlayer({ channelId: room, seed }));
+  fireEvent.click(screen.getByText("Wrong lyrics?"));
+  expect(await screen.findByText("Herkes arkamdan bağırmış")).toBeTruthy();
+  expect((screen.getByLabelText("Search lyrics by song and artist") as HTMLInputElement).value).toBe("Şebnem Ferah Mayın Tarlası");
+  expect(screen.getAllByText("Same length")).toHaveLength(1);
+
+  fireEvent.click(screen.getAllByText("Use these")[1]);
+  expect(await screen.findByText("The right words")).toBeTruthy();
+  const pick = apiFetch.mock.calls.find(([path, init]) => path === "/api/music/lyrics/pick" && init?.method === "POST")!;
+  expect(JSON.parse(pick[1].body)).toEqual({ voiceChannelId: room, trackId: "t1", lrclibId: 12 });
+  expect(screen.getByText(/these lyrics show for this song in this server/)).toBeTruthy();
+});
+
+it("the card's Wrong lyrics? opens the player straight on the picker", async () => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => pickerRoutes(path, init));
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics", fix: true }));
+  expect(await screen.findByText("Pick the right lyrics")).toBeTruthy();
+  expect(await screen.findByText("Wrong one")).toBeTruthy();
+});
+
+it("says so when the lyrics site is down, and Try again searches again", async () => {
+  let down = true;
+  apiFetch.mockImplementation(async (path: string) => {
+    if (path.startsWith("/api/music/playlists")) return PLAYLISTS;
+    if (path.endsWith("&find=1")) {
+      return down ? { trackId: "t1", lines: [], unavailable: true } : { trackId: "t1", lines: [[2, "Back up"]], source: "lrclib" };
+    }
+    return { trackId: "t1", lines: [] };
+  });
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Search for lyrics"));
+  expect(await screen.findByText(/didn't answer just now/)).toBeTruthy();
+  down = false;
+  fireEvent.click(screen.getByText("Try again"));
+  expect(await screen.findByText("Back up")).toBeTruthy();
+  expect(calls("/api/music/lyrics").filter((path) => path.endsWith("&find=1"))).toHaveLength(2);
+});

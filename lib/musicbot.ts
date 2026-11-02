@@ -126,6 +126,10 @@ export interface Lyrics {
   musixmatchChecked?: boolean;
   /** A page about these lyrics where they came from (lrclib or Musixmatch). */
   sourceUrl?: string | null;
+  /** Someone in this server picked them by hand ("Wrong lyrics?"). */
+  picked?: boolean;
+  /** lrclib did not answer, so nothing was looked up (no Musixmatch request either). */
+  unavailable?: boolean;
 }
 
 /**
@@ -141,7 +145,7 @@ export async function fetchLyrics(
   title: string,
   artist?: string | null,
   duration?: number | null,
-  options: { musixmatch?: boolean | "cached"; cachedOnly?: boolean } = {},
+  options: { musixmatch?: boolean | "cached"; cachedOnly?: boolean; pickScope?: string | null } = {},
 ): Promise<Lyrics> {
   const cookie = await botSession();
   const params = new URLSearchParams({ q: title });
@@ -150,6 +154,8 @@ export async function fetchLyrics(
   if (options.musixmatch) params.set("musixmatch", options.musixmatch === "cached" ? "cached" : "1");
   // Only lyrics already saved: nothing is looked up (the music player).
   if (options.cachedOnly) params.set("cached_only", "1");
+  // Lyrics someone in this Hoffle server picked by hand win (see pickLyrics).
+  if (options.pickScope) params.set("pick_scope", options.pickScope);
   const data = await botFetch(`/api/lyrics/search?${params}`, cookie);
   return {
     track: (data.track as string) || null,
@@ -162,6 +168,74 @@ export async function fetchLyrics(
     versionLength: Number(data.version_length) || null,
     musixmatchChecked: Boolean(data.musixmatch_checked),
     sourceUrl: typeof data.source_url === "string" ? data.source_url : null,
+    picked: Boolean(data.picked),
+    unavailable: Boolean(data.lrclib_down),
+  };
+}
+
+export interface LyricsCandidate {
+  /** lrclib's id for these lyrics. */
+  id: number;
+  track: string;
+  artist: string;
+  album: string | null;
+  duration: number | null;
+  synced: boolean;
+  /** The first few lines, to recognise the song by. */
+  snippet: string[];
+  url: string;
+}
+
+/** lrclib entries that could be this song (or `query`), for "Wrong lyrics?". */
+export async function lyricsCandidates(
+  title: string,
+  artist?: string | null,
+  duration?: number | null,
+  query?: string,
+): Promise<{ query: string; candidates: LyricsCandidate[] }> {
+  const params = new URLSearchParams({ title });
+  if (artist) params.set("artist", artist);
+  if (duration) params.set("duration", String(Math.round(duration)));
+  if (query) params.set("q", query);
+  const data = await botFetch(`/api/lyrics/candidates?${params}`, await botSession());
+  return {
+    query: String(data.query || ""),
+    candidates: ((data.candidates || []) as LyricsCandidate[]).slice(0, 5),
+  };
+}
+
+/**
+ * Saves the lyrics someone picked (an lrclib id) for a song in one Hoffle
+ * server, or forgets the pick with `lrclibId: null` (then answers null).
+ */
+export async function pickLyrics(pick: {
+  title: string;
+  artist?: string | null;
+  scope: string;
+  lrclibId: number | null;
+  by: string;
+}): Promise<Lyrics | null> {
+  const data = await botFetch("/api/lyrics/pick", await botSession(), {
+    method: "POST",
+    body: JSON.stringify({
+      title: pick.title,
+      artist: pick.artist || null,
+      scope: pick.scope,
+      lrclib_id: pick.lrclibId,
+      by: pick.by,
+    }),
+  });
+  if (data.cleared) return null;
+  return {
+    track: (data.track as string) || null,
+    artist: (data.artist as string) || null,
+    lines: (data.lines || []) as Array<[number, string]>,
+    lyrics: (data.lyrics as string) || null,
+    synced: Boolean(data.synced),
+    loose: false,
+    source: (data.source as string) || null,
+    sourceUrl: typeof data.source_url === "string" ? data.source_url : null,
+    picked: true,
   };
 }
 

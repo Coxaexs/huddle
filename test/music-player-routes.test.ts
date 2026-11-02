@@ -7,7 +7,7 @@ vi.mock("@/lib/hub-client", () => ({ playerState: (...args: unknown[]) => player
 vi.mock("@/lib/music-room", () => ({
   musicRoom: async (_request: Request, channelId: string | null) =>
     channelId === "room-1"
-      ? { userId: "u1", userName: "mewis", channelId }
+      ? { userId: "u1", userName: "mewis", channelId, serverId: "server-1" }
       : Response.json({ error: "You can't open that voice room." }, { status: 403 }),
 }));
 
@@ -32,13 +32,13 @@ beforeEach(() => {
 
 it("opening a song only reads lyrics already saved: nothing is looked up", async () => {
   const response = await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1"));
-  expect(fetchLyrics).toHaveBeenCalledWith("Zehir", "manifest", 201, { musixmatch: "cached", cachedOnly: true });
+  expect(fetchLyrics).toHaveBeenCalledWith("Zehir", "manifest", 201, { musixmatch: "cached", cachedOnly: true, pickScope: "server-1" });
   expect(await response.json()).toMatchObject({ trackId: "t1", lines: [[1, "x"]], synced: true, source: "musixmatch" });
 });
 
 it("Search for lyrics searches like /lyricsnow (lrclib, then Musixmatch)", async () => {
   await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1&find=1"));
-  expect(fetchLyrics).toHaveBeenCalledWith("Zehir", "manifest", 201, { musixmatch: true });
+  expect(fetchLyrics).toHaveBeenCalledWith("Zehir", "manifest", 201, { musixmatch: true, pickScope: "server-1" });
 });
 
 it("a room you can't open gets nothing", async () => {

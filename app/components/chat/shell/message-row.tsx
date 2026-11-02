@@ -635,6 +635,13 @@ function MessageRowImpl({
                             source={message.payload.source}
                             sourceUrl={message.payload.sourceUrl}
                             versionLength={message.payload.versionLength}
+                            onFix={() =>
+                              openMusicPlayer({
+                                channelId: message.payload!.voiceChannelId || null,
+                                tab: "lyrics",
+                                fix: true,
+                              })
+                            }
                             onExpand={() =>
                               openMusicPlayer({
                                 channelId: message.payload!.voiceChannelId || null,
