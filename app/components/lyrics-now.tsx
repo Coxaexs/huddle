@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Music2 } from "lucide-react";
+import { Maximize2, Music2 } from "lucide-react";
+import { lyricsSource } from "@/app/lib/lyrics-source";
 
 interface LyricsNowLine {
   at: number;
@@ -19,10 +20,14 @@ interface LyricsNowProps {
   trackKey?: string;
   /** "musixmatch" when the bot had to ask Musixmatch; lrclib otherwise. */
   source?: string;
+  /** A page about these lyrics there, for the "Lyrics from …" link. */
+  sourceUrl?: string;
   /** Musixmatch only had a cut this many seconds long, so timing may drift. */
   versionLength?: number;
   /** Jumps the room's player to this point (ms). Lines are buttons while live. */
   onSeek?: (positionMs: number) => void;
+  /** Opens the full-screen player with these lyrics. */
+  onExpand?: () => void;
 }
 
 function timestamp(seconds: number): string {
@@ -40,8 +45,10 @@ export function LyricsNow({
   loose = false,
   trackKey,
   source,
+  sourceUrl,
   versionLength,
   onSeek,
+  onExpand,
 }: LyricsNowProps) {
   const storeKey = `lyricsOffset:${trackKey || `${artist || ""}|${track || ""}`}`;
   // Seconds the lyrics run ahead (+) or behind (-); only this song's card has it.
@@ -108,10 +115,20 @@ export function LyricsNow({
           {(track || artist) && (
             <small>
               {[track, artist].filter(Boolean).join(" — ")}
-              {source === "musixmatch" ? " · Musixmatch" : ""}
             </small>
           )}
         </div>
+        {onExpand && (
+          <button
+            type="button"
+            className="lyrics-now-expand"
+            onClick={onExpand}
+            aria-label="Open the full-screen player"
+            title="Full-screen player"
+          >
+            <Maximize2 size={15} />
+          </button>
+        )}
       </header>
       {loose && (
         <p className="lyrics-now-loose">
@@ -150,6 +167,14 @@ export function LyricsNow({
           ),
         )}
       </div>
+      {lines.length > 0 && (
+        <p className="lyrics-now-source">
+          Lyrics from{" "}
+          <a href={lyricsSource(source, sourceUrl).url} target="_blank" rel="noreferrer">
+            {lyricsSource(source, sourceUrl).label}
+          </a>
+        </p>
+      )}
       {live && lines.length > 0 && (
         <div className="lyrics-now-sync" aria-label="Lyrics timing">
           <button type="button" onClick={() => nudge(-1)} title="Show lyrics 1 second later">−1s</button>

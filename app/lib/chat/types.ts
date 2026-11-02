@@ -112,6 +112,8 @@ export interface Message {
     source?: string;
     /** lyricsnow: Musixmatch only had a cut this many seconds long. */
     versionLength?: number;
+    /** lyricsnow: a page about the lyrics where they came from. */
+    sourceUrl?: string;
     page?: number;
     otherVersions?: string[];
     tags?: string[];

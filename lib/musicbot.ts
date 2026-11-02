@@ -122,6 +122,10 @@ export interface Lyrics {
   source?: string | null;
   /** Musixmatch only had a cut this many seconds long. */
   versionLength?: number | null;
+  /** Musixmatch was already asked about this song (nothing more to find there). */
+  musixmatchChecked?: boolean;
+  /** A page about these lyrics where they came from (lrclib or Musixmatch). */
+  sourceUrl?: string | null;
 }
 
 /**
@@ -129,19 +133,23 @@ export interface Lyrics {
  *
  * `musixmatch` lets the bot fall back to Musixmatch when lrclib has no synced
  * lyrics. That plan has about 300 requests a month, so only /lyricsnow for
- * the song that is playing sets it; the bot caches every answer.
+ * the song that is playing (and the player's "Find synced lyrics" button)
+ * sets it; the bot caches every answer. "cached" reads those answers only,
+ * which costs nothing.
  */
 export async function fetchLyrics(
   title: string,
   artist?: string | null,
   duration?: number | null,
-  options: { musixmatch?: boolean } = {},
+  options: { musixmatch?: boolean | "cached"; cachedOnly?: boolean } = {},
 ): Promise<Lyrics> {
   const cookie = await botSession();
   const params = new URLSearchParams({ q: title });
   if (artist) params.set("artist", artist);
   if (duration) params.set("duration", String(Math.round(duration)));
-  if (options.musixmatch) params.set("musixmatch", "1");
+  if (options.musixmatch) params.set("musixmatch", options.musixmatch === "cached" ? "cached" : "1");
+  // Only lyrics already saved: nothing is looked up (the music player).
+  if (options.cachedOnly) params.set("cached_only", "1");
   const data = await botFetch(`/api/lyrics/search?${params}`, cookie);
   return {
     track: (data.track as string) || null,
@@ -152,7 +160,81 @@ export async function fetchLyrics(
     loose: Boolean(data.loose),
     source: (data.source as string) || null,
     versionLength: Number(data.version_length) || null,
+    musixmatchChecked: Boolean(data.musixmatch_checked),
+    sourceUrl: typeof data.source_url === "string" ? data.source_url : null,
   };
+}
+
+export interface SongResult {
+  title: string;
+  artist: string;
+  /** Seconds, when known. */
+  duration: number | null;
+  thumbnail: string | null;
+  /** What /play gets when this one is picked. */
+  url: string;
+}
+
+/** Several YouTube matches for the full-screen player's search. */
+export async function searchSongs(query: string): Promise<SongResult[]> {
+  const data = await botFetch(
+    `/api/huddle/search?${new URLSearchParams({ q: query })}`,
+    await botSession(),
+  );
+  return ((data.results || []) as Array<Record<string, unknown>>)
+    .filter((item) => typeof item.url === "string" && /^https?:\/\//.test(item.url))
+    .slice(0, 10)
+    .map((item) => ({
+      title: String(item.title || "Unknown"),
+      artist: String(item.artist || ""),
+      duration: Number(item.duration) || null,
+      thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : null,
+      url: item.url as string,
+    }));
+}
+
+export interface RoomPlaylist {
+  name: string;
+  count: number;
+  cover: string | null;
+  description: string | null;
+  /** Kept by the bot for every room ("Stemmed songs", the day's stem mixes). */
+  auto: boolean;
+  tracks: Array<{ title: string; duration: string | null; thumbnail: string | null }>;
+}
+
+const roomGuild = (channelId: string) => encodeURIComponent(`huddle:${channelId}`);
+
+/** A voice room's saved playlists on the bot: its own, shared and everywhere ones. */
+export async function roomPlaylists(channelId: string): Promise<RoomPlaylist[]> {
+  const data = await botFetch(`/api/guilds/${roomGuild(channelId)}/playlists`, await botSession());
+  return ((data.playlists || []) as Array<Record<string, any>>).map((item) => ({
+    name: String(item.name || ""),
+    count: Number(item.count) || 0,
+    cover: typeof item.cover === "string" ? item.cover : null,
+    description: typeof item.description === "string" ? item.description : null,
+    auto: Boolean(item.auto),
+    tracks: ((item.tracks || []) as Array<Record<string, any>>).slice(0, 200).map((track) => ({
+      title: String(track.title || "Unknown"),
+      duration: track.duration && track.duration !== "Unknown" ? String(track.duration) : null,
+      thumbnail: typeof track.thumbnail === "string" ? track.thumbnail : null,
+    })),
+  })).filter((item) => item.name);
+}
+
+/** Plays a saved playlist in the room ("play" replaces what is on, "load" queues it). */
+export async function playRoomPlaylist(
+  channelId: string,
+  name: string,
+  action: "play" | "load",
+  start = 0,
+  startTitle?: string,
+): Promise<string> {
+  const data = await botFetch(`/api/guilds/${roomGuild(channelId)}/playlists`, await botSession(), {
+    method: "POST",
+    body: JSON.stringify({ action, name, start, start_title: startTitle }),
+  });
+  return String(data.message || (action === "play" ? `Playing ${name}.` : `Added ${name}.`));
 }
 
 /** The line that should be on screen at this moment. */

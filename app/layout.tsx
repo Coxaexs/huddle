@@ -18,6 +18,7 @@ import "./channel-permissions.css";
 import "./easy.css";
 import "./integrations.css";
 import "./layout-custom.css";
+import "./music-player.css";
 import { I18nProvider } from "./lib/i18n-context";
 import { InstallPrompt } from "./components/install-prompt";
 import { INSTALL_EVENT_SCRIPT } from "./lib/install-event";

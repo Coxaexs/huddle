@@ -2,7 +2,7 @@
 
 import { proxiedImage } from "@/app/lib/image-proxy";
 import { useCallback, type MouseEvent } from "react";
-import { Volume2, Music2, ExternalLink, Play, Pause, SkipForward } from "lucide-react";
+import { Volume2, Music2, ExternalLink, Maximize2, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { formatDuration } from "../lib/client";
 
@@ -25,6 +25,8 @@ interface NowPlayingProps {
   volume?: number;
   onVolume: (volume: number) => void;
   voiceChannelName?: string;
+  /** Opens the full-screen player for this room. */
+  onExpand?: () => void;
 }
 
 /**
@@ -45,6 +47,7 @@ export function NowPlaying({
   volume,
   onVolume,
   voiceChannelName,
+  onExpand,
 }: NowPlayingProps) {
   const track = state?.track || null;
   const stale = Boolean(trackId && track && track.id !== trackId);
@@ -127,6 +130,17 @@ export function NowPlaying({
           >
             <ExternalLink size={15} />
           </a>
+        )}
+        {onExpand && (
+          <button
+            type="button"
+            className="now-playing-source"
+            onClick={onExpand}
+            aria-label="Open the full-screen player"
+            title="Full-screen player: lyrics, queue, search, playlists"
+          >
+            <Maximize2 size={15} />
+          </button>
         )}
       </div>
 

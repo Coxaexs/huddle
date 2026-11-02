@@ -182,6 +182,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   { name: "web", description: "Open the music dashboard", group: "Rooms" },
   {
+    name: "player",
+    args: "[lyrics|queue|search|playlists|dj]",
+    description: "Full-screen music player: synced lyrics, up next, search, playlists and a DJ",
+    group: "Rooms",
+  },
+  {
     name: "dj",
     description: "Open the DJ booth: two decks, mixer, FX and Auto DJ",
     group: "Rooms",

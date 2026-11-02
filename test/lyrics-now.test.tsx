@@ -56,8 +56,22 @@ it("lines are plain text once the song is no longer playing", () => {
 
 it("says when Musixmatch only had another cut of the song", () => {
   render(
-    <LyricsNow track="Mayın Tarlası" artist="Şebnem Ferah" lines={lines} source="musixmatch" versionLength={448} />,
+    <LyricsNow
+      track="Mayın Tarlası"
+      artist="Şebnem Ferah"
+      lines={lines}
+      source="musixmatch"
+      sourceUrl="https://www.musixmatch.com/lyrics/%C5%9Eebnem-Ferah/May%C4%B1n-Tarlas%C4%B1"
+      versionLength={448}
+    />,
   );
-  expect(screen.getByText(/Şebnem Ferah · Musixmatch/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Musixmatch" }).getAttribute("href")).toBe(
+    "https://www.musixmatch.com/lyrics/%C5%9Eebnem-Ferah/May%C4%B1n-Tarlas%C4%B1",
+  );
   expect(screen.getByText(/7:28 version of the song/)).toBeTruthy();
+});
+
+it("names lrclib for older cards, and only links to the sources themselves", () => {
+  render(<LyricsNow track="Song" lines={lines} sourceUrl="https://evil.example/" />);
+  expect(screen.getByRole("link", { name: "LRCLIB" }).getAttribute("href")).toBe("https://lrclib.net/");
 });

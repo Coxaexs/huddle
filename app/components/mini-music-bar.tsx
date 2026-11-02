@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type MouseEvent } from "react";
-import { Music2, Play, Pause, SkipForward } from "lucide-react";
+import { Maximize2, Music2, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 
 interface MiniMusicBarProps {
@@ -11,6 +11,8 @@ interface MiniMusicBarProps {
   onToggle?: () => void;
   onSeek?: (positionMs: number) => void;
   onSkip?: () => void;
+  /** Opens the full-screen player. */
+  onExpand?: () => void;
   className?: string;
 }
 
@@ -21,6 +23,7 @@ export function MiniMusicBar({
   onToggle,
   onSeek,
   onSkip,
+  onExpand,
   className = "",
 }: MiniMusicBarProps) {
   const track = state?.track;
@@ -58,6 +61,20 @@ export function MiniMusicBar({
           <span className="truncate tracking-tight">{fullLabel}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 text-[var(--muted)]">
+          {onExpand && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExpand();
+              }}
+              className="p-0.5 hover:text-white transition-colors cursor-pointer"
+              title="Full-screen player"
+              aria-label="Open the full-screen player"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+          )}
           {onToggle && controllable && (
             <button
               type="button"

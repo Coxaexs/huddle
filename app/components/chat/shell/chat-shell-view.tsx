@@ -13,6 +13,7 @@ import { renderChatOverlays } from "./chat-overlays";
 import { WidgetHostProvider, type WidgetHostValue } from "../../widgets/widget-host";
 import { CustomizeBar } from "../../widgets/customize-bar";
 import { WebViewSheet } from "../../widgets/web-view";
+import { MusicPlayerLayer } from "../../music-player";
 
 export type ChatShellViewState = Omit<ReturnType<typeof useShellComposer>, "user"> & { user: PublicUser };
 
@@ -338,6 +339,25 @@ export function renderChatShell(s: ChatShellViewState) {
       {renderChatOverlays(v)}
       <CustomizeBar onOpen={() => setSettingsOpen(false)} />
       <WebViewSheet />
+      <MusicPlayerLayer
+        players={hub.players}
+        voiceChannelId={voice.channelId}
+        voiceRooms={[
+          ...widgetHost.voiceRooms,
+          ...servers
+            .flatMap((server) => server.channels)
+            .filter((channel) => channel.kind === "voice" && !widgetHost.voiceRooms.some((room) => room.id === channel.id))
+            .map((channel) => ({ id: channel.id, name: channel.name })),
+        ]}
+        position={player.position}
+        onSeek={(channelId, positionMs) =>
+          hub.send({ t: "player", channelId, action: { name: "seek", positionMs } })
+        }
+        joinVoice={widgetHost.joinVoice}
+        volume={prefFor("bot:music").volume}
+        onVolume={(volume) => void v.saveVoicePref("bot:music", { volume })}
+        prime={player.prime}
+      />
     </main>
     </WidgetHostProvider>
   );

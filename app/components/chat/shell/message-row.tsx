@@ -19,6 +19,7 @@ import { RoleIcon } from "../../role-icon";
 import { DndCard } from "../../dnd-card";
 import { BotEmbeds } from "../../bot-embeds";
 import { LyricsNow } from "../../lyrics-now";
+import { openMusicPlayer } from "../../music-player";
 import { MessageBody, StyledText, type MentionChannel } from "../../message-body";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
 import { PollCard } from "../../poll-card";
@@ -632,7 +633,24 @@ function MessageRowImpl({
                             loose={Boolean(message.payload.loose)}
                             trackKey={message.payload.trackId ? String(message.payload.trackId) : undefined}
                             source={message.payload.source}
+                            sourceUrl={message.payload.sourceUrl}
                             versionLength={message.payload.versionLength}
+                            onExpand={() =>
+                              openMusicPlayer({
+                                channelId: message.payload!.voiceChannelId || null,
+                                tab: "lyrics",
+                                seed: message.payload!.trackId
+                                  ? {
+                                      trackId: String(message.payload!.trackId),
+                                      lines: (message.payload!.lines || []).map(({ at, line }) => ({ at, line })),
+                                      source: message.payload!.source,
+                                      sourceUrl: message.payload!.sourceUrl,
+                                      versionLength: message.payload!.versionLength,
+                                      loose: Boolean(message.payload!.loose),
+                                    }
+                                  : null,
+                              })
+                            }
                             onSeek={(positionMs) =>
                               hubSend({
                                 t: "player",
@@ -833,6 +851,9 @@ function MessageRowImpl({
                                   channelId: message.payload!.voiceChannelId!,
                                   action: { name: "seek", positionMs },
                                 })
+                              }
+                              onExpand={() =>
+                                openMusicPlayer({ channelId: message.payload!.voiceChannelId!, tab: "lyrics" })
                               }
                               onToggle={() =>
                                 hubSend({

@@ -12,6 +12,7 @@ import { ROLL_COMMANDS, runRollCommand } from "../../lib/chat/commands/roll";
 import { FUN_COMMANDS, funCommandReply } from "@/lib/fun-commands";
 import { type TtsLanguage } from "../../lib/tts/client";
 import { apiFetch } from "../../lib/client";
+import { openMusicPlayer, type MusicPlayerTab } from "../../components/music-player";
 import { COMMAND_ALIASES, DISCORD_ONLY_COMMANDS, DND_LINK_COMMANDS, LOOKUP_COMMANDS, MUSIC_COMMANDS } from "../../lib/commands";
 import type { useShellActions } from "./use-shell-actions";
 
@@ -380,6 +381,12 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
           setStageChannelId(channelId);
         },
       });
+      return;
+    }
+
+    if (name === "player") {
+      const tab = (["lyrics", "queue", "search", "playlists", "dj"] as const).find((item) => item === value.toLowerCase());
+      openMusicPlayer({ channelId: voice.channelId, tab: (tab ?? "lyrics") as MusicPlayerTab });
       return;
     }
 

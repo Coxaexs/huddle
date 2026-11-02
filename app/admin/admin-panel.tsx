@@ -31,7 +31,7 @@ import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
 import { BigFilesTab } from "./big-files-tab";
 import { GrowthTab } from "./growth-tab";
-import { ConfirmDialog, FilesTab, InvitesTab, MessagesTab, ReportsTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
+import { ConfirmDialog, FilesTab, InvitesTab, MessagesTab, MusixmatchUsageCard, ReportsTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
 type Tab = "overview" | "growth" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
@@ -258,6 +258,8 @@ function Overview({ data }: { data: AdminData }) {
         <Stat label="Storage" value={formatBytes(overview.storageBytes)} sub={`${overview.storageFiles} files`} />
         <Stat label="In voice" value={overview.voice.reduce((sum, room) => sum + room.people.length, 0)} sub={`${overview.voice.length} rooms`} />
       </div>
+
+      <MusixmatchUsageCard />
 
       <section className="portal-card admin-section">
         <h2>Messages, last 14 days</h2>

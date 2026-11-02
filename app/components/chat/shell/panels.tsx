@@ -18,6 +18,7 @@ import { eventIsOpen, eventWhen } from "../../events-panel";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
 import { railEntries, type ServerFolder } from "@/lib/server-folders";
 import { MiniMusicBar } from "../../mini-music-bar";
+import { openMusicPlayer } from "../../music-player";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
 import { DM_HOME } from "../../../lib/chat/constants";
 import { formatClientTime, formatClientDateTime } from "../../../lib/chat/format";
@@ -897,6 +898,7 @@ export function ChannelSidebar({
           state={roomPlayer}
           position={player.position}
           controllable
+          onExpand={() => openMusicPlayer({ channelId: voice.channelId })}
           onToggle={() =>
             hub.send({
               t: "player",

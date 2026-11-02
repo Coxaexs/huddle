@@ -743,3 +743,23 @@ body.portal-page-active {
   min-width: 64px;
   text-align: right;
 }
+
+/* The Musixmatch plan on the overview: how much is left this month. */
+.admin-meter {
+  height: 8px;
+  margin: 14px 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.admin-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lavender, #a78bfa);
+}
+
+.admin-meter.low span {
+  background: var(--coral, #f59e6e);
+}

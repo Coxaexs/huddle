@@ -8,6 +8,7 @@ import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, Globe, Lock, UserPlus
 import { isOnTheWeb } from "@/lib/web-public-client";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
+import { openMusicPlayer } from "../../music-player";
 import { type MentionChannel } from "../../message-body";
 import { type ServerFolder } from "@/lib/server-folders";
 import { formatClientDateTime } from "../../../lib/chat/format";
@@ -516,6 +517,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     { label: "Play something…", onSelect: () => prepareCommand("/play ") },
     { label: "Show queue", onSelect: () => prepareCommand("/queue") },
     { label: "Lyrics now", onSelect: () => void runCommand("/lyricsnow") },
+    { label: "Music player (full screen)", onSelect: () => openMusicPlayer({ channelId: voice.channelId }) },
     {
       label: "Toggle Smart Autoplay",
       onSelect: () => void runCommand("/autoplay"),

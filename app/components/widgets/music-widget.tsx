@@ -2,13 +2,14 @@
 
 import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState, type FormEvent } from "react";
-import { Globe, Music2, Pause, Play, Plus, SkipForward } from "lucide-react";
+import { Globe, Maximize2, Music2, Pause, Play, Plus, SkipForward } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { useI18n } from "@/app/lib/i18n-context";
 import { heard, playbackPosition } from "@/lib/protocol";
 import type { WidgetArea, WidgetSize } from "@/lib/layout-prefs";
 import { useWidgetHost } from "./widget-host";
 import { openWebView } from "./web-view";
+import { openMusicPlayer } from "../music-player";
 
 function clock(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -131,6 +132,17 @@ export function MusicWidget({ size, area }: { size: WidgetSize; area?: WidgetAre
       />
     </form>
   );
+  const playerButton = host.voiceRooms.length > 0 && (
+    <button
+      type="button"
+      className="mw-btn"
+      onClick={() => openMusicPlayer({ channelId: room ?? elsewhere?.id ?? null })}
+      title="Full-screen player"
+      aria-label="Open the full-screen player"
+    >
+      <Maximize2 size={14} />
+    </button>
+  );
   const webButton = host.voiceRooms.length > 0 && (
     <button
       type="button"
@@ -207,6 +219,7 @@ export function MusicWidget({ size, area }: { size: WidgetSize; area?: WidgetAre
         {controls}
         {join}
         {queueBox}
+        {playerButton}
         {webButton}
         {note && <span className="mw-note mw-wide-note" role="status">{note}</span>}
       </div>
@@ -234,6 +247,7 @@ export function MusicWidget({ size, area }: { size: WidgetSize; area?: WidgetAre
         {controls}
         {join}
         <span className="mw-spacer" />
+        {playerButton}
         {webButton}
       </div>
       {queueBox}

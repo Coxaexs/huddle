@@ -160,7 +160,7 @@ async function allowed(request: Request, voiceChannelId: unknown): Promise<Respo
     !(await isServerMember(db, channel.server_id, user.id)) ||
     !(await can(db, user.id, channel.server_id, Permission.CONNECT))
   ) {
-    return Response.json({ error: "You can't use that room's club." }, { status: 403 });
+    return Response.json({ error: "You can't use that room's DJ booth." }, { status: 403 });
   }
   // The DJ is the music bot, so the booth only works where it was added.
   if (!(await musicBotInServer(db, channel.server_id))) {

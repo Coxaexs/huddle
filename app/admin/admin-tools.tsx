@@ -920,6 +920,92 @@ interface LibrarySong {
 }
 
 /** The music bot's downloaded songs. Deleting one wipes its file, stems and analysis so it starts over on the next play. */
+interface MusixmatchUsage {
+  configured: boolean;
+  can_send_now: number;
+  left_this_month: number;
+  left_today: number;
+  plan_remaining: number | null;
+  plan_limit: number | null;
+  plan_resets_at: number | null;
+  sent_last_24h: number;
+  sent_last_30d: number;
+  daily_limit: number;
+  blocked_until: number | null;
+}
+
+/**
+ * The Musixmatch lyrics plan (about 300 requests a month): what is left, when
+ * it renews and how much went out lately. The music bot keeps the count from
+ * RapidAPI's own headers.
+ */
+export function MusixmatchUsageCard() {
+  const [usage, setUsage] = useState<MusixmatchUsage | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiFetch<MusixmatchUsage>("/api/admin/musixmatch")
+      .then(setUsage)
+      .catch((cause) => setError(errorText(cause, "Could not reach the music bot.")));
+  }, []);
+
+  const limit = usage?.plan_limit || 300;
+  const left = usage ? Math.max(0, usage.left_this_month) : 0;
+  const share = Math.min(100, Math.round((left / limit) * 100));
+  const date = (seconds: number | null | undefined) =>
+    seconds ? new Date(seconds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : null;
+  const paused = usage?.blocked_until && usage.blocked_until * 1000 > Date.now() ? date(usage.blocked_until) : null;
+
+  return (
+    <section className="portal-card admin-section">
+      <h2>Lyrics: Musixmatch plan</h2>
+      {error ? (
+        <p className="admin-error">{error}</p>
+      ) : !usage ? (
+        <p className="admin-muted">Loading…</p>
+      ) : (
+        <>
+          <div className="admin-stats">
+            <div className="portal-card admin-stat">
+              <span>Left this month</span>
+              <strong>
+                {left} / {limit}
+              </strong>
+              <small>{date(usage.plan_resets_at) ? `renews ${date(usage.plan_resets_at)}` : "renewal date not known yet"}</small>
+            </div>
+            <div className="portal-card admin-stat">
+              <span>Sent</span>
+              <strong>{usage.sent_last_24h} today</strong>
+              <small>{usage.sent_last_30d} in the last 30 days</small>
+            </div>
+            <div className="portal-card admin-stat">
+              <span>Can send now</span>
+              <strong>{usage.can_send_now}</strong>
+              <small>at most {usage.daily_limit} a day</small>
+            </div>
+          </div>
+          <div
+            className={`admin-meter ${share < 15 ? "low" : ""}`}
+            role="meter"
+            aria-label="Musixmatch requests left this month"
+            aria-valuemin={0}
+            aria-valuemax={limit}
+            aria-valuenow={left}
+          >
+            <span style={{ width: `${share}%` }} />
+          </div>
+          <p className="admin-muted">
+            {!usage.configured && "The bot has no Musixmatch key, so nothing is sent. "}
+            {paused && `Musixmatch refused the last request, so the bot waits until ${paused}. `}
+            Only Hoffle&apos;s /lyricsnow and the music player&apos;s &quot;Search for lyrics&quot; ask it, after lrclib has no
+            synced lyrics. Every answer is kept, so each song costs one request at most.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function SongsTab({ confirm }: { confirm: (request: ConfirmRequest) => void }) {
   const [query, setQuery] = useState("");
   const [songs, setSongs] = useState<LibrarySong[] | null>(null);

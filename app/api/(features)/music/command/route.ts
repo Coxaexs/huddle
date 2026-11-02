@@ -827,6 +827,7 @@ export async function POST(request: Request) {
               loose: lyrics.loose || false,
               source: lyrics.source || undefined,
               versionLength: lyrics.versionLength || undefined,
+              sourceUrl: lyrics.sourceUrl || undefined,
               lines: lyrics.lines.map(([at, line]) => ({
                 at,
                 line,
