@@ -18,6 +18,7 @@ import { randomDie, randomSeed } from "@/lib/fair-dice";
 import { parseRouse, parseV5 } from "@/lib/v5-dice";
 import { rollRouse, rollV5 } from "@/lib/v5-roll";
 import { getGameSystem, rollBot } from "@/lib/dnd-rules";
+import { notifyDndTable, rollFaces } from "@/lib/dnd-table";
 
 export const dynamic = "force-dynamic";
 
@@ -461,6 +462,18 @@ export async function POST(request: Request) {
         await publishMessageEvent(textChannelId, { t: "dice-roll", roll: shared });
       }
     }
+  }
+
+  // The D&D companion logs it on the roller's sheet, its Discord log and the bard.
+  if (!isSecret && !storyteller) {
+    await notifyDndTable(user.id, {
+      type: "roll",
+      displayName: user.display_name,
+      expression: roll.expression,
+      total,
+      modifier,
+      dice: rollFaces(roll),
+    });
   }
 
   if (isSecret) text = `${label ? `${label}: ` : ""}rolled in secret, behind the ${storyteller ? "Storyteller's" : "DM"} screen.`;

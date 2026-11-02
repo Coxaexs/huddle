@@ -52,6 +52,7 @@ import { isBlockedBetween } from "./friends";
 import { MAX_WHISPER_TARGETS } from "./whisper";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { bridgedVoiceRooms } from "./discord-bridge";
+import { notifyDndTable, type DndTableOp } from "./dnd-table";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
 import { liveKitClients, liveKitRooms, removeFromLiveKit, silenceInLiveKit } from "./livekit-admin";
 import {
@@ -586,6 +587,9 @@ export class HuddleHub extends DurableObject {
       // seat to stay in the room (see livekit-sweep.ts).
       await this.watchLiveKit(Date.now() + LIVEKIT_TOKEN_TTL_MS + 60_000);
       return Response.json({ ok: true });
+    }
+    if (url.pathname === "/dnd-table" && request.method === "POST") {
+      return Response.json(await this.applyDndTable((await request.json()) as DndTableOp));
     }
     if (url.pathname === "/state") {
       return Response.json({
@@ -1198,6 +1202,10 @@ export class HuddleHub extends DurableObject {
           bag.characters = characters;
           await this.saveLoungeShared();
           send("characters", characters, true);
+          // Hit points and spent slots changed at the table reach the companion's sheet.
+          if (clean && typeof this.ctx?.waitUntil === "function") {
+            this.ctx.waitUntil(notifyDndTable(attachment.userId, { type: "character", value: clean as Record<string, unknown> }));
+          }
           return;
         }
         if (key === "watch") {
@@ -1328,6 +1336,10 @@ export class HuddleHub extends DurableObject {
           }
         }
         this.broadcastVoice(event.channelId);
+        // The D&D companion seats their hero at the table (and its game master behind the screen).
+        if (!attachment.bot && previous !== event.channelId && typeof this.ctx?.waitUntil === "function") {
+          this.ctx.waitUntil(notifyDndTable(attachment.userId, { type: "seated" }));
+        }
         return;
       }
 
@@ -2210,6 +2222,79 @@ export class HuddleHub extends DurableObject {
       online: this.onlineUserIds(),
       serverNow: Date.now(),
     });
+  }
+
+  /**
+   * The D&D companion acting at the table for one person (lib/dnd-table.ts).
+   * It goes through the same cleaning as a tab's lounge-set, into every voice
+   * room that person sits in; with nobody seated there is nothing to do.
+   */
+  private async applyDndTable(body: DndTableOp): Promise<{ ok: boolean; rooms: string[] }> {
+    const seats = this.sockets().filter(
+      ({ attachment }) => attachment.userId === body.userId && attachment.voiceChannelId && !attachment.bot && !attachment.replaced,
+    );
+    const rooms = [...new Set(seats.map(({ attachment }) => attachment.voiceChannelId as string))];
+    if (body.op === "where" || !rooms.length) return { ok: true, rooms };
+
+    const now = Date.now();
+    const name = seats[0].attachment.displayName || seats[0].attachment.username || "Someone";
+    const all = await this.loadLoungeShared();
+    const send = (room: string, key: string, value: unknown) => {
+      const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key, value, serverNow: now });
+      for (const { socket, attachment: peer } of this.sockets()) {
+        if (peer.voiceChannelId !== room) continue;
+        try {
+          socket.send(payload);
+        } catch {
+          // Going away.
+        }
+      }
+    };
+
+    for (const room of rooms) {
+      const bag = (all[room] ??= {});
+      const seat = seats.find(({ attachment }) => attachment.voiceChannelId === room)!.attachment;
+      if (body.op === "character") {
+        const clean = body.value === null ? null : sanitizeShared("character", body.value, name, now);
+        if (body.value !== null && !clean) continue;
+        const characters = { ...((bag.characters as Record<string, unknown> | undefined) ?? {}) };
+        if (clean) characters[body.userId] = clean;
+        else delete characters[body.userId];
+        bag.characters = characters;
+        send(room, "characters", characters);
+      } else if (body.op === "gm") {
+        // The companion's game master runs the table while they are in the room.
+        const before = bag.gm as { connectionId?: string; panels?: number; folded?: boolean } | undefined;
+        if (before?.connectionId === seat.connectionId) continue;
+        const clean = sanitizeShared("gm", { connectionId: seat.connectionId, name, panels: before?.panels ?? 3, folded: before?.folded ?? false }, name, now);
+        if (!clean) continue;
+        bag.gm = clean;
+        send(room, "gm", clean);
+      } else if (body.op === "tablemap") {
+        // The same rule as at the table: while a game master is here, only they change the map.
+        const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
+        const gmHere = Boolean(gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room));
+        if (gmHere && gm !== seat.connectionId) continue;
+        const clean = sanitizeShared("tablemap", body.value, name, now);
+        if (!clean) continue;
+        bag.tablemap = clean;
+        send(room, "tablemap", clean);
+      } else if (body.op === "spellfx") {
+        // From their hero's pawn toward the nearest other pawn, or the middle of the table.
+        const pawns = Object.values((bag.pawns as Record<string, TablePawn> | undefined) ?? {});
+        const mine = pawns.find((p) => p.owner === body.userId && p.hero) ?? pawns.find((p) => p.owner === body.userId);
+        const from = mine ? { x: mine.x, z: mine.z } : { x: 0, z: 1.2 };
+        const others = pawns.filter((p) => p !== mine);
+        const target = others.sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0];
+        const clean = sanitizeShared("spellfx", { ...body.value, from, to: target ? { x: target.x, z: target.z } : { x: 0, z: 0 } }, name, now);
+        if (!clean) continue;
+        // A moment, never stored.
+        send(room, "spellfx", { ...(clean as object), by: seat.connectionId });
+        continue;
+      }
+    }
+    await this.saveLoungeShared();
+    return { ok: true, rooms };
   }
 
   private async loadLoungeShared(): Promise<Record<string, Record<string, unknown>>> {

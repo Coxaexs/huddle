@@ -324,3 +324,20 @@ export async function playerState(
     return null;
   }
 }
+
+/** The D&D companion acting at the table for one person (lib/dnd-table.ts). */
+export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ ok: boolean; rooms: string[] }> {
+  const stub = hub();
+  if (!stub) return { ok: false, rooms: [] };
+  try {
+    const response = await stub.fetch(`${INTERNAL}/dnd-table`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(op),
+    });
+    if (!response.ok) return { ok: false, rooms: [] };
+    return (await response.json()) as { ok: boolean; rooms: string[] };
+  } catch {
+    return { ok: false, rooms: [] };
+  }
+}
