@@ -907,10 +907,12 @@ button.mp-line:focus-visible {
 
 /* ---- "Lyrics from …" ---- */
 
-.lyrics-now-source {
+/* Chat messages size their paragraphs; this line stays small under the lyrics. */
+.lyrics-now p.lyrics-now-source {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.4;
 }
 
 .mp-source {
