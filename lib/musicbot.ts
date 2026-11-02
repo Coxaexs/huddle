@@ -118,18 +118,30 @@ export interface Lyrics {
   synced?: boolean;
   /** Matched by song name only (the artist did not line up). */
   loose?: boolean;
+  /** "musixmatch" when the bot had to ask Musixmatch. */
+  source?: string | null;
+  /** Musixmatch only had a cut this many seconds long. */
+  versionLength?: number | null;
 }
 
-/** Lyrics for any track, not only whatever Discord is playing. */
+/**
+ * Lyrics for any track, not only whatever Discord is playing.
+ *
+ * `musixmatch` lets the bot fall back to Musixmatch when lrclib has no synced
+ * lyrics. That plan has about 300 requests a month, so only /lyricsnow for
+ * the song that is playing sets it; the bot caches every answer.
+ */
 export async function fetchLyrics(
   title: string,
   artist?: string | null,
   duration?: number | null,
+  options: { musixmatch?: boolean } = {},
 ): Promise<Lyrics> {
   const cookie = await botSession();
   const params = new URLSearchParams({ q: title });
   if (artist) params.set("artist", artist);
   if (duration) params.set("duration", String(Math.round(duration)));
+  if (options.musixmatch) params.set("musixmatch", "1");
   const data = await botFetch(`/api/lyrics/search?${params}`, cookie);
   return {
     track: (data.track as string) || null,
@@ -138,6 +150,8 @@ export async function fetchLyrics(
     lyrics: (data.lyrics as string) || null,
     synced: Boolean(data.synced),
     loose: Boolean(data.loose),
+    source: (data.source as string) || null,
+    versionLength: Number(data.version_length) || null,
   };
 }
 

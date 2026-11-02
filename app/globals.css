@@ -2325,6 +2325,7 @@ body:has(.media-admin) {
 .lyrics-now-lines {
   gap: 2px;
   display: grid;
+  position: relative;
 }
 
 .lyrics-now-line {
@@ -2350,6 +2351,34 @@ body:has(.media-admin) {
   border-left-color: var(--lavender);
   font-weight: 700;
   transform: scale(1.01);
+}
+
+/* While the song plays, a line is a button: click it to jump there. */
+button.lyrics-now-line {
+  width: 100%;
+  margin: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.lyrics-now-line:hover,
+button.lyrics-now-line:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--lavender) 8%, transparent);
+}
+
+button.lyrics-now-line.active {
+  background: color-mix(in srgb, var(--lavender) 12%, transparent);
+}
+
+.lyrics-now-sync .lyrics-now-more {
+  margin-left: auto;
 }
 
 /* ---- D&D cards: compendium entries, stat blocks, dice ---------------- */

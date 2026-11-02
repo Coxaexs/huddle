@@ -783,7 +783,9 @@ export async function POST(request: Request) {
         const lyrics = await fetchLyrics(
           title,
           value ? null : state?.track?.artist,
-          state?.track?.duration,
+          value ? null : state?.track?.duration,
+          // Musixmatch (a small paid plan) only for the song that is playing.
+          { musixmatch: name === "lyricsnow" && !value },
         );
 
         if (name === "lyricsnow") {
@@ -823,6 +825,8 @@ export async function POST(request: Request) {
               voiceChannelId,
               trackId: state?.track?.id,
               loose: lyrics.loose || false,
+              source: lyrics.source || undefined,
+              versionLength: lyrics.versionLength || undefined,
               lines: lyrics.lines.map(([at, line]) => ({
                 at,
                 line,

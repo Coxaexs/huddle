@@ -631,6 +631,15 @@ function MessageRowImpl({
                             lines={message.payload.lines}
                             loose={Boolean(message.payload.loose)}
                             trackKey={message.payload.trackId ? String(message.payload.trackId) : undefined}
+                            source={message.payload.source}
+                            versionLength={message.payload.versionLength}
+                            onSeek={(positionMs) =>
+                              hubSend({
+                                t: "player",
+                                channelId: message.payload!.voiceChannelId!,
+                                action: { name: "seek", positionMs },
+                              })
+                            }
                             positionMs={
                               message.payload.voiceChannelId === voiceChannelId
                                 ? playerPosition

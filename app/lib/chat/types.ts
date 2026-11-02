@@ -107,8 +107,11 @@ export interface Message {
     total?: number;
     expression?: string;
     details?: string[];
-    /** D&D lookup cards and roll cards; see components/dnd-card.tsx. */
+    /** D&D lookup cards and roll cards (see components/dnd-card.tsx);
+     *  lyricsnow: "musixmatch" when the lyrics came from there. */
     source?: string;
+    /** lyricsnow: Musixmatch only had a cut this many seconds long. */
+    versionLength?: number;
     page?: number;
     otherVersions?: string[];
     tags?: string[];
