@@ -105,6 +105,7 @@ export const chat = {
   "composer.shortcutsHint": "Enter send · Shift+Enter new line · / commands",
 
   // Messages & Reactions
+  "message.serverOwner": "Server owner",
   "message.ttsNotice": "Sent with /tts: read aloud to everyone in the channel",
   "message.pinned": "Pinned",
   "message.addReaction": "Add reaction · Shift-click to add to quick reactions",

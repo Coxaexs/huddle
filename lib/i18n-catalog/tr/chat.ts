@@ -106,6 +106,7 @@ export const chat: Record<keyof typeof en, string> = {
   "composer.shortcutsHint": "Enter gönder · Shift+Enter yeni satır · / komutlar",
 
   // Messages & Reactions
+  "message.serverOwner": "Sunucu sahibi",
   "message.ttsNotice": "/tts ile gönderildi: kanaldaki herkese sesli okunur",
   "message.pinned": "Sabitlendi",
   "message.addReaction": "Tepki ekle · Hızlı tepkilere eklemek için Shift ile tıkla",

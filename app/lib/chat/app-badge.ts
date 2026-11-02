@@ -3,7 +3,7 @@
  *  tab favicon, set on the installed app (PWA) icon, and passed to the
  *  desktop shell for the dock/taskbar. */
 
-const ICON_SRC = "/favicon-32.png?v=2";
+const ICON_SRC = "/favicon-32.png?v=3";
 const SIZE = 64;
 
 let baseIcon: HTMLImageElement | null = null;

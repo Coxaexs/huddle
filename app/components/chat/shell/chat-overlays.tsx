@@ -83,6 +83,8 @@ export function renderChatOverlays(v: ShellRenderState) {
     voiceParticipants, voiceRooms, welcomeChecked, streamHover, setStreamHover, keepStreamHover, watchStream,
   } = v;
   const closeStreamHover = () => setStreamHover(null);
+  // Until WelcomeGate has asked the server, it may still open its questions.
+  const welcomePending = Boolean(activeServer && !inDmHome && user && activeServer.ownerId !== user.id && !welcomeChecked.has(activeServer.id));
 
   return (
     <>
@@ -331,8 +333,10 @@ export function renderChatOverlays(v: ShellRenderState) {
       )}
 
       {/* Never on top of another dialog, and not in a new account's first day:
-          holdEmailPrompt covers the device it signed up on, createdAt every other. */}
-      {!user.email && !user.isGuest && !user.emailPromptSkipped && !holdEmailPrompt && !accountIsNew(user.createdAt) && !directoryOpen && !dialogOptions && !tutorial && (
+          holdEmailPrompt covers the device it signed up on, createdAt every other.
+          It also waits for a server's welcome questions (WelcomeGate below). */}
+      {!user.email && !user.isGuest && !user.emailPromptSkipped && !holdEmailPrompt && !accountIsNew(user.createdAt) && !directoryOpen && !dialogOptions && !tutorial &&
+        !welcomePending && (
         <EmailPrompt onUser={setUser} />
       )}
 
@@ -394,7 +398,7 @@ export function renderChatOverlays(v: ShellRenderState) {
         />
       )}
 
-      {activeServer && !inDmHome && user && activeServer.ownerId !== user.id && !welcomeChecked.has(activeServer.id) && (
+      {welcomePending && activeServer && user && (
         <WelcomeGate
           key={activeServer.id}
           serverId={activeServer.id}

@@ -553,7 +553,8 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
 
         {/* ── Compared to Discord ──────────────────────────────────── */}
         <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto max-w-4xl">
+          {/* Same left edge as the other sections; the table itself stays narrower. */}
+          <div className="mx-auto max-w-6xl"><div className="max-w-4xl">
             <h2 className={sectionTitle}>{copy.compare.title}</h2>
             <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.compare.lead}</p>
             <div className="mt-8 overflow-x-auto rounded-xl border border-(--line)">
@@ -579,7 +580,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
             </div>
             <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-4 inline-block`}>{copy.compare.full}</a>
             <p className="mt-3 text-sm text-(--muted)">{copy.compare.source}</p>
-          </div>
+          </div></div>
         </section>
 
         {/* ── Download ─────────────────────────────────────────────── */}

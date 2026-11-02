@@ -9,9 +9,8 @@ import { GameCard } from "../../game-card";
 import { type GameKind } from "@/lib/games";
 import { stripTextStyle } from "@/lib/text-style";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
-import { getMemberTagInfo } from "@/lib/permissions";
 import { type Member, type PublicUser } from "@/lib/users";
-import { Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut, Clapperboard, Smartphone } from "lucide-react";
+import { Crown, Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut, Clapperboard, Smartphone } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -39,7 +38,6 @@ import { MessageEditor, MUSIC_CARD_KINDS, MusicPayloadCard } from "../message-pa
 import { type VoicePref } from "../../user-menu";
 import { VoiceMessagePlayer } from "../../voice-message";
 import { PrideBadges } from "../../pride-badges";
-import { MemberTag } from "../../member-tag";
 import { type ForwardMessageTarget } from "../../forward-message-dialog";
 import { ForwardedMessageCard } from "../../forwarded-message-card";
 import { ThemeShareCard } from "../../theme-share-card";
@@ -571,8 +569,11 @@ function MessageRowImpl({
                               <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
                             </strong>
                             {!inDmHome && <RoleIcon member={author} server={activeServer} />}
-                            {!inDmHome && activeServer && author && (
-                              <MemberTag tag={getMemberTagInfo(author, activeServer)} size="small" />
+                            {/* No role tags next to names; the server owner gets a small crown. */}
+                            {!inDmHome && activeServer?.ownerId && author?.id === activeServer.ownerId && (
+                              <span className="owner-crown" title={t("message.serverOwner")} aria-label={t("message.serverOwner")}>
+                                <Crown size={13} aria-hidden />
+                              </span>
                             )}
                             {author && <PrideBadges badges={author.prideBadges} mini />}
                             {message.payload?.bridge?.platform === "discord" ? (

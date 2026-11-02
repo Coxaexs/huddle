@@ -37,7 +37,7 @@ export const auth = {
   "gate.placeholder.identifier": "yourname or you@example.com",
   "gate.placeholder.username": "yourname",
   "gate.placeholder.displayName": "What friends should see",
-  "gate.placeholder.email": "For password resets; we mail a code to confirm",
+  "gate.placeholder.email": "Only used for password resets",
   "gate.placeholder.newPassword": "At least 8 characters",
   "gate.robotFailed": "The robot check could not load. Check your connection, or use an invite code instead.",
   "gate.agree":

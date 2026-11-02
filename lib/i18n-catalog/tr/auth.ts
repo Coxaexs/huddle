@@ -38,7 +38,7 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.placeholder.identifier": "adın ya da sen@ornek.com",
   "gate.placeholder.username": "adın",
   "gate.placeholder.displayName": "Arkadaşların ne görsün",
-  "gate.placeholder.email": "Şifre sıfırlama için; onaylamak için kod göndeririz",
+  "gate.placeholder.email": "Yalnızca şifre sıfırlama için",
   "gate.placeholder.newPassword": "En az 8 karakter",
   "gate.robotFailed": "Robot kontrolü yüklenemedi. Bağlantını kontrol et ya da bunun yerine bir davet kodu kullan.",
   "gate.agree":

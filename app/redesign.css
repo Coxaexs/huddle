@@ -55,6 +55,27 @@
   letter-spacing: 0;
 }
 
+/* The 9px mono timestamps were hard to read; the plain themes use the text
+   font at a readable size. The retro themes keep their own timestamps. */
+:root:not([data-custom-theme-id^="msn"], [data-custom-theme-id="matrix"], [data-custom-theme-id="minecraft"], [data-custom-theme-id="zombie"], [data-custom-theme-id="cyberpunk"], [data-custom-theme-id="winamp"], [data-custom-theme-id="star-wars"], [data-custom-theme-id="teamspeak"]) .message time {
+  font-family: inherit;
+}
+
+:root:not([data-custom-theme-id^="msn"], [data-custom-theme-id="matrix"], [data-custom-theme-id="minecraft"], [data-custom-theme-id="zombie"], [data-custom-theme-id="cyberpunk"], [data-custom-theme-id="winamp"], [data-custom-theme-id="star-wars"], [data-custom-theme-id="teamspeak"]) .message-meta time {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+:root:not([data-custom-theme-id^="msn"], [data-custom-theme-id="matrix"], [data-custom-theme-id="minecraft"], [data-custom-theme-id="zombie"], [data-custom-theme-id="cyberpunk"], [data-custom-theme-id="winamp"], [data-custom-theme-id="star-wars"], [data-custom-theme-id="teamspeak"]) .message-gutter time {
+  font-size: 10.5px;
+}
+
+.owner-crown {
+  display: inline-flex;
+  align-items: center;
+  color: #f59e0b;
+}
+
 :root:not([data-custom-theme-id^="msn"]) .message p {
   line-height: 1.55;
   text-wrap: pretty;

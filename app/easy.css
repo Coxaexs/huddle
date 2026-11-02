@@ -69,8 +69,11 @@ img.message-image[src*="/stickers/gang/gang-"] { width: 300px; max-width: 300px;
 :root[data-ui="simple"] {
   --simple-go-bg: color-mix(in srgb, var(--mint, #4ade80) 20%, transparent);
   --simple-go-ink: color-mix(in srgb, var(--mint, #4ade80) 75%, var(--ink));
-  --simple-tip-bg: color-mix(in srgb, var(--coral, #f59e6e) 16%, var(--chat-bg, transparent));
+  --simple-tip-bg: color-mix(in srgb, var(--lavender, #8a70ee) 14%, var(--chat-bg, transparent));
   --simple-tip-ink: var(--ink);
+}
+:root[data-ui="simple"][data-custom-theme-id^="msn"] {
+  --simple-tip-bg: color-mix(in srgb, var(--coral, #f59e6e) 16%, var(--chat-bg, transparent));
 }
 .simple-rooms { display: flex; flex-direction: column; gap: 3px; padding: 4px 10px 10px; overflow-y: auto; flex: 1; min-height: 0; }
 .simple-rooms-label { display: flex; align-items: center; gap: 6px; margin: 12px 4px 4px; font-size: 12.5px; color: var(--muted); }
@@ -113,6 +116,14 @@ img.message-image[src*="/stickers/gang/gang-"] { width: 300px; max-width: 300px;
 .simple-tip-body p { margin: 2px 0 0; font-size: 13.5px; line-height: 1.5; }
 .simple-tip-foot { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; opacity: .85; }
 .simple-tip-foot button { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+/* With no member list, the Simple conversation would span the whole window; keep
+   messages, tip and composer in one centred reading column. */
+@media (min-width: 1100px) {
+  :root[data-ui="simple"]:not([data-custom-theme-id^="msn"]) .messages { padding-inline: max(clamp(22px, 4vw, 54px), calc((100% - 880px) / 2)); }
+  :root[data-ui="simple"]:not([data-custom-theme-id^="msn"]) .simple-tip { width: calc(100% - 32px); max-width: 880px; margin-inline: auto; box-sizing: border-box; }
+  :root[data-ui="simple"]:not([data-custom-theme-id^="msn"]) .composer-wrap { width: 100%; max-width: 952px; margin-inline: auto; box-sizing: border-box; }
+}
 
 :root[data-ui="simple"] .composer :is(.composer-more-mobile-btn, .gif-button, .desktop-composer-item) { display: none !important; }
 :root[data-ui="simple"] .user-footer-controls .control-btn-group { display: none; }

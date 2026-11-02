@@ -33,8 +33,14 @@ export function GithubMark({ className = "" }: { className?: string }) {
 function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 font-semibold tracking-tight ${className}`}>
-      <img src="/favicon.svg?v=2" alt="" width={40} height={40} className="h-[1.6em] w-[1.6em] shadow-[0_2px_8px_-2px_rgba(106,77,219,.6)] rounded-[22%]" />
-      <span className="text-(--violet)">Hoffle</span>
+      {/* The app's mark: an italic serif h, as in the chat rail and sign-in card. */}
+      <span
+        aria-hidden
+        className="lp-display grid h-[1.6em] w-[1.6em] place-items-center rounded-[28%] bg-(--violet) pb-[.08em] text-[1.25em] italic leading-none text-white shadow-[0_2px_8px_-2px_rgba(106,77,219,.6)]"
+      >
+        h
+      </span>
+      <span className="lp-display text-(--violet)">Hoffle</span>
     </span>
   );
 }
@@ -162,7 +168,7 @@ export function SiteShell({
       {/* React hoists these into <head>. */}
       <style>{`
         .lp-root {${LIGHT_TOKENS}
-          font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+          font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
         html[data-lp-theme="dark"] .lp-root {${DARK_TOKENS}}
         @media (prefers-color-scheme: dark) {
@@ -174,9 +180,10 @@ export function SiteShell({
         html[data-lp-theme="light"] body { background: #ffffff; }
         html[data-lp-theme="dark"] .lp-if-light, html:not([data-lp-theme="dark"]) .lp-if-dark { display: none; }
         .lp-display {
-          font-family: Syne, "Instrument Sans", ui-sans-serif, sans-serif;
+          /* The app's fonts (globals.css --font-display / --font-ui), so the site and the app read as one. */
+          font-family: Fraunces, Georgia, serif;
           font-weight: 500;
-          letter-spacing: -0.02em;
+          letter-spacing: -0.01em;
         }
         .lp-root a:focus-visible, .lp-root button:focus-visible, .lp-root summary:focus-visible {
           outline: 3px solid var(--violet); outline-offset: 3px; border-radius: 8px;

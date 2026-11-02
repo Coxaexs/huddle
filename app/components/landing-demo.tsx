@@ -284,7 +284,8 @@ export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy 
           <b className="text-(--ink)">{copy.lead}</b> {copy.tryRoll}{" "}
           <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink)">/roll d20</code>. {copy.anyTheme}
         </p>
-        <div role="group" aria-label="Theme" className="flex flex-wrap gap-1.5">
+        {/* Phones get one swipeable row; 19 wrapped chips pushed the demo below the fold. */}
+        <div role="group" aria-label="Theme" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           {BUILTIN_THEMES.map((theme) => {
             const selected = theme.id === themeId;
             const c = theme.colors;
@@ -297,7 +298,7 @@ export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy 
                   picked.current = true;
                   pickTheme(theme.id);
                 }}
-                className={`inline-flex h-8 items-center gap-2 rounded-full border px-3 transition ${
+                className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-full border px-3 transition ${
                   selected ? "border-(--ink) bg-(--ink)" : "border-(--line) bg-(--card) hover:border-(--ink-2)"
                 }`}
               >

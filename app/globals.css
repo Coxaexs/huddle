@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Syne:wght@500&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Creepster&family=Special+Elite&family=Pixelify+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&family=News+Cycle:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,600;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pirata+One&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Creepster&family=Special+Elite&family=Pixelify+Sans:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&family=News+Cycle:wght@400;700&display=swap');
 @import "tailwindcss";
 
 /* Every avatar, whatever class its caller gives it: a letter tile is a centred
@@ -1509,9 +1509,11 @@ body:has(.media-admin) {
   font-weight: 800;
 }
 
+/* A neutral fill, not a faded accent: dark text on faded purple read as broken. */
 .username-card button:disabled {
   cursor: not-allowed;
-  opacity: .45;
+  background: #2c2d37;
+  color: #8b8e9b;
 }
 
 .app-shell {

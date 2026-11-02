@@ -27,9 +27,9 @@ export function GET(request: Request) {
     theme_color: "#7b63e6",
     categories: ["social", "games"],
     icons: [
-      { src: "/hangout/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/hangout/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/hangout/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/hangout/favicon.svg?v=3", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/hangout/icon-192.png?v=3", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/hangout/icon-512.png?v=3", sizes: "512x512", type: "image/png", purpose: "any" },
     ],
   };
   return new Response(JSON.stringify(manifest), {
