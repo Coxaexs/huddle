@@ -301,3 +301,51 @@ it("says so when the lyrics site is down, and Try again searches again", async (
   expect(await screen.findByText("Back up")).toBeTruthy();
   expect(calls("/api/music/lyrics").filter((path) => path.endsWith("&find=1"))).toHaveLength(2);
 });
+
+it("None of lrclib's? Ask Musixmatch, then use its answer", async () => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path.startsWith("/api/music/lyrics/pick") && !init) {
+      return { trackId: "t1", query: "Redd Kanıyorduk", candidates: [{ id: 11, track: "Wrong", artist: "x", album: null, duration: 100, synced: true, snippet: ["nope"], url: "https://lrclib.net/tracks/11" }],
+        musixmatch: { track: "Kanıyorduk", artist: "Redd", answered: false, candidate: null, left: 296 } };
+    }
+    if (path === "/api/music/lyrics/pick") {
+      const body = JSON.parse(init!.body as string);
+      if (body.action === "ask-musixmatch") {
+        return { trackId: "t1", musixmatch: { track: "Kanıyorduk", artist: "Redd", answered: true, left: 295,
+          candidate: { track: "Kanıyorduk", artist: "Redd", duration: 300, synced: true, snippet: ["Resmini buldum"], url: "https://www.musixmatch.com/lyrics/Redd/Kan%C4%B1yorduk" } } };
+      }
+      return { trackId: "t1", lines: [[19.9, "Resmini buldum yıllar sonra"]], source: "musixmatch", sourceUrl: "https://www.musixmatch.com/lyrics/Redd/Kan%C4%B1yorduk", picked: true };
+    }
+    return path.startsWith("/api/music/playlists") ? PLAYLISTS : {};
+  });
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics", fix: true }));
+  fireEvent.click(await screen.findByText("Ask Musixmatch for “Kanıyorduk” by Redd"));
+  expect(await screen.findByText("Resmini buldum")).toBeTruthy();
+  expect(screen.getByText("See them on Musixmatch").getAttribute("href")).toBe("https://www.musixmatch.com/lyrics/Redd/Kan%C4%B1yorduk");
+  fireEvent.click(screen.getAllByText("Use these")[1]);
+  expect(await screen.findByText("Resmini buldum yıllar sonra")).toBeTruthy();
+  const bodies = apiFetch.mock.calls.filter(([path, init]) => path === "/api/music/lyrics/pick" && init).map(([, init]) => JSON.parse(init.body));
+  expect(bodies[0]).toEqual({ voiceChannelId: room, trackId: "t1", action: "ask-musixmatch", q: "Redd Kanıyorduk" });
+  expect(bodies[1]).toEqual({ voiceChannelId: room, trackId: "t1", musixmatch: { track: "Kanıyorduk", artist: "Redd" } });
+});
+
+it("an answer Musixmatch already gave shows for free, and a used-up plan says so", async () => {
+  let left = 296;
+  apiFetch.mockImplementation(async (path: string) => {
+    if (path.startsWith("/api/music/lyrics/pick")) {
+      return { trackId: "t1", query: "q", candidates: [],
+        musixmatch: left
+          ? { track: "Kanıyorduk", artist: "Redd", answered: true, left, candidate: { track: "Kanıyorduk", artist: "Redd", duration: null, synced: true, snippet: ["Saved line"], url: "https://www.musixmatch.com/lyrics/Redd/K" } }
+          : { track: "Kanıyorduk", artist: "Redd", answered: false, left: 0, candidate: null } };
+    }
+    return path.startsWith("/api/music/playlists") ? PLAYLISTS : {};
+  });
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics", fix: true }));
+  expect(await screen.findByText("Saved line")).toBeTruthy();
+  expect(screen.queryByText(/Ask Musixmatch/)).toBeNull();
+  left = 0;
+  fireEvent.submit(screen.getAllByRole("search").at(-1)!);
+  expect(await screen.findByText(/lookups are used up/)).toBeTruthy();
+});

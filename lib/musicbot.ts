@@ -186,13 +186,31 @@ export interface LyricsCandidate {
   url: string;
 }
 
+/** What Musixmatch would be asked from the picker, and its answer once it has one. */
+export interface MusixmatchOffer {
+  track: string;
+  artist: string | null;
+  /** Musixmatch was asked about it already. */
+  answered: boolean;
+  candidate: {
+    track: string;
+    artist: string;
+    duration: number | null;
+    synced: boolean;
+    snippet: string[];
+    url: string;
+  } | null;
+  /** Requests that may still go out now. */
+  left: number;
+}
+
 /** lrclib entries that could be this song (or `query`), for "Wrong lyrics?". */
 export async function lyricsCandidates(
   title: string,
   artist?: string | null,
   duration?: number | null,
   query?: string,
-): Promise<{ query: string; candidates: LyricsCandidate[] }> {
+): Promise<{ query: string; candidates: LyricsCandidate[]; musixmatch: MusixmatchOffer | null }> {
   const params = new URLSearchParams({ title });
   if (artist) params.set("artist", artist);
   if (duration) params.set("duration", String(Math.round(duration)));
@@ -201,7 +219,25 @@ export async function lyricsCandidates(
   return {
     query: String(data.query || ""),
     candidates: ((data.candidates || []) as LyricsCandidate[]).slice(0, 5),
+    musixmatch: (data.musixmatch as MusixmatchOffer) || null,
   };
+}
+
+/**
+ * The picker's "Ask Musixmatch": may spend one request (never twice for a
+ * song). `query` written "Artist - Song" asks about that instead.
+ */
+export async function askMusixmatch(
+  title: string,
+  artist?: string | null,
+  duration?: number | null,
+  query?: string,
+): Promise<MusixmatchOffer | null> {
+  const data = await botFetch("/api/lyrics/ask-musixmatch", await botSession(), {
+    method: "POST",
+    body: JSON.stringify({ title, artist: artist || null, duration: duration || null, q: query || "" }),
+  });
+  return (data.musixmatch as MusixmatchOffer) || null;
 }
 
 /**
@@ -211,8 +247,11 @@ export async function lyricsCandidates(
 export async function pickLyrics(pick: {
   title: string;
   artist?: string | null;
+  duration?: number | null;
   scope: string;
   lrclibId: number | null;
+  /** Musixmatch's answer (asked before) instead of an lrclib entry. */
+  musixmatch?: { track: string; artist: string | null } | null;
   by: string;
 }): Promise<Lyrics | null> {
   const data = await botFetch("/api/lyrics/pick", await botSession(), {
@@ -220,8 +259,10 @@ export async function pickLyrics(pick: {
     body: JSON.stringify({
       title: pick.title,
       artist: pick.artist || null,
+      duration: pick.duration || null,
       scope: pick.scope,
       lrclib_id: pick.lrclibId,
+      musixmatch: pick.musixmatch || null,
       by: pick.by,
     }),
   });

@@ -1,6 +1,6 @@
 import { playerState } from "@/lib/hub-client";
 import { musicRoom } from "@/lib/music-room";
-import { lyricsCandidates, pickLyrics } from "@/lib/musicbot";
+import { askMusixmatch, lyricsCandidates, pickLyrics } from "@/lib/musicbot";
 import { heard } from "@/lib/protocol";
 import { lyricsAnswer } from "../route";
 
@@ -35,14 +35,20 @@ export async function GET(request: Request) {
 
 /**
  * Save the picked lyrics for the playing song in this server (so /lyricsnow
- * and the player show them from then on), or with `lrclibId: null` go back
- * to the automatic match. Only for the song still playing: `trackId` must match.
+ * and the player show them from then on): an lrclib entry, or Musixmatch's
+ * answer (`musixmatch: { track, artist }`, asked before). `lrclibId: null`
+ * goes back to the automatic match. `action: "ask-musixmatch"` asks
+ * Musixmatch first (one request at most per song; `q` "Artist - Song" asks
+ * about that instead). Only for the song still playing: `trackId` must match.
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     voiceChannelId?: string;
     trackId?: string;
     lrclibId?: number | null;
+    musixmatch?: { track?: unknown; artist?: unknown } | null;
+    action?: string;
+    q?: string;
   };
   const room = await musicRoom(request, body.voiceChannelId);
   if (room instanceof Response) return room;
@@ -51,12 +57,24 @@ export async function POST(request: Request) {
     return Response.json({ error: "The song changed. Pick again for this one." }, { status: 409 });
   }
   const lrclibId = Number.isInteger(body.lrclibId) && Number(body.lrclibId) > 0 ? Number(body.lrclibId) : null;
+  const chosen = body.musixmatch && typeof body.musixmatch.track === "string" && body.musixmatch.track.trim()
+    ? {
+        track: body.musixmatch.track.trim().slice(0, 200),
+        artist: typeof body.musixmatch.artist === "string" ? body.musixmatch.artist.slice(0, 120) : null,
+      }
+    : null;
   try {
+    if (body.action === "ask-musixmatch") {
+      const offer = await askMusixmatch(track.title, track.artist, track.duration, body.q?.trim().slice(0, 200));
+      return Response.json({ trackId: track.id, musixmatch: offer });
+    }
     const lyrics = await pickLyrics({
       title: track.title,
       artist: track.artist,
+      duration: track.duration,
       scope: room.serverId,
       lrclibId,
+      musixmatch: chosen,
       by: room.userName,
     });
     return Response.json(lyrics ? lyricsAnswer(track, lyrics, true) : { trackId: track.id, cleared: true });

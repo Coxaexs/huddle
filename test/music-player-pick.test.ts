@@ -2,10 +2,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const lyricsCandidates = vi.fn();
 const pickLyrics = vi.fn();
+const askMusixmatch = vi.fn();
 const playerState = vi.fn();
 vi.mock("@/lib/musicbot", () => ({
   lyricsCandidates: (...args: unknown[]) => lyricsCandidates(...args),
   pickLyrics: (...args: unknown[]) => pickLyrics(...args),
+  askMusixmatch: (...args: unknown[]) => askMusixmatch(...args),
   fetchLyrics: vi.fn(),
 }));
 vi.mock("@/lib/hub-client", () => ({ playerState: (...args: unknown[]) => playerState(...args) }));
@@ -43,7 +45,9 @@ it("lists lrclib songs that could be the one playing, or for other words", async
 it("saves a pick for the playing song in this server", async () => {
   pickLyrics.mockResolvedValue({ track: "Zehir", artist: "manifest", lines: [[5, "Right one"]], source: "lrclib", picked: true });
   const response = await post({ voiceChannelId: "room-1", trackId: "t1", lrclibId: 12 });
-  expect(pickLyrics).toHaveBeenCalledWith({ title: "manifest - Zehir", artist: "manifest", scope: "server-1", lrclibId: 12, by: "mewis" });
+  expect(pickLyrics).toHaveBeenCalledWith({
+    title: "manifest - Zehir", artist: "manifest", duration: 184, scope: "server-1", lrclibId: 12, musixmatch: null, by: "mewis",
+  });
   expect(await response.json()).toMatchObject({ trackId: "t1", lines: [[5, "Right one"]], picked: true });
 });
 
@@ -63,4 +67,16 @@ it("goes back to the automatic match", async () => {
 it("a room you can't open gets nothing", async () => {
   expect((await post({ voiceChannelId: "elsewhere", trackId: "t1", lrclibId: 12 })).status).toBe(403);
   expect(pickLyrics).not.toHaveBeenCalled();
+});
+
+it("asks Musixmatch for the playing song, and saves its answer as the pick", async () => {
+  askMusixmatch.mockResolvedValue({ track: "Zehir", artist: "manifest", answered: true, candidate: { track: "Zehir" }, left: 295 });
+  const asked = await post({ voiceChannelId: "room-1", trackId: "t1", action: "ask-musixmatch", q: "manifest - Zehir" });
+  expect(askMusixmatch).toHaveBeenCalledWith("manifest - Zehir", "manifest", 184, "manifest - Zehir");
+  expect(await asked.json()).toMatchObject({ trackId: "t1", musixmatch: { track: "Zehir", left: 295 } });
+  expect(pickLyrics).not.toHaveBeenCalled();
+
+  pickLyrics.mockResolvedValue({ track: "Zehir", artist: "manifest", lines: [[1, "x"]], source: "musixmatch", picked: true });
+  await post({ voiceChannelId: "room-1", trackId: "t1", musixmatch: { track: "Zehir", artist: "manifest" } });
+  expect(pickLyrics).toHaveBeenCalledWith(expect.objectContaining({ lrclibId: null, musixmatch: { track: "Zehir", artist: "manifest" } }));
 });

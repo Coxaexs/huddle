@@ -32,6 +32,7 @@ import {
   Search,
   Shuffle,
   SkipForward,
+  Sparkles,
   Volume2,
   X,
   Zap,
@@ -1686,11 +1687,31 @@ interface LyricsCandidate {
   url: string;
 }
 
+/** What Musixmatch would be asked from the picker, and its answer once it has one. */
+interface MusixmatchOffer {
+  track: string;
+  artist: string | null;
+  /** Musixmatch was asked about this song already (its answer, if any, is the candidate). */
+  answered: boolean;
+  candidate: {
+    track: string;
+    artist: string;
+    duration: number | null;
+    synced: boolean;
+    snippet: string[];
+    url: string;
+  } | null;
+  /** Requests that may still go out now. */
+  left: number;
+}
+
 /**
  * Songs on lrclib with this song's name, a few lines of each, to pick the
- * right lyrics. The pick is saved for the song in this server, so /lyricsnow
- * and the player show it from then on. lrclib is free: nothing here touches
- * the Musixmatch plan.
+ * right lyrics. lrclib is free. If none is right, Musixmatch can be asked
+ * too: that is someone asking on purpose (like /lyricsnow), it spends one
+ * request at most per song, and an answer it already gave shows for free.
+ * The pick is saved for the song in this server, so /lyricsnow and the
+ * player show it from then on.
  */
 function LyricsPicker({
   roomId,
@@ -1714,6 +1735,8 @@ function LyricsPicker({
   const [searching, setSearching] = useState(false);
   const [choosing, setChoosing] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mxm, setMxm] = useState<MusixmatchOffer | null>(null);
+  const [asking, setAsking] = useState(false);
 
   const search = useCallback(
     async (text?: string) => {
@@ -1722,10 +1745,11 @@ function LyricsPicker({
       try {
         const params = new URLSearchParams({ voiceChannelId: roomId });
         if (text) params.set("q", text);
-        const data = await apiFetch<{ query?: string; candidates?: LyricsCandidate[] }>(
+        const data = await apiFetch<{ query?: string; candidates?: LyricsCandidate[]; musixmatch?: MusixmatchOffer | null }>(
           `/api/music/lyrics/pick?${params}`,
         );
         setResults(data.candidates || []);
+        setMxm(data.musixmatch ?? null);
         if (!text && data.query) setQuery(data.query);
       } catch (problem) {
         setError(problem instanceof Error ? problem.message : "lrclib did not answer.");
@@ -1741,13 +1765,17 @@ function LyricsPicker({
     void search();
   }, [search, trackId]);
 
+  // Musixmatch's answer is chosen with id -1 (lrclib ids are positive).
   const choose = async (lrclibId: number | null) => {
     setChoosing(lrclibId ?? 0);
     setError(null);
     try {
+      const pick = lrclibId === -1 && mxm
+        ? { musixmatch: { track: mxm.track, artist: mxm.artist } }
+        : { lrclibId };
       const body = await apiFetch<LyricsResponse & { cleared?: boolean }>("/api/music/lyrics/pick", {
         method: "POST",
-        body: JSON.stringify({ voiceChannelId: roomId, trackId, lrclibId }),
+        body: JSON.stringify({ voiceChannelId: roomId, trackId, ...pick }),
       });
       if (body.cleared) onCleared();
       else onPicked(body);
@@ -1757,6 +1785,24 @@ function LyricsPicker({
       setChoosing(null);
     }
   };
+
+  const askMusixmatch = async () => {
+    setAsking(true);
+    setError(null);
+    try {
+      const data = await apiFetch<{ musixmatch?: MusixmatchOffer | null }>("/api/music/lyrics/pick", {
+        method: "POST",
+        body: JSON.stringify({ voiceChannelId: roomId, trackId, action: "ask-musixmatch", q: query.trim() }),
+      });
+      setMxm(data.musixmatch ? { ...data.musixmatch, answered: true } : null);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "Musixmatch did not answer.");
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const asked = mxm ? `“${mxm.track}”${mxm.artist ? ` by ${mxm.artist}` : ""}` : "";
 
   return (
     <div className="mp-list-wrap mp-picker">
@@ -1821,6 +1867,50 @@ function LyricsPicker({
             );
           })}
         </ol>
+      )}
+      {mxm && results && !searching && (
+        <section className="mp-mxm" aria-label="Musixmatch">
+          {mxm.candidate ? (
+            <div className="mp-candidate">
+              <div className="mp-candidate-head">
+                <span className="mp-row-text">
+                  <strong>{mxm.candidate.track}</strong>
+                  <small>{[mxm.candidate.artist, mxm.candidate.duration ? clock(mxm.candidate.duration) : null].filter(Boolean).join(" · ")}</small>
+                </span>
+                <span className="mp-badge mxm">Musixmatch</span>
+                <span className={`mp-badge ${mxm.candidate.synced ? "" : "muted"}`}>{mxm.candidate.synced ? "Synced" : "Words only"}</span>
+                {Boolean(duration && mxm.candidate.duration && Math.abs(mxm.candidate.duration - duration) <= 5) && (
+                  <span className="mp-badge good">Same length</span>
+                )}
+              </div>
+              <blockquote className="mp-snippet">
+                {mxm.candidate.snippet.map((line, index) => (
+                  <span key={index}>{line}</span>
+                ))}
+              </blockquote>
+              <div className="mp-candidate-actions">
+                <button type="button" className="mp-button small" disabled={choosing !== null} onClick={() => void choose(-1)}>
+                  {choosing === -1 ? <LoaderCircle size={14} className="mp-spin" /> : null}
+                  Use these
+                </button>
+                <a href={mxm.candidate.url} target="_blank" rel="noreferrer">See them on Musixmatch</a>
+              </div>
+            </div>
+          ) : mxm.answered ? (
+            <p className="mp-lyrics-note">Musixmatch doesn&apos;t have {asked} either.</p>
+          ) : mxm.left > 0 ? (
+            <div className="mp-mxm-ask">
+              <span>{results.length ? "None of these?" : "Not on lrclib?"}</span>
+              <button type="button" className="mp-button ghost small" disabled={asking} onClick={() => void askMusixmatch()}>
+                {asking ? <LoaderCircle size={14} className="mp-spin" /> : <Sparkles size={14} />}
+                Ask Musixmatch for {asked}
+              </button>
+              <small>Type “Artist - Song” above to ask about something else.</small>
+            </div>
+          ) : (
+            <p className="mp-lyrics-note">Musixmatch can&apos;t be asked right now: this month&apos;s lookups are used up.</p>
+          )}
+        </section>
       )}
       <footer className="mp-picker-foot">
         {picked && (

@@ -1420,3 +1420,33 @@ button.now-playing-source:hover {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* The picker's Musixmatch box: ask it when none of lrclib's versions is right. */
+
+.mp-mxm {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mp-mxm-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mp-mxm-ask small {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.mp-badge.mxm {
+  background: color-mix(in srgb, var(--coral) 18%, transparent);
+  color: var(--coral);
+}
