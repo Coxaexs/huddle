@@ -30,8 +30,6 @@ export async function GET(request: Request) {
   }
 
   const q = (url.searchParams.get("q") || url.searchParams.get("query") || "").trim().toLowerCase();
-  // Escape LIKE wildcards so "_" and "%" in a search match themselves.
-  const searchPattern = q ? `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
   const memberSelect = `SELECT ${userColumns("u")},
                                m.nickname, m.avatar_url AS server_avatar_url, m.timeout_until, m.joined_at, m.invite_code,
                                i.created_by AS invite_creator_id,
@@ -43,16 +41,17 @@ export async function GET(request: Request) {
                           LEFT JOIN users inv_creator ON inv_creator.id = i.created_by`;
 
   const [result, roleRows] = await Promise.all([
-    searchPattern
+    q
       ? db
           .prepare(
+            // instr, not LIKE: D1 refuses a LIKE pattern over 50 bytes.
             `${memberSelect}
-              WHERE u.username_lower LIKE ?2 ESCAPE '\\'
-                 OR LOWER(u.display_name) LIKE ?2 ESCAPE '\\'
-                 OR LOWER(m.nickname) LIKE ?2 ESCAPE '\\'
+              WHERE instr(u.username_lower, ?2) > 0
+                 OR instr(LOWER(u.display_name), ?2) > 0
+                 OR instr(LOWER(m.nickname), ?2) > 0
               ORDER BY COALESCE(m.nickname, u.display_name) COLLATE NOCASE ASC`,
           )
-          .bind(serverId, searchPattern)
+          .bind(serverId, q)
           .all<MemberRow>()
       : db
           .prepare(`${memberSelect} ORDER BY COALESCE(m.nickname, u.display_name) COLLATE NOCASE ASC`)

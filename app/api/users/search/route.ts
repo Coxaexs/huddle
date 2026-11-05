@@ -21,8 +21,6 @@ export async function GET(request: Request) {
     return Response.json({ users: [] });
   }
 
-  const searchPattern = `%${q}%`;
-
   // People the caller already knows — friends and DM partners — match on any
   // substring of their name/username. Everyone else only matches when the full
   // username or display name is typed, so a stray letter doesn't surface the
@@ -38,26 +36,26 @@ export async function GET(request: Request) {
       WHERE channel_id IN (SELECT channel_id FROM dm_members WHERE user_id = ?2)
   )`;
 
-  // Search users table with indexed username_lower. Known people use a
-  // substring match; strangers require an exact username or display name.
+  // Known people use a substring match; strangers require an exact username or
+  // display name. instr, not LIKE: D1 refuses a LIKE pattern over 50 bytes.
   const userRows = await db
     .prepare(
       `SELECT id, username, display_name, avatar, avatar_url, color, status, custom_status, last_seen_at
          FROM users
-        WHERE (username_lower LIKE ?1 OR LOWER(display_name) LIKE ?1)
+        WHERE (instr(username_lower, ?1) > 0 OR instr(LOWER(display_name), ?1) > 0)
           AND (
             id IN ${knownSubquery}
-            OR username_lower = ?3
-            OR LOWER(display_name) = ?3
+            OR username_lower = ?1
+            OR LOWER(display_name) = ?1
           )
         ORDER BY
-          CASE WHEN username_lower = ?4 THEN 0
-               WHEN username_lower LIKE ?5 THEN 1
+          CASE WHEN username_lower = ?1 THEN 0
+               WHEN instr(username_lower, ?1) = 1 THEN 1
                ELSE 2 END,
           display_name COLLATE NOCASE ASC
-        LIMIT ?6`,
+        LIMIT ?3`,
     )
-    .bind(searchPattern, user.id, q, q, `${q}%`, limit)
+    .bind(q, user.id, limit)
     .all<{
       id: string;
       username: string;
