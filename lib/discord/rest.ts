@@ -1755,7 +1755,7 @@ async function messageRoutes(
         channel_id: await visibleChannelSnowflake(channel, thread),
         guild_id: guildSnowflake ?? undefined,
       },
-      { serverId: channel.server_id },
+      { serverId: channel.server_id, channelId: channel.id },
     );
     return new Response(null, { status: 204 });
   }
