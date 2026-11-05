@@ -2,6 +2,8 @@
 
 Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, a shared music bot and D&D tools, like your own private Discord. Run it on your own server, or just use it at [chat.hoffle.online](https://chat.hoffle.online), free and with nothing to install. More at [hoffle.online](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)) · [Docs](https://hoffle.online/docs) · [Download apps](https://hoffle.online/download).
 
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Coxaexs/badge.svg)](https://hub.xerj.org/contributors/Coxaexs)
+
 [![Verify CI](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml/badge.svg)](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml)
 [![Docker Image](https://github.com/Coxaexs/huddle/actions/workflows/docker.yml/badge.svg)](https://github.com/Coxaexs/huddle/pkgs/container/huddle)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
